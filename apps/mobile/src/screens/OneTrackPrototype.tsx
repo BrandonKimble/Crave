@@ -98,12 +98,13 @@ const OneTrackSurface: React.FC<{ onClose: () => void }> = ({ onClose }) => {
         title={header}
         legs={[
           {
+            entryKey: 'prototype#root',
             sceneKey: 'prototype',
             list: { data: ROW_DATA, renderItem: renderRow } as never,
             rowSurfaceStyle: styles.rowSurface,
           },
         ]}
-        presentedSceneKey="prototype"
+        presentedEntryKey="prototype#root"
         debugHud
       />
     </View>

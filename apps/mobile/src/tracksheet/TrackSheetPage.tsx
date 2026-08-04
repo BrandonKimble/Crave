@@ -45,6 +45,9 @@ import {
   type TrackSheetPhysicsOptions,
 } from './useTrackSheetPhysics';
 import { TrackSheetDockedStrip } from './TrackSheetStrip';
+import type { TrackEntryKey } from './track-entry-identity';
+import { TrackEntryScrollMemory } from './track-entry-scroll-memory';
+import { executeEntrySwitch, planEntrySwitch, TrackRestoreCoordinator } from './track-entry-switch';
 
 // ─── TrackSheetPage — THE sheet-page standard ──────────────────────────────────
 //
@@ -135,6 +138,11 @@ export type TrackSheetListProps<Item> = Pick<
  * on first visit and kept resident; switches display-flip legs while the
  * singletons (chrome, slots, shell, physics, τ) never remount. */
 export type TrackSheetLeg = {
+  /** ENTRY identity (`sceneKey#entryId` — track-entry-identity.ts): THE key of
+   * every per-leg store on the page (scroll memory, chrome/renderer caches,
+   * chrome stack identity). Two stacked entries of the same scene are two
+   * legs; scene-keyed stores collided them (G-ENTRY). */
+  entryKey: TrackEntryKey;
   sceneKey: string;
   list: TrackSheetListProps<unknown>;
   rowSurfaceStyle?: ViewStyle;
@@ -169,13 +177,10 @@ export type TrackSheetPageProps = {
   /** Grab handle (production: 40x3.25 cutout to the frost; tap promotes). */
   grabHandleHidden?: boolean;
   onGrabHandlePress?: () => void;
-  /** THE PERSISTENT STRIPS (residents rung 3): every resident scene's strip
-   * band, mounted once and opacity-flipped with its leg — a strip never
-   * remounts on switch, so its chips never re-measure and the late-chips gap
-   * is unwritable. The presented scene's entry decides the band's presence. */
-  strips?: Array<{ sceneKey: string; children: React.ReactNode }>;
-  /** In-list leader content — scrolls away with the page (in-list strip mode). */
-  /** Footer surface extension below the last row. */
+  /** Footer surface extension below the last row.
+   *  F878 (2026-08-03): an ORPHAN docstring sat here — "In-list leader content — scrolls
+   *  away with the page (in-list strip mode)" — documenting a prop that no longer exists,
+   *  and therefore silently documenting `footerHeight` instead. */
   footerHeight?: number;
   /** THE RESIDENT LEGS — every visited scene's rows. The presented leg is
    * live; the rest are display-detached, scroll preserved via the switch
@@ -187,17 +192,13 @@ export type TrackSheetPageProps = {
   debugHud?: boolean;
   /** Imperative commands (scene-switch snaps etc.) — filled on mount. */
   commandsRef?: React.MutableRefObject<TrackSheetCommands | null>;
-  /** Scene identity for THE SWITCH FORMULA: on change, the outgoing scene's
-   * list scroll (max(0, τ−H)) is saved and the incoming scene's is restored:
+  /** ENTRY identity for THE SWITCH FORMULA: on change, the outgoing entry's
+   * list scroll (max(0, τ−H)) is saved and the incoming entry's is restored:
    * τ_new = min(τ, H) + listScroll(incoming). sheetTop is flat for τ ≥ H and
    * listScroll is nonzero only there, so the sheet PROVABLY cannot move on a
-   * switch while every scene keeps its own scroll. */
-  presentedSceneKey: string;
-  /** THE SEAT (declarative): the desired resting τ. Re-asserted until reached —
-   * on prop change, on native attach, and through recycler-mount races — and
-   * CANCELLED the moment the user grabs the track (a seat is a target, never a
-   * lock). null = no opinion (leave τ where it is). */
-  seatTau?: number | null;
+   * switch while every entry keeps its own scroll. Entry-keyed (G-ENTRY):
+   * revisiting the same SCENE under a different entry is a different identity. */
+  presentedEntryKey: TrackEntryKey;
   /** THE PUBLICATION BRIDGE (acceptance inventory §5.8): mirror the track into
    * the app-wide shared sheet values — every legacy subscriber (search chrome
    * transition, scrim, dismiss plane, origin capture) rides the track. */
@@ -225,14 +226,15 @@ export function TrackSheetPage({
   navActionLabel = 'Close',
   grabHandleHidden = false,
   onGrabHandlePress,
-  strips = [],
+  // PROVENANCE (F874): 160 is a DEFAULT, overridden by every real caller that has a chin;
+  // it exists so a leg with no footer still leaves room to scroll the last row clear of the
+  // bottom safe area. Not measured — a caller that needs an exact chin passes one.
   footerHeight = 160,
   legs,
   surfaceColor = '#ffffff',
   debugHud = false,
   commandsRef,
-  seatTau = null,
-  presentedSceneKey,
+  presentedEntryKey,
   publicationBindings,
   onGestureSettle,
   onSettle,
@@ -249,7 +251,7 @@ export function TrackSheetPage({
   onGrabHandlePressRef.current = onGrabHandlePress;
   const stableNavActionPress = React.useCallback(() => onNavActionPressRef.current?.(), []);
   const stableGrabHandlePress = React.useCallback(() => onGrabHandlePressRef.current?.(), []);
-  const presentedLeg = legs.find((leg) => leg.sceneKey === presentedSceneKey) ?? null;
+  const presentedLeg = legs.find((leg) => leg.entryKey === presentedEntryKey) ?? null;
   presentedLegRef.current = presentedLeg;
   const onUserListScrollActivity = React.useCallback((offsetY: number, distanceFromEnd: number) => {
     presentedLegRef.current?.onUserListScrollActivity?.(offsetY, distanceFromEnd);
@@ -257,11 +259,9 @@ export function TrackSheetPage({
   const physics = useTrackSheetPhysics(geometry, { onUserListScrollActivity });
   const { tau, trackH, sheetTopY, onScroll, attachToTag } = physics;
 
-  // THE SHORT-PAGE FILL (declared early; law documented at the handler below).
-  // NOT mirrored into the ref on every render: the ref is the monotonic
-  // accumulator and must only advance inside the handler.
-  // Fresh page ⇒ fresh measurement: the accumulator resets when the data
-  // identity changes, so a long page never inherits a short page's fill.
+  // F878 (2026-08-03): a law block about "the monotonic accumulator ref" stood here. That
+  // ref is gone — the handler does one assignment now — so the block reasoned about code
+  // that no longer exists, in the sheet the whole app renders through.
 
   // PRODUCTION CHROME GEOMETRY (acceptance inventory §1): the header block is
   // the exact un-rounded 68.25; strip scenes add band(32) + spacer(8).
@@ -428,6 +428,10 @@ export function TrackSheetPage({
         },
         () => undefined
       );
+      // PROVENANCE (F874): the shell audit is a BACKGROUND correctness probe, not a
+      // latency measurement — 3s is "often enough to catch a stuck layer within a few
+      // seconds of it happening, rare enough to cost nothing". It double-samples before
+      // barking, so the interval also sets how long a real problem must persist.
     }, 3000);
     return () => {
       cancelled = true;
@@ -549,86 +553,29 @@ export function TrackSheetPage({
     [physics, reportSettle]
   );
 
-  const cancelPendingSeat = React.useCallback(() => {
-    seatTimerCancelRef.current?.();
-  }, []);
-
-  // ── THE SEAT: declarative re-asserting settle ──
-  const seatTimerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
-  React.useEffect(() => {
-    if (seatTau == null) {
-      return;
-    }
-    let cancelled = false;
-    let attempts = 0;
-    // New seat target ⇒ the machine owns posture again until the next gesture.
-    physics.userOwnsPosture.value = false;
-    const assertSeat = () => {
-      if (cancelled) {
-        return;
-      }
-      // The user owns posture after ANY gesture — the seat never fights it
-      // (the attach-listener re-arm was re-seating over user drags).
-      if (physics.dragging.value || physics.userOwnsPosture.value) {
-        return;
-      }
-      // THE SEAT IS POSTURE-SPACE, NOT τ-SPACE (attributed live 2026-07-29:
-      // a restore to τ=916 was dragged back to H by an 'expanded' seat). A
-      // seat targets sheetTop, and sheetTop is FLAT for τ ≥ H — so 'expanded'
-      // (seatTau === trackH) is satisfied by ANY τ ≥ H. Compare postures
-      // (min(τ, H)), never raw τ: the old system's seat moved sheetY only and
-      // could not touch a page's scroll.
-      if (Math.abs(Math.min(tau.value - physics.sigma.value, trackH) - seatTau) <= 1) {
-        return;
-      }
-      physics.snapToTau(seatTau);
-      attempts += 1;
-      if (attempts < 15) {
-        seatTimerRef.current = setTimeout(assertSeat, 250);
-      }
-    };
-    assertSeat();
-    // Re-assert on attach ONLY while the machine still owns posture (mount
-    // races). Once the user has touched the sheet, attach re-asserts are
-    // silent — the seat is a one-shot, never a leash.
-    const unsubscribe = physics.subscribeAttached(() => {
-      if (physics.userOwnsPosture.value) {
-        return;
-      }
-      attempts = 0;
-      assertSeat();
-    });
-    seatTimerCancelRef.current = () => {
-      cancelled = true;
-      if (seatTimerRef.current != null) {
-        clearTimeout(seatTimerRef.current);
-        seatTimerRef.current = null;
-      }
-    };
-    return () => {
-      cancelled = true;
-      unsubscribe();
-      seatTimerCancelRef.current = null;
-      if (seatTimerRef.current != null) {
-        clearTimeout(seatTimerRef.current);
-      }
-    };
-  }, [physics, seatTau, tau]);
-
-  // THE GESTURE CANCELS THE MACHINE (jerk fix): any pending seat retry or
-  // in-flight programmatic spring dies the moment a finger lands — otherwise
-  // the seat's spring and the drag fight for a few frames ("bounces back,
-  // then continues once it realizes I'm swiping").
-  const seatTimerCancelRef = React.useRef<(() => void) | null>(null);
-  useAnimatedReaction(
-    () => physics.dragging.value,
-    (isDragging, was) => {
-      if (isDragging && !was) {
-        runOnJS(cancelPendingSeat)();
-      }
-    },
-    [physics]
-  );
+  // ── THE SEAT: DELETED (F861, 2026-08-03) ──────────────────────────────────────
+  // ~80 lines lived here that COULD NOT EXECUTE: the declarative re-asserting seat
+  // (`cancelPendingSeat`, `assertSeat`, the 15-attempt / 250ms loop, the attach
+  // re-subscribe, and the drag-cancels-seat animated reaction). Every one of them was
+  // gated on a `seatTau` prop, and TrackSheetRouteHost — the only mount — passed a
+  // literal `const seatTau = null`. The one other consumer (OneTrackPrototype) never
+  // passed it and has no mount site.
+  //
+  // It was SUPERSEDED, not forgotten: the host's own note says "THE PARALLEL SEAT IS
+  // DELETED — the track host registers as the 'sheetHost' motion target and consumes
+  // the descriptor table's commands". That path is live below (motionCommandValue /
+  // registerSheetMotionTarget / the pendingSnapTimer command lane). This corpse was
+  // left mounted beside it, carrying some of the file's hardest-won comments — which is
+  // exactly why it was dangerous: a reader debugging posture would have read the
+  // seat's reasoning as current and edited dead code.
+  //
+  // The two lessons those comments bought are PRESERVED where they are still true, on
+  // the live command lane: (1) a seat/snap is POSTURE-space, not tau-space — compare
+  // `min(tau, H)`, because sheetTop is FLAT for tau >= H, so an 'expanded' target is
+  // satisfied by ANY tau >= H (attributed live 2026-07-29: a restore to tau=916 was
+  // dragged back to H); (2) the user owns posture after ANY gesture — a programmatic
+  // target must die the moment a finger lands, or its spring and the drag fight for a
+  // few frames ("bounces back, then continues once it realizes I'm swiping").
 
   const pendingSnapTimer = React.useRef<ReturnType<typeof setTimeout> | null>(null);
   React.useEffect(() => {
@@ -649,6 +596,12 @@ export function TrackSheetPage({
         }
         // Native spring settle (TrackScrollKit snapTo) — retry until τ moves
         // (a pre-attach call is a no-op; the recycler may still be mounting).
+        // PROVENANCE (F874, 2026-08-03): 12 x 200ms = a 2.4s ceiling on "the recycler is
+        // still mounting". Chosen, not measured: it must outlast a cold list mount and must
+        // NOT outlast a user's patience with a sheet that has not moved. A budget that
+        // EXPIRES is deliberate — an uncapped retry here would fight a user who dragged the
+        // sheet in the meantime. If this ever expires in practice, the defect is upstream
+        // (a snap issued against a track that never attaches), not a number to raise.
         let attempts = 0;
         const trySnap = () => {
           physics.snapToTau(tauTarget);
@@ -668,22 +621,25 @@ export function TrackSheetPage({
     };
   }, [commandsRef, physics, tau]);
 
-  // THE CHROME IS CONTENT (the scroll view IS the sheet): it sits right after
-  // the spacer, so it shares the content's ONE motion source (no derived
-  // transform ⇒ the wiggle is impossible), and it lives INSIDE the scroll view
-  // ⇒ every touch on it — title, close, grab handle, strip chips — is a scroll
-  // touch, so the whole sheet is grabbable by construction with UIScrollView's
-  // own delaysContentTouches/cancelContentTouches as the tap-vs-drag rule.
-  // TrackScrollKit pins it past H (native, same-frame).
-
-  // THE ONE PAINTED HEADER (two-surfaces fix, 2026-08-01). The chrome exists
-  // TWICE by necessity: a touch twin inside the scroll content (so every pixel
-  // of the header is a scroll touch — the grabbable-sheet law) and a visual
-  // twin in the shell slot (so it rides sheetTop natively, no wiggle). Painting
-  // BOTH made each copy a self-sufficient-looking sheet — that is why a desync
-  // ever read as TWO sheets rather than one misplaced layer. The touch twin is
-  // now INVISIBLE (opacity 0): same layout, same hit-testing, zero pixels. Two
-  // headers on screen is now unrepresentable, not merely avoided.
+  // THE CHROME IS CONTENT, AND IT EXISTS TWICE (two-surfaces fix, 2026-08-01).
+  //
+  // The chrome sits right after the spacer, INSIDE the scroll view, so every touch on it
+  // — title, close, grab handle, strip chips — is a scroll touch: the whole sheet is
+  // grabbable by construction, with UIScrollView's own
+  // delaysContentTouches/cancelContentTouches as the tap-vs-drag rule.
+  //
+  // Two copies are necessary: a TOUCH TWIN in the scroll content (the grabbable-sheet law
+  // above) and a VISUAL TWIN in the shell slot, which rides sheetTop NATIVELY and so
+  // cannot wiggle. Painting BOTH made each copy look like a self-sufficient sheet — which
+  // is why a desync ever read as TWO SHEETS rather than one misplaced layer. The touch
+  // twin is now INVISIBLE (opacity 0): same layout, same hit-testing, zero pixels. Two
+  // headers on screen is unrepresentable, not merely avoided. TrackScrollKit pins the
+  // visual twin past H (native, same-frame).
+  //
+  // F878 (2026-08-03): this was THREE stacked paragraphs whose claims disagreed — an
+  // earlier one asserted the chrome shares the content's ONE motion source so "the wiggle
+  // is impossible", which the later two then explain is not the whole story (the visual
+  // twin is exactly the second motion source). Only the last was true; they are now one.
   const renderChrome = (
     refCallback: ((node: View | null) => void) | null,
     chromeTitle: React.ReactNode,
@@ -717,6 +673,8 @@ export function TrackSheetPage({
             UNDER the band (the band paints over it), so whatever the joint
             transmits shows plate-white, never the content moving beneath. */}
         <MaskedHoleOverlay
+          // F884: geometry comes from `style` below, not from filling the parent.
+          fill={false}
           holes={plateHoles}
           backgroundColor={surfaceColor}
           renderWhenEmpty
@@ -775,10 +733,13 @@ export function TrackSheetPage({
       <Reanimated.View style={[styles.divider, dividerStyle]} />
     </View>
   );
-  // CHROME IDENTITY IS PER SCENE, NOT PER LEG (strip-lateness fix, 2026-08-01).
-  // `legs` is rebuilt whenever ANY scene's data changes, so keying the chrome
-  // off it remounted the strip on unrelated data ticks — and a remounted strip
+  // CHROME IDENTITY IS PER ENTRY, NOT PER LEG OBJECT (strip-lateness fix,
+  // 2026-08-01; entry-keyed under G-ENTRY, 2026-08-03). `legs` is rebuilt
+  // whenever ANY scene's data changes, so keying the chrome off the leg object
+  // remounted the strip on unrelated data ticks — and a remounted strip
   // re-measures its chips, which is what makes the toggle strip appear late.
+  // Keyed by ENTRY so two stacked entries of the same scene keep independent
+  // chrome (strip selection, title) instead of sharing one cached element.
   // THE CACHE KEY MUST INCLUDE EVERY PROP THE CHROME CLOSES OVER — including
   // its HANDLERS. Keying on title + strip children alone handed back an
   // element holding a STALE onNavActionPress, so the close button on child
@@ -786,58 +747,76 @@ export function TrackSheetPage({
   // still "create"). A memo that omits a closure is not a cache, it is a
   // freeze. Data churn is excluded because leg DATA is not in this list.
   const chromeElementCacheRef = React.useRef(
-    new Map<string, { signature: readonly unknown[]; element: React.ReactElement }>()
+    new Map<TrackEntryKey, { signature: readonly unknown[]; element: React.ReactElement }>()
   );
-  const visualChromeLegs = React.useMemo(
-    () =>
-      legs.map((leg) => {
-        // Signature holds ONLY per-scene inputs. Handlers go through stable
-        // refs; shared inputs (holes, colors, progress) change rarely and are
-        // included; per-switch identities are excluded BY DESIGN so the cache
-        // actually hits across switches (red team: it never did).
-        const signature: readonly unknown[] = [
-          leg.title,
-          leg.stripChildren,
-          grabHandleHidden,
-          headerExtras,
-          plateHoles,
-          surfaceColor,
-          navActionProgress,
-        ];
-        const cached = chromeElementCacheRef.current.get(leg.sceneKey);
-        if (
-          cached != null &&
-          cached.signature.length === signature.length &&
-          cached.signature.every((value, index) => value === signature[index])
-        ) {
-          return { sceneKey: leg.sceneKey, element: cached.element };
-        }
-        const band =
-          leg.stripChildren != null ? (
-            <View style={{ height: TOGGLE_STRIP_BAND_HEIGHT }}>
-              <TrackSheetDockedStrip height={TOGGLE_STRIP_BAND_HEIGHT} plateColor="transparent">
-                {leg.stripChildren}
-              </TrackSheetDockedStrip>
-            </View>
-          ) : null;
-        const element = renderChrome(null, leg.title ?? title, band, legChromeHeight(leg));
-        chromeElementCacheRef.current.set(leg.sceneKey, { signature, element });
-        return { sceneKey: leg.sceneKey, element };
-      }),
-    [
-      legs,
-      grabHandleHidden,
-      headerExtras,
-      navActionProgress,
-      navActionLabel,
-      onGrabHandlePress,
-      onNavActionPress,
-      plateHoles,
-      surfaceColor,
-      title,
-      dividerStyle,
-    ]
+  // Per-leg row renderers (declared before the chrome memo — its sweep reads
+  // this map): each leg's renderItem wrapped once, memoized by ENTRY identity
+  // so resident legs keep stable cell identities across re-renders.
+  const rowRendererCacheRef = React.useRef(
+    new Map<TrackEntryKey, { source: TrackSheetLeg; render: (info: never) => React.ReactElement }>()
   );
+  const visualChromeLegs = React.useMemo(() => {
+    // ELEMENT-CACHE HYGIENE (depth-K retention): entries evicted from the leg
+    // list drop their cached chrome + row renderers here — caches must not
+    // outgrow the retained set. Scroll memory deliberately survives eviction.
+    const liveEntryKeys = new Set(legs.map((leg) => leg.entryKey));
+    for (const key of [...chromeElementCacheRef.current.keys()]) {
+      if (!liveEntryKeys.has(key)) {
+        chromeElementCacheRef.current.delete(key);
+      }
+    }
+    for (const key of [...rowRendererCacheRef.current.keys()]) {
+      if (!liveEntryKeys.has(key)) {
+        rowRendererCacheRef.current.delete(key);
+      }
+    }
+    return legs.map((leg) => {
+      // Signature holds ONLY per-scene inputs. Handlers go through stable
+      // refs; shared inputs (holes, colors, progress) change rarely and are
+      // included; per-switch identities are excluded BY DESIGN so the cache
+      // actually hits across switches (red team: it never did).
+      const signature: readonly unknown[] = [
+        leg.title,
+        leg.stripChildren,
+        grabHandleHidden,
+        headerExtras,
+        plateHoles,
+        surfaceColor,
+        navActionProgress,
+      ];
+      const cached = chromeElementCacheRef.current.get(leg.entryKey);
+      if (
+        cached != null &&
+        cached.signature.length === signature.length &&
+        cached.signature.every((value, index) => value === signature[index])
+      ) {
+        return { entryKey: leg.entryKey, element: cached.element };
+      }
+      const band =
+        leg.stripChildren != null ? (
+          <View style={{ height: TOGGLE_STRIP_BAND_HEIGHT }}>
+            <TrackSheetDockedStrip height={TOGGLE_STRIP_BAND_HEIGHT} plateColor="transparent">
+              {leg.stripChildren}
+            </TrackSheetDockedStrip>
+          </View>
+        ) : null;
+      const element = renderChrome(null, leg.title ?? title, band, legChromeHeight(leg));
+      chromeElementCacheRef.current.set(leg.entryKey, { signature, element });
+      return { entryKey: leg.entryKey, element };
+    });
+  }, [
+    legs,
+    grabHandleHidden,
+    headerExtras,
+    navActionProgress,
+    navActionLabel,
+    onGrabHandlePress,
+    onNavActionPress,
+    plateHoles,
+    surfaceColor,
+    title,
+    dividerStyle,
+  ]);
 
   // Per-leg header: [spacer H][chrome band][leader]. The chrome TOUCH TWIN
   // renders ONLY in the presented leg (its ref feeds the pin; a hidden twin
@@ -869,10 +848,10 @@ export function TrackSheetPage({
       <TrackShellSlot slotRole="chromeContent" ref={chromeContentRef as never}>
         <View style={{ height: legChromeHeight(leg) }}>
           {visualChromeLegs.map((entry) => {
-            const isPresented = entry.sceneKey === presentedSceneKey;
+            const isPresented = entry.entryKey === presentedEntryKey;
             return (
               <View
-                key={entry.sceneKey}
+                key={entry.entryKey}
                 style={isPresented ? styles.chromeStackLayer : styles.chromeStackLayerHidden}
                 pointerEvents={isPresented ? 'box-none' : 'none'}
               >
@@ -903,13 +882,9 @@ export function TrackSheetPage({
     [footerHeight, surfaceColor]
   );
 
-  // Per-leg row surface: each leg's renderItem wrapped once, memoized by leg
-  // identity so resident legs keep stable cell identities across re-renders.
-  const rowRendererCacheRef = React.useRef(
-    new Map<string, { source: TrackSheetLeg; render: (info: never) => React.ReactElement }>()
-  );
+  // rowRendererCacheRef is declared above the chrome memo (its sweep needs it).
   const rendererForLeg = (leg: TrackSheetLeg) => {
-    const cached = rowRendererCacheRef.current.get(leg.sceneKey);
+    const cached = rowRendererCacheRef.current.get(leg.entryKey);
     if (
       cached != null &&
       cached.source.list.renderItem === leg.list.renderItem &&
@@ -923,7 +898,7 @@ export function TrackSheetPage({
         {legRenderItem?.(info) ?? null}
       </View>
     );
-    rowRendererCacheRef.current.set(leg.sceneKey, { source: leg, render });
+    rowRendererCacheRef.current.set(leg.entryKey, { source: leg, render });
     return render;
   };
 
@@ -939,10 +914,10 @@ export function TrackSheetPage({
   // capped the track at its content edge and every spring settle was dragged
   // back there). The fill guarantees contentH ≥ spacer(H) + viewport.
   const handleContentSizeChange = React.useCallback(
-    (sceneKey: string, height: number) => {
+    (entryKey: TrackEntryKey, height: number) => {
       // Only the PRESENTED leg's geometry feeds the physics (hidden legs are
       // display-detached; their sizes are not the sheet's).
-      if (sceneKey !== presentedSceneKeyRef.current) {
+      if (entryKey !== presentedEntryKeyRef.current) {
         return;
       }
       physics.contentHeight.value = height;
@@ -978,51 +953,67 @@ export function TrackSheetPage({
   // fabricated scroll length (R4/R5).
 
   // THE SWITCH FORMULA — applied synchronously at the switch commit, instant
-  // (native refuse: restoring YOUR scroll is not motion).
-  const sceneScrollMemoryRef = React.useRef(new Map<string, number>());
-  const presentedSceneKeyRef = React.useRef<string>(presentedSceneKey);
-  presentedSceneKeyRef.current = presentedSceneKey;
-  const prevSceneKeyRef = React.useRef<string | null>(presentedSceneKey);
+  // (native refuse: restoring YOUR scroll is not motion). ENTRY-KEYED
+  // (G-ENTRY): the memory + restore live in pure modules the jest lane
+  // falsifies directly (track-entry-scroll-memory / track-entry-switch) — the
+  // page only executes the plan.
+  const entryScrollMemoryRef = React.useRef(new TrackEntryScrollMemory());
+  const restoreCoordinatorRef = React.useRef(new TrackRestoreCoordinator());
+  const presentedEntryKeyRef = React.useRef<TrackEntryKey>(presentedEntryKey);
+  presentedEntryKeyRef.current = presentedEntryKey;
+  const prevEntryKeyRef = React.useRef<TrackEntryKey | null>(presentedEntryKey);
   React.useLayoutEffect(() => {
-    const sceneKey = presentedSceneKey;
-    const prev = prevSceneKeyRef.current;
-    if (prev === sceneKey) {
+    const entryKey = presentedEntryKey;
+    const prev = prevEntryKeyRef.current;
+    if (prev === entryKey) {
       return;
     }
-    prevSceneKeyRef.current = sceneKey;
-    // THE SCENE SWAP: one track, one scroll view, one posture. Nothing
+    prevEntryKeyRef.current = entryKey;
+    // THE ENTRY SWAP: one track, one scroll view, one posture. Nothing
     // attaches, re-binds, or changes owner — the sheet does not move because
     // there is nothing for it to move to. Only the data changes.
-    const sigmaNow = physics.sigma.value;
-    if (prev != null) {
-      // The outgoing scroll = the stash (scroll carried by a header drag) plus
-      // any live list scroll past the effective boundary.
-      // Save uses the JS mirrors — switches happen at rest, where the mirrors
-      // are settled; the TARGET is deliberately NOT computed here (XII red
-      // team 3: the mirrors lag the UI thread, and a stale target disarmed
-      // the correct write). Native computes it with fresh τ/σ in refuse().
-      sceneScrollMemoryRef.current.set(prev, sigmaNow + Math.max(0, tau.value - trackH - sigmaNow));
-    }
-    const restored = sceneScrollMemoryRef.current.get(sceneKey) ?? 0;
-    pendingRestoreRef.current = { sceneKey, restored };
-    // RE-ASSERT THE SHELL CONFIG (found by READING the switch path, 2026-08-02).
-    // "Nothing re-binds on a switch" was right about POSITION — but bindShell
-    // also carries per-scene CONFIG, and chromeHeight is scene-dependent
-    // (strip scenes 108.25, plain 68.25). With applyPin only firing from
-    // mount-time refs, a polls -> child switch left the band mask and the
-    // stash band 40pt TALL (rows hidden under the shorter header), and the
-    // reverse switch left them 40pt SHORT (rows painting into the strip band).
-    // Idempotent, config-only: position still never moves on a switch.
-    applyPinRef.current?.();
+    // Save uses the JS mirrors — switches happen at rest, where the mirrors
+    // are settled; the TARGET is deliberately NOT computed here (XII red
+    // team 3: the mirrors lag the UI thread, and a stale target disarmed
+    // the correct write). Native computes it with fresh τ/σ in refuse().
+    const plan = planEntrySwitch({
+      outgoingEntryKey: prev,
+      incomingEntryKey: entryKey,
+      tau: tau.value,
+      trackH,
+      sigma: physics.sigma.value,
+      memory: entryScrollMemoryRef.current,
+    });
     const nativePhysics = NativeModules.TrackScrollPhysics;
-    // THE SWITCH FORMULA, as originally derived — and correct again now that
-    // there is ONE scroll view. refuse() re-fuses the sheet's CURRENT posture
-    // with the incoming scene's remembered scroll, computing both natively
-    // from fresh tau/sigma. It only ever misbehaved because N resident legs
-    // meant it read posture from whichever view happened to be attached.
-    if (nativePhysics?.refuse != null && trackTagRef.current != null) {
-      nativePhysics.refuse(trackTagRef.current, restored);
-    }
+    executeEntrySwitch(plan, {
+      saveOutgoing: (outgoingKey, offset) => entryScrollMemoryRef.current.save(outgoingKey, offset),
+      // RE-ASSERT THE SHELL CONFIG (found by READING the switch path, 2026-08-02).
+      // "Nothing re-binds on a switch" was right about POSITION — but bindShell
+      // also carries per-scene CONFIG, and chromeHeight is scene-dependent
+      // (strip scenes 108.25, plain 68.25). With applyPin only firing from
+      // mount-time refs, a polls -> child switch left the band mask and the
+      // stash band 40pt TALL (rows hidden under the shorter header), and the
+      // reverse switch left them 40pt SHORT (rows painting into the strip band).
+      // Idempotent, config-only: position still never moves on a switch.
+      // ORDER LAW (A4): this — and with it the chrome/segment selection that
+      // committed in THIS render — lands before the scroll restore below.
+      applyChromeSelection: () => applyPinRef.current?.(),
+      // A freshly mounted leg attaches async: arm the one-shot BEFORE the
+      // immediate apply so the attach path can re-fuse it (and a later switch
+      // supersedes it inside the coordinator).
+      armRestore: (incomingKey, offset) =>
+        restoreCoordinatorRef.current.schedule(incomingKey, offset),
+      // THE SWITCH FORMULA, as originally derived — and correct again now that
+      // there is ONE scroll view. refuse() re-fuses the sheet's CURRENT posture
+      // with the incoming entry's remembered scroll, computing both natively
+      // from fresh tau/sigma. It only ever misbehaved because N resident legs
+      // meant it read posture from whichever view happened to be attached.
+      applyRestore: (offset) => {
+        if (nativePhysics?.refuse != null && trackTagRef.current != null) {
+          nativePhysics.refuse(trackTagRef.current, offset);
+        }
+      },
+    });
     if (__DEV__) {
       // THE SWITCH PERF PROBE: JS-thread stall around the switch commit —
       // time from this layout effect to the next TWO animation frames (the
@@ -1034,31 +1025,22 @@ export function TrackSheetPage({
           const t2 = Date.now();
           // eslint-disable-next-line no-console
           console.log(
-            `[PERF] switch ${prev}->${sceneKey} commit->paint=${t1 - t0}ms paint->next=${t2 - t1}ms`
+            `[PERF] switch ${prev}->${entryKey} commit->paint=${t1 - t0}ms paint->next=${t2 - t1}ms`
           );
         });
       });
     }
-  }, [presentedSceneKey, tau, trackH, attachToTag, applyPin]);
-  // A freshly mounted leg attaches async: re-apply the pending restore once
-  // the proxy exists (stamped by scene so a later switch cancels it).
-  const pendingRestoreRef = React.useRef<{ sceneKey: string; restored: number } | null>(null);
+  }, [presentedEntryKey, tau, trackH, attachToTag, applyPin, physics]);
+  // Attach-gated one-shot (G-RESTORE c): the restore applies only after the
+  // track attaches, only for the entry that scheduled it, at most once — a
+  // remembered 0 still applies (consumeOnAttach returns 0, not null, for it).
   React.useEffect(
     () =>
       physics.subscribeAttached(() => {
-        const pending = pendingRestoreRef.current;
+        const offset = restoreCoordinatorRef.current.consumeOnAttach(presentedEntryKeyRef.current);
         const nativePhysics = NativeModules.TrackScrollPhysics;
-        if (
-          pending != null &&
-          pending.sceneKey === presentedSceneKeyRef.current &&
-          nativePhysics?.refuse != null &&
-          trackTagRef.current != null
-        ) {
-          nativePhysics.refuse(trackTagRef.current, pending.restored);
-          // ONE-SHOT: the restore belongs to the switch that scheduled it.
-          // Leaving it armed let every later attach (the recycler re-attaches
-          // constantly) re-run the switch formula against a stale scroll.
-          pendingRestoreRef.current = null;
+        if (offset != null && nativePhysics?.refuse != null && trackTagRef.current != null) {
+          nativePhysics.refuse(trackTagRef.current, offset);
         }
       }),
     [physics]
@@ -1147,7 +1129,7 @@ export function TrackSheetPage({
           scrollsToTop={false}
           onScroll={onScroll}
           onContentSizeChange={(_w: number, h: number) =>
-            handleContentSizeChange(presentedSceneKey, h)
+            handleContentSizeChange(presentedEntryKey, h)
           }
         />
       </TrackTouchCarve>
@@ -1189,8 +1171,11 @@ const styles = StyleSheet.create({
     borderTopLeftRadius: OVERLAY_CORNER_RADIUS,
     borderTopRightRadius: OVERLAY_CORNER_RADIUS,
   },
-  // Containment (R6): nothing renders above the sheet's top edge. A clip, not
-  // a reposition — the track inside is counter-offset so nothing shifts.
+  // F878 (2026-08-03): `chromeLane: {}` — an EMPTY style carrying containment law
+  // ("nothing renders above the sheet's top edge; a clip, not a reposition") that it does
+  // not implement. The law is real and lives where it is enforced (the `chrome` clip
+  // below); an empty rule reads as a knob someone can turn. Kept as a named style only
+  // because the JSX still references it as a layout slot.
   chromeLane: {},
   founding: {
     position: 'absolute',
@@ -1199,8 +1184,8 @@ const styles = StyleSheet.create({
     top: 0,
     height: SCREEN.height * 2,
   },
-  // Mask: transparent band over the chrome (content hidden there), opaque
-  // below (content visible). Colors are irrelevant — alpha is the mask.
+  // F878 (2026-08-03): a "Mask: transparent band over the chrome … alpha is the mask"
+  // comment sat here for a mask that is GONE — the chrome is CONTENT now (see below).
   chrome: {
     // In CONTENT now (not an overlay): the sheet's top edge whenever pinned.
     width: '100%',
@@ -1210,6 +1195,8 @@ const styles = StyleSheet.create({
     borderTopLeftRadius: OVERLAY_CORNER_RADIUS,
     borderTopRightRadius: OVERLAY_CORNER_RADIUS,
   },
+  // F878 (2026-08-03): `headerBlock: {}` — the second empty style; same class as
+  // `chromeLane` above. Retained as a JSX slot name, documented as carrying no rules.
   headerBlock: {},
   chromeStackLayer: { position: 'absolute', top: 0, left: 0, right: 0 },
   chromeStackLayerHidden: { position: 'absolute', top: 0, left: 0, right: 0, opacity: 0 },
@@ -1247,8 +1234,10 @@ const styles = StyleSheet.create({
     height: 1,
     backgroundColor: '#f1f5f9',
   },
-  // Layer marker (debug builds of the parallel host): the TrackSheet surface is
-  // the one with the amber top edge — never confuse it with the old sheet again.
+  // The debug HUD pill (dev only, `debugHud`).
+  // F878 (2026-08-03): this said "the TrackSheet surface is the one with the AMBER TOP
+  // EDGE" — there is no amber edge; the pill below is plain dark. It also called this "the
+  // parallel host", which stopped being true at the rung-5 flip (see F877).
   hud: {
     position: 'absolute',
     bottom: 40,

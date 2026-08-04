@@ -62,18 +62,27 @@ import {
   type TrackSheetCommands,
   type TrackSheetPageProps,
 } from './TrackSheetPage';
+import { makeTrackEntryKey, type TrackEntryKey } from './track-entry-identity';
+import { TrackEntryRetention, TRACK_CHILD_RETENTION_DEPTH } from './track-entry-retention';
 
-// ─── TrackSheetRouteHost — migration RUNG 1 (dev-flagged parallel host) ────────
+// ─── TrackSheetRouteHost — THE PRODUCTION SHEET HOST ──────────────────────────
 //
-// The strangler's first rung: TrackSheetPage mounted in the REAL app with REAL
-// production inputs — calculateSnapPoints geometry and the scene's registered
-// persistent-header descriptor (Title + Strip components from the registry).
-// The old sheet host is untouched; this renders above it behind a dev deep
-// link. Purpose: prove the registry chrome renders inside the parallel host
-// and the production geometry rides the track, before scene switching (rung 2)
-// and real bodies (rung 3) wire in.
+// This file IS the sheet the app renders through. `track-flip-store.ts:12` ships
+// `on: true` and this host is mounted unconditionally; the strangler completed at
+// rung 5 (see "THE FLIP" below). It owns the scene's registered persistent-header
+// descriptor (Title + Strip from the registry), the calculateSnapPoints geometry
+// riding the track, scene switching, and the real scene bodies.
 //
-//   crave://tracksheet-host?on=1&scene=polls   (off: on=0; scene: any OverlayKey)
+// The deep link is the EMERGENCY ROLLBACK + debug-visuals toggle, not the way in:
+//
+//   crave://tracksheet-host?on=0   (rollback to the old host; on=1 restores; scene: any OverlayKey)
+//
+// F877 (2026-08-03): this header used to read "migration RUNG 1 (dev-flagged parallel
+// host) … The old sheet host is untouched; this renders above it behind a dev deep link"
+// — the exact OPPOSITE of the code, contradicted fifty lines below by its own post-flip
+// note. A reader who trusted it believed this file was inert scaffolding and would have
+// edited it accordingly. Scaffolding prose that outlives its scaffolding is worse than no
+// prose: it spends the trust the surviving comments need.
 
 const DEEP_LINK_HOST = 'tracksheet-host';
 
@@ -257,25 +266,36 @@ const TrackSheetRouteSurface: React.FC<{ scene: OverlayKey }> = ({ scene: sceneO
   }, [frame.switchId, scene, sceneRuntime]);
 
   // THE ENTRY: child bodies receive their route entry (params — listId etc.)
-  // exactly like the registry mount unit passes it (W1 slice 1). Resolve the
-  // frame's activeEntryId against the live route stack.
+  // exactly like the registry mount unit passes it (W1 slice 1). ENTRY IDENTITY
+  // (G-ENTRY): the id rides the scene we chose — presentedEntryId when the
+  // scene came from presented truth, activeEntryId otherwise — and is the
+  // second half of the track's `sceneKey#entryId` identity.
+  const sceneEntryId =
+    frame.presentedSceneKey != null ? frame.presentedEntryId : frame.activeEntryId;
   const activeEntry = React.useMemo(() => {
-    if (frame.activeEntryId == null) {
+    if (sceneEntryId == null) {
       return null;
     }
     const routeState = sceneRuntime.routeSceneSwitchRuntime.getRouteState();
     return (
-      routeState.overlayRouteStack.find((entry) => entry.entryId === frame.activeEntryId) ??
-      (routeState.activeOverlayRoute.entryId === frame.activeEntryId
+      routeState.overlayRouteStack.find((entry) => entry.entryId === sceneEntryId) ??
+      (routeState.activeOverlayRoute.entryId === sceneEntryId
         ? routeState.activeOverlayRoute
         : null)
     );
-  }, [frame.activeEntryId, sceneRuntime]);
+  }, [sceneEntryId, sceneRuntime]);
 
   // RUNG 3 — REAL BODIES through ONE PERSISTENT PAGE: the track surface never
   // remounts (production shape; remount churn hit a Fabric unmount assert) —
   // scene switches swap chrome + body content inside UnifiedTrackScenePage.
-  return <UnifiedTrackScenePage scene={scene} snapPoints={snapPoints} entry={activeEntry} />;
+  return (
+    <UnifiedTrackScenePage
+      scene={scene}
+      entryId={sceneEntryId}
+      snapPoints={snapPoints}
+      entry={activeEntry}
+    />
+  );
 };
 
 // The mounted-body registry's scene set (searchOverlayRouteHostContract) minus
@@ -302,23 +322,47 @@ const RESIDENT_TRACK_SCENES = new Set<OverlayKey>([
   'profile',
 ] as OverlayKey[]);
 
-const MOUNTED_TRACK_SCENES = new Set<OverlayKey>([
-  'lists',
-  'profile',
-  'saveList',
-  'userProfile',
-  'listDetail',
-  'followList',
-  'notifications',
-  'settings',
-  'editProfile',
-  'postPhotos',
-  'messagesInbox',
-  'dmSession',
-]);
+const MOUNTED_BODY_COMPONENTS: Partial<
+  Record<SearchRouteMountedSceneBodyKey, React.ComponentType<{ entry?: OverlayRouteEntry | null }>>
+> = {
+  lists: ListsMountedSceneBody,
+  profile: ProfileMountedSceneBody,
+  saveList: SaveListMountedSceneBody,
+  userProfile: UserProfileMountedSceneBody,
+  listDetail: ListDetailMountedSceneBody,
+  followList: FollowListMountedSceneBody,
+  notifications: NotificationsMountedSceneBody,
+  settings: SettingsMountedSceneBody,
+  editProfile: EditProfileMountedSceneBody,
+  postPhotos: PostPhotosPanelBody,
+  messagesInbox: MessagesInboxPanelBody,
+  dmSession: DmSessionPanelBody,
+};
+
+/**
+ * The scenes whose bodies come from the mounted-body registry — DERIVED, never listed.
+ *
+ * F872 (2026-08-03): this was a SECOND hand-maintained list of the same twelve keys as
+ * MOUNTED_BODY_COMPONENTS above. They agreed on the day they were written, and the failure
+ * mode of disagreement is silent and ugly: a scene in the SET but not in the COMPONENT MAP
+ * makes `renderMountedBody` return null — a blank sheet body, no error, no log. Deriving the
+ * set from the map's own keys makes that state unrepresentable; adding a scene is now one
+ * edit in one place.
+ */
+const MOUNTED_TRACK_SCENES = new Set<OverlayKey>(
+  Object.keys(MOUNTED_BODY_COMPONENTS) as OverlayKey[]
+);
+
+// NOT DONE (F872, recorded): the finding also proposed folding this file's role / residency
+// / padding sets (ROOT_TRACK_SCENES, RESIDENT_TRACK_SCENES, UNPADDED_BODY_SCENES) onto the
+// APP_OVERLAY_ROUTE_METADATA_BY_KEY table this file already consults. That is a change to
+// the shared route-metadata contract in navigation/, owned by another lane — it should land
+// there, with that table's own exhaustiveness guard, not as a local copy here.
 
 type TrackScenePageProps = {
   scene: OverlayKey;
+  /** Route-stack entry id for the presented scene (null for tab roots / pre-commit). */
+  entryId: string | null;
   snapPoints: ReturnType<typeof getSearchStartupGeometrySeed>['routeOverlaySnapPoints'];
   entry?: OverlayRouteEntry | null;
 };
@@ -341,8 +385,11 @@ const useTrackScenePageChrome = (
   // home-crossing seats, preserveLiveY, promoteAtLeast, child rules) comes
   // back verbatim from the code that always owned it. Commands are
   // POSTURE-space snaps; snapTo natively adds σ and short-circuits <0.5pt.
-  const sceneRuntimeForSeat = useAppRouteSceneRuntime();
-  const seatTau = null;
+  // F861 (2026-08-03): `const seatTau = null` and its threading are DELETED along with the
+  // ~80 lines of unreachable seat machinery in TrackSheetPage it gated. The comment block
+  // above already recorded the supersession ("THE PARALLEL SEAT IS DELETED"); the code had
+  // not caught up. The live path is the motion-target registration below.
+  const sceneRuntime = useAppRouteSceneRuntime();
   const motionCommandValue = useSharedValue<{
     snapTo: 'expanded' | 'middle' | 'collapsed' | 'hidden';
     token: number;
@@ -378,26 +425,33 @@ const useTrackScenePageChrome = (
       if (settleToken != null) {
         if (!willMove || commands == null) {
           pendingSettleTokenRef.current = null;
-          sceneRuntimeForSeat.routeSceneMotionRuntime.completeFromSheetSettle?.(settleToken);
+          sceneRuntime.routeSceneMotionRuntime.completeFromSheetSettle?.(settleToken);
         } else {
           setTimeout(() => {
             if (pendingSettleTokenRef.current === settleToken) {
               pendingSettleTokenRef.current = null;
-              sceneRuntimeForSeat.routeSceneMotionRuntime.completeFromSheetSettle?.(settleToken);
+              sceneRuntime.routeSceneMotionRuntime.completeFromSheetSettle?.(settleToken);
             }
+            // PROVENANCE (F874, 2026-08-03): 700ms is a DEADLINE, not a duration — it is
+            // the "the settle fact never arrived" backstop for a snap whose native spring
+            // should have reported settle long before. It is deliberately longer than any
+            // real spring so it never PREEMPTS a genuine settle (that would complete the
+            // token early and let chrome move before the sheet did), and short enough that
+            // a lost settle costs one visible beat rather than a wedged transition. Not
+            // measured against the spring; sized to be safely past it.
           }, 700);
         }
       }
     },
-    [commandsRef, sceneRuntimeForSeat, snapPoints, trackH]
+    [commandsRef, sceneRuntime, snapPoints, trackH]
   );
   const completePendingSettle = React.useCallback(() => {
     const token = pendingSettleTokenRef.current;
     if (token != null) {
       pendingSettleTokenRef.current = null;
-      sceneRuntimeForSeat.routeSceneMotionRuntime.completeFromSheetSettle?.(token);
+      sceneRuntime.routeSceneMotionRuntime.completeFromSheetSettle?.(token);
     }
-  }, [sceneRuntimeForSeat]);
+  }, [sceneRuntime]);
   useAnimatedReaction(
     () => motionCommandValue.value,
     (command, previous) => {
@@ -426,18 +480,20 @@ const useTrackScenePageChrome = (
       return 'middle' as const;
     }
     return 'collapsed' as const;
-    // eslint-disable-next-line no-unreachable
+    // F878 (2026-08-03): an `// eslint-disable-next-line no-unreachable` sat here, after a
+    // REACHABLE return, disabling a rule about code that does not exist. A disable comment
+    // for a non-problem teaches the next reader that this line is dangerous.
   }, [commandsRef, snapPoints, trackH]);
   React.useEffect(
     () =>
-      sceneRuntimeForSeat.routeSceneMotionRuntime.registerSheetMotionTarget({
+      sceneRuntime.routeSceneMotionRuntime.registerSheetMotionTarget({
         sceneKey: 'sheetHost' as OverlayKey,
         resolveCurrentSnapTarget,
         motionCommandValue: motionCommandValue as unknown as Parameters<
-          typeof sceneRuntimeForSeat.routeSceneMotionRuntime.registerSheetMotionTarget
+          typeof sceneRuntime.routeSceneMotionRuntime.registerSheetMotionTarget
         >[0]['motionCommandValue'],
       }),
-    [motionCommandValue, resolveCurrentSnapTarget, sceneRuntimeForSeat]
+    [motionCommandValue, resolveCurrentSnapTarget, sceneRuntime]
   );
 
   // THE SETTLE OBSERVER → SESSION: gesture rests write posture memory with the
@@ -451,13 +507,13 @@ const useTrackScenePageChrome = (
           : Math.abs(detentTau - middleTau) <= 2
             ? ('middle' as const)
             : ('collapsed' as const);
-      sceneRuntimeForSeat.routeSheetSnapSessionActions.recordRouteSceneSheetSettle({
+      sceneRuntime.routeSheetSnapSessionActions.recordRouteSceneSheetSettle({
         sceneKey: scene,
         snap,
         writer: 'gesture',
       });
     },
-    [middleTau, scene, sceneRuntimeForSeat, trackH]
+    [middleTau, scene, sceneRuntime, trackH]
   );
 
   // ── THE SHEET LEG OF THE REDRAW JOIN ([JOINT], attributed 2026-07-28) ──────
@@ -483,7 +539,6 @@ const useTrackScenePageChrome = (
 
   const descriptor = getPersistentHeaderDescriptor(scene);
   const Title = descriptor?.Title;
-  const Strip = descriptor?.Strip;
   // Rung-4 chrome parity: the kit renders the production chrome (cutout plate,
   // grab handle, HeaderNavAction). The host supplies title + action wiring.
   const { closeActiveRoute, promoteActiveSheet, pushRoute } = useAppOverlayRouteController();
@@ -524,32 +579,10 @@ const useTrackScenePageChrome = (
   const onGrabHandlePress = React.useCallback(() => {
     promoteActiveSheet({ snap: 'middle' });
   }, [promoteActiveSheet]);
-  // THE PERSISTENT STRIPS (residents rung 3): one strip element PER SCENE,
-  // cached forever — mounted once in the band and opacity-flipped, so chips
-  // never re-measure on a switch (the late-chips gap dies structurally).
-  const stripCacheRef = React.useRef(new Map<OverlayKey, React.ReactNode>());
-  if (Strip != null && !stripCacheRef.current.has(scene)) {
-    stripCacheRef.current.set(
-      scene,
-      <ChromeProbeBoundary label={`${scene}.Strip`}>
-        <Strip />
-      </ChromeProbeBoundary>
-    );
-  }
-  const strips = React.useMemo(() => {
-    const entries: Array<{ sceneKey: string; children: React.ReactNode }> = [];
-    stripCacheRef.current.forEach((children, stripScene) => {
-      entries.push({ sceneKey: stripScene as string, children });
-    });
-    // The presented scene must have an entry for the band to exist at all.
-    if (Strip != null && !entries.some((entry) => entry.sceneKey === (scene as string))) {
-      entries.push({
-        sceneKey: scene as string,
-        children: stripCacheRef.current.get(scene) ?? null,
-      });
-    }
-    return entries;
-  }, [Strip, scene]);
+  // THE PERSISTENT STRIPS moved to the legs memo (entry-keyed under G-ENTRY):
+  // one strip element PER ENTRY, cached until the entry's leg is evicted —
+  // mounted once in the band and opacity-flipped, so chips never re-measure on
+  // a switch, and two entries of the same scene keep independent strip state.
   const sharedSheetOwner2 = useAppRouteSharedSheetRuntimeOwner();
   // POST-FLIP: the track is the ONLY sheetTranslateY writer (the old runtime
   // no longer renders), so the full binding is on — search chrome scale, the
@@ -575,10 +608,8 @@ const useTrackScenePageChrome = (
   return {
     commandsRef,
     title,
-    strips,
     completePendingSettle,
     geometry,
-    seatTau,
     navActionProgress,
     onNavActionPress,
     isChildScene,
@@ -594,15 +625,18 @@ const useTrackScenePageChrome = (
  *   polls/home → the scene's real body-content spec;
  *   mounted-registry scenes → the registry body as a one-item track body;
  *   anything else → placeholder rows. */
-const UnifiedTrackScenePage: React.FC<TrackScenePageProps> = ({ scene, snapPoints, entry }) => {
+const UnifiedTrackScenePage: React.FC<TrackScenePageProps> = ({
+  scene,
+  entryId,
+  snapPoints,
+  entry,
+}) => {
   const debugVisuals = useTrackFlipState().debug;
   const {
     commandsRef,
     title,
-    strips,
     completePendingSettle,
     geometry,
-    seatTau,
     navActionProgress,
     onNavActionPress,
     isChildScene,
@@ -643,52 +677,77 @@ const UnifiedTrackScenePage: React.FC<TrackScenePageProps> = ({ scene, snapPoint
   // Static SV: on the track the body CELL rides the scroll, so the foundation
   // plate needs no counter-translation — holes track their boxes for free.
   const zeroScrollOffset = useSharedValue(0);
-  const renderMountedBody = React.useCallback(() => {
-    // DIRECT bodies, no registry wrapper: the wrapper's residency boundary
-    // renders hidden prewarm legs which, without the old host's shell-liveness
-    // context, painted VISIBLY below the live body (the phantom duplicate).
-    const Body = MOUNTED_BODY_COMPONENTS[scene as SearchRouteMountedSceneBodyKey];
-    if (Body == null) {
-      return null;
+  // MOUNTED BODIES ARE PER ENTRY (A3 — entry identity reaches React element
+  // identity): the renderer is cached by ENTRY key and closes over the LEG's
+  // own scene + entry value, so two stacked entries of the same scene (two DM
+  // threads, two userProfiles) are two React instances — composer drafts and
+  // hook state never shared, pop-back byte-exact. Params come from the ENTRY
+  // VALUE captured at push (retained even after pop, W1 semantics).
+  const mountedRendererCacheRef = React.useRef(
+    new Map<
+      TrackEntryKey,
+      { entry: OverlayRouteEntry | null; render: () => React.ReactElement | null }
+    >()
+  );
+  const rendererForMountedEntry = (
+    legEntryKey: TrackEntryKey,
+    legScene: OverlayKey,
+    legEntry: OverlayRouteEntry | null
+  ): (() => React.ReactElement | null) => {
+    const cached = mountedRendererCacheRef.current.get(legEntryKey);
+    if (cached != null && cached.entry === legEntry) {
+      return cached.render;
     }
-    // THE ACTIVATION BRIDGE: mounted bodies gate their data lanes on the old
-    // host's activity contexts (all-false defaults left lists blank on the
-    // track). On the track host the rendered scene IS the live presented scene
-    // at its seat — activity is true by construction. (Rung 4 derives
-    // shouldRenderExpandedContent from τ for collapsed postures.)
-    const activity = {
-      sceneKey: scene,
-      shouldAttachMountedContent: true,
-      shouldRunDataLane: true,
-      shouldSubscribeDataLane: true,
-      shouldRenderExpandedContent: true,
-      hasActivatedExpandedContent: true,
-    };
-    return (
-      <BottomSheetSceneStackBodyDataActivityContext.Provider value={activity}>
-        <BottomSheetSceneStackBodyRenderActivityContext.Provider value={activity}>
-          <BottomSheetSceneStackBodyIsActiveContext.Provider value={true}>
-            {/* THE REAL FOUNDATION (rung 4): white plate + FrostCutout store —
+    const render = (): React.ReactElement | null => {
+      // DIRECT bodies, no registry wrapper: the wrapper's residency boundary
+      // renders hidden prewarm legs which, without the old host's shell-liveness
+      // context, painted VISIBLY below the live body (the phantom duplicate).
+      const Body = MOUNTED_BODY_COMPONENTS[legScene as SearchRouteMountedSceneBodyKey];
+      if (Body == null) {
+        return null;
+      }
+      // THE ACTIVATION BRIDGE: mounted bodies gate their data lanes on the old
+      // host's activity contexts (all-false defaults left lists blank on the
+      // track). All-true still (G-ACTIVITY lands in R2) — the retention depth
+      // bounds how many hidden entries pay this cost (see the bark below).
+      const activity = {
+        sceneKey: legScene,
+        shouldAttachMountedContent: true,
+        shouldRunDataLane: true,
+        shouldSubscribeDataLane: true,
+        shouldRenderExpandedContent: true,
+        hasActivatedExpandedContent: true,
+      };
+      return (
+        <BottomSheetSceneStackBodyDataActivityContext.Provider value={activity}>
+          <BottomSheetSceneStackBodyRenderActivityContext.Provider value={activity}>
+            <BottomSheetSceneStackBodyIsActiveContext.Provider value={true}>
+              {/* THE REAL FOUNDATION (rung 4): white plate + FrostCutout store —
                 profile stats / home bands punch through to the kit's frost;
                 the strip law sees its plate. Zero scroll offset: the cell
                 itself rides the track. */}
-            <SceneBodyFoundationSurface
-              scrollOffset={zeroScrollOffset}
-              sceneKey={scene as SheetSceneKey}
-            >
-              {/* padding INSIDE the surface so the white plate spans the full
+              <SceneBodyFoundationSurface
+                scrollOffset={zeroScrollOffset}
+                sceneKey={legScene as SheetSceneKey}
+              >
+                {/* padding INSIDE the surface so the white plate spans the full
                   cell (padded-outside left frost gutters at the margins). */}
-              <View style={UNPADDED_BODY_SCENES.has(scene) ? undefined : styles.mountedBodyInset}>
-                <ChromeProbeBoundary label={`${scene}.body`}>
-                  <Body entry={entry ?? undefined} />
-                </ChromeProbeBoundary>
-              </View>
-            </SceneBodyFoundationSurface>
-          </BottomSheetSceneStackBodyIsActiveContext.Provider>
-        </BottomSheetSceneStackBodyRenderActivityContext.Provider>
-      </BottomSheetSceneStackBodyDataActivityContext.Provider>
-    );
-  }, [entry, scene, zeroScrollOffset]);
+                <View
+                  style={UNPADDED_BODY_SCENES.has(legScene) ? undefined : styles.mountedBodyInset}
+                >
+                  <ChromeProbeBoundary label={`${legScene}.body`}>
+                    <Body entry={legEntry ?? undefined} />
+                  </ChromeProbeBoundary>
+                </View>
+              </SceneBodyFoundationSurface>
+            </BottomSheetSceneStackBodyIsActiveContext.Provider>
+          </BottomSheetSceneStackBodyRenderActivityContext.Provider>
+        </BottomSheetSceneStackBodyDataActivityContext.Provider>
+      );
+    };
+    mountedRendererCacheRef.current.set(legEntryKey, { entry: legEntry, render });
+    return render;
+  };
   const renderSkeletonBody = React.useCallback(
     () => (
       <SceneBodyFoundationSurface scrollOffset={zeroScrollOffset} sceneKey={scene as SheetSceneKey}>
@@ -715,92 +774,165 @@ const UnifiedTrackScenePage: React.FC<TrackScenePageProps> = ({ scene, snapPoint
     [scene, zeroScrollOffset]
   );
 
-  // ── THE RESIDENT LEGS (residents-cutover F) ────────────────────────────────
+  // ── THE RESIDENT LEGS + ENTRY RETENTION (residents-cutover F; G-ENTRY/A3) ──
   // Tab scenes become residents on FIRST visit (E1 lazy mount) and stay
-  // mounted; child/transient scenes mount only while presented. Per-scene
-  // list resolution below is the old presented-only resolution, parameterized.
+  // mounted — pinned to their `scene#root` singleton identity (top-level tabs
+  // are one logical entry forever; a re-minted stack entry per revisit must
+  // not fork their scroll memory). Child scenes are ENTRY-KEYED and retained
+  // as hidden legs with depth-K LRU (K=3): pushing B over A keeps A's leg —
+  // hook state, strip selection, scroll — alive for a byte-exact pop-back.
+  const isResidentScene = RESIDENT_TRACK_SCENES.has(scene);
+  const presentedEntryKey = makeTrackEntryKey(scene, isResidentScene ? null : entryId);
   const visitedResidentsRef = React.useRef(new Set<OverlayKey>());
-  if (RESIDENT_TRACK_SCENES.has(scene)) {
+  if (isResidentScene) {
     visitedResidentsRef.current.add(scene);
   }
-  const resolveLegList = React.useCallback(
-    (legScene: OverlayKey) => {
-      if (legScene === scene && publishedBody != null && publishedBody.surfaceKind === 'list') {
-        return {
-          leader: publishedBody.ListHeaderComponent ?? null,
-          data: publishedBody.data,
-          renderItem: publishedBody.renderItem,
-          keyExtractor: publishedBody.keyExtractor,
-          ListEmptyComponent: publishedBody.ListEmptyComponent,
-          ItemSeparatorComponent: publishedBody.ItemSeparatorComponent,
-          extraData: publishedBody.extraData,
-          onEndReached: publishedBody.onEndReached,
-          onEndReachedThreshold: publishedBody.onEndReachedThreshold,
-        };
-      }
-      const partsFor =
-        legScene === 'polls'
-          ? pollsParts
-          : legScene === 'home' || legScene === 'search'
-            ? homeParts
-            : null;
-      if (partsFor != null && partsFor.sceneBodyContent.surfaceKind === 'list') {
-        const spec = partsFor.sceneBodyContent;
-        const specRenderItem = spec.renderItem;
-        return {
-          data: spec.data,
-          renderItem: (info: Parameters<NonNullable<typeof specRenderItem>>[0]) =>
-            wrapRowOnFoundation(specRenderItem?.(info) ?? null),
-          keyExtractor: spec.keyExtractor,
-          ListEmptyComponent: spec.ListEmptyComponent,
-          ItemSeparatorComponent: spec.ItemSeparatorComponent,
-          extraData: spec.extraData,
-          onEndReached: spec.onEndReached,
-          onEndReachedThreshold: spec.onEndReachedThreshold,
-        };
-      }
-      if (MOUNTED_TRACK_SCENES.has(legScene)) {
-        return { data: [legScene], renderItem: renderMountedBody };
-      }
-      // THE SKELETON RESTORATION (residents rung 2): a cold leg is a REAL
-      // sheet body whose one item renders THE ONE loading material (the
-      // cutout plate — THE SKELETON SHEET laws). The improvised gray rows
-      // are deleted; the skeleton is the leg's own content state, once per
-      // cold visit, never a transition state.
-      return { data: ['skeleton'], renderItem: renderSkeletonBody };
-    },
-    [
-      homeParts,
-      pollsParts,
-      publishedBody,
-      renderMountedBody,
-      renderSkeletonBody,
-      scene,
-      wrapRowOnFoundation,
-    ]
+  const legTitleCacheRef = React.useRef(new Map<TrackEntryKey, React.ReactNode>());
+  const stripElementCacheRef = React.useRef(new Map<TrackEntryKey, React.ReactNode>());
+  const retainedChildrenRef = React.useRef(
+    new Map<TrackEntryKey, { scene: OverlayKey; entry: OverlayRouteEntry | null }>()
   );
+  const childRetentionRef = React.useRef(new TrackEntryRetention(TRACK_CHILD_RETENTION_DEPTH));
+  if (!isResidentScene) {
+    // Refresh the stored entry value each render (params can update in place —
+    // the algebra preserves entryId across param writes).
+    retainedChildrenRef.current.set(presentedEntryKey, { scene, entry: entry ?? null });
+    for (const evictedKey of childRetentionRef.current.touch(presentedEntryKey)) {
+      retainedChildrenRef.current.delete(evictedKey);
+      legTitleCacheRef.current.delete(evictedKey);
+      stripElementCacheRef.current.delete(evictedKey);
+      mountedRendererCacheRef.current.delete(evictedKey);
+      // Scroll memory deliberately survives eviction (TrackEntryScrollMemory).
+    }
+    if (__DEV__ && childRetentionRef.current.size >= TRACK_CHILD_RETENTION_DEPTH) {
+      // A7 BARK BUDGET: per-entry retention multiplies the all-true activity
+      // cost until G-ACTIVITY (R2) derives activity from (presented, posture).
+      // Retention is at capacity — hidden retained entries are running live
+      // data lanes right now.
+      // eslint-disable-next-line no-console
+      console.warn(
+        `[TRACK] entry retention at capacity (${TRACK_CHILD_RETENTION_DEPTH}); hidden legs run all-true data lanes until G-ACTIVITY (R2)`
+      );
+    }
+  }
+  const resolveLegList = (
+    legEntryKey: TrackEntryKey,
+    legScene: OverlayKey,
+    legEntry: OverlayRouteEntry | null
+  ) => {
+    // The published scene-input lane is SCENE-keyed — only the PRESENTED entry
+    // may read it (a hidden same-scene entry reading it would alias the
+    // presented entry's rows: the exact G-ENTRY collision).
+    if (
+      legEntryKey === presentedEntryKey &&
+      publishedBody != null &&
+      publishedBody.surfaceKind === 'list'
+    ) {
+      return {
+        leader: publishedBody.ListHeaderComponent ?? null,
+        data: publishedBody.data,
+        renderItem: publishedBody.renderItem,
+        keyExtractor: publishedBody.keyExtractor,
+        ListEmptyComponent: publishedBody.ListEmptyComponent,
+        ItemSeparatorComponent: publishedBody.ItemSeparatorComponent,
+        extraData: publishedBody.extraData,
+        onEndReached: publishedBody.onEndReached,
+        onEndReachedThreshold: publishedBody.onEndReachedThreshold,
+      };
+    }
+    const partsFor =
+      legScene === 'polls'
+        ? pollsParts
+        : legScene === 'home' || legScene === 'search'
+          ? homeParts
+          : null;
+    if (partsFor != null && partsFor.sceneBodyContent.surfaceKind === 'list') {
+      const spec = partsFor.sceneBodyContent;
+      const specRenderItem = spec.renderItem;
+      return {
+        data: spec.data,
+        renderItem: (info: Parameters<NonNullable<typeof specRenderItem>>[0]) =>
+          wrapRowOnFoundation(specRenderItem?.(info) ?? null),
+        keyExtractor: spec.keyExtractor,
+        ListEmptyComponent: spec.ListEmptyComponent,
+        ItemSeparatorComponent: spec.ItemSeparatorComponent,
+        extraData: spec.extraData,
+        onEndReached: spec.onEndReached,
+        onEndReachedThreshold: spec.onEndReachedThreshold,
+      };
+    }
+    if (MOUNTED_TRACK_SCENES.has(legScene)) {
+      // data carries the ENTRY key so a same-scene entry switch is a data
+      // change to the one FlashList, never an aliased row.
+      return {
+        data: [legEntryKey],
+        renderItem: rendererForMountedEntry(legEntryKey, legScene, legEntry),
+      };
+    }
+    // THE SKELETON RESTORATION (residents rung 2): a cold leg is a REAL
+    // sheet body whose one item renders THE ONE loading material (the
+    // cutout plate — THE SKELETON SHEET laws). The improvised gray rows
+    // are deleted; the skeleton is the leg's own content state, once per
+    // cold visit, never a transition state.
+    return { data: ['skeleton'], renderItem: renderSkeletonBody };
+  };
 
-  const legTitleCacheRef = React.useRef(new Map<OverlayKey, React.ReactNode>());
   const legs = React.useMemo(() => {
-    const legScenes = new Set<OverlayKey>(visitedResidentsRef.current);
-    legScenes.add(scene);
-    return [...legScenes].map((legScene) => {
-      const list = resolveLegList(legScene);
-      // Title elements are cached PER SCENE (like strips): a fresh element per
-      // switch would miss the page's touch-chrome cache and rebuild every
-      // leg's chrome on every flip (measured: it doubled switch cost).
-      let legTitle = legTitleCacheRef.current.get(legScene) ?? null;
+    const legEntries: Array<{
+      entryKey: TrackEntryKey;
+      legScene: OverlayKey;
+      legEntry: OverlayRouteEntry | null;
+    }> = [];
+    for (const residentScene of visitedResidentsRef.current) {
+      legEntries.push({
+        entryKey: makeTrackEntryKey(residentScene, null),
+        legScene: residentScene,
+        legEntry: null,
+      });
+    }
+    for (const retainedKey of childRetentionRef.current.keys()) {
+      const retained = retainedChildrenRef.current.get(retainedKey);
+      if (retained != null) {
+        legEntries.push({
+          entryKey: retainedKey,
+          legScene: retained.scene,
+          legEntry: retained.entry,
+        });
+      }
+    }
+    if (!legEntries.some((candidate) => candidate.entryKey === presentedEntryKey)) {
+      legEntries.push({ entryKey: presentedEntryKey, legScene: scene, legEntry: entry ?? null });
+    }
+    return legEntries.map(({ entryKey: legEntryKey, legScene, legEntry }) => {
+      const list = resolveLegList(legEntryKey, legScene, legEntry);
+      // Title + strip elements are cached PER ENTRY: a fresh element per
+      // switch would miss the page's chrome cache and rebuild every leg's
+      // chrome on every flip (measured: it doubled switch cost) — and a
+      // per-SCENE cache would share strip/title state across two entries of
+      // the same scene (G-ENTRY).
+      let legTitle = legTitleCacheRef.current.get(legEntryKey) ?? null;
       if (legTitle == null) {
         const LegTitle = getPersistentHeaderDescriptor(legScene)?.Title;
         legTitle = LegTitle != null ? <LegTitle /> : null;
-        legTitleCacheRef.current.set(legScene, legTitle);
+        legTitleCacheRef.current.set(legEntryKey, legTitle);
+      }
+      if (!stripElementCacheRef.current.has(legEntryKey)) {
+        const LegStrip = getPersistentHeaderDescriptor(legScene)?.Strip;
+        stripElementCacheRef.current.set(
+          legEntryKey,
+          LegStrip != null ? (
+            <ChromeProbeBoundary label={`${legScene}.Strip`}>
+              <LegStrip />
+            </ChromeProbeBoundary>
+          ) : null
+        );
       }
       const leader = (list as { leader?: unknown }).leader ?? null;
       return {
+        entryKey: legEntryKey,
         sceneKey: legScene as string,
         title: legTitle,
-        stripChildren:
-          strips.find((entry) => entry.sceneKey === (legScene as string))?.children ?? null,
+        stripChildren: stripElementCacheRef.current.get(legEntryKey) ?? null,
         list: list as never,
         listLeader:
           leader != null ? (
@@ -815,14 +947,18 @@ const UnifiedTrackScenePage: React.FC<TrackScenePageProps> = ({ scene, snapPoint
           ? UNPADDED_BODY_SCENES.has(legScene)
             ? styles.mountedSurfaceUnpadded
             : styles.mountedSurface
-          : (legScene === scene && publishedBody?.surfaceKind === 'list') || legScene === 'polls'
+          : (legEntryKey === presentedEntryKey && publishedBody?.surfaceKind === 'list') ||
+              legScene === 'polls'
             ? styles.rowSurface
             : undefined,
         onUserListScrollActivity:
           legScene === 'polls' ? pollsParts.sceneBodyTransport.onUserListScrollActivity : undefined,
       };
     });
-  }, [pollsParts, publishedBody, resolveLegList, scene, strips, zeroScrollOffset]);
+    // resolveLegList / rendererForMountedEntry are render-scoped closures whose
+    // real inputs are the deps below; caches keep renderItem identities stable.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pollsParts, homeParts, publishedBody, scene, entry, presentedEntryKey, zeroScrollOffset]);
 
   return (
     <View style={styles.root} pointerEvents="box-none">
@@ -834,10 +970,9 @@ const UnifiedTrackScenePage: React.FC<TrackScenePageProps> = ({ scene, snapPoint
         grabHandleHidden={scene === 'settings'}
         onGrabHandlePress={onGrabHandlePress}
         legs={legs}
-        presentedSceneKey={scene as string}
+        presentedEntryKey={presentedEntryKey}
         debugHud={debugVisuals}
         commandsRef={commandsRef}
-        seatTau={seatTau}
         publicationBindings={sharedSheetPublicationBindings}
         onGestureSettle={onGestureSettle}
         onSettle={() => {
@@ -859,23 +994,6 @@ const renderListLeader = (leader: unknown): React.ReactNode => {
   }
   const Leader = leader as React.ComponentType;
   return <Leader />;
-};
-
-const MOUNTED_BODY_COMPONENTS: Partial<
-  Record<SearchRouteMountedSceneBodyKey, React.ComponentType<{ entry?: OverlayRouteEntry | null }>>
-> = {
-  lists: ListsMountedSceneBody,
-  profile: ProfileMountedSceneBody,
-  saveList: SaveListMountedSceneBody,
-  userProfile: UserProfileMountedSceneBody,
-  listDetail: ListDetailMountedSceneBody,
-  followList: FollowListMountedSceneBody,
-  notifications: NotificationsMountedSceneBody,
-  settings: SettingsMountedSceneBody,
-  editProfile: EditProfileMountedSceneBody,
-  postPhotos: PostPhotosPanelBody,
-  messagesInbox: MessagesInboxPanelBody,
-  dmSession: DmSessionPanelBody,
 };
 
 const styles = StyleSheet.create({

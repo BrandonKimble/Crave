@@ -293,3 +293,18 @@ world's join completes — content is never replaced by a skeleton when content 
 Falsifiers: cold entry shows skeleton (correct variant per OA2); revise never shows a
 skeleton frame. Owner may override; development does not pause on this per OA7.
 See plans/search-flow-rederivation.md for the full R7 gap list.
+
+## R1 RE-DERIVATION CHECKPOINT (parent-reviewed, landed)
+
+Entry identity landed as `sceneKey#entryId` derived from the route stack's existing
+per-push `entryId` (one identity authority — no parallel counter). Two contract
+sharpenings absorbed: (1) "the unit is the ENTRY" now reads "a top-level tab is ONE
+entry forever" — residents pin to `scene#root` because stack entries re-mint across tab
+revisits and raw ids would fork tab scroll memory; (2) the scene-input publication lane
+remains scene-keyed (outside this rung's surface); on the track it is constrained to
+presented-entry-only reads. If a scene ever publishes ONLY via that lane and needs
+hidden retention, the lane must become entry-scoped — assigned to R2/R6 scope review.
+Falsifiers proven RED-able (identity collapse → 4 failures; offset-0 collapse → 2).
+Kill-list executed: strips prop, scene-keyed stripCacheRef/scroll memory/pendingRestore,
+scene-keyed renderMountedBody. Retention K=3 with capacity bark; hidden legs still run
+all-true data lanes until G-ACTIVITY (R2).
