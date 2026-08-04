@@ -47,6 +47,7 @@ import {
 import { TrackSheetDockedStrip } from './TrackSheetStrip';
 import type { TrackEntryKey } from './track-entry-identity';
 import { computeOutgoingScroll, TrackEntryScrollMemory } from './track-entry-scroll-memory';
+import { resolveSnapRetryDecision } from './track-sheet-fence';
 import { executeEntrySwitch, planEntrySwitch, TrackRestoreCoordinator } from './track-entry-switch';
 
 // ─── TrackSheetPage — THE sheet-page standard ──────────────────────────────────
@@ -156,9 +157,18 @@ export type TrackSheetLeg = {
   listLeader?: React.ReactNode;
 };
 
+/** What native snapTo answered (FIX 3 / G-HIDDEN generation stamp). refused
+ * means a live drag owned τ when the command landed — THE FINGER OWNS TAU,
+ * the command is dead, never re-issued. hiddenGeneration is present iff the
+ * command armed a hidden excursion (the stamp trackHiddenEdgeCleared events
+ * must match to be consumed). */
+export type TrackSnapOutcome = { refused: boolean; hiddenGeneration?: number };
+
 export type TrackSheetCommands = {
-  /** Programmatic settle to a τ (detent) — rides the native scroll animation. */
-  snapToTau: (tau: number, animated?: boolean) => void;
+  /** Programmatic settle to a τ (detent) — rides the native scroll animation.
+   * onOutcome reports native's verdict: a refusal (finger owns τ) or the
+   * armed hidden-excursion generation. */
+  snapToTau: (tau: number, onOutcome?: (outcome: TrackSnapOutcome) => void) => void;
   /** Posture peeks (JS mirrors; used at rest for descriptor resolution). */
   readTau: () => number;
   readSigma: () => number;
@@ -611,6 +621,9 @@ export function TrackSheetPage({
   // few frames ("bounces back, then continues once it realizes I'm swiping").
 
   const pendingSnapTimer = React.useRef<ReturnType<typeof setTimeout> | null>(null);
+  /** One live retry loop at a time: each snapToTau call mints an id; a stale
+   * loop's async native answer is dropped instead of scheduling a retry. */
+  const snapLoopIdRef = React.useRef(0);
   React.useEffect(() => {
     if (commandsRef == null) {
       return;
@@ -631,7 +644,7 @@ export function TrackSheetPage({
       // recycler lays out is a silent no-op — the sheet sat at τ=0 while the OLD
       // sheet rendered the same page above it, and every visual check read the
       // wrong layer. Retry until τ actually reaches the target (or attempts cap).
-      snapToTau: (tauTarget) => {
+      snapToTau: (tauTarget, onOutcome) => {
         if (pendingSnapTimer.current != null) {
           clearTimeout(pendingSnapTimer.current);
           pendingSnapTimer.current = null;
@@ -644,13 +657,61 @@ export function TrackSheetPage({
         // EXPIRES is deliberate — an uncapped retry here would fight a user who dragged the
         // sheet in the meantime. If this ever expires in practice, the defect is upstream
         // (a snap issued against a track that never attaches), not a number to raise.
+        //
+        // THE FINGER OWNS TAU, both sides (native red team FIX 3): a live drag
+        // aborts before issuing, and a native `refused` (the command landed
+        // mid-drag) ends the loop for good — the user's posture choice
+        // supersedes the stale command intent; never re-issue after the drag.
+        // The per-step verdict is pure (resolveSnapRetryDecision, falsified in
+        // track-sheet-fence.spec.ts). Each call mints a loop id so a stale
+        // promise from a superseded command can never schedule a retry.
+        const loopId = snapLoopIdRef.current + 1;
+        snapLoopIdRef.current = loopId;
         let attempts = 0;
-        const trySnap = () => {
-          physics.snapToTau(tauTarget);
-          attempts += 1;
-          if (attempts < 12 && Math.abs(tau.value - tauTarget) > 1) {
+        const settleStep = (outcome?: { refused?: boolean; hiddenGeneration?: number }) => {
+          if (snapLoopIdRef.current !== loopId) {
+            return;
+          }
+          if (outcome?.hiddenGeneration != null) {
+            onOutcome?.({ refused: false, hiddenGeneration: outcome.hiddenGeneration });
+          }
+          const decision = resolveSnapRetryDecision({
+            dragging: physics.dragging.value,
+            refused: outcome?.refused === true,
+            attempts,
+            distance: Math.abs(tau.value - tauTarget),
+          });
+          if (decision === 'abort-finger' || decision === 'abort-refused') {
+            onOutcome?.({ refused: true });
+            return;
+          }
+          if (decision === 'retry') {
             pendingSnapTimer.current = setTimeout(trySnap, 200);
           }
+        };
+        const trySnap = () => {
+          if (snapLoopIdRef.current !== loopId) {
+            return;
+          }
+          if (physics.dragging.value) {
+            onOutcome?.({ refused: true });
+            return;
+          }
+          attempts += 1;
+          const nativePhysics = NativeModules.TrackScrollPhysics;
+          const tag = trackTagRef.current;
+          if (nativePhysics?.snapTo == null || tag == null) {
+            // No native engine (tests / pre-attach): the wrapper issue keeps
+            // the old fire-and-forget shape; the distance check drives retry.
+            physics.snapToTau(tauTarget);
+            settleStep(undefined);
+            return;
+          }
+          void Promise.resolve(nativePhysics.snapTo(tag, tauTarget)).then(
+            (outcome: { refused?: boolean; hiddenGeneration?: number } | undefined) =>
+              settleStep(outcome),
+            () => settleStep(undefined)
+          );
         };
         trySnap();
       },

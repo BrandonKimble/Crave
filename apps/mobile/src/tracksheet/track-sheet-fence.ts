@@ -50,3 +50,42 @@ export const sheetLegIsAtRest = (facts: SheetLegMotionFacts): boolean =>
   facts.inFlightSnapTarget == null &&
   facts.pendingSettleToken == null &&
   !facts.hiddenExcursionInFlight;
+
+// ─── THE GENERATION-STAMPED EDGE (G-HIDDEN native red team) ───────────────────
+// Native mints a monotonically increasing generation per hidden excursion and
+// stamps trackHiddenEdgeCleared with it; the host records the generation its
+// OWN hide armed. An edge event is a real boundary iff the stamps match —
+// nothing armed (null) and any mismatch are both stale facts, never consumed.
+export const hiddenEdgeEventMatchesArmed = (armed: number | null, event: number | null): boolean =>
+  armed != null && event != null && armed === event;
+
+// ─── THE SNAP-RETRY DECISION (native red team FIX 3, pure half) ───────────────
+// The retrying snap loop's per-step verdict. THE FINGER OWNS TAU on both
+// sides: a live drag aborts before issuing, and a command native REFUSED
+// (it landed mid-drag) is never re-issued after the drag ends — the user's
+// posture choice supersedes the stale command intent. 'done' covers both
+// arrival (τ within 1pt) and the attempts budget (F874: a budget that
+// EXPIRES is deliberate).
+export const SNAP_RETRY_MAX_ATTEMPTS = 12;
+
+export type SnapRetryFacts = {
+  /** The finger owns τ right now (physics.dragging). */
+  dragging: boolean;
+  /** Native answered the last issue with refused (a drag owned τ there). */
+  refused: boolean;
+  /** Issues so far, counting the one this verdict follows. */
+  attempts: number;
+  /** |τ − target| after the last issue. */
+  distance: number;
+};
+
+export type SnapRetryDecision = 'abort-finger' | 'abort-refused' | 'retry' | 'done';
+
+export const resolveSnapRetryDecision = (facts: SnapRetryFacts): SnapRetryDecision =>
+  facts.dragging
+    ? 'abort-finger'
+    : facts.refused
+      ? 'abort-refused'
+      : facts.distance <= 1 || facts.attempts >= SNAP_RETRY_MAX_ATTEMPTS
+        ? 'done'
+        : 'retry';

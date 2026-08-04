@@ -141,9 +141,15 @@
 @property (nonatomic, assign) CGFloat hiddenTargetTau;
 /// One-shot per excursion: the screen-edge fact (τ reached the target).
 @property (nonatomic, assign) BOOL hiddenEdgeFired;
+/// Monotonic excursion counter — every hidden arm mints a new generation and
+/// the edge event carries it, so a consumer that armed generation N can
+/// reject an edge born of any other excursion (a stale hiddenTargetTau must
+/// never read as a real boundary).
+@property (nonatomic, assign) NSInteger hiddenGeneration;
 /// Fires the frame the sheet clears the screen edge — the deferred content
-/// swap (A2) and the hide's settle both key on it.
-@property (nonatomic, copy) void (^onHiddenEdgeCleared)(void);
+/// swap (A2) and the hide's settle both key on it. Carries the generation of
+/// the excursion whose edge this is.
+@property (nonatomic, copy) void (^onHiddenEdgeCleared)(NSInteger generation);
 /// Host scroll view (weak): lets slot registration ping a synchronous shell
 /// re-apply so a freshly recreated slot is positioned in the SAME UIKit
 /// transaction it appears in (the flash becomes unwritable).
@@ -153,6 +159,7 @@
                 fromY:(double)y0
             velocityY:(double)v0;
 - (void)stopSpring;
+- (void)closeHiddenExcursionOn:(UIScrollView *)scrollView;
 - (void)applyRangeLawTo:(UIScrollView *)scrollView;
 - (void)engineWrite:(UIScrollView *)scrollView offsetY:(CGFloat)offsetY;
 @end
@@ -342,10 +349,14 @@ static void *kTrackClampGuardCtx = &kTrackClampGuardCtx;
       scrollView.contentInset = capInsets;
     }
   }
-  // G-HIDDEN: the top inset IS the hidden domain while an excursion is
-  // engaged — resetting it here would clamp τ up to 0 mid-excursion the
-  // moment a finger lands (the exact jerk class the legitimacy filter
-  // exists to kill). The domain collapses in didScroll, at rest, at τ ≥ 0.
+  // G-HIDDEN: a finger capturing an ON-SCREEN sheet resolves the excursion —
+  // the drag now owns τ and the excursion episode is over. Below 0 the
+  // domain must survive the grab: collapsing the inset would clamp τ up
+  // under the finger (the exact jerk class the legitimacy filter exists to
+  // kill), so there the release spring's completion closes it instead.
+  if (self.hiddenEngaged && scrollView.contentOffset.y >= -0.5) {
+    [self closeHiddenExcursionOn:scrollView];
+  }
   if (self.ballisticEdge >= 0 && scrollView.contentInset.top != 0 && !self.hiddenEngaged) {
     UIEdgeInsets inset = scrollView.contentInset;
     inset.top = 0;
@@ -560,27 +571,23 @@ static void *kTrackClampGuardCtx = &kTrackClampGuardCtx;
     return;
   }
   self.lastLegitimateTau = tauIn;
-  // THE SCREEN-EDGE FACT + DOMAIN COLLAPSE (G-HIDDEN). The edge fires ONCE
-  // per excursion, the frame τ reaches the target (sheetTop == screen bottom
-  // by algebra) — the deferred content swap and the hide's settle key on it.
-  // The domain collapses only at REST back on-screen: τ ≥ 0 with no finger,
-  // no momentum and no live spring — never mid-excursion.
+  // THE SCREEN-EDGE FACT (G-HIDDEN). The edge fires ONCE per excursion, the
+  // frame τ reaches the target (sheetTop == screen bottom by algebra) — the
+  // deferred content swap and the hide's settle key on it, stamped with the
+  // excursion's generation so a stale target can never speak for a later one.
+  // The excursion CLOSES event-driven (spring completion / drag capture /
+  // superseding snapTo·refuse — see closeHiddenExcursionOn); the rest check
+  // below is only the liveness backstop for a rest no event produced.
   if (self.hiddenEngaged) {
     if (!self.hiddenEdgeFired && tauIn <= self.hiddenTargetTau + 0.5) {
       self.hiddenEdgeFired = YES;
       if (self.onHiddenEdgeCleared) {
-        self.onHiddenEdgeCleared();
+        self.onHiddenEdgeCleared(self.hiddenGeneration);
       }
     }
     if (tauIn >= -0.5 && !scrollView.isTracking && !scrollView.isDragging &&
         !scrollView.isDecelerating && self.springLink == nil) {
-      self.hiddenEngaged = NO;
-      self.hiddenEdgeFired = NO;
-      if (scrollView.contentInset.top != 0) {
-        UIEdgeInsets insets = scrollView.contentInset;
-        insets.top = 0;
-        scrollView.contentInset = insets;
-      }
+      [self closeHiddenExcursionOn:scrollView];
     }
   }
   // THE DISSOLVE: τ back at (or past) the effective boundary means the sheet
@@ -845,6 +852,22 @@ static const double kTrackSpringOmega = 13.038404810405298; // sqrt(170)
   self.springScrollView = nil;
 }
 
+// THE EXCURSION CLOSE — one exit, event-driven (G-HIDDEN native red team):
+// disarm + collapse the extended domain. Callers guarantee τ ≥ 0 (spring
+// completion on an on-screen target, drag capture of an on-screen sheet, a
+// superseding refuse after its write, the didScroll rest backstop) — a close
+// at τ < 0 would clamp the sheet back on screen in one frame.
+- (void)closeHiddenExcursionOn:(UIScrollView *)scrollView
+{
+  self.hiddenEngaged = NO;
+  self.hiddenEdgeFired = NO;
+  if (scrollView.contentInset.top != 0) {
+    UIEdgeInsets insets = scrollView.contentInset;
+    insets.top = 0;
+    scrollView.contentInset = insets;
+  }
+}
+
 - (void)springTick:(CADisplayLink *)link
 {
   UIScrollView *scrollView = self.springScrollView;
@@ -859,7 +882,17 @@ static const double kTrackSpringOmega = 13.038404810405298; // sqrt(170)
   self.springLastD = d;
   if ((fabs(d) < 0.25 && speed < 8.0) || t > 2.0) {
     [self engineWrite:scrollView offsetY:self.springTarget];
+    // THE SPRING KNOWS WHEN IT FINISHES: an excursion whose spring lands
+    // on-screen closes HERE, at the completion event — the terminal
+    // engineWrite runs with springLink still live, so a sampled rest check
+    // in didScroll can never see this frame. A hide's spring (negative
+    // target) leaves the excursion engaged: the sheet RESTS off-screen and
+    // the domain must hold it there.
+    const BOOL landedOnScreen = self.springTarget >= -0.5;
     [self stopSpring];
+    if (self.hiddenEngaged && landedOnScreen) {
+      [self closeHiddenExcursionOn:scrollView];
+    }
     return;
   }
   [self engineWrite:scrollView offsetY:self.springTarget + d];
@@ -950,8 +983,9 @@ RCT_EXPORT_METHOD(attach:(nonnull NSNumber *)reactTag
       [sigmaWeakSelf sendEventWithName:@"trackSigmaChanged" body:@{ @"sigma": @(sigma) }];
     };
     __weak typeof(self) hiddenWeakSelf = self;
-    proxy.onHiddenEdgeCleared = ^{
-      [hiddenWeakSelf sendEventWithName:@"trackHiddenEdgeCleared" body:@{}];
+    proxy.onHiddenEdgeCleared = ^(NSInteger generation) {
+      [hiddenWeakSelf sendEventWithName:@"trackHiddenEdgeCleared"
+                                   body:@{ @"generation": @(generation) }];
     };
     // OWNERSHIP TRANSFERS ONLY ON A SWITCH — with ONE exception: BOOT.
     // Attach must not STEAL the register (it runs before the switch
@@ -974,29 +1008,44 @@ RCT_EXPORT_METHOD(attach:(nonnull NSNumber *)reactTag
 // proved unreliable).
 // (short-circuit lives inside snapTo's UI block below)
 RCT_EXPORT_METHOD(snapTo:(nonnull NSNumber *)reactTag
-                  offset:(nonnull NSNumber *)offset)
+                  offset:(nonnull NSNumber *)offset
+                  resolver:(RCTPromiseResolveBlock)resolve
+                  rejecter:(RCTPromiseRejectBlock)reject)
 {
   [self.bridge.uiManager addUIBlock:^(RCTUIManager *uiManager, NSDictionary<NSNumber *, UIView *> *viewRegistry) {
     UIView *root = viewRegistry[reactTag] ?: [uiManager viewForReactTag:reactTag];
     UIScrollView *scrollView = root ? TrackFindScrollView(root) : nil;
     if (scrollView == nil) {
+      resolve(@{ @"refused": @NO });
+      return;
+    }
+    TrackScrollDelegateProxy *proxy = objc_getAssociatedObject(scrollView, kTrackProxyKey);
+    // THE FINGER OWNS TAU (native red team): a command landing mid-drag would
+    // fight the pan frame-by-frame — and a negative one would arm an excursion
+    // UNDER the finger. The user's posture choice supersedes the command
+    // intent; the refusal is a FACT the caller sees (refused: YES), never a
+    // silent drop it retries into.
+    if (proxy != nil && (scrollView.isTracking || scrollView.isDragging)) {
+      resolve(@{ @"refused": @YES });
       return;
     }
     // THE SHORT-CIRCUIT (ported from the old snap runtime): a seat within
     // 0.5pt of the current τ commands NOTHING — a same-posture switch is
     // provably zero pixels, never a spring that "confirms" the position.
-    TrackScrollDelegateProxy *proxy = objc_getAssociatedObject(scrollView, kTrackProxyKey);
     // snapTo input is POSTURE-space: σ shifts it into τ-space.
     const CGFloat sigma = proxy != nil ? proxy.stashSigma : 0;
     const CGFloat target = offset.doubleValue + sigma;
     if (fabs(scrollView.contentOffset.y - target) < 0.5) {
+      resolve(@{ @"refused": @NO });
       return;
     }
-    // G-HIDDEN (R4): a negative target is the HIDDEN EXCURSION — extend the τ
-    // domain (contentInset.top = |target|) BEFORE the spring so UIKit cannot
-    // clamp the glide at 0, and arm the one-shot screen-edge fact. Growing
-    // the top inset never moves content; the domain collapses in didScroll
-    // once τ rests back at ≥ 0. The glide itself is the SAME critically
+    // G-HIDDEN (R4): a negative target is the HIDDEN EXCURSION — arm the
+    // one-shot screen-edge fact under a fresh generation, extend the τ domain
+    // (contentInset.top = |target|) so UIKit cannot clamp the glide at 0, and
+    // start the spring — ONE synchronous block, so no manual didScroll can
+    // slip between the arm and the flight. Growing the top inset never moves
+    // content; the excursion closes event-driven (spring completion / drag
+    // capture / superseding command). The glide itself is the SAME critically
     // damped spring as every detent settle (OA5: every sheet glides).
     if (proxy != nil && target < -0.5) {
       const CGFloat neededTop = ceil(-target);
@@ -1005,21 +1054,32 @@ RCT_EXPORT_METHOD(snapTo:(nonnull NSNumber *)reactTag
         insets.top = neededTop;
         scrollView.contentInset = insets;
       }
+      proxy.hiddenGeneration += 1;
       proxy.hiddenEngaged = YES;
       proxy.hiddenEdgeFired = NO;
       proxy.hiddenTargetTau = target;
+    } else if (proxy != nil && proxy.hiddenEngaged) {
+      // A positive snap SUPERSEDES a live excursion: consume the one-shot so
+      // the stale hiddenTargetTau can never fire an edge for a hide that is
+      // no longer happening. The extended domain survives the return glide
+      // (collapsing it at τ < 0 would clamp); the spring's completion closes.
+      proxy.hiddenEdgeFired = YES;
     }
     if (proxy == nil) {
       [scrollView setContentOffset:CGPointMake(scrollView.contentOffset.x, target)
                           animated:YES];
+      resolve(@{ @"refused": @NO });
       return;
     }
-    dispatch_async(dispatch_get_main_queue(), ^{
-      [proxy startSpringOn:scrollView
-                  toTarget:target
-                     fromY:scrollView.contentOffset.y
-                 velocityY:0];
-    });
+    [proxy startSpringOn:scrollView
+                toTarget:target
+                   fromY:scrollView.contentOffset.y
+               velocityY:0];
+    if (target < -0.5) {
+      resolve(@{ @"refused": @NO, @"hiddenGeneration": @(proxy.hiddenGeneration) });
+    } else {
+      resolve(@{ @"refused": @NO });
+    }
   }];
 }
 
@@ -1053,6 +1113,13 @@ RCT_EXPORT_METHOD(refuse:(nonnull NSNumber *)reactTag
     if (scrollView.isTracking || scrollView.isDragging) {
       return;
     }
+    // ANY τ-AUTHORITY TRANSFER TERMINATES THE CURRENT MOTION EPISODE (native
+    // red team): a live spring's closed form is position-independent — left
+    // running, its next display-link tick overwrites this switch's write.
+    // Same kill willBeginDragging performs when the finger takes τ, and the
+    // same disarm: a pending ballistic intercept belongs to the dead episode.
+    [proxy stopSpring];
+    proxy.ballisticArmed = NO;
     const CGFloat tau = scrollView.contentOffset.y;
     const CGFloat trackH = proxy.shellTrackH;
     // THE POSTURE REGISTER READ: the incoming leg's own τ is NOT the sheet's
@@ -1078,6 +1145,13 @@ RCT_EXPORT_METHOD(refuse:(nonnull NSNumber *)reactTag
     // to tighten would let the sheet scroll into a void.)
     if (fabs(tau - target) > 0.5) {
       [proxy engineWrite:scrollView offsetY:target];
+    }
+    // refuse() SUPERSEDES any live excursion: its write just landed the sheet
+    // at an on-screen posture (the register is clamped ≥ 0), so the excursion
+    // episode is over — close it here, after the write, never before (a
+    // collapse at τ < 0 would clamp ahead of the write).
+    if (proxy.hiddenEngaged) {
+      [proxy closeHiddenExcursionOn:scrollView];
     }
   }];
 }

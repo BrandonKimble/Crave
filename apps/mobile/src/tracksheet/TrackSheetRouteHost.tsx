@@ -87,7 +87,7 @@ import {
 } from './track-entry-readiness';
 import { trackSkeletonMaterialForScene } from './track-entry-skeleton';
 import { planHiddenExcursion, resolveHiddenPresentation } from './track-entry-hidden';
-import { sheetLegIsAtRest } from './track-sheet-fence';
+import { hiddenEdgeEventMatchesArmed, sheetLegIsAtRest } from './track-sheet-fence';
 
 // ─── TrackSheetRouteHost — THE PRODUCTION SHEET HOST ──────────────────────────
 //
@@ -129,6 +129,18 @@ const markSheetLegMotionPending = (): void => {
     runtime.markRedrawSheetMotionPending(transactionId);
   }
 };
+
+// ─── THE ARMED-EXCURSION GENERATION (G-HIDDEN native red team) ────────────────
+// Native stamps every trackHiddenEdgeCleared with the excursion generation it
+// minted at arm time; this register holds the generation OUR hide armed (from
+// the snapTo outcome). Module-scope because the two consumers live in two
+// components of this file — the deferred-swap gate and the hidden-settle
+// subscription — and both must reject an edge born of any other excursion.
+// One writer set: the hidden command's outcome arms it; a positive command,
+// a refusal, or an outcome with no generation clears it. NEVER cleared inside
+// an edge listener — the two listeners consume the SAME emission, and a clear
+// in one would starve the other.
+let armedHiddenExcursionGeneration: number | null = null;
 
 class ChromeProbeBoundary extends React.Component<
   { label: string; children: React.ReactNode },
@@ -339,14 +351,25 @@ const TrackSheetRouteSurface: React.FC<{ scene: OverlayKey }> = ({ scene: sceneO
       return undefined;
     }
     const emitter = new NativeEventEmitter(physicsModule);
-    const sub = emitter.addListener('trackHiddenEdgeCleared', () => {
-      // Record WHICH transaction's edge cleared (a later hide must hold again
-      // even if this state lingers), offer the boundary, then re-render to
-      // commit the swap in the next paint.
-      clearedTxnRef.current = getLiveTransitionTxn();
-      offerTransitionJoinInput('boundary');
-      bumpEdgeSeq();
-    });
+    const sub = emitter.addListener(
+      'trackHiddenEdgeCleared',
+      (event: { generation?: number } | undefined) => {
+        // GENERATION-STAMPED (G-HIDDEN native red team): only the edge of the
+        // excursion WE armed is a real boundary — a stale native target's
+        // event must never commit a swap.
+        if (
+          !hiddenEdgeEventMatchesArmed(armedHiddenExcursionGeneration, event?.generation ?? null)
+        ) {
+          return;
+        }
+        // Record WHICH transaction's edge cleared (a later hide must hold again
+        // even if this state lingers), offer the boundary, then re-render to
+        // commit the swap in the next paint.
+        clearedTxnRef.current = getLiveTransitionTxn();
+        offerTransitionJoinInput('boundary');
+        bumpEdgeSeq();
+      }
+    );
     return () => sub.remove();
   }, []);
   const liveTxnForHide = getLiveTransitionTxn();
@@ -573,7 +596,29 @@ const useTrackScenePageChrome = (
       if (willMove) {
         markSheetLegMotionPending();
       }
-      commands?.snapToTau(postureTau);
+      // A non-hidden command SUPERSEDES any armed excursion: its edge, if it
+      // ever fires, is stale from here on. (Native consumes the one-shot too;
+      // this is the JS half of the same law.)
+      if (snap !== 'hidden') {
+        armedHiddenExcursionGeneration = null;
+      }
+      commands?.snapToTau(postureTau, (outcome) => {
+        if (outcome.refused) {
+          // THE FINGER OWNS TAU (native FIX 3): the command yielded to a live
+          // drag and is DEAD — no flight exists, nothing is re-issued. The
+          // user's gesture settle (or the 700ms deadline) is the rest fact
+          // that restores the fence and completes the token.
+          inFlightSnapTargetRef.current = null;
+          hiddenExcursionInFlightRef.current = false;
+          armedHiddenExcursionGeneration = null;
+          return;
+        }
+        if (outcome.hiddenGeneration != null) {
+          // The generation OUR hide armed — the stamp every edge event must
+          // match to be consumed (deferred swap + hidden settle).
+          armedHiddenExcursionGeneration = outcome.hiddenGeneration;
+        }
+      });
       if (settleToken != null) {
         if (!willMove || commands == null) {
           pendingSettleTokenRef.current = null;
@@ -624,7 +669,20 @@ const useTrackScenePageChrome = (
       return undefined;
     }
     const emitter = new NativeEventEmitter(physicsModule);
-    const sub = emitter.addListener('trackHiddenEdgeCleared', () => completePendingSettle());
+    const sub = emitter.addListener(
+      'trackHiddenEdgeCleared',
+      (event: { generation?: number } | undefined) => {
+        // GENERATION-STAMPED (G-HIDDEN native red team): a stale excursion's
+        // edge is not OUR hide's settle — reject the mismatch, let the real
+        // rest fact (or the 700ms deadline) complete the token.
+        if (
+          !hiddenEdgeEventMatchesArmed(armedHiddenExcursionGeneration, event?.generation ?? null)
+        ) {
+          return;
+        }
+        completePendingSettle();
+      }
+    );
     return () => sub.remove();
   }, [completePendingSettle]);
   useAnimatedReaction(
