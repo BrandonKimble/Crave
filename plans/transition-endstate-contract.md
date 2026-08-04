@@ -136,3 +136,85 @@ of this file's companion agent reports for full file:line citations).
 2. Slow-network law (progressive above-fold vs shimmer-timeout→error).
 3. Result-list dish tap destination (profile vs results) — open since the
    transition-engine plan.
+
+---
+
+## PHASE 1 AMENDMENTS (2026-08-03, binding — supersede the sections they name)
+
+The plan red team returned ten findings; the model survives for press-
+triggered switches and falls in two places. Amendments:
+
+**A1 (supersedes Part 1 "triggers are the only variable") — THE HIDDEN
+EXCURSION IS A SECOND MOTION PRIMITIVE.** τ is contentOffset; collapsed is
+τ=0 and a UIScrollView cannot REST below 0 — "the sheet leaves the screen"
+is not expressible as a τ excursion on the one track. G-HIDDEN therefore
+requires a DECLARED second primitive: either (a) native τ-domain extension
+below collapsed (physics change; the legitimacy filter audits only the MAX
+edge today and must learn the MIN edge), or (b) a container translation with
+a specified mid-gesture handoff point from scroll physics. The derivation
+picks (a) or (b) with evidence; Part 1's sentence is amended to: "press-up
+triggers every switch; the hidden excursion is the ONE declared second
+primitive."
+
+**A2 (supersedes the SUBSUMED verdict on freeze-chrome) — DEFERRED SWAP IS
+REAL FOR THE DISMISS FAMILY.** The dismiss slide is user-paced and multi-
+frame; the outgoing entry AND its chrome must ride it fully opaque, and the
+swap fires when the sheet crosses the SCREEN EDGE (not the collapsed
+detent — swapping at τ=0 flips chrome while the band is still visible).
+Freeze-mode moves from SUBSUMED to G-HIDDEN's scope, including deleting the
+track host's freezeUntilSnap seal-bypass guard when the new path lands
+(Regime rule 3). Falsifier: assert outgoing chrome present during the slide.
+SUBSUMED remains correct for every press-triggered swap.
+
+**A3 (expands G-ENTRY) — ENTRY IDENTITY REACHES REACT ELEMENT IDENTITY.**
+The track has ONE component instance per scene; two stacked DM threads
+would share composer draft and hook state, and pop-back is not byte-exact.
+G-ENTRY's scope now enumerates every scene-keyed store that becomes entry-
+keyed: leg identity/keyExtractor, mounted-body React key (per-entry
+instances with depth-K retention, reconciled with the hide-never-unmount
+Fabric constraint), scroll memory, strip/title/chrome caches, and scene-
+keyed publications (dmSession header-offset). The jest falsifier runs
+against the TRACK page.
+
+**A4 (falsifier repairs).** G-LIVENESS's grep is vacuous (the old host
+calls the writer on a dead path): replace with runtime — after a flip-on
+switch, the residency manager's visible scene equals the presented scene.
+G-RESTORE loses "falls out of G-ENTRY": own falsifiers — remembered
+offset-0 is honored (the ?? 0 default currently makes no-memory and
+remembered-0 indistinguishable), restore applies after leg attach, profile
+segment-before-scroll ordering.
+
+**A5 (new row) G-INTERRUPT.** Switch during in-flight spring; switch during
+active drag (seat dies + settleToken rides the 700ms deadline today);
+promoteAtLeast resolves against the SPRING TARGET, not instantaneous
+posture (±2pt mid-flight reads misclassify). G-TOUCHGATE becomes a sub-
+case, and on a user-paced dismiss the drag IS the choreography — the gate
+protects press-triggered flights only. Falsifier: jest on
+resolveCurrentSnapTarget mid-flight.
+
+**A6 (new row) G-MODAL.** price/scoreInfo (motion 'none') are overlay-
+presented, NOT track content: the track's presented entry must not change.
+Falsifier asserts exactly that.
+
+**A7 (rung order).** G-ACTIVITY moves into R2: "cold" is defined by
+activity, and the two-phase flip must not mount content whose data lanes
+fire eagerly. Its falsifier extends to NON-PRESENTED resident legs (the
+case today's all-true gets wrong). R1's per-entry retention multiplies
+all-true's cost — R1 lands with a bark budget if activity is not yet in.
+
+**A8 (new rows, per Regime rule 2 — scheduled, not parenthesized):**
+G-ROTATE (snap points derive from a startup seed; dimension changes must
+recompute), G-APPSTATE (settle deadlines/tokens across suspend), G-DEEPLINK
+(cold deep link builds the stack — parent entry under child — and the cold-
+child two-phase flip), G-A11Y (a data swap on one persistent list emits no
+screen-reader navigation event; announce + move focus on switch). All
+placed in R6 unless the derivation promotes them.
+
+**A9 (G-KEYS extension).** The keyboard-aware chin renders outside the mask
+for the presented scene only; the row specifies chin behavior DURING a
+transition (flips with the presented entry, same commit).
+
+**What the red team confirmed intact:** swap+refuse+opacity-flip atomicity
+for press-triggered warm switches; seats-as-data (including instant mode,
+promoteAtLeast, rememberedDetent, preserveLiveY catch-all); entry identity
+as THE abstraction change; pollCreation-as-form is not a counterexample.
