@@ -1,0 +1,11 @@
+-- Remove the inference-based classifier. It had ZERO consumers (verified by
+-- repo-wide grep: the only hits were its own two migrations), it was
+-- table-grained where every ratified ruling is column- or row-grained, and it
+-- mis-classified four tables against policy — wiring it up would have DELETED
+-- the signals ledger, the recipient's copy of every DM, and safety blocks.
+--
+-- Replaced by a DECLARATION: apps/api/src/modules/identity/person-data/
+-- person-data-class.ts, guarded by person-data-census.spec.ts (an over-broad
+-- net that fails the build for any unclassified person-shaped column).
+-- Inference is demoted from decider to adversary.
+DROP FUNCTION IF EXISTS crave_person_data_map();
