@@ -45,8 +45,15 @@ export const useAppRoutePollDetailSceneInputWriterRuntime = ({
       sceneKey: 'pollDetail',
       sceneBodyContent: pollDetailSceneParts?.sceneBodyContent ?? null,
       sceneBodyTransport: pollDetailSceneParts?.sceneBodyTransport ?? null,
+      // THE ENTRY STAMP (track R6): pollDetail is the stackable scene the R2
+      // checkpoint flagged — on a same-scene pop (A→B) this scene-keyed lane
+      // still carries A's rows for a commit. Stamping with the entry this body
+      // renders FOR lets the track host reject the mismatched commit
+      // (publicationMatchesEntry) instead of aliasing A's rows into B.
+      sceneBodyForEntryId: activeOverlayRoute.entryId ?? null,
     });
   }, [
+    activeOverlayRoute.entryId,
     pollDetailSceneParts?.sceneBodyContent,
     pollDetailSceneParts?.sceneBodyTransport,
     routeSceneRuntime.sceneInputLane,

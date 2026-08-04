@@ -23,6 +23,7 @@ import {
 } from '../../../navigation/runtime/app-route-nav-silhouette-authority';
 import { SearchRouteNavSilhouetteHostNativeView } from '../../../overlays/SearchRouteNavSilhouetteHostNativeView';
 import { ACTIVE_TAB_COLOR, NAV_BOTTOM_PADDING } from '../constants/search';
+import { requestTrackScenePrewarm } from '../../../tracksheet/track-entry-prewarm';
 import type { SearchBottomNavMotionRuntime } from '../runtime/shared/use-search-foreground-visual-runtime-contract';
 import styles from '../styles';
 
@@ -70,6 +71,13 @@ const SearchBottomNavItem = React.memo(
       }
       handleOverlaySelect(item.key);
     }, [handleOverlaySelect, handleProfilePress, item.key]);
+    // G-PREWARM (track R3): press-DOWN names the destination before press-up
+    // commits the switch — the track host starts resolving a cold scene's leg
+    // in the finger-down window. Fire-and-forget signal; the host owns what
+    // (if anything) it means (planScenePrewarm).
+    const handlePressIn = React.useCallback(() => {
+      requestTrackScenePrewarm(item.key);
+    }, [item.key]);
     const inactiveVisualStyle = useAnimatedStyle(
       () => ({
         opacity: activeTabIndexValue.value === itemIndex ? 0 : 1,
@@ -87,6 +95,7 @@ const SearchBottomNavItem = React.memo(
       <TouchableOpacity
         style={styles.navButton}
         onPress={handlePress}
+        onPressIn={handlePressIn}
         activeOpacity={0.85}
         // Rig lever (CLAUDE.md maestro gotcha): stable per-tab id so the whole app is
         // finger-test-drivable — coordinate taps on the nav row are unreliable next to the

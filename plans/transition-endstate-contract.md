@@ -365,3 +365,23 @@ clobber the boundary join it protects); it dies only with the freezeUntilSnap pl
 kind itself (R8, old-system delete). Open: a finger catching the sheet mid-excursion
 and dragging it back on-screen leaves the freeze txn joining until superseded — same
 watchdog behavior as the old system; revisit if burn-in shows it.
+
+## R3/R5/R6 RE-DERIVATION CHECKPOINTS (parent-reviewed, landed)
+
+R3 G-PREWARM: press-down prewarm mounts a cold resident leg during the finger-down
+window (pure planScenePrewarm; no per-scene cases); "warm" is STRUCTURAL, not a data
+promise — the honest bark is the existing cold-commit PERF probe. Child-push prewarm
+has no pre-commit window (entry identity does not exist earlier) — out by construction.
+R5 G-LIVENESS: A4's check sharpened to "delivered activity equals derived-from-
+presentation activity, judged per commit at the delivery point" — samples are the
+DELIVERED values, seq-tagged; re-derivation would be always-green. Row satisfied.
+R6: (1) G-INTERRUPT companion clause — a hidden excursion records NO snap-target for
+policy reads (its target is not a detent); (2) the scene-input lane stays scene-keyed
+with per-entry STAMPS (opt-in per writer); full entry-scoping only if a scene ever
+needs hidden retention through the lane (none does). Mid-excursion freeze-txn catch
+re-deferred to R8/burn-in (navigation-runtime surface, watchdog parity). G-RETAP
+extend-only is live; the scroll-to-top alternative remains an owner ratification with
+ONE call site (NavSilhouetteHost.tsx extendActiveRootFromNavReTap). Report-only gaps
+recorded: G-ROTATE (module-scope Dimensions), G-APPSTATE (wall-clock timers),
+G-A11Y (no announce), G-DIVIDER (registry lacks subscribe semantics — fix belongs
+with sceneScrollStateRegistry), G-MODAL falsifier → R8 grep suite.

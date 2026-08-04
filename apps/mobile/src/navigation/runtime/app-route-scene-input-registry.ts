@@ -53,6 +53,13 @@ export type AppRouteSceneInputSnapshot = {
   sceneBodyContent: AppRouteSceneBodyContentSpec | null;
   sceneBodyTransport: AppRouteSceneBodyTransportSpec | null;
   sceneBodyAdmissionPolicy: AppRouteSceneBodyAdmissionPolicy | null;
+  /** THE ENTRY STAMP (track R6): the route-stack entryId this body was
+   * rendered FOR, when the writer stamps it. The lane is SCENE-keyed, so on a
+   * same-scene pop (pollDetail A→B) the outgoing entry's rows stay published
+   * for a commit — a stamped publication lets the presented-entry reader
+   * REJECT the mismatch (tracksheet publicationMatchesEntry). null =
+   * unstamped (legacy writers / singleton scenes): always accepted. */
+  sceneBodyForEntryId: string | null;
 };
 
 type Listener = () => void;
@@ -97,6 +104,9 @@ export type AppRouteSceneInputActions = {
     sceneBodyContent: AppRouteSceneBodyContentSpec | null;
     sceneBodyTransport: AppRouteSceneBodyTransportSpec | null;
     sceneBodyAdmissionPolicy?: AppRouteSceneBodyAdmissionPolicy | null;
+    /** Entry stamp (see AppRouteSceneInputSnapshot.sceneBodyForEntryId).
+     * Omitted = preserve the previous stamp; explicit null = unstamp. */
+    sceneBodyForEntryId?: string | null;
   }) => void;
   clearSceneShell: (sceneKey: AppRouteSceneInputKey) => void;
   clearSceneChrome: (sceneKey: AppRouteSceneInputKey) => void;
@@ -121,6 +131,7 @@ const createEmptySceneInputSnapshot = ({
   sceneBodyContent: null,
   sceneBodyTransport: null,
   sceneBodyAdmissionPolicy: null,
+  sceneBodyForEntryId: null,
 });
 
 export class AppRouteSceneInputController {
@@ -235,7 +246,8 @@ export class AppRouteSceneInputController {
       snapshot.sceneChrome == null &&
       snapshot.sceneBodyContent == null &&
       snapshot.sceneBodyTransport == null &&
-      snapshot.sceneBodyAdmissionPolicy == null;
+      snapshot.sceneBodyAdmissionPolicy == null &&
+      snapshot.sceneBodyForEntryId == null;
 
     this.currentSnapshot = {
       ...this.currentSnapshot,
@@ -280,12 +292,18 @@ export class AppRouteSceneInputController {
       sceneBodyAdmissionPolicy
     );
 
+    // Descriptor publishes are UNSTAMPED (whole-descriptor writers predate the
+    // entry stamp); a leftover stamp from an earlier stamped body publish must
+    // not outlive the body it stamped.
+    const didStampReset = previousSceneInput.sceneBodyForEntryId != null;
+
     if (
       !didShellChange &&
       !didChromeChange &&
       !didBodyContentChange &&
       !didBodyTransportChange &&
-      !didBodyAdmissionPolicyChange
+      !didBodyAdmissionPolicyChange &&
+      !didStampReset
     ) {
       return;
     }
@@ -299,6 +317,7 @@ export class AppRouteSceneInputController {
         sceneBodyContent,
         sceneBodyTransport,
         sceneBodyAdmissionPolicy,
+        sceneBodyForEntryId: null,
       },
     });
 
@@ -308,7 +327,12 @@ export class AppRouteSceneInputController {
     if (didChromeChange) {
       this.notifySceneLane(sceneKey, 'chrome');
     }
-    if (didBodyContentChange || didBodyTransportChange || didBodyAdmissionPolicyChange) {
+    if (
+      didBodyContentChange ||
+      didBodyTransportChange ||
+      didBodyAdmissionPolicyChange ||
+      didStampReset
+    ) {
       this.notifySceneLane(sceneKey, 'body');
     }
   }
@@ -362,11 +386,13 @@ export class AppRouteSceneInputController {
     sceneBodyContent,
     sceneBodyTransport,
     sceneBodyAdmissionPolicy,
+    sceneBodyForEntryId,
   }: {
     sceneKey: AppRouteSceneInputKey;
     sceneBodyContent: AppRouteSceneBodyContentSpec | null;
     sceneBodyTransport: AppRouteSceneBodyTransportSpec | null;
     sceneBodyAdmissionPolicy?: AppRouteSceneBodyAdmissionPolicy | null;
+    sceneBodyForEntryId?: string | null;
   }): void {
     const previousSceneInput = this.getWritableSceneInputSnapshot(sceneKey);
     const didBodyContentChange = !areAppRouteSceneBodyContentSpecsEqual(
@@ -383,8 +409,21 @@ export class AppRouteSceneInputController {
       previousSceneInput.sceneBodyAdmissionPolicy,
       nextBodyAdmissionPolicy
     );
+    // Entry stamp: omitted preserves the previous stamp (admission-policy
+    // semantics); explicit null unstamps. A stamp change alone must notify —
+    // the reader's accept/reject decision rides it.
+    const nextBodyForEntryId =
+      sceneBodyForEntryId === undefined
+        ? previousSceneInput.sceneBodyForEntryId
+        : sceneBodyForEntryId;
+    const didBodyForEntryIdChange = previousSceneInput.sceneBodyForEntryId !== nextBodyForEntryId;
 
-    if (!didBodyContentChange && !didBodyTransportChange && !didBodyAdmissionPolicyChange) {
+    if (
+      !didBodyContentChange &&
+      !didBodyTransportChange &&
+      !didBodyAdmissionPolicyChange &&
+      !didBodyForEntryIdChange
+    ) {
       return;
     }
 
@@ -395,6 +434,7 @@ export class AppRouteSceneInputController {
         sceneBodyContent,
         sceneBodyTransport,
         sceneBodyAdmissionPolicy: nextBodyAdmissionPolicy,
+        sceneBodyForEntryId: nextBodyForEntryId,
       },
     });
     this.notifySceneLane(sceneKey, 'body');
@@ -450,6 +490,7 @@ export class AppRouteSceneInputController {
         sceneBodyContent: null,
         sceneBodyTransport: null,
         sceneBodyAdmissionPolicy: null,
+        sceneBodyForEntryId: null,
       },
     });
     this.notifySceneLane(sceneKey, 'body');

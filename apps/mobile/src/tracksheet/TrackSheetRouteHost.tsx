@@ -65,7 +65,18 @@ import { useHomePanelListSceneParts } from '../overlays/panels/HomePanel';
 import { usePollsPanelListSceneParts } from '../overlays/panels/PollsPanel';
 import type { SearchRouteMountedSceneBodyKey } from '../overlays/searchOverlayRouteHostContract';
 import { TrackSheetPage, type TrackSheetCommands } from './TrackSheetPage';
-import { makeTrackEntryKey, type TrackEntryKey } from './track-entry-identity';
+import {
+  makeTrackEntryKey,
+  publicationMatchesEntry,
+  type TrackEntryKey,
+} from './track-entry-identity';
+import {
+  consumeTrackScenePrewarmRequests,
+  planScenePrewarm,
+  subscribeTrackScenePrewarm,
+} from './track-entry-prewarm';
+import { auditTrackEntryLiveness, type TrackEntryLivenessSample } from './track-entry-liveness';
+import { resolveSnapTargetForRead } from './track-entry-interrupt';
 import { TrackEntryRetention, TRACK_CHILD_RETENTION_DEPTH } from './track-entry-retention';
 import { deriveTrackEntryBodyActivity } from './track-entry-activity';
 import {
@@ -485,6 +496,12 @@ const useTrackScenePageChrome = (
   // old host completed it at snap settle. The track completes it at the next
   // settle fact (or immediately when the snap short-circuits to zero pixels).
   const pendingSettleTokenRef = React.useRef<number | null>(null);
+  // G-INTERRUPT (A5): the live programmatic spring's DESTINATION. While a
+  // command's spring is in flight, promoteAtLeast must resolve against this
+  // target, never the instantaneous posture (a ±2pt mid-flight read
+  // misclassifies and can DEMOTE a sheet already on its way). Cleared at
+  // every settle fact and ignored while a finger owns τ (the pure resolver).
+  const inFlightSnapTargetRef = React.useRef<'expanded' | 'middle' | 'collapsed' | null>(null);
   const executeMotionCommand = React.useCallback(
     (snap: 'expanded' | 'middle' | 'collapsed' | 'hidden', settleToken: number | null) => {
       const commands = commandsRef.current;
@@ -525,6 +542,11 @@ const useTrackScenePageChrome = (
         trackH
       );
       const willMove = Math.abs(currentPosture - postureTau) >= 0.5;
+      // A real flight records its destination for mid-flight reads; a hidden
+      // excursion records none (its target is not a detent posture — reads
+      // during a hide answer from the excursion's live τ) and a zero-move
+      // snap has no flight at all.
+      inFlightSnapTargetRef.current = willMove && snap !== 'hidden' ? snap : null;
       commands?.snapToTau(postureTau);
       if (settleToken != null) {
         if (!willMove || commands == null) {
@@ -534,6 +556,7 @@ const useTrackScenePageChrome = (
           setTimeout(() => {
             if (pendingSettleTokenRef.current === settleToken) {
               pendingSettleTokenRef.current = null;
+              inFlightSnapTargetRef.current = null;
               sceneRuntime.routeSceneMotionRuntime.completeFromSheetSettle?.(settleToken);
             }
             // PROVENANCE (F874, 2026-08-03): 700ms is a DEADLINE, not a duration — it is
@@ -550,6 +573,8 @@ const useTrackScenePageChrome = (
     [commandsRef, sceneRuntime, snapPoints, trackH]
   );
   const completePendingSettle = React.useCallback(() => {
+    // Any settle fact ends the flight (G-INTERRUPT).
+    inFlightSnapTargetRef.current = null;
     const token = pendingSettleTokenRef.current;
     if (token != null) {
       pendingSettleTokenRef.current = null;
@@ -582,7 +607,10 @@ const useTrackScenePageChrome = (
   );
   // Red team #3: without resolveCurrentSnapTarget, promoteAtLeast DEMOTES an
   // expanded sheet (the registry returns null and the short-circuit never
-  // fires). The track answers from its own posture.
+  // fires). The track answers from its own posture — and mid-flight, from the
+  // SPRING TARGET (G-INTERRUPT / A5, resolveSnapTargetForRead): a ±2pt read of
+  // a moving τ misclassifies, and THE FINGER OWNS TAU kills the machine target
+  // for the read the moment a drag is live.
   const resolveCurrentSnapTarget = React.useCallback(() => {
     const middleTau = snapPoints.collapsed - snapPoints.middle;
     const commands = commandsRef.current;
@@ -590,16 +618,13 @@ const useTrackScenePageChrome = (
       return null;
     }
     const posture = Math.min(Math.max(0, commands.readTau() - commands.readSigma()), trackH);
-    if (Math.abs(posture - trackH) <= 2) {
-      return 'expanded' as const;
-    }
-    if (Math.abs(posture - middleTau) <= 2) {
-      return 'middle' as const;
-    }
-    return 'collapsed' as const;
-    // F878 (2026-08-03): an `// eslint-disable-next-line no-unreachable` sat here, after a
-    // REACHABLE return, disabling a rule about code that does not exist. A disable comment
-    // for a non-problem teaches the next reader that this line is dangerous.
+    return resolveSnapTargetForRead({
+      inFlightTarget: inFlightSnapTargetRef.current,
+      dragging: commands.readDragging(),
+      posture,
+      trackH,
+      middleTau,
+    });
   }, [commandsRef, snapPoints, trackH]);
   React.useEffect(
     () =>
@@ -682,6 +707,15 @@ const useTrackScenePageChrome = (
       pushRoute('pollCreation');
     }
   }, [closeActiveRoute, isChildScene, pushRoute, scene]);
+  // G-EXTRAS (R6): the registry's per-scene Extras chrome renders LEFT of the
+  // nav action, riding the SAME 0→1 progress as the plus↔X rotation (the
+  // PersistentHeaderExtrasProps contract). Scenes without Extras yield null —
+  // the chrome element cache signature stays stable for them.
+  const Extras = descriptor?.Extras;
+  const headerExtras = React.useMemo(
+    () => (Extras != null ? <Extras transitionProgress={navActionProgress} /> : null),
+    [Extras, navActionProgress]
+  );
   const title = React.useMemo(
     () =>
       Title != null ? (
@@ -725,6 +759,7 @@ const useTrackScenePageChrome = (
   return {
     commandsRef,
     title,
+    headerExtras,
     completePendingSettle,
     geometry,
     navActionProgress,
@@ -751,6 +786,7 @@ const UnifiedTrackScenePage: React.FC<TrackScenePageProps> = ({
   const {
     commandsRef,
     title,
+    headerExtras,
     completePendingSettle,
     geometry,
     navActionProgress,
@@ -788,6 +824,16 @@ const UnifiedTrackScenePage: React.FC<TrackScenePageProps> = ({
   );
   const publishedInput = React.useSyncExternalStore(subscribeBody, getBodySnapshot);
   const publishedBody = publishedInput?.sceneBodyContent ?? null;
+  // THE ENTRY STAMP GATE (R6, closing R2's item-5 residual): a STAMPED
+  // publication is accepted only when it was rendered FOR the presented entry.
+  // On a same-scene pop (pollDetail A→B) the scene-keyed lane still carries
+  // A's stamped rows for a commit — rejecting the mismatch paints B's
+  // frozen/skeleton phase instead of aliasing A's rows into B. Unstamped
+  // publications (legacy writers, singleton scenes) always pass.
+  const publishedBodyIsForPresentedEntry = publicationMatchesEntry(
+    publishedInput?.sceneBodyForEntryId,
+    entryId ?? null
+  );
 
   // Static SV: on the track the body CELL rides the scroll, so the foundation
   // plate needs no counter-translation — holes track their boxes for free.
@@ -808,6 +854,20 @@ const UnifiedTrackScenePage: React.FC<TrackScenePageProps> = ({
   // presented-flag (stale) nor an all-true (the pre-R2 defect) — they read the
   // current commit's presented entry through this ref at invoke time.
   const presentedEntryKeyLiveRef = React.useRef<TrackEntryKey | null>(null);
+  // ── THE LIVENESS PROBE (G-LIVENESS, R5) — dev-only runtime falsifier ───────
+  // Samples are what the render closures ACTUALLY DELIVERED to the bodies'
+  // activity contexts (recorded at invoke time, tagged with the render seq) —
+  // never re-derived, or the audit would compare the derivation with itself
+  // and could not show RED. Only CURRENT-seq samples are audited: a hidden
+  // body does not render on today's page, so an old sample is history, not a
+  // live claim — but any body that DOES render this commit (including a
+  // hidden one leaking live lanes, or a cached closure using a stale
+  // presented flag) is judged.
+  const livenessSamplesRef = React.useRef(
+    new Map<TrackEntryKey, TrackEntryLivenessSample & { seq: number }>()
+  );
+  const renderSeqRef = React.useRef(0);
+  renderSeqRef.current += 1;
   const rendererForMountedEntry = (
     legEntryKey: TrackEntryKey,
     legScene: OverlayKey,
@@ -834,6 +894,17 @@ const UnifiedTrackScenePage: React.FC<TrackScenePageProps> = ({
       // presented entry.
       const isPresented = presentedEntryKeyLiveRef.current === legEntryKey;
       const activity = deriveTrackEntryBodyActivity(legScene, isPresented);
+      if (__DEV__) {
+        // G-LIVENESS sample: the activity as DELIVERED, at invoke time.
+        livenessSamplesRef.current.set(legEntryKey, {
+          entryKey: legEntryKey,
+          renderedAsPresented: isPresented,
+          shouldRunDataLane: activity.shouldRunDataLane,
+          shouldSubscribeDataLane: activity.shouldSubscribeDataLane,
+          shouldRenderExpandedContent: activity.shouldRenderExpandedContent,
+          seq: renderSeqRef.current,
+        });
+      }
       return (
         <BottomSheetSceneStackBodyDataActivityContext.Provider value={activity}>
           <BottomSheetSceneStackBodyRenderActivityContext.Provider value={activity}>
@@ -925,6 +996,35 @@ const UnifiedTrackScenePage: React.FC<TrackScenePageProps> = ({
   if (isResidentScene) {
     visitedResidentsRef.current.add(scene);
   }
+  // ── G-PREWARM (R3): begin resolving a PREDICTABLE cold switch early ────────
+  // The nav's press-DOWN names a scene before press-up commits the switch; a
+  // cold RESIDENT scene mounts its leg NOW — chrome/title/strip elements,
+  // skeleton renderer and list-parts cells build in this early commit, so the
+  // cold window starts at finger-down, not at the flip. The decision is pure
+  // and data-driven (planScenePrewarm over the same residency table the legs
+  // ride); the switch commit itself is untouched — one frame, always.
+  const [prewarmSeq, bumpPrewarmSeq] = React.useReducer((n: number) => n + 1, 0);
+  React.useEffect(() => {
+    const drainPrewarmRequests = () => {
+      let mountedResidentLeg = false;
+      for (const requestedScene of consumeTrackScenePrewarmRequests()) {
+        const decision = planScenePrewarm({
+          isResidentScene: RESIDENT_TRACK_SCENES.has(requestedScene as OverlayKey),
+          alreadyVisited: visitedResidentsRef.current.has(requestedScene as OverlayKey),
+        });
+        if (decision.kind === 'mountResidentLeg') {
+          visitedResidentsRef.current.add(requestedScene as OverlayKey);
+          mountedResidentLeg = true;
+        }
+      }
+      if (mountedResidentLeg) {
+        bumpPrewarmSeq();
+      }
+    };
+    // Requests raised before this host mounted (early presses) drain now.
+    drainPrewarmRequests();
+    return subscribeTrackScenePrewarm(drainPrewarmRequests);
+  }, []);
   const legTitleCacheRef = React.useRef(new Map<TrackEntryKey, React.ReactNode>());
   const stripElementCacheRef = React.useRef(new Map<TrackEntryKey, React.ReactNode>());
   const retainedChildrenRef = React.useRef(
@@ -955,6 +1055,7 @@ const UnifiedTrackScenePage: React.FC<TrackScenePageProps> = ({
       mountedRendererCacheRef.current.delete(evictedKey);
       readinessLedgerRef.current.forget(evictedKey);
       lastGoodListRef.current.delete(evictedKey);
+      livenessSamplesRef.current.delete(evictedKey);
       // Scroll memory deliberately survives eviction (TrackEntryScrollMemory).
     }
     // The A7 capacity bark is DELETED with its premise (R2 kill-list): activity
@@ -978,7 +1079,8 @@ const UnifiedTrackScenePage: React.FC<TrackScenePageProps> = ({
     if (
       legEntryKey === presentedEntryKey &&
       publishedBody != null &&
-      publishedBody.surfaceKind === 'list'
+      publishedBody.surfaceKind === 'list' &&
+      publishedBodyIsForPresentedEntry
     ) {
       return { kind: 'list', rowCount: publishedBody.data?.length ?? 0 };
     }
@@ -1024,7 +1126,8 @@ const UnifiedTrackScenePage: React.FC<TrackScenePageProps> = ({
     if (
       legEntryKey === presentedEntryKey &&
       publishedBody != null &&
-      publishedBody.surfaceKind === 'list'
+      publishedBody.surfaceKind === 'list' &&
+      publishedBodyIsForPresentedEntry
     ) {
       list = {
         leader: publishedBody.ListHeaderComponent ?? null,
@@ -1149,7 +1252,19 @@ const UnifiedTrackScenePage: React.FC<TrackScenePageProps> = ({
     // resolveLegList / rendererForMountedEntry are render-scoped closures whose
     // real inputs are the deps below; caches keep renderItem identities stable.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [pollsParts, homeParts, publishedBody, scene, entry, presentedEntryKey, zeroScrollOffset]);
+  }, [
+    pollsParts,
+    homeParts,
+    publishedBody,
+    publishedBodyIsForPresentedEntry,
+    scene,
+    entry,
+    presentedEntryKey,
+    // A prewarm mounts a resident leg between presentation frames — the legs
+    // list must rebuild for it (visitedResidentsRef is read inside).
+    prewarmSeq,
+    zeroScrollOffset,
+  ]);
 
   // ── THE TWO-PHASE COLD-FLIP PROBE ([PERF], R2) ────────────────────────────
   // The owner's original complaint was a multi-second polls switch. The law:
@@ -1189,11 +1304,31 @@ const UnifiedTrackScenePage: React.FC<TrackScenePageProps> = ({
     }
   }, [presentedEntryKey, presentedHasRealRows]);
 
+  // ── THE LIVENESS AUDIT (G-LIVENESS, R5) — every commit, dev only ──────────
+  // Judges only samples DELIVERED in this render pass (seq-tagged above): a
+  // presented body handed suspended lanes, a hidden body handed live lanes,
+  // or a cached closure that used a stale presented flag all bark RED here.
+  React.useEffect(() => {
+    if (!__DEV__) {
+      return;
+    }
+    const freshSamples = [...livenessSamplesRef.current.values()].filter(
+      (sample) => sample.seq === renderSeqRef.current
+    );
+    for (const violation of auditTrackEntryLiveness(presentedEntryKey, freshSamples)) {
+      // eslint-disable-next-line no-console
+      console.error(
+        `[LIVENESS] ${violation.kind} ${violation.entryKey}: ${violation.detail} (presented=${presentedEntryKey})`
+      );
+    }
+  });
+
   return (
     <View style={styles.root} pointerEvents="box-none">
       <TrackSheetPage
         geometry={geometry}
         title={title}
+        headerExtras={headerExtras}
         navActionProgress={navActionProgress}
         onNavActionPress={onNavActionPress}
         grabHandleHidden={scene === 'settings'}

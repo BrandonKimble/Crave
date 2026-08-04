@@ -162,6 +162,9 @@ export type TrackSheetCommands = {
   /** Posture peeks (JS mirrors; used at rest for descriptor resolution). */
   readTau: () => number;
   readSigma: () => number;
+  /** G-INTERRUPT (A5): true while a finger owns τ — a mid-drag policy read
+   * must answer from live posture and ignore any machine spring target. */
+  readDragging: () => boolean;
   /** G-HIDDEN (R4): snapshot the presented entry's list scroll into entry
    * memory BEFORE a hidden excursion moves τ below collapsed. The deferred
    * swap commits at τ=−depth, where the live scroll term is gone — the plan
@@ -591,6 +594,7 @@ export function TrackSheetPage({
     commandsRef.current = {
       readTau: () => tau.value,
       readSigma: () => physics.sigma.value,
+      readDragging: () => physics.dragging.value,
       saveScrollForPresentedEntry: () => {
         // The EXACT term the switch formula saves, read at hide START where
         // the JS mirrors are settled (hides launch from rest).

@@ -31,3 +31,18 @@ export const trackEntrySceneKey = (entryKey: TrackEntryKey): string => {
   const index = entryKey.indexOf(SEPARATOR);
   return index < 0 ? entryKey : entryKey.slice(0, index);
 };
+
+/**
+ * THE ENTRY STAMP (R6, closing R2's item-5 residual): the scene-input
+ * publication lane is SCENE-keyed, so on a same-scene pop (pollDetail A→B)
+ * entry A's still-published rows can alias into B for a commit until the
+ * writer republishes. A writer that stamps its publication with the entryId
+ * it rendered for lets the host REJECT the mismatch (the aliased commit
+ * paints B's frozen/skeleton phase instead of A's rows). An UNSTAMPED
+ * publication (legacy writers, singleton scenes) always matches — adoption is
+ * per-writer, never a flag day.
+ */
+export const publicationMatchesEntry = (
+  publishedForEntryId: string | null | undefined,
+  presentedEntryId: string | null
+): boolean => publishedForEntryId == null || publishedForEntryId === presentedEntryId;

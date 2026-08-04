@@ -45,6 +45,10 @@ export type RouteShellSceneInputLane = {
     sceneBodyContent: AppRouteSceneBodyContentSpec | null;
     sceneBodyTransport: AppRouteSceneBodyTransportSpec | null;
     sceneBodyAdmissionPolicy?: AppRouteSceneBodyAdmissionPolicy | null;
+    /** Entry stamp (track R6): the route entryId this body renders FOR —
+     * stackable scenes (pollDetail) stamp so a same-scene pop cannot alias
+     * the outgoing entry's rows into the incoming one. */
+    sceneBodyForEntryId?: string | null;
   }) => void;
   clearRouteSceneShell: (sceneKey: AppRouteSceneInputKey) => void;
   clearRouteSceneChrome: (sceneKey: AppRouteSceneInputKey) => void;
