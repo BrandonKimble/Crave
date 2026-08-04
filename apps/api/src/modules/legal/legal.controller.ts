@@ -12,8 +12,19 @@ import { AllowUnentitled } from '../entitlements/entitlement-enforcement.interce
  *
  * The TEXT of these documents is owner-authored content and is not an agent's
  * to edit; this constant only stops the date from being written twice.
+ *
+ * AMENDED 2026-08-03 under explicit owner authority (F113): two clauses had
+ * become FALSE. (a) §7 said payments are processed through Apple/Google only —
+ * the Stripe web checkout rail shipped, so both rails are now stated, along
+ * with the fact that no card data reaches us. (b) The retention/termination
+ * clauses described deletion as "delete or anonymize within 30 days"; the
+ * implementation (account-deletion.service.ts) is immediate logical erasure
+ * plus a 30-day grace before the hard purge (deletion-purge.service.ts), with
+ * contributed content SEVERED from the person rather than destroyed. The
+ * documents now say what the code does. This same text is served statically
+ * from apps/site/src/pages/{privacy,terms}.html — amend BOTH or they diverge.
  */
-const LEGAL_LAST_UPDATED = 'January 6, 2026';
+const LEGAL_LAST_UPDATED = 'August 3, 2026';
 
 /**
  * Legal/Compliance Controller
@@ -172,7 +183,7 @@ export class LegalController {
             <li><strong>Analytics:</strong> Sentry (error tracking and performance monitoring)</li>
             <li><strong>AI Services:</strong> Google Gemini (AI-powered natural language search and recommendations)</li>
             <li><strong>Location Data:</strong> Google Places API (restaurant information and location services)</li>
-            <li><strong>Payments:</strong> Stripe and RevenueCat (subscription and payment processing)</li>
+            <li><strong>Payments:</strong> Stripe (checkout and subscription billing for purchases made on our website) and RevenueCat (subscription management for purchases made in the app). Payment card details are entered directly on the payment processor's own checkout page; we never receive or store your full card number.</li>
         </ul>
         <p>
             These service providers are contractually required to use your information only to provide services 
@@ -237,12 +248,21 @@ export class LegalController {
         <h2>6. Data Retention</h2>
         <p>
             We retain your information for as long as your account is active or as needed to provide the Service. 
-            When you delete your account, we will delete or anonymize your personal information within 30 days, 
-            except where we are required to retain it for legal, security, or fraud prevention purposes.
+            When you delete your account, the deletion takes effect immediately rather than being queued: your sessions
+            are revoked, your account can no longer be signed into, your push tokens and device identifiers are deleted,
+            your profile information (including your photo, your onboarding answers, and any taste profile we inferred
+            about you) is deleted, and your username is retired. Your remaining account record is permanently purged
+            after a 30-day window, which exists so that an accidental or coerced deletion can be caught before it
+            becomes irreversible. We retain information beyond this only where we are required to for legal, security,
+            fraud-prevention, or financial-record purposes — for example, subscription and payment records.
         </p>
         <p>
-            Public content you shared (poll votes, poll contributions) may be retained in an anonymized form after account deletion 
-            to maintain the integrity of the Service.
+            Content you contributed to the community (poll votes, poll contributions, comments, photos) is not deleted,
+            because removing it would tear holes in other people's conversations. Instead, deletion severs the connection
+            between that content and you: it remains as anonymous content with no link back to your identity, and we do
+            not retain a mapping that would let it be re-attributed to you. The same applies to the activity records we
+            use to measure aggregate demand for restaurants and dishes — the record of the action survives as anonymous
+            evidence, while the link to the person is destroyed.
         </p>
     </div>
 
@@ -476,13 +496,20 @@ export class LegalController {
         </p>
         <ul>
             <li>Subscriptions automatically renew unless canceled before the renewal date</li>
-            <li>You can manage or cancel subscriptions through your device's app store settings</li>
+            <li>A subscription purchased in the app is managed and canceled through your device's app store settings; a subscription purchased on our website is managed and canceled through the billing portal linked from your account settings</li>
             <li>Fees are non-refundable except as required by law</li>
             <li>We may change subscription prices with notice</li>
         </ul>
         <p>
-            Payments are processed through Apple App Store or Google Play Store, and are subject to their terms 
-            and conditions.
+            Subscriptions may be purchased in two ways. Purchases made inside the app are processed through the Apple
+            App Store or Google Play Store and are subject to their terms and conditions. Purchases made on our website
+            are processed by Stripe, our payment processor, and are subject to Stripe's terms. Your card details are
+            entered on Stripe's own checkout page and are held by Stripe — we never receive or store your full payment
+            card information.
+        </p>
+        <p>
+            Whichever way you subscribe, the resulting access to paid features is the same. Refunds for an app store
+            purchase are handled by that app store; refunds for a website purchase are handled by us.
         </p>
     </div>
 
@@ -543,6 +570,19 @@ export class LegalController {
         <p>
             We may suspend or terminate your access to the Service at any time, with or without notice, for any reason, 
             including violation of these Terms. You may delete your account at any time through the app settings.
+        </p>
+        <p>
+            When you delete your account, the deletion takes effect immediately: you are signed out everywhere, the
+            account can no longer be signed into, your username is retired, and your personal information is removed.
+            Content you contributed to the community — poll votes, poll contributions, comments — is not torn out of
+            other people's threads; it remains as anonymous content that is no longer connected to you or to any
+            account. Your remaining account record is permanently purged after a 30-day window, and billing records are
+            retained as long as required for financial and legal purposes.
+        </p>
+        <p>
+            If you subscribed on our website, deleting your account also stops that subscription from renewing. A
+            subscription purchased through an app store must be canceled in that app store's settings — we cannot
+            cancel it for you.
         </p>
         <p>
             Upon termination, your right to use the Service ceases immediately. Provisions that by their nature should 

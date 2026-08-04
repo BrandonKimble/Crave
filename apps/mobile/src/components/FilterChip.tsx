@@ -1,6 +1,7 @@
 import React from 'react';
 import { Pressable, StyleSheet, type StyleProp, type ViewStyle } from 'react-native';
 import { Text } from './ui/Text';
+import { colors as themeColors } from '../constants/theme';
 
 /**
  * THE house filter chip — the shared pill for every strip (search results, polls
@@ -15,7 +16,7 @@ import { Text } from './ui/Text';
  * the strips — slop would make presses between chips ambiguous.
  */
 
-const ACCENT = '#ff3368';
+const ACCENT = themeColors.primary;
 const INACTIVE_LABEL = '#111827';
 const ACTIVE_LABEL = '#ffffff';
 const QUIET_LABEL = '#6b7280';

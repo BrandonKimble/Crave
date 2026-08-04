@@ -50,7 +50,11 @@ max_parallel_maintenance_workers = 0;` or they die with "could not resize
   the burned-in laws: repo-ROOT build context (a subdir cwd breaks the Docker build),
   push-main-first, watch each deploy to terminal state, single retry, /health smoke.
   Migrations self-apply at container boot (`prisma migrate deploy` in the Dockerfile
-  CMD) — author them locally with `prisma migrate dev`, commit, deploy. GOTCHA: never
+  CMD) — author them locally with `prisma migrate dev`, commit, deploy. **BEFORE
+  writing a migration, read `apps/api/prisma/migrations/AUTHORING.md`** — the
+  parallel-worker guard heavy rewrites need, the list of raw-SQL objects
+  `migrate dev` will silently try to DROP out of your unrelated migration, and
+  the signals-partition/cron coupling. GOTCHA: never
   add a `startCommand` to railway.json — it overrides the Dockerfile CMD and is exec'd
   WITHOUT a shell (`&&` becomes argv; container exits 0 after the first command).
 - **Sim targets PROD by default** (apps/mobile/.env.local). Switch with

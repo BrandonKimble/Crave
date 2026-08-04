@@ -2,6 +2,7 @@ import React from 'react';
 import { ClerkProvider, useAuth } from '@clerk/clerk-expo';
 import { AppState, Platform } from 'react-native';
 import Constants from 'expo-constants';
+import * as Application from 'expo-application';
 import * as Location from 'expo-location';
 import * as Notifications from 'expo-notifications';
 import * as SecureStore from 'expo-secure-store';
@@ -30,6 +31,52 @@ type ExpoTokenCache = {
 };
 
 import { captureHandledError } from '../observability/crash-reporting';
+/**
+ * F1101 instrument (2026-08-03) — prove the APNs environment, don't trust it.
+ *
+ * `ios/cravesearch/cravesearch.entitlements` hardcodes aps-environment =
+ * development, which reads like "TestFlight mints sandbox tokens". It doesn't:
+ * expo-notifications decides sandbox-vs-production from the EMBEDDED
+ * PROVISIONING PROFILE at runtime (getExpoPushTokenAsync →
+ * Application.getIosPushNotificationServiceEnvironmentAsync → EXProvisioningProfile
+ * reading embedded.mobileprovision), and a store/ad-hoc profile carries
+ * "production". This logs the classification on every registration and RAISES
+ * a handled error only for the combination that would actually be broken —
+ * a distributed build (App Store/TestFlight, ad-hoc, enterprise) reporting a
+ * development APNs environment. It can show RED; that is the point.
+ */
+const reportPushEnvironmentClassification = async (): Promise<void> => {
+  if (Platform.OS !== 'ios') {
+    return;
+  }
+  try {
+    const [apsEnvironment, releaseType] = await Promise.all([
+      Application.getIosPushNotificationServiceEnvironmentAsync(),
+      Application.getIosApplicationReleaseTypeAsync(),
+    ]);
+    const releaseTypeName = Application.ApplicationReleaseType[releaseType] ?? String(releaseType);
+    const isDistributed =
+      releaseType === Application.ApplicationReleaseType.APP_STORE ||
+      releaseType === Application.ApplicationReleaseType.AD_HOC ||
+      releaseType === Application.ApplicationReleaseType.ENTERPRISE;
+
+    console.log(
+      `[PushEnv] apsEnvironment=${apsEnvironment ?? 'null'} releaseType=${releaseTypeName}`
+    );
+
+    if (isDistributed && apsEnvironment !== 'production') {
+      captureHandledError(
+        new Error(
+          `Distributed build has APNs environment "${apsEnvironment ?? 'null'}" (expected "production") — push tokens are minted against the sandbox gateway and every notification will silently disappear.`
+        ),
+        { seam: 'push:aps-environment', apsEnvironment, releaseType: releaseTypeName }
+      );
+    }
+  } catch (error) {
+    captureHandledError(error, { seam: 'push:aps-environment-probe' });
+  }
+};
+
 const tokenCache: ExpoTokenCache = {
   async getToken(key: string) {
     try {
@@ -231,6 +278,8 @@ const PushNotificationRegistrar: React.FC = () => {
           setPushToken(null);
           return;
         }
+
+        await reportPushEnvironmentClassification();
 
         const token = (await Notifications.getExpoPushTokenAsync({ projectId })).data;
         if (!token) {

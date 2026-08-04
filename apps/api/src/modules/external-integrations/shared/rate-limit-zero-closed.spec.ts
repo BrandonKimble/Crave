@@ -9,12 +9,18 @@ import { ExternalApiService } from './external-integrations.types';
  * second construct silently.
  */
 describe('rate limits: zero means closed', () => {
-  function build(perMinute: number): RateLimitCoordinatorService {
+  const warnings: string[] = [];
+
+  function build(
+    perMinute: number,
+    serviceOverrides: Record<string, unknown> = {},
+  ): RateLimitCoordinatorService {
     const config = {
       get: (key: string) => {
         if (key === 'googlePlaces.operationLimits') {
           return { textSearch: { requestsPerMinute: perMinute } };
         }
+        if (key in serviceOverrides) return serviceOverrides[key];
         if (key === 'googlePlaces.requestsPerMinute') return 60;
         if (key === 'googlePlaces.requestsPerDay') return 1000;
         return undefined;
@@ -27,7 +33,9 @@ describe('rate limits: zero means closed', () => {
       setContext: () => logger,
       debug() {},
       info() {},
-      warn() {},
+      warn(message: string) {
+        warnings.push(message);
+      },
       error() {},
     };
     const svc = new RateLimitCoordinatorService(
@@ -51,5 +59,40 @@ describe('rate limits: zero means closed', () => {
 
   it('a malformed limit refuses to boot', () => {
     expect(() => build(Number.NaN)).toThrow(/malformed/);
+  });
+
+  // The other half of the owner ruling: 0 STAYS legal, so an ACCIDENTAL 0
+  // must be loud rather than silent. Deleting the closed-scope warn makes
+  // this go RED.
+  it('a closed scope announces itself at boot', () => {
+    warnings.length = 0;
+    build(0);
+    expect(
+      warnings.some(
+        (line) =>
+          line.includes('RATE LIMIT SCOPE CLOSED') &&
+          line.includes('google-places:textSearch'),
+      ),
+    ).toBe(true);
+  });
+
+  it('a closed SERVICE-WIDE ceiling is kept, not re-opened to a literal', () => {
+    warnings.length = 0;
+    // `|| 600` used to resurrect the service default here; `??` semantics
+    // keep the operator's 0 and close the whole service.
+    build(500, { 'googlePlaces.requestsPerMinute': 0 });
+    expect(
+      warnings.some(
+        (line) =>
+          line.includes('RATE LIMIT SCOPE CLOSED') &&
+          line.includes("'google-places'"),
+      ),
+    ).toBe(true);
+  });
+
+  it('a MISSING service ceiling refuses to boot rather than guessing', () => {
+    expect(() =>
+      build(500, { 'googlePlaces.requestsPerMinute': undefined }),
+    ).toThrow(/missing or malformed/);
   });
 });

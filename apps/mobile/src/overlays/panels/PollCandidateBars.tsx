@@ -1,17 +1,15 @@
-import {
-  FrostCutout,
-  useIsInsideSceneFoundationSurface,
-} from '../SceneBodyFoundationSurface';
+import { FrostCutout, useIsInsideSceneFoundationSurface } from '../SceneBodyFoundationSurface';
 import React from 'react';
 import { Image, StyleSheet, TouchableOpacity, View } from 'react-native';
 import { useQuery } from '@tanstack/react-query';
 import { announceFailureIfOnline, showAppModal, Text } from '../../components';
-import { colors as themeColors } from '../../constants/theme';
+import { colors as themeColors, primaryRgb } from '../../constants/theme';
+import { togglePollEndorsement } from '../../services/polls';
 import {
-  togglePollEndorsement,
-  type PollCandidate,
-  type PollLeaderboardEntry,
-} from '../../services/polls';
+  applyOptimisticEndorsement,
+  settlePollStandings,
+  type PollStanding,
+} from './poll-standings-model';
 import { useAuthController } from '../../hooks/use-auth-controller';
 import { requestPushPermissionIfEligible } from '../../services/push-permission';
 import { createProfileQueryOptions } from './profileSceneQueryOptions';
@@ -36,7 +34,7 @@ const MIN_VISIBLE_FRACTION = 0.03; // a sliver of fill for any non-zero candidat
 // Graduated fill: rank 1 is the most saturated light-pink (a strong tint of the brand
 // primary), and each lower-ranked option fades to a paler tint down the list — while
 // staying light enough to keep the solid-black text legible on every bar.
-const PRIMARY_RGB = { r: 255, g: 51, b: 104 }; // brand primary (matches theme primary)
+const PRIMARY_RGB = primaryRgb; // brand primary, derived from the palette (F881)
 const STRONGEST_TINT = 0.3; // rank 1 tint strength (primary mixed over white)
 const FAINTEST_TINT = 0.08; // last-ranked option
 const tintOfPrimary = (strength: number): string => {
@@ -48,19 +46,7 @@ const resolveFillColor = (index: number, total: number): string => {
   return tintOfPrimary(STRONGEST_TINT + (FAINTEST_TINT - STRONGEST_TINT) * t);
 };
 
-type Candidate = Pick<
-  PollCandidate,
-  'rank' | 'subjectType' | 'subjectId' | 'name' | 'distinctEndorsers' | 'currentUserEndorsed'
->;
-
-const toCandidate = (entry: PollLeaderboardEntry): Candidate => ({
-  rank: entry.rank,
-  subjectType: entry.subjectType,
-  subjectId: entry.subjectId,
-  name: entry.name,
-  distinctEndorsers: entry.distinctEndorsers,
-  currentUserEndorsed: entry.currentUserEndorsed,
-});
+type Candidate = PollStanding;
 
 type PollCandidateBarRowProps = {
   candidate: Candidate;
@@ -188,23 +174,16 @@ export const PollCandidateBars = React.memo(
         }
         inFlight.current = true;
         const willEndorse = !candidate.currentUserEndorsed;
-        const optimisticRows = rows.map((row) =>
-          row.subjectId === candidate.subjectId
-            ? {
-                ...row,
-                currentUserEndorsed: willEndorse,
-                distinctEndorsers: Math.max(0, row.distinctEndorsers + (willEndorse ? 1 : -1)),
-              }
-            : row
-        );
-        setOptimistic(optimisticRows);
+        setOptimistic(applyOptimisticEndorsement(rows, candidate.subjectId, willEndorse));
         try {
           const result = await togglePollEndorsement(
             pollId,
             candidate.subjectId,
             candidate.subjectType
           );
-          const settled = result.leaderboard.slice(0, rows.length || 4).map(toCandidate);
+          // EVERY standing the server sent renders (F928, owner-ruled): the settle
+          // step no longer clips the fresh leaderboard to the on-screen row count.
+          const settled = settlePollStandings(result.leaderboard);
           setOptimistic(settled);
           onCandidatesChange?.(settled);
           // §8.9 push-permission moment: first contribution (a poll vote).

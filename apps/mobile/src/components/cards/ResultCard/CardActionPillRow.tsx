@@ -12,7 +12,7 @@ import {
 
 import { Text } from '../..';
 import { announceFailureIfOnline } from '../../app-modal-store';
-import { colors as themeColors } from '../../../constants/theme';
+import { colors as themeColors, primaryAlpha } from '../../../constants/theme';
 import { CONTENT_HORIZONTAL_PADDING } from '../../../screens/Search/constants/search';
 
 // ─── The card PILL ACTION ROW (wave-3 charter §3.1 — the Google reference, recolored) ────────
@@ -25,7 +25,7 @@ import { CONTENT_HORIZONTAL_PADDING } from '../../../screens/Search/constants/se
 // physics like everything else (edge-to-edge bleed, content aligned by scrollable inset —
 // §2.4's toggle-strip law).
 
-const PILL_BODY = 'rgba(255, 51, 104, 0.10)'; // themeColors.primary (#ff3368) @ 10%
+const PILL_BODY = primaryAlpha(0.1); // the brand primary @ 10%
 const PILL_INK = themeColors.primaryDark; // the darker primary for text/icons
 const PILL_ICON_SIZE = 16;
 

@@ -360,11 +360,14 @@ export class TomtomChainProbeAdapter implements TomtomChainProbe {
   /** TOMTOM IS ON THE LEDGER (round-six cost #3): these draws drain real
    *  prepaid credit and debit campaign envelopes, but wrote no
    *  api_usage_ledger row — so cost-reconcile and the campaign post-mortem
-   *  could never see them. One row per ANSWERED draw — the caller invokes
-   *  this only after a non-null response (D29a: an ADMITTED draw that throws
-   *  in transport debits the POOL and writes no ledger row; the governor's
-   *  drawWithOutcome docstring holds both definitions). Fire-and-forget like
-   *  every ledger write. */
+   *  could never see them. One row per ADMITTED draw (F350, 2026-08-03):
+   *  this is no longer called after a non-null response — it is handed to the
+   *  governor as `onDrawConsumed`, which fires it on the throw path too. That
+   *  is the whole point: a transport-errored draw debited the pool and used
+   *  to write NO ledger row, so cost-reconcile could not see it at all. The
+   *  governor is the only thing that knows a draw was admitted, so it is the
+   *  only thing allowed to say one happened. Fire-and-forget like every
+   *  ledger write. */
   private recordDraw(operation: string): void {
     this.usageLedger.record({
       service: 'tomtom',
@@ -398,6 +401,7 @@ export class TomtomChainProbeAdapter implements TomtomChainProbe {
               timeout: this.timeoutMs,
             }),
           ),
+        { onDrawConsumed: () => this.recordDraw('reverseGeocode') },
       );
     } catch (error) {
       if (this.poisonPoolOn429(error, 'tomtom.reverseGeocode')) {
@@ -406,9 +410,6 @@ export class TomtomChainProbeAdapter implements TomtomChainProbe {
         throw new Error('tomtom_pool_denied');
       }
       throw error;
-    }
-    if (response) {
-      this.recordDraw('reverseGeocode');
     }
     if (!response) {
       // Typed not-now: the probe simply doesn't happen this cycle. Signal it
@@ -544,15 +545,13 @@ export class TomtomChainProbeAdapter implements TomtomChainProbe {
               timeout: this.timeoutMs,
             }),
           ),
+        { onDrawConsumed: () => this.recordDraw('geocode') },
       );
     } catch (error) {
       if (this.poisonPoolOn429(error, 'tomtom.geocode')) {
         return { kind: 'denied' }; // transient — NOT an attempt (wave-6 item 2)
       }
       throw error;
-    }
-    if (response) {
-      this.recordDraw('geocode');
     }
     if (!response) {
       return { kind: 'denied' };
@@ -577,8 +576,18 @@ export class TomtomChainProbeAdapter implements TomtomChainProbe {
    * typed not-now (item stays queued for the next month window); `miss` =
    * the draw was consumed but the vendor had no Polygon/MultiPolygon for
    * this id. Transport errors throw (consumed draw, systemic).
+   *
+   * `onDrawConsumed` (F350) is the CALLER's meter — the campaign envelope —
+   * and it rides the governor's single per-admitted-draw announcement, the
+   * same one that writes the ledger row. The caller must NOT increment its
+   * own counter off the returned kind: that is exactly how the envelope came
+   * to miss the transport-error path while the pool debited it. One draw,
+   * one announcement, every meter hanging off it.
    */
-  async fetchPolygon(geometryId: string): Promise<PolygonFetchResult> {
+  async fetchPolygon(
+    geometryId: string,
+    onDrawConsumed?: () => void,
+  ): Promise<PolygonFetchResult> {
     if (!this.apiKey) {
       throw new Error('tomtom_config_missing');
     }
@@ -601,6 +610,12 @@ export class TomtomChainProbeAdapter implements TomtomChainProbe {
               { params, timeout: this.timeoutMs },
             ),
           ),
+        {
+          onDrawConsumed: () => {
+            this.recordDraw('additionalData');
+            onDrawConsumed?.();
+          },
+        },
       );
     } catch (error) {
       // Wave-6 item 2: a 429 is a transient rate signal, NOT a systemic
@@ -612,9 +627,6 @@ export class TomtomChainProbeAdapter implements TomtomChainProbe {
         return { kind: 'denied' };
       }
       throw error;
-    }
-    if (response) {
-      this.recordDraw('additionalData');
     }
     if (!response) {
       return { kind: 'denied' };

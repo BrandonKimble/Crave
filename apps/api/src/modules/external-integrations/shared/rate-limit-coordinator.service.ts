@@ -62,6 +62,32 @@ export class RateLimitCoordinatorService implements OnModuleInit {
     };
   }
 
+  /**
+   * A CEILING IS THREE-VALUED AND ZERO IS CLOSED (F114, owner-ratified
+   * 2026-08-03).
+   *
+   * config/configuration.ts `ceilingEnv` is the single declaration: it has
+   * already refused anything malformed and preserved a deliberate 0. So the
+   * only thing left to get wrong here is `||`, which cannot tell 0 from
+   * absent — the exact bug that turned `textSearch: 0` into 600/min on the
+   * most expensive Places call. This reads with `??` semantics and REFUSES
+   * (rather than substituting a local literal) when the key is missing,
+   * because a second copy of the number here is how the two declarations
+   * drift apart.
+   */
+  private requireCeiling(key: string): number {
+    const value = this.configService.get<number>(key);
+    if (typeof value !== 'number' || !Number.isFinite(value) || value < 0) {
+      throw new Error(
+        `Rate limit ceiling '${key}' is missing or malformed (${String(
+          value,
+        )}). Config owns this number; a spend ceiling must refuse to boot ` +
+          `rather than fall back to a literal that can silently widen it.`,
+      );
+    }
+    return value;
+  }
+
   private registerRateLimitConfig(
     service: ExternalApiService,
     config: RateLimitConfig,
@@ -69,6 +95,20 @@ export class RateLimitCoordinatorService implements OnModuleInit {
   ): void {
     const key = this.getScopeKey(service, operation);
     this.rateLimitConfigs.set(key, config);
+    // A CLOSED SCOPE IS ANNOUNCED, NOT INFERRED. 0 is a legitimate setting
+    // ("stop making these calls"), which is exactly why an ACCIDENTAL 0 must
+    // not be silent: every closed scope says so at boot, at warn level, so
+    // "why did Places stop?" is answered by the first line of the log rather
+    // than by reading config.
+    if (config.requestsPerMinute === 0) {
+      this.logger.warn(
+        `RATE LIMIT SCOPE CLOSED: '${key}' is configured to 0 requests/minute — ` +
+          `every call on this scope will be DENIED without reaching the vendor. ` +
+          `This is the deliberate spelling of "halt"; if it was not intended, ` +
+          `remove the 0 (omit the entry to inherit the service default).`,
+        { scopeKey: key },
+      );
+    }
   }
 
   onModuleInit(): void {
@@ -615,10 +655,16 @@ export class RateLimitCoordinatorService implements OnModuleInit {
    * Initialize rate limit configurations from environment.
    */
   private initializeRateLimitConfigs(): void {
-    const googleRequestsPerMinute =
-      this.configService.get<number>('googlePlaces.requestsPerMinute') || 600;
-    const googleRequestsPerDay =
-      this.configService.get<number>('googlePlaces.requestsPerDay') || 0;
+    // `??`, NOT `||` (F114): config owns these defaults and its `ceilingEnv`
+    // already refused anything malformed, so a 0 arriving here is a
+    // DELIBERATE CLOSED service — `|| 600` would have re-opened it, and the
+    // literal 600 was a second declaration of a number config already owns.
+    const googleRequestsPerMinute = this.requireCeiling(
+      'googlePlaces.requestsPerMinute',
+    );
+    const googleRequestsPerDay = this.requireCeiling(
+      'googlePlaces.requestsPerDay',
+    );
     const googleRequestsPerHour = this.computePerHour(
       googleRequestsPerMinute,
       googleRequestsPerDay,

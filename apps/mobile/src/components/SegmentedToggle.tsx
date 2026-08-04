@@ -15,6 +15,7 @@ import {
   ToggleStripWarmRestoreContext,
 } from '../toggles/toggle-strip-warm-restore-context';
 import { Text } from './ui/Text';
+import { colors as themeColors } from '../constants/theme';
 
 /**
  * N-position sliding-pill segmented toggle — THE house toggle primitive, a
@@ -78,7 +79,7 @@ export type SegmentedToggleProps<T extends string> = {
   testID?: string;
 };
 
-const DEFAULT_ACCENT = '#ff3368';
+const DEFAULT_ACCENT = themeColors.primary;
 
 /** One segment's cross-fading label pair, driven by its distance from the pill. */
 const SegmentLabel = ({

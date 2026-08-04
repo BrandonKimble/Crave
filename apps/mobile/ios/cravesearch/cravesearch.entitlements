@@ -4,9 +4,18 @@
   <dict>
     <!-- Required for iOS to issue a device push token. Without it,
          Notifications.getExpoPushTokenAsync() (see src/providers/AuthProvider.tsx)
-         fails on a real device. "development" is correct for debug and
-         dev-client builds; EAS release signing supplies "production" from the
-         provisioning profile. -->
+         fails on a real device. "development" is correct here and is NOT what a
+         TestFlight/App Store build ships (F1101, verified 2026-08-03): the
+         APNs environment is decided by the EMBEDDED PROVISIONING PROFILE, not
+         by this file — getExpoPushTokenAsync sends `development` from
+         Application.getIosPushNotificationServiceEnvironmentAsync(), which
+         reads aps-environment out of embedded.mobileprovision
+         (expo-application/ios/EXApplication/EXProvisioningProfile.m), and
+         Xcode's packaging step likewise substitutes the profile's value into
+         the signed entitlements, so a store/ad-hoc profile yields
+         "production". AuthProvider logs and reports the runtime
+         classification so the next TestFlight build proves this instead of
+         being trusted. -->
     <key>aps-environment</key>
     <string>development</string>
   </dict>

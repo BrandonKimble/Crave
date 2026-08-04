@@ -390,3 +390,23 @@ don't wait on it proceed now.
 **Parked (deliberate future calls, each with real upside and real risk):** 6. The programmatic "best X in Austin" SEO page network (slugs stay noindex
 until this is decided on purpose). 7. Android timing — priced by the slug funnel's Android-tap counts. 8. Web checkout rail (~12-pt margin swing) + web-to-app funnels. 9. Win-back activation (Apple-compliant; saves ~27% of cancelers per the
 corpus) — dormant by design until churn data exists.
+
+---
+
+**CORRECTION — 2026-08-03 (owner ruling). §11.8 "Web checkout rail" is NO LONGER PARKED.**
+
+The parking rationale in §11 item 8 is SUPERSEDED. The Stripe web checkout rail
+SHIPPED pre-launch on 2026-08-03: two-plan checkout at craveapp.ai/premium, with
+entitlements granted through the access-grant ledger. The ~12-pt margin swing the
+parked item priced as a future option is an available input to §6/§8 planning NOW,
+not a decision still to be made.
+
+Note also that this file's precedence clause ("where this file conflicts with any
+other business/ doc, this file wins", in the header block) does not override a
+LATER owner call —
+the 2026-08-01 decision recorded in business/business-model.md and tracked in
+product/pre-launch.md is the operative one, and this correction ratifies it.
+
+The owner has flagged §11 for a future ideal-shape pass; the section is left in
+place, with this dated note appended, rather than rewritten — history is corrected
+by amendment here, never edited away.

@@ -17,6 +17,7 @@ import {
 } from '../page-body-contract';
 import { resolveUserDisplayName } from '../../utils/user-display-name';
 import { AVATAR_SIZES } from '../../constants/avatar-sizes';
+import { colors as themeColors } from '../../constants/theme';
 
 // ─── notifications — THE PAGE L2's first migrated list body ─────────────────────────
 // The in-app feed over GET /notifications/feed. Opening the page marks the feed read
@@ -231,6 +232,6 @@ const styles = StyleSheet.create({
     width: 8,
     height: 8,
     borderRadius: 4,
-    backgroundColor: '#ff3368',
+    backgroundColor: themeColors.primary,
   },
 });

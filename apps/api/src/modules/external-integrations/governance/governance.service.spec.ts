@@ -187,3 +187,81 @@ describe('GovernanceService durable-flush failure (single fail semantic: hard-cl
     ).toBe(true);
   });
 });
+
+/**
+ * F350 — ONE DRAW, ONE ANNOUNCEMENT. `onDrawConsumed` is the single place a
+ * vendor draw is declared to have happened; the api_usage_ledger row and the
+ * campaign envelope both hang off it. The load-bearing case is the THROW: the
+ * pool debits an admitted draw whose act died in transport, and before this
+ * the ledger and the envelope saw nothing at all, so cost-reconcile was blind
+ * to that spend. Each assertion below can show RED by deleting the matching
+ * announceDrawConsumed call.
+ */
+describe('GovernanceService.drawWithOutcome — the per-draw meter (F350)', () => {
+  it('announces the draw on the SUCCESS path', async () => {
+    const { service } = buildService([]);
+    await service.onModuleInit();
+    const meter = jest.fn();
+    const outcome = await service.drawWithOutcome(
+      'gemini.monthlySpend',
+      'probe',
+      () => Promise.resolve('ok'),
+      { onDrawConsumed: meter },
+    );
+    expect(outcome.admitted).toBe(true);
+    expect(meter).toHaveBeenCalledTimes(1);
+  });
+
+  it('announces the draw on the THROW path too — the gap that made errored spend invisible', async () => {
+    const { service } = buildService([]);
+    await service.onModuleInit();
+    const meter = jest.fn();
+    await expect(
+      service.drawWithOutcome(
+        'gemini.monthlySpend',
+        'probe',
+        () => Promise.reject(new Error('ECONNRESET')),
+        { onDrawConsumed: meter },
+      ),
+    ).rejects.toThrow('ECONNRESET');
+    expect(meter).toHaveBeenCalledTimes(1);
+  });
+
+  it('does NOT announce a draw that was DENIED — a denial never reached the vendor', async () => {
+    const { service } = buildService([]);
+    await service.onModuleInit();
+    // Shrink the pool to a single unit and spend it, so the draw under test
+    // is refused at admission.
+    service.pools.resetLimit('gemini.monthlySpend', 1);
+    await service.drawWithOutcome('gemini.monthlySpend', 'probe', () =>
+      Promise.resolve('ok'),
+    );
+    const meter = jest.fn();
+    const act = jest.fn();
+    const outcome = await service.drawWithOutcome(
+      'gemini.monthlySpend',
+      'probe',
+      act,
+      { onDrawConsumed: meter },
+    );
+    expect(outcome.admitted).toBe(false);
+    expect(act).not.toHaveBeenCalled();
+    expect(meter).not.toHaveBeenCalled();
+  });
+
+  it('a meter that throws cannot fail the draw it meters', async () => {
+    const { service } = buildService([]);
+    await service.onModuleInit();
+    const outcome = await service.drawWithOutcome(
+      'gemini.monthlySpend',
+      'probe',
+      () => Promise.resolve('ok'),
+      {
+        onDrawConsumed: () => {
+          throw new Error('ledger down');
+        },
+      },
+    );
+    expect(outcome.admitted).toBe(true);
+  });
+});

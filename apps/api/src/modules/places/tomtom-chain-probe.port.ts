@@ -82,8 +82,17 @@ export interface TomtomChainProbe {
   /**
    * §2 promotion step 2: the SCARCE-pool Additional Data polygon fetch
    * (geometry id → Polygon/MultiPolygon FeatureCollection).
+   *
+   * `onDrawConsumed` (F350) fires once per ADMITTED vendor draw — including
+   * the transport-error path, where the caller never sees a return value.
+   * It is where a caller's own spend meter (the campaign envelope) belongs;
+   * deriving "a draw happened" from the returned kind is what made the
+   * envelope blind to errored draws the pool had already debited.
    */
-  fetchPolygon(geometryId: string): Promise<PolygonFetchResult>;
+  fetchPolygon(
+    geometryId: string,
+    onDrawConsumed?: () => void,
+  ): Promise<PolygonFetchResult>;
 }
 
 /** Nest injection token for the port. */

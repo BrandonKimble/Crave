@@ -690,3 +690,201 @@ Census verdict accepted (F1150–F1153): 1,222 generated files byte-identical to
 
 **APPROVED (next mobile batch):** F1350 (the territory's one unbounded-lifetime hit: superseded scene-switches never fire the caller's continuation AND leak a Map entry per switch — keyed by a monotone counter instead of the closed OverlayKey vocabulary; fix = supersede fires the continuation with a superseded verdict + the map keys on the closed vocabulary, RED via a replayed supersede); F1371 (the frame-authority lane whose comparison is structurally null===null — no subscriber can ever wake: wire the real producer or delete the lane, banking re-grep decides); F1351 (22 ungated [pageswitch] console.logs across 8 files — one **DEV**-gated debug flag, default off); F1359 F1360 F1363 F1366 F1372 F1385 F1390 per their recorded prescriptions (all spot-verified).
 **Process note adopted as law:** a "killed" agent's on-disk work is checked BEFORE relaunching fresh — the relaunch brief now always says verify-first (this pass nearly double-burned an ID range).
+
+## D50-exec — F928 / F1055 / F881 executed (Phase-3, 2026-08-03)
+
+The implementation lane for three of the D50 rulings above. Baseline at start:
+`npx tsc --noEmit` clean for every file in scope, `yarn test` green. Nothing staged,
+nothing committed.
+
+- **F928 standings — SHOW ALL ROWS, landed.** `PollCandidateBars.tsx` settled an
+  endorsement toggle against `result.leaderboard.slice(0, rows.length || 4)` — the
+  fresh server standings clipped to whatever row count happened to be on screen, so a
+  poll whose options grew, or whose first render was the 4-row default, silently lost
+  its tail. The settle step is now a pure module, `overlays/panels/poll-standings-model.ts`
+  (`settlePollStandings` = `leaderboard.map(toPollStanding)`, plus `toPollStanding` and
+  `applyOptimisticEndorsement` lifted out of the same callback), because the .tsx can
+  never enter the hermetic jest lane (`testMatch: **/*.spec.ts`, never .tsx) — the
+  extraction is what makes the rule provable, and it matches the sibling
+  `pollThreadModel` / `save-list-model` pattern already in that directory.
+  MUTATION-PROVEN: `poll-standings-model.spec.ts` feeds a 10-entry leaderboard and
+  asserts 10 render-data entries in order; restoring `slice(0, 4)` turns it RED (run,
+  observed, reverted). 7 tests.
+  **Nothing assumed 4.** The one remaining row limit is the feed card's
+  `previewRows={3}` half-peek (PollsPanel.tsx:200) — a deliberate presentation choice
+  made at the render site, tap-through to the full list; the detail page omits the prop
+  and now renders every standing. No virtualization assumption exists: the bars are a
+  plain `View` + `.map`, not a FlashList.
+
+- **F1055 save-sheet — CASE B (triggered from OUTSIDE the sheet); dismissal is correct;
+  deletion handed off.** Investigated: `SaveListPanel.tsx` has NO profile-open path.
+  Its entire interactive surface is select-a-list-row, new-list, cancel, create,
+  confirm-save — zero `openRestaurantProfile`, zero navigate. The profile opens that
+  hide the sheet come from other surfaces (result cards, ListDetailPanel, map pins)
+  while the sheet is up. Per the ruling's own branch, that makes dismiss-forever the
+  RIGHT behavior — the finish-or-cancel flow ends when you leave it — so the
+  unconditional hide at `profile-app-foreground-runtime.ts:39` STAYS, and there is no
+  UI navigation to remove.
+  The dead capture ledger is re-confirmed reader-free (`getPreviousForegroundUiRestoreState`
+  still resolves to only its own definition, type member, and memo dep). Its deletion
+  is NOT landed and NOT attempted: every file in the chain sits under
+  `screens/Search/runtime/profile/`, which this lane is under a hard no-touch boundary
+  for. Exact hand-off list recorded on the F1055 row. This is a boundary deferral, not
+  a judgment change: the ledger should die.
+
+- **F881 brand accent — ONE TOKEN, landed, zero visual change.** Census first
+  (case-insensitive, including the rgba re-encodings and one form the original finding
+  missed): **13 sites**, not four — FilterChip:18, SegmentedToggle:81,
+  CardActionPillRow:28 (`rgba(255, 51, 104, 0.10)`), NotificationsPanel:234,
+  PollCreationPanel:524 (0.08), PollDetailPanel ×5 (1447/1459/1635/1684 @0.12,
+  1675 @0.06), **PollCandidateBars:39 `PRIMARY_RGB = { r: 255, g: 51, b: 104 }`** (a
+  third encoding of the same color, feeding the whole graduated-tint ramp — the finding
+  had not caught it), and a quality-color.ts comment asserting the hex.
+  The token lives beside the existing tokens in `constants/theme.ts`: `colors.primary`
+  (already there) plus `primaryRgb` and `primaryAlpha(α)`, both DERIVED from
+  `colors.primary` by parsing the palette hex — so the alpha form is no longer a
+  re-encoding that a palette change cannot reach. Every site imports it.
+  THE PROOF: repo-wide `grep -riE 'ff3368|255, *51, *104'` over apps/mobile/src went
+  13 hits → **2**, both of which are the source of truth itself (`color-palette.json`)
+  and the token's own doc comment. Same hex, same alpha values, no other diff.
+
+Evidence at close: `npx tsc --noEmit` reports zero errors in any file this lane touched
+(three unrelated errors exist in concurrently-edited files — AuthProvider.tsx,
+search-map.tsx, use-search-runtime-camera-intent-runtime.ts — none in scope, none
+introduced here). `yarn test`: 71 suites / 600 tests green (the +7 are this lane's).
+Nothing staged, nothing committed, no stash used.
+
+## D52 — Android is a supported platform, reached by REWRITE (owner ruling 2026-08-03; F1110)
+
+**Owner ruling (verbatim intent):** do NOT delete Android. The goal is **full parity
+with iOS**. Owner's lean: start over completely — "probably tons of bloat from trying to
+figure out all the map stuff" — with the rewrite-vs-repair judgment delegated.
+
+**Judgment returned: the lean is correct, and the measurement is worse than the hunch.**
+Against `e2654b211` (2026-06-17, Android's last commit): 148 iOS commits since;
+`SearchMapRenderController.swift` grew 13,224 → 13,463 lines while **7,281 lines changed
+(~55% rewritten in place)** — so the Java mirror is not "3.8k lines behind", it mirrors a
+body that no longer exists. Of the 11 iOS map-controller `RCT_EXTERN` methods, the Java
+module implements 6; **5 (45%) were never ported** (`setCandidateCatalog`,
+`commitEnterStart`, `beginInteractionFadeOut`, `reset/flushNativeApplyAttribution`), and
+2 Java-only methods (`configureLabelObservation`, `configureNativeLayerGroups`) name a
+superseded iOS design. Two subsystems have **zero** Android counterpart and post-date the
+freeze: MapLodKit (398 kernel lines + **41 tests**) and TrackScrollKit (1,480 lines,
+7 JS call sites). Nothing in the 9,380-line module has ever been compiled by anything.
+
+**Shape adopted (plans/android-parity.md):** stage 1 build lane + `MAPBOX_DOWNLOADS_TOKEN`
+
+- Expo-54 prebuild + a CI `assembleDebug` — the first compile in the project's history;
+  stage 2 delete the mirror **at that moment** (not before — it is the only existing
+  reference while nothing compiles; not never — F1110's harm is two answers per grep), citing
+  `e2654b211` in the commit; stage 3 RN-parity smoke with the map stubbed, which _measures_
+  how much of the 194,525 shared TS lines is genuinely free instead of assuming it; stage 4
+  map bring-up **kernel-first** (Kotlin `:maplodkit` + 41 translated JUnit tests as the parity
+  oracle, then the already-written-but-never-compiled Kotlin arm of
+  `patches/@rnmapbox+maps+10.3.1.patch`, then a gated SDK spike, then render); stage 5
+  TrackScroll, preceded by extracting a tested pure kernel on iOS first.
+
+**The map-saga methodology is a day-one precondition, not a retrofit:** instrument the
+composite never intent; every metric must be provably RED-able; the human eye stays the
+oracle for feel; the `apps/mobile/src/perf/` command bus gains ack + `read_state()` before
+it is trusted on an unfinished platform; the 2026-08-01 build-trust laws port to Gradle/R8
+(referenced marker, absolute paths, never chain verification with the build); and
+`scripts/perf-scenario-parity-contracts.js` finally gets teeth in CI — unenforced parity is
+exactly how the mirror rotted.
+
+**NON-goals for v1** (recorded so they are not relitigated): Play Store submission, tablet/
+foldable/landscape, pixel-identical visual parity (Android should feel native-correct, not
+iOS-transplanted), Android push (couples to F1101), TrackScroll, and emulating iOS's
+screen-edge gesture deferral (no Android analog — predictive back is the nearest correct
+behavior).
+
+**Biggest risk, with a spike defined:** Mapbox Maps Android SDK feature gaps vs the patched
+iOS 10.3.1 surface are genuinely unknown, and a wrong guess is what a 4–6 month saga looks
+like. Timeboxed spike gates the render architecture; deliverable is a per-behavior gap table
+(`direct-equivalent / achievable-differently / expensive / not-possible`), every row backed
+by a running emulator demo rather than documentation reading.
+
+## D51 — Owner-ruled batch: legal truth, the web-rail correction, zero-means-closed, the migration gotchas, and the draw meter (2026-08-03)
+
+Five owner rulings landed together. Recorded as one design because they share
+one shape: **a statement that had stopped matching the thing it describes.**
+
+**(1) F113 — the legal documents.** Both documents asserted two things that had
+become FALSE: §7's "payments are processed through Apple App Store or Google
+Play Store" (the Stripe web checkout rail shipped 2026-08-03), and a retention
+clause reading "delete or anonymize your personal information within 30 days"
+against an implementation that erases immediately and purges after a 30-day
+grace. Read first, then written: account-deletion.service.ts (immediate logical
+erasure — Clerk identity destroyed, grants revoked, usernames burned into
+reserved_usernames, PERSON_DATA_RULES-driven eraser, `purgeDueAt` set),
+deletion-purge.service.ts (the 4am hard purge that makes the grace period real
+rather than a document), and the D40 severance model (acts survive as anonymous
+demand evidence; data ABOUT the person dies). Both rails are now stated, no-card-
+data-touches-us is stated, and deletion is described as severance-plus-grace.
+Date bumped to August 3, 2026. **Scope correction:** the documents exist TWICE —
+apps/site/src/pages/{privacy,terms}.html AND legal.controller.ts (the in-app
+copy). Amending one would have produced two legal documents disagreeing about
+how the user gets charged, so both were amended identically, and the controller's
+header now says so.
+
+**(2) F740 — blueprint §11.8.** Dated correction appended (never rewritten in
+place): the parking rationale is superseded, the rail shipped, and the file's own
+"this file wins" precedence clause does not outrank a LATER owner call. Section
+flagged for the owner's future ideal-shape pass.
+
+**(3) F114 — zero means closed.** Derivation below. `ceilingEnv` in
+configuration.ts is the single three-valued declaration; the coordinator reads it
+with `??` semantics and ANNOUNCES every closed scope at boot.
+
+**(4) F303/F304/F305 — the migration gotchas.** These are historical applied
+artifacts; no migration file is editable, so the deliverable was documentation
+with a real reader. `apps/api/prisma/migrations/AUTHORING.md` holds the
+parallel-worker guard, the full triaged drift inventory (the class-1 list a
+`migrate dev` will try to DROP out of an unrelated migration), the signals
+partition/CRONS_ENABLED coupling, and the same-timestamp tiebreak. CLAUDE.md's
+migration line now points at it — one pointer in the always-loaded file, the
+detail where it is needed.
+
+**(5) F350 — the draw meter.** The remaining escalated half, implemented in the
+recommendation's own shape. See below.
+
+RUBRIC: unrepresentable? — YES for (3) and (5): a ceiling of 0 can no longer be
+read as "unset", and a caller can no longer forget to meter the error path,
+because announcing a draw is no longer the caller's job. bedrock? — a vendor draw
+is ONE event and who is charged is a property of the draw; a limit is one of
+{positive ceiling, 0 = closed, absent = inherit}; a legal document is a promise
+about what the code does. blast-vs-invariant? — (5) touches money accounting at 3
+adapter call sites + 1 campaign meter; behaviour changes ONLY on the transport-
+error path, in the conservative direction. deletes-more? — yes: two `|| N`
+literals, three post-hoc `recordDraw` calls, and two manual `draws.scarce`
+increments are gone. user-visible/money/data-lifetime? — all three: legal text is
+user-visible, (3)+(5) are money, (1) describes data lifetime. migration? — none.
+
+VERDICT: APPROVE (owner-ruled).
+
+### The F114 derivation, stated plainly
+
+The question was whether `0` in a spend/limit setting means CLOSED or UNLIMITED.
+The repo's own laws answer it without a new judgment call:
+
+1. **Fail-closed is the only safe default for spend.** Every money guard here
+   already chose it — `assertSpendOpen` refuses on an unconfirmable window rather
+   than admitting against an unknown balance. If `0` meant UNLIMITED, the single
+   most likely typo in a money setting would be the one that removes the ceiling.
+   Under CLOSED, the same typo halts a vendor loudly. One direction's worst case
+   is an unbounded bill; the other's is an outage you notice in minutes.
+2. **A malformed money setting REFUSES rather than widens** (F365, and the same
+   conclusion F106/F107/F108/F210 reached). So a negative or non-numeric ceiling
+   must throw at boot, not fall back — a fallback is a silent widening wearing a
+   default's clothes.
+3. **"Unlimited" already has a spelling, and it is not `0`.** Omitting a
+   per-operation entry inherits the service-wide ceiling; there is deliberately
+   no way to spell "no ceiling at all" on a paid vendor call.
+
+Therefore: a ceiling is three-valued — **positive = the ceiling, 0 = CLOSED,
+absent = inherit** — and that is now DECLARED (`ceilingEnv`), not remembered. The
+remaining risk after that ruling is the opposite one: a `0` that nobody meant is
+indistinguishable from a `0` that someone did mean, and it fails silently in the
+"why is Places dead?" direction. So the third piece is loudness — every closed
+scope emits a warn at boot naming itself and saying what it does. 0 is legal,
+never silent.

@@ -90,6 +90,38 @@ function resolveSecretEnv(name: string): string | undefined {
  * This is the same conclusion F106 reached for the audience parser and F107 /
  * F108 for the gating mode: one declaration, in config, validated at boot.
  */
+/**
+ * A SPEND CEILING IS THREE-VALUED, AND ZERO IS NOT "UNSET" (F114,
+ * owner-ratified 2026-08-03).
+ *
+ * A rate/spend ceiling is one of exactly three things:
+ *   - a POSITIVE integer — the ceiling;
+ *   - ZERO — CLOSED. The operator's spelling of "stop making these calls".
+ *     It is a deliberate, expressible setting, never a synonym for absent;
+ *   - ABSENT (unset/empty) — inherit the declared default.
+ *
+ * `positiveIntEnv` cannot express the middle case, and `|| fallback` cannot
+ * DISTINGUISH it from the third — which is exactly how `textSearch: 0`, the
+ * owner's spelling of "stop making text searches", became 600/min on the most
+ * expensive Places call. Fail-closed is the only safe default for spend, so a
+ * malformed value REFUSES BOOT rather than widening (the F365 rule), and a
+ * configured 0 survives parsing intact so the consumer can register a CLOSED
+ * scope and say so out loud at boot.
+ */
+function ceilingEnv(name: string, fallback: number): number {
+  const raw = process.env[name];
+  if (raw === undefined || raw.trim() === '') return fallback;
+  const value = Number(raw);
+  if (!Number.isInteger(value) || value < 0) {
+    throw new Error(
+      `${name} must be a non-negative integer (got ${JSON.stringify(raw)}). ` +
+        `0 means CLOSED — a malformed money ceiling must refuse to boot ` +
+        `rather than silently widen to a default.`,
+    );
+  }
+  return value;
+}
+
 function positiveIntEnv(name: string, fallback: number): number {
   const raw = process.env[name];
   if (raw === undefined || raw.trim() === '') return fallback;
@@ -418,15 +450,21 @@ export default () => {
       // 60/min: an unregistered operation gets one call per second — enough
       // to work, slow enough to surface in the ledger and force an explicit
       // entry (closed-vocabulary posture; the per-op ceilings are the law).
-      requestsPerMinute: parseInt(
-        process.env.GOOGLE_PLACES_REQUESTS_PER_MINUTE || '60',
-        10,
-      ),
+      // THREE-VALUED (see ceilingEnv): positive = ceiling, 0 = CLOSED,
+      // unset = this default. `parseInt(x || '60')` could not tell 0 from
+      // unset, so setting either of these to 0 to halt Places spend used to
+      // restore the default instead — the F114 trap, one level up from the
+      // per-operation limits below.
+      requestsPerMinute: ceilingEnv('GOOGLE_PLACES_REQUESTS_PER_MINUTE', 60),
       // Daily cap is a cost guard, not a Google quota.
-      requestsPerDay: parseInt(
-        process.env.GOOGLE_PLACES_REQUESTS_PER_DAY || '150000',
-        10,
-      ),
+      requestsPerDay: ceilingEnv('GOOGLE_PLACES_REQUESTS_PER_DAY', 150000),
+      // EVERY ceiling below is THREE-VALUED, the same as the service-wide
+      // pair above: a POSITIVE number is the ceiling, `0` means CLOSED (the
+      // operation is halted — the coordinator registers a closed scope and
+      // logs it loudly at boot), and OMITTING the field inherits the
+      // service-wide value. There is no spelling of "unlimited": remove the
+      // per-operation entry to inherit, never set 0 expecting it to widen.
+      // A negative or non-numeric value refuses boot.
       // KEYED BY PlacesOperation — the SAME names the rate-limit scope, the
       // usage ledger and the pricing table use (red team 2026-08-02). These
       // used to be a third vocabulary: `placeAutocomplete` here vs

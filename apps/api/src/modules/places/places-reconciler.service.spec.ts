@@ -7,7 +7,10 @@
  * noteViewport never blocks and never throws.
  */
 import { GeoBbox } from '@crave-search/shared';
-import { PlacesReconcilerService } from './places-reconciler.service';
+import {
+  PlacesReconcilerService,
+  NEGATIVE_OBSERVATION_TTL_MS,
+} from './places-reconciler.service';
 import { TomtomChainProbeResult } from './tomtom-chain-probe.port';
 
 const logger: any = {
@@ -119,6 +122,13 @@ function makeHarness(options: {
         const key = `${cellKey}:${kind}`;
         const row = {
           __key: key,
+          // F372(c): the memory is TIME-BOUNDED, so the mock has to carry
+          // time. Without an observed-at stamp the 30-day TTL was
+          // untestable — and an untested TTL is wrong in both directions
+          // (never re-probing suppresses discovery for a month; always
+          // re-probing is the spend-forever class this table exists to
+          // prevent).
+          __observedAtMs: Date.now(),
           kind,
           centerLat: cLat,
           centerLng: cLng,
@@ -133,20 +143,28 @@ function makeHarness(options: {
         else rows.push(row);
         return Promise.resolve(1);
       }),
-      $queryRaw: jest.fn().mockImplementation(() =>
-        Promise.resolve(
-          rows.map((r: any) => ({
-            kind: r.kind,
-            center_lat: r.centerLat ?? null,
-            center_lng: r.centerLng ?? null,
-            radius_meters: r.radiusMeters ?? null,
-            min_lat: r.minLat ?? null,
-            min_lng: r.minLng ?? null,
-            max_lat: r.maxLat ?? null,
-            max_lng: r.maxLng ?? null,
-          })),
-        ),
-      ),
+      $queryRaw: jest.fn().mockImplementation((...args: any[]) => {
+        // `observed_at >= ${cutoff}` is the FIRST interpolated value of the
+        // fresh_asked_regions read; honouring it here is what makes an
+        // expired region actually disappear from the answer.
+        const cutoff = (args[0]?.values ?? [])[0];
+        const cutoffMs =
+          cutoff instanceof Date ? cutoff.getTime() : Number.NEGATIVE_INFINITY;
+        return Promise.resolve(
+          rows
+            .filter((r: any) => (r.__observedAtMs ?? 0) >= cutoffMs)
+            .map((r: any) => ({
+              kind: r.kind,
+              center_lat: r.centerLat ?? null,
+              center_lng: r.centerLng ?? null,
+              radius_meters: r.radiusMeters ?? null,
+              min_lat: r.minLat ?? null,
+              min_lng: r.minLng ?? null,
+              max_lat: r.maxLat ?? null,
+              max_lng: r.maxLng ?? null,
+            })),
+        );
+      }),
       probedRegion: {
         deleteMany: jest.fn().mockResolvedValue({ count: 0 }),
       },
@@ -304,6 +322,46 @@ describe('PlacesReconcilerService — §2 background naming', () => {
     service.noteViewport(VIEW);
     await service.whenIdle();
     expect(probe.probe).toHaveBeenCalledTimes(1);
+  });
+
+  it('F372(c): an EXPIRED negative observation re-probes — the TTL is a real clock, not a decoration', async () => {
+    // The prior spec proved only the WITHIN-TTL arm (a cached region answers)
+    // and the prune test counted deleteMany calls; nothing proved the other
+    // arm. Both directions cost: never re-probing suppresses discovery for
+    // 30 days, always re-probing is the spend-forever class this memory
+    // exists to prevent. Reverting the `observed_at >= cutoff` predicate
+    // makes this test go RED.
+    const bigNegative = {
+      kind: 'empty' as const,
+      probedRegion: {
+        kind: 'box' as const,
+        bbox: { minLat: -0.35, minLng: -0.35, maxLat: 1.35, maxLng: 1.35 },
+      },
+    };
+    const { service, probe } = makeHarness({
+      probeImpl: () => Promise.resolve(bigNegative),
+    });
+
+    service.noteViewport(VIEW);
+    await service.whenIdle();
+    expect(probe.probe).toHaveBeenCalledTimes(1);
+
+    // Still inside the TTL: answered from memory.
+    service.noteViewport(VIEW);
+    await service.whenIdle();
+    expect(probe.probe).toHaveBeenCalledTimes(1);
+
+    // Advance the clock past NEGATIVE_OBSERVATION_TTL_MS.
+    const realNow = Date.now;
+    const jumped = realNow() + NEGATIVE_OBSERVATION_TTL_MS + 60_000;
+    jest.spyOn(Date, 'now').mockImplementation(() => jumped);
+    try {
+      service.noteViewport(VIEW);
+      await service.whenIdle();
+      expect(probe.probe.mock.calls.length).toBeGreaterThan(1);
+    } finally {
+      (Date.now as jest.Mock).mockRestore();
+    }
   });
 
   it('asked-ground memory: an OVER-SCALE chain result still stops re-probing the same view (red-team: recurring-spend hole)', async () => {

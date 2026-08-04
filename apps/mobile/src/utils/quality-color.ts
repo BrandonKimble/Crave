@@ -105,7 +105,7 @@ export const rankBadgeImageId = (score: number | null | undefined, rank: number)
   return `pin-rank-${bucket}-${Math.max(1, r)}`;
 };
 
-// ACTIVE (selected/pressed) rank badge: the SAME number baked in the active color (#ff3368), bucket-
+// ACTIVE (selected/pressed) rank badge: the SAME number baked in the active color (the brand primary, colors.primary), bucket-
 // independent — the pin layer swaps to this on nativeHighlighted so a tapped pin recolors while keeping its
 // rank. Matches the `pin-rank-active-<rank>` sprites from scripts/generate-pin-bucket-sprites.js.
 export const activeRankBadgeImageId = (rank: number): string => {

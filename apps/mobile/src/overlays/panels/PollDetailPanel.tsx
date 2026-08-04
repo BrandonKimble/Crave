@@ -26,7 +26,7 @@ import { announceFailureIfOnline, showAppModal, Text } from '../../components';
 import { showShareModal } from '../../components/share-modal-store';
 import { useTopMostRouteEntryForScene } from '../../navigation/runtime/use-top-most-route-entry-for-scene';
 import { SceneLoadingSurface } from '../../components/skeletons';
-import { colors as themeColors } from '../../constants/theme';
+import { colors as themeColors, primaryAlpha } from '../../constants/theme';
 import { EntityLink } from '../../components/ui/EntityLink';
 import type { EntityRefType } from '../../navigation/runtime/entity-ref-action-policy';
 import { FONT_SIZES, LINE_HEIGHTS } from '../../constants/typography';
@@ -1444,7 +1444,7 @@ const styles = StyleSheet.create({
     width: 22,
     height: 22,
     borderRadius: 11,
-    backgroundColor: 'rgba(255, 51, 104, 0.12)',
+    backgroundColor: primaryAlpha(0.12),
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -1456,7 +1456,7 @@ const styles = StyleSheet.create({
     width: 22,
     height: 22,
     borderRadius: 11,
-    backgroundColor: 'rgba(255, 51, 104, 0.12)',
+    backgroundColor: primaryAlpha(0.12),
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -1632,7 +1632,7 @@ const styles = StyleSheet.create({
     width: 28,
     height: 28,
     borderRadius: 14,
-    backgroundColor: 'rgba(255, 51, 104, 0.12)',
+    backgroundColor: primaryAlpha(0.12),
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -1672,7 +1672,7 @@ const styles = StyleSheet.create({
   },
   // Highlight the comment being replied to while its copy is pinned above the chin.
   commentRowReplying: {
-    backgroundColor: 'rgba(255, 51, 104, 0.06)',
+    backgroundColor: primaryAlpha(0.06),
     marginHorizontal: -OVERLAY_HORIZONTAL_PADDING,
     paddingHorizontal: OVERLAY_HORIZONTAL_PADDING,
   },
@@ -1681,7 +1681,7 @@ const styles = StyleSheet.create({
   // treatment, tunable later (owner tunes the highlight like the cutout). The bleed-to-edge
   // matches commentRowReplying so the flash spans the full row width.
   commentRowAnchorHighlight: {
-    backgroundColor: 'rgba(255, 51, 104, 0.12)',
+    backgroundColor: primaryAlpha(0.12),
     marginHorizontal: -OVERLAY_HORIZONTAL_PADDING,
     paddingHorizontal: OVERLAY_HORIZONTAL_PADDING,
   },

@@ -143,6 +143,17 @@ export function readSpendCapUsd(
   return Number.isFinite(parsed) && parsed >= 0 ? parsed : fallback;
 }
 
+/**
+ * Per-draw metering hook (F350). See `drawWithOutcome` for the contract:
+ * `onDrawConsumed` fires exactly once per ADMITTED draw — success or throw,
+ * never on a denial — and is where the api_usage_ledger row and the campaign
+ * envelope debit belong, so neither has to re-derive "did a draw happen"
+ * from a response it can only see on the happy path.
+ */
+export interface DrawOptions {
+  onDrawConsumed?: () => void;
+}
+
 @Injectable()
 export class GovernanceService implements OnModuleInit {
   readonly pools: PoolRegistry;
@@ -685,8 +696,14 @@ export class GovernanceService implements OnModuleInit {
     poolName: string,
     workClass: string,
     act: () => Promise<T>,
+    options?: DrawOptions,
   ): Promise<T | null> {
-    const outcome = await this.drawWithOutcome(poolName, workClass, act);
+    const outcome = await this.drawWithOutcome(
+      poolName,
+      workClass,
+      act,
+      options,
+    );
     return outcome.admitted ? outcome.value : null;
   }
 
@@ -710,19 +727,38 @@ export class GovernanceService implements OnModuleInit {
    *     api_usage_ledger (adapter recordDraw) and by campaign envelopes,
    *     both of which hang off a non-null response at the call site.
    *
-   * Every admitted draw that ANSWERS is both. A transport error is admitted
-   * and not answered: the pool debits, the ledger and the campaign envelope
-   * do not — so cost-reconcile cannot see that draw at all. That gap is
-   * REAL and is deliberately left standing here: closing it changes what is
-   * charged to which envelope, which is a money-policy question (F350/F354,
-   * escalated). What is NOT allowed is a comment claiming a debit its own
-   * code does not make; every meter below states which of the two words it
-   * counts.
+   * ── THE GAP IS CLOSED (F350, 2026-08-03). ─────────────────────────────
+   * D29a made the three meters STATE which word they counted; they still
+   * disagreed on one path. A transport error is admitted and not answered,
+   * so the pool debited while the ledger and the campaign envelope saw
+   * nothing — cost-reconcile could not see that draw AT ALL, which is the
+   * "summed the wrong column" class one level down.
+   *
+   * A vendor draw is ONE event, and who is charged is a property of the
+   * draw, not of the caller that happened to notice it. This method is the
+   * only place that knows whether a reservation was admitted, so it is the
+   * only place allowed to say a draw happened: `onDrawConsumed` fires
+   * EXACTLY ONCE per ADMITTED draw — on the success path and on the throw
+   * path, never on a denial — and the ledger write and the campaign meter
+   * hang off it instead of each re-deriving the fact from a response they
+   * can see. Under-metering is now unrepresentable: a caller cannot forget
+   * the error path, because it is not the caller's path to remember.
+   *
+   * ACCEPTED COST (the red team's own note): a request that genuinely never
+   * left this process — a connect-refused — is now metered as a draw. That
+   * is OVER-metering in the conservative direction the pool already chose
+   * deliberately, and it is the correct direction for money: an invisible
+   * spend is far worse than a slightly pessimistic one.
+   *
+   * `onDrawConsumed` MUST NOT throw and MUST NOT be awaited-on for
+   * correctness — it is fire-and-forget metering. A throw from it is
+   * swallowed and logged, because a meter must never fail the act it meters.
    */
   async drawWithOutcome<T>(
     poolName: string,
     workClass: string,
     act: () => Promise<T>,
+    options?: DrawOptions,
   ): Promise<
     { admitted: true; value: T } | { admitted: false; denial: PoolDenial }
   > {
@@ -740,14 +776,37 @@ export class GovernanceService implements OnModuleInit {
       // Synchronous durable increment for month/grant pools (§14.5 —
       // correctness first; they are low-rate money draws).
       await this.pools.reconcile(reservation.reservationId, 1);
+      this.announceDrawConsumed(poolName, workClass, options);
       return { admitted: true, value: result };
     } catch (error) {
-      // ADMITTED, not answered. The pool debits 1 conservatively (the request
-      // likely reached the vendor). The ledger and the campaign envelope,
-      // which count ANSWERED draws, will not see this one — see the two-words
-      // note above; do not describe this as a debit they made.
+      // ADMITTED. The pool debits 1 conservatively (the request likely
+      // reached the vendor) — and so, now, do the ledger and the campaign
+      // envelope, through the same single announcement the success path
+      // uses. All three meters count the same event on both paths.
       await this.pools.reconcile(reservation.reservationId, 1);
+      this.announceDrawConsumed(poolName, workClass, options);
       throw error;
+    }
+  }
+
+  /** One admitted draw, announced once. Never throws: a meter that can fail
+   *  the act it meters is worse than no meter. */
+  private announceDrawConsumed(
+    poolName: string,
+    workClass: string,
+    options?: DrawOptions,
+  ): void {
+    if (!options?.onDrawConsumed) return;
+    try {
+      options.onDrawConsumed();
+    } catch (error) {
+      this.logger.warn('Draw meter threw (draw itself is unaffected)', {
+        poolName,
+        workClass,
+        error: {
+          message: error instanceof Error ? error.message : String(error),
+        },
+      });
     }
   }
 

@@ -202,14 +202,21 @@ describe('TomtomChainProbeAdapter', () => {
 
   // The county-threading test DIED with the county axis (docket #4).
 
-  it('qualifies the forward-geocode query by name + subdivision (county died with docket #4; anchor containment disambiguates twins)', async () => {
+  it('the forward-geocode query is EXACTLY "name, subdivisionCode" — the county qualifier died with docket #4 and must not come back', async () => {
+    // F372(a): this spec used to assert the SAME string twice while its
+    // comments claimed the two rungs differed by a county qualifier, and it
+    // set up `countrySecondarySubdivision` without ever discriminating on it
+    // — so re-introducing the county axis would have passed. The fixture now
+    // carries a county name that appears NOWHERE else ('Gotham County'), and
+    // the assertions are the actual claim: candidates are disambiguated by
+    // ANCHOR CONTAINMENT, not by name qualifiers, so no rung qualifies.
     const { adapter, calls } = buildAdapter({
       reverseAddresses: [
         {
           ...UWS_REVERSE_ENTRY,
           address: {
             ...UWS_REVERSE_ENTRY.address,
-            countrySecondarySubdivision: 'New York',
+            countrySecondarySubdivision: 'Gotham County',
           },
         },
       ],
@@ -223,12 +230,22 @@ describe('TomtomChainProbeAdapter', () => {
         forward.find((c) => c.params.entityTypeSet === entityTypeSet)?.url ??
           '',
       );
-    // Municipality (below the county rung) carries the county qualifier…
+    // Every rung: "<name>, <subdivisionCode>" and nothing else.
     expect(urlFor('Municipality').endsWith('/New York, NY.json')).toBe(true);
-    // …while the state rung stays unqualified (no county axis there).
     expect(urlFor('CountrySubdivision').endsWith('/New York, NY.json')).toBe(
       true,
     );
+    // The county is a RUNG OF ITS OWN (CountrySecondarySubdivision), so it
+    // appears as that rung's own name — and NOWHERE else. It is never a
+    // qualifier appended to another rung's query, which is the distinction
+    // the old comments claimed and the old assertions could not see.
+    expect(
+      urlFor('CountrySecondarySubdivision').endsWith('/Gotham County, NY.json'),
+    ).toBe(true);
+    expect(forward.length).toBeGreaterThan(1);
+    expect(
+      forward.filter((c) => decodeURIComponent(c.url).includes('Gotham')),
+    ).toHaveLength(1);
   });
 
   it('a well-formed 200 with NO addresses is OBSERVED-EMPTY — the one negative that may be remembered', async () => {

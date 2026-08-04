@@ -21,6 +21,23 @@ export const colors = {
   secondaryAccent: '#5566ff',
 };
 
+/**
+ * THE BRAND ACCENT, ONCE (F881). `colors.primary` is the hex; the sites that need
+ * it at partial opacity used to hand-paste `rgba(255, 51, 104, α)` — a re-encoding
+ * of the same color that no palette change can reach. `primaryRgb` and
+ * `primaryAlpha` derive both forms from `colors.primary`, so the palette JSON stays
+ * the single source. Never write the literal again; import from here.
+ */
+const parseHexRgb = (hex: string): { r: number; g: number; b: number } => {
+  const value = parseInt(hex.replace('#', ''), 16);
+  return { r: (value >> 16) & 255, g: (value >> 8) & 255, b: value & 255 };
+};
+
+export const primaryRgb = parseHexRgb(colors.primary);
+
+export const primaryAlpha = (alpha: number): string =>
+  `rgba(${primaryRgb.r}, ${primaryRgb.g}, ${primaryRgb.b}, ${alpha})`;
+
 export const spacing = {
   xs: 4,
   sm: 8,

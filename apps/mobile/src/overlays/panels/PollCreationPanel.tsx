@@ -11,7 +11,7 @@ import {
   type Poll,
 } from '../../services/polls';
 import { useAppOverlayRouteController } from '../useAppOverlayRouteController';
-import { colors as themeColors } from '../../constants/theme';
+import { colors as themeColors, primaryAlpha } from '../../constants/theme';
 import { FONT_SIZES, LINE_HEIGHTS } from '../../constants/typography';
 import {
   OVERLAY_HORIZONTAL_PADDING,
@@ -521,7 +521,7 @@ const styles = StyleSheet.create({
   },
   windowChipActive: {
     borderColor: ACCENT,
-    backgroundColor: 'rgba(255, 51, 104, 0.08)',
+    backgroundColor: primaryAlpha(0.08),
   },
   windowChipText: {
     color: themeColors.textBody,
