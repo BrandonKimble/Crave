@@ -3,6 +3,7 @@ import { EntityType, Prisma } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { descendantPlaceIds } from '../places/place-dag-read';
 import { LoggerService } from '../../shared';
+import { localeLookupChain } from '../../shared/locale';
 import { EmbeddingService } from '../external-integrations/llm/embedding.service';
 
 interface EntitySearchRow {
@@ -1156,12 +1157,33 @@ export class EntityTextSearchService {
     // FOUR INDEXED ARMS, unioned (never OR'd — an OR forces a seq scan of
     // the active catalogue per search):
     //   1. identity_key = folded candidate      (N1 name fold symmetry)
-    //   2. LOWER(name)  = candidate             (legacy arm, kept)
-    //   3. entity_alias.form_folded             (N1 alias fold symmetry)
-    //   4. crave_text_array_lower(aliases) GIN  (legacy array arm, kept)
+    //   2. LOWER(name)  = candidate             (exact typed name)
+    //   3. entity_alias.form_folded, locale-chained (N1 alias fold symmetry)
+    //   4. entity_labels.form, locale-chained   (labels double as surfaces)
+    // The legacy `crave_text_array_lower(aliases)` GIN arm was REMOVED here
+    // (i18n red team, executed): it was the untyped, UNLOCALED shadow of
+    // entity_alias — it re-grounded seeded es forms ('americana') for English
+    // requests, the F2 class one arm over. entity_alias is a proven complete
+    // superset of that array (0 of 19,297 lowered array forms absent from it,
+    // measured), so dropping the arm loses no reachability and collapses the
+    // two alias surfaces into one, locale-filtered surface.
     // identity_key IS canonicalFold(name) for every type (identityInsertData);
     // identity_key_sorted is the coarse lemma/dedupe key and is deliberately
     // NOT probed here — grounding is an EQUALITY claim, not a dedupe probe.
+    // LOCALE MATCHING — one authority, one primitive. THE LOCALE IS
+    // `analysis.requestLocale`, NOT `options.requestLocale`: the interpreter
+    // (the production caller) passes only `analysis`, so reading the separate
+    // option left `requestBaseLang=''` and the whole tagged-alias + labels
+    // path DEAD in prod — 'asiatica'/es grounded nothing (i18n red team,
+    // executed). The analyzer already resolved the request locale; it is the
+    // single source, and `localeLookupChain` turns it into the RFC-4647
+    // ordered match set both this SQL and the display path share (so a row
+    // can never ground here yet render its English label). 'und' (universal)
+    // is always the chain's tail; a null-locale request => ['und'] only, so
+    // tagged rows are excluded — the conservative side F2 established.
+    const localeChain = localeLookupChain(analysis.requestLocale);
+    const rawCandidates = candidates; // folded candidates match LOWER(form) for single-word labels
+    const aliasLocaleFilter = Prisma.sql`AND LOWER(ea.locale) = ANY(${localeChain}::text[])`;
     const matchedFormsSelect = Prisma.sql`
              LOWER(e.name) AS "normName",
              e.identity_key AS "foldedName",
@@ -1170,6 +1192,7 @@ export class EntityTextSearchService {
                SELECT ea.form_folded FROM entity_alias ea
                WHERE ea.entity_id = e.entity_id
                  AND ea.status = 'active'
+                 ${aliasLocaleFilter}
                  AND ea.form_folded = ANY(${candidates}::text[])
              ) AS "foldedAliases"`;
     const rows = await this.prisma.$queryRaw<
@@ -1208,6 +1231,7 @@ export class EntityTextSearchService {
           SELECT 1 FROM entity_alias ea
           WHERE ea.entity_id = e.entity_id
             AND ea.status = 'active'
+            ${aliasLocaleFilter}
             AND ea.form_folded = ANY(${candidates}::text[])
         )
         ${territoryFilter}
@@ -1217,7 +1241,19 @@ export class EntityTextSearchService {
       FROM core_entities e
       WHERE e.status = 'active'::entity_status
         AND e.type = ANY(${typeArray})
-        AND crave_text_array_lower(e.aliases) && ${candidates}::text[]
+        -- G3 (launch-gate run 1): the LABELS match arm — 'labels double
+        -- as match surfaces' from the plan, through the SAME locale chain as
+        -- aliases. Buys the tail attributes ('para llevar', 'terraza') whose
+        -- only localized form is the swept/seeded label. When the chain is
+        -- ['und'] (no request locale) no locale-tagged label matches, so the
+        -- arm is naturally inert — no separate NULL gate needed.
+        AND EXISTS (
+          SELECT 1 FROM entity_labels el
+          WHERE el.entity_id = e.entity_id
+            AND el.status = 'active'
+            AND LOWER(el.locale) = ANY(${localeChain}::text[])
+            AND LOWER(el.form) = ANY(${rawCandidates}::text[])
+        )
         ${territoryFilter}
     `);
 

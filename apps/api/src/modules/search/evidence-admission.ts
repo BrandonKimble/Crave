@@ -4,6 +4,7 @@ import {
   LINKER_TIER_FLOORS,
   type LinkerTierFloors,
 } from './linker-calibration.generated';
+import { isDeployedEnv, resolveAppEnv } from '../../shared/config/app-env';
 
 /**
  * ONE EVIDENCE ENGINE, PER-CONSUMER FLOORS (spec §1.2, step 4).
@@ -158,6 +159,56 @@ export const DENSE_ADMISSION_PLACEHOLDER_FLOORS = {
 } as const;
 
 /**
+ * THE DENSE FLOORS IN EFFECT — resolved ONCE, at module load, never per call.
+ *
+ * The gold-corpus calibration sweep varies these via DENSE_SWEEP_* env vars.
+ * That override is a DEV/HARNESS affordance and must never move a floor in a
+ * deployed environment: reading `process.env` inside `denseAdmits` (as this
+ * did) meant a stray Railway variable silently shifted production admission
+ * with no log line — the exact class the app-env helper exists to close (red
+ * team 2026-08-04, executed: DENSE_SWEEP_COSINE=0.99 dropped real prod
+ * groundings). So the overrides apply ONLY when `!isDeployedEnv`, are read
+ * once here, and announce themselves — a calibration run is loud, prod is
+ * pinned to the placeholders until the sweep replaces them wholesale.
+ */
+type DenseFloors = {
+  cosine: number;
+  margin: number;
+  rrfRankMax: number;
+  typeMismatchMargin: number;
+};
+function resolveDenseFloors(): DenseFloors {
+  if (isDeployedEnv(resolveAppEnv())) {
+    return DENSE_ADMISSION_PLACEHOLDER_FLOORS;
+  }
+  const num = (v: string | undefined) =>
+    v && Number.isFinite(Number(v)) ? Number(v) : undefined;
+  const overrides = {
+    cosine: num(process.env.DENSE_SWEEP_COSINE),
+    rrfRankMax: num(process.env.DENSE_SWEEP_RANK),
+    margin: num(process.env.DENSE_SWEEP_MARGIN),
+  };
+  const active = Object.entries(overrides).filter(([, v]) => v !== undefined);
+  if (active.length) {
+    console.warn(
+      `[dense-floors] SWEEP OVERRIDE active (dev only): ${active
+        .map(([k, v]) => `${k}=${v}`)
+        .join(', ')}`,
+    );
+  }
+  return {
+    ...DENSE_ADMISSION_PLACEHOLDER_FLOORS,
+    ...(overrides.cosine !== undefined ? { cosine: overrides.cosine } : {}),
+    ...(overrides.rrfRankMax !== undefined
+      ? { rrfRankMax: overrides.rrfRankMax }
+      : {}),
+    ...(overrides.margin !== undefined ? { margin: overrides.margin } : {}),
+  };
+}
+
+const DENSE_ADMISSION_FLOORS = resolveDenseFloors();
+
+/**
  * R5-1: FUSION IS BY RANK, NEVER BY SCORE. RRF (k=60, the parameter-free
  * 2025-26 default, already the constant retrieveCandidates fuses with) is
  * what makes "dense agrees with sparse" expressible without comparing a
@@ -228,7 +279,7 @@ export function denseTypeAdmits(
  *  its own floors and its own (rank-based) dominance test. */
 export function denseAdmits(input: DenseDecisionInput): boolean {
   if (!denseTypeAdmits(input)) return false;
-  const floors = DENSE_ADMISSION_PLACEHOLDER_FLOORS;
+  const floors = DENSE_ADMISSION_FLOORS;
   if (input.topCosine < floors.cosine) return false;
   // ALL THREE conditions, deliberately: the cosine floor says
   // "semantically close enough to consider"; the RRF rank says "the fused

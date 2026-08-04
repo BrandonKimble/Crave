@@ -23,51 +23,105 @@ import { foodNameVariants } from './food-lemma';
  *   punctuation/possessives ("Phil's" == "Phils"), collapse whitespace.
  *   No token sort — restaurant word order is branding.
  */
-/** Accent translate table (final red team F3; Vietnamese precomposed
- *  tone marks added in the i18n build — WS1 caught that 'pho hoai'
- *  could not reach 'Phở Hoài'): the fold's `[^a-z0-9]+`
- *  arm turned every accented char into a SPACE, so "crème brûlée" and
- *  "creme brulee" held different keys and the unique index + advisory
- *  lock were both blind to the twin. One explicit 1:1 map, mirrored
- *  byte-for-byte by the DB's crave_fold() function — do not use NFKD
- *  here, the SQL side can't, and the two MUST stay identical. */
-const FOLD_ACCENTS_FROM =
-  'àáâãäåāăąçćčèéêëēĕėęěìíîïĩīĭįñńňòóôõöøōŏőùúûüũūŭůűųýÿžźżšśşğłđřťßæœảạằắẳẵặầấẩẫậẻẽẹềếểễệỉịỏọồốổỗộơờớởỡợủụưừứửữựỳỷỹỵ';
-const FOLD_ACCENTS_TO =
-  'aaaaaaaaaccceeeeeeeeeiiiiiiiinnnooooooooouuuuuuuuuuyyzzzsssgldrtsaoaaaaaaaaaaaaeeeeeeeeiiooooooooooooouuuuuuuuyyyy';
-const FOLD_ACCENT_MAP: Record<string, string> = {};
-for (let i = 0; i < FOLD_ACCENTS_FROM.length; i += 1) {
-  FOLD_ACCENT_MAP[FOLD_ACCENTS_FROM[i]] = FOLD_ACCENTS_TO[i];
-}
+/** Non-decomposable Latin letters. NFKD gives EVERY accented letter a
+ *  canonical decomposition (e-acute -> e + combining acute), so the fold
+ *  needs no hand-maintained accent list — it strips the combining marks and
+ *  the base letter falls out for free, across Latin, Greek, Cyrillic and
+ *  Vietnamese alike. These few letters are the exception: they carry no
+ *  combining mark to strip and NFKD leaves them whole, so they get an
+ *  explicit rule. Unlike the accent list this REPLACED, the set is finite and
+ *  CLOSED — there is no stream of "one more non-decomposable Latin letter"
+ *  the way there is an endless stream of new accented forms. */
+const NON_DECOMPOSABLE: Record<string, string> = {
+  ß: 'ss', // ß
+  æ: 'ae', // æ
+  œ: 'oe', // œ
+  ø: 'o', // ø
+  đ: 'd', // đ
+  ł: 'l', // ł
+  þ: 'th', // þ
+  ð: 'd', // ð
+  ħ: 'h', // ħ
+  ŧ: 't', // ŧ
+  ı: 'i', // ı (dotless i)
+  ĸ: 'k', // ĸ
+  ŋ: 'n', // ŋ
+};
+const NON_DECOMPOSABLE_RE = /[ßæœøđłþðħŧıĸŋ]/g;
 
-/** THE canonical fold — THE ONLY IMPLEMENTATION (ideal-shape pass,
- *  2026-08-02). It used to be mirrored byte-for-byte by a DB function
- *  (crave_fold) feeding a GENERATED column, but Unicode character
- *  classes are PLATFORM-DEPENDENT in Postgres ([:alnum:] folds
- *  Devanagari differently on glibc PG17 than on mac PG18 — measured),
- *  so a SQL mirror can never be trusted across environments. identity_key
- *  is now APP-WRITTEN from this function (like identity_key_sorted);
- *  the DB only stores and uniquely indexes it.
- *  LANGUAGE-AGNOSTIC: lower → strip the Turkish-İ combining dot →
- *  Latin accents fold (é==e) → apostrophes STRIP, straight AND curly
- *  (Phil's == Phils == Phil’s) → every non-letter/digit run OF ANY
- *  SCRIPT becomes ONE SPACE (tex-mex == tex mex; Пельменная and
- *  食べ放題 keep their characters and are real, distinct identities) →
- *  trim. Only genuinely letterless names (emoji-only, '!!!') fold to
- *  '' and fall to the nfc: degenerate fallback below. */
+/** The Combining Diacritical Marks blocks — Latin/Greek/Cyrillic/Vietnamese
+ *  accents and the Turkish-İ dot (U+0307). DELIBERATELY EXCLUDES the CJK
+ *  voicing marks U+3099/U+309A: those live in a separate block and are
+ *  phonemic, not decorative — a blanket \p{M} strip turns katakana pa into
+ *  ha and ga into ka, a wrong merge. Naming the diacritic blocks instead of
+ *  \p{M} folds every accent while leaving CJK voicing intact (verified
+ *  against the live corpus in the i18n red team). */
+const COMBINING_DIACRITICS =
+  // Matching combining marks in the class is the WHOLE point; the rule guards
+  // against ACCIDENTAL ones, these are the deliberate, escaped accent blocks.
+  // eslint-disable-next-line no-misleading-character-class
+  /[\u0300-\u036F\u1AB0-\u1AFF\u1DC0-\u1DFF\u20D0-\u20FF\uFE20-\uFE2F]/gu;
+
+/** THE canonical fold — THE ONLY IMPLEMENTATION.
+ *
+ *  identity_key is APP-WRITTEN from this function; the DB only stores and
+ *  indexes it. A DB mirror (crave_fold) was tried and abandoned — Postgres
+ *  Unicode character classes are PLATFORM-DEPENDENT ([:alnum:] folds
+ *  Devanagari differently on glibc PG17 than on mac PG18, measured) — so
+ *  there is NO SQL side to stay byte-identical with, and the fold is free to
+ *  use the correct Unicode primitive (this comment previously forbade NFKD
+ *  for a mirror that no longer exists).
+ *
+ *  LANGUAGE-AGNOSTIC, by Unicode decomposition rather than a hand list:
+ *    NFKD (decompose accents to base+mark; fold fullwidth/compat forms so
+ *      fullwidth ramen == ramen, roman-numeral VIII == viii)
+ *    -> strip the combining-diacritic blocks (e-acute==e, n-tilde==n across
+ *      every script; Turkish İ's dot; but NOT CJK voicing — pa stays pa)
+ *    -> NFC recompose (restore any CJK letter whose voicing mark survived)
+ *    -> lower
+ *    -> the closed non-decomposable table (ß==ss, ø==o …)
+ *    -> apostrophes STRIP, straight and curly (Phil's == Phils)
+ *    -> every non-letter/digit run OF ANY SCRIPT becomes ONE SPACE (tex-mex
+ *      == tex mex; Cyrillic and CJK names keep their letters, distinct ids)
+ *    -> trim.
+ *  Only genuinely letterless names (emoji-only, '!!!') fold to '' and fall to
+ *  the NULL "no identity" of the partial index and every probe.
+ *
+ *  This fixes two twin CLASSES the hand list could not: (1) DECOMPOSED (NFD)
+ *  input — iOS pasteboards and the macOS filesystem deliver NFD, and the old
+ *  map only matched precomposed codepoints, so a name typed one way twinned
+ *  itself typed the other; (2) every accented letter absent from the finite
+ *  hand list (pinyin carons, Czech d-caron, …) silently survived unfolded. */
 export function canonicalFold(name: string): string {
   return (
     name
+      .normalize('NFKD')
+      // Invisible modifiers that carry NO identity: format-controls (\p{Cf}:
+      // ZWSP, ZWJ, ZWNJ, BOM …), the soft hyphen, and the VARIATION SELECTORS
+      // (U+FE00–FE0F and the astral supplement — category Mn, so the
+      // mark-preserving step below would otherwise keep them; a trailing emoji
+      // VS16 must not change a name's identity). DELETE them (not space): the
+      // old fold's punctuation arm turned a stray ZWSP inside "ta<ZWSP>co" into
+      // a space, minting "ta co" as a twin of "taco" that no lock or index
+      // could see (LLM extraction and pasteboards inject these).
+      // eslint-disable-next-line no-misleading-character-class -- deliberate
+      .replace(/[\p{Cf}\u00AD\uFE00-\uFE0F\u{E0100}-\u{E01EF}]/gu, '')
+      // Strip Latin/Greek/Cyrillic/Vietnamese ACCENTS only (é==e). NOT CJK
+      // voicing, NOT Arabic harakat, NOT Thai/Devanagari vowel signs — those
+      // live outside these blocks and are handled by the mark-preserving
+      // separator step below.
+      .replace(COMBINING_DIACRITICS, '')
+      .normalize('NFC')
       .toLowerCase()
-      // Turkish dotted capital İ: JS toLowerCase yields "i" + combining
-      // dot U+0307, which the punctuation arm turned into a SPACE — the
-      // lock key diverged from SQL lower('İ')='i' and twin restaurants
-      // minted live (final-final red team HIGH-2). Postgres produces no
-      // combining mark here; strip it so the mirrors stay byte-identical.
-      .replace(/\u0307/g, '')
-      .replace(/[\u0080-\uffff]/g, (ch) => FOLD_ACCENT_MAP[ch] ?? ch)
+      .replace(NON_DECOMPOSABLE_RE, (ch) => NON_DECOMPOSABLE[ch] ?? ch)
       .replace(/['’‘ʼ]/g, '')
-      .replace(/[^\p{L}\p{N}]+/gu, ' ')
+      // Only TRUE separators/punctuation become one space. \p{M} is PRESERVED
+      // so a Thai/Devanagari/Arabic vowel sign stays attached to its base
+      // letter — the old `[^\p{L}\p{N}]+` shredded "ผัดไทย" into "ผ ดไทย" and
+      // "पनीर" into "पन र", nonsense keys that would collide at scale. A
+      // non-Latin mark that reaches here is semantic; keeping it yields a
+      // distinct, correct identity (the conservative, non-merging side).
+      .replace(/[^\p{L}\p{N}\p{M}]+/gu, ' ')
       .trim()
   );
 }

@@ -148,6 +148,57 @@ export function lookupSupported(
 }
 
 /**
+ * THE LOCALE MATCH CHAIN — RFC 4647 Lookup expressed as the ORDERED list of
+ * tags a request should match a stored row against, most-specific first,
+ * always ending in the universal `'und'`. It is the same truncation +
+ * macro-region walk `lookupSupported` runs, but instead of stopping at the
+ * first supported tag it EMITS every step, so a data store can match with a
+ * single `row.locale = ANY(chain)` (or `IN`) test.
+ *
+ * This exists so SQL grounding and TS display share ONE locale semantics.
+ * The grounding path used to filter with `split_part(locale,'-',1) = base`
+ * (symmetric first-subtag equality), while display used real Lookup — they
+ * DISAGREE the moment a region or script subtag carries meaning: `pt-BR`
+ * would ground a `pt-PT` row (both truncate to `pt`) but render its English
+ * label, and `zh-Hant` would ground a `zh-Hans` alias. Routing both through
+ * this chain makes them identical by construction:
+ *   'es-MX' -> ['es-mx','es-419','es','und']   (macro-region before base)
+ *   'es'    -> ['es','und']
+ *   'zh-Hant' -> ['zh-hant','zh','und']         (a 'zh-hans' row is NOT in it)
+ *   null/'*' -> ['und']                          (only universal rows match)
+ * Lowercased throughout, because stored locale tags are matched
+ * case-insensitively and 'und' is the one sentinel both sides agree on.
+ */
+export function localeLookupChain(range: string | null | undefined): string[] {
+  const UNIVERSAL = 'und';
+  const chain: string[] = [];
+  const push = (tag: string) => {
+    const lower = tag.toLowerCase();
+    if (lower && !chain.includes(lower)) {
+      chain.push(lower);
+    }
+  };
+  if (range && range !== '*' && range.toLowerCase() !== UNIVERSAL) {
+    const canonical = canonicalizeLocaleTag(range);
+    push(canonical);
+    for (const fallback of MACRO_REGION_FALLBACKS[canonical] ?? []) {
+      push(fallback);
+    }
+    // Progressive truncation, singleton-dropping, exactly as lookupSupported.
+    const subtags = canonical.split('-');
+    while (subtags.length > 1) {
+      subtags.pop();
+      if (subtags[subtags.length - 1]?.length === 1) {
+        subtags.pop();
+      }
+      push(subtags.join('-'));
+    }
+  }
+  push(UNIVERSAL);
+  return chain;
+}
+
+/**
  * THE NEGOTIATION. Priority, highest first:
  *   1. the user's explicit profile locale (D4's override half),
  *   2. the request's Accept-Language priority list (D4's per-request half),

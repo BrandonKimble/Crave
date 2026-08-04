@@ -1,5 +1,6 @@
 import {
   canonicalizeLocaleTag,
+  localeLookupChain,
   lookupSupported,
   negotiateLocale,
   parseAcceptLanguage,
@@ -58,5 +59,38 @@ describe('Accept-Language negotiation (M1)', () => {
 
   it('honours the wildcard by serving the first supported locale', () => {
     expect(negotiateLocale({ acceptLanguage: '*' })).toBe('en');
+  });
+});
+
+describe('localeLookupChain — the RFC-4647 match set both SQL and TS share', () => {
+  it('walks macro-region then base, always ending in und', () => {
+    expect(localeLookupChain('es-MX')).toEqual([
+      'es-mx',
+      'es-419',
+      'es',
+      'und',
+    ]);
+    expect(localeLookupChain('es')).toEqual(['es', 'und']);
+  });
+
+  it('keeps script subtags distinct (a zh-Hans row is NOT in a zh-Hant chain)', () => {
+    const chain = localeLookupChain('zh-Hant');
+    expect(chain).toEqual(['zh-hant', 'zh', 'und']);
+    expect(chain).not.toContain('zh-hans');
+  });
+
+  it('a null / wildcard / und request matches only universal rows', () => {
+    expect(localeLookupChain(null)).toEqual(['und']);
+    expect(localeLookupChain('*')).toEqual(['und']);
+    expect(localeLookupChain('und')).toEqual(['und']);
+  });
+
+  it('canonicalizes casing so stored tags match case-insensitively', () => {
+    expect(localeLookupChain('ES-mx')).toEqual([
+      'es-mx',
+      'es-419',
+      'es',
+      'und',
+    ]);
   });
 });
