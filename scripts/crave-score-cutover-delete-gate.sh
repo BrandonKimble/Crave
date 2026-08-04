@@ -1,6 +1,9 @@
 #!/usr/bin/env bash
 # @script-class: gate
-# @run-by: NOT YET WIRED — see the 2026-08-03 blocker note below.
+# @run-by: .github/workflows/ci.yml (job no-bypass-search-runtime, step
+#     'Static guard: crave-score cutover delete gate'). WIRED 2026-08-03; the
+#     blocker recorded below was settled in the same change (see its closing
+#     note) — the header used to still say NOT YET WIRED, corrected 2026-08-04.
 #
 # WHAT THIS GATE IS FOR: the Crave Score cutover deleted an older public-scoring
 # vocabulary (contextual scores, display-rank scores, PERCENT_RANK, raw quality
@@ -31,7 +34,12 @@
 # WHAT SURVIVES: the negative extermination scans. Those are the durable class
 # and they are the reason this file still exists.
 #
-# BLOCKER (2026-08-03) — WHY THIS IS STILL NOT IN CI:
+# BLOCKER (2026-08-03) — SETTLED. Kept as the record of what wiring cost.
+#   RESOLUTION (verified 2026-08-04): the coercion was dropped —
+#   search-query.executor.ts:531 now reads
+#   `craveScore: this.toOptionalNumber(row.restaurant_crave_score)` with no
+#   `?? 0`, so an unscored restaurant stays null and renders neutral gray. The
+#   scan has zero live hits and the gate is green in CI. Original text:
 #   the no-fake-score scan has ONE live hit, and it looks like a real defect:
 #     apps/api/src/modules/search/search-query.executor.ts:527
 #       craveScore: this.toOptionalNumber(row.restaurant_crave_score) ?? 0,

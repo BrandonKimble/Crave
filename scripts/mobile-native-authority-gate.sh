@@ -1,6 +1,9 @@
 #!/usr/bin/env bash
 # @script-class: gate
-# @run-by: .github/workflows/ci.yml (job mobile-native-authority).
+# @run-by: .github/workflows/ci.yml (job **native-tests**, step 'Static guard:
+#     apps/mobile/ios is authoritative (anti-prebuild)'). There is no job named
+#     mobile-native-authority — the header claimed one until 2026-08-04; the
+#     guard lives in the macOS job because it needs `plutil`.
 #
 # D44/F1103. apps/mobile/ios/ is COMMITTED and AUTHORITATIVE (bare workflow);
 # apps/mobile/app.json's `expo.ios` block is fossil that only `expo prebuild`

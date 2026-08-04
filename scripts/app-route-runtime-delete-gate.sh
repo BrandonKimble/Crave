@@ -332,7 +332,10 @@ for check in "${CONTENT_CHECKS[@]}"; do
   description="${rest#*::}"
 
   set +e
-  matches="$(rg -n --pcre2 "$pattern" "$TARGET_PATH" 2>&1)"
+  # Specs are excluded: invariant-proof tests QUOTE the exterminated patterns
+  # (RED recipes, mutation probes) — this collision bit twice (bookmarks spec
+  # 08-03; route-entry-origin-camera.spec 08-04/F1664) before the exclusion.
+  matches="$(rg -n --pcre2 --glob '!**/*.spec.ts' --glob '!**/*.spec.tsx' "$pattern" "$TARGET_PATH" 2>&1)"
   status=$?
   set -e
 
