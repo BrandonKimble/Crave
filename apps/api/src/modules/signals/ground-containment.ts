@@ -188,3 +188,40 @@ export function freshSignalAttributionSql(
                 OR (${geoCoversPlaceSql(placeAlias, geoAlias)}))
         END`;
 }
+
+/**
+ * TIE-BREAK FOR "SMALLEST GROUND WINS": on EQUAL area, the FINER vendor level
+ * wins — and only then the id.
+ *
+ * WHY (red team 2026-08-04, measured live). 27 distinct vendor entities carry
+ * byte-identical polygons across 55 places — real-world coextensive pairs
+ * like consolidated city-counties (Philadelphia the Municipality and
+ * Philadelphia the CountrySecondarySubdivision share one shape, and TomTom
+ * models both). "ORDER BY ST_Area ASC, place_id" broke those ties by UUID
+ * SORT: downtown-Philadelphia demand landed on whichever of the two rows had
+ * the lexically smaller id — the county, which no product surface keys (all
+ * 672 curated lists key Municipalities) and which has no DAG edge back, so
+ * lineage could not recover it. Same coin-flip in Chesapeake, Richmond,
+ * Columbus GA, Lexington-Fayette, and ~20 more metros.
+ *
+ * The finer level is the right winner because it is the row the PRODUCT
+ * speaks: coextensive means the acts belong to both, and when only one can
+ * hold the aggregate row it must be the one readers ask about. The id stays
+ * as the final arm strictly for determinism (two rows at one level and one
+ * shape would be a catalog defect, not a judgment call).
+ */
+export function levelSpecificitySql(placesAlias: string): Prisma.Sql {
+  if (!/^[a-z_][a-z0-9_]*$/i.test(placesAlias)) {
+    throw new Error(`Unsafe SQL alias: ${JSON.stringify(placesAlias)}`);
+  }
+  const alias = Prisma.raw(placesAlias);
+  return Prisma.sql`CASE ${alias}.provider_level_code
+    WHEN 'Neighbourhood' THEN 0
+    WHEN 'MunicipalitySubdivision' THEN 1
+    WHEN 'Municipality' THEN 2
+    WHEN 'CountrySecondarySubdivision' THEN 3
+    WHEN 'CountrySubdivision' THEN 4
+    WHEN 'Country' THEN 5
+    ELSE 6
+  END`;
+}

@@ -305,6 +305,71 @@ export const INVARIANTS: readonly Invariant[] = [
     ],
   },
 
+  {
+    id: 'spend.tomtom-vendor-has-one-door',
+    statement:
+      'The TomTom key and host are only spellable in TomtomChainProbeAdapter and configuration.ts; everything else consumes the port.',
+    incident:
+      'Two operator scripts read TOMTOM_API_KEY themselves and fetch()ed the vendor directly — ungoverned, unmetered (zero ledger rows, the photoMedia shape), money-ungated, and printing a 429 as "the vendor models nothing here".',
+    level: 'lint',
+    mechanism: 'eslint.config.mjs — TomTom vendor-surface selectors',
+    check: { command: `npx eslint ${SCRATCH}`, reads: 'the vendor boundary' },
+    mutations: [
+      {
+        file: SCRATCH,
+        content: 'export const k = process.env.TOMTOM_API_KEY;\n',
+      },
+      {
+        file: SCRATCH,
+        content:
+          'export const u = `https://api.tomtom.com/search/2/reverseGeocode/x.json`;\n',
+      },
+    ],
+  },
+  {
+    id: 'spend.tomtom-money-gate-inside-the-adapter',
+    statement:
+      'Every TomTom vendor call passes assertTomtomSpendOpen inside the adapter; a closed budget is a typed denied, and the vendor is never reached.',
+    incident:
+      'TomTom had NO money gate: per-minute pools alone permit ~$1,400/day of scarce draws indefinitely against a PREPAID balance no API can read.',
+    level: 'behaviour',
+    mechanism: 'tomtom-chain-probe.adapter + tomtom.monthlySpend perMonth pool',
+    check: {
+      command:
+        'npx jest src/modules/places/tomtom-chain-probe.adapter.spec.ts --silent',
+      reads: 'the closed-gate test, which asserts zero governed draws',
+    },
+    mutations: [
+      {
+        file: 'src/modules/places/tomtom-chain-probe.adapter.ts',
+        find: "    try {\n      await this.governance.assertTomtomSpendOpen();\n    } catch {\n      return { kind: 'denied' };\n    }\n\n    const outcome",
+        replace: '\n    const outcome',
+      },
+    ],
+  },
+  {
+    id: 'ledger.a-polygon-fault-is-not-a-vendor-miss',
+    statement:
+      "fetchPolygon classifies transport faults, malformed bodies and un-echoed ids as 'failed', never as the remembered 'miss'.",
+    incident:
+      'PolygonFetchResult had no fault arm, so three bad HTTP responses in three hourly ticks read as three vendor misses and PERMANENTLY retired the place from polygon promotion (refused_at) — P5 verbatim, on the scarce-draw money path.',
+    level: 'behaviour',
+    mechanism: 'PolygonFetchResult failed arm + promoteOne routing',
+    check: {
+      command:
+        'npx jest src/modules/places/tomtom-chain-probe.adapter.spec.ts --silent',
+      reads: 'the fault-classification tests against the real adapter',
+    },
+    mutations: [
+      {
+        file: 'src/modules/places/tomtom-chain-probe.adapter.ts',
+        find: "// recordAttempt, which was right by luck, not by type.\n      return { kind: 'failed', reason: describeTransportFault(error) };",
+        replace:
+          "// MUTATED: the pre-2026-08-04 conflation.\n      return { kind: 'miss' };",
+      },
+    ],
+  },
+
   // ── CONFIGURATION ────────────────────────────────────────────────────
   {
     id: 'config.app-env-has-one-reader',

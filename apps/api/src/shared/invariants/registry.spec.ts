@@ -86,6 +86,7 @@ describe('the invariant registry', () => {
       ['activation pointer has one owner', 'extraction-scope'],
       ['run-excluding delete on the event ledgers', 'extraction-scope'],
       ['A dynamic import is an import', 'gemini-sdk'],
+      ['TomTom vendor surface has one owner', 'tomtom-vendor-has-one-door'],
     ];
 
     // Each message in the config must be one we have mapped to an invariant.

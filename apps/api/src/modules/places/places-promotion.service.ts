@@ -380,19 +380,19 @@ export class PlacesPromotionService {
   }
 
   /**
-   * §24 Task 3 metering wrapper: every exit of the vendor flow with ANSWERED
-   * draws (promoted, answered miss, wrong-entity reject, no-rings) meters
-   * those draws against the item's campaign envelope — a real vendor draw
-   * must never escape the campaign budget just because the item didn't
-   * promote.
+   * §24 Task 3 metering wrapper: every exit of the vendor flow that consumed
+   * a vendor draw meters it against the item's campaign envelope — a real
+   * vendor draw must never escape the campaign budget just because the item
+   * didn't promote.
    *
-   * NOT the transport-error exit (D29a). That path is an ADMITTED draw the
-   * vendor never answered: the pool debits it, `draws.scarce` does not, and
-   * nothing here meters it. This docstring used to list "transport error"
-   * among the metered exits and the catch below used to claim the debit had
-   * been made — both were false of the code beside them. Whether expansion
-   * spend SHOULD be campaign-captured on the error path is F350/F354, with
-   * the owner; until then the accounting says what it does.
+   * INCLUDING THE TRANSPORT-ERROR EXIT (F350, 2026-08-03). `draws.scarce` is
+   * no longer incremented from the exit kinds this method can see; it is
+   * incremented by the governor's single per-ADMITTED-draw announcement,
+   * threaded down through `probe.fetchPolygon`. So the pool, the
+   * api_usage_ledger and this envelope now count the SAME event on the SAME
+   * paths. Previously an admitted draw the vendor never answered debited the
+   * pool and was invisible to both the ledger and this envelope — a spend
+   * cost-reconcile could not see at all.
    */
   private async promoteOne(
     item: PlaceGeometryPromotion,
@@ -543,12 +543,19 @@ export class PlacesPromotionService {
     // Step 2 — the scarce polygon draw.
     let polygon: PolygonFetchResult;
     try {
-      polygon = await this.probe.fetchPolygon(geometryId);
+      // F350: the campaign meter now hangs off the GOVERNOR's single
+      // per-admitted-draw announcement (passed down through the adapter),
+      // not off the returned kind. That is what makes the transport-error
+      // path — the one the envelope used to miss while the pool debited it —
+      // impossible to forget.
+      polygon = await this.probe.fetchPolygon(geometryId, () => {
+        draws.scarce += 1;
+      });
     } catch (error) {
-      // Transport/vendor error: the POOL debited this draw conservatively
-      // (governance.drawWithOutcome's catch); the ledger and this item's
-      // campaign envelope did NOT — an admitted draw the vendor never
-      // answered is invisible to cost-reconcile (D29a). The fault is
+      // Transport/vendor error: the draw WAS admitted, so the pool, the
+      // api_usage_ledger and this item's campaign envelope have all already
+      // counted it via the governor's announcement (F350) — nothing to meter
+      // here, and nothing invisible to cost-reconcile any more. The fault is
       // systemic, so record the attempt and end the pass.
       await this.recordAttempt(item.placeId, now);
       this.logger.warn('Promotion polygon fetch errored (pass ends)', {
@@ -560,13 +567,29 @@ export class PlacesPromotionService {
       });
       return 'stop';
     }
+    if (polygon.kind === 'failed') {
+      // WE failed to observe — a transport fault, a malformed 200, or an id
+      // the vendor did not echo. NEVER a strike toward retirement: before
+      // the union carried this arm, three such faults in three hourly ticks
+      // read as three vendor misses and PERMANENTLY retired the place
+      // (red team 2026-08-04 — P5 verbatim, on the scarce-draw money path).
+      // The draw was admitted, so pool/ledger/envelope already counted it
+      // via the governor's announcement; record the attempt and end the
+      // pass, since the fault is likelier systemic than row-specific.
+      await this.recordAttempt(item.placeId, now);
+      this.logger.warn('Promotion polygon fetch failed (pass ends)', {
+        placeId: item.placeId,
+        geometryId,
+        reason: polygon.reason,
+      });
+      return 'stop';
+    }
     if (polygon.kind === 'denied') {
       // §2: scarce denial = typed not-now — the item stays queued untouched
       // for next month's window; nothing behind it will admit either.
       return 'stop';
     }
     if (polygon.kind === 'miss') {
-      draws.scarce += 1;
       if (item.missAttempts + 1 >= MISS_ATTEMPTS_BEFORE_RETIRE) {
         // The vendor has answered "no polygon for this id" enough times to
         // be a FACT about its model, not a transient — retire the row
@@ -581,7 +604,6 @@ export class PlacesPromotionService {
       await this.recordMiss(item.placeId, now);
       return 'attempted';
     }
-    draws.scarce += 1;
 
     // WRONG-ENTITY GUARD — ANCHOR CONTAINMENT (one-ground charter, 2026-07-27).
     //

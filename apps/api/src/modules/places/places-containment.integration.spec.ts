@@ -379,12 +379,17 @@ describe('containment laws, proven against PostGIS', () => {
       `INSERT INTO signals (kind, subject_type, actor_id, occurred_at, place_id,
                             geo_min_lat, geo_min_lng, geo_max_lat, geo_max_lng)
        VALUES ('poll_created', 'none', gen_random_uuid(),
-             -- naive-UTC, the ledger convention (signals.service writes JS
-             -- Date via Prisma = UTC wall-clock). A bare now() is SESSION-tz
-             -- naive and made this test a time-of-day flake: after ~17:00
-             -- PDT the UTC day has rolled over, the stamp lands "yesterday",
-             -- and the fresh arm (occurred_at >= todayStart) rightly drops it.
-             (now() AT TIME ZONE 'utc'), $1::uuid,
+             -- Plain now(): occurred_at is timestamptz since the signals
+             -- rebuild (20260803000000), and now() IS an instant. The
+             -- previous form — (now() AT TIME ZONE 'utc') — was written for
+             -- the old NAIVE column; against timestamptz it strips the zone
+             -- and then re-interprets the naive result in the SESSION zone,
+             -- a double conversion that stamped the act +5h into the FUTURE
+             -- day from a Chicago session, so the day-scoped rebuild dropped
+             -- it and this suite was deterministically red ~10h of every
+             -- day. The conversion MOVED the hazard: the coercion that fixed
+             -- the naive column is itself the bug against the instant one.
+             now(), $1::uuid,
                80.5, 19.7, 80.5, 19.7)
        RETURNING signal_id`,
       metroId,

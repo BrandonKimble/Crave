@@ -110,6 +110,17 @@ const PLACES_SPEND_GATE: SpendGateCopy = {
     'Places spend budget exhausted (googlePlaces.monthlySpend) — typed not-now; enrichment stays queued until the month window rolls or the cap is raised',
 };
 
+const TOMTOM_SPEND_GATE: SpendGateCopy = {
+  poolName: 'tomtom.monthlySpend',
+  alertKind: 'tomtom_backstop',
+  titleNoun: 'TomTom',
+  budgetNoun: 'TomTom',
+  unconfirmedBody:
+    'The durable spend window failed to load, so month-to-date TomTom spend is unknown. Refusing vendor spend rather than admitting against a window that reads zero.',
+  exhaustedMessage:
+    'TomTom spend budget exhausted (tomtom.monthlySpend catastrophe backstop) — typed not-now; probes and polygon draws stay queued until the month window rolls or the cap is raised',
+};
+
 /** §24.4 item 4 / §24.6 K1: the work_class the nightly backstop derivation
  *  writes to spend_unit_costs (SpendAnalyticsService.refreshBackstop). Read
  *  here at boot only — see the gemini.monthlySpend registration comment. */
@@ -366,6 +377,34 @@ export class GovernanceService implements OnModuleInit {
       window: {
         kind: 'perMonth',
         limit: Math.round(placesCapUsd * 1_000_000),
+        denomination: 'billedMicros',
+      },
+      reservationTtlMs: 60_000,
+    });
+    // TOMTOM MONTHLY BACKSTOP (red team 2026-08-04). TomTom had per-minute
+    // pools ONLY: 300/min permits ~$1,400/day of scarce draws indefinitely,
+    // and the vendor is PREPAID with no balance API — so "the bill will warn
+    // us" is not even available as a bad plan. The 2026-07-27 removal of the
+    // old monthly ceiling was a legitimate owner choice (a $32 tag blocked
+    // the US backlog), but it was implemented as "delete the money concept"
+    // instead of "raise the money ceiling": Gemini and Places both kept a
+    // catastrophe dial the owner can turn, TomTom kept nothing.
+    //
+    // The default is a DERIVATION, not an invention (§16): July's measured
+    // volume was 23,384 scarce draws (pool_window_consumption) ≈ $76 at the
+    // vendor-verified rate, and the ratified catastrophe posture is
+    // BACKSTOP_MULTIPLE(3)× a measured month ≈ $230, rounded to one digit.
+    // The env var is the owner's dial, same shape as the other two vendors.
+    const tomtomCapUsd = readSpendCapUsd(
+      process.env.TOMTOM_MONTHLY_SPEND_CAP_USD,
+      250,
+    );
+    this.pools.register({
+      name: 'tomtom.monthlySpend',
+      credential: 'default',
+      window: {
+        kind: 'perMonth',
+        limit: Math.round(tomtomCapUsd * 1_000_000),
         denomination: 'billedMicros',
       },
       reservationTtlMs: 60_000,
@@ -689,6 +728,16 @@ export class GovernanceService implements OnModuleInit {
     await assertSpendOpen(
       { pools: this.pools, opsAlerts: this.opsAlerts },
       PLACES_SPEND_GATE,
+    );
+  }
+
+  /** TomTom money gate — every governed TomTom draw passes here (the
+   *  adapter calls it inside probe() and fetchPolygon(), so no call site
+   *  can forget it — the GatedGeminiClient property). */
+  async assertTomtomSpendOpen(): Promise<void> {
+    await assertSpendOpen(
+      { pools: this.pools, opsAlerts: this.opsAlerts },
+      TOMTOM_SPEND_GATE,
     );
   }
 

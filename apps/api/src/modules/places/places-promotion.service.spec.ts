@@ -72,6 +72,30 @@ const POLYGON_GEOJSON = {
   ],
 };
 
+/**
+ * A fetchPolygon test double that HONOURS THE DRAW CONTRACT (F350): the real
+ * adapter's draw is announced by the governor exactly once per ADMITTED draw,
+ * on the success path AND on the transport-error path. A mock that resolves
+ * without announcing models a vendor call that never cost anything, which is
+ * precisely the blindness the finding was about — so every double for an
+ * admitted draw goes through here. A POOL DENIAL is not an admitted draw and
+ * deliberately does NOT use this.
+ */
+function answeringPolygon(result: unknown): jest.Mock {
+  return jest.fn((_geometryId: string, onDrawConsumed?: () => void) => {
+    onDrawConsumed?.();
+    return Promise.resolve(result);
+  });
+}
+
+/** An admitted draw that dies in transport: announced, then thrown. */
+function erroringPolygon(error: Error): jest.Mock {
+  return jest.fn((_geometryId: string, onDrawConsumed?: () => void) => {
+    onDrawConsumed?.();
+    return Promise.reject(error);
+  });
+}
+
 function makeHarness(options: {
   queueRows?: Array<Record<string, unknown>>;
   place?: Record<string, unknown> | null;
@@ -170,7 +194,7 @@ function makeHarness(options: {
       jest.fn().mockResolvedValue({ kind: 'ok', geometryId: 'geo-wolfe' }),
     fetchPolygon:
       options.fetchPolygon ??
-      jest.fn().mockResolvedValue({ kind: 'ok', geojson: POLYGON_GEOJSON }),
+      answeringPolygon({ kind: 'ok', geojson: POLYGON_GEOJSON }),
   };
   const service = new PlacesPromotionService(
     prisma as never,
@@ -274,9 +298,10 @@ describe('PlacesPromotionService — §2 earned-moment queue', () => {
 
     it('a tomtom-provider place skips the cheap step: providerPlaceId IS the geometry id (§1)', async () => {
       const resolveGeometryId = jest.fn();
-      const fetchPolygon = jest
-        .fn()
-        .mockResolvedValue({ kind: 'ok', geojson: POLYGON_GEOJSON });
+      const fetchPolygon = answeringPolygon({
+        kind: 'ok',
+        geojson: POLYGON_GEOJSON,
+      });
       const { service } = makeHarness({
         queueRows: [makeQueueRow()],
         place: makePlaceRow({ provider: 'tomtom', providerPlaceId: 'geo-t' }),
@@ -285,11 +310,11 @@ describe('PlacesPromotionService — §2 earned-moment queue', () => {
       });
       await service.drainQueue(new Date('2026-07-20T00:00:00Z'));
       expect(resolveGeometryId).not.toHaveBeenCalled();
-      expect(fetchPolygon).toHaveBeenCalledWith('geo-t');
+      expect(fetchPolygon).toHaveBeenCalledWith('geo-t', expect.any(Function));
     });
 
     it('a consumed-draw miss increments the MISS counter (a fault is not a miss) and the item stays queued', async () => {
-      const fetchPolygon = jest.fn().mockResolvedValue({ kind: 'miss' });
+      const fetchPolygon = answeringPolygon({ kind: 'miss' });
       const { service, prisma } = makeHarness({
         queueRows: [makeQueueRow({ providerBoundaryId: 'geo-cached' })],
         fetchPolygon,
@@ -400,7 +425,7 @@ describe('PlacesPromotionService — §2 earned-moment queue', () => {
       // Cheap step resolves (1 cheap draw), scarce step misses (1 scarce
       // draw): the item is NOT promoted, but both draws hit the vendor and
       // must be metered against the campaign budget.
-      const fetchPolygon = jest.fn().mockResolvedValue({ kind: 'miss' });
+      const fetchPolygon = answeringPolygon({ kind: 'miss' });
       const spendCampaigns = {
         isDispatchable: jest.fn().mockResolvedValue(true),
         recordSpend: jest.fn().mockResolvedValue(undefined),
@@ -420,15 +445,41 @@ describe('PlacesPromotionService — §2 earned-moment queue', () => {
       expect(micros).toBeGreaterThan(0);
     });
 
+    it('F350: a TRANSPORT-ERRORED draw is charged to the campaign — the gap the pool debited and the envelope could not see', async () => {
+      // The draw was ADMITTED (the governor debited the pool and announced
+      // it); the vendor then died in transport. The item is not promoted and
+      // the pass stops — but real prepaid credit was drawn, so the envelope
+      // must be charged. Before F350 this asserted nothing because the
+      // envelope was incremented off the RETURNED kind, which an error has
+      // none of. Reverting the callback threading makes this go RED.
+      const fetchPolygon = erroringPolygon(new Error('ECONNRESET'));
+      const spendCampaigns = {
+        isDispatchable: jest.fn().mockResolvedValue(true),
+        recordSpend: jest.fn().mockResolvedValue(undefined),
+      };
+      const { service, prisma } = makeHarness({
+        queueRows: [makeQueueRow({ campaignId: 'camp-1' })],
+        fetchPolygon,
+        spendCampaigns,
+      });
+      await service.drainQueue(new Date('2026-07-20T00:00:00Z'));
+      expect(prisma.place.update).not.toHaveBeenCalled();
+      expect(spendCampaigns.recordSpend).toHaveBeenCalledTimes(1);
+      const [campaignId, , micros] = spendCampaigns.recordSpend.mock.calls[0];
+      expect(campaignId).toBe('camp-1');
+      expect(micros).toBeGreaterThan(0);
+    });
+
     it('ENTITY EXCLUSIVITY: a vendor entity already claimed by another place is refused BEFORE the scarce draw', async () => {
       // Glen Echo Park MO (pop ~160) sits inside Normandy; TomTom models ONE
       // municipality covering both, so both interior anchors honestly resolve
       // to the same entity. The second claimant must stay sketch-grade rather
       // than wear Normandy's outline — and must not spend a polygon draw
       // discovering that.
-      const fetchPolygon = jest
-        .fn()
-        .mockResolvedValue({ kind: 'ok', geojson: POLYGON_GEOJSON });
+      const fetchPolygon = answeringPolygon({
+        kind: 'ok',
+        geojson: POLYGON_GEOJSON,
+      });
       const { service, prisma } = makeHarness({
         queueRows: [makeQueueRow()],
         place: makePlaceRow({ centroidLat: 38.7, centroidLng: -90.29 }),
@@ -495,14 +546,20 @@ describe('PlacesPromotionService — §2 earned-moment queue', () => {
       );
     });
 
-    it('a wrong-entity rejection meters its draws into the campaign', async () => {
+    // NAME CORRECTED (F372): this asserts METERING, and recordSpend fires on
+    // both the promoted and the rejected branch — so it survives removal of
+    // the wrong-entity guard entirely. It is a sound metering test that was
+    // wearing a guard test's name. The wrong-entity GUARD itself is proven by
+    // the anchor-containment cases above, which assert the refusal.
+    it('a non-promoting exit still meters its draws into the campaign (metering, NOT the wrong-entity guard)', async () => {
       // Docket #1: the only wrong-entity test left is the ANCHOR guard (the
       // anchorless span heuristic died with the census lane). The polygon
       // does not cover the place's own anchor → rejected ('attempted') after
       // the scarce draw — and that consumed draw must still be metered.
-      const fetchPolygon = jest
-        .fn()
-        .mockResolvedValue({ kind: 'ok', geojson: POLYGON_GEOJSON });
+      const fetchPolygon = answeringPolygon({
+        kind: 'ok',
+        geojson: POLYGON_GEOJSON,
+      });
       const spendCampaigns = {
         isDispatchable: jest.fn().mockResolvedValue(true),
         recordSpend: jest.fn().mockResolvedValue(undefined),
@@ -569,9 +626,7 @@ describe('PlacesPromotionService — §2 earned-moment queue', () => {
     });
 
     it('releases the advisory lock in finally — even when the vendor throws mid-pass', async () => {
-      const fetchPolygon = jest
-        .fn()
-        .mockRejectedValue(new Error('vendor down'));
+      const fetchPolygon = erroringPolygon(new Error('vendor down'));
       const { service, prisma } = makeHarness({
         queueRows: [makeQueueRow({ providerBoundaryId: 'geo-cached' })],
         fetchPolygon,

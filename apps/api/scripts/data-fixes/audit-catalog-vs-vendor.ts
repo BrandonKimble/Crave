@@ -1,4 +1,5 @@
 /**
+ * @script-class: probe
  * AUDIT (and optionally REPAIR) the catalog against the VENDOR's model.
  *
  * The law this enforces: where our model and TomTom's disagree about WHAT a
@@ -25,10 +26,17 @@
  *   npx ts-node scripts/data-fixes/audit-catalog-vs-vendor.ts --territories
  *   ... --territories --execute
  */
+import { NestFactory } from '@nestjs/core';
+import { stopCronsForScript } from '../../src/shared/utils/stop-crons';
 import { PrismaClient } from '@prisma/client';
+import { AppModule } from '../../src/app.module';
+import {
+  LevelEntityLookup,
+  TOMTOM_CHAIN_PROBE,
+  TomtomChainProbe,
+} from '../../src/modules/places/tomtom-chain-probe.port';
 
 const prisma = new PrismaClient();
-const API_KEY = process.env.TOMTOM_API_KEY ?? '';
 /**
  * The vendor is asked AT OUR OWN LEVEL, never with the full ladder.
  *
@@ -53,25 +61,27 @@ type Row = {
   centroid_lng: string;
 };
 
-const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+type VendorAnswer =
+  | { kind: 'entity'; level: string; country: string; name: string }
+  | { kind: 'none' }
+  | { kind: 'faulted'; reason: string }
+  | { kind: 'denied' };
 
-async function vendorAt(
-  lat: number,
-  lng: number,
-  level: string,
-): Promise<{ level: string; country: string; name: string } | null> {
-  const url = `https://api.tomtom.com/search/2/reverseGeocode/${lat},${lng}.json?key=${API_KEY}&entityType=${encodeURIComponent(level)}`;
-  const res = await fetch(url);
-  if (!res.ok) return null;
-  const data = (await res.json()) as {
-    addresses?: Array<{
-      entityType?: string;
-      address?: Record<string, string>;
-    }>;
-  };
-  const entry = data.addresses?.[0];
-  if (!entry?.entityType) return null;
-  const a = entry.address ?? {};
+/**
+ * THROUGH THE PORT (red team 2026-08-04). This script read the key itself
+ * and fetch()ed the vendor directly: ungoverned, unmetered, and a 429 or a
+ * 500 came back as `null` — printed as NO-ENTITY-AT-LEVEL, so one vendor
+ * outage during a full run reported the ENTIRE catalog as vendor-unknown.
+ * The level-keyed name law stays HERE (it is this audit's law, not the
+ * port's); the transport, pacing, ledger and money gate are the adapter's.
+ */
+function interpret(lookup: LevelEntityLookup): VendorAnswer {
+  if (lookup.kind === 'denied') return { kind: 'denied' };
+  if (lookup.kind === 'failed') {
+    return { kind: 'faulted', reason: lookup.reason };
+  }
+  if (lookup.kind === 'empty' || !lookup.entityType) return { kind: 'none' };
+  const a = lookup.address;
   const nameByLevel: Record<string, string | undefined> = {
     Neighbourhood: a.neighbourhood,
     MunicipalitySubdivision: a.municipalitySubdivision,
@@ -81,9 +91,10 @@ async function vendorAt(
     Country: a.country,
   };
   return {
-    level: entry.entityType,
+    kind: 'entity',
+    level: lookup.entityType,
     country: (a.countryCode ?? '').toUpperCase(),
-    name: nameByLevel[entry.entityType] ?? '',
+    name: nameByLevel[lookup.entityType] ?? '',
   };
 }
 
@@ -94,7 +105,11 @@ async function main(): Promise<void> {
   const sampleIdx = argv.indexOf('--sample');
   const sample = sampleIdx >= 0 ? Number(argv[sampleIdx + 1]) : 0;
 
-  if (!API_KEY) throw new Error('TOMTOM_API_KEY required');
+  const app = await NestFactory.createApplicationContext(AppModule, {
+    logger: false,
+  });
+  stopCronsForScript(app);
+  const probe = app.get<TomtomChainProbe>(TOMTOM_CHAIN_PROBE);
 
   const where = territoriesOnly
     ? `AND subdivision_code IN ('PR','VI','GU','AS','MP')`
@@ -122,16 +137,28 @@ async function main(): Promise<void> {
   let countryDiff = 0;
   let nameDiff = 0;
   let noVendor = 0;
+  let faulted = 0;
   const fixes: Array<{ id: string; level?: string; country?: string }> = [];
 
   for (const row of rows) {
-    const vendor = await vendorAt(
-      Number(row.centroid_lat),
-      Number(row.centroid_lng),
-      row.provider_level_code,
+    const vendor = interpret(
+      await probe.lookupLevelEntity(
+        { lat: Number(row.centroid_lat), lng: Number(row.centroid_lng) },
+        row.provider_level_code,
+      ),
     );
-    await sleep(SPACING_MS);
-    if (!vendor) {
+    if (vendor.kind === 'denied') {
+      console.log('[audit] STOPPED: pool/budget denied');
+      break;
+    }
+    if (vendor.kind === 'faulted') {
+      // A fault is not an observation — reported apart, never as
+      // NO-ENTITY-AT-LEVEL.
+      faulted += 1;
+      console.log(`  FAULTED ${row.name} (${vendor.reason})`);
+      continue;
+    }
+    if (vendor.kind === 'none') {
       // The vendor models NOTHING at our level here. That is the real
       // "our level is wrong" signal (or the vendor simply lacks the place —
       // the Keansburg class). Reported, never auto-applied.
@@ -179,7 +206,7 @@ async function main(): Promise<void> {
 
   console.log(
     `[audit] agree=${agree} levelDiff=${levelDiff} countryDiff=${countryDiff} ` +
-      `nameDiff=${nameDiff} noVendor=${noVendor} of ${rows.length}`,
+      `nameDiff=${nameDiff} noVendor=${noVendor} faulted=${faulted} of ${rows.length}`,
   );
 
   if (!execute) {
@@ -212,4 +239,7 @@ async function main(): Promise<void> {
   console.log(`[audit] applied ${applied}/${fixes.length} structural fixes`);
 }
 
-void main().finally(() => prisma.$disconnect());
+void main().finally(() => {
+  void prisma.$disconnect();
+  process.exit(0);
+});

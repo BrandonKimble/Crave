@@ -1,4 +1,5 @@
 /**
+ * @script-class: operational
  * ENTITY-NAME RESOLUTION (one-ground charter).
  *
  * The law: A PLACE'S NAME IS WHAT THE VENDOR CALLS THE ENTITY WHOSE ID WE HOLD.
@@ -17,12 +18,16 @@
  *
  * Report-only by default. --execute applies same-entity renames.
  */
+import { NestFactory } from '@nestjs/core';
+import { stopCronsForScript } from '../../src/shared/utils/stop-crons';
 import { PrismaClient } from '@prisma/client';
+import { AppModule } from '../../src/app.module';
+import {
+  TOMTOM_CHAIN_PROBE,
+  TomtomChainProbe,
+} from '../../src/modules/places/tomtom-chain-probe.port';
 
 const prisma = new PrismaClient();
-const KEY = process.env.TOMTOM_API_KEY ?? '';
-const SPACING_MS = 220; // K4 vendor fact: ~5 QPS on Search endpoints
-const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 type Row = {
   place_id: string;
@@ -35,8 +40,18 @@ type Row = {
 };
 
 async function main(): Promise<void> {
-  if (!KEY) throw new Error('TOMTOM_API_KEY required');
   const execute = process.argv.includes('--execute');
+  // THROUGH THE PORT (red team 2026-08-04). This script carried its own
+  // fetch() + key read + 220ms sleep: ungoverned (racing the drain past the
+  // vendor QPS), unmetered (zero ledger rows — the photoMedia incident's
+  // shape), and it printed !res.ok as "no entity" — P5, in reporting. The
+  // adapter's governed path is now the only door: pool-paced, ledgered,
+  // money-gated, and faults come back TYPED.
+  const app = await NestFactory.createApplicationContext(AppModule, {
+    logger: false,
+  });
+  stopCronsForScript(app);
+  const probe = app.get<TomtomChainProbe>(TOMTOM_CHAIN_PROBE);
 
   const rows = await prisma.$queryRawUnsafe<Row[]>(
     `SELECT p.place_id, p.name, p.subdivision_code sub, p.provider_level_code lvl,
@@ -60,24 +75,31 @@ async function main(): Promise<void> {
     sub: string | null;
   }> = [];
 
+  let denied = 0;
+  let faulted = 0;
   for (const r of rows) {
-    const url =
-      `https://api.tomtom.com/search/2/reverseGeocode/${r.lat},${r.lng}.json` +
-      `?key=${KEY}&entityType=${encodeURIComponent(r.lvl)}`;
-    let a: any = null;
-    try {
-      const res = await fetch(url);
-      if (res.ok) a = (await res.json())?.addresses?.[0];
-    } catch {
-      /* transport */
+    const lookup = await probe.lookupLevelEntity(
+      { lat: Number(r.lat), lng: Number(r.lng) },
+      r.lvl,
+    );
+    if (lookup.kind === 'denied') {
+      // Money gate or pool said not-now — stop rather than misreport the
+      // tail of the catalog as unanswerable.
+      denied += 1;
+      console.log('[entity-names] STOPPED: pool/budget denied');
+      break;
     }
-    await sleep(SPACING_MS);
-
-    if (!a) {
+    if (lookup.kind === 'failed') {
+      // A fault is NOT "no entity" — count it apart so a vendor outage
+      // cannot read as a catalog full of nameless places.
+      faulted += 1;
+      continue;
+    }
+    if (lookup.kind === 'empty') {
       none += 1;
       continue;
     }
-    const gid = a?.dataSources?.geometry?.id ?? null;
+    const gid = lookup.geometryId;
     if (!gid || gid !== r.pid) {
       other += 1;
       continue;
@@ -90,7 +112,7 @@ async function main(): Promise<void> {
     // "Austin" and Alexander AR (a municipality) to "Saline" (its county).
     // Caught after it wrote 726 rows, 2026-07-28. The vendor answering with a
     // matching geometry id does NOT license reading a different field off it.
-    const addr = a.address ?? {};
+    const addr = lookup.address;
     const nameByLevel: Record<string, string | undefined> = {
       Neighbourhood: addr.neighbourhood,
       MunicipalitySubdivision: addr.municipalitySubdivision,
@@ -122,11 +144,13 @@ async function main(): Promise<void> {
 
   console.log(
     `\n[entity-names] same-entity agree=${sameAgree} same-entity RENAME=${sameRename} ` +
-      `other-entity(skipped)=${other} no-answer=${none} of ${rows.length}`,
+      `other-entity(skipped)=${other} vendor-empty=${none} ` +
+      `faulted=${faulted} denied=${denied} of ${rows.length}`,
   );
 
   if (!execute) {
     console.log(`[entity-names] dry-run — ${renames.length} renames available`);
+    await app.close();
     return;
   }
   // Per-row, fault-tolerant so one bad row cannot abort a 22k-row pass. A
@@ -172,3 +196,4 @@ async function main(): Promise<void> {
 }
 
 void main().finally(() => prisma.$disconnect());
+// (the Nest context is closed inside main; process exit reaps the rest)

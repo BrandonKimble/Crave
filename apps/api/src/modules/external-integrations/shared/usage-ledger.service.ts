@@ -10,7 +10,10 @@ import { PrismaService } from '../../../prisma/prisma.service';
 import { CorrelationUtils, LoggerService } from '../../../shared';
 import { GovernanceService } from '../governance/governance.service';
 import { currentCampaignId, currentAttribution } from './work-context';
-import { placesCostMicrosPerCall } from './vendor-pricing';
+import {
+  placesCostMicrosPerCall,
+  tomtomBlendedCostMicrosPerDraw,
+} from './vendor-pricing';
 import { geminiCostMicros } from './gemini-pricing';
 import { ReconciliationMultiplierService } from './reconciliation-multiplier.service';
 import { SpendCampaignService } from './spend-campaign.service';
@@ -165,6 +168,7 @@ export class UsageLedgerService implements OnModuleDestroy {
   record(event: UsageEvent): void {
     this.meterGeminiSpend(event);
     this.meterPlacesSpend(event);
+    this.meterTomtomSpend(event);
     this.meterCampaignSpend(event);
     const data = {
       service: event.service,
@@ -239,6 +243,35 @@ export class UsageLedgerService implements OnModuleDestroy {
    * Same shape as the gemini meter: fail-soft (metering must never break the
    * usage record) and priced by the existing per-SKU pricer.
    */
+  /**
+   * TomTom dollars drain the tomtom.monthlySpend catastrophe backstop (red
+   * team 2026-08-04). Before this, tomtom ledger rows drained NOTHING — the
+   * vendor's only pools were per-minute request counts, so the gate the
+   * backstop feeds would have admitted forever. Priced at the blended
+   * per-draw rate (every draw at the scarce rate — over-meter, never
+   * vanish), grossed through the same reconciliation seam as the others.
+   */
+  private meterTomtomSpend(event: UsageEvent): void {
+    if (event.service !== 'tomtom' || !this.governance) {
+      return;
+    }
+    try {
+      const calls = event.requestCount ?? 1;
+      const micros =
+        tomtomBlendedCostMicrosPerDraw *
+        (Number.isFinite(calls) && calls > 0 ? calls : 1);
+      if (micros <= 0) {
+        return;
+      }
+      void this.governance.pools.meterSpend(
+        this.governance.pools.spendPool('tomtom.monthlySpend'),
+        this.billed('tomtom', ledgerMicros(micros)),
+      );
+    } catch {
+      // Metering must never break the usage record itself.
+    }
+  }
+
   private meterPlacesSpend(event: UsageEvent): void {
     if (event.service !== 'google_places' || !this.governance) {
       return;

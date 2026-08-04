@@ -90,9 +90,12 @@ const SPEND_TELEMETRY_WARN_K = 3;
 /**
  * §18.4/§24.3 TomTom credit PROXY (comment discipline, §16): we cannot see
  * the prepaid balance via the TomTom API at all — no endpoint exposes it —
- * so this nightly check is a PROXY signal only: "the scarcePolygons pool
- * used ≥80% of its monthly limit before day 20 of the month" is unusually
- * fast burn, worth an owner glance at the vendor portal balance. Both
+ * so this nightly check is a PROXY signal only: "tomtom.monthlySpend used
+ * ≥80% of the monthly catastrophe cap before day 20 of the month" is
+ * unusually fast burn, worth an owner glance at the vendor portal balance.
+ * (It read tomtom.scarcePolygons until 2026-08-04 — a pool that had been
+ * reshaped to perMinute/300, so the check compared one minute of a rate
+ * window against a monthly threshold and could effectively never fire.) Both
  * numbers are §16 K2-SHAPED PRIORS WITH AN EXPLICIT ERASURE NOTE — a stand-
  * in for "burn rate exceeds what the remaining days in the month can
  * absorb at the historical pace," which needs a measured burn-rate model
@@ -1145,7 +1148,7 @@ export class SpendAnalyticsService {
 
   /**
    * §18.4 TomTom credit PROXY (see TOMTOM_POOL_HOT_FRACTION's doc comment):
-   * the tomtom.scarcePolygons pool used ≥80% of its monthly limit before
+   * the tomtom.monthlySpend pool used ≥80% of its monthly cap before
    * day 20 — unusually early burn, worth checking the vendor portal
    * balance/top-up. No-ops when no live GovernanceService is wired (slim
    * script graphs) since there is no pool to read.
@@ -1160,7 +1163,14 @@ export class SpendAnalyticsService {
     }
     let status: { used: number; limit: number };
     try {
-      status = this.governance.pools.poolStatus('tomtom.scarcePolygons');
+      // THE MONTHLY DOLLAR POOL, not the per-minute rate pool (red team
+      // 2026-08-04). This read tomtom.scarcePolygons, which was reshaped to
+      // perMinute/300 on 2026-07-27 — so "used ≥80% of its monthly limit"
+      // compared ONE MINUTE of a rate window against a monthly threshold and
+      // could effectively never fire: an always-green alert guarding a
+      // prepaid balance no API can read. tomtom.monthlySpend is a real
+      // perMonth/billedMicros pool drained by every tomtom ledger event.
+      status = this.governance.pools.poolStatus('tomtom.monthlySpend');
     } catch {
       return;
     }

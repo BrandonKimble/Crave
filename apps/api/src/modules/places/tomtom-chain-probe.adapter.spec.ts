@@ -88,6 +88,7 @@ function buildAdapter(options: {
   };
   const poisonWindow = jest.fn();
   const governance = {
+    assertTomtomSpendOpen: () => Promise.resolve(),
     pools: { poisonWindow },
     draw: async (
       pool: string,
@@ -128,7 +129,7 @@ function buildAdapter(options: {
     configService as never,
     loggerService as never,
   );
-  return { adapter, calls, drawCalls, poisonWindow };
+  return { adapter, calls, drawCalls, poisonWindow, governance };
 }
 
 const ANCHOR = { lat: 40.787, lng: -73.9754 };
@@ -271,12 +272,34 @@ describe('TomtomChainProbeAdapter', () => {
     expect(result).not.toHaveProperty('probedRegion');
   });
 
-  it('THROWS on a pool denial — never fabricates a "no place here" observation', async () => {
+  it('a CLOSED MONEY GATE is the typed denied arm, and the vendor is never reached', async () => {
+    // The money gate lives INSIDE the adapter (the GatedGeminiClient
+    // property): no call site can forget it, and a closed budget cannot
+    // reach the vendor. Before 2026-08-04 TomTom had no money gate at all.
+    const closed = buildAdapter({ reverseAddresses: [UWS_REVERSE_ENTRY] });
+    (
+      closed.governance as { assertTomtomSpendOpen: () => Promise<void> }
+    ).assertTomtomSpendOpen = () =>
+      Promise.reject(new Error('TomTom spend budget exhausted'));
+    await expect(closed.adapter.probe(ANCHOR)).resolves.toEqual({
+      kind: 'denied',
+    });
+    await expect(closed.adapter.fetchPolygon('geo-x')).resolves.toEqual({
+      kind: 'denied',
+    });
+    // No governed draw ⇒ no vendor call and no pool debit.
+    expect(closed.drawCalls).toHaveLength(0);
+  });
+
+  it('a pool denial is the TYPED denied arm — never a "no place here" observation, never a string sentinel', async () => {
     const { adapter } = buildAdapter({
       reverseAddresses: [UWS_REVERSE_ENTRY],
       denyPool: true,
     });
-    await expect(adapter.probe(ANCHOR)).rejects.toThrow('tomtom_pool_denied');
+    // Was `rejects.toThrow('tomtom_pool_denied')` — a thrown string that
+    // seed-region matched by comparison, the pre-P5 shape the union exists
+    // to end. The type carries the distinction now.
+    await expect(adapter.probe(ANCHOR)).resolves.toEqual({ kind: 'denied' });
   });
 });
 
@@ -343,19 +366,22 @@ describe('TomtomChainProbeAdapter — wave-6 item 2: 429 → poisonWindow', () =
     expect(poisonWindow).toHaveBeenCalledWith('tomtom.scarcePolygons', 5000);
   });
 
-  it('probe (reverse geocode): a 429 poisons the REVERSE pool and throws the pool-denied operational miss — never a negative observation', async () => {
+  it('probe (reverse geocode): a 429 poisons the REVERSE pool and returns the typed denied arm — never a negative observation', async () => {
     const { adapter, poisonWindow } = buildAdapter({
       httpFailure: { status: 429, retryAfter: '2' },
     });
-    await expect(adapter.probe(ANCHOR)).rejects.toThrow('tomtom_pool_denied');
+    await expect(adapter.probe(ANCHOR)).resolves.toEqual({ kind: 'denied' });
     expect(poisonWindow).toHaveBeenCalledWith('tomtom.reverseGeocode', 2000);
   });
 
-  it('a genuine vendor error (non-429) still throws — the drain records the attempt', async () => {
+  it('a genuine vendor error (non-429) is the FAILED arm — a fault, never a miss and never a throw', async () => {
+    // Was `rejects.toThrow('status code 500')`. A thrown fault made every
+    // caller's catch decide what a fault means — and before the union grew
+    // its failed arm, three transport faults in three hourly ticks read as
+    // three vendor MISSES and permanently retired the place (refused_at).
     const boom = buildAdapter({ httpFailure: { status: 500 } });
-    await expect(boom.adapter.fetchPolygon('geo-wolfe')).rejects.toThrow(
-      'status code 500',
-    );
+    const result = await boom.adapter.fetchPolygon('geo-wolfe');
+    expect(result.kind).toBe('failed');
     expect(boom.poisonWindow).not.toHaveBeenCalled();
   });
 });

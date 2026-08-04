@@ -178,7 +178,9 @@ async function main(): Promise<void> {
         out(
           result.kind === 'empty'
             ? `[seed] bootstrap: the vendor models nothing at that point.`
-            : `[seed] bootstrap: the vendor did not answer (${result.reason}) — retry.`,
+            : result.kind === 'denied'
+              ? `[seed] bootstrap: pool denied — retry next window.`
+              : `[seed] bootstrap: the vendor did not answer (${result.reason}) — retry.`,
         );
         return;
       }
@@ -417,6 +419,11 @@ async function main(): Promise<void> {
           out(
             `[seed] cell (${cell.lat},${cell.lng}) SKIPPED: ${result.reason}`,
           );
+        } else if (result.kind === 'denied') {
+          // Typed now — no string sentinel. The governor said not-now; a
+          // budget-exhausted run must stop rather than write false negatives.
+          out(`[seed] STOPPED after ${probed} probes: pool denied`);
+          break;
         } else if (result.kind === 'empty') {
           empty += 1;
         } else {
@@ -431,7 +438,7 @@ async function main(): Promise<void> {
         // The per-cell contract-violation branch is GONE: a vendor fault is
         // now a typed 'failed' observation handled above, not an exception
         // matched by message string.
-        if (msg === 'tomtom_pool_denied' || msg === 'tomtom_config_missing') {
+        if (msg === 'tomtom_config_missing') {
           // The governor said not-now, or config is absent. Both are
           // OPERATIONAL, not "no place here" — the adapter throws precisely so
           // a budget-exhausted run cannot write false negatives over ground it

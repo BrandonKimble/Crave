@@ -85,9 +85,29 @@ if [[ "${2:-}" == "--publish" ]]; then
     WHERE usage_start_time >= TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL ${DAYS} DAY)
       AND service.description LIKE '%Places%'" | tail -1)
   echo "billed: gemini=\$${BILLED_GEMINI:-0} places=\$${BILLED_PLACES:-0}"
-  (cd "$(dirname "$0")/../../apps/api" && DATABASE_URL="$PROD_PROXY_URL" ALLOW_REMOTE_DB=1 \
+  # THE RECONCILER ROLE, not superuser (2026-08-04). ALLOW_REMOTE_DB is
+  # GONE — the boot guard now probes actual privileges, and a laptop holding
+  # a prod superuser handle is refused with no override. crave_reconciler
+  # can write spend_unit_costs and NOTHING else (no INSERT on signals, no
+  # superuser), so it passes the probe honestly: the guard admits it because
+  # Postgres says it cannot do the catastrophic thing, not because an env
+  # var promised it wouldn't.
+  #
+  # TomTom: not in BigQuery (not GCP). Its billed truth is the vendor
+  # portal's invoice, read by a human — pass it explicitly when you have it:
+  #   BILLED_TOMTOM_USD=12.34 scripts/rig/cost-reconcile.sh 30 --publish
+  if [[ -z "${PROD_RECONCILER_PASSWORD:-}" ]]; then
+    echo "PROD_RECONCILER_PASSWORD not set (source scripts/rig/svc-env.sh)"; exit 1
+  fi
+  RECONCILER_URL="postgresql://crave_reconciler:${PROD_RECONCILER_PASSWORD}@sakura.proxy.rlwy.net:48622/crave_search"
+  TOMTOM_ARG=()
+  if [[ -n "${BILLED_TOMTOM_USD:-}" ]]; then
+    TOMTOM_ARG=(--billed-tomtom-usd "$BILLED_TOMTOM_USD")
+  fi
+  (cd "$(dirname "$0")/../../apps/api" && DATABASE_URL="$RECONCILER_URL" \
     npx ts-node scripts/publish-reconciliation.ts \
       --days "$DAYS" \
       --billed-gemini-usd "${BILLED_GEMINI:-0}" \
-      --billed-places-usd "${BILLED_PLACES:-0}")
+      --billed-places-usd "${BILLED_PLACES:-0}" \
+      "${TOMTOM_ARG[@]}")
 fi

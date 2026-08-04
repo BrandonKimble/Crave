@@ -77,6 +77,7 @@ function makeHarness(options: {
     }),
   };
   const probe = {
+    lookupLevelEntity: jest.fn(),
     probe: jest.fn(
       options.probeImpl ??
         (() =>

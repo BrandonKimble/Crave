@@ -243,10 +243,18 @@ export class PlacesReconcilerService {
       ) {
         continue; // answered by an earlier probe in this same pass
       }
-      // Pool denial / config absence still THROW and abort the pass: the
-      // ground was never asked, so no memory may be written at all. Every
-      // vendor-ANSWERED outcome comes back typed instead.
+      // Config absence still THROWS and aborts the pass (a run with no key
+      // can answer nothing). Everything else comes back typed — including
+      // pool denial, which used to be a thrown string sentinel.
       const result: TomtomChainProbeResult = await this.probe.probe(anchor);
+      if (result.kind === 'denied') {
+        // The governor said not-now. Nothing behind this anchor will admit
+        // either, so end the pass cleanly — KEEPING the regions already
+        // answered. Aborting via throw here discarded rememberAskedRegion
+        // work the pass had already paid for (red team 2026-08-04).
+        this.logger.info('Probe pass ended early: pool denied', { anchor });
+        break;
+      }
       if (result.kind === 'failed') {
         // A FAILURE IS NOT AN OBSERVATION (observation type, 2026-08-01):
         // skip this anchor, remember nothing, keep the pass. No string

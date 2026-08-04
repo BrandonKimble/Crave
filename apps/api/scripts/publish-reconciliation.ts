@@ -23,7 +23,10 @@
  */
 import { PrismaClient } from '@prisma/client';
 import { pricedGeminiRow } from '../src/modules/external-integrations/shared/gemini-pricing';
-import { placesCostMicrosPerCall } from '../src/modules/external-integrations/shared/vendor-pricing';
+import {
+  placesCostMicrosPerCall,
+  tomtomBlendedCostMicrosPerDraw,
+} from '../src/modules/external-integrations/shared/vendor-pricing';
 
 function argValue(flag: string): string | undefined {
   const index = process.argv.indexOf(flag);
@@ -43,6 +46,16 @@ async function main(): Promise<void> {
   const days = requireNumber('--days');
   const billedGeminiUsd = requireNumber('--billed-gemini-usd');
   const billedPlacesUsd = requireNumber('--billed-places-usd');
+  // TOMTOM IS OPTIONAL, AND THAT IS THE HONEST SHAPE (red team 2026-08-04).
+  // TomTom is not GCP, so its billed truth is not in the BigQuery export —
+  // the only source is the vendor portal's invoice/credit history, read by a
+  // human. Before this flag existed, reconciliation.tomtom could NEVER be
+  // published: prime('tomtom') was dead code and gross('tomtom', x) was
+  // permanently 1.0 while reading as if it were wired. Omitting the flag
+  // skips the arm loudly instead of silently never supporting it.
+  const billedTomtomRaw = argValue('--billed-tomtom-usd');
+  const billedTomtomUsd =
+    billedTomtomRaw === undefined ? null : requireNumber('--billed-tomtom-usd');
   const prisma = new PrismaClient();
   const windowEnd = new Date();
   const windowStart = new Date(windowEnd.getTime() - days * 24 * 3600 * 1000);
@@ -64,6 +77,7 @@ async function main(): Promise<void> {
   });
   let ledgerGeminiMicros = 0;
   let ledgerPlacesMicros = 0;
+  let ledgerTomtomMicros = 0;
   for (const row of rows) {
     if (row.service === 'gemini') {
       ledgerGeminiMicros += pricedGeminiRow(row);
@@ -71,11 +85,17 @@ async function main(): Promise<void> {
       ledgerPlacesMicros +=
         placesCostMicrosPerCall(row.skuTier ?? null, row.operation) *
         (row.requestCount ?? 0);
+    } else if (row.service === 'tomtom') {
+      // Blended per-draw rate: the conservative every-draw-at-the-scarce-rate
+      // figure the live meter uses, so both sides of the ratio speak the same
+      // ledger dialect.
+      ledgerTomtomMicros +=
+        tomtomBlendedCostMicrosPerDraw * (row.requestCount ?? 1);
     }
   }
 
   const publish = async (
-    service: 'gemini' | 'google_places',
+    service: 'gemini' | 'google_places' | 'tomtom',
     billedUsd: number,
     ledgerMicros: number,
   ): Promise<void> => {
@@ -112,6 +132,16 @@ async function main(): Promise<void> {
 
   await publish('gemini', billedGeminiUsd, ledgerGeminiMicros);
   await publish('google_places', billedPlacesUsd, ledgerPlacesMicros);
+  if (billedTomtomUsd !== null) {
+    await publish('tomtom', billedTomtomUsd, ledgerTomtomMicros);
+  } else {
+    console.log(
+      'reconciliation.tomtom: not published (no --billed-tomtom-usd). The ' +
+        'source is the TomTom portal invoice — pass the figure when you have ' +
+        'read it; the multiplier stays at its last published value (or 1.0 ' +
+        'if never published).',
+    );
+  }
   await prisma.$disconnect();
 }
 

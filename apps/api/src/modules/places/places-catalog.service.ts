@@ -23,6 +23,7 @@
  * synthetic place sized by the creator's zoom). Every ground in the system
  * is the vendor's — bbox at birth, outline when granted.
  */
+import { levelSpecificitySql } from '../signals/ground-containment';
 import { Inject, Injectable, Optional } from '@nestjs/common';
 import { Place, Prisma } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
@@ -579,7 +580,10 @@ export class PlacesCatalogService {
         FROM place_geometries pg
         JOIN places p ON p.place_id = pg.place_id
         WHERE ${coversAllArms}
-        ORDER BY ST_Area(pg.geometry) ASC, p.name ASC
+        -- Equal-area tie (a coextensive city/county pair sharing one
+        -- polygon) breaks by the FINER level, then name — see
+        -- levelSpecificitySql for the measured incident.
+        ORDER BY ST_Area(pg.geometry) ASC, ${levelSpecificitySql('p')} ASC, p.name ASC
         LIMIT 1
       `,
       );

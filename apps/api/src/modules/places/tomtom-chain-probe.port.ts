@@ -55,12 +55,42 @@ export type TomtomChainProbeResult =
   /** The vendor OBSERVED nothing here — a first-class §2 negative. */
   | { kind: 'empty'; probedRegion: ProbedRegion }
   /** WE failed to observe. Never a memory; never ground truth. */
-  | { kind: 'failed'; reason: string };
+  | { kind: 'failed'; reason: string }
+  /**
+   * Rate admission refused (pool denial or a poisoned window) — try again
+   * next settle. Split from 'failed' because the two say different things
+   * about the WORLD: 'denied' is our own governor pacing us (expected,
+   * quiet), 'failed' is an observation attempt that went wrong (worth a log
+   * with a reason). It used to be a thrown string sentinel
+   * ('tomtom_pool_denied') that seed-region matched by STRING COMPARISON —
+   * the exact pre-P5 shape the union was built to end (red team 2026-08-04).
+   */
+  | { kind: 'denied' };
 
+/**
+ * THE SAME LAW, SAME SHAPE (red team 2026-08-04). This union predates the
+ * probe's three-state rederivation and kept the two-state conflation the
+ * probe fixed: a malformed body, an id the vendor did not echo, and "the
+ * vendor answered and has no polygon" all collapsed into 'miss' — and a miss
+ * is REMEMBERED. Three misses PERMANENTLY retire the place from polygon
+ * promotion (refused_at, filtered by every drain forever). So three ticks of
+ * a caching proxy returning HTML with a 200 wrote "the vendor has no polygon
+ * for this geometry" into the catalog as vendor truth — P5 verbatim, on the
+ * scarce-draw money path, with a permanent consequence instead of a 30-day
+ * TTL.
+ *
+ * 'miss' now means exactly: the vendor answered, well-formed, echoing the id
+ * asked, and models no polygon for it. Everything else about a bad answer is
+ * 'failed' — never remembered, never a strike toward retirement.
+ */
 export type PolygonFetchResult =
   | { kind: 'ok'; geojson: GeoJsonFeatureCollection }
+  /** Rate admission refused or window poisoned — try again later. */
   | { kind: 'denied' }
-  | { kind: 'miss' };
+  /** The VENDOR's answer: no polygon exists for this id. Remembered. */
+  | { kind: 'miss' }
+  /** WE failed to get an answer. Never remembered; never a strike. */
+  | { kind: 'failed'; reason: string };
 
 /** GeoJSON FeatureCollection of Polygon/MultiPolygon features (vendor
  *  Additional Data shape, filtered) — persisted verbatim into PostGIS via
@@ -77,8 +107,45 @@ export interface GeoJsonFeatureCollection {
 // the census resolve lane is gone; every place carries its geometry id from
 // birth under the composite (id, level) identity.
 
+/**
+ * A single-level reverse geocode: "what does the vendor call the LEVEL-CODE
+ * entity at this point?" — the question the catalog-vs-vendor audit and the
+ * name resolver ask, one row at a time.
+ *
+ * Exists so those operator scripts stop carrying their own fetch() (red team
+ * 2026-08-04): both read TOMTOM_API_KEY themselves and dialled the vendor
+ * ungoverned — no pool draw (racing the drain past the vendor QPS), no
+ * ledger row (invisible to cost-reconcile, the photoMedia incident's exact
+ * shape), and `null` on !res.ok, which printed a 429 as "the vendor models
+ * nothing here" — P5 again, in reporting.
+ */
+export type LevelEntityLookup =
+  | {
+      kind: 'named';
+      /** The vendor's geometry id for the answering entity — the ID-MATCH
+       *  gate callers must apply before believing anything else here. */
+      geometryId: string | null;
+      entityType: string | null;
+      /** The RAW address fields, deliberately un-collapsed. A first draft of
+       *  this method returned one `name` picked by a fallback chain
+       *  (municipality ?? county ?? ...) — the exact scar class
+       *  resolve-entity-names documents: the level-appropriate field being
+       *  absent silently returned a COARSER entity's name and renamed
+       *  Austin's Bouldin Creek to "Austin" (726 rows, 2026-07-28). Which
+       *  field is the name at a given level is the CALLER's law. */
+      address: Readonly<Record<string, string | undefined>>;
+    }
+  | { kind: 'empty' }
+  | { kind: 'failed'; reason: string }
+  | { kind: 'denied' };
+
 export interface TomtomChainProbe {
   probe(anchor: GeoPoint): Promise<TomtomChainProbeResult>;
+  /** See LevelEntityLookup. Rides the cheap reverse-geocode pool. */
+  lookupLevelEntity(
+    anchor: GeoPoint,
+    levelCode: string,
+  ): Promise<LevelEntityLookup>;
   /**
    * §2 promotion step 2: the SCARCE-pool Additional Data polygon fetch
    * (geometry id → Polygon/MultiPolygon FeatureCollection).

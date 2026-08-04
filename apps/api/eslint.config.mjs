@@ -174,6 +174,14 @@ export default tseslint.config(
       // Owns the only legal write to enrichmentFailureCount, so its own type
       // annotation names the field.
       'src/modules/restaurant-enrichment/enrichment-failure-counter.ts',
+      // THE TomTom vendor door, and the config layer that holds its key.
+      'src/modules/places/tomtom-chain-probe.adapter.ts',
+      'src/config/configuration.ts',
+      // The invariant registry holds forbidden patterns AS DATA — its
+      // mutations are the defects the rules must reject, spelled out so the
+      // harness can plant them. Linting the crime-scene photos as crimes
+      // would force every mutation string to be obfuscated.
+      'src/shared/invariants/registry.ts',
     ],
     rules: {
       // FIVE SELECTORS, BECAUSE THE FIRST ONE HAD FOUR HOLES.
@@ -229,6 +237,21 @@ export default tseslint.config(
             'BinaryExpression[operator=/^[!=]==$/] > Literal[value=/^(true|false|TRUE|FALSE)$/]',
           message:
             "Comparing against the STRING 'true'/'false' is a hand-rolled flag dialect — the failure mode is a plausible value (yes, TRUE, on) reading the wrong way, silently. Use isEnvFlagEnabled / isEnvFlagExplicitlyDisabled from shared/config/env-flag.",
+        },
+        {
+          // THE TOMTOM VENDOR HAS ONE DOOR: TomtomChainProbeAdapter. Two
+          // operator scripts read TOMTOM_API_KEY themselves and fetch()ed
+          // api.tomtom.com directly — ungoverned (racing the drain past the
+          // vendor QPS), unmetered (zero ledger rows, the photoMedia
+          // incident's shape), money-ungated, and printing a 429 as "the
+          // vendor models nothing here" (red team 2026-08-04). Same law as
+          // @google/genai: the raw vendor surface is only spellable in its
+          // owner. configuration.ts and the adapter are exempted at the
+          // block level.
+          selector:
+            "Literal[value=/TOMTOM_API_KEY|api\\.tomtom\\.com/], TemplateElement[value.raw=/api\\.tomtom\\.com/], MemberExpression[object.object.name='process'][object.property.name='env'][property.name='TOMTOM_API_KEY']",
+          message:
+            'The TomTom vendor surface has one owner: TomtomChainProbeAdapter (behind the TOMTOM_CHAIN_PROBE port). A direct key read or fetch is ungoverned, unmetered and money-ungated — consume the port.',
         },
         {
           // EXTRACTION SCOPE IS DEFINED ONCE. The activation pointer decides

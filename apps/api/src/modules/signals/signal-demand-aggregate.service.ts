@@ -5,7 +5,7 @@ import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { LoggerService } from '../../shared';
 import { OpsAlertsService } from '../external-integrations/shared/ops-alerts.service';
-import { geoEnvelopeSql } from './ground-containment';
+import { geoEnvelopeSql, levelSpecificitySql } from './ground-containment';
 import { DEDUPE_KEY_SQL, EVENT_COUNT_SQL } from './act-identity';
 import { utcDayStart } from './occurred-at';
 import { UserTasteProfileBuilder } from './user-taste-profile.builder';
@@ -406,16 +406,22 @@ export class SignalDemandAggregateService {
                    pg.place_id,
                    ROW_NUMBER() OVER (
                      PARTITION BY g.geo_min_lat, g.geo_min_lng, g.geo_max_lat, g.geo_max_lng
+                     -- Equal-area tie (coextensive city/county, one shared
+                     -- polygon, 27 live pairs) breaks by the FINER level —
+                     -- the row the product keys — never by UUID sort. See
+                     -- levelSpecificitySql.
                      ORDER BY ST_Area(pg.geometry) ASC,
+                              ${levelSpecificitySql('pl')} ASC,
                               pg.place_id ASC
                    ) AS pick
             FROM geos g
             JOIN place_geometries pg
               ON ST_Covers(pg.geometry, ${geoEnvelopeSql('g')})
-            -- Red-team F1 (2026-07-30): place_geometries has NO FK to places,
-            -- so an orphan ground (test teardown, a deleted place) could WIN
-            -- the smallest-area pick and store a ghost uuid the readers then
-            -- silently drop. The join to places is the existence check.
+            -- The join to places carries the level for the tie-break and
+            -- doubles as an existence check. (An earlier comment here claimed
+            -- place_geometries has NO FK to places — false since the CASCADE
+            -- FK landed; verified against the live schema 2026-08-04. The
+            -- join stays because the tie-break needs pl.provider_level_code.)
             JOIN places pl ON pl.place_id = pg.place_id
           ) ranked
           WHERE pick = 1
