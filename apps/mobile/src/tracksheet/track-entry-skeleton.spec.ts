@@ -32,6 +32,13 @@ describe('trackSkeletonMaterialForScene (G-SKEL: one material, per-scene shape f
     expect(materials.some((material) => !material.withStripHoles)).toBe(true);
   });
 
+  it('OA2/R7: the world-join child (listDetail) pins its cold-entry variant — restaurant rows WITH strip pills (its ToggleStrip is in-list, so the skeleton carries the band as pill cutouts)', () => {
+    expect(trackSkeletonMaterialForScene('listDetail')).toEqual({
+      rowType: 'restaurant',
+      withStripHoles: true,
+    });
+  });
+
   it('spec-excluded scenes fall back to a total decision (search owns its own composition)', () => {
     expect(trackSkeletonMaterialForScene('search')).toEqual({
       rowType: 'restaurant',

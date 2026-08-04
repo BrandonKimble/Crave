@@ -87,6 +87,7 @@ import {
 } from './track-entry-readiness';
 import { trackSkeletonMaterialForScene } from './track-entry-skeleton';
 import { planHiddenExcursion, resolveHiddenPresentation } from './track-entry-hidden';
+import { sheetLegIsAtRest } from './track-sheet-fence';
 
 // ─── TrackSheetRouteHost — THE PRODUCTION SHEET HOST ──────────────────────────
 //
@@ -114,6 +115,18 @@ const markSheetLegReady = (): void => {
   const transactionId = runtime.getActiveOrPendingRedrawTransactionId();
   if (transactionId != null) {
     runtime.markRedrawSheetReady(transactionId);
+  }
+};
+
+// THE FENCE, PENDING side (R7 — D2 closed; see track-sheet-fence.ts for the
+// derivation): flip the surface's sheet-motion fence the instant a PROVEN motion
+// begins — a will-move command or a native drag begin. Keyed to a live/pending
+// search redraw exactly like the READY side, so unrelated surfaces never touch it.
+const markSheetLegMotionPending = (): void => {
+  const runtime = getSearchSurfaceRuntime();
+  const transactionId = runtime.getActiveOrPendingRedrawTransactionId();
+  if (transactionId != null) {
+    runtime.markRedrawSheetMotionPending(transactionId);
   }
 };
 
@@ -502,6 +515,9 @@ const useTrackScenePageChrome = (
   // misclassifies and can DEMOTE a sheet already on its way). Cleared at
   // every settle fact and ignored while a finger owns τ (the pure resolver).
   const inFlightSnapTargetRef = React.useRef<'expanded' | 'middle' | 'collapsed' | null>(null);
+  // R7 fence: a hidden excursion's flight is not a detent flight (no in-flight
+  // target by design) — track it separately so the at-rest decision stays total.
+  const hiddenExcursionInFlightRef = React.useRef(false);
   const executeMotionCommand = React.useCallback(
     (snap: 'expanded' | 'middle' | 'collapsed' | 'hidden', settleToken: number | null) => {
       const commands = commandsRef.current;
@@ -547,6 +563,16 @@ const useTrackScenePageChrome = (
       // during a hide answer from the excursion's live τ) and a zero-move
       // snap has no flight at all.
       inFlightSnapTargetRef.current = willMove && snap !== 'hidden' ? snap : null;
+      hiddenExcursionInFlightRef.current = willMove && snap === 'hidden';
+      // R7 FENCE, PENDING (D2 closed): a command that WILL move is a proven
+      // motion signal — flip the fence BEFORE the spring starts so a reveal can
+      // never land mid-slide (the mid-slide latch in the surface runtime retries
+      // the commit at the settle-side restore). Motion-keyed on both sides: this
+      // flip only ever happens with a rest fact (settle observer / hidden edge)
+      // or the 700ms deadline behind it, so a no-op snap can never strand the bit.
+      if (willMove) {
+        markSheetLegMotionPending();
+      }
       commands?.snapToTau(postureTau);
       if (settleToken != null) {
         if (!willMove || commands == null) {
@@ -557,6 +583,9 @@ const useTrackScenePageChrome = (
             if (pendingSettleTokenRef.current === settleToken) {
               pendingSettleTokenRef.current = null;
               inFlightSnapTargetRef.current = null;
+              hiddenExcursionInFlightRef.current = false;
+              // R7 fence: the deadline is also the fence's never-strand restore.
+              markSheetLegReady();
               sceneRuntime.routeSceneMotionRuntime.completeFromSheetSettle?.(settleToken);
             }
             // PROVENANCE (F874, 2026-08-03): 700ms is a DEADLINE, not a duration — it is
@@ -575,6 +604,10 @@ const useTrackScenePageChrome = (
   const completePendingSettle = React.useCallback(() => {
     // Any settle fact ends the flight (G-INTERRUPT).
     inFlightSnapTargetRef.current = null;
+    hiddenExcursionInFlightRef.current = false;
+    // R7 fence: every settle fact restores the fence — including the hidden-edge
+    // event, whose rest is not a detent and never reaches the settle observer.
+    markSheetLegReady();
     const token = pendingSettleTokenRef.current;
     if (token != null) {
       pendingSettleTokenRef.current = null;
@@ -665,19 +698,36 @@ const useTrackScenePageChrome = (
   // produced 'sheet', so a world-backed list held its rows until the 1500ms bark
   // and the reveal never joined. This host is that authority now.
   //   • settle → ready (the faithful port of the old snap-SETTLE producer)
-  //   • redraw arms while the sheet is already at rest → ready immediately,
+  //   • redraw arms while the sheet is already AT REST → ready immediately,
   //     because a sheet that never moves has no settle to wait for. This is the
-  //     case list entry actually hits.
-  // markRedrawSheetReady is idempotent (publishes + offers), so both may fire.
-  // NOT wired: the motion-PENDING side of the fence. The old contract warns it
-  // must be motion-keyed on both sides or a deferred/no-op snap strands the bit
-  // — producing it without a proven motion signal would trade a hang for a
-  // freeze. Recorded as a deliberate deferral.
+  //     case list entry actually hits. AT REST is now a checked fact
+  //     (sheetLegIsAtRest — R7): this subscriber runs on EVERY runtime publish,
+  //     so an unconditional ready here would clobber a pending flip in the same
+  //     tick. The PENDING side is WIRED now (R7, D2 closed — the deferral is
+  //     over): will-move commands and native drag-begins flip the fence
+  //     (markSheetLegMotionPending), and every restore is a rest fact (settle
+  //     observer, hidden edge) or the 700ms deadline — motion-keyed on both
+  //     sides, so a deferred/no-op snap can never strand the bit.
+  // markRedrawSheetReady is idempotent (publishes + offers), so producers may
+  // overlap.
   React.useEffect(() => {
     const runtime = getSearchSurfaceRuntime();
-    markSheetLegReady();
-    return runtime.subscribe(markSheetLegReady);
-  }, []);
+    const offerSheetReadyIfAtRest = () => {
+      const commands = commandsRef.current;
+      if (
+        sheetLegIsAtRest({
+          dragging: commands?.readDragging() ?? false,
+          inFlightSnapTarget: inFlightSnapTargetRef.current,
+          pendingSettleToken: pendingSettleTokenRef.current,
+          hiddenExcursionInFlight: hiddenExcursionInFlightRef.current,
+        })
+      ) {
+        markSheetLegReady();
+      }
+    };
+    offerSheetReadyIfAtRest();
+    return runtime.subscribe(offerSheetReadyIfAtRest);
+  }, [commandsRef]);
 
   const descriptor = getPersistentHeaderDescriptor(scene);
   const Title = descriptor?.Title;
@@ -1339,10 +1389,11 @@ const UnifiedTrackScenePage: React.FC<TrackScenePageProps> = ({
         commandsRef={commandsRef}
         publicationBindings={sharedSheetPublicationBindings}
         onGestureSettle={onGestureSettle}
-        onSettle={() => {
-          markSheetLegReady();
-          completePendingSettle();
-        }}
+        // R7 fence, pending side: a native drag begin is a proven motion fact.
+        onDragBegin={markSheetLegMotionPending}
+        // completePendingSettle restores the fence (markSheetLegReady) on every
+        // rest fact — the settle observer's rest included.
+        onSettle={completePendingSettle}
       />
     </View>
   );

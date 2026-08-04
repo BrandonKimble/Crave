@@ -224,6 +224,12 @@ export type TrackSheetPageProps = {
    * sheetReady at snap SETTLE regardless of writer. Deliberately distinct from
    * onGestureSettle, which is posture memory and must stay gesture-only. */
   onSettle?: (detentTau: number) => void;
+  /** THE MOTION-AUTHORITY SIGNAL, begin side (R7 fence): fires once per native
+   * drag begin (physics.dragging false→true) — the proven "the sheet started
+   * moving under a finger" fact the sheet-motion fence's PENDING flip rides.
+   * Commanded flights flip pending at the command (willMove), so this covers
+   * exactly the gesture half. */
+  onDragBegin?: () => void;
 };
 
 export function TrackSheetPage({
@@ -247,6 +253,7 @@ export function TrackSheetPage({
   publicationBindings,
   onGestureSettle,
   onSettle,
+  onDragBegin,
 }: TrackSheetPageProps): React.ReactElement {
   // Pagination signals route to the PRESENTED leg only (hidden legs emit no
   // scroll events anyway; this keeps the physics hook identity stable).
@@ -520,6 +527,23 @@ export function TrackSheetPage({
   // after a gesture.
   const onGestureSettleRef = React.useRef(onGestureSettle);
   onGestureSettleRef.current = onGestureSettle;
+  // ── THE DRAG-BEGIN OBSERVER (R7 fence, pending side) ──
+  // Same UI-thread-reaction discipline as the settle observer below: fires once
+  // on the frame the finger takes τ, never polls.
+  const onDragBeginRef = React.useRef(onDragBegin);
+  onDragBeginRef.current = onDragBegin;
+  const reportDragBegin = React.useCallback(() => {
+    onDragBeginRef.current?.();
+  }, []);
+  useAnimatedReaction(
+    () => physics.dragging.value,
+    (dragging, previous) => {
+      if (dragging && previous !== true) {
+        runOnJS(reportDragBegin)();
+      }
+    },
+    [reportDragBegin]
+  );
   const onSettleRef = React.useRef(onSettle);
   onSettleRef.current = onSettle;
   const settleReportedTau = useSharedValue(-1);
