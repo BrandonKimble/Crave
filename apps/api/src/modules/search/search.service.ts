@@ -196,7 +196,6 @@ export class SearchService {
   private readonly isDevEnvironment: boolean;
   private readonly alwaysIncludeSqlPreview: boolean;
   private readonly onDemandMinResults: number;
-  private readonly openNowFetchMultiplier: number;
   private readonly includePhaseTimings: boolean;
   private readonly explainEnabled: boolean;
   private readonly debugMode: SearchDebugMode;
@@ -235,7 +234,6 @@ export class SearchService {
     this.isDevEnvironment = this.resolveIsDevEnvironment();
     this.alwaysIncludeSqlPreview = this.resolveAlwaysIncludeSqlPreview();
     this.onDemandMinResults = this.resolveOnDemandMinResults();
-    this.openNowFetchMultiplier = this.resolveOpenNowFetchMultiplier();
     this.includePhaseTimings = this.resolveIncludePhaseTimings();
     this.explainEnabled = this.resolveExplainEnabled();
     this.debugMode = resolveSearchDebugMode();
@@ -279,11 +277,15 @@ export class SearchService {
       return { plan, sqlPreview: null };
     }
 
+    // Mirrors the real execution path (runQuery's `pooledPagination =
+    // pagination`, F1901): open-now filtering is a SQL membership predicate
+    // now (`buildOpenNowPredicateSql`), not a two-phase overfetch-then-trim,
+    // so the preview's pagination is the page's own pagination — same as
+    // what actually runs.
     const pagination = this.resolvePagination(request.pagination);
-    const dbPagination = this.resolveDbPagination(pagination, request);
     const preview = this.queryBuilder.buildDishQuery({
       plan,
-      pagination: dbPagination,
+      pagination,
     }).preview;
 
     return { plan, sqlPreview: preview };
@@ -1080,7 +1082,15 @@ export class SearchService {
       ORDER BY
         pcs.display_score DESC,
         c.mention_count DESC,
-        c.total_upvotes DESC;
+        c.total_upvotes DESC,
+        -- Determinism key, not a quality signal (F1902): every other
+        -- dish/restaurant ORDER BY in this module terminates in an id
+        -- anchor (see resolveDishOrderSql / resolveTopDishRankOrderSql in
+        -- search-query.builder.ts). Without it, dishes tied on all three
+        -- ranking keys above resolve by physical row order, which Postgres
+        -- does not guarantee stable across requests/replans — the dish list
+        -- (and topFood) could shuffle between identical requests.
+        c.connection_id ASC;
     `);
 
     this.logger.debug('Loaded restaurant dishes', {
@@ -3054,17 +3064,6 @@ export class SearchService {
     return ON_DEMAND_MIN_RESULTS;
   }
 
-  private resolveOpenNowFetchMultiplier(): number {
-    const raw = process.env.SEARCH_OPEN_NOW_FETCH_MULTIPLIER;
-    if (raw) {
-      const parsed = Number(raw);
-      if (Number.isFinite(parsed) && parsed >= 1) {
-        return Math.min(parsed, 10);
-      }
-    }
-    return 4;
-  }
-
   private resolveExpansionStrictCoverageTarget(): number {
     const raw = process.env.SEARCH_EXPANSION_STRICT_COVERAGE_TARGET;
     if (raw) {
@@ -3502,27 +3501,6 @@ export class SearchService {
     }
 
     return this.hasPlanExpansion(expansion) ? expansion : null;
-  }
-
-  private resolveDbPagination(
-    pagination: PaginationState,
-    request: SearchQueryRequestDto,
-  ): { skip: number; take: number } {
-    if (!request.openNow) {
-      return { skip: pagination.skip, take: pagination.take };
-    }
-
-    const rawTake =
-      pagination.page * pagination.pageSize * this.openNowFetchMultiplier;
-    const take = Math.min(
-      Math.max(rawTake, pagination.pageSize),
-      this.resultLimit,
-    );
-
-    return {
-      skip: 0,
-      take,
-    };
   }
 
   private sanitizeEntityGroups(request: SearchQueryRequestDto): void {
