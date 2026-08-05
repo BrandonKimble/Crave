@@ -2685,7 +2685,7 @@ export class SearchService {
     const hasTargets = this.hasEntityTargets(request);
 
     if (!hasTargets) {
-      return totalResults === 0 ? 'full' : 'full';
+      return 'full';
     }
 
     // A NAMED term that resolved to ZERO ids is unresolved — not a
