@@ -18,9 +18,50 @@ import type { SearchRootStateFoundationLane } from './use-search-root-foundation
 import type { SubmitRuntimeResult } from './use-search-root-control-plane-runtime-contract';
 import type { ResultsPresentationOwner } from './use-results-presentation-runtime-owner';
 import { useSearchRootSubmitReadModel } from './use-search-root-submit-read-model';
-import { useSearchRootSubmitRuntimePorts } from './use-search-root-submit-runtime-ports';
-import { useSearchRootSubmitUiPorts } from './use-search-root-submit-ui-ports';
+import { useSearchRootSubmitRuntimeViewportPorts } from './use-search-root-submit-runtime-viewport-ports';
+import { useSearchRootSubmitUiPresentationIntentPorts } from './use-search-root-submit-ui-presentation-intent-ports';
+import { useSearchRootSubmitUiResultsPresentationPorts } from './use-search-root-submit-ui-results-presentation-ports';
 import type { SearchRootSessionCoreLane } from './use-search-root-session-runtime-contract';
+
+// F1012 *-ports collapse (F1720 triage executed): the ten one-useMemo repacker hooks of the
+// submit ports family are inlined below as per-port `React.useMemo` literals — explicit field
+// lists (F1668: a spread would bypass excess-property checking and silently widen the port),
+// one memo per deleted hook so invalidation is byte-equivalent to the old chain. The three
+// load-bearing files survive as hooks: viewport-ports (owns the stable userLocation ref +
+// effect), ui-presentation-intent-ports and ui-results-presentation-ports (real derivation).
+type SearchSubmitOwnerArgs = Parameters<typeof useSearchSubmitOwnerValue>[0];
+type SearchRootSubmitUiPorts = SearchSubmitOwnerArgs['uiPorts'];
+type SearchRootSubmitRuntimePorts = SearchSubmitOwnerArgs['runtimePorts'];
+type SearchRootSubmitUiSearchPorts = Pick<SearchRootSubmitUiPorts, 'isSearchEditingRef'>;
+type SearchRootSubmitUiHistoryPorts = Pick<
+  SearchRootSubmitUiPorts,
+  'loadRecentHistory' | 'updateLocalRecentSearches'
+>;
+type SearchRootSubmitUiSurfacePorts = Pick<
+  SearchRootSubmitUiPorts,
+  'resetSheetToHidden' | 'scrollResultsToTop' | 'resetMapMoveFlag'
+>;
+type SearchRootSubmitUiResultsPorts = SearchRootSubmitUiHistoryPorts &
+  SearchRootSubmitUiSurfacePorts;
+type SearchRootSubmitUiPresentationPorts = Pick<
+  SearchRootSubmitUiPorts,
+  | 'getIsProfilePresentationActive'
+  | 'clearMapHighlightedRestaurantId'
+  | 'onPageOneResultsCommitted'
+  | 'onShortcutSearchCoverageSnapshot'
+  | 'onPresentationIntentStart'
+  | 'onPresentationIntentAbort'
+>;
+type SearchRootSubmitRuntimeBusPorts = Pick<
+  SearchRootSubmitRuntimePorts,
+  'runtimeWorkSchedulerRef' | 'searchRuntimeBus'
+>;
+type SearchRootSubmitRuntimeRequestPorts = Pick<
+  SearchRootSubmitRuntimePorts,
+  'lastSearchRequestIdRef' | 'lastAutoOpenKeyRef'
+>;
+type SearchRootSubmitRuntimeCorePorts = SearchRootSubmitRuntimeBusPorts &
+  SearchRootSubmitRuntimeRequestPorts;
 
 type UseSearchRootSubmitControlRuntimeArgs = {
   sessionCoreLane: SearchRootSessionCoreLane;
@@ -48,15 +89,92 @@ export const useSearchRootSubmitControlRuntime = ({
   const readModel = useSearchRootSubmitReadModel({
     stateFoundationLane,
   });
-  const uiPortsBase = useSearchRootSubmitUiPorts({
-    stateFoundationLane,
-    rootOverlayFoundationRuntime,
-    recentActivityAuthorityRuntime,
-    resultsScrollAuthorityRuntime,
+  // --- inlined ui ports (was use-search-root-submit-ui-search-ports) ---
+  const { rootPrimitivesRuntime, rootDataPlaneRuntime } = stateFoundationLane;
+  const searchUiPorts = React.useMemo<SearchRootSubmitUiSearchPorts>(
+    () => ({
+      isSearchEditingRef: rootPrimitivesRuntime.searchState.isSearchEditingRef,
+    }),
+    [rootPrimitivesRuntime.searchState.isSearchEditingRef]
+  );
+  // --- inlined (was use-search-root-submit-ui-history-ports) ---
+  const { recentActivityRuntime } = recentActivityAuthorityRuntime;
+  const historyUiPorts = React.useMemo<SearchRootSubmitUiHistoryPorts>(
+    () => ({
+      loadRecentHistory: rootDataPlaneRuntime.historyRuntime.loadRecentHistory,
+      updateLocalRecentSearches:
+        recentActivityRuntime.deferRecentSearchUpsert as unknown as SearchRootSubmitUiHistoryPorts['updateLocalRecentSearches'],
+    }),
+    [
+      recentActivityRuntime.deferRecentSearchUpsert,
+      rootDataPlaneRuntime.historyRuntime.loadRecentHistory,
+    ]
+  );
+  // --- inlined (was use-search-root-submit-ui-surface-ports) ---
+  const { rootSharedSheetRuntimeLane, appRouteSharedSheetRuntimeOwner } =
+    rootOverlayFoundationRuntime;
+  const { resultsScrollPort } = resultsScrollAuthorityRuntime;
+  const surfaceUiPorts = React.useMemo<SearchRootSubmitUiSurfacePorts>(
+    () => ({
+      resetSheetToHidden: appRouteSharedSheetRuntimeOwner.markSharedSheetHidden,
+      scrollResultsToTop: resultsScrollPort.scrollResultsToTop,
+      resetMapMoveFlag: rootSharedSheetRuntimeLane.resetMapMoveFlag,
+    }),
+    [
+      resultsScrollPort.scrollResultsToTop,
+      rootSharedSheetRuntimeLane.resetMapMoveFlag,
+      appRouteSharedSheetRuntimeOwner.markSharedSheetHidden,
+    ]
+  );
+  // --- inlined (was use-search-root-submit-ui-results-ports) ---
+  const resultsUiPorts = React.useMemo<SearchRootSubmitUiResultsPorts>(
+    () => ({
+      loadRecentHistory: historyUiPorts.loadRecentHistory,
+      updateLocalRecentSearches: historyUiPorts.updateLocalRecentSearches,
+      resetSheetToHidden: surfaceUiPorts.resetSheetToHidden,
+      scrollResultsToTop: surfaceUiPorts.scrollResultsToTop,
+      resetMapMoveFlag: surfaceUiPorts.resetMapMoveFlag,
+    }),
+    [historyUiPorts, surfaceUiPorts]
+  );
+  // load-bearing KEEPs: real derivation lives in these two hooks.
+  const resultsPresentationPorts = useSearchRootSubmitUiResultsPresentationPorts({
     resultsPresentationOwner,
     profileOwner,
+  });
+  const presentationIntentPorts = useSearchRootSubmitUiPresentationIntentPorts({
+    stateFoundationLane,
+    resultsPresentationOwner,
     submitReadModel: readModel,
   });
+  // --- inlined (was use-search-root-submit-ui-presentation-ports) ---
+  const presentationUiPorts = React.useMemo<SearchRootSubmitUiPresentationPorts>(
+    () => ({
+      getIsProfilePresentationActive: resultsPresentationPorts.getIsProfilePresentationActive,
+      clearMapHighlightedRestaurantId: resultsPresentationPorts.clearMapHighlightedRestaurantId,
+      onPageOneResultsCommitted: resultsPresentationPorts.onPageOneResultsCommitted,
+      onPresentationIntentStart: presentationIntentPorts.onPresentationIntentStart,
+      onPresentationIntentAbort: presentationIntentPorts.onPresentationIntentAbort,
+    }),
+    [presentationIntentPorts, resultsPresentationPorts]
+  );
+  // --- inlined (was use-search-root-submit-ui-ports) ---
+  const uiPortsBase = React.useMemo<SearchRootSubmitUiPorts>(
+    () => ({
+      isSearchEditingRef: searchUiPorts.isSearchEditingRef,
+      loadRecentHistory: resultsUiPorts.loadRecentHistory,
+      updateLocalRecentSearches: resultsUiPorts.updateLocalRecentSearches,
+      resetSheetToHidden: resultsUiPorts.resetSheetToHidden,
+      scrollResultsToTop: resultsUiPorts.scrollResultsToTop,
+      resetMapMoveFlag: resultsUiPorts.resetMapMoveFlag,
+      getIsProfilePresentationActive: presentationUiPorts.getIsProfilePresentationActive,
+      clearMapHighlightedRestaurantId: presentationUiPorts.clearMapHighlightedRestaurantId,
+      onPageOneResultsCommitted: presentationUiPorts.onPageOneResultsCommitted,
+      onPresentationIntentStart: presentationUiPorts.onPresentationIntentStart,
+      onPresentationIntentAbort: presentationUiPorts.onPresentationIntentAbort,
+    }),
+    [presentationUiPorts, resultsUiPorts, searchUiPorts]
+  );
   // Wave-4 §3: the list-world fitAll camera (owner decree: fit EVERY list pin in the
   // safe region between the search bar and the mid-snap sheet top — derived from the
   // same snapPoints the sheet itself uses, never a magic fraction). Arbiter-false is a
@@ -159,12 +277,64 @@ export const useSearchRootSubmitControlRuntime = ({
     ]
   );
 
-  const runtimePorts = useSearchRootSubmitRuntimePorts({
-    sessionCoreLane,
-    stateFoundationLane,
-    requestExecutionAuthorityRuntime,
+  // --- inlined runtime ports (was use-search-root-submit-runtime-bus-ports) ---
+  const busRuntimePorts = React.useMemo<SearchRootSubmitRuntimeBusPorts>(
+    () => ({
+      runtimeWorkSchedulerRef: sessionCoreLane.runtimeWorkSchedulerRef,
+      searchRuntimeBus: sessionCoreLane.searchRuntimeBus,
+    }),
+    [sessionCoreLane.runtimeWorkSchedulerRef, sessionCoreLane.searchRuntimeBus]
+  );
+  // --- inlined (was use-search-root-submit-runtime-request-ports) ---
+  const { sessionPrimitivesLane } = stateFoundationLane;
+  const { lastAutoOpenKeyRef } = requestExecutionAuthorityRuntime;
+  const requestRuntimePorts = React.useMemo<SearchRootSubmitRuntimeRequestPorts>(
+    () => ({
+      lastSearchRequestIdRef: sessionPrimitivesLane.primitives.lastSearchRequestIdRef,
+      lastAutoOpenKeyRef,
+    }),
+    [lastAutoOpenKeyRef, sessionPrimitivesLane.primitives.lastSearchRequestIdRef]
+  );
+  // --- inlined (was use-search-root-submit-runtime-core-ports) ---
+  const coreRuntimePorts = React.useMemo<SearchRootSubmitRuntimeCorePorts>(
+    () => ({
+      runtimeWorkSchedulerRef: busRuntimePorts.runtimeWorkSchedulerRef,
+      searchRuntimeBus: busRuntimePorts.searchRuntimeBus,
+      lastSearchRequestIdRef: requestRuntimePorts.lastSearchRequestIdRef,
+      lastAutoOpenKeyRef: requestRuntimePorts.lastAutoOpenKeyRef,
+    }),
+    [busRuntimePorts, requestRuntimePorts]
+  );
+  // load-bearing KEEP: owns the stable userLocation ref + tracking effect.
+  const viewportRuntimePorts = useSearchRootSubmitRuntimeViewportPorts({
+    runSearch: stateFoundationLane.rootDataPlaneRuntime.requestStatusRuntime.runSearch,
+    mapRef: rootPrimitivesRuntime.mapState.mapRef,
+    latestBoundsRef: sessionCoreLane.latestBoundsRef,
+    viewportBoundsService: sessionCoreLane.viewportBoundsService,
     userLocation,
   });
+  // --- inlined (was use-search-root-submit-runtime-ports) ---
+  const runtimePorts = React.useMemo<SearchRootSubmitRuntimePorts>(
+    () => ({
+      runtimeWorkSchedulerRef: coreRuntimePorts.runtimeWorkSchedulerRef,
+      searchRuntimeBus: coreRuntimePorts.searchRuntimeBus,
+      lastSearchRequestIdRef: coreRuntimePorts.lastSearchRequestIdRef,
+      lastAutoOpenKeyRef: coreRuntimePorts.lastAutoOpenKeyRef,
+      resultsPresentationAuthority: sessionCoreLane.resultsPresentationAuthority,
+      resultsPresentationSurfaceAuthority: sessionCoreLane.resultsPresentationSurfaceAuthority,
+      runSearch: viewportRuntimePorts.runSearch,
+      mapRef: viewportRuntimePorts.mapRef,
+      latestBoundsRef: viewportRuntimePorts.latestBoundsRef,
+      viewportBoundsService: viewportRuntimePorts.viewportBoundsService,
+      userLocationRef: viewportRuntimePorts.userLocationRef,
+    }),
+    [
+      coreRuntimePorts,
+      sessionCoreLane.resultsPresentationAuthority,
+      sessionCoreLane.resultsPresentationSurfaceAuthority,
+      viewportRuntimePorts,
+    ]
+  );
 
   return useSearchSubmitOwnerValue({
     readModel,
