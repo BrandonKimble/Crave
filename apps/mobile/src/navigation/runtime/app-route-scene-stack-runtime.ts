@@ -1377,9 +1377,12 @@ class AppRouteSceneStackLayerStateController {
     const payload = {
       event: 'docked_scene_header_restoration_contract',
       source,
-      sheetContentLaneKind: expectedContract.sheetContentLaneKind,
-      displayedSceneKey: expectedContract.displayedSceneKey,
-      sheetPresentationSceneKey: expectedContract.sheetPresentationSceneKey,
+      // F1388: sheetContentLaneKind/displayedSceneKey/sheetPresentationSceneKey used to be
+      // echoed here straight from expectedContract (the CONSTANT) rather than an observed
+      // fact — a genuinely broken restore would still emit these three as healthy. Deleted
+      // rather than wired to an observed equivalent: doing that honestly needs reaching into
+      // the sheet-host authority, which is outside this file's territory. mountedChromeKey
+      // below stays the one field this instrument actually compares.
       isMounted: presentationSnapshot.isMounted,
       headerSurfaceKind: headerEntry?.surfaceKind ?? null,
       mountedChromeKey: headerEntry?.mountedChromeKey ?? null,

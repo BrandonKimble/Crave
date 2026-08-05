@@ -3,7 +3,6 @@ import type {
   BottomSheetSnap,
 } from '../../overlays/bottomSheetMotionTypes';
 import type { OverlayKey } from '../../overlays/types';
-import type { SearchFreezeClassification } from '../../screens/Search/runtime/shared/search-freeze-classification-runtime';
 import type { OverlayRouteParamsMap } from './app-overlay-route-types';
 import type { CameraSnapshot } from './app-route-profile-transition-state-contract';
 
@@ -124,7 +123,6 @@ export type RouteSceneSwitchTransitionContract = {
   sheetTransitionPlan: RouteSceneSwitchSheetTransitionPlan;
   cameraIntent: RouteSceneSwitchCameraIntent;
   chromeVisibilityTarget: RouteSceneSwitchChromeVisibilityTarget;
-  freezeClassification: SearchFreezeClassification;
   motionPlanes: readonly RouteSceneSwitchMotionPlane[];
   pollsParams: RouteSceneSwitchPollsParams | null;
   dockedSceneRestoreIntent: RouteSceneSwitchDockedSceneRestoreIntent | null;

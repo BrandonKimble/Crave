@@ -77,8 +77,13 @@ export type AppRouteNavSilhouetteBottomNavGeometry = {
 export type AppRouteNavSilhouetteClipSample = {
   expectedNavCutout: number;
   expectedSheetBodyExclusionHeight: number;
+  // F1398(b): a second "expected visible painted height" field was deleted here — it was
+  // assigned the SAME local (visiblePaintedHeight) as expectedSheetMaskHeight on every
+  // path, so the two names read as an independent mask-vs-paint cross-check that could
+  // never disagree (the exact `hideLead = 1` always-green class F951(c) removed nearby;
+  // see the delete-gate entry for the deleted field's name). Only expectedSheetMaskHeight
+  // has a real functional reader; the other was telemetry-only.
   expectedSheetMaskHeight: number;
-  expectedVisiblePaintedHeight: number;
   navBarExtraTop: number;
   navBarCutoutHidingProgress: number;
   navBarCutoutIsHiding: boolean;
@@ -306,7 +311,6 @@ export const resolveAppRouteNavSilhouetteClipSample = ({
       expectedNavCutout: 0,
       expectedSheetBodyExclusionHeight: 0,
       expectedSheetMaskHeight: 0,
-      expectedVisiblePaintedHeight: 0,
       navBarExtraTop: APP_ROUTE_NAV_SILHOUETTE_EXTRA_TOP,
       navBarCutoutHidingProgress: hidingProgress,
       navBarCutoutIsHiding,
@@ -337,7 +341,6 @@ export const resolveAppRouteNavSilhouetteClipSample = ({
       navTranslateY: resolvedNavTranslateY,
     }),
     expectedSheetMaskHeight: visiblePaintedHeight,
-    expectedVisiblePaintedHeight: visiblePaintedHeight,
     navBarExtraTop: APP_ROUTE_NAV_SILHOUETTE_EXTRA_TOP,
     navBarCutoutHidingProgress: hidingProgress,
     navBarCutoutIsHiding,
@@ -361,9 +364,6 @@ export const resolveRoundedAppRouteNavSilhouetteClipSample = (
     ),
     expectedSheetMaskHeight: roundAppRouteNavSilhouetteTelemetryValue(
       sample.expectedSheetMaskHeight
-    ),
-    expectedVisiblePaintedHeight: roundAppRouteNavSilhouetteTelemetryValue(
-      sample.expectedVisiblePaintedHeight
     ),
     navBarExtraTop: roundAppRouteNavSilhouetteTelemetryValue(sample.navBarExtraTop),
     navBarCutoutHidingProgress: roundAppRouteNavSilhouetteTelemetryValue(

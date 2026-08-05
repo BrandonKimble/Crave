@@ -362,13 +362,14 @@ export const useBottomSheetSceneStackBodyContentRuntime = ({
     shouldRenderListBody,
   ]);
 
-  // THE FOUNDATION WHITE LAYER (scene-foundation-spec `bodySurface: 'white'`): every sheet
-  // scene's body lane paints a white plate over the shared frost — no page sits on bare frost.
-  // Per-page cutouts (FrostCutout) punch scroll-tracked holes in this plate. 'search' has no
-  // foundation row (owns the canonical results composition) and keeps the plain wrapper.
+  // THE FOUNDATION WHITE LAYER (scene-foundation-spec, F1389): every sheet scene's body
+  // lane paints a white plate over the shared frost — no page sits on bare frost. That was
+  // a single-inhabitant `bodySurface: 'white'` field on every row (structurally-unreachable
+  // false arm); the standard is now just "does this scene have a foundation row at all" —
+  // 'search' has none (owns the canonical results composition) and keeps the plain wrapper.
+  // Per-page cutouts (FrostCutout) punch scroll-tracked holes in this plate.
   const hasFoundationWhiteLayer =
-    getSceneFoundationSpec(sceneKey as Parameters<typeof getSceneFoundationSpec>[0])
-      ?.bodySurface === 'white';
+    getSceneFoundationSpec(sceneKey as Parameters<typeof getSceneFoundationSpec>[0]) != null;
   return React.useMemo(() => {
     if (hasFoundationWhiteLayer) {
       return (

@@ -236,8 +236,11 @@ export const AppRouteSceneChromeMotionRuntimeProvider = ({
       routeSceneRuntime.routeOverlayChromeModeAuthority.registerSharedValues(
         chromeSnapSharedValueTargets
       );
-    const unsubscribeRouteScenePolicy =
-      routeSceneRuntime.routeScenePolicyAuthority.subscribe(syncChromeSnapTargets);
+    // F1377: routeScenePolicyAuthority was subscribed here without appearing anywhere in
+    // resolveChromeSnapTargets' read set (searchBarTop from routeHostOverlayGeometryAuthority,
+    // showSaveListOverlay from routeOverlayCommandAuthority) — every policy publication
+    // re-wrote both shared values with byte-identical results. Deleted; the two authorities
+    // actually read remain subscribed below.
     const unsubscribeRouteHostOverlayGeometry =
       routeSceneRuntime.routeHostOverlayGeometryAuthority.subscribe(syncChromeSnapTargets);
     const unsubscribeRouteOverlayCommand =
@@ -245,7 +248,6 @@ export const AppRouteSceneChromeMotionRuntimeProvider = ({
 
     return () => {
       unregisterRouteOverlayChromeMode();
-      unsubscribeRouteScenePolicy();
       unsubscribeRouteHostOverlayGeometry();
       unsubscribeRouteOverlayCommand();
     };
@@ -256,7 +258,6 @@ export const AppRouteSceneChromeMotionRuntimeProvider = ({
     routeSceneRuntime.routeHostOverlayGeometryAuthority,
     routeSceneRuntime.routeOverlayCommandAuthority,
     routeSceneRuntime.routeOverlayChromeModeAuthority,
-    routeSceneRuntime.routeScenePolicyAuthority,
   ]);
 
   const runtime = useAppRouteSceneChromeTransitionRuntime({

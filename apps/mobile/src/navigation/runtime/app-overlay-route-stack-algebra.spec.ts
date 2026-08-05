@@ -7,10 +7,12 @@ import {
   createRouteStateSnapshot,
   popToEntryRouteState,
   popToRootRouteState,
+  resolveResidentWorldEntry,
   resolveSessionDismissPlan,
   pushRouteState,
   ROOT_SEARCH_ROUTE_ENTRY,
   setRootRouteState,
+  stampRouteEntryDesireState,
   updateRouteState,
   type RouteSceneSwitchRouteStateSnapshot,
 } from './app-overlay-route-stack-algebra';
@@ -233,5 +235,62 @@ describe('resolveSessionDismissPlan (the ONE dismiss-shape decision)', () => {
 
   test('no session at all → terminalHome', () => {
     expect(resolveSessionDismissPlan(bootState())).toEqual({ kind: 'terminalHome' });
+  });
+});
+
+// F1368: the exact field the module's own comment (:147-149) flags as "hit live once"
+// when omitted from equality — desire — previously had zero pin. These three tests
+// cover stampRouteEntryDesireState, resolveResidentWorldEntry, and the desire arm of
+// areOverlayRoutesEqual together, since the stamp is how a real desire lands on an entry.
+describe('entry desire (Leg 4 — world identity stamped onto the presenting entry)', () => {
+  const someDesire: RouteSceneSwitchRouteStateSnapshot['activeOverlayRoute']['desire'] = {
+    kind: 'natural',
+    query: 'tacos',
+  };
+
+  test('stampRouteEntryDesireState lands desire on the targeted entry, preserving entryId', () => {
+    const s1 = pushRouteState(bootState(), 'pollDetail', { pollId: 'p1' } as never);
+    const entryId = s1.activeOverlayRoute.entryId;
+    const s2 = stampRouteEntryDesireState(s1, entryId, someDesire);
+    expect(s2.activeOverlayRoute.entryId).toBe(entryId);
+    expect(s2.activeOverlayRoute.desire).toEqual(someDesire);
+    expect(s2.overlayRouteStack.find((e) => e.entryId === entryId)?.desire).toEqual(someDesire);
+  });
+
+  test('stampRouteEntryDesireState is a no-op (same reference) when desire is unchanged', () => {
+    const s1 = pushRouteState(bootState(), 'pollDetail', { pollId: 'p1' } as never);
+    const entryId = s1.activeOverlayRoute.entryId;
+    const s2 = stampRouteEntryDesireState(s1, entryId, someDesire);
+    const s3 = stampRouteEntryDesireState(s2, entryId, someDesire);
+    expect(s3).toBe(s2);
+  });
+
+  test('stampRouteEntryDesireState is a no-op for an unknown entryId', () => {
+    const s1 = bootState();
+    const s2 = stampRouteEntryDesireState(s1, 'not-a-real-entry-id', someDesire);
+    expect(s2).toBe(s1);
+  });
+
+  test('resolveResidentWorldEntry finds the nearest world-bearing entry (search or desire != null)', () => {
+    const s1 = pushRouteState(bootState(), 'pollDetail', { pollId: 'p1' } as never);
+    // A plain child (no desire, not 'search') is transparent — search root beneath resolves.
+    expect(resolveResidentWorldEntry(s1)?.key).toBe('search');
+    const stamped = stampRouteEntryDesireState(s1, s1.activeOverlayRoute.entryId, someDesire);
+    // Once the child carries a desire, it is the nearest world-bearing entry.
+    expect(resolveResidentWorldEntry(stamped)?.entryId).toBe(s1.activeOverlayRoute.entryId);
+  });
+
+  test('resolveResidentWorldEntry returns null when nothing in the stack carries a world', () => {
+    const base = setRootRouteState(bootState(), 'lists');
+    expect(resolveResidentWorldEntry(base)).toBeNull();
+  });
+
+  test('areOverlayRoutesEqual: a stamp-only desire change is a REAL inequality (F1364 latent risk)', () => {
+    const s1 = pushRouteState(bootState(), 'pollDetail', { pollId: 'p1' } as never);
+    const before = s1.activeOverlayRoute;
+    const stamped = stampRouteEntryDesireState(s1, before.entryId, someDesire);
+    const after = stamped.activeOverlayRoute;
+    expect(areOverlayRoutesEqual(before, after)).toBe(false);
+    expect(areOverlayRoutesEqual(after, after)).toBe(true);
   });
 });

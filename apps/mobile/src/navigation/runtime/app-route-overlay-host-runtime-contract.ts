@@ -27,4 +27,11 @@ export type AppRouteOverlayHostAuthoritySurface = {
   overlayLocalRestaurantSheetHostAuthority: SearchOverlayLocalRestaurantSheetHostAuthority;
   subscribeSearchInteractionRef: (listener: () => void) => () => void;
   getSearchInteractionRefSnapshot: () => SearchRoutePanelInteractionRef | null;
+  // F1362: `overlayLocalRestaurantSheetHostAuthority` can swap identity with the
+  // search-interaction ref UNCHANGED — a `useSyncExternalStore` reading only the ref
+  // snapshot bails out and never re-renders. This monotonic counter changes on EVERY
+  // publish (ref OR authority), giving the host boundary a snapshot it can see change
+  // so it re-reads the (always-live) authority getter below.
+  subscribeOverlayHostPublicationVersion: (listener: () => void) => () => void;
+  getOverlayHostPublicationVersionSnapshot: () => number;
 };

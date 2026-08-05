@@ -97,11 +97,12 @@ export type AppRouteSceneStackSurfaceAuthority = {
   replayDockedSceneHeaderRestorationContract: (source: string) => void;
 };
 
+// F1388: sheetContentLaneKind/displayedSceneKey/sheetPresentationSceneKey/overlaySheetVisible
+// were declared here and echoed into telemetry as if measured, but nothing ever compared them
+// to an observed value — an instrument that could only ever read healthy. Deleted; the fields
+// below (mountedChromeKey, dockedSceneHeaderChromeNonNull, dockedSceneBodyContentLaneActive,
+// contentActivity) are the ones logDockedSceneHeaderRestorationContract actually compares.
 export type DockedSceneIdleSheetHeaderRestorationContract = {
-  sheetContentLaneKind: 'docked_scene';
-  displayedSceneKey: typeof DOCKED_SCENE_KEY;
-  overlaySheetVisible: true;
-  sheetPresentationSceneKey: typeof DOCKED_SCENE_KEY;
   mountedChromeKey: NonNullable<SearchRouteSceneStackChromeEntry['mountedChromeKey']>;
   dockedSceneHeaderChromeNonNull: true;
   dockedSceneBodyContentLaneActive: true;
@@ -113,10 +114,6 @@ export type DockedSceneIdleSheetHeaderRestorationContract = {
 
 export const DOCKED_SCENE_IDLE_SHEET_HEADER_RESTORATION_CONTRACT: DockedSceneIdleSheetHeaderRestorationContract =
   {
-    sheetContentLaneKind: 'docked_scene',
-    displayedSceneKey: DOCKED_SCENE_KEY,
-    overlaySheetVisible: true,
-    sheetPresentationSceneKey: DOCKED_SCENE_KEY,
     mountedChromeKey: DOCKED_SCENE_KEY,
     dockedSceneHeaderChromeNonNull: true,
     dockedSceneBodyContentLaneActive: true,

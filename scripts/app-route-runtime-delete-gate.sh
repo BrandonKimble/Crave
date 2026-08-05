@@ -299,6 +299,9 @@ declare -a CONTENT_CHECKS=(
   "profile_results_initial_snap_middle_coercion::searchSceneSheetPlaneRuntime\\.sheetState === 'expanded' \\? 'expanded' : 'middle'::Search results shell must preserve collapsed and expanded live snaps across profile/results content swaps."
   "profile_sheet_host_registration_initial_snap_seed::const initialSnap = activeRenderableShellSpec\\?\\.initialSnapPoint \\?\\? 'middle';::Sheet host runtime registration must seed from the live shared sheet snap, not the incoming content initial snap."
   "profile_results_collapsed_reseed_gate::shouldReseedSearchResultsFromCollapsed|searchResultsCollapsedReseedDispatchKey::Profile/results content swaps must preserve the live sheet snap, not revive a collapsed-results reseed lane."
+  "scene_readiness_dead_spine::SceneReadinessGate|SceneReadinessContract::F1386 — the Phase 1 'universal per-scene readiness spine' was declared and used by nothing; must not return without a real producer and consumer."
+  "scene_input_authority_dead_surface::clearAllSceneInputs|AppRouteStaticSceneInputKey::F1384 — clearAllSceneInputs was unreachable (not re-exported on RouteShellSceneInputLane) and AppRouteStaticSceneInputKey had zero referents; deleted."
+  "nav_silhouette_duplicate_paint_height::expectedVisiblePaintedHeight::F1398(b) — always equal to expectedSheetMaskHeight on every path (the hideLead=1 always-green class); deleted."
 )
 
 declare -a PATH_CHECKS=(

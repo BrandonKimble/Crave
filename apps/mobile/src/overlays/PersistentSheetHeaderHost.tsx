@@ -253,13 +253,12 @@ export const PersistentSheetHeaderHost: React.FC<{
       !warnedMissingDescriptorScenes.has(sceneKey)
     ) {
       warnedMissingDescriptorScenes.add(sceneKey);
-      // The foundation table (scene-foundation-spec.ts) declares header: 'persistent'
-      // for every sheet scene — a missing descriptor is a CONTRACT VIOLATION, not a
-      // styling nit: the entire sheet chrome unmounts. Bark accordingly (error, named
-      // key); prod behavior stays graceful-null.
-      const requiresHeader = getSceneFoundationSpec(sceneKey)?.header === 'persistent';
-      const report = requiresHeader ? console.error : console.warn;
-      report(
+      // Every sheet scene registers a persistent-header descriptor (F1389: this used to
+      // be gated on scene-foundation-spec's `header === 'persistent'`, a field with no
+      // other value — the gate was always true, console.warn was dead code). A missing
+      // descriptor is a CONTRACT VIOLATION, not a styling nit: the entire sheet chrome
+      // unmounts. Bark accordingly (error, named key); prod behavior stays graceful-null.
+      console.error(
         `[FOUNDATION] presented scene '${sceneKey}' has no persistent-header descriptor` +
           ` — the full sheet chrome is unmounted. Register one via` +
           ` registerPersistentHeaderDescriptor (scene-foundation-spec.ts declares` +

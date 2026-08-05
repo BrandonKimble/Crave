@@ -48,6 +48,12 @@ export class AppRouteSceneMotionController implements AppRouteSceneMotionRuntime
   private readonly unsubscribeChromeTargetRegistry: () => void;
 
   constructor(
+    // F1392: CALLER-OWNED, not disposed by this.dispose() — unlike cameraMotionTargetRegistry
+    // and chromeMotionTargetRegistry above (constructed BY this class, disposed BY this class),
+    // sheetMotionTargetRegistry is INJECTED, so the constructor that built it owns its
+    // teardown. Today's one caller (app-route-scene-runtime.ts) disposes it as a separate,
+    // adjacent statement — honored only by convention. A second construction site that
+    // forgets leaks every registered sheet target with no compile or runtime signal.
     private readonly sheetMotionTargetRegistry: AppRouteSceneSheetMotionTargetRegistry,
     private readonly routeSceneSwitchRuntime: AppRouteSceneSwitchRuntime,
     resolveSceneShellSnapPoints: (sceneKey: OverlayKey) => BottomSheetSnapPoints | null

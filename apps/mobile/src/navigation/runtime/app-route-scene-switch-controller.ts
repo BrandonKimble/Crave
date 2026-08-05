@@ -447,7 +447,6 @@ const createTransitionContract = ({
   sheetTransitionPlan: transitionPlan.sheetTransitionPlan,
   cameraIntent: transitionPlan.cameraIntent,
   chromeVisibilityTarget: transitionPlan.chromeVisibilityTarget,
-  freezeClassification: transitionPlan.freezeClassification,
   motionPlanes: transitionPlan.motionPlanes,
   pollsParams: transitionPlan.pollsParams,
   dockedSceneRestoreIntent,

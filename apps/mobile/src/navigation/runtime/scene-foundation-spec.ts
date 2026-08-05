@@ -29,10 +29,15 @@ export type SceneFoundationSpec = {
    * can show RED, it is not documentation.
    */
   strip: 'none' | 'in-list' | 'header';
-  /** The uniform failure standard — a literal, so a silent exception is impossible. */
-  failure: 'announcer';
-  /** Every sheet scene registers a persistent-header descriptor (asserted in dev). */
-  header: 'persistent';
+  // F1389: `failure: 'announcer'` and `header: 'persistent'` used to live here as
+  // single-inhabitant literal types repeated on all 18 rows — every `===` test against
+  // them had a structurally unreachable false arm, so the "every scene must STATE its
+  // decision" claim was 18x repetition of what the type already forced. `failure` had
+  // zero readers anywhere and is deleted outright; `header` was compared at
+  // PersistentSheetHeaderHost.tsx:260 only to pick console.error vs console.warn, and
+  // is now console.error unconditionally there (the standard both fields asserted is
+  // unchanged — a sheet scene without a registered header descriptor is ALWAYS a
+  // contract violation, never a warning).
   /**
    * W4 (§9a settings row / W0.2 adjudication): whether the persistent header
    * renders the grab handle. 'hidden' = the full-page-illusion scenes (settings
@@ -51,16 +56,15 @@ export type SceneFoundationSpec = {
    * Required literal so every scene must STATE its lock decision.
    */
   snapLock: 'expanded' | 'none';
-  /**
-   * The FOUNDATION WHITE LAYER (owner standard, 2026-07-11): every page renders a white plate
-   * over the shared frosted foundation — no page may sit on bare frost. The only value is
-   * 'white' BY DESIGN (a required literal every scene must state; opting out to bare frost is
-   * unrepresentable). Rendered at the body lane (`SceneBodyFoundationSurface` in
-   * useBottomSheetSceneStackBodyContentRuntime); per-page CUTOUTS (holes showing the frost
-   * through) are runtime-registered by wrapping a content box in `<FrostCutout>` — see
-   * ADDING_A_SCENE.md §5. The search/results sheet is excluded (owns its canonical composition).
-   */
-  bodySurface: 'white';
+  // F1389: `bodySurface: 'white'` used to live here, also single-inhabitant and repeated
+  // on all 18 rows. THE FOUNDATION WHITE LAYER standard it asserted (owner standard,
+  // 2026-07-11 — every page renders a white plate over the shared frosted foundation, no
+  // page may sit on bare frost) is UNCHANGED; it is simply no longer a per-row field with
+  // a structurally-unreachable false arm. useBottomSheetSceneStackBodyContentRuntime.tsx
+  // now renders the white plate unconditionally for every sheet scene instead of gating
+  // on `?.bodySurface === 'white'`. Per-page CUTOUTS (holes showing the frost through)
+  // are still runtime-registered via `<FrostCutout>` — see ADDING_A_SCENE.md §5. The
+  // search/results sheet stays excluded (owns its canonical composition).
   /**
    * THE WORLD-JOIN FAMILY (OA1, transition-endstate-contract; R7): whether this
    * scene's reveal rides the search surface's ONE world episode — a TransitionTxn
@@ -83,11 +87,8 @@ export const SCENE_FOUNDATION_SPECS: Record<SheetSceneKey, SceneFoundationSpec> 
   home: {
     skeleton: { rowType: 'tile' },
     strip: 'none',
-    failure: 'announcer',
-    header: 'persistent',
     grabHandle: 'visible',
     snapLock: 'none',
-    bodySurface: 'white',
     worldJoin: false,
   },
   polls: {
@@ -96,11 +97,8 @@ export const SCENE_FOUNDATION_SPECS: Record<SheetSceneKey, SceneFoundationSpec> 
     // registered on the polls persistent-header descriptor) — the audited snap-in
     // gate died with the in-list strip.
     strip: 'header',
-    failure: 'announcer',
-    header: 'persistent',
     grabHandle: 'visible',
     snapLock: 'none',
-    bodySurface: 'white',
     worldJoin: false,
   },
   lists: {
@@ -109,61 +107,43 @@ export const SCENE_FOUNDATION_SPECS: Record<SheetSceneKey, SceneFoundationSpec> 
     // ONE ToggleStrip whose action-row slot carries the edit morph). The leg-2
     // 'in-list' row described the hand-rolled two-strip morph, deleted with it.
     strip: 'header',
-    failure: 'announcer',
-    header: 'persistent',
     grabHandle: 'visible',
     snapLock: 'none',
-    bodySurface: 'white',
     worldJoin: false,
   },
   profile: {
     skeleton: { rowType: 'restaurant' },
     strip: 'none',
-    failure: 'announcer',
-    header: 'persistent',
     grabHandle: 'visible',
     snapLock: 'none',
-    bodySurface: 'white',
     worldJoin: false,
   },
   restaurant: {
     skeleton: { rowType: 'dish' },
     strip: 'none',
-    failure: 'announcer',
-    header: 'persistent',
     grabHandle: 'visible',
     snapLock: 'none',
-    bodySurface: 'white',
     worldJoin: false,
   },
   saveList: {
     skeleton: { rowType: 'tile' },
     strip: 'none',
-    failure: 'announcer',
-    header: 'persistent',
     grabHandle: 'visible',
     snapLock: 'none',
-    bodySurface: 'white',
     worldJoin: false,
   },
   pollDetail: {
     skeleton: { rowType: 'comment' },
     strip: 'none',
-    failure: 'announcer',
-    header: 'persistent',
     grabHandle: 'visible',
     snapLock: 'none',
-    bodySurface: 'white',
     worldJoin: false,
   },
   pollCreation: {
     skeleton: { rowType: 'comment' },
     strip: 'none',
-    failure: 'announcer',
-    header: 'persistent',
     grabHandle: 'visible',
     snapLock: 'none',
-    bodySurface: 'white',
     worldJoin: false,
   },
   // Stub-pass scenes (plans/page-registry.md §1) — foundation decisions stated ahead
@@ -171,11 +151,8 @@ export const SCENE_FOUNDATION_SPECS: Record<SheetSceneKey, SceneFoundationSpec> 
   userProfile: {
     skeleton: { rowType: 'restaurant' },
     strip: 'none',
-    failure: 'announcer',
-    header: 'persistent',
     grabHandle: 'visible',
     snapLock: 'none',
-    bodySurface: 'white',
     worldJoin: false,
   },
   listDetail: {
@@ -184,11 +161,8 @@ export const SCENE_FOUNDATION_SPECS: Record<SheetSceneKey, SceneFoundationSpec> 
     // SortChips band is deleted; this declaration is load-bearing via the strip-law assert
     // in ListDetailPanel's ToggleStrip.
     strip: 'in-list',
-    failure: 'announcer',
-    header: 'persistent',
     grabHandle: 'visible',
     snapLock: 'none',
-    bodySurface: 'white',
     // OA1: listDetail is IN the world-join family — the list world presents into
     // this child and its rows hold on the same admission gate as results.
     worldJoin: true,
@@ -196,76 +170,55 @@ export const SCENE_FOUNDATION_SPECS: Record<SheetSceneKey, SceneFoundationSpec> 
   followList: {
     skeleton: { rowType: 'tile' },
     strip: 'none',
-    failure: 'announcer',
-    header: 'persistent',
     grabHandle: 'visible',
     snapLock: 'none',
-    bodySurface: 'white',
     worldJoin: false,
   },
   notifications: {
     skeleton: { rowType: 'comment' },
     strip: 'none',
-    failure: 'announcer',
-    header: 'persistent',
     grabHandle: 'visible',
     snapLock: 'none',
-    bodySurface: 'white',
     worldJoin: false,
   },
   settings: {
     skeleton: { rowType: 'tile' },
     strip: 'none',
-    failure: 'announcer',
-    header: 'persistent',
     // §7.7/§9a: full-page illusion — NO grab handle, X close. Settings rides the STANDARD
     // child shell (same snaps as every child, so profile↔settings never moves the sheet)
     // and is LOCKED at the top snap instead: drags rubber-band back.
     grabHandle: 'hidden',
     snapLock: 'expanded',
-    bodySurface: 'white',
     worldJoin: false,
   },
   editProfile: {
     skeleton: { rowType: 'tile' },
     strip: 'none',
-    failure: 'announcer',
-    header: 'persistent',
     grabHandle: 'visible',
     snapLock: 'none',
-    bodySurface: 'white',
     worldJoin: false,
   },
   // W2 (page-registry §7.4): the post page — photo tiles; no filter strip.
   postPhotos: {
     skeleton: { rowType: 'tile' },
     strip: 'none',
-    failure: 'announcer',
-    header: 'persistent',
     grabHandle: 'visible',
     snapLock: 'none',
-    bodySurface: 'white',
     worldJoin: false,
   },
   // W3 messaging (§4.1): inbox = person rows; DM thread = message rows.
   messagesInbox: {
     skeleton: { rowType: 'comment' },
     strip: 'none',
-    failure: 'announcer',
-    header: 'persistent',
     grabHandle: 'visible',
     snapLock: 'none',
-    bodySurface: 'white',
     worldJoin: false,
   },
   dmSession: {
     skeleton: { rowType: 'comment' },
     strip: 'none',
-    failure: 'announcer',
-    header: 'persistent',
     grabHandle: 'visible',
     snapLock: 'none',
-    bodySurface: 'white',
     worldJoin: false,
   },
 };

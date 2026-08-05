@@ -706,6 +706,11 @@ export class AppRouteOverlayHostAuthorityController {
 
   private readonly searchInteractionRefListeners = new Set<Listener>();
 
+  // F1362: bumped on EVERY publish that notifies searchInteractionRefListeners (ref
+  // change or authority swap), so a subscriber can see a change even when the ref
+  // itself is unchanged.
+  private overlayHostPublicationVersion = 0;
+
   public readonly authoritySurface: AppRouteOverlayHostAuthoritySurface = (() => {
     const getOverlayLocalRestaurantSheetHostAuthority = () =>
       this.overlayLocalRestaurantSheetHostAuthority;
@@ -718,6 +723,9 @@ export class AppRouteOverlayHostAuthorityController {
       },
       subscribeSearchInteractionRef: (listener) => this.subscribeSearchInteractionRef(listener),
       getSearchInteractionRefSnapshot: () => this.searchInteractionRef,
+      subscribeOverlayHostPublicationVersion: (listener) =>
+        this.subscribeSearchInteractionRef(listener),
+      getOverlayHostPublicationVersionSnapshot: () => this.overlayHostPublicationVersion,
     };
   })();
 
@@ -754,6 +762,7 @@ export class AppRouteOverlayHostAuthorityController {
       return;
     }
     this.searchInteractionRef = searchInteractionRef;
+    this.overlayHostPublicationVersion += 1;
     this.searchInteractionRefListeners.forEach((listener) => {
       listener();
     });
@@ -770,6 +779,7 @@ export class AppRouteOverlayHostAuthorityController {
       return;
     }
     this.overlayLocalRestaurantSheetHostAuthority = overlayLocalRestaurantSheetHostAuthority;
+    this.overlayHostPublicationVersion += 1;
     this.searchInteractionRefListeners.forEach((listener) => {
       listener();
     });

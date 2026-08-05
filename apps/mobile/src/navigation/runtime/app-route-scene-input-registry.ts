@@ -22,8 +22,6 @@ export const APP_ROUTE_STATIC_SCENE_INPUT_KEYS = APP_OVERLAY_STATIC_ROUTE_SCENE_
 
 export const APP_ROUTE_SCENE_INPUT_KEYS = APP_OVERLAY_ROUTE_SCENE_INPUT_KEYS;
 
-export type AppRouteStaticSceneInputKey = (typeof APP_ROUTE_STATIC_SCENE_INPUT_KEYS)[number];
-
 export type AppRouteSceneInputKey = (typeof APP_ROUTE_SCENE_INPUT_KEYS)[number];
 
 /**
@@ -74,9 +72,6 @@ export type AppRouteSceneInputAuthority = {
   subscribeSceneShell: (sceneKey: AppRouteSceneInputKey, listener: Listener) => () => void;
   subscribeSceneChrome: (sceneKey: AppRouteSceneInputKey, listener: Listener) => () => void;
   subscribeSceneBody: (sceneKey: AppRouteSceneInputKey, listener: Listener) => () => void;
-  getSnapshot: () => Readonly<
-    Partial<Record<AppRouteSceneInputKey, AppRouteSceneInputSnapshot | null>>
-  >;
   getSceneInputSnapshot: (
     sceneKey: OverlayKey | null | undefined
   ) => AppRouteSceneInputSnapshot | null;
@@ -112,7 +107,6 @@ export type AppRouteSceneInputActions = {
   clearSceneChrome: (sceneKey: AppRouteSceneInputKey) => void;
   clearSceneBody: (sceneKey: AppRouteSceneInputKey) => void;
   clearSceneInput: (sceneKey: AppRouteSceneInputKey) => void;
-  clearAllSceneInputs: () => void;
 };
 
 export const isAppRouteSceneInputKey = (
@@ -147,7 +141,6 @@ export class AppRouteSceneInputController {
     subscribeSceneChrome: (sceneKey, listener) =>
       this.subscribeSceneLane(sceneKey, 'chrome', listener),
     subscribeSceneBody: (sceneKey, listener) => this.subscribeSceneLane(sceneKey, 'body', listener),
-    getSnapshot: () => this.currentSnapshot,
     getSceneInputSnapshot: (sceneKey) =>
       isAppRouteSceneInputKey(sceneKey) ? (this.currentSnapshot[sceneKey] ?? null) : null,
   };
@@ -161,7 +154,6 @@ export class AppRouteSceneInputController {
     clearSceneChrome: this.clearSceneChrome.bind(this),
     clearSceneBody: this.clearSceneBody.bind(this),
     clearSceneInput: this.clearSceneInput.bind(this),
-    clearAllSceneInputs: this.clearAllSceneInputs.bind(this),
   };
 
   public dispose(): void {
@@ -527,22 +519,6 @@ export class AppRouteSceneInputController {
     this.notifySceneLane(sceneKey, 'body');
   }
 
-  private clearAllSceneInputs(): void {
-    const clearedSceneKeys = APP_ROUTE_SCENE_INPUT_KEYS.filter(
-      (sceneKey) => this.currentSnapshot[sceneKey] != null
-    );
-
-    if (clearedSceneKeys.length === 0) {
-      return;
-    }
-
-    this.currentSnapshot = {};
-    clearedSceneKeys.forEach((sceneKey) => {
-      this.notifySceneLane(sceneKey, 'shell');
-      this.notifySceneLane(sceneKey, 'chrome');
-      this.notifySceneLane(sceneKey, 'body');
-    });
-  }
 }
 
 export const createAppRouteSceneInputController = (): AppRouteSceneInputController =>

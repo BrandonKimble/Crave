@@ -764,6 +764,7 @@ class AppRouteSheetHostAuthorityController {
     this.unsubscribers.length = 0;
     this.nativeAdapterListeners.clear();
     this.nativeAdapterSharedValueTargets.clear();
+    this.runtimeConfigSharedValueTargets.clear();
     this.runtimeConfigListeners.clear();
     this.motionRuntimeListeners.clear();
     this.motionRuntimeSelectorListeners.clear();

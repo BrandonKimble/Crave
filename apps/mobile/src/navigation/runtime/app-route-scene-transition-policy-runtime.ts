@@ -30,7 +30,6 @@ import {
   materializeSheetMotionDescriptorRule,
 } from './app-route-sheet-motion-descriptor-table';
 import { APP_ROOT_NAV_ITEMS } from './app-route-root-nav-items';
-import type { SearchFreezeClassification } from '../../screens/Search/runtime/shared/search-freeze-classification-runtime';
 
 export type AppRouteSceneTransitionPolicyInput = {
   sourceSceneKey: OverlayKey;
@@ -76,7 +75,6 @@ export type AppRouteSceneTransitionPlan = {
   sheetTransitionPlan: RouteSceneSwitchSheetTransitionPlan;
   cameraIntent: RouteSceneSwitchCameraIntent;
   chromeVisibilityTarget: RouteSceneSwitchChromeVisibilityTarget;
-  freezeClassification: SearchFreezeClassification;
   motionPlanes: readonly RouteSceneSwitchMotionPlane[];
   pollsParams: RouteSceneSwitchPollsParams | null;
   dockedSceneRestoreSnap: RouteSceneSwitchDockedSceneRestoreIntent['snap'] | null;
@@ -138,9 +136,14 @@ const MODAL_SCENES = new Set<OverlayKey>(['price', 'scoreInfo']);
 // Return-to-origin foundation (cover-orphan blank fix): `lists` is now SEEDED. A
 // topLevelSwitch into lists — a plain lists forward-open OR a favorites-as-search
 // dismiss that re-roots to the captured lists origin — has NO usable content-readiness
-// gate: lists is absent from SCENE_READINESS_CONTRACT_BY_TARGET (→ EMPTY contract,
-// requiredContentGates:[]), so the arm site mints contentReadinessTransactionId=null and
-// NEVER links the 'content' plane to any readiness signal. Left on the default
+// gate: the caller's arm site has no readiness-gate mapping for lists, so it mints
+// contentReadinessTransactionId=null and NEVER links the 'content' plane to any
+// readiness signal. (F1386 correction: this file used to point at a per-scene
+// readiness-gate table declared in app-route-scene-descriptor-contract.ts as the
+// source of that mapping — that "Phase 1 readiness spine" was declared and never
+// wired to anything; it has been deleted (see the delete-gate entry for its name).
+// The real mapping this comment is about lives at the caller's arm site, not here.)
+// Left on the default
 // `preserveOutgoingUntilSettle`, such a switch armed a content plane that could only complete
 // via the 600ms SCENE_READINESS_LIVENESS_MS watchdog — and resolveTransitionSheetPresentation-
 // SceneKey kept presenting the HELD outgoing handoff (the dismissing search surface) for that
@@ -584,7 +587,6 @@ export const resolveAppRouteSceneTransitionPlan = ({
     sheetTransitionPlan: resolvedSheetTransitionPlan,
     cameraIntent,
     chromeVisibilityTarget: resolvedChromeVisibilityTarget,
-    freezeClassification: 'none',
     motionPlanes: resolveMotionPlanes({
       sheetIntent: resolvedSheetIntent,
       cameraIntent,
