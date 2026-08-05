@@ -79,6 +79,10 @@ const ALLOWED: Record<string, { class: Classification; why: string }> = {
     class: 'declaration',
     why: 'Names the column in a comment explaining erasure ORDER (null_column must precede sever, because the person-scope predicate needs the signal_actors mapping that sever destroys). Executes the declaration; does not read text.',
   },
+  'src/modules/identity/person-data/person-data-coverage.integration.spec.ts': {
+    class: 'declaration',
+    why: 'The coverage ledger; names subject_text only in its allowlist of reasons.',
+  },
   'src/modules/identity/person-data/person-data-scope.integration.spec.ts': {
     class: 'declaration',
     why: "Proves each rule's SCOPE can reach the person; names subject_text only as a secondary column in its allowlist of reasons.",

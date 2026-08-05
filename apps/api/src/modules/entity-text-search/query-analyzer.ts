@@ -146,6 +146,9 @@ const DETECTOR_MIN_ACCURACY = 0.1;
 const DETECTOR_MIN_MARGIN = 1.25;
 /** Above this the detector overrules the request-locale prior. */
 const DETECTOR_STRONG_ACCURACY = 0.14;
+/** PLACEHOLDER (D3 sweep calibrates): how sure the detector must be to
+ *  overrule an explicit request-locale prior. */
+const DETECTOR_OVERRULE_PRIOR = 0.5;
 
 const SCRIPT_RANGES: Array<[QueryScript, RegExp]> = [
   ['cyrillic', /\p{Script=Cyrillic}/u],
@@ -218,7 +221,19 @@ export function fuseLocale(
     top.accuracy >= DETECTOR_MIN_ACCURACY &&
     (runner == null || top.accuracy >= DETECTOR_MIN_MARGIN * runner.accuracy);
 
-  if (decisive && top.accuracy >= DETECTOR_STRONG_ACCURACY) {
+  // F4 (wave-3 red team, measured): a "strong" detector verdict overruled
+  // an EXPLICIT request prior — 15% of plain-English queries classified
+  // non-English (phils ice house→fr), each buying an embedding call and
+  // exposure to placeholder dense floors. The detector may only overrule a
+  // stated prior above OVERRULE_PRIOR (a placeholder the D3 gold-corpus
+  // sweep calibrates); with no prior, STRONG suffices as before.
+  const overrulesPrior =
+    decisive &&
+    top.accuracy >= DETECTOR_STRONG_ACCURACY &&
+    (requestBase == null ||
+      top.lang === requestBase ||
+      top.accuracy >= DETECTOR_OVERRULE_PRIOR);
+  if (overrulesPrior) {
     return { tag: top.lang, confidence: top.accuracy, source: 'detector' };
   }
   if (requestBase) {

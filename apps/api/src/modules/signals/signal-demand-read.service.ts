@@ -16,6 +16,7 @@ import {
   dailyActsCteSql,
 } from './act-identity';
 import { ECHO_SIGNAL_KINDS } from './signals.service';
+import { emittableTermsJoinSql } from './subject-text-floor';
 
 // freshFirstOccurrenceSql DELETED (docket #6): the fresh ledger arm it
 // gated is gone — the aggregate's window-wide dedupe is the only dedupe.
@@ -250,6 +251,12 @@ export class SignalDemandReadService {
           SUM(a.signal_count)::float8 AS raw_count,
           MAX(a.last_occurred_at) AS last_used
         FROM signal_demand_daily a
+        -- K-ANONYMITY, AS A JOIN (subject-text-floor): this lane hands one
+        -- person's typed words to a DIFFERENT person. Eligibility is a global
+        -- property of the term, decided by the view; this query decides only
+        -- the SCORE. An ineligible term never leaves Postgres, so the LIMIT
+        -- below applies to eligible rows only.
+        ${emittableTermsJoinSql(Prisma.sql`a.subject_text`)}
         WHERE a.place_id IS NULL
           AND a.kind = 'search'
           AND a.subject_text IS NOT NULL
@@ -889,6 +896,11 @@ export class SignalDemandReadService {
           s.occurred_at
         FROM signals s
         ${redirectJoinSql('s')}
+        -- K-ANONYMITY, AS A JOIN (subject-text-floor). This lane is the more
+        -- dangerous of the two: an unmet ask is by definition a term nothing
+        -- matched — the most unusual thing anyone typed — and it feeds
+        -- OUTBOUND collection (reddit keyword slices).
+        ${emittableTermsJoinSql(Prisma.sql`s.subject_text`)}
         JOIN places p ON p.place_id = ANY(${params.placeIds}::uuid[])
         WHERE s.kind = 'on_demand_ask'
           AND s.occurred_at >= ${params.since}

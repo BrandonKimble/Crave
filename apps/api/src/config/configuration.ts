@@ -11,23 +11,26 @@ import { placesOperationLimits } from '../modules/external-integrations/shared/v
 import {
   isProdEnv,
   resolveAppEnv,
+  bullPrefixFor,
   type AppEnv,
 } from '../shared/config/app-env';
 /**
  * Determines optimal database connection pool size based on environment
  * and application requirements from PRD sections 6.6.1 and 6.1.2
  */
-function getDatabasePoolSize(): string {
-  const env = process.env.NODE_ENV || 'development';
-
-  switch (env) {
-    case 'development':
+function getDatabasePoolSize(appEnv: AppEnv): string {
+  // F404: this switched on NODE_ENV, whose value space is
+  // development/test/production — staging is spelled in APP_ENV, never
+  // NODE_ENV, so the `case 'staging'` arm below was UNREACHABLE and staging
+  // silently inherited prod's pool size (50). Test stays keyed off NODE_ENV
+  // (a toolchain fact: is this a jest run) since AppEnv doesn't model it.
+  if (process.env.NODE_ENV === 'test') return '5';
+  switch (appEnv) {
+    case 'dev':
       return '10'; // Smaller pool for development with detailed logging
     case 'staging':
       return '25'; // Mid-size pool for staging
-    case 'test':
-      return '5'; // Smaller pool for testing to avoid connection conflicts
-    case 'production':
+    case 'prod':
       return '50'; // MVP production pool size (can scale to 100+)
     default:
       return '10'; // Conservative default
@@ -178,7 +181,8 @@ export default () => {
         // prod 50) — stays env-overridable. Everything else below is a
         // never-changed constant (2026-07-11 config fold-in).
         max: parseInt(
-          process.env.DATABASE_CONNECTION_POOL_MAX || getDatabasePoolSize(),
+          process.env.DATABASE_CONNECTION_POOL_MAX ||
+            getDatabasePoolSize(appEnv),
           10,
         ),
         min: parseInt(process.env.DATABASE_CONNECTION_POOL_MIN || '2', 10),
@@ -211,7 +215,7 @@ export default () => {
       db: parseInt(process.env.REDIS_DB || '0', 10),
     },
     bull: {
-      prefix: process.env.BULL_PREFIX || `crave:${appEnv}`,
+      prefix: bullPrefixFor(appEnv),
     },
     // THE THREE GLOBAL RATE-LIMIT WINDOWS. Read by
     // infrastructure/throttler/throttler.module.ts's `readThrottlerWindow`,
@@ -280,7 +284,11 @@ export default () => {
         process.env.CLOUDINARY_WEBHOOK_SECRET ||
         process.env.CLOUDINARY_API_SECRET,
       // Folder/public_id prefix per environment (isolates dev assets).
-      envPrefix: process.env.CLOUDINARY_ENV_PREFIX || 'dev',
+      // F404: was a hardcoded 'dev' fallback — a deployed env (staging/prod)
+      // missing CLOUDINARY_ENV_PREFIX silently wrote assets into the dev
+      // namespace. Default to appEnv so a config-less deploy still isolates
+      // correctly; explicit env var still wins.
+      envPrefix: process.env.CLOUDINARY_ENV_PREFIX || appEnv,
       // Public URL Cloudinary POSTs upload/moderation notifications to
       // (dev = tunnel; prod = Railway URL). Signed into every ticket.
       notificationUrl: process.env.CLOUDINARY_NOTIFICATION_URL,

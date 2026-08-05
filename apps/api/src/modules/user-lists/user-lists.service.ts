@@ -1271,21 +1271,48 @@ export class UserListsService {
       throw new NotFoundException('Favorite list not found');
     }
 
+    // F606: was mint → read-then-write pre-check (5 attempts against a
+    // 72-bit random slug) → separate update — racy by construction and the
+    // pre-check could never actually fire (collision probability ~0), so it
+    // was a guard-that-cannot-fail rather than the real guard. The DB's own
+    // unique index (user_lists_share_slug_key) IS the arbiter: mint → write
+    // → on P2002 (the one honest collision signal) mint again and retry.
+    const needsNewSlug = !list.shareSlug || dto?.rotate;
     let shareSlug = list.shareSlug;
-    if (!shareSlug || dto?.rotate) {
-      shareSlug = await this.generateUniqueShareSlug();
+    let updated: Awaited<
+      ReturnType<typeof this.prisma.userList.update>
+    >;
+    if (!needsNewSlug) {
+      // Visibility canon: sharing mints/returns the link CAPABILITY and
+      // never mutates visibility — a private (unlisted) list stays
+      // shareable without being flipped onto the profile.
+      updated = await this.prisma.userList.update({
+        where: { listId },
+        data: { shareSlug, shareEnabled: true },
+      });
+    } else {
+      const MAX_ATTEMPTS = 5;
+      let attempt = 0;
+      for (;;) {
+        attempt += 1;
+        shareSlug = this.generateShareSlug();
+        try {
+          updated = await this.prisma.userList.update({
+            where: { listId },
+            data: { shareSlug, shareEnabled: true },
+          });
+          break;
+        } catch (error) {
+          const isUniqueViolation =
+            error instanceof Prisma.PrismaClientKnownRequestError &&
+            error.code === 'P2002';
+          if (!isUniqueViolation || attempt >= MAX_ATTEMPTS) {
+            throw error;
+          }
+          // Collision on the DB's real arbiter — mint a fresh slug and retry.
+        }
+      }
     }
-
-    // Visibility canon: sharing mints/returns the link CAPABILITY and never
-    // mutates visibility (discovery) — a private (unlisted) list stays
-    // shareable without being flipped onto the profile.
-    const updated = await this.prisma.userList.update({
-      where: { listId },
-      data: {
-        shareSlug,
-        shareEnabled: true,
-      },
-    });
 
     await this.prisma.userListShareEvent.create({
       data: {
@@ -1351,20 +1378,6 @@ export class UserListsService {
     const connectionItems = list.items.filter((item) => item.connection);
     const results = await this.mapper.mapFoodResults(connectionItems);
     return { list: summary, viewerRole, defaultSort, dishes: results };
-  }
-
-  private async generateUniqueShareSlug(): Promise<string> {
-    for (let attempt = 0; attempt < 5; attempt += 1) {
-      const slug = this.generateShareSlug();
-      const existing = await this.prisma.userList.findFirst({
-        where: { shareSlug: slug },
-        select: { listId: true },
-      });
-      if (!existing) {
-        return slug;
-      }
-    }
-    throw new BadRequestException('Unable to generate share link');
   }
 
   private generateShareSlug(): string {

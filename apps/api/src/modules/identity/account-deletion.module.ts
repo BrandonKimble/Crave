@@ -8,6 +8,7 @@ import { PhotosModule } from '../photos/photos.module';
 import { AccountDeletionService } from './account-deletion.service';
 import { PersonDataEraserService } from './person-data/person-data-eraser.service';
 import { DeletionPurgeService } from './person-data/deletion-purge.service';
+import { PersonDataExportService } from './person-data/person-data-export.service';
 import { AccountDeletionController } from './account-deletion.controller';
 
 /**
@@ -31,6 +32,7 @@ import { AccountDeletionController } from './account-deletion.controller';
     // 30-day "hidden" into "gone".
     PersonDataEraserService,
     DeletionPurgeService,
+    PersonDataExportService,
   ],
 })
 export class AccountDeletionModule {}

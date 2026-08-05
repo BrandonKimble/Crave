@@ -387,10 +387,6 @@ export class PhotoReadService {
     return [...groups.values()];
   }
 
-  private passesFloor(focusScore: number | null): boolean {
-    return focusScore === null || focusScore >= FOCUS_FLOOR;
-  }
-
   private toStripItem(row: PhotoStripRow): PhotoStripItemDto {
     return {
       photoId: row.photoId,

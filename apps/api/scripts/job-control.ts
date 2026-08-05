@@ -2,31 +2,22 @@
 
 /**
  * Job Control Script - Monitor and control background collection jobs
+ *
+ * F420 (2026-08-04): moved here from the package ROOT, where it sat outside
+ * every convention that governs operational tools (the scripts census, the
+ * `stopCronsForScript` convention, the lint project) and carried a THIRD
+ * hand-rolled `resolveAppEnv`/`resolveBullPrefix` copy — see
+ * plans/rebuild-execution-ledger.md:1248 for the original "cosmetic only"
+ * exclusion. It now imports the ONE `resolveAppEnv` +
+ * `bullPrefixFor(appEnv)` that `configuration.ts` also calls: a drift
+ * between this tool's namespace derivation and the app's meant it could
+ * inspect and CLEAR the wrong environment's queues (its own help text
+ * advertises a `clear` command).
  */
 
 import 'dotenv/config';
 import Redis from 'ioredis';
-
-function resolveAppEnv(): string {
-  const raw = process.env.APP_ENV || process.env.CRAVE_ENV;
-  if (raw && raw.trim()) {
-    return raw.trim();
-  }
-
-  const nodeEnv = (process.env.NODE_ENV || 'development').toLowerCase();
-  if (nodeEnv === 'production') {
-    return 'prod';
-  }
-  return 'dev';
-}
-
-function resolveBullPrefix(): string {
-  const explicit = process.env.BULL_PREFIX;
-  if (typeof explicit === 'string' && explicit.trim()) {
-    return explicit.trim();
-  }
-  return `crave:${resolveAppEnv()}`;
-}
+import { resolveAppEnv, bullPrefixFor } from '../src/shared/config/app-env';
 
 function resolveLlmRateLimiterPrefix(): string {
   const explicit = process.env.LLM_RATE_LIMIT_PREFIX;
@@ -42,7 +33,7 @@ async function jobControl() {
   if (!command || !['status', 'clear', 'enable', 'disable'].includes(command)) {
     console.log('📋 JOB CONTROL SCRIPT');
     console.log('====================\n');
-    console.log('Usage: npx ts-node job-control.ts <command>\n');
+    console.log('Usage: npx ts-node scripts/job-control.ts <command>\n');
     console.log('Commands:');
     console.log('  status   - Show current job status and settings');
     console.log('  clear    - Clear all queued jobs (emergency stop)');
@@ -84,7 +75,7 @@ async function showStatus(redis: Redis) {
   console.log('📊 BACKGROUND JOB STATUS');
   console.log('========================\n');
 
-  const bullPrefix = resolveBullPrefix();
+  const bullPrefix = bullPrefixFor(resolveAppEnv());
   const llmRateLimiterPrefix = resolveLlmRateLimiterPrefix();
 
   // Check environment setting
@@ -265,13 +256,13 @@ async function showStatus(redis: Redis) {
         `   🚨 URGENT: Jobs are ENABLED - they are likely consuming quota right now!`,
       );
       console.log(
-        `   💊 IMMEDIATE ACTION: Run 'npx ts-node job-control.ts disable && npx ts-node job-control.ts clear'`,
+        `   💊 IMMEDIATE ACTION: Run 'npx ts-node scripts/job-control.ts disable && npx ts-node scripts/job-control.ts clear'`,
       );
     } else {
       console.log(
         `   ⚠️  Jobs are disabled but queues exist - clear them to be safe`,
       );
-      console.log(`   🧹 Run: npx ts-node job-control.ts clear`);
+      console.log(`   🧹 Run: npx ts-node scripts/job-control.ts clear`);
     }
   } else if (!jobsEnabled) {
     console.log(
@@ -288,7 +279,7 @@ async function clearJobs(redis: Redis) {
   console.log('🧹 CLEARING ALL BACKGROUND JOBS');
   console.log('================================\n');
 
-  const bullPrefix = resolveBullPrefix();
+  const bullPrefix = bullPrefixFor(resolveAppEnv());
   const llmRateLimiterPrefix = resolveLlmRateLimiterPrefix();
   const queueNames = [
     'chronological-collection',
@@ -331,7 +322,10 @@ async function toggleJobs(enable: boolean) {
   console.log(`🔧 ${enable ? 'ENABLING' : 'DISABLING'} BACKGROUND JOBS`);
   console.log('=======================================\n');
 
-  const envPath = path.join(__dirname, '.env');
+  // F420: this file moved from the package root into scripts/, one
+  // directory deeper — __dirname now points at scripts/, so the .env lookup
+  // must go up one level to stay at the apps/api root.
+  const envPath = path.join(__dirname, '..', '.env');
   let envContent = fs.readFileSync(envPath, 'utf8');
 
   if (envContent.includes('COLLECTION_JOBS_ENABLED=')) {
@@ -349,7 +343,7 @@ async function toggleJobs(enable: boolean) {
 
   if (!enable) {
     console.log(
-      `\n💡 Tip: Run 'npx ts-node job-control.ts clear' to remove existing queued jobs`,
+      `\n💡 Tip: Run 'npx ts-node scripts/job-control.ts clear' to remove existing queued jobs`,
     );
   }
 }

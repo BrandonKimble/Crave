@@ -3,7 +3,6 @@ import type { User } from '@prisma/client';
 import { ClerkAuthGuard } from '../identity/auth/clerk-auth.guard';
 import { CurrentUser } from '../../shared';
 import { HistoryService } from './history.service';
-import type { RestaurantStatusPreviewDto } from '../search/dto/restaurant-status-preview.dto';
 import { RecordRestaurantViewDto } from './dto/record-restaurant-view.dto';
 import { RecordFoodViewDto } from './dto/record-food-view.dto';
 import { ListRestaurantViewsDto } from './dto/list-restaurant-views.dto';
@@ -55,22 +54,15 @@ export class HistoryController {
     );
   }
 
+  // F680 (2026-08-04): same drift as F843 above, same fix — the inline
+  // return type here omitted `locationId`/`locationAddress` (the earned-
+  // address suggestion), which the service returns and mobile consumes.
+  // Deferring to the service's own type means there is only one truth.
   @Get('foods/viewed')
   listRecentlyViewedFoods(
     @Query() query: ListFoodViewsDto,
     @CurrentUser() user: User,
-  ): Promise<
-    Array<{
-      connectionId: string;
-      foodId: string;
-      foodName: string;
-      restaurantId: string;
-      restaurantName: string;
-      lastViewedAt: Date;
-      viewCount: number;
-      statusPreview?: RestaurantStatusPreviewDto | null;
-    }>
-  > {
+  ): ReturnType<HistoryService['listRecentlyViewedFoods']> {
     return this.historyService.listRecentlyViewedFoods(user.userId, query);
   }
 }

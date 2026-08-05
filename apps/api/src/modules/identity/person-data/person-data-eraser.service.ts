@@ -3,6 +3,7 @@ import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../../prisma/prisma.service';
 import { LoggerService } from '../../../shared';
 import { PERSON_DATA_RULES, type PersonDataRule } from './person-data-class';
+import { ruleWhere, subjectRows } from './person-data-scope';
 
 export interface ErasureReport {
   userId: string;
@@ -125,60 +126,57 @@ export class PersonDataEraserService {
     return { userId, applied, skipped };
   }
 
+  /**
+   * ONE STATEMENT PER RULE, scoped by the compiler.
+   *
+   * This method used to derive its own scope, differently per disposition —
+   * `delete_row` and `sever` by their own column, `null_column` by
+   * personScopeSql-or-a-sibling. Three derivations, three chances to drift
+   * from the declaration, and every erasure defect found lived in one of them.
+   * The scope is now `ruleScope`'s answer, shared with the exporter and the
+   * proofs, so a disagreement is impossible rather than merely unlikely.
+   */
   private async applyRule(
     rule: PersonDataRule,
     userId: string,
   ): Promise<number> {
-    const table = Prisma.raw(`"${rule.table}"`);
-    const column = Prisma.raw(`"${rule.column}"`);
-    const predicate = rule.rowPredicate
-      ? Prisma.raw(` AND (${rule.rowPredicate})`)
-      : Prisma.empty;
+    const where = ruleWhere(rule);
 
     switch (rule.disposition) {
-      // NOTE the `::text` on BOTH sides. The person key is not one physical
-      // type across this schema — `poll_creation_attempts.user_id` is `text`,
-      // `notification_devices.user_id` is `varchar(255)`, everything else is
-      // `uuid`. A hardcoded `$1::uuid` crashes with "operator does not exist:
-      // text = uuid" on exactly the two tables holding a device fingerprint
-      // and a raw attempt log. Found by the live erasure proof, not by review.
       case 'delete_row':
-        return this.prisma.$executeRaw`
-          DELETE FROM ${table} WHERE ${column}::text = ${userId} ${predicate}`;
+        // null = classify-only column on a table whose key is declared
+        // elsewhere. Nothing to do — NEVER "no filter".
+        if (!where) return 0;
+        return this.prisma.$executeRawUnsafe(
+          `DELETE FROM "${rule.table}" WHERE ${where}`,
+          userId,
+        );
 
       case 'sever':
         // The census proves this column is nullable, so the UPDATE is valid.
-        return this.prisma.$executeRaw`
-          UPDATE ${table} SET ${column} = NULL
-          WHERE ${column}::text = ${userId} ${predicate}`;
+        if (!where) return 0;
+        return this.prisma.$executeRawUnsafe(
+          `UPDATE "${rule.table}" SET "${rule.column}" = NULL WHERE ${where}`,
+          userId,
+        );
 
       case 'null_column': {
-        // The value to destroy is NOT the person key, so we need a way to
-        // locate the person's rows. Either the table declares the join
-        // (personScopeSql) or a sibling column names the person directly.
-        if (rule.personScopeSql) {
-          // $1 in the declared SQL is bound positionally to the user id.
-          return this.prisma.$executeRawUnsafe(
-            `UPDATE "${rule.table}" SET "${rule.column}" = NULL WHERE ${rule.personScopeSql}` +
-              (rule.rowPredicate ? ` AND (${rule.rowPredicate})` : ''),
-            userId,
-          );
-        }
-        const personRule = PERSON_DATA_RULES.find(
-          (r) =>
-            r.table === rule.table &&
-            r.column !== rule.column &&
-            (r.disposition === 'sever' || r.disposition === 'delete_row'),
-        );
-        if (!personRule) {
+        // The value to destroy is NOT the person key, so the person is reached
+        // either by the rule's own declared scope or by the table's key.
+        const scope =
+          rule.personScopeSql ??
+          subjectRows(rule.table, { includeRetained: false });
+        if (!scope) {
           throw new Error(
-            `null_column on ${rule.table}.${rule.column} has no personScopeSql and no sibling person column to scope by`,
+            `null_column on ${rule.table}.${rule.column} has no personScopeSql ` +
+              `and the table declares no person key to scope by`,
           );
         }
-        const scopeColumn = Prisma.raw(`"${personRule.column}"`);
-        return this.prisma.$executeRaw`
-          UPDATE ${table} SET ${column} = NULL
-          WHERE ${scopeColumn}::text = ${userId} ${predicate}`;
+        const predicate = rule.rowPredicate ? ` AND (${rule.rowPredicate})` : '';
+        return this.prisma.$executeRawUnsafe(
+          `UPDATE "${rule.table}" SET "${rule.column}" = NULL WHERE (${scope})${predicate}`,
+          userId,
+        );
       }
 
       case 'retain':

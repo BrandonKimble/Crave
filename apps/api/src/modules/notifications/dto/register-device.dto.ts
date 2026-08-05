@@ -21,9 +21,11 @@ export class RegisterDeviceDto {
   @MaxLength(255)
   token!: string;
 
-  @IsOptional()
-  @IsString()
-  userId?: string | null;
+  // F646: a client-supplied `userId` used to live here — inert only because
+  // the controller spread-then-overwrote it (`{...dto, userId: user.userId}`,
+  // RT-15). That ordering was the whole defence; deleting the field removes
+  // the trap entirely instead of relying on it. The binding always derives
+  // from the authenticated session (see registerDevice(dto, userId) below).
 
   @IsOptional()
   @IsString()

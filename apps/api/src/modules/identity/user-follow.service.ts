@@ -7,6 +7,7 @@ import { NotificationType, Prisma } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { UserNotificationFeedService } from '../notifications/user-notification-feed.service';
 import { UserBlockService } from './user-block.service';
+import { AUTHOR_SELECT, publicAuthorIdentity } from './public-author-identity';
 
 const DEFAULT_PAGE_SIZE = 25;
 
@@ -162,17 +163,12 @@ export class UserFollowService {
       take: limit,
       include: {
         follower: {
-          select: {
-            userId: true,
-            username: true,
-            displayName: true,
-            avatarUrl: true,
-          },
+          select: AUTHOR_SELECT,
         },
       },
     });
 
-    return rows.map((row) => row.follower);
+    return rows.map((row) => publicAuthorIdentity(row.follower));
   }
 
   async listFollowing(
@@ -197,16 +193,11 @@ export class UserFollowService {
       take: limit,
       include: {
         following: {
-          select: {
-            userId: true,
-            username: true,
-            displayName: true,
-            avatarUrl: true,
-          },
+          select: AUTHOR_SELECT,
         },
       },
     });
 
-    return rows.map((row) => row.following);
+    return rows.map((row) => publicAuthorIdentity(row.following));
   }
 }

@@ -1,4 +1,4 @@
-import { Injectable, InternalServerErrorException } from '@nestjs/common';
+import { Injectable } from '@nestjs/common';
 import {
   CraveScoreSubjectType,
   UserListType,
@@ -294,15 +294,17 @@ export class UserListMapper {
     return new Map(scores.map((score) => [score.subjectId, score]));
   }
 
+  // F604: this used to THROW (InternalServerErrorException), 500-ing the
+  // entire list detail on ONE unscored saved item — while the sibling
+  // preview path above (buildListSummary) DROPS such rows with a loud log.
+  // Two policies for one fact; the drop is the derived-correct one (it is
+  // the one that survived a real incident, 2026-07-13, in mapRestaurantResults'
+  // topFood snippets). Returns null; callers drop the item and count it.
   private toPublicScoreValue(
     score: FavoritePublicScore | undefined,
-    subjectType: CraveScoreSubjectType,
-    subjectId: string,
-  ): number {
+  ): number | null {
     if (!score) {
-      throw new InternalServerErrorException(
-        `Missing public Crave Score for ${subjectType}:${subjectId}`,
-      );
+      return null;
     }
     return Number(score.displayScore);
   }
@@ -360,11 +362,10 @@ export class UserListMapper {
           foodName: food.food?.name ?? 'Dish',
           scoreSubjectType: 'connection' as const,
           scoreSubjectId: food.connectionId,
+          // Non-null: the .has() filter above guarantees a score exists.
           craveScore: this.toPublicScoreValue(
             topFoodScores.get(food.connectionId),
-            CraveScoreSubjectType.connection,
-            food.connectionId,
-          ),
+          ) as number,
           rising: this.toPublicScoreDelta(topFoodScores.get(food.connectionId)),
           totalUpvotes: food.totalUpvotes ?? 0,
         }))
@@ -398,11 +399,10 @@ export class UserListMapper {
         restaurantAliases: restaurant.aliases ?? [],
         scoreSubjectType: 'restaurant',
         scoreSubjectId: restaurant.entityId,
-        craveScore: this.toPublicScoreValue(
-          restaurantScore,
-          CraveScoreSubjectType.restaurant,
-          restaurant.entityId,
-        ),
+        // F604: null (not thrown) when unscored — RestaurantResult.craveScore
+        // is `number | null` by design; an unscored SAVED restaurant still
+        // renders in the list, it just shows no score, same as the preview path.
+        craveScore: this.toPublicScoreValue(restaurantScore),
         craveScoreExact: this.toPublicScoreExact(restaurantScore),
         rising: this.toPublicScoreDelta(restaurantScore),
         mentionCount: undefined,
@@ -451,6 +451,12 @@ export class UserListMapper {
         .map((item) => item.connection?.restaurantId)
         .filter((id): id is string => typeof id === 'string'),
     );
+    // F604: FoodResult.craveScore / .restaurantCraveScore are non-nullable
+    // (unlike RestaurantResult.craveScore) — a saved dish with either score
+    // missing is DROPPED here + counted, never thrown. Mirrors the sibling
+    // preview path's policy (buildListSummary) instead of 500-ing the whole
+    // list detail on one unscored favorite.
+    const missingScoreSubjects: string[] = [];
     items.forEach((item) => {
       const connection = item.connection;
       if (!connection || !connection.food || !connection.restaurant) {
@@ -459,6 +465,16 @@ export class UserListMapper {
       const primaryLocation = connection.restaurant.primaryLocation;
       const connectionScore = connectionScores.get(connection.connectionId);
       const restaurantScore = restaurantScores.get(connection.restaurantId);
+      const craveScore = this.toPublicScoreValue(connectionScore);
+      const restaurantCraveScore = this.toPublicScoreValue(restaurantScore);
+      if (craveScore === null) {
+        missingScoreSubjects.push(`connection:${connection.connectionId}`);
+        return;
+      }
+      if (restaurantCraveScore === null) {
+        missingScoreSubjects.push(`restaurant:${connection.restaurantId}`);
+        return;
+      }
       results.push({
         connectionId: connection.connectionId,
         foodId: connection.foodId,
@@ -470,11 +486,7 @@ export class UserListMapper {
         restaurantLocationId: primaryLocation?.locationId ?? undefined,
         scoreSubjectType: 'connection',
         scoreSubjectId: connection.connectionId,
-        craveScore: this.toPublicScoreValue(
-          connectionScore,
-          CraveScoreSubjectType.connection,
-          connection.connectionId,
-        ),
+        craveScore,
         craveScoreExact: this.toPublicScoreExact(connectionScore),
         rising: this.toPublicScoreDelta(connectionScore),
         mentionCount: connection.mentionCount ?? 0,
@@ -486,16 +498,18 @@ export class UserListMapper {
         restaurantPriceSymbol: null,
         restaurantDistanceMiles: null,
         restaurantOperatingStatus: null,
-        restaurantCraveScore: this.toPublicScoreValue(
-          restaurantScore,
-          CraveScoreSubjectType.restaurant,
-          connection.restaurantId,
-        ),
+        restaurantCraveScore,
         // Detail-path parity with the results path (spec B.1.5).
         note: item.note ?? null,
         userListItemId: item.itemId,
       });
     });
+
+    if (missingScoreSubjects.length > 0) {
+      this.logger.warn(
+        `Favorite list dish detail: dropped ${missingScoreSubjects.length} item(s) with no public Crave Score [${missingScoreSubjects.join(', ')}]`,
+      );
+    }
 
     return results;
   }

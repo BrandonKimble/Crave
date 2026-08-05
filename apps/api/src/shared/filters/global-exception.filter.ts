@@ -9,15 +9,12 @@ import {
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { FastifyRequest, FastifyReply } from 'fastify';
+import { Prisma } from '@prisma/client';
 import { AppException } from '../exceptions/app-exception.base';
 import { ErrorResponseDto } from '../dto/error-response.dto';
 import { LoggerService, CorrelationUtils } from '../../shared';
-import {
-  PrismaError,
-  isPrismaError,
-  getErrorMessage,
-  getErrorCode,
-} from '../types/error-interfaces';
+import { getErrorMessage, getErrorCode } from '../types/error-interfaces';
+import { isDeployedEnv, resolveAppEnv } from '../config/app-env';
 
 interface ErrorDetails {
   status: number;
@@ -38,7 +35,12 @@ export class GlobalExceptionFilter implements ExceptionFilter, OnModuleInit {
 
   onModuleInit(): void {
     this.logger = this.loggerService.setContext('GlobalExceptionFilter');
-    this.isProd = this.configService.get<string>('NODE_ENV') === 'production';
+    // F404: was `NODE_ENV === 'production'`. Error-detail redaction is a
+    // DEPLOYED-env decision (staging should not leak internals either), not
+    // a prod-only one — staging runs NODE_ENV=production so this happened to
+    // redact correctly there today, but for the wrong reason; keying on
+    // AppEnv makes it correct by construction instead of by NODE_ENV coincidence.
+    this.isProd = isDeployedEnv(resolveAppEnv());
   }
 
   catch(exception: unknown, host: ArgumentsHost) {
@@ -109,7 +111,11 @@ export class GlobalExceptionFilter implements ExceptionFilter, OnModuleInit {
     }
 
     // Handle Prisma errors
-    if (isPrismaError(exception)) {
+    // F423: was `isPrismaError(exception)` — a structural {code,message}
+    // duck-type that also matches ECONNREFUSED/ENOTFOUND/ETIMEDOUT and most
+    // vendor SDK errors, misclassifying every one of them as DATABASE_ERROR.
+    // instanceof is exact: only genuine Prisma known-request errors land here.
+    if (exception instanceof Prisma.PrismaClientKnownRequestError) {
       return this.handlePrismaError(exception);
     }
 
@@ -125,7 +131,9 @@ export class GlobalExceptionFilter implements ExceptionFilter, OnModuleInit {
     };
   }
 
-  private handlePrismaError(error: PrismaError): ErrorDetails {
+  private handlePrismaError(
+    error: Prisma.PrismaClientKnownRequestError,
+  ): ErrorDetails {
     const code = error.code;
 
     // Map common Prisma error codes

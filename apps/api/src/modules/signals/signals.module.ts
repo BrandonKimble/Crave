@@ -7,7 +7,6 @@ import { PlacesModule } from '../places/places.module';
 import { SignalsService } from './signals.service';
 import { SignalsController } from './signals.controller';
 import { SignalDemandAggregateService } from './signal-demand-aggregate.service';
-import { DemandAnonymizationService } from './demand-anonymization.service';
 import { SignalDemandReadService } from './signal-demand-read.service';
 import { SignalPartitionMaintenanceService } from './signal-partition-maintenance.service';
 import { SignalCoverageAudit } from './signal-coverage.audit';
@@ -33,7 +32,6 @@ import { UserTasteProfileBuilder } from './user-taste-profile.builder';
   ],
   controllers: [SignalsController],
   providers: [
-    DemandAnonymizationService,
     SignalsService,
     SignalDemandAggregateService,
     SignalDemandReadService,

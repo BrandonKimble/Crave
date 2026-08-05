@@ -310,6 +310,7 @@ export class SearchQueryInterpretationService {
         { text: run.text },
       ];
       let linked = false;
+      let linkedWasWeak = false;
       for (const attempt of attempts) {
         if (probeBudget <= 0) break;
         probeBudget -= 1;
@@ -344,16 +345,19 @@ export class SearchQueryInterpretationService {
           residueResults.push(result);
           if (attempt.consumes) consumedGroups.add(attempt.consumes);
           linked = true;
+          linkedWasWeak = result.resolutionTier === 'fuzzy';
           break;
         }
       }
-      // M4 DENSE ADMISSION TIER — gated on ABSENCE, one probe, last.
-      // Reached only when every sparse attempt failed AND the analyzer
-      // says the lexical lanes could not have seen this span: non-Latin
-      // script (hard gate) or a confidently non-English query. An English
-      // typo stays on the sparse/staging path exactly as before.
+      // M4 DENSE ADMISSION TIER. Two gates (launch-gate run 1, the 19-red
+      // finding): (a) ABSENCE — every sparse attempt failed; or (b) WEAK
+      // PRE-EMPTION — the sparse link is a FUZZY substring against a
+      // non-English query ("camarones"→"camarones enchilados" blocked
+      // shrimp forever). A fuzzy substring match on foreign text is weak
+      // evidence, not a link; dense arbitrates and, if admitted, REPLACES
+      // it. Exact/alias links still terminate — they are claims.
       if (
-        !linked &&
+        (!linked || (linkedWasWeak && analysis.isNonEnglish)) &&
         probeBudget > 0 &&
         (analysis.isNonLatinScript || analysis.isNonEnglish)
       ) {
@@ -378,6 +382,10 @@ export class SearchQueryInterpretationService {
           },
         );
         if (denseResult?.entityId) {
+          if (linked && linkedWasWeak) {
+            // dense admitted over a weak fuzzy pre-emption: replace it.
+            residueResults.pop();
+          }
           residueResults.push(denseResult);
           linked = true;
         }
@@ -690,8 +698,18 @@ export class SearchQueryInterpretationService {
     const runnerSim = eligible[1]?.sparseSimilarity ?? 0;
     // ONE definition of the live link decision, imported (F1260) — five
     // harnesses used to replicate this expression by hand.
+    // G2 (launch-gate run 1): 2-3 char spans linked on prefix ('sal'→
+    // salsa, 'col'→coleslaw). Below 4 folded chars only exact/alias
+    // evidence is a claim — the fuzzy tier refuses.
+    const foldedLength = input.normalizedName.replace(/\s+/g, '').length;
+    const shortStringFuzzyBlocked =
+      foldedLength < 4 &&
+      top?.sparseEvidence != null &&
+      top.sparseEvidence !== 'exact' &&
+      top.sparseEvidence !== 'alias';
     const linkable =
       top != null &&
+      !shortStringFuzzyBlocked &&
       linkerAdmits({
         topSim,
         runnerSim,

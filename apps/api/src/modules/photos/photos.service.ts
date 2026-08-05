@@ -438,10 +438,13 @@ export class PhotosService {
     const reporterCount = await this.prisma.photoReport.count({
       where: { photoId },
     });
-    await this.prisma.photo.updateMany({
-      where: { photoId },
-      data: { reportCount: reporterCount },
-    });
+    // F624: this used to also `photo.updateMany({ data: { reportCount:
+    // reporterCount } })` — a second copy of `count(photo_reports)` with NO
+    // reader anywhere in the codebase (grepped clean). A write-only column;
+    // the count above (from photoReport, the real row-per-report table) is
+    // the only value anything ever consulted. The `report_count` DB column
+    // itself is left in place (a schema/migration decision, out of scope
+    // here) but nothing writes it going forward.
     if (reporterCount >= this.reportHideThreshold) {
       const hid = await this.prisma.photo.updateMany({
         where: { photoId, status: PhotoStatus.live },
@@ -487,40 +490,55 @@ export class PhotosService {
       take: batch,
     });
     let settled = 0;
+    let failed = 0;
     for (const photo of stale) {
-      const asset = await this.cloudinary.getAsset(photo.publicId);
-      if (!asset.exists) {
-        // Ticket issued but upload never happened (or was destroyed):
-        // expire abandoned rows after an hour.
-        if (photo.uploadedAt.getTime() < Date.now() - 60 * 60_000) {
-          await this.prisma.photo.update({
-            where: { photoId: photo.photoId },
-            data: { status: PhotoStatus.removed, moderatedAt: new Date() },
-          });
-          settled += 1;
+      // F622: was un-caught inside the loop — one Cloudinary error aborted
+      // the whole sweep, and because the batch is ordered `uploadedAt asc`,
+      // a persistently-failing row at the HEAD wedged the queue forever
+      // (the exact stuck-pending state this cron exists to prevent). A
+      // per-photo failure is now logged and counted; the sweep keeps going.
+      try {
+        const asset = await this.cloudinary.getAsset(photo.publicId);
+        if (!asset.exists) {
+          // Ticket issued but upload never happened (or was destroyed):
+          // expire abandoned rows after an hour.
+          if (photo.uploadedAt.getTime() < Date.now() - 60 * 60_000) {
+            await this.prisma.photo.update({
+              where: { photoId: photo.photoId },
+              data: { status: PhotoStatus.removed, moderatedAt: new Date() },
+            });
+            settled += 1;
+          }
+          continue;
         }
-        continue;
+        await this.prisma.photo.update({
+          where: { photoId: photo.photoId },
+          data: {
+            width: asset.width ?? undefined,
+            height: asset.height ?? undefined,
+            bytes: asset.bytes ?? undefined,
+            focusScore: asset.focusScore ?? undefined,
+          },
+        });
+        await this.applyModerationResult(
+          photo.photoId,
+          photo.publicId,
+          asset.moderationStatus,
+        );
+        settled += 1;
+      } catch (error) {
+        failed += 1;
+        this.logger.warn('Photo reconciliation: one photo failed, sweep continues', {
+          photoId: photo.photoId,
+          errorMessage: error instanceof Error ? error.message : String(error),
+        });
       }
-      await this.prisma.photo.update({
-        where: { photoId: photo.photoId },
-        data: {
-          width: asset.width ?? undefined,
-          height: asset.height ?? undefined,
-          bytes: asset.bytes ?? undefined,
-          focusScore: asset.focusScore ?? undefined,
-        },
-      });
-      await this.applyModerationResult(
-        photo.photoId,
-        photo.publicId,
-        asset.moderationStatus,
-      );
-      settled += 1;
     }
     if (stale.length > 0) {
       this.logger.info('Photo reconciliation sweep', {
         examined: stale.length,
         settled,
+        failed,
       });
     }
     return settled;

@@ -16,7 +16,10 @@ export class NotificationDeviceService {
     this.logger = loggerService.setContext('NotificationDeviceService');
   }
 
-  async registerDevice(dto: RegisterDeviceDto): Promise<void> {
+  async registerDevice(
+    dto: RegisterDeviceDto,
+    userId: string | null,
+  ): Promise<void> {
     const normalizedToken = dto.token.trim();
 
     // §4 home-place registration: the client sends ground truth (a coordinate,
@@ -41,14 +44,14 @@ export class NotificationDeviceService {
       where: { expoPushToken: normalizedToken },
       create: {
         expoPushToken: normalizedToken,
-        userId: dto.userId ?? null,
+        userId,
         platform: dto.platform ?? null,
         appVersion: dto.appVersion ?? null,
         locale: dto.locale ?? null,
         homePlaceId: homePlaceId ?? null,
       },
       update: {
-        userId: dto.userId ?? null,
+        userId,
         platform: dto.platform ?? null,
         appVersion: dto.appVersion ?? null,
         locale: dto.locale ?? null,
@@ -58,7 +61,7 @@ export class NotificationDeviceService {
     });
 
     this.logger.debug('Registered notification device', {
-      hasUser: Boolean(dto.userId),
+      hasUser: Boolean(userId),
       platform: dto.platform,
       hasHomeLocation: dto.homeLocation != null,
       homePlaceResolved: typeof homePlaceId === 'string',

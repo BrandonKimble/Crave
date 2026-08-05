@@ -90,12 +90,22 @@ describe('UserBlockService (§8.6)', () => {
           username: 'them',
           displayName: 'Them',
           avatarUrl: null,
+          deletedAt: null,
         },
       },
     ]);
     const users = await service.listBlockedUsers(ME);
     expect(users).toEqual([
-      { userId: THEM, username: 'them', displayName: 'Them', avatarUrl: null },
+      // publicAuthorIdentity shape: a blocked account CAN be deleted (the
+      // block is RETAINED so it keeps protecting whoever placed it), so this
+      // list renders ghosts and carries the flag that says so.
+      {
+        userId: THEM,
+        username: 'them',
+        displayName: 'Them',
+        avatarUrl: null,
+        isDeleted: false,
+      },
     ]);
     const args = prisma.userBlock.findMany.mock.calls[0][0];
     expect(args.where).toEqual({ blockerUserId: ME });

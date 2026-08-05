@@ -3,6 +3,7 @@ import { ConfigService } from '@nestjs/config';
 import { DatabaseConfig } from './database-config.interface';
 import { LoggerService, CorrelationUtils } from '../shared';
 import { AppException } from '../shared/exceptions';
+import { isDeployedEnv, resolveAppEnv } from '../shared/config/app-env';
 
 export class DatabaseConfigurationError extends AppException {
   readonly errorCode = 'DATABASE_CONFIGURATION_ERROR';
@@ -265,7 +266,17 @@ export class DatabaseValidationService implements OnModuleInit {
    * Validates environment-specific configuration consistency
    */
   validateEnvironmentConsistency(config: ConfigService): void {
-    const env = process.env.NODE_ENV || 'development';
+    // F404: this used to switch on NODE_ENV, which cannot express staging
+    // (spelled in APP_ENV) — staging silently fell through to the default
+    // case and got neither the production nor development consistency
+    // checks. isDeployedEnv groups staging with production for these
+    // performance-posture warnings, same rule as main.ts's CSP/CORS/Swagger.
+    const appEnv = (config.get<string>('appEnv') as
+      | 'dev'
+      | 'staging'
+      | 'prod'
+      | undefined) ?? resolveAppEnv();
+    const env = isDeployedEnv(appEnv) ? 'production' : 'development';
     const dbConfig = config.get<DatabaseConfig>('database');
 
     if (!dbConfig) {

@@ -61,8 +61,7 @@ function readSchemaColumns(): SchemaColumn[] {
       if (!field) continue;
       const colMap = trimmed.match(/@map\("(\w+)"\)/);
       const column =
-        colMap?.[1] ??
-        field[1].replace(/[A-Z]/g, (c) => `_${c.toLowerCase()}`);
+        colMap?.[1] ?? field[1].replace(/[A-Z]/g, (c) => `_${c.toLowerCase()}`);
       const optional = /^\w+\s+\w+\?/.test(trimmed);
       out.push({ table, column, optional });
     }
@@ -102,8 +101,9 @@ describe('person-data census — every person-shaped column is classified', () =
     expect(keepers.length).toBeGreaterThan(0);
     for (const rule of keepers) {
       // The message is in the key so a failure names the offending rule.
-      expect(`${rule.table}.${rule.column}:${rule.basis ?? 'MISSING-BASIS'}`)
-        .not.toContain('MISSING-BASIS');
+      expect(
+        `${rule.table}.${rule.column}:${rule.basis ?? 'MISSING-BASIS'}`,
+      ).not.toContain('MISSING-BASIS');
     }
   });
 

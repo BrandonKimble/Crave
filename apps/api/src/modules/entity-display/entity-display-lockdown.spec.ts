@@ -45,6 +45,10 @@ type Verdict = 'routed' | 'proper-noun' | 'not-user-facing';
 
 /** file (relative to src/) → why it is allowed to emit a raw `.name`. */
 const ALLOWLIST: Readonly<Record<string, { verdict: Verdict; why: string }>> = {
+  'modules/entity-display/entity-display.service.ts': {
+    verdict: 'routed',
+    why: 'THE display function itself — canonical-name fallback and submitToken emission are its contract',
+  },
   // ---------------- (a) ROUTED through the display function ----------------
   'modules/autocomplete/autocomplete.service.ts': {
     verdict: 'routed',

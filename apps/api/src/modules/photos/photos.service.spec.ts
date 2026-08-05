@@ -380,4 +380,45 @@ describe('PhotosService lifecycle', () => {
     );
     expect(update).toBeDefined();
   });
+
+  it('F622: a Cloudinary failure on the HEAD-of-queue photo does not wedge the sweep — later photos still settle', async () => {
+    const { service, prisma, cloudinary } = makeService();
+    prisma.photo.findMany.mockResolvedValueOnce([
+      {
+        photoId: 'p-head-broken',
+        publicId: 'crave/test/photos/p-head-broken',
+        uploadedAt: new Date(Date.now() - 20 * 60_000),
+      },
+      {
+        photoId: 'p-tail-ok',
+        publicId: 'crave/test/photos/p-tail-ok',
+        uploadedAt: new Date(Date.now() - 15 * 60_000),
+      },
+    ]);
+    cloudinary.getAsset
+      .mockRejectedValueOnce(new Error('Cloudinary ECONNRESET'))
+      .mockResolvedValueOnce({
+        exists: true,
+        width: 100,
+        height: 100,
+        bytes: 1000,
+        focusScore: 0.5,
+        moderationStatus: 'approved',
+      });
+
+    const settled = await service.reconcilePending();
+
+    // The second (tail) photo settled even though the first (head) failed.
+    expect(settled).toBe(1);
+    expect(cloudinary.getAsset).toHaveBeenCalledTimes(2);
+    const tailUpdate = prisma.photo.update.mock.calls.find(
+      ([args]) => args.where.photoId === 'p-tail-ok',
+    );
+    expect(tailUpdate).toBeDefined();
+    // The broken head photo never got an update call from the failed branch.
+    const headUpdate = prisma.photo.update.mock.calls.find(
+      ([args]) => args.where.photoId === 'p-head-broken',
+    );
+    expect(headUpdate).toBeUndefined();
+  });
 });

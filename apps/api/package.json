@@ -24,11 +24,10 @@
     "start:prod:worker": "PROCESS_ROLE=worker node dist/main",
     "lint": "eslint \"{src,apps,libs,test,scripts}/**/*.ts\" --fix",
     "test": "jest --runInBand",
-    "test:db": "jest --runInBand --testPathIgnorePatterns=[] --testRegex \".*\\\\.integration\\\\.spec\\\\.ts$\"",
+    "test:db": "jest --runInBand --testPathIgnorePatterns='/dist/' --testRegex \".*\\\\.integration\\\\.spec\\\\.ts$\"",
     "test:watch": "jest --watch",
     "test:cov": "jest --coverage",
     "test:debug": "node --inspect-brk -r tsconfig-paths/register -r ts-node/register node_modules/.bin/jest --runInBand",
-    "test:e2e": "jest --config ./test/jest-e2e.json",
     "prisma:format": "npx prisma format",
     "prisma:migrate": "yarn db:migrate",
     "prisma:migrate:deploy": "yarn db:migrate:deploy",
@@ -125,29 +124,26 @@
       "json",
       "ts"
     ],
-    "rootDir": "src",
+    "rootDir": ".",
     "moduleNameMapper": {
-      "^@crave-search/shared$": "<rootDir>/../../../packages/shared/src/index.ts"
+      "^@crave-search/shared$": "<rootDir>/../../packages/shared/src/index.ts"
     },
     "testRegex": ".*\\.spec\\.ts$",
     "testPathIgnorePatterns": [
-      "\\.integration\\.spec\\.ts$"
+      "\\.integration\\.spec\\.ts$",
+      "/dist/",
+      "/node_modules/"
     ],
     "transform": {
       "^.+\\.(t|j)s$": "ts-jest"
     },
     "collectCoverageFrom": [
-      "**/*.(t|j)s"
+      "src/**/*.(t|j)s"
     ],
-    "coverageDirectory": "../coverage",
+    "coverageDirectory": "coverage",
     "testEnvironment": "node",
     "maxWorkers": 2,
     "testTimeout": 30000,
-    "setupFilesAfterEnv": [
-      "<rootDir>/../test/jest.setup.ts"
-    ],
-    "globalSetup": "<rootDir>/../test/jest.global-setup.ts",
-    "globalTeardown": "<rootDir>/../test/jest.global-teardown.ts",
     "forceExit": true,
     "detectOpenHandles": true
   }

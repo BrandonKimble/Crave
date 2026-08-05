@@ -3,24 +3,25 @@ import { Cron, CronExpression } from '@nestjs/schedule';
 import { PrismaService } from '../../../prisma/prisma.service';
 import { LoggerService } from '../../../shared';
 import { PersonDataEraserService } from './person-data-eraser.service';
+import { AccountDeletionService } from '../account-deletion.service';
 
 /**
- * THE HARD PURGE — the second half of "logically instant, physically deferred".
+ * THE HARD PURGE — where an account actually dies.
  *
- * Without this, `deleted_at` was a stamp nothing ever acted on: the grace
- * period existed only in a document. A published retention promise with no
+ * The deletion REQUEST is reversible: it signs the person out and marks the
+ * account, and destroys nothing (see AccountDeletionService). This cron is the
+ * other half — it runs when the disclosed window has expired and does the
+ * irreversible work: destroy the Clerk identity, burn the handle, propagate to
+ * processors, erase the person.
+ *
+ * Without it, `purge_due_at` would be a stamp nothing acted on and the grace
+ * period would exist only in a document. A published retention promise with no
  * mechanism is a WORSE position than no promise, because it is a commitment
  * you are provably not keeping.
  *
- * What this is NOT responsible for: hiding the account. That already happened
- * at confirm time — sessions revoked, push tokens deleted, authorship severed,
- * profile hidden. This only converts "hidden" into "gone".
- *
- * Re-running the eraser here is deliberate and not redundant. Between the
- * confirm and the deadline, a webhook, a cron, or an in-flight request can
- * write a new row keyed to a user who no longer exists (a late RevenueCat
- * event, a queued notification). The purge is the sweep that catches whatever
- * arrived during the window.
+ * THE DEADLINE IS THE ONLY AUTHORITY. It reads `purgeDueAt`, never
+ * `deletedAt`, and restore clears BOTH together — anything else silently
+ * destroys an account that came back.
  */
 @Injectable()
 export class DeletionPurgeService {
@@ -33,6 +34,7 @@ export class DeletionPurgeService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly eraser: PersonDataEraserService,
+    private readonly accountDeletion: AccountDeletionService,
     loggerService: LoggerService,
   ) {
     this.logger = loggerService.setContext('DeletionPurge');
@@ -42,16 +44,23 @@ export class DeletionPurgeService {
   async purgeDueAccounts(): Promise<{ purged: number; failed: number }> {
     const due = await this.prisma.user.findMany({
       where: { purgeDueAt: { not: null, lte: new Date() } },
-      select: { userId: true },
       take: DeletionPurgeService.BATCH,
     });
     if (due.length === 0) return { purged: 0, failed: 0 };
 
     let purged = 0;
     let failed = 0;
-    for (const { userId } of due) {
+    for (const user of due) {
+      const userId = user.userId;
       try {
-        // Sweep anything that landed during the grace window.
+        // The irreversible half. Idempotent, because a failure below leaves
+        // the deadline set and this runs again tomorrow.
+        await this.accountDeletion.purgeAccount(user);
+        // Sweep anything that landed DURING the window: a webhook, a cron or
+        // an in-flight request can write a new row keyed to a user between the
+        // request and the deadline (a late RevenueCat event, a queued
+        // notification). purgeAccount already erased once; this catches
+        // whatever the purge itself raced with.
         await this.eraser.erase(userId);
         // The shell must be anonymous BEFORE we stop tracking the deadline —
         // otherwise a regression in the anonymize step would leave identity
@@ -67,10 +76,13 @@ export class DeletionPurgeService {
         // silently and clears its own deadline is how a retention promise
         // quietly stops being kept.
         failed += 1;
-        this.logger.error('CRITICAL: purge failed; deadline left set for retry', {
-          userId,
-          error: error instanceof Error ? error.message : String(error),
-        });
+        this.logger.error(
+          'CRITICAL: purge failed; deadline left set for retry',
+          {
+            userId,
+            error: error instanceof Error ? error.message : String(error),
+          },
+        );
       }
     }
     this.logger.info('Deletion purge pass complete', { purged, failed });

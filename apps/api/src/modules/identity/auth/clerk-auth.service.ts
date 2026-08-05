@@ -214,6 +214,42 @@ export class ClerkAuthService {
     }
   }
 
+  /**
+   * Revoke every live session WITHOUT destroying the account.
+   *
+   * This is what a RECOVERABLE deletion needs: the person is signed out
+   * everywhere and stays signed out, but the identity still exists, so signing
+   * in during the grace window restores them. Destroying the Clerk user is the
+   * purge's job, at the deadline — not the request's.
+   *
+   * Best-effort per session and overall: being unable to revoke one session
+   * must not block a legally-required deletion request. The account is marked
+   * deleted locally either way, and every authenticated route refuses a
+   * deleted user, so a surviving Clerk session cannot reach anything.
+   */
+  async revokeAllSessions(authId: string): Promise<{ revoked: number }> {
+    const client = this.getClerkClient();
+    if (!client) {
+      throw new Error('Clerk is not configured — cannot revoke sessions');
+    }
+    const sessions = await client.sessions.getSessionList({ userId: authId });
+    const list = Array.isArray(sessions) ? sessions : (sessions?.data ?? []);
+    let revoked = 0;
+    for (const session of list) {
+      try {
+        await client.sessions.revokeSession(session.id);
+        revoked += 1;
+      } catch (error) {
+        this.logger.warn(
+          `Failed to revoke Clerk session ${session.id}: ${
+            error instanceof Error ? error.message : String(error)
+          }`,
+        );
+      }
+    }
+    return { revoked };
+  }
+
   private getClerkClient(): ReturnType<typeof createClerkClient> | undefined {
     if (!this.secretKey) {
       return undefined;

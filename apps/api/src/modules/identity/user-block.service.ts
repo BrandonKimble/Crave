@@ -1,6 +1,7 @@
 import { BadRequestException, Injectable } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
+import { AUTHOR_SELECT, publicAuthorIdentity } from './public-author-identity';
 
 /**
  * Blocking (page-registry §8.6 — the Apple 1.2 UGC requirement).
@@ -124,17 +125,14 @@ export class UserBlockService {
       where: { blockerUserId },
       orderBy: { createdAt: 'desc' },
       include: {
-        blocked: {
-          select: {
-            userId: true,
-            username: true,
-            displayName: true,
-            avatarUrl: true,
-          },
-        },
+        blocked: { select: AUTHOR_SELECT },
       },
     });
-    return rows.map((row) => row.blocked);
+    // A block placed BY this person survives the blocked account's deletion
+    // (person-data-class: blocked_user_id is RETAINED — the block protects the
+    // person who placed it). So this list can contain ghosts, and they render
+    // as ghosts rather than as blank rows.
+    return rows.map((row) => publicAuthorIdentity(row.blocked));
   }
 
   /** Every userId the viewer must not see / be seen by (both directions) —

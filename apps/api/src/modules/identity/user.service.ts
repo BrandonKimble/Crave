@@ -94,7 +94,17 @@ export class UserService {
         update: {
           email,
           lastSignInAt: now,
-          deletedAt: null,
+          // NO RESTORE HERE — deliberately.
+          //
+          // This runs on EVERY authenticated request (ClerkAuthGuard calls it
+          // to attach request.user), so clearing the tombstone here made any
+          // stray request silently un-delete an account: a background refresh,
+          // a retry, a call already in flight when the user confirmed. Restore
+          // must be a person deciding, which is `restoreAccount` behind an
+          // explicit route.
+          //
+          // The guard refuses a user whose deletedAt is set, so syncing one is
+          // safe: it attaches the row and then the request is declined.
         },
         create: {
           email,
@@ -125,7 +135,7 @@ export class UserService {
             revenueCatAppUserId: emailOwner.revenueCatAppUserId ?? authId,
             email,
             lastSignInAt: now,
-            deletedAt: null,
+            // Same as the upsert above: no restore on a sync path.
           },
         });
       } else {

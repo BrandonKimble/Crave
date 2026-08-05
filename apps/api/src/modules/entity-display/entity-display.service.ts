@@ -141,7 +141,10 @@ export class EntityDisplayService {
     if (this.isImplicitEnglish(locale)) {
       return entity.name;
     }
-    return labels?.get(entity.entityId) ?? entity.name;
+    const label = labels?.get(entity.entityId);
+    // F8: totality — an empty/whitespace label row must never blank a
+    // concept; the canonical name is always the floor.
+    return label && label.trim() ? label : entity.name;
   }
 
   /**

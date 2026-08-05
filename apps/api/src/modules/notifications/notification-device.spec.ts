@@ -50,10 +50,10 @@ function createHarness(options?: { containingPlaceId?: string | null }) {
 describe('NotificationDeviceService.registerDevice — §4 placeAt resolution', () => {
   it('a home coordinate resolves through smallestContaining and persists homePlaceId on create AND update (re-registration updates — people move)', async () => {
     const { service, prisma, places } = createHarness();
-    await service.registerDevice({
-      token: 'tok-1',
-      homeLocation: { lat: 30.27, lng: -97.74 },
-    });
+    await service.registerDevice(
+      { token: 'tok-1', homeLocation: { lat: 30.27, lng: -97.74 } },
+      null,
+    );
     expect(places.smallestContaining).toHaveBeenCalledWith({
       lat: 30.27,
       lng: -97.74,
@@ -71,10 +71,10 @@ describe('NotificationDeviceService.registerDevice — §4 placeAt resolution', 
 
   it('a coordinate OUTSIDE the catalog honestly persists null (no guessing)', async () => {
     const { service, prisma } = createHarness({ containingPlaceId: null });
-    await service.registerDevice({
-      token: 'tok-1',
-      homeLocation: { lat: 0, lng: 0 },
-    });
+    await service.registerDevice(
+      { token: 'tok-1', homeLocation: { lat: 0, lng: 0 } },
+      null,
+    );
     const [{ create, update }] = prisma.notificationDevice.upsert.mock
       .calls[0] as [
       {
@@ -88,7 +88,7 @@ describe('NotificationDeviceService.registerDevice — §4 placeAt resolution', 
 
   it('EXPLICIT null (location revoked) clears the stored home place', async () => {
     const { service, prisma, places } = createHarness();
-    await service.registerDevice({ token: 'tok-1', homeLocation: null });
+    await service.registerDevice({ token: 'tok-1', homeLocation: null }, null);
     expect(places.smallestContaining).not.toHaveBeenCalled();
     const [{ create, update }] = prisma.notificationDevice.upsert.mock
       .calls[0] as [
@@ -103,7 +103,7 @@ describe('NotificationDeviceService.registerDevice — §4 placeAt resolution', 
 
   it('ABSENT homeLocation leaves the stored home place untouched (update omits the field)', async () => {
     const { service, prisma, places } = createHarness();
-    await service.registerDevice({ token: 'tok-1' });
+    await service.registerDevice({ token: 'tok-1' }, null);
     expect(places.smallestContaining).not.toHaveBeenCalled();
     const [{ update }] = prisma.notificationDevice.upsert.mock.calls[0] as [
       { update: Record<string, unknown> },

@@ -746,3 +746,49 @@ describe('score-gap resilience on the home lists read (red-team finding 4)', () 
     expect(result[0].previewItems[0].craveScore).toBe(9.1);
   });
 });
+
+describe('enableShare share-slug minting is DB-arbitrated, not a read-then-write race (F606)', () => {
+  it('a P2002 unique-constraint collision on the first mint is retried with a fresh slug and succeeds', async () => {
+    const { service, listUpdate } = makeHarness({
+      lists: [makeList({ shareSlug: null, shareEnabled: false })],
+    });
+    listUpdate
+      .mockRejectedValueOnce(p2002())
+      .mockResolvedValueOnce({ shareEnabled: true });
+
+    const result = await service.enableShare(OWNER, LIST_ID, {} as never);
+
+    expect(listUpdate).toHaveBeenCalledTimes(2);
+    expect(result.shareSlug).toBeTruthy();
+    // The two attempts must mint DIFFERENT slugs — a retry that resent the
+    // same slug would just collide with P2002 again forever.
+    const firstSlug = listUpdate.mock.calls[0][0].data.shareSlug;
+    const secondSlug = listUpdate.mock.calls[1][0].data.shareSlug;
+    expect(secondSlug).not.toBe(firstSlug);
+  });
+
+  it('exhausting all mint attempts on persistent P2002 propagates the error rather than looping forever', async () => {
+    const { service, listUpdate } = makeHarness({
+      lists: [makeList({ shareSlug: null, shareEnabled: false })],
+    });
+    listUpdate.mockRejectedValue(p2002());
+
+    await expect(
+      service.enableShare(OWNER, LIST_ID, {} as never),
+    ).rejects.toBeInstanceOf(Prisma.PrismaClientKnownRequestError);
+    // Bounded retry, not unbounded.
+    expect(listUpdate.mock.calls.length).toBeLessThanOrEqual(5);
+  });
+
+  it('a non-collision error is never swallowed as a retry trigger', async () => {
+    const { service, listUpdate } = makeHarness({
+      lists: [makeList({ shareSlug: null, shareEnabled: false })],
+    });
+    listUpdate.mockRejectedValueOnce(new Error('connection reset'));
+
+    await expect(
+      service.enableShare(OWNER, LIST_ID, {} as never),
+    ).rejects.toThrow('connection reset');
+    expect(listUpdate).toHaveBeenCalledTimes(1);
+  });
+});

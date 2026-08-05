@@ -32,7 +32,7 @@ export class NotificationsController {
     @CurrentUser() user: User,
     @Body() dto: RegisterDeviceDto,
   ) {
-    await this.deviceService.registerDevice({ ...dto, userId: user.userId });
+    await this.deviceService.registerDevice(dto, user.userId);
     return { status: 'ok' };
   }
 

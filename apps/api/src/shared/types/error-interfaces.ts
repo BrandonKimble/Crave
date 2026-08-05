@@ -52,40 +52,6 @@ export interface ApiError {
 }
 
 /**
- * Reddit API specific error interface
- */
-export interface RedditApiError {
-  error?: string;
-  message?: string;
-  error_type?: string;
-  fields?: string[];
-}
-
-/**
- * LLM API error interface
- */
-export interface LLMApiError {
-  error?: {
-    message: string;
-    type: string;
-    code?: string;
-  };
-  statusCode?: number;
-}
-
-/**
- * Database connection error interface
- */
-export interface DatabaseConnectionError {
-  code?: string;
-  errno?: number;
-  syscall?: string;
-  hostname?: string;
-  port?: number;
-  message: string;
-}
-
-/**
  * Type guards for safe error checking
  */
 export function isPrismaError(error: unknown): error is PrismaError {
@@ -112,34 +78,6 @@ export function isApiError(error: unknown): error is ApiError {
     error !== null &&
     'error' in error &&
     typeof (error as Record<string, unknown>).error === 'string'
-  );
-}
-
-export function isRedditApiError(error: unknown): error is RedditApiError {
-  return (
-    typeof error === 'object' &&
-    error !== null &&
-    ('error' in error || 'message' in error)
-  );
-}
-
-export function isLLMApiError(error: unknown): error is LLMApiError {
-  return (
-    typeof error === 'object' &&
-    error !== null &&
-    'error' in error &&
-    typeof (error as Record<string, unknown>).error === 'object'
-  );
-}
-
-export function isDatabaseConnectionError(
-  error: unknown,
-): error is DatabaseConnectionError {
-  return (
-    typeof error === 'object' &&
-    error !== null &&
-    'message' in error &&
-    ('code' in error || 'errno' in error)
   );
 }
 

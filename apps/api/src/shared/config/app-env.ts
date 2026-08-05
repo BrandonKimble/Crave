@@ -66,3 +66,22 @@ export function resolveAppEnv(env: NodeJS.ProcessEnv = process.env): AppEnv {
   if (raw && raw.trim()) return normalizeAppEnv(raw);
   return env.NODE_ENV?.trim().toLowerCase() === 'production' ? 'prod' : 'dev';
 }
+
+/**
+ * F420: the BullMQ/Redis key-namespace prefix, ONE derivation. Before this,
+ * `configuration.ts` and the root-level `job-control.ts` operational tool
+ * each hand-rolled `crave:${appEnv}` independently — a drift between them
+ * means the tool inspects/CLEARS the wrong environment's queues (its own
+ * help text advertises a `clear` command). `BULL_PREFIX` still wins when set
+ * explicitly, same as before.
+ */
+export function bullPrefixFor(
+  appEnv: AppEnv,
+  env: NodeJS.ProcessEnv = process.env,
+): string {
+  const explicit = env.BULL_PREFIX;
+  if (typeof explicit === 'string' && explicit.trim()) {
+    return explicit.trim();
+  }
+  return `crave:${appEnv}`;
+}

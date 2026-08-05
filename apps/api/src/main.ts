@@ -10,6 +10,15 @@ import { join } from 'path';
 dotenvConfig({ path: join(process.cwd(), '.env') });
 dotenvConfig({ path: join(__dirname, '..', '.env') });
 
+// F404/F406 (2026-08-04): boot-time decisions used to key on NODE_ENV, which
+// cannot express staging (staging runs NODE_ENV=production so it doesn't
+// break `yarn install --production`/Nest/jest). AppEnv is the deployment
+// fact ("whose money and whose users"); resolve it once, here, before
+// anything else — this file cannot use ConfigService because Sentry must
+// init before the Nest module graph exists.
+import { resolveAppEnv, isProdEnv, isDeployedEnv } from './shared/config/app-env';
+const appEnv = resolveAppEnv();
+
 const sentryDsn = process.env.SENTRY_DSN;
 if (sentryDsn) {
   const parseSampleRate = (value: string | undefined, fallback: number) => {
@@ -18,7 +27,11 @@ if (sentryDsn) {
     return Number.isFinite(parsed) ? parsed : fallback;
   };
 
-  const defaultSampleRate = process.env.NODE_ENV === 'production' ? 0.1 : 1.0;
+  // Full sampling off-prod (dev AND staging); 10% in prod (cost). Staging
+  // used to inherit prod's 10% because this compared NODE_ENV === 'production'
+  // (true for staging too) — the exact indistinguishability app-env.ts exists
+  // to end.
+  const defaultSampleRate = isProdEnv(appEnv) ? 0.1 : 1.0;
   const tracesSampleRate = parseSampleRate(
     process.env.SENTRY_TRACES_SAMPLE_RATE,
     defaultSampleRate,
@@ -30,8 +43,11 @@ if (sentryDsn) {
 
   Sentry.init({
     dsn: sentryDsn,
-    environment:
-      process.env.SENTRY_ENVIRONMENT || process.env.NODE_ENV || 'development',
+    // Was `SENTRY_ENVIRONMENT || NODE_ENV` — staging (NODE_ENV=production)
+    // reported into Sentry as `production` unless someone remembered to set
+    // SENTRY_ENVIRONMENT by hand. appEnv is the correct default; the env var
+    // still wins when explicitly set.
+    environment: process.env.SENTRY_ENVIRONMENT || appEnv,
     release:
       process.env.SENTRY_RELEASE ||
       `api@${process.env.npm_package_version || '1.0.0'}`,
@@ -68,7 +84,7 @@ if (sentryDsn) {
     enabled: process.env.NODE_ENV !== 'test',
   });
   console.log('[SENTRY] Initialized successfully');
-} else if (process.env.NODE_ENV === 'production') {
+} else if (isDeployedEnv(appEnv)) {
   console.warn('[SENTRY] SENTRY_DSN not set - error tracking disabled');
 }
 
@@ -111,7 +127,12 @@ async function bootstrap() {
   );
 
   const configService = app.get(ConfigService);
-  const isProd = configService.get<string>('NODE_ENV') === 'production';
+  // F404: was `NODE_ENV === 'production'` — staging (a DEPLOYED env, no
+  // Swagger, no leaked error detail) also runs NODE_ENV=production, so it
+  // silently got prod's exact posture on every one of these decisions.
+  // isDeployedEnv is correct here: CSP/HSTS/CORS/validation/Swagger are all
+  // "is this running on real infrastructure", not "is this prod money/users".
+  const isProd = isDeployedEnv(appEnv);
 
   // Note: Global exception filter is already configured in SharedModule
 
