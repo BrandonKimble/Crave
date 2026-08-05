@@ -23,7 +23,10 @@ import {
 } from '../../../navigation/runtime/app-route-nav-silhouette-authority';
 import { SearchRouteNavSilhouetteHostNativeView } from '../../../overlays/SearchRouteNavSilhouetteHostNativeView';
 import { ACTIVE_TAB_COLOR, NAV_BOTTOM_PADDING } from '../constants/search';
-import { requestTrackScenePrewarm } from '../../../tracksheet/track-entry-prewarm';
+import {
+  markTrackNavPress,
+  requestTrackScenePrewarm,
+} from '../../../tracksheet/track-entry-prewarm';
 import type { SearchBottomNavMotionRuntime } from '../runtime/shared/use-search-foreground-visual-runtime-contract';
 import styles from '../styles';
 
@@ -65,6 +68,11 @@ const SearchBottomNavItem = React.memo(
     handleOverlaySelect: (key: OverlayKey) => void;
   }) {
     const handlePress = React.useCallback(() => {
+      // THE PRESS STAMP: the span the finger actually feels is press-up -> painted.
+      // Stamped here, before any switch work, so the paint probe can report it.
+      if (__DEV__) {
+        markTrackNavPress(item.key, Date.now());
+      }
       if (item.key === 'profile') {
         handleProfilePress();
         return;

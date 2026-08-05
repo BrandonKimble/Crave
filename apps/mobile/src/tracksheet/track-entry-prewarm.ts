@@ -85,3 +85,31 @@ export const consumeTrackScenePrewarmRequests = (): string[] => signal.consume()
 
 /** Test seam: the class, not the singleton. */
 export { TrackScenePrewarmSignal };
+
+// ─── THE PRESS STAMP (touch-latency instrument) ──────────────────────────────
+//
+// The [PERF] switch probe measures commit->paint, which STARTS at the React
+// commit — after everything the finger already waited through. A metric that
+// begins after the delay can never show the delay (the composite law). This
+// stamps the press itself so the honest span, press-up -> painted, is
+// measurable. Dev-only bookkeeping; nothing reads it in production.
+let lastNavPressAtMs: number | null = null;
+let lastNavPressScene: string | null = null;
+
+/** Trigger side: the nav tab's onPress, BEFORE the switch is requested. */
+export const markTrackNavPress = (sceneKey: string, atMs: number): void => {
+  lastNavPressAtMs = atMs;
+  lastNavPressScene = sceneKey;
+};
+
+/** Consumer side: the paint probe. Returns ms since the press that asked for
+ *  this scene, or null when this paint did not come from a nav press. */
+export const consumeTrackNavPressLatency = (sceneKey: string, nowMs: number): number | null => {
+  if (lastNavPressAtMs == null || lastNavPressScene !== sceneKey) {
+    return null;
+  }
+  const elapsed = nowMs - lastNavPressAtMs;
+  lastNavPressAtMs = null;
+  lastNavPressScene = null;
+  return elapsed;
+};

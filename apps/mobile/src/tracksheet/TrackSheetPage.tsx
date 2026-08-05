@@ -52,7 +52,8 @@ import {
   type TrackSheetPhysicsOptions,
 } from './useTrackSheetPhysics';
 import { TrackSheetDockedStrip } from './TrackSheetStrip';
-import type { TrackEntryKey } from './track-entry-identity';
+import { trackEntrySceneKey, type TrackEntryKey } from './track-entry-identity';
+import { consumeTrackNavPressLatency } from './track-entry-prewarm';
 import { computeOutgoingScroll, TrackEntryScrollMemory } from './track-entry-scroll-memory';
 import { executeEntrySwitch, planEntrySwitch, TrackRestoreCoordinator } from './track-entry-switch';
 
@@ -1145,9 +1146,15 @@ export function TrackSheetPage({
         const t1 = Date.now();
         requestAnimationFrame(() => {
           const t2 = Date.now();
+          // THE SPAN THE FINGER FEELS. commit->paint starts at the commit, i.e.
+          // after everything the press already waited through; press->paint is
+          // the only number that can show a slow tab.
+          const pressToPaint = consumeTrackNavPressLatency(trackEntrySceneKey(entryKey), t1);
           // eslint-disable-next-line no-console
           console.log(
-            `[PERF] switch ${prev}->${entryKey} commit->paint=${t1 - t0}ms paint->next=${t2 - t1}ms`
+            `[PERF] switch ${prev}->${entryKey}` +
+              (pressToPaint == null ? '' : ` press->paint=${pressToPaint}ms`) +
+              ` commit->paint=${t1 - t0}ms paint->next=${t2 - t1}ms`
           );
         });
       });
