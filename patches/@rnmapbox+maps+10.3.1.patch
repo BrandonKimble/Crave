@@ -100,54 +100,8 @@ index 6b18caa..505f94e 100644
          }
  
          // On iOS a duration of -1 means default or dynamic duration (based on flight-path length)
-diff --git a/node_modules/@rnmapbox/maps/android/src/main/java/com/rnmapbox/rnmbx/components/camera/ProfilePresentationCameraHostRegistry.kt b/node_modules/@rnmapbox/maps/android/src/main/java/com/rnmapbox/rnmbx/components/camera/ProfilePresentationCameraHostRegistry.kt
-new file mode 100644
-index 0000000..cd61025
---- /dev/null
-+++ b/node_modules/@rnmapbox/maps/android/src/main/java/com/rnmapbox/rnmbx/components/camera/ProfilePresentationCameraHostRegistry.kt
-@@ -0,0 +1,40 @@
-+package com.rnmapbox.rnmbx.components.camera
-+
-+import android.os.Handler
-+import android.os.Looper
-+import com.facebook.react.bridge.ReadableMap
-+import java.lang.ref.WeakReference
-+import java.util.concurrent.ConcurrentHashMap
-+
-+object ProfilePresentationCameraHostRegistry {
-+    private val mainHandler = Handler(Looper.getMainLooper())
-+    private val hostsByKey = ConcurrentHashMap<String, WeakReference<RNMBXCamera>>()
-+    private val pendingCommandsByKey = ConcurrentHashMap<String, PendingCameraCommand>()
-+
-+    fun register(hostKey: String, host: RNMBXCamera) {
-+        hostsByKey[hostKey] = WeakReference(host)
-+        val pendingCommand = pendingCommandsByKey[hostKey] ?: return
-+        dispatchCommand(hostKey, pendingCommand.stop, pendingCommand.token)
-+    }
-+
-+    fun unregister(hostKey: String, host: RNMBXCamera) {
-+        val currentRef = hostsByKey[hostKey] ?: return
-+        val currentHost = currentRef.get()
-+        if (currentHost == host) {
-+            hostsByKey.remove(hostKey)
-+        }
-+    }
-+
-+    fun dispatchCommand(hostKey: String, stop: ReadableMap, token: String?) {
-+        pendingCommandsByKey[hostKey] = PendingCameraCommand(stop, token)
-+        val host = hostsByKey[hostKey]?.get() ?: return
-+        mainHandler.post {
-+            host.applyProfilePresentationCameraCommand(stop)
-+        }
-+    }
-+
-+    private data class PendingCameraCommand(
-+        val stop: ReadableMap,
-+        val token: String?
-+    )
-+}
 diff --git a/node_modules/@rnmapbox/maps/android/src/main/java/com/rnmapbox/rnmbx/components/camera/RNMBXCamera.kt b/node_modules/@rnmapbox/maps/android/src/main/java/com/rnmapbox/rnmbx/components/camera/RNMBXCamera.kt
-index 2bd4079..0cda3ae 100644
+index 2bd4079..d58c20c 100644
 --- a/node_modules/@rnmapbox/maps/android/src/main/java/com/rnmapbox/rnmbx/components/camera/RNMBXCamera.kt
 +++ b/node_modules/@rnmapbox/maps/android/src/main/java/com/rnmapbox/rnmbx/components/camera/RNMBXCamera.kt
 @@ -31,6 +31,7 @@ import com.mapbox.maps.plugin.viewport.viewport
@@ -158,40 +112,10 @@ index 2bd4079..0cda3ae 100644
  import com.rnmapbox.rnmbx.events.MapUserTrackingModeEvent
  import com.rnmapbox.rnmbx.location.*
  import com.rnmapbox.rnmbx.utils.Logger
-@@ -67,6 +68,8 @@ class RNMBXCamera(private val mContext: Context, private val mManager: RNMBXCame
-     private var mFollowPitch : Double? = null
-     private var mFollowHeading : Double? = null
-     private var mFollowPadding : EdgeInsets? = null
-+    private var hostKey: String? = null
-+    private var lastProfilePresentationAnimationCompletionId: String? = null
- 
-     private var mZoomLevel = -1.0
-     private var mMinZoomLevel : Double? = null
-@@ -116,9 +119,40 @@ class RNMBXCamera(private val mContext: Context, private val mManager: RNMBXCame
+@@ -116,9 +117,19 @@ class RNMBXCamera(private val mContext: Context, private val mManager: RNMBXCame
              return super.removeFromMap(mapView, reason);
          }
      }
-+
-+    override fun onAttachedToWindow() {
-+        super.onAttachedToWindow()
-+        hostKey?.let { ProfilePresentationCameraHostRegistry.register(it, this) }
-+    }
-+
-+    override fun onDetachedFromWindow() {
-+        hostKey?.let { ProfilePresentationCameraHostRegistry.unregister(it, this) }
-+        super.onDetachedFromWindow()
-+    }
-+
-+    fun setHostKey(nextHostKey: String?) {
-+        if (hostKey == nextHostKey) {
-+            return
-+        }
-+        hostKey?.let { ProfilePresentationCameraHostRegistry.unregister(it, this) }
-+        hostKey = nextHostKey
-+        if (isAttachedToWindow) {
-+            hostKey?.let { ProfilePresentationCameraHostRegistry.register(it, this) }
-+        }
-+    }
 +
      fun setStop(stop: CameraStop) {
          mCameraStop = stop
@@ -208,32 +132,8 @@ index 2bd4079..0cda3ae 100644
          withMapView { mapView ->
              stop.let { updateCamera(it, mapView) }
          }
-@@ -129,6 +163,23 @@ class RNMBXCamera(private val mContext: Context, private val mManager: RNMBXCame
-         setStop(stop)
-     }
- 
-+    fun applyProfilePresentationCameraCommand(map: ReadableMap) {
-+        val animationCompletionId =
-+            if (map.hasKey("animationCompletionId") && !map.isNull("animationCompletionId")) {
-+                map.getString("animationCompletionId")
-+            } else {
-+                null
-+            }
-+        if (
-+            animationCompletionId != null &&
-+            animationCompletionId == lastProfilePresentationAnimationCompletionId
-+        ) {
-+            return
-+        }
-+        lastProfilePresentationAnimationCompletionId = animationCompletionId
-+        updateCameraStop(map)
-+    }
-+
-     fun setDefaultStop(stop: CameraStop?) {
-         mDefaultStop = stop
-     }
 diff --git a/node_modules/@rnmapbox/maps/android/src/main/java/com/rnmapbox/rnmbx/components/camera/RNMBXCameraManager.kt b/node_modules/@rnmapbox/maps/android/src/main/java/com/rnmapbox/rnmbx/components/camera/RNMBXCameraManager.kt
-index 6373321..edcfa28 100644
+index 6373321..ed81dd7 100644
 --- a/node_modules/@rnmapbox/maps/android/src/main/java/com/rnmapbox/rnmbx/components/camera/RNMBXCameraManager.kt
 +++ b/node_modules/@rnmapbox/maps/android/src/main/java/com/rnmapbox/rnmbx/components/camera/RNMBXCameraManager.kt
 @@ -8,6 +8,8 @@ import com.facebook.react.viewmanagers.RNMBXCameraManagerInterface
@@ -256,18 +156,6 @@ index 6373321..edcfa28 100644
      }
  
      override fun getName(): String {
-@@ -45,6 +49,11 @@ class RNMBXCameraManager(private val mContext: ReactApplicationContext, val view
-         }
-     }
- 
-+    @ReactProp(name = "hostKey")
-+    override fun setHostKey(camera: RNMBXCamera, hostKey: Dynamic) {
-+        camera.setHostKey(hostKey.asStringOrNull())
-+    }
-+
-     @ReactProp(name = "defaultStop")
-     override fun setDefaultStop(camera: RNMBXCamera, map: Dynamic) {
-         if (!map.isNull) {
 diff --git a/node_modules/@rnmapbox/maps/android/src/main/java/com/rnmapbox/rnmbx/events/MapCameraAnimationCompleteEvent.kt b/node_modules/@rnmapbox/maps/android/src/main/java/com/rnmapbox/rnmbx/events/MapCameraAnimationCompleteEvent.kt
 new file mode 100644
 index 0000000..c2cccc2
@@ -326,87 +214,8 @@ index 262e595..c694fdd 100644
      const val REGION_WILL_CHANGE = "regionwillchange"
      const val REGION_IS_CHANGING = "regionischanging" // deprecated
      const val CAMERA_CHANGED = "camerachanged"
-diff --git a/node_modules/@rnmapbox/maps/ios/RNMBX/ProfilePresentationCameraHostRegistry.swift b/node_modules/@rnmapbox/maps/ios/RNMBX/ProfilePresentationCameraHostRegistry.swift
-new file mode 100644
-index 0000000..317459a
---- /dev/null
-+++ b/node_modules/@rnmapbox/maps/ios/RNMBX/ProfilePresentationCameraHostRegistry.swift
-@@ -0,0 +1,73 @@
-+import Foundation
-+
-+private final class WeakCameraHost {
-+  weak var value: RNMBXCamera?
-+
-+  init(value: RNMBXCamera) {
-+    self.value = value
-+  }
-+}
-+
-+private struct PendingCameraCommand {
-+  let stop: [String: Any]
-+  let token: String?
-+}
-+
-+public final class ProfilePresentationCameraHostRegistry {
-+  public static let shared = ProfilePresentationCameraHostRegistry()
-+
-+  private var hostsByKey: [String: WeakCameraHost] = [:]
-+  private var pendingCommandsByKey: [String: PendingCameraCommand] = [:]
-+
-+  private init() {}
-+
-+  public func register(host: RNMBXCamera, hostKey: String) {
-+    hostsByKey[hostKey] = WeakCameraHost(value: host)
-+    if let pendingCommand = pendingCommandsByKey[hostKey] {
-+      dispatchCommand(hostKey: hostKey, stop: pendingCommand.stop, token: pendingCommand.token)
-+    }
-+  }
-+
-+  public func unregister(host: RNMBXCamera, hostKey: String) {
-+    guard hostsByKey[hostKey]?.value === host else {
-+      return
-+    }
-+    hostsByKey.removeValue(forKey: hostKey)
-+  }
-+
-+  public func dispatchCommand(hostKey: String, stop: [String: Any], token: String?) {
-+    pendingCommandsByKey[hostKey] = PendingCameraCommand(stop: stop, token: token)
-+    guard let host = hostsByKey[hostKey]?.value else {
-+      return
-+    }
-+    DispatchQueue.main.async {
-+      host.applyProfilePresentationCameraCommand(stop)
-+    }
-+  }
-+}
-+
-+@objc(ProfilePresentationCameraHostRegistryBridge)
-+public final class ProfilePresentationCameraHostRegistryBridge: NSObject {
-+  private static let sharedInstance = ProfilePresentationCameraHostRegistryBridge()
-+
-+  @objc(sharedBridge)
-+  public static func sharedBridge() -> ProfilePresentationCameraHostRegistryBridge {
-+    sharedInstance
-+  }
-+
-+  @objc(dispatchCommand:)
-+  public func dispatchCommand(_ payload: NSDictionary) {
-+    guard
-+      let hostKey = payload["hostKey"] as? String,
-+      let stop = payload["stop"] as? [String: Any]
-+    else {
-+      return
-+    }
-+
-+    ProfilePresentationCameraHostRegistry.shared.dispatchCommand(
-+      hostKey: hostKey,
-+      stop: stop,
-+      token: payload["token"] as? String
-+    )
-+  }
-+}
 diff --git a/node_modules/@rnmapbox/maps/ios/RNMBX/RNMBXCamera.swift b/node_modules/@rnmapbox/maps/ios/RNMBX/RNMBXCamera.swift
-index 191bfe5..2a641f4 100644
+index 191bfe5..56296b8 100644
 --- a/node_modules/@rnmapbox/maps/ios/RNMBX/RNMBXCamera.swift
 +++ b/node_modules/@rnmapbox/maps/ios/RNMBX/RNMBXCamera.swift
 @@ -71,6 +71,8 @@ struct CameraUpdateItem {
@@ -461,40 +270,7 @@ index 191bfe5..2a641f4 100644
        }
      }
    }
-@@ -196,13 +222,31 @@ open class RNMBXMapAndMapViewComponentBase : UIView, RNMBXMapAndMapViewComponent
- open class RNMBXCamera : RNMBXMapAndMapViewComponentBase {
-   var cameraAnimator: BasicCameraAnimator?
-   let cameraUpdateQueue = CameraUpdateQueue()
-+  private var registeredHostKey: String?
-+  private var lastProfilePresentationAnimationCompletionId: String?
-   
-   // MARK: React properties
-   
-   @objc public var animationDuration: NSNumber?
-   
-   @objc public var animationMode: NSString?
--  
-+
-+  @objc public var hostKey: NSString? {
-+    didSet {
-+      let nextHostKey = hostKey as String?
-+      if registeredHostKey == nextHostKey {
-+        return
-+      }
-+      if let registeredHostKey {
-+        ProfilePresentationCameraHostRegistry.shared.unregister(host: self, hostKey: registeredHostKey)
-+      }
-+      registeredHostKey = nextHostKey
-+      if let nextHostKey {
-+        ProfilePresentationCameraHostRegistry.shared.register(host: self, hostKey: nextHostKey)
-+      }
-+    }
-+  }
-+
-   @objc public var defaultStop: [String: Any]?
-   
-   @objc public var followUserLocation : Bool = false {
-@@ -250,6 +294,7 @@ open class RNMBXCamera : RNMBXMapAndMapViewComponentBase {
+@@ -250,6 +276,7 @@ open class RNMBXCamera : RNMBXMapAndMapViewComponentBase {
    }
    
    @objc public var onUserTrackingModeChange: RCTBubblingEventBlock? = nil
@@ -502,7 +278,7 @@ index 191bfe5..2a641f4 100644
    
    @objc public var stop: [String: Any]? {
      didSet {
-@@ -547,11 +592,39 @@ open class RNMBXCamera : RNMBXMapAndMapViewComponentBase {
+@@ -547,13 +574,41 @@ open class RNMBXCamera : RNMBXMapAndMapViewComponentBase {
        mode = m
      }
  
@@ -520,9 +296,9 @@ index 191bfe5..2a641f4 100644
 +          status: status
 +        )
 +      }
-+    )
-+  }
-+
+     )
+   }
+   
 +  private func _emitCameraAnimationComplete(
 +    animationCompletionId: String?,
 +    status: String
@@ -537,14 +313,16 @@ index 191bfe5..2a641f4 100644
 +        "animationCompletionId": animationCompletionId as Any,
 +        "status": status
 +      ]
-     )
++    )
 +
 +    onCameraAnimationComplete(event.toJSON())
-   }
-   
++  }
++  
    func _updateCamera() {
+     if let _ = map {
+       if followUserLocation {
 diff --git a/node_modules/@rnmapbox/maps/ios/RNMBX/RNMBXCameraComponentView.mm b/node_modules/@rnmapbox/maps/ios/RNMBX/RNMBXCameraComponentView.mm
-index a1a6596..2633a5d 100644
+index a1a6596..b564a74 100644
 --- a/node_modules/@rnmapbox/maps/ios/RNMBX/RNMBXCameraComponentView.mm
 +++ b/node_modules/@rnmapbox/maps/ios/RNMBX/RNMBXCameraComponentView.mm
 @@ -53,6 +53,14 @@ - (void)prepareView
@@ -578,17 +356,6 @@ index a1a6596..2633a5d 100644
  #pragma mark - RCTComponentViewProtocol
  
  + (ComponentDescriptorProvider)componentDescriptorProvider
-@@ -88,6 +105,10 @@ - (void)updateProps:(const Props::Shared &)props oldProps:(const Props::Shared &
-     if (animationMode != nil) {
-         _view.animationMode = animationMode;
-     }
-+    id hostKey = RNMBXConvertFollyDynamicToId(newViewProps.hostKey);
-+    if (hostKey != nil) {
-+        _view.hostKey = hostKey;
-+    }
-     id defaultStop = RNMBXConvertFollyDynamicToId(newViewProps.defaultStop);
-     if (defaultStop != nil) {
-         _view.defaultStop = defaultStop;
 diff --git a/node_modules/@rnmapbox/maps/ios/RNMBX/RNMBXEvent.swift b/node_modules/@rnmapbox/maps/ios/RNMBX/RNMBXEvent.swift
 index 020a8bd..0d6fe7f 100644
 --- a/node_modules/@rnmapbox/maps/ios/RNMBX/RNMBXEvent.swift
@@ -602,14 +369,11 @@ index 020a8bd..0d6fe7f 100644
        case didFinishLoadingMap
        case mapLoadingError
 diff --git a/node_modules/@rnmapbox/maps/lib/module/components/Camera.js b/node_modules/@rnmapbox/maps/lib/module/components/Camera.js
-index da6b273..a9be0fd 100644
+index da6b273..667a2b5 100644
 --- a/node_modules/@rnmapbox/maps/lib/module/components/Camera.js
 +++ b/node_modules/@rnmapbox/maps/lib/module/components/Camera.js
-@@ -75,9 +75,11 @@ export const Camera = /*#__PURE__*/memo(/*#__PURE__*/forwardRef((props, ref) =>
-     followPitch,
-     followHeading,
+@@ -77,7 +77,8 @@ export const Camera = /*#__PURE__*/memo(/*#__PURE__*/forwardRef((props, ref) =>
      followPadding,
-+    nativeHostKey,
      defaultSettings,
      allowUpdates = true,
 -    onUserTrackingModeChange
@@ -618,7 +382,7 @@ index da6b273..a9be0fd 100644
    } = props;
    const nativeCamera = useRef(null);
    const commands = useMemo(() => new NativeCommands(RNMBXCameraModule), []);
-@@ -101,6 +103,9 @@ export const Camera = /*#__PURE__*/memo(/*#__PURE__*/forwardRef((props, ref) =>
+@@ -101,6 +102,9 @@ export const Camera = /*#__PURE__*/memo(/*#__PURE__*/forwardRef((props, ref) =>
      if (stop.zoomLevel !== undefined) _nativeStop.zoom = stop.zoomLevel;
      if (stop.animationMode !== undefined) _nativeStop.mode = nativeAnimationMode(stop.animationMode);
      if (stop.animationDuration !== undefined) _nativeStop.duration = stop.animationDuration;
@@ -628,7 +392,7 @@ index da6b273..a9be0fd 100644
      if (stop.centerCoordinate) {
        _nativeStop.centerCoordinate = JSON.stringify(makePoint(stop.centerCoordinate));
      }
-@@ -141,6 +146,15 @@ export const Camera = /*#__PURE__*/memo(/*#__PURE__*/forwardRef((props, ref) =>
+@@ -141,6 +145,15 @@ export const Camera = /*#__PURE__*/memo(/*#__PURE__*/forwardRef((props, ref) =>
        onUserTrackingModeChange(event);
      }
    }, [onUserTrackingModeChange]);
@@ -644,7 +408,7 @@ index da6b273..a9be0fd 100644
    const nativeDefaultStop = useMemo(() => {
      if (!defaultSettings) {
        return null;
-@@ -160,9 +174,10 @@ export const Camera = /*#__PURE__*/memo(/*#__PURE__*/forwardRef((props, ref) =>
+@@ -160,9 +173,10 @@ export const Camera = /*#__PURE__*/memo(/*#__PURE__*/forwardRef((props, ref) =>
        zoomLevel,
        padding,
        animationDuration,
@@ -657,15 +421,7 @@ index da6b273..a9be0fd 100644
    const nativeMaxBounds = useMemo(() => {
      if (!maxBounds?.ne || !maxBounds?.sw) {
        return null;
-@@ -362,6 +377,7 @@ export const Camera = /*#__PURE__*/memo(/*#__PURE__*/forwardRef((props, ref) =>
-   return /*#__PURE__*/_jsx(RNMBXCamera, {
-     testID: 'Camera',
-     ref: nativeCamera,
-+    hostKey: nativeHostKey,
-     stop: nativeStop,
-     animationDuration: animationDuration,
-     animationMode: animationMode,
-@@ -377,7 +393,9 @@ export const Camera = /*#__PURE__*/memo(/*#__PURE__*/forwardRef((props, ref) =>
+@@ -377,7 +391,9 @@ export const Camera = /*#__PURE__*/memo(/*#__PURE__*/forwardRef((props, ref) =>
      maxBounds: nativeMaxBounds
      // @ts-ignore just codegen stuff
      ,
@@ -704,7 +460,7 @@ index 04aa0b4..236ad49 100644
  
  // @ts-ignore-error - Codegen requires single cast but TypeScript prefers double cast
 diff --git a/node_modules/@rnmapbox/maps/lib/typescript/src/components/Camera.d.ts b/node_modules/@rnmapbox/maps/lib/typescript/src/components/Camera.d.ts
-index 7f6240f..a7c5b21 100644
+index 7f6240f..1d12137 100644
 --- a/node_modules/@rnmapbox/maps/lib/typescript/src/components/Camera.d.ts
 +++ b/node_modules/@rnmapbox/maps/lib/typescript/src/components/Camera.d.ts
 @@ -10,6 +10,10 @@ export type UserTrackingModeChangeCallback = (event: MapboxGLEvent<'usertracking
@@ -727,15 +483,7 @@ index 7f6240f..a7c5b21 100644
  };
  export type CameraFollowConfig = {
      /** Whether the map orientation follows the user location. */
-@@ -84,6 +90,7 @@ export type CameraMinMaxConfig = {
-     };
- };
- export interface CameraProps extends CameraStop, CameraFollowConfig, CameraMinMaxConfig {
-+    nativeHostKey?: string;
-     /** The configuration that the camera falls back on, if no other values are specified. */
-     defaultSettings?: CameraStop;
-     /** Whether the camera should send any configuration to the native module. Prevents unnecessary tile
-@@ -97,6 +104,10 @@ export interface CameraProps extends CameraStop, CameraFollowConfig, CameraMinMa
+@@ -97,6 +103,10 @@ export interface CameraProps extends CameraStop, CameraFollowConfig, CameraMinMa
       * @deprecated use Viewport#onStatusChanged instead.
       */
      onUserTrackingModeChange?: UserTrackingModeChangeCallback;
@@ -785,7 +533,7 @@ index 9b2adb0..0836090 100644
  //# sourceMappingURL=codegenUtils.d.ts.map
 \ No newline at end of file
 diff --git a/node_modules/@rnmapbox/maps/src/components/Camera.tsx b/node_modules/@rnmapbox/maps/src/components/Camera.tsx
-index 6f6ed50..656c01b 100644
+index 6f6ed50..314600c 100644
 --- a/node_modules/@rnmapbox/maps/src/components/Camera.tsx
 +++ b/node_modules/@rnmapbox/maps/src/components/Camera.tsx
 @@ -35,6 +35,16 @@ export type UserTrackingModeChangeCallback = (
@@ -830,15 +578,7 @@ index 6f6ed50..656c01b 100644
  };
  
  export type CameraFollowConfig = {
-@@ -186,6 +200,7 @@ export interface CameraProps
-   extends CameraStop,
-     CameraFollowConfig,
-     CameraMinMaxConfig {
-+  nativeHostKey?: string;
-   /** The configuration that the camera falls back on, if no other values are specified. */
-   defaultSettings?: CameraStop;
- 
-@@ -202,6 +217,11 @@ export interface CameraProps
+@@ -202,6 +216,11 @@ export interface CameraProps
     * @deprecated use Viewport#onStatusChanged instead.
     */
    onUserTrackingModeChange?: UserTrackingModeChangeCallback;
@@ -850,11 +590,7 @@ index 6f6ed50..656c01b 100644
  }
  
  export type CameraBounds = {
-@@ -275,9 +295,11 @@ export const Camera = memo(
-         followPitch,
-         followHeading,
-         followPadding,
-+        nativeHostKey,
+@@ -278,6 +297,7 @@ export const Camera = memo(
          defaultSettings,
          allowUpdates = true,
          onUserTrackingModeChange,
@@ -862,7 +598,7 @@ index 6f6ed50..656c01b 100644
        } = props;
  
        const nativeCamera = useRef<typeof NativeCameraView>(
-@@ -316,6 +338,11 @@ export const Camera = memo(
+@@ -316,6 +336,11 @@ export const Camera = memo(
              _nativeStop.mode = nativeAnimationMode(stop.animationMode);
            if (stop.animationDuration !== undefined)
              _nativeStop.duration = stop.animationDuration;
@@ -874,7 +610,7 @@ index 6f6ed50..656c01b 100644
  
            if (stop.centerCoordinate) {
              _nativeStop.centerCoordinate = JSON.stringify(
-@@ -380,6 +407,27 @@ export const Camera = memo(
+@@ -380,6 +405,27 @@ export const Camera = memo(
          [onUserTrackingModeChange],
        );
  
@@ -902,7 +638,7 @@ index 6f6ed50..656c01b 100644
        const nativeDefaultStop = useMemo((): NativeCameraStop | null => {
          if (!defaultSettings) {
            return null;
-@@ -409,6 +457,7 @@ export const Camera = memo(
+@@ -409,6 +455,7 @@ export const Camera = memo(
            padding,
            animationDuration,
            animationMode,
@@ -910,7 +646,7 @@ index 6f6ed50..656c01b 100644
          });
        }, [
          centerCoordinate,
-@@ -419,6 +468,7 @@ export const Camera = memo(
+@@ -419,6 +466,7 @@ export const Camera = memo(
          padding,
          animationDuration,
          animationMode,
@@ -918,15 +654,7 @@ index 6f6ed50..656c01b 100644
          buildNativeStop,
        ]);
  
-@@ -681,6 +731,7 @@ export const Camera = memo(
-         <RNMBXCamera
-           testID={'Camera'}
-           ref={nativeCamera}
-+          hostKey={nativeHostKey}
-           stop={nativeStop}
-           animationDuration={animationDuration}
-           animationMode={animationMode}
-@@ -696,6 +747,8 @@ export const Camera = memo(
+@@ -696,6 +744,8 @@ export const Camera = memo(
            maxBounds={nativeMaxBounds}
            // @ts-ignore just codegen stuff
            onUserTrackingModeChange={_onUserTrackingModeChange}
@@ -936,10 +664,10 @@ index 6f6ed50..656c01b 100644
        );
      },
 diff --git a/node_modules/@rnmapbox/maps/src/specs/RNMBXCameraNativeComponent.ts b/node_modules/@rnmapbox/maps/src/specs/RNMBXCameraNativeComponent.ts
-index 04aa0b4..a6e026e 100644
+index 04aa0b4..236ad49 100644
 --- a/node_modules/@rnmapbox/maps/src/specs/RNMBXCameraNativeComponent.ts
 +++ b/node_modules/@rnmapbox/maps/src/specs/RNMBXCameraNativeComponent.ts
-@@ -20,7 +20,16 @@ type UserTrackingModeChangeEventType = {
+@@ -20,6 +20,14 @@ type UserTrackingModeChangeEventType = {
    };
  };
  
@@ -952,11 +680,9 @@ index 04aa0b4..a6e026e 100644
 +};
 +
  export interface NativeProps extends ViewProps {
-+  hostKey?: OptionalProp<string>;
    maxBounds?: UnsafeMixed<string | null>;
    animationDuration?: OptionalProp<Double>;
-   animationMode?: OptionalProp<string>;
-@@ -40,6 +49,7 @@ export interface NativeProps extends ViewProps {
+@@ -40,6 +48,7 @@ export interface NativeProps extends ViewProps {
    stop?: UnsafeMixed<NativeCameraStop>;
  
    onUserTrackingModeChange?: DirectEventHandler<UserTrackingModeChangeEventType>;

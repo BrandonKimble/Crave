@@ -1224,3 +1224,24 @@ returns false. No timing needed.
 - **What this draft does NOT fix:** the D44 reflection hatch #2 (BottomSheetHostRegistryBridge)
   stays as ruled; F1717 (pins source delta) untouched; the F1715 detent/scroll lanes are
   de-duplicated but not redesigned.
+
+### D61 EXECUTED (2026-08-04)
+
+**Batch 1** (commit 42df7a3cd): arbiter park/replay/gesture-supersession/watchdog landed exactly
+as designed; native fallback deleted end-to-end (JS executor file + plumbing, Swift camera half,
+writer-contract `onCommandRejected`); F1715 one-pop-one-staging landed with ONE approved
+inversion — the VERB is the single stager, not the reducer (the delegate records
+staging-after-plan-resolution as a rig-proven RED wrong-detent pop; every pop path reaches the
+controller through a verb). Six mutation reverts RED-proven; delete gate +3 checks RED-proven;
+specs 1–5 of the mutation-proof plan done (F1721).
+**Batch 2**: the rnmapbox 10.3.1 patch repaired by SUBTRACTION — registry/hostKey halves removed
+on both platforms, completion half kept; the iOS compile break (the re-port's lost
+`applyProfilePresentationCameraCommand`) healed because its only caller died. Wrong-baseline trap
+root-caused to a stray untracked package-lock.json pinning 10.2.9 (removed); patch verified to
+apply byte-exactly to pristine 10.3.1. BUILD SUCCEEDED (first green build since 2026-08-02),
+fresh dylib carries the completion channel (99 symbols) and zero fallback/registry symbols;
+`scripts/ios-camera-symbol-gate.sh` (local/opt-in, RED-proven against the pre-repair binary)
+keeps that a checked fact. **Defect 3 PROVEN**: the binary installed on the rig sim during the
+F1716 session fails the completion-symbol check — the stranding mechanism is a fact of that
+binary, not an inference (F1722, F1723). Remaining: the rig loop (spec 6 — parked→replayed legs
+on the fresh binary, now installed on the rig sim).

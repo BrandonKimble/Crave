@@ -557,7 +557,6 @@ const SearchMapViewScene = React.memo(
         */}
         <MapboxGL.Camera
           ref={attachCameraHostRef}
-          nativeHostKey="search_map_camera"
           defaultSettings={{
             centerCoordinate: mapCenter ?? USA_FALLBACK_CENTER,
             zoomLevel: mapZoom ?? USA_FALLBACK_ZOOM,
