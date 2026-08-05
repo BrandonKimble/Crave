@@ -144,11 +144,7 @@ class AppRouteHomeSceneInputRuntimeController {
       isDockedLane &&
       (this.hasDockedSceneRestoreIntent ||
         (!this.isDockedSceneDismissed && this.homeSheetSnap !== 'hidden'));
-    const currentSnap: OverlaySheetSnap =
-      this.hasDockedSceneRestoreIntent && this.homeSheetSnap === 'hidden'
-        ? (this.restoreIntentSnap ?? this.homeSheetSnap)
-        : this.homeSheetSnap;
-    useHomeSceneStateStore.getState().setSceneState({ visible, currentSnap });
+    useHomeSceneStateStore.getState().setSceneState({ visible });
 
     const homeShellSpec: AppRouteSceneStackShellSpec = normalizeSearchRouteSceneStackShellSpec({
       overlayKey: 'home',

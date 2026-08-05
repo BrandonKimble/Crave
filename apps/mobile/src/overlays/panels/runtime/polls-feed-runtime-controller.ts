@@ -82,7 +82,6 @@ type UsePollsFeedRuntimeControllerArgs = {
   setHeaderPlaceName: React.Dispatch<React.SetStateAction<string | null>>;
   setPromise: React.Dispatch<React.SetStateAction<PollFeedPromise | null>>;
   setLoading: React.Dispatch<React.SetStateAction<boolean>>;
-  setPollFeedRefreshing: React.Dispatch<React.SetStateAction<boolean>>;
   setPollFeedLoadFailed: React.Dispatch<React.SetStateAction<boolean>>;
   isSystemUnavailable: boolean;
   pollIdParam?: string | null;
@@ -122,7 +121,6 @@ export const usePollsFeedRuntimeController = ({
   setHeaderPlaceName,
   setPromise,
   setLoading,
-  setPollFeedRefreshing,
   setPollFeedLoadFailed,
   isSystemUnavailable,
   pollIdParam,
@@ -288,7 +286,6 @@ export const usePollsFeedRuntimeController = ({
       };
 
       setPollFeedLoadFailed(false);
-      setPollFeedRefreshing(true);
       if (!skipSpinner) {
         setLoading(true);
       }
@@ -309,9 +306,6 @@ export const usePollsFeedRuntimeController = ({
           scheduleRetry(retryAttempt + 1, 'no-payload');
         }
         if (!retryScheduled) {
-          if (refreshSeq === refreshSeqRef.current) {
-            setPollFeedRefreshing(false);
-          }
           if (!skipSpinner) {
             setLoading(false);
           }
@@ -365,9 +359,6 @@ export const usePollsFeedRuntimeController = ({
         return 'failed';
       } finally {
         if (!retryScheduled) {
-          if (refreshSeq === refreshSeqRef.current) {
-            setPollFeedRefreshing(false);
-          }
           if (!skipSpinner) {
             setLoading(false);
           }
@@ -380,7 +371,6 @@ export const usePollsFeedRuntimeController = ({
       publishFeedSlice,
       setLoading,
       setPollFeedLoadFailed,
-      setPollFeedRefreshing,
     ]
   );
   refreshPollFeedRef.current = refreshPollFeed;

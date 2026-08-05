@@ -13,7 +13,8 @@ import type { SceneBodyContentInsets } from './bottomSheetSurfaceStyleUtils';
 export type { SearchRouteHostVisualState } from './searchRouteHostVisualState';
 
 export type SearchRoutePanelInteractionRef = React.MutableRefObject<SearchInteractionSnapshot>;
-type SearchRouteSceneSheetHostOwnedField =
+type SearchRouteSceneSheetHostOwnedField = keyof Pick<
+  OverlaySheetFrameSpec,
   | 'initialSnapPoint'
   | 'dismissThreshold'
   | 'onHidden'
@@ -21,7 +22,8 @@ type SearchRouteSceneSheetHostOwnedField =
   | 'onSnapChange'
   | 'preventSwipeDismiss'
   | 'runtimeModel'
-  | 'shellSnapRequest';
+  | 'shellSnapRequest'
+>;
 
 export type SearchRouteSceneShellSpec = Omit<
   OverlaySheetFrameSpec,

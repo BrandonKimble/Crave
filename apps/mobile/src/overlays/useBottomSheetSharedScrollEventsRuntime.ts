@@ -20,11 +20,6 @@ type UseBottomSheetSharedScrollEventsRuntimeArgs = {
   onMomentumEndJS?: () => void;
   onScrollOffsetChange?: (offsetY: number) => void;
   scrollOffset: SharedValue<number>;
-  /** Boundary-physics: the ACTIVE list's max interior offset (contentSize − viewport, ≥0). */
-  maxScrollOffset: SharedValue<number>;
-  /** Native rubber's `d`: the ACTIVE list's viewport height (same one-writer law). */
-  scrollViewportHeight: SharedValue<number>;
-  boundaryFactsKnown: SharedValue<boolean>;
   /** Boundary-physics law §3 (top momentum case): the runtime-owned overscroll the
    *  momentum-rebound impulse drives when a momentum scroll lands on the pinned top. */
   contentOverscroll: SharedValue<number>;
@@ -67,9 +62,6 @@ export const useBottomSheetSharedScrollEventsRuntime = ({
   onScrollOffsetChange,
   scrollOffset,
   scrollTopOffset,
-  maxScrollOffset,
-  scrollViewportHeight,
-  boundaryFactsKnown,
   contentOverscroll,
   primaryScrollOffset,
   secondaryScrollOffset,
@@ -185,8 +177,6 @@ export const useBottomSheetSharedScrollEventsRuntime = ({
     onScrollOffsetChange,
     scrollOffset,
     scrollTopOffset,
-    maxScrollOffset,
-    scrollViewportHeight,
     contentOverscroll,
   ];
 

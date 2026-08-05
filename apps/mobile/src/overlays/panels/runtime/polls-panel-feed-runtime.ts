@@ -57,7 +57,6 @@ export const usePollsPanelFeedRuntime = ({
   const [polls, setPolls] = React.useState<Poll[]>([]);
   const [headerPlaceName, setHeaderPlaceName] = React.useState<string | null>(null);
   const [promise, setPromise] = React.useState<PollFeedPromise | null>(null);
-  const [, setPollFeedRefreshing] = React.useState(false);
   const [pollFeedLoadFailed, setPollFeedLoadFailed] = React.useState(false);
   const [loading, setLoading] = React.useState(false);
   // Feed control state (Live/Results split, Type, Sort, Time, place slicer) lives in
@@ -105,7 +104,6 @@ export const usePollsPanelFeedRuntime = ({
     setHeaderPlaceName,
     setPromise,
     setLoading,
-    setPollFeedRefreshing,
     setPollFeedLoadFailed,
     isSystemUnavailable,
     pollIdParam: params?.pollId,

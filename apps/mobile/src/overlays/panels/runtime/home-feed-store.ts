@@ -50,12 +50,10 @@ export const useHomeFeedStore = create<HomeFeedState>((set) => ({
  */
 export type HomeSceneState = {
   visible: boolean;
-  currentSnap: 'expanded' | 'middle' | 'collapsed' | 'hidden';
-  setSceneState: (state: Pick<HomeSceneState, 'visible' | 'currentSnap'>) => void;
+  setSceneState: (state: Pick<HomeSceneState, 'visible'>) => void;
 };
 
 export const useHomeSceneStateStore = create<HomeSceneState>((set) => ({
   visible: false,
-  currentSnap: 'collapsed',
   setSceneState: (state) => set(state),
 }));
