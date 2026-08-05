@@ -83,6 +83,30 @@ export const logCameraOriginDebug = (tag: string, data: Record<string, unknown>)
   console.log(`[CAMORIGIN-${tag}] ${JSON.stringify({ ...data, ts: Date.now() })}`);
 };
 
+/**
+ * The `[CAMCOMMIT-path]` writer-attribution probe (F1716/D61) — same family, same shape.
+ *
+ * Names WHICH leg carried (or held) a committed camera intent: `ref` (the mounted
+ * camera executed it), `parked` (no writer — the arbiter is holding the intent),
+ * `replayed` (the camera host returned and the parked intent re-committed),
+ * `watchdogRecommit` (completion never arrived and the composite is off-target — one
+ * bounded re-commit), `surrendered` (the re-commit also failed; the lane gave up LOUDLY —
+ * this leg additionally barks ungated in __DEV__ and breadcrumbs in prod, because a
+ * surrender is a defect signature, not routine telemetry).
+ * RED reads: a `parked` with no later `replayed`/superseding commit; any `surrendered`.
+ */
+export const CAMCOMMIT_PATH_DEBUG_ENABLED = false;
+
+export const isCameraCommitPathDebugEnabled = (): boolean => __DEV__ && CAMCOMMIT_PATH_DEBUG_ENABLED;
+
+export const logCameraCommitPath = (leg: string, data?: Record<string, unknown>): void => {
+  if (!isCameraCommitPathDebugEnabled()) {
+    return;
+  }
+  // eslint-disable-next-line no-console
+  console.log(`[CAMCOMMIT-path] ${leg}${data ? ` ${JSON.stringify(data)}` : ''}`);
+};
+
 /** Flip to `true` to re-enable the `[COMMITDBG]` per-leg commit probe in a dev build. */
 export const SLOW_LEG_COMMIT_DEBUG_ENABLED = false;
 

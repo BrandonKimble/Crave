@@ -11,7 +11,7 @@ import { useSearchRootSessionServicesFoundationRuntime } from './use-search-root
 
 type UseSearchRootSessionAssemblyRuntimeArgs = Pick<
   UseSearchRootSessionRuntimeArgs,
-  'startupPollBounds' | 'searchMapNativeCameraExecutor'
+  'startupPollBounds'
 > & {
   rootPrimitivesRuntime: SearchRootPrimitivesRuntime;
   searchRuntimeBus: SearchRuntimeBus;
@@ -23,7 +23,6 @@ type UseSearchRootSessionAssemblyRuntimeArgs = Pick<
 export const useSearchRootSessionAssemblyRuntime = ({
   startupPollBounds,
   rootPrimitivesRuntime,
-  searchMapNativeCameraExecutor,
   searchRuntimeBus,
   resultsPresentationAuthority,
   resultsPresentationSurfaceAuthority,
@@ -33,7 +32,6 @@ export const useSearchRootSessionAssemblyRuntime = ({
     useSearchRootSessionServicesFoundationRuntime({
       startupPollBounds,
       rootPrimitivesRuntime,
-      searchMapNativeCameraExecutor,
       searchRuntimeBus,
       resultsPresentationAuthority,
       resultsPresentationSurfaceAuthority,

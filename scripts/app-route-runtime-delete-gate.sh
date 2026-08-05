@@ -78,7 +78,26 @@ for scalar_surface_native_path in "${SCALAR_SURFACE_NATIVE_FORBIDDEN_PATHS[@]}";
   fi
 done
 
+# F1716/D61 (2026-08-04): the native camera-command fallback (executeCameraCommand +
+# dispatchProfilePresentationCameraCommand + the camera_command_unavailable reject in
+# ProfilePresentationTransactionExecutor.swift, and its RCT_EXTERN_METHOD block) was
+# DELETED — the CameraIntentArbiter's park-and-replay owns the hostless window; a
+# fire-and-forget native fallback whose resolve cannot mean "applied" must not return.
+# (The executeSheetCommands half of that module is LIVE and stays.)
+CAMERA_NATIVE_EXECUTOR_FILES=(
+  "$REPO_ROOT/apps/mobile/ios/cravesearch/ProfilePresentationTransactionExecutor.swift"
+  "$REPO_ROOT/apps/mobile/ios/cravesearch/UIFrameSamplerBridge.m"
+)
+for camera_native_file in "${CAMERA_NATIVE_EXECUTOR_FILES[@]}"; do
+  if [[ -e "$camera_native_file" ]] && rg -q --pcre2     "executeCameraCommand|camera_command_unavailable|dispatchProfilePresentationCameraCommand|cameraCommandExecutionAvailable"     "$camera_native_file"; then
+    echo "[app-route-runtime-delete-gate] FAIL camera_native_fallback_symbols: the native camera-command fallback was deleted (F1716/D61); the arbiter park-and-replay owns the hostless window." >&2
+    echo "${camera_native_file#$REPO_ROOT/}" >&2
+    exit 1
+  fi
+done
+
 declare -a CONTENT_CHECKS=(
+  "camera_native_fallback_lane::SearchMapNativeCameraExecutor|searchMapNativeCameraExecutor|camera_command_unavailable|cameraCommandExecutionAvailable|onCommandRejected::The camera lane's native fallback was deleted (F1716/D61) — the arbiter parks a hostless commit and replays it on host return; a JS shim around a fire-and-forget native camera dispatch must not return."
   "search_chrome_scalar_surface_symbols::SearchChromeScalarSurface|createSearchChromeScalarSurfaceRuntime|setSearchChromeScalarPrimitiveTarget|syncScalarSnapshot|registerPlatformScalarSlot::Scalar-surface stack was deleted (F1700/D59); the live native chrome seam is SearchChromeNativeHitTargetId — do not rebuild the fork."
   "polls_scene_authority_subscribe::routePollsSceneRuntime\\.sceneAuthority\\.subscribe::Polls scene authority must remain snapshot/target-owned, not subscribed from mounted chrome/body."
   "chrome_mode_authority_subscribe::routeOverlayChromeModeAuthority\\.(subscribe|subscribeSelector)::Chrome mode authority is snapshot/shared-value target only."
@@ -276,6 +295,7 @@ declare -a CONTENT_CHECKS=(
 )
 
 declare -a PATH_CHECKS=(
+  "search_map_native_camera_executor_path::(^|/)screens/Search/runtime/map/search-map-native-camera-executor\\.(ts|tsx|js|jsx|d\\.ts)$::Deleted native camera executor file must not return (F1716/D61)."
   "search_chrome_scalar_surface_runtime_paths::(^|/)screens/Search/runtime/native/(search-chrome-scalar-surface|use-search-chrome-scalar-surface)[a-z-]*\\.(ts|tsx|js|jsx|d\\.ts)$::Deleted scalar-surface JS runtime files must not return (F1700/D59)."
   "polls_panel_sheet_control_runtime_path::(^|/)overlays/panels/runtime/polls-panel-sheet-control-runtime\\.(ts|tsx|js|jsx|d\\.ts)$::Deleted polls panel sheet-control runtime file must not return."
   "app_route_scene_chrome_snaps_runtime_path::(^|/)navigation/runtime/use-app-route-scene-chrome-snaps-runtime\\.(ts|tsx|js|jsx|d\\.ts)$::Deleted chrome-snaps runtime hook file must not return."
@@ -482,16 +502,10 @@ for check in "${ROOT_CONTENT_CHECKS[@]}"; do
 done
 
 search_map_component_file="$TARGET_PATH/screens/Search/components/search-map.tsx"
-search_map_native_camera_executor_file="$TARGET_PATH/screens/Search/runtime/map/search-map-native-camera-executor.ts"
-if [[ -e "$search_map_native_camera_executor_file" ]] && {
-  ! rg -q --fixed-strings "animationCompletionId?: string" "$search_map_native_camera_executor_file" ||
-  ! rg -q --fixed-strings "stop.animationCompletionId = command.completionId" "$search_map_native_camera_executor_file"
-}; then
-  echo "[app-route-runtime-delete-gate] FAIL profile_camera_completion_native_payload_gate: Native profile camera commands must carry the camera animation completion id." >&2
-  failures=$((failures + 1))
-else
-  echo "[app-route-runtime-delete-gate] PASS profile_camera_completion_native_payload_gate"
-fi
+# profile_camera_completion_native_payload_gate RETIRED (F1716/D61): it positively pinned the
+# native camera executor file, which is now BANNED (search_map_native_camera_executor_path +
+# camera_native_fallback_lane above). Completion ids ride the cameraRef stop; the arbiter
+# gate below still requires the deferred-state machinery.
 
 search_map_presentation_file="$TARGET_PATH/screens/Search/runtime/controller/search-root-map-presentation-controller-runtime.ts"
 if [[ -e "$search_map_component_file" ]] && [[ -e "$search_map_presentation_file" ]] && {
@@ -507,15 +521,16 @@ fi
 camera_intent_arbiter_file="$TARGET_PATH/screens/Search/runtime/map/camera-intent-arbiter.ts"
 route_scene_camera_motion_target_file="$TARGET_PATH/navigation/runtime/use-app-route-scene-camera-motion-target-runtime.ts"
 if [[ -e "$camera_intent_arbiter_file" ]] && {
-  ! rg -q --fixed-strings "onCommandRejected" "$camera_intent_arbiter_file" ||
+  ! rg -q --fixed-strings "parkedIntent" "$camera_intent_arbiter_file" ||
+  ! rg -q --fixed-strings "notifyCameraWriterAvailable" "$camera_intent_arbiter_file" ||
   ! rg -q --fixed-strings "deferControlledCameraStateUntilCompletion" "$camera_intent_arbiter_file" ||
   ! rg -q --fixed-strings "pendingControlledCameraStateSync" "$camera_intent_arbiter_file" ||
   ! rg -q --fixed-strings "flushControlledCameraStateSync" "$camera_intent_arbiter_file"
 }; then
-  echo "[app-route-runtime-delete-gate] FAIL profile_camera_native_acceptance_mirrors_state_gate: Native-accepted profile camera commands must support async rejection and deferred controlled camera state sync." >&2
+  echo "[app-route-runtime-delete-gate] FAIL profile_camera_park_and_deferred_state_gate: The arbiter must PARK a hostless commit (D61 park-and-replay) and defer controlled camera state until completion." >&2
   failures=$((failures + 1))
 else
-  echo "[app-route-runtime-delete-gate] PASS profile_camera_native_acceptance_mirrors_state_gate"
+  echo "[app-route-runtime-delete-gate] PASS profile_camera_park_and_deferred_state_gate"
 fi
 
 if [[ -e "$route_scene_camera_motion_target_file" ]] && {

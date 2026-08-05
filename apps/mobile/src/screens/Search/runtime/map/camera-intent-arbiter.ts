@@ -25,10 +25,14 @@ export type ProgrammaticCameraAnimationCompletionPayload =
   };
 
 export type CameraIntentArbiterWriters = {
+  // D61 — the command channel is HONEST: it returns true only when a writer actually
+  // executed the stop (cameraRef.setCamera reached a mounted camera). There is no
+  // reject callback and no fire-and-forget native fallback anymore; "no writer" is a
+  // synchronous `false`, and the arbiter PARKS the intent until a writer returns
+  // (notifyCameraWriterAvailable) or a newer intent/user gesture supersedes it.
   commandCameraViewport?: (
     intent: CameraIntent & {
       completionId: string | null;
-      onCommandRejected: (completionId: string | null) => void;
     }
   ) => boolean;
   setMapCenter: (center: [number, number]) => void;
@@ -41,6 +45,60 @@ export type CameraIntentArbiterWriters = {
     completionId: string | null;
   }) => void;
 };
+
+export type CameraIntentArbiterCommitPathLeg =
+  | 'parked'
+  | 'replayed'
+  | 'watchdogRecommit'
+  | 'surrendered';
+
+export type CameraIntentArbiterOptions = {
+  /**
+   * D61 watchdog oracle — the OBSERVED composite camera (ViewportBoundsService.getCamera()).
+   * The watchdog only arms when this reader exists: without a composite oracle a timer could
+   * only fake a settle (intent-not-composite, the always-green disease), so it stays off.
+   */
+  getObservedCamera?: () => { center: [number, number]; zoom: number } | null;
+  /** Injectable clock (specs use a fake). Returns a cancel function. Defaults to setTimeout. */
+  scheduleWatchdogTimeout?: (callback: () => void, delayMs: number) => () => void;
+  /**
+   * The LOUD surrender channel — prod wires the crash-reporting breadcrumb + a __DEV__
+   * console.error. A watchdog surrender means a committed animated intent neither completed,
+   * nor landed on the composite, nor landed on a single re-commit: the lane gave up
+   * deliberately and audibly instead of stranding the arbiter forever.
+   */
+  onWatchdogSurrender?: (detail: {
+    completionId: string;
+    target: { center: [number, number]; zoom: number };
+    observed: { center: [number, number]; zoom: number } | null;
+  }) => void;
+  /** Attribution probe sink for the park/replay legs ([CAMCOMMIT-path], flag-gated). */
+  logCommitPath?: (leg: CameraIntentArbiterCommitPathLeg, data?: Record<string, unknown>) => void;
+};
+
+/**
+ * D61 watchdog slack over the declared animation duration. Only consulted when the native
+ * completion event is ABSENT (the event is the primary settle signal; rnmapbox emits it at
+ * animation end). The slack absorbs bridge/frame latency between "animation declared done"
+ * and "event delivered" so a healthy completion always wins the race against the timer.
+ */
+export const CAMERA_WATCHDOG_SLACK_MS = 500;
+
+/**
+ * D61 watchdog composite tolerance: the observed camera counts as AT the committed target
+ * only within these deltas (center in degrees, ~11m at the equator for 1e-4; zoom absolute).
+ * Deliberately tight — the spec's RED arm proves a wrong region does NOT pass.
+ */
+export const CAMERA_WATCHDOG_CENTER_EPSILON_DEG = 1e-4;
+export const CAMERA_WATCHDOG_ZOOM_EPSILON = 0.05;
+
+const isObservedCameraAtTarget = (
+  observed: { center: [number, number]; zoom: number },
+  target: { center: [number, number]; zoom: number }
+): boolean =>
+  Math.abs(observed.center[0] - target.center[0]) <= CAMERA_WATCHDOG_CENTER_EPSILON_DEG &&
+  Math.abs(observed.center[1] - target.center[1]) <= CAMERA_WATCHDOG_CENTER_EPSILON_DEG &&
+  Math.abs(observed.zoom - target.zoom) <= CAMERA_WATCHDOG_ZOOM_EPSILON;
 
 export class CameraIntentArbiter {
   private gestureActive = false;
@@ -58,12 +116,25 @@ export class CameraIntentArbiter {
   // D56: the target of the CURRENTLY-IN-FLIGHT programmatic commit. The user perceives the
   // place the map is flying TO, not the frame it happens to be passing through, so an origin
   // captured while an intent is in flight must capture the TARGET (F1513 ruling). Set on every
-  // commit; only ever READ while a completion is pending, so a settled map always answers from
-  // the observed viewport instead.
+  // commit; only ever READ while a completion is pending OR an intent is parked, so a settled
+  // map always answers from the observed viewport instead.
   private lastCommittedCameraTarget: {
     center: [number, number];
     zoom: number;
     padding: CameraSnapshot['padding'];
+  } | null = null;
+  // D61 — a committed intent the command channel could not execute (camera host unmounted
+  // mid-scene-switch). It is NOT dropped: it waits here until notifyCameraWriterAvailable()
+  // replays it, a newer commit replaces it, or a user gesture supersedes it. This is the
+  // bedrock obligation of the lane — a committed intent executes or is superseded, never
+  // silently vanishes (F1716).
+  private parkedIntent: CameraIntent | null = null;
+  // D61 — the armed completion watchdog for the in-flight animated commit, if any.
+  private pendingWatchdog: {
+    completionId: string;
+    intent: CameraIntent;
+    retried: boolean;
+    cancel: () => void;
   } | null = null;
   private nextProgrammaticCameraCompletionSeq = 0;
   private readonly programmaticCameraAnimationCompletionListeners = new Set<
@@ -76,7 +147,10 @@ export class CameraIntentArbiter {
     | ((padding: CameraSnapshot['padding']) => void)
     | null = null;
 
-  constructor(private readonly writers: CameraIntentArbiterWriters) {}
+  constructor(
+    private readonly writers: CameraIntentArbiterWriters,
+    private readonly options: CameraIntentArbiterOptions = {}
+  ) {}
 
   public setProgrammaticCameraAnimationCompletionHandler(
     handler: ((payload: ProgrammaticCameraAnimationCompletionPayload) => void) | null
@@ -110,12 +184,27 @@ export class CameraIntentArbiter {
     });
   }
 
+  private clearWatchdog(): void {
+    if (this.pendingWatchdog != null) {
+      this.pendingWatchdog.cancel();
+      this.pendingWatchdog = null;
+    }
+  }
+
   public setGestureActive(isActive: boolean): void {
     withSearchNavSwitchRuntimeAttribution('cameraIntentArbiter', 'setGestureActive', () => {
       this.gestureActive = isActive;
-      if (!isActive || this.pendingProgrammaticCameraCompletionId == null) {
+      if (!isActive) {
         return;
       }
+      // D61 — the user's gesture supersedes a parked intent: they took the camera; the
+      // parked promise is theirs to overrule. Same law the pending-completion cancel below
+      // has always encoded for in-flight animations.
+      this.parkedIntent = null;
+      if (this.pendingProgrammaticCameraCompletionId == null) {
+        return;
+      }
+      this.clearWatchdog();
       const cancelledCompletionId = this.pendingProgrammaticCameraCompletionId;
       const cancelledRequestToken = this.pendingProgrammaticCameraRequestToken;
       this.pendingProgrammaticCameraCompletionId = null;
@@ -130,6 +219,13 @@ export class CameraIntentArbiter {
   }
 
   public commit(intent: CameraIntent): boolean {
+    return this.commitInternal(intent, { isWatchdogRetry: false });
+  }
+
+  private commitInternal(
+    intent: CameraIntent,
+    { isWatchdogRetry }: { isWatchdogRetry: boolean }
+  ): boolean {
     return withSearchNavSwitchRuntimeAttribution('cameraIntentArbiter', 'commit', () => {
       if (this.gestureActive && intent.allowDuringGesture !== true) {
         return false;
@@ -157,26 +253,41 @@ export class CameraIntentArbiter {
       };
       const completionId = animation.completionId;
       const shouldSyncPadding = Object.prototype.hasOwnProperty.call(intent, 'padding');
+      // A new commit supersedes whatever the lane was doing: the parked intent (newest
+      // wins) and any armed watchdog for the prior animation.
+      this.parkedIntent = null;
+      this.clearWatchdog();
       this.lastCommittedCameraTarget = {
         center: [intent.center[0], intent.center[1]],
         zoom: intent.zoom,
         padding: intent.padding ?? null,
       };
-      this.pendingProgrammaticCameraCompletionId = completionId;
-      this.pendingProgrammaticCameraRequestToken = intent.requestToken ?? null;
-      this.pendingControlledCameraStateSync = null;
-      if (
-        this.writers.commandCameraViewport?.({
-          ...intent,
-          completionId,
-          onCommandRejected: (rejectedCompletionId) => {
-            this.handleProgrammaticCameraAnimationCompletion({
-              animationCompletionId: rejectedCompletionId,
-              status: 'cancelled',
-            });
-          },
-        }) === true
-      ) {
+      if (this.writers.commandCameraViewport != null) {
+        const executed =
+          this.writers.commandCameraViewport({
+            ...intent,
+            completionId,
+          }) === true;
+        if (!executed) {
+          // D61 PARK — the command channel has no writer right now (camera host unmounted
+          // mid-scene-switch). The old lane dropped the intent here (F1716's stranding) and
+          // then wrote the controlled JS state anyway, claiming a success it never had. Now
+          // the intent waits, whole, and NOTHING downstream is told a lie: no controlled
+          // state write, no pending completion, no deferred sync.
+          this.parkedIntent = intent;
+          this.pendingProgrammaticCameraCompletionId = null;
+          this.pendingProgrammaticCameraRequestToken = null;
+          this.pendingControlledCameraStateSync = null;
+          this.options.logCommitPath?.('parked', {
+            center: intent.center,
+            zoom: intent.zoom,
+            mode: animationMode,
+          });
+          return true;
+        }
+        this.pendingProgrammaticCameraCompletionId = completionId;
+        this.pendingProgrammaticCameraRequestToken = intent.requestToken ?? null;
+        this.pendingControlledCameraStateSync = null;
         if (intent.deferControlledCameraStateUntilCompletion && completionId) {
           this.pendingControlledCameraStateSync = {
             completionId,
@@ -187,6 +298,7 @@ export class CameraIntentArbiter {
             shouldSyncPadding,
             padding: intent.padding ?? null,
           };
+          this.armWatchdog(completionId, intent, animation.durationMs, isWatchdogRetry);
           return true;
         }
         this.writers.setMapCameraAnimation(animation);
@@ -201,8 +313,17 @@ export class CameraIntentArbiter {
         if (Object.prototype.hasOwnProperty.call(intent, 'pitch')) {
           this.writers.setMapPitch(intent.pitch ?? null);
         }
+        if (completionId != null) {
+          this.armWatchdog(completionId, intent, animation.durationMs, isWatchdogRetry);
+        }
         return true;
       }
+      // No command channel AT ALL (controlled-camera mode — the declarative writers are the
+      // executor). Distinct from "channel present but hostless": here the state writers DO
+      // move the camera, so writing them is execution, not a lie.
+      this.pendingProgrammaticCameraCompletionId = completionId;
+      this.pendingProgrammaticCameraRequestToken = intent.requestToken ?? null;
+      this.pendingControlledCameraStateSync = null;
       this.writers.setMapCameraAnimation(animation);
       if (shouldSyncPadding) {
         this.controlledCameraPaddingSyncHandler?.(intent.padding ?? null);
@@ -219,6 +340,110 @@ export class CameraIntentArbiter {
     });
   }
 
+  /**
+   * D61 — the camera host (re)mounted: replay the parked intent, if any, through the normal
+   * commit path. Called from the map component's camera ref attach (a REAL component — the
+   * scene body-spec hooks never commit effects, so the notification must not live there).
+   * Returns true when a parked intent was replayed.
+   */
+  public notifyCameraWriterAvailable(): boolean {
+    return withSearchNavSwitchRuntimeAttribution(
+      'cameraIntentArbiter',
+      'notifyCameraWriterAvailable',
+      () => {
+        const parked = this.parkedIntent;
+        if (parked == null) {
+          return false;
+        }
+        this.parkedIntent = null;
+        this.options.logCommitPath?.('replayed', {
+          center: parked.center,
+          zoom: parked.zoom,
+        });
+        return this.commitInternal(parked, { isWatchdogRetry: false });
+      }
+    );
+  }
+
+  private armWatchdog(
+    completionId: string,
+    intent: CameraIntent,
+    durationMs: number,
+    isWatchdogRetry: boolean
+  ): void {
+    const getObservedCamera = this.options.getObservedCamera;
+    if (getObservedCamera == null) {
+      // No composite oracle → no watchdog: a bare timer could only fake a settle
+      // (intent-not-composite). Prod always wires the oracle.
+      return;
+    }
+    const schedule =
+      this.options.scheduleWatchdogTimeout ??
+      ((callback: () => void, delayMs: number): (() => void) => {
+        const handle = setTimeout(callback, delayMs);
+        return () => clearTimeout(handle);
+      });
+    const cancel = schedule(() => {
+      this.handleWatchdogFire(completionId);
+    }, durationMs + CAMERA_WATCHDOG_SLACK_MS);
+    this.pendingWatchdog = {
+      completionId,
+      intent,
+      retried: isWatchdogRetry,
+      cancel,
+    };
+  }
+
+  private handleWatchdogFire(completionId: string): void {
+    const watchdog = this.pendingWatchdog;
+    if (watchdog == null || watchdog.completionId !== completionId) {
+      return;
+    }
+    this.pendingWatchdog = null;
+    if (this.pendingProgrammaticCameraCompletionId !== completionId) {
+      // Superseded/settled between arming and firing — nothing owed.
+      return;
+    }
+    const target = this.lastCommittedCameraTarget;
+    const observed = this.options.getObservedCamera?.() ?? null;
+    if (target != null && observed != null && isObservedCameraAtTarget(observed, target)) {
+      // The composite IS at the target — only the completion event was lost. Settling
+      // 'finished' here is honest: the oracle is the rendered viewport, not the timer.
+      this.handleProgrammaticCameraAnimationCompletion({
+        animationCompletionId: completionId,
+        status: 'finished',
+      });
+      return;
+    }
+    if (!watchdog.retried) {
+      this.options.logCommitPath?.('watchdogRecommit', {
+        center: watchdog.intent.center,
+        zoom: watchdog.intent.zoom,
+        observed,
+      });
+      this.commitInternal(watchdog.intent, { isWatchdogRetry: true });
+      return;
+    }
+    // Bounded surrender — LOUD, never silent, never stuck: the deferred sync is discarded
+    // (the map demonstrably is not at the target, so syncing JS state to it would lie) and
+    // the arbiter frees up for the next intent.
+    if (target != null) {
+      this.options.logCommitPath?.('surrendered', {
+        target: { center: target.center, zoom: target.zoom },
+        observed,
+      });
+      this.options.onWatchdogSurrender?.({
+        completionId,
+        target: { center: [target.center[0], target.center[1]], zoom: target.zoom },
+        observed,
+      });
+    }
+    this.handleProgrammaticCameraAnimationCompletion({
+      animationCompletionId: completionId,
+      status: 'cancelled',
+    });
+  }
+
   public consumeProgrammaticCameraCompletion(completionId: string | null): boolean {
     if (
       !completionId ||
@@ -229,6 +454,9 @@ export class CameraIntentArbiter {
     }
     this.pendingProgrammaticCameraCompletionId = null;
     this.pendingProgrammaticCameraRequestToken = null;
+    if (this.pendingWatchdog?.completionId === completionId) {
+      this.clearWatchdog();
+    }
     return true;
   }
 
@@ -328,18 +556,32 @@ export class CameraIntentArbiter {
     return this.pendingProgrammaticCameraCompletionId != null;
   }
 
+  /** D61 — spec/instrument seam: is an intent parked awaiting a camera writer? */
+  public hasParkedCameraIntent(): boolean {
+    return this.parkedIntent != null;
+  }
+
   /**
-   * D56 — the committed target of an IN-FLIGHT programmatic camera move, or null when the
-   * map is not under one. The origin capture prefers this over the observed viewport for
-   * exactly that window: a flow triggered mid-flight departs from where the map is GOING.
-   * A cancelled/finished animation clears the pending id, so this returns null again and the
-   * observed viewport (the truth once settled) takes over.
+   * D56 — the committed target of an IN-FLIGHT programmatic camera move (animating OR
+   * parked awaiting a writer — D61), or null when the map is not under one. The origin
+   * capture prefers this over the observed viewport for exactly that window: a flow
+   * triggered mid-flight (or mid-park) departs from where the map is GOING (F1513).
+   * A cancelled/finished animation clears the pending id, so this returns null again and
+   * the observed viewport (the truth once settled) takes over.
    */
   public getInFlightCameraTarget(): {
     center: [number, number];
     zoom: number;
     padding: CameraSnapshot['padding'];
   } | null {
+    if (this.parkedIntent != null) {
+      const parked = this.parkedIntent;
+      return {
+        center: [parked.center[0], parked.center[1]],
+        zoom: parked.zoom,
+        padding: parked.padding ? { ...parked.padding } : null,
+      };
+    }
     if (this.pendingProgrammaticCameraCompletionId == null) {
       return null;
     }
@@ -355,5 +597,6 @@ export class CameraIntentArbiter {
 }
 
 export const createCameraIntentArbiter = (
-  writers: CameraIntentArbiterWriters
-): CameraIntentArbiter => new CameraIntentArbiter(writers);
+  writers: CameraIntentArbiterWriters,
+  options?: CameraIntentArbiterOptions
+): CameraIntentArbiter => new CameraIntentArbiter(writers, options);

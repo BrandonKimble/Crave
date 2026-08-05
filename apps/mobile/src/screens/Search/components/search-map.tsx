@@ -9,6 +9,7 @@ import {
 } from 'react-native';
 
 import MapboxGL, { type MapState as MapboxMapState } from '@rnmapbox/maps';
+import { notifyCameraHostAttached } from '../runtime/map/search-map-camera-host-availability';
 import type { Feature, FeatureCollection, Point, Polygon } from 'geojson';
 
 import pinAsset from '../../../assets/pin.png';
@@ -484,7 +485,23 @@ const SearchMapViewScene = React.memo(
     isFollowingUser,
     markerSceneProps,
     userLocationLayerProps,
-  }: SearchMapViewSceneProps) => (
+  }: SearchMapViewSceneProps) => {
+    // D61 — the camera host attach seam. The Camera component genuinely unmounts across
+    // scene switches; an intent committed in that window is PARKED by the
+    // CameraIntentArbiter. This callback ref is the wake-up call: on (re)attach it pings
+    // the availability seam and the arbiter replays the parked intent. Callback refs fire
+    // in the commit phase regardless of effect scheduling, so the notification cannot be
+    // lost to the effects-don't-fire trap.
+    const attachCameraHostRef = React.useCallback(
+      (instance: MapboxGL.Camera | null) => {
+        cameraRef.current = instance;
+        if (instance != null) {
+          notifyCameraHostAttached();
+        }
+      },
+      [cameraRef]
+    );
+    return (
     <View ref={mapHostViewRef} style={styles.mapViewport} onLayout={onLayout}>
       <MapboxGL.MapView
         ref={mapRef}
@@ -525,7 +542,8 @@ const SearchMapViewScene = React.memo(
           back to the initial viewport the instant a gesture settled. `defaultSettings`
           positions the first frame only (applied once in native `_setInitialCamera`,
           never re-applied), and every programmatic move flows through the imperative
-          path (CameraIntentArbiter -> native executor / cameraRef.setCamera), which
+          path (CameraIntentArbiter -> cameraRef.setCamera; hostless commits PARK
+          in the arbiter and replay on camera re-attach — D61), which
           also carries the animationCompletionId that drives onCameraAnimationComplete.
           User gestures own the camera and it stays where the user leaves it.
           `padding` stays controlled — a padding-only stop never carries a center, so
@@ -538,7 +556,7 @@ const SearchMapViewScene = React.memo(
           stops; onCameraAnimationComplete still receives them.
         */}
         <MapboxGL.Camera
-          ref={cameraRef}
+          ref={attachCameraHostRef}
           nativeHostKey="search_map_camera"
           defaultSettings={{
             centerCoordinate: mapCenter ?? USA_FALLBACK_CENTER,
@@ -593,7 +611,8 @@ const SearchMapViewScene = React.memo(
         </React.Fragment>
       </MapboxGL.MapView>
     </View>
-  ),
+    );
+  },
   (previousProps, nextProps) =>
     previousProps.onLayout === nextProps.onLayout &&
     previousProps.mapRef === nextProps.mapRef &&

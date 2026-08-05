@@ -14,7 +14,6 @@ import { useSearchHistoryRuntime } from './use-search-history-runtime';
 import type { SearchSurfaceRedrawCoordinator } from '../controller/search-surface-redraw-coordinator';
 import type { CameraIntentArbiter } from '../map/camera-intent-arbiter';
 import type { CameraSnapshot } from '../../../../navigation/runtime/app-route-profile-transition-state-contract';
-import type { SearchMapNativeCameraExecutor } from '../map/search-map-native-camera-executor';
 import type { PhaseBMaterializer } from '../scheduler/phase-b-materializer';
 import type { RuntimeWorkScheduler } from '../scheduler/runtime-work-scheduler';
 import type { SearchRuntimeBus } from './search-runtime-bus';
@@ -44,7 +43,6 @@ export type UseSearchRootSessionRuntimeArgs = {
   markerEngineRef: React.RefObject<SearchMapMarkerEngineHandle | null>;
   markMainMapLoaded: () => void;
   markMainMapReady: () => void;
-  searchMapNativeCameraExecutor: SearchMapNativeCameraExecutor;
   setMapCenter: React.Dispatch<React.SetStateAction<[number, number] | null>>;
   setMapZoom: React.Dispatch<React.SetStateAction<number | null>>;
   setMapCameraAnimation: React.Dispatch<

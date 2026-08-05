@@ -22,7 +22,6 @@ type UseSearchRootSessionRuntimeHookArgs = Pick<
   | 'startupCamera'
   | 'markMainMapLoaded'
   | 'markMainMapReady'
-  | 'searchMapNativeCameraExecutor'
 > & {
   rootPrimitivesRuntime: SearchRootPrimitivesRuntime;
   searchRuntimeBus: SearchRuntimeBus;
@@ -39,7 +38,6 @@ export const useSearchRootSessionRuntime = ({
   markMainMapLoaded,
   markMainMapReady,
   rootPrimitivesRuntime,
-  searchMapNativeCameraExecutor,
   searchRuntimeBus,
   resultsPresentationAuthority,
   resultsPresentationSurfaceAuthority,
@@ -49,7 +47,6 @@ export const useSearchRootSessionRuntime = ({
     useSearchRootSessionAssemblyRuntime({
       startupPollBounds,
       rootPrimitivesRuntime,
-      searchMapNativeCameraExecutor,
       searchRuntimeBus,
       resultsPresentationAuthority,
       resultsPresentationSurfaceAuthority,

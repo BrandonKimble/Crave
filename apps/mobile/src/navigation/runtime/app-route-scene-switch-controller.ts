@@ -18,10 +18,7 @@ import {
   updateRouteState,
   type RouteSceneSwitchRouteStateSnapshot,
 } from './app-overlay-route-stack-algebra';
-import {
-  captureRouteEntryOrigin,
-  stageRouteEntryOriginRestore,
-} from './route-entry-origin-capture-delegate';
+import { captureRouteEntryOrigin } from './route-entry-origin-capture-delegate';
 import {
   RouteSceneSwitchSettleCallbackRegistry,
   type RouteSceneSwitchSettleCallback,
@@ -259,17 +256,16 @@ const PRESENTATION_ACK_RETENTION = 2;
 
 // Route-stack algebra (entries-as-values) lives in app-overlay-route-stack-algebra.ts.
 
-// S-B origin-on-entry: pop restores the popped entry's captured presentation via the restore
-// delegate (session controller stages detent ledger + scroll lanes). Dismiss VERBS stage it
-// before requesting the switch (the motion plan reads the ledger); the reducer paths below
-// stage as a fallback for bare (non-scene-switch) pops.
-const stagePoppedEntryOriginRestore = (
-  currentRouteState: RouteSceneSwitchRouteStateSnapshot
-): void => {
-  const poppedEntry =
-    currentRouteState.overlayRouteStack[currentRouteState.overlayRouteStack.length - 1];
-  stageRouteEntryOriginRestore(poppedEntry?.origin);
-};
+// S-B origin-on-entry / F1715 (D61): pop restores the popped entry's captured presentation
+// via the restore delegate (session controller stages detent ledger + scroll lanes). The
+// dismiss VERB (app-overlay-route-command-runtime) is the SINGLE stager, and it stages
+// BEFORE requesting the switch — the motion plan reads the remembered-snap ledger during
+// plan resolution, so staging at commit is a stale read (proven RED on the rig as a
+// wrong-detent pop; see route-entry-origin-capture-delegate.ts). The reducer/bare paths
+// below used to stage AGAIN unconditionally — one pop, two stagings, every restore
+// consumer run twice (F1715). Every pop path reaches this controller through a verb that
+// already staged, so the controller stages NOTHING. One pop, one staging — proven by
+// route-entry-origin-single-staging.spec.ts.
 
 const applyTransitionPlanToRouteState = (
   currentRouteState: RouteSceneSwitchRouteStateSnapshot,
@@ -294,20 +290,11 @@ const applyTransitionPlanToRouteState = (
           transitionPlan.committedRouteParams
         );
       case 'closeActive':
-        stagePoppedEntryOriginRestore(currentRouteState);
         return closeActiveRouteState(currentRouteState);
       case 'popToEntry': {
         if (transitionPlan.committedRouteEntryId == null) {
           return currentRouteState;
         }
-        // The revealed entry's presentation restores from the entry directly ABOVE it — the
-        // one whose push captured it (origins live on pushed entries).
-        const targetIndex = currentRouteState.overlayRouteStack.findIndex(
-          (entry) => entry.entryId === transitionPlan.committedRouteEntryId
-        );
-        const entryAboveTarget =
-          targetIndex >= 0 ? currentRouteState.overlayRouteStack[targetIndex + 1] : null;
-        stageRouteEntryOriginRestore(entryAboveTarget?.origin);
         return popToEntryRouteState(currentRouteState, transitionPlan.committedRouteEntryId);
       }
       case 'popToRoot':
@@ -844,22 +831,13 @@ export class AppRouteSceneSwitchController implements AppRouteSceneSwitchRuntime
   }
 
   public closeActiveRouteState(): void {
-    this.applyRouteStateMutation((currentRouteState) => {
-      stagePoppedEntryOriginRestore(currentRouteState);
-      return closeActiveRouteState(currentRouteState);
-    });
+    this.applyRouteStateMutation(closeActiveRouteState);
   }
 
   public popToEntryRouteState(entryId: string): void {
-    this.applyRouteStateMutation((currentRouteState) => {
-      const targetIndex = currentRouteState.overlayRouteStack.findIndex(
-        (entry) => entry.entryId === entryId
-      );
-      const entryAboveTarget =
-        targetIndex >= 0 ? currentRouteState.overlayRouteStack[targetIndex + 1] : null;
-      stageRouteEntryOriginRestore(entryAboveTarget?.origin);
-      return popToEntryRouteState(currentRouteState, entryId);
-    });
+    this.applyRouteStateMutation((currentRouteState) =>
+      popToEntryRouteState(currentRouteState, entryId)
+    );
   }
 
   public popToRootRouteState(): void {

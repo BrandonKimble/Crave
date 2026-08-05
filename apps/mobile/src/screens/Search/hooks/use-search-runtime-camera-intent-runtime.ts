@@ -5,8 +5,11 @@ import {
   createCameraIntentArbiter,
   type CameraIntentArbiter,
 } from '../runtime/map/camera-intent-arbiter';
+import { registerCameraHostAvailabilityNotifier } from '../runtime/map/search-map-camera-host-availability';
+import { logCameraCommitPath } from '../../../navigation/runtime/pageswitch-debug-flag';
+import { recordLogBreadcrumb } from '../../../observability/crash-reporting';
 import type { CameraSnapshot } from '../../../navigation/runtime/app-route-profile-transition-state-contract';
-import type { SearchMapNativeCameraExecutor } from '../runtime/map/search-map-native-camera-executor';
+import type { ViewportCameraState } from '../runtime/viewport/viewport-bounds-service';
 
 type MapCameraAnimation = {
   mode: 'none' | 'easeTo';
@@ -16,7 +19,7 @@ type MapCameraAnimation = {
 
 type UseSearchRuntimeCameraIntentRuntimeArgs = {
   cameraRef: React.RefObject<MapboxGL.Camera | null>;
-  searchMapNativeCameraExecutor: SearchMapNativeCameraExecutor;
+  getObservedCamera: () => ViewportCameraState | null;
   setMapCenter: React.Dispatch<React.SetStateAction<[number, number] | null>>;
   setMapZoom: React.Dispatch<React.SetStateAction<number | null>>;
   setMapBearing: React.Dispatch<React.SetStateAction<number | null>>;
@@ -30,7 +33,7 @@ export type SearchRuntimeCameraIntentRuntime = {
 
 export const useSearchRuntimeCameraIntentRuntime = ({
   cameraRef,
-  searchMapNativeCameraExecutor,
+  getObservedCamera,
   setMapCenter,
   setMapZoom,
   setMapBearing,
@@ -38,10 +41,10 @@ export const useSearchRuntimeCameraIntentRuntime = ({
   setMapCameraAnimation,
 }: UseSearchRuntimeCameraIntentRuntimeArgs): SearchRuntimeCameraIntentRuntime => {
   const cameraIntentArbiterRef = React.useRef<CameraIntentArbiter | null>(null);
-  const latestNativeCameraExecutorRef = React.useRef(searchMapNativeCameraExecutor);
   const latestCameraRef = React.useRef(cameraRef);
-  latestNativeCameraExecutorRef.current = searchMapNativeCameraExecutor;
+  const latestGetObservedCameraRef = React.useRef(getObservedCamera);
   latestCameraRef.current = cameraRef;
+  latestGetObservedCameraRef.current = getObservedCamera;
 
   const executeCameraRefCommand = React.useCallback(
     ({
@@ -84,37 +87,14 @@ export const useSearchRuntimeCameraIntentRuntime = ({
   );
 
   if (!cameraIntentArbiterRef.current) {
-    cameraIntentArbiterRef.current = createCameraIntentArbiter({
-      commandCameraViewport: ({
-        center,
-        zoom,
-        bearing,
-        pitch,
-        padding,
-        animationMode,
-        animationDurationMs,
-        completionId,
-        onCommandRejected,
-      }) => {
-        // cameraRef.setCamera is the proven path for BOTH modes. The native
-        // host-registry executor silently no-ops for plain camera stops (it
-        // resolves without moving the map), so it is only a fallback for when
-        // the ref isn't mounted yet.
-        if (
-          executeCameraRefCommand({
-            center,
-            zoom,
-            bearing,
-            pitch,
-            padding,
-            animationMode,
-            animationDurationMs,
-            completionId,
-          })
-        ) {
-          return true;
-        }
-        return latestNativeCameraExecutorRef.current.executeCameraCommand({
+    cameraIntentArbiterRef.current = createCameraIntentArbiter(
+      {
+        // D61 — cameraRef.setCamera is the ONLY writer. The old native host-registry
+        // fallback (fire-and-forget promise whose reject dropped the intent and whose
+        // resolve could mean "parked, never applied") is DELETED; a hostless window now
+        // returns false and the arbiter parks the intent until the camera remounts
+        // (registerCameraHostAvailabilityNotifier below) or a newer intent supersedes it.
+        commandCameraViewport: ({
           center,
           zoom,
           bearing,
@@ -123,35 +103,86 @@ export const useSearchRuntimeCameraIntentRuntime = ({
           animationMode,
           animationDurationMs,
           completionId,
-          onCommandRejected,
-        });
+        }) => {
+          if (
+            executeCameraRefCommand({
+              center,
+              zoom,
+              bearing,
+              pitch,
+              padding,
+              animationMode,
+              animationDurationMs,
+              completionId,
+            })
+          ) {
+            // F1716 attribution probe: WHICH leg carried a [CAMCOMMIT]. The commit log
+            // alone cannot distinguish a landed ref command from a parked one.
+            logCameraCommitPath('ref');
+            return true;
+          }
+          return false;
+        },
+        setMapCenter: (center: [number, number]) => {
+          setMapCenter((previous) =>
+            previous && previous[0] === center[0] && previous[1] === center[1] ? previous : center
+          );
+        },
+        setMapZoom: (zoom: number) => {
+          setMapZoom((previous) => (previous === zoom ? previous : zoom));
+        },
+        setMapBearing: (bearing: number | null) => {
+          setMapBearing((previous) => (previous === bearing ? previous : bearing));
+        },
+        setMapPitch: (pitch: number | null) => {
+          setMapPitch((previous) => (previous === pitch ? previous : pitch));
+        },
+        setMapCameraAnimation: (animation: MapCameraAnimation) => {
+          setMapCameraAnimation((previous) =>
+            previous.mode === animation.mode &&
+            previous.durationMs === animation.durationMs &&
+            previous.completionId === animation.completionId
+              ? previous
+              : animation
+          );
+        },
       },
-      setMapCenter: (center: [number, number]) => {
-        setMapCenter((previous) =>
-          previous && previous[0] === center[0] && previous[1] === center[1] ? previous : center
-        );
-      },
-      setMapZoom: (zoom: number) => {
-        setMapZoom((previous) => (previous === zoom ? previous : zoom));
-      },
-      setMapBearing: (bearing: number | null) => {
-        setMapBearing((previous) => (previous === bearing ? previous : bearing));
-      },
-      setMapPitch: (pitch: number | null) => {
-        setMapPitch((previous) => (previous === pitch ? previous : pitch));
-      },
-      setMapCameraAnimation: (animation: MapCameraAnimation) => {
-        setMapCameraAnimation((previous) =>
-          previous.mode === animation.mode &&
-          previous.durationMs === animation.durationMs &&
-          previous.completionId === animation.completionId
-            ? previous
-            : animation
-        );
-      },
-    });
+      {
+        // D61 watchdog oracle — the OBSERVED composite camera. Read through a latest-ref so
+        // the arbiter (created once) always consults the live service.
+        getObservedCamera: () => latestGetObservedCameraRef.current(),
+        logCommitPath: (leg, data) => {
+          logCameraCommitPath(leg, data);
+        },
+        onWatchdogSurrender: (detail) => {
+          // LOUD by design: a surrender means a committed animated intent neither
+          // completed, nor landed on the composite, nor landed on one re-commit. The
+          // __DEV__ bark is UNGATED (violation, not telemetry — FITALL precedent) and
+          // prod records a breadcrumb through the crash-reporting seam.
+          if (__DEV__) {
+            // eslint-disable-next-line no-console
+            console.error(
+              `[CAMCOMMIT-path] surrendered: camera intent never landed ` +
+                `(target=${JSON.stringify(detail.target)} observed=${JSON.stringify(detail.observed)})`
+            );
+          }
+          recordLogBreadcrumb('error', 'camera watchdog surrender', detail);
+        },
+      }
+    );
   }
   const cameraIntentArbiter = cameraIntentArbiterRef.current;
+
+  // D61 — the park's wake-up call: when the map component (re)attaches its camera ref,
+  // replay the parked intent. This hook lives in the ROOT runtime layer, where effects
+  // fire (never in a scene body-spec hook — proven-dead effects there, CLAUDE.md law).
+  React.useEffect(
+    () =>
+      registerCameraHostAvailabilityNotifier(() => {
+        cameraIntentArbiter.notifyCameraWriterAvailable();
+      }),
+    [cameraIntentArbiter]
+  );
 
   return React.useMemo(
     () => ({

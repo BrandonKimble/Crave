@@ -45,9 +45,6 @@ RCT_EXTERN_METHOD(reset:(NSString *)instanceId
 @end
 
 @interface RCT_EXTERN_MODULE(PresentationCommandExecutor, NSObject)
-RCT_EXTERN_METHOD(executeCameraCommand:(NSDictionary *)payload
-                  resolver:(RCTPromiseResolveBlock)resolve
-                  rejecter:(RCTPromiseRejectBlock)reject)
 RCT_EXTERN_METHOD(executeSheetCommands:(NSDictionary *)payload
                   resolver:(RCTPromiseResolveBlock)resolve
                   rejecter:(RCTPromiseRejectBlock)reject)

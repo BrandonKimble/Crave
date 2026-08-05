@@ -19,7 +19,7 @@ import type { SearchMapSourceFramePort } from '../map/search-map-source-frame-po
 
 type UseSearchRootSessionServicesFoundationRuntimeArgs = Pick<
   UseSearchRootSessionRuntimeArgs,
-  'startupPollBounds' | 'searchMapNativeCameraExecutor'
+  'startupPollBounds'
 > & {
   rootPrimitivesRuntime: SearchRootPrimitivesRuntime;
   searchRuntimeBus: SearchRuntimeBus;
@@ -31,7 +31,6 @@ type UseSearchRootSessionServicesFoundationRuntimeArgs = Pick<
 export const useSearchRootSessionServicesFoundationRuntime = ({
   startupPollBounds,
   rootPrimitivesRuntime,
-  searchMapNativeCameraExecutor,
   searchRuntimeBus,
   resultsPresentationAuthority,
   resultsPresentationSurfaceAuthority,
@@ -52,7 +51,9 @@ export const useSearchRootSessionServicesFoundationRuntime = ({
   });
   const cameraIntentRuntime = useSearchRuntimeCameraIntentRuntime({
     cameraRef: rootPrimitivesRuntime.mapState.cameraRef,
-    searchMapNativeCameraExecutor,
+    // D61 watchdog oracle — the observed composite camera from the SAME viewport service
+    // every other composite read uses.
+    getObservedCamera: () => mapServicesRuntime.viewportBoundsService.getCamera(),
     setMapCenter: rootPrimitivesRuntime.mapState.setMapCenter,
     setMapZoom: rootPrimitivesRuntime.mapState.setMapZoom,
     setMapBearing: rootPrimitivesRuntime.mapState.setMapBearing,

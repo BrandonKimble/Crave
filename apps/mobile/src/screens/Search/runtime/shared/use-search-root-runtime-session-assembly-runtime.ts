@@ -1,4 +1,3 @@
-import { useSearchMapNativeCameraExecutor } from '../map/search-map-native-camera-executor';
 import type { SearchMapSourceFramePort } from '../map/search-map-source-frame-port';
 import type { ResultsPresentationAuthority } from './results-presentation-authority';
 import type { ResultsPresentationSurfaceAuthority } from './results-presentation-surface-authority';
@@ -26,7 +25,6 @@ export const useSearchRootRuntimeSessionAssemblyRuntime = ({
   primitiveUiStateController: SearchPrimitiveUiStateController;
   suggestionPanelStateController: SearchSuggestionPanelStateController;
 }) => {
-  const searchMapNativeCameraExecutor = useSearchMapNativeCameraExecutor();
   const rootPrimitivesRuntime = useSearchRootPrimitivesRuntime({
     startupCamera: appEntryPlaneRuntime.startupCamera,
     searchRuntimeBus,
@@ -40,7 +38,6 @@ export const useSearchRootRuntimeSessionAssemblyRuntime = ({
     startupCamera: appEntryPlaneRuntime.startupCamera,
     markMainMapLoaded: appEntryPlaneRuntime.markMainMapLoaded,
     markMainMapReady: appEntryPlaneRuntime.markMainMapReady,
-    searchMapNativeCameraExecutor,
     rootPrimitivesRuntime,
     searchRuntimeBus,
     resultsPresentationAuthority,
