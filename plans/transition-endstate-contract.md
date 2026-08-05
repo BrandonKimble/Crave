@@ -477,3 +477,33 @@ of being born settled. Falsifier lives in the surface-runtime spec.
 STILL DEFERRED, and correctly: the scene-declaration schema collapse and the host
 extractions (structural, no behavioral payoff, churn risk before burn-in), and the
 native settle/hidden-depth move (bundled with the next real physics change).
+
+## ALL DEFERRED ITEMS EXECUTED (2026-08-04) — the ladder is complete
+
+Owner: "do all the deferred items." Done; nothing from the ratified ladder remains.
+
+64148ea54 ONE SCENE SCHEMA — five dialects (policy Record, three host Sets, the
+scene===key ternaries) collapse into SCENE_DECLARATIONS with every column a
+required literal: a new scene key fails tsc until fully stated, so no scene can
+be half-configured or silently inherit a default. Parity PROVEN by a 284-test
+oracle that fossilizes every pre-change source and sweeps 21 keys x every
+consumer. The motion descriptor table deliberately stays separate: it is an edge
+relation over scene PAIRS with a precedence lattice, not a per-scene column; it
+references the schema for posture seats, which is the correct coupling.
+
+d9df23bd4 THE ENGINE STATES ITS FACTS — settle is emitted by the spring (closing
+two holes the sampler had: rest at a non-detent, and return to the SAME detent,
+which the old one-shot keyed on the detent rather than the motion); hidden depth
+is derived from live native bounds instead of a JS Dimensions copy (where
+G-ROTATE staleness lived); and a contract version + capability list makes a stale
+binary fail LOUDLY — the class fix for the silent degradation that cost the owner
+an evening. No compatibility shim by design.
+
+a4c3b96a0 THE HOST IS AN ORCHESTRATOR — 1400 lines to 462. Motion controller,
+transaction bridge and leg/body resolver extracted as pure cores + thin adapters;
+the render lane (whose purpose is catching wiring deletions) stayed green
+throughout, which is what makes "pure relocation" a test result and not a claim.
+
+REMAINING (unchanged): the burn-in watchlist, and owner ratifications (re-tap
+semantics; the presented 'search' leg resolving through homeParts). R8 (old-system
+delete) still gated on owner burn-in.
