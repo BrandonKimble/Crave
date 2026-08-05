@@ -1883,8 +1883,10 @@ to understand before editing anything here.
    the network as a **version update**, not a second reveal. Genuinely good.
 4. **The surface runtime** (`runtime/surface/search-surface-runtime.ts`, 1,483
    lines) — a **module singleton** (not per-mount; do not go hunting a lifecycle
-   leak there, F1017). Owns the redraw/reveal choreography and stages transition
-   transactions against the nav transition engine.
+   leak there, F1017). Owns the reveal choreography and stages transition
+   transactions against the nav transition engine. (The redraw-COORDINATOR
+   subsystem it once fed is deleted — F1735/F1736; the live `redrawTransaction`
+   surface system is a different, functioning mechanism and remains.)
 5. **The results-presentation machine** (`runtime/shared/results-presentation-*`)
    — a pure attempt/transport state machine (`(state) → {nextState, appliedLog,
 blockedLog}`) plus an authority that publishes the transport. A **second**
@@ -2065,11 +2067,13 @@ looks like harmless ceremony is the one that made a real defect invisible.
 
 The territory's recurring disease, now catalogued in one place. Pass 2 found four
 more: the search-chrome scalar surface whose `readyForActivation` is structurally
-always `false` (F1068); `map-interaction-diagnostics.ts`, every entry point gated
+always `false` (F1068 — the whole stack is DELETED, D59/F1700);
+`map-interaction-diagnostics.ts`, every entry point gated
 on a module constant hardcoded `false`, with a `0`ms rate window that would break
 it if woken (F1070); the FlashList viewability runtime that rate-limits a log that
 no longer exists (F1062); and `SearchSurfaceRedrawCoordinator.beginOperation`'s
-unreachable no-notify guard (F1061). Pass 1 found the inverse — an instrument
+unreachable no-notify guard (F1061 — the whole coordinator is DELETED, F1735/F1736:
+its phase machine could never leave idle). Pass 1 found the inverse — an instrument
 stuck permanently RED (F1051). **Before trusting any metric in this territory,
 find the code that would make it flip.**
 
@@ -2159,9 +2163,11 @@ the trap note itself is deleted. Going back to prebuild is a real migration
 
 - `ios/cravesearch/` — the app's own Swift, dominated by
   `SearchMapRenderController.swift` (13,463 lines, **OWNER-LOCKED**, verified
-  structurally only). Eight smaller modules cover the bottom-sheet host, the
-  search-chrome hit-target and scalar registries, the route-nav mask/silhouette,
-  the frame sampler, and the presentation-command executor.
+  structurally only). The smaller modules cover the bottom-sheet host, the
+  search-chrome hit-target registry, the route-nav mask/silhouette, the frame
+  sampler, and the presentation-command executor (sheet half only — its camera
+  half died with D61). The scalar-surface registry is GONE (D59/F1700: it
+  duplicated the shipped hit-target twin across three languages).
 - `ios/MapLodKit/` — the pure LOD kernel (398 lines + 634 lines of tests).
   **The standard the rest of the territory should meet** (F1115): impure half
   injected, podspec consumes the same source the tests cover, headers explain
@@ -2260,7 +2266,11 @@ we own before the first submission (F1102 half two, also in pre-launch.md);
 incoherent and wholly inert (F1104); and `pod install` is not reproducible
 without an undocumented Mapbox credential (F1117).
 
-**The search-chrome scalar surface is scaffolding on BOTH sides** (F1068/F1069,
+**The search-chrome scalar surface is scaffolding on BOTH sides — and is now DELETED**
+(D59/F1700, EXECUTED 2026-08-04 in commit da628275f: ~2,160 lines across three
+languages, three RED-proven delete-gate checks; the live hit-target twin stands
+alone and nothing user-visible changed. The autopsy below is kept as the record of
+WHY, since the same duplication-vs-activation question will recur.) (F1068/F1069,
 read from the Swift end 2026-08-03). The JS half (~1,244 lines) is a write-only
 sink whose `readyForActivation` is structurally always false. Reading
 `SearchChromeScalarSurfaceRegistry.swift` (529 lines) settles what that means:
@@ -2278,7 +2288,7 @@ KVO on bounds/center/transform) do real work today, and their output is read onl
 by `measureRegisteredControls`, which the dead JS diagnostics path is the sole
 caller of. Both halves live or die together.
 
-**PASS-2 RECOMMENDATION (F1700): DELETE.** The question is not activation-cost vs
+**PASS-2 RECOMMENDATION (F1700): DELETE — RULED AND EXECUTED.** The question is not activation-cost vs
 deletion-scope, it is duplication. `SearchChromeNativeHitTargetId` is literally
 `'shortcut_restaurants' | 'shortcut_dishes' | 'search_this_area'` — the SAME three
 ids as the scalar runtime's `REQUIRED_CONTROL_IDS` — and that stack (211 Swift + 168
@@ -2412,3 +2422,18 @@ without `--force`.
 records as detached+ARCHIVED (F1203), and onboarding still tells users
 "Crave is live in Austin and NYC today" while both P2 panel docs make
 collapsing NYC to the waitlist a pre-launch item (F1246).
+
+---
+
+## Execution wave 2026-08-04 (D59–D61, F1700–F1736)
+
+The map above is stamped with these where they contradict it; recorded here as one list.
+
+- **D59/F1700** — the search-chrome scalar surface DELETED (three languages; the shipped hit-target twin was always the real implementation).
+- **D60** — the controllers territory is TERMINAL: the local-restaurant relay collapsed 15 hops → 4 authorities, and all 18 repacker sites inlined. Durable guards: the composite transcript spec and `repacker-dep-array-coverage.spec` (which found the memo that had been GATING the hand-landed F1611 fix, and once caught itself lying — a comment inside a dep array parsed as pseudo-entries).
+- **D61** — the camera command lane rederived: a committed intent now PARKS when no host is registered and REPLAYS on attach, newest-wins, gesture supersedes; the native fallback lane is deleted; a composite-checked watchdog replaces blind trust in a completion event. The rnmapbox 10.3.1 patch had SEVERED that completion channel and left iOS unbuildable since 08-02 — repaired, with `scripts/ios-camera-symbol-gate.sh` so a silent patch failure can never hide again. Proven on the rig end to end (F1724).
+- **F1509/F1508** — one uncollapsed origin-identity resolver returning both facts by name; two patches deleted; the dismiss lane now consults the origin captured at DEPARTURE.
+- **F1012 CLOSED** — all four clusters (`*-args`, `*-lane`, `*-ports`, `*-patch-runtime`) collapsed; the readiness read converted from a rescued sample to an honest subscription.
+- **F1735/F1736** — the redraw-coordinator subsystem deleted at its honest boundary (−1,036 lines): its phase machine could never leave idle.
+
+**Still open, deliberately:** F1708 (a pending-regions prune inside the KEPT hit-target registry), F1717 (the native ack ledger latches the JS snapshot while native's own revision echo is empty — self-heals in the same enter; reserved for a real map change per the map lock), and the F1112 omnibus bridge split.
