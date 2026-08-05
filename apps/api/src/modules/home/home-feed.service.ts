@@ -30,10 +30,11 @@ import {
 } from '../entities/saveable-entity.resolver';
 import {
   MIN_VIABLE_LIST_ITEMS,
-  RECIPE_CUISINE_BEST_PREFIX,
-  RECIPE_DISH_BEST_PREFIX,
-  RECIPE_HIDDEN_GEMS,
-  RECIPE_TRENDING,
+  SHELF_BEST_OF,
+  SHELF_HIDDEN_GEMS,
+  SHELF_MOMENTS,
+  SHELF_TRENDING,
+  recipeShelfKey,
 } from './curated-lists.constants';
 import { EntityDisplayService } from '../entity-display/entity-display.service';
 import {
@@ -295,46 +296,41 @@ export class HomeFeedService {
     if (nearYou) {
       shelves.push(nearYou);
     }
-    const sections: Array<{
-      key: string;
-      title: string;
-      match: (list: CuratedListRow) => boolean;
-    }> = [
-      {
-        key: 'best_of',
-        title: renderMessage('shelf.best_of', locale, {
-          city: resolvedCity.name,
-        }),
-        match: (list) =>
-          list.recipeKey.startsWith(RECIPE_CUISINE_BEST_PREFIX) ||
-          list.recipeKey.startsWith(RECIPE_DISH_BEST_PREFIX),
-      },
-      {
-        key: 'trending',
-        title: renderMessage('shelf.trending', locale),
-        match: (list) => list.recipeKey === RECIPE_TRENDING,
-      },
-      {
-        key: 'hidden_gems',
-        title: renderMessage('shelf.hidden_gems', locale),
-        match: (list) => list.recipeKey === RECIPE_HIDDEN_GEMS,
-      },
-      {
-        key: 'moments',
-        title: renderMessage('shelf.moments', locale),
-        match: (list) =>
-          !list.recipeKey.startsWith(RECIPE_CUISINE_BEST_PREFIX) &&
-          !list.recipeKey.startsWith(RECIPE_DISH_BEST_PREFIX) &&
-          list.recipeKey !== RECIPE_TRENDING &&
-          list.recipeKey !== RECIPE_HIDDEN_GEMS,
-      },
+    // F696: each recipe DECLARES its shelf (recipeShelfKey) instead of the
+    // feed reader restating 'moments' as the negation of the other three —
+    // add a recipe without declaring a shelf and it still lands in
+    // 'moments' (recipeShelfKey's own honest default), but as one
+    // documented fact instead of a match list here that has to keep pace.
+    const sectionOrder = [
+      SHELF_BEST_OF,
+      SHELF_TRENDING,
+      SHELF_HIDDEN_GEMS,
+      SHELF_MOMENTS,
     ];
-    for (const section of sections) {
-      const sectionLists = globals.filter(section.match);
-      if (sectionLists.length) {
+    const sectionTitles: Readonly<Record<string, string>> = {
+      [SHELF_BEST_OF]: renderMessage('shelf.best_of', locale, {
+        city: resolvedCity.name,
+      }),
+      [SHELF_TRENDING]: renderMessage('shelf.trending', locale),
+      [SHELF_HIDDEN_GEMS]: renderMessage('shelf.hidden_gems', locale),
+      [SHELF_MOMENTS]: renderMessage('shelf.moments', locale),
+    };
+    const listsByShelf = new Map<string, CuratedListRow[]>();
+    for (const list of globals) {
+      const shelfKey = recipeShelfKey(list.recipeKey);
+      const bucket = listsByShelf.get(shelfKey);
+      if (bucket) {
+        bucket.push(list);
+      } else {
+        listsByShelf.set(shelfKey, [list]);
+      }
+    }
+    for (const shelfKey of sectionOrder) {
+      const sectionLists = listsByShelf.get(shelfKey);
+      if (sectionLists?.length) {
         shelves.push({
-          key: section.key,
-          title: section.title,
+          key: shelfKey,
+          title: sectionTitles[shelfKey],
           lists: sectionLists.map(toShelfList),
         });
       }

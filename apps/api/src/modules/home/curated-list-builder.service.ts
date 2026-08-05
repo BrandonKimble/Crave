@@ -94,6 +94,14 @@ interface ListDraft {
 @Injectable()
 export class CuratedListBuilderService {
   private readonly logger: LoggerService;
+  // In-process guard only (F694): safe today because exactly one worker
+  // replica runs this cron (stop-crons.ts chokepoint doctrine — only the
+  // worker runtime registers @Cron at all). It stops protecting anything the
+  // moment a second worker replica exists, since each replica has its own
+  // `buildInFlight`; the transactional supersede in persistList still keeps
+  // a concurrent build SAFE (last write wins, atomically), just wasteful. If
+  // the worker ever scales out, replace this with a DB advisory lock
+  // (pg_try_advisory_lock) so the guard is a real cross-process fact.
   private buildInFlight = false;
 
   constructor(
@@ -513,6 +521,14 @@ export class CuratedListBuilderService {
 
     const dishCacheByCity = new Map<string, CityDishRow[]>();
     const restaurantCacheByCity = new Map<string, CityRestaurantRow[]>();
+    // F695: attributeNameMap depends only on `restaurants` (city-scoped), yet
+    // used to be re-fetched from the DB for EVERY user in this loop even
+    // though restaurants themselves are cached per city. Cache it alongside
+    // the restaurant/dish caches it derives from.
+    const attributeNamesCacheByCity = new Map<
+      string,
+      Map<string, { name: string; aliases: string[] }>
+    >();
     let built = 0;
     for (const user of users) {
       const city = user.onboardingCityPlaceId
@@ -550,7 +566,11 @@ export class CuratedListBuilderService {
         dishes = await this.cityDishes(restaurants.map((row) => row.entity_id));
         dishCacheByCity.set(city.placeId, dishes);
       }
-      const attributeNames = await this.attributeNameMap(restaurants);
+      let attributeNames = attributeNamesCacheByCity.get(city.placeId);
+      if (!attributeNames) {
+        attributeNames = await this.attributeNameMap(restaurants);
+        attributeNamesCacheByCity.set(city.placeId, attributeNames);
+      }
       const preferredNames = new Set(
         cuisineOptionIds.flatMap((id) =>
           (ONBOARDING_CUISINE_ATTRIBUTE_NAMES[id] ?? []).map((name) =>

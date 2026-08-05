@@ -15,10 +15,15 @@ import { SignalsService } from '../signals/signals.service';
 import { SignalDemandReadService } from '../signals/signal-demand-read.service';
 import { SaveableEntityResolver } from '../entities/saveable-entity.resolver';
 
+// 2 min dedupe window for repeat views of the same restaurant/dish (2026-07-11
+// fold-in: formerly env RESTAURANT_VIEW_COOLDOWN_MS; F681 — a zero-arg method
+// that only ever returned this literal was a constant wearing a function's
+// clothes).
+const VIEW_COOLDOWN_MS = 120_000;
+
 @Injectable()
 export class HistoryService {
   private readonly logger: LoggerService;
-  private readonly viewCooldownMs: number;
 
   constructor(
     private readonly prisma: PrismaService,
@@ -29,7 +34,6 @@ export class HistoryService {
     private readonly saveableEntities: SaveableEntityResolver,
   ) {
     this.logger = loggerService.setContext('HistoryService');
-    this.viewCooldownMs = this.resolveViewCooldownMs();
   }
 
   async recordRestaurantView(
@@ -58,7 +62,7 @@ export class HistoryService {
 
     const shouldIncrement =
       !lastViewedAt ||
-      now.getTime() - lastViewedAt.getTime() >= this.viewCooldownMs;
+      now.getTime() - lastViewedAt.getTime() >= VIEW_COOLDOWN_MS;
 
     if (shouldIncrement) {
       // §3 signals: the entity_view act. Geo is the viewed location's point
@@ -126,7 +130,7 @@ export class HistoryService {
 
     const shouldIncrement =
       !lastViewedAt ||
-      now.getTime() - lastViewedAt.getTime() >= this.viewCooldownMs;
+      now.getTime() - lastViewedAt.getTime() >= VIEW_COOLDOWN_MS;
 
     if (shouldIncrement) {
       // §3 signals: the entity_view act — subject = the viewed food, context =
@@ -285,11 +289,5 @@ export class HistoryService {
     return new Map(
       locations.map((location) => [location.locationId, location.address]),
     );
-  }
-
-  private resolveViewCooldownMs(): number {
-    // 2 min dedupe window for repeat views of the same restaurant
-    // (2026-07-11 fold-in: formerly env RESTAURANT_VIEW_COOLDOWN_MS).
-    return 120_000;
   }
 }
