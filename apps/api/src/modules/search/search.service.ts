@@ -1693,7 +1693,6 @@ export class SearchService {
                 params.dishPagination.take,
                 params.restaurantPagination.take,
               ),
-              gateFull: null as boolean | null,
               ...(similarFoodIds.length ? { similarFoodIds } : {}),
             },
           }

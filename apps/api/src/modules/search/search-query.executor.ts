@@ -25,7 +25,6 @@ import {
   evaluateOperatingStatus as evaluateOperatingStatusUtil,
   normalizeUserLocation as normalizeUserLocationUtil,
 } from './utils/restaurant-status';
-import { selectOpenNowRestaurantPage } from './utils/open-now-selection';
 
 const DAY_KEYS = [
   'sunday',
@@ -164,19 +163,6 @@ interface RestaurantQueryRow {
   matched_tags?: Prisma.JsonValue | null;
   match_evidence_type?: string | null;
   has_menu_items?: boolean | null;
-}
-
-/**
- * Row type for the lean open-now candidate query (Phase 1): restaurant id + location hours
- * only, ranked, no page limit. Openness is resolved in JS over the whole set before the page
- * is chosen — see resolveRestaurantAxis.
- */
-interface RestaurantOpenNowCandidateRow {
-  restaurant_id: string;
-  pooled_tier?: number | null;
-  hours?: Prisma.JsonValue | null;
-  utc_offset_minutes?: Prisma.Decimal | number | string | null;
-  time_zone?: string | null;
 }
 
 /**
@@ -597,12 +583,10 @@ LIMIT 3
       directives,
     };
     const buildStart = performance.now();
+    // B1 (round-5 ideal): openness is a SQL membership predicate over the
+    // derived interval table — no candidate SQL, no two-phase machine.
     const restaurantQuery = runRestaurant
-      ? this.queryBuilder.buildRestaurantQuery({
-          ...restaurantQueryOptions,
-          // Open-now: also emit the lean candidate SQL so the axis can filter-before-paginate.
-          includeCandidateSql: needsOpenFilter,
-        })
+      ? this.queryBuilder.buildRestaurantQuery(restaurantQueryOptions)
       : null;
     const dishQuery = runDish
       ? this.queryBuilder.buildDishQuery({
@@ -638,52 +622,14 @@ LIMIT 3
       ]);
     const emptyDish: [DishQueryRow[], DishCountRow[]] = [[], []];
 
-    let restaurantAxis: Awaited<ReturnType<typeof this.resolveRestaurantAxis>>;
-    let dishRows: DishQueryRow[];
-    let dishCountResult: DishCountRow[];
-    if (directives?.pooledGate && needsOpenFilter && dishQuery) {
-      // ONE GATE DECISION PER REQUEST (spec §1.4.4a; red team A4/C3):
-      // under open-now the restaurant axis decides the gate on the OPEN
-      // full set — the dish query must inherit that verdict instead of
-      // re-judging scarcity on pre-openness rows. Sequenced by necessity;
-      // this path also finally exercises gateFull true/false in SQL
-      // (red team A5/C8).
-      restaurantAxis = await this.resolveRestaurantAxis({
-        restaurantQuery,
-        needsOpenFilter,
-        baseOptions: restaurantQueryOptions,
-        pagination: effectiveRestaurantPagination,
-        referenceDate,
-        pooledGate: directives?.pooledGate ?? null,
-      });
-      const verdict = restaurantAxis.openGateFull;
-      const dishQueryEffective =
-        typeof verdict === 'boolean'
-          ? this.queryBuilder.buildDishQuery({
-              plan,
-              pagination: effectiveDishPagination,
-              searchCenter,
-              excludeConnectionIds,
-              directives: {
-                ...directives,
-                pooledGate: { ...directives.pooledGate, gateFull: verdict },
-              },
-            })
-          : dishQuery;
-      [dishRows, dishCountResult] = await runDishQueries(dishQueryEffective);
-    } else {
-      [restaurantAxis, [dishRows, dishCountResult]] = await Promise.all([
-        this.resolveRestaurantAxis({
-          restaurantQuery,
-          needsOpenFilter,
-          baseOptions: restaurantQueryOptions,
-          pagination: effectiveRestaurantPagination,
-          referenceDate,
-          pooledGate: directives?.pooledGate ?? null,
-        }),
-        dishQuery ? runDishQueries(dishQuery) : Promise.resolve(emptyDish),
-      ]);
-    }
+    // Openness lives in MEMBERSHIP now, so every window count (gate,
+    // similar, per-word) is openness-aware inside the one execution — the
+    // old two-phase candidate/hydrate machine and the gateFull sequencing
+    // (spec §1.4.4a) dissolve.
+    const [restaurantAxis, [dishRows, dishCountResult]] = await Promise.all([
+      this.resolveRestaurantAxis({ restaurantQuery }),
+      dishQuery ? runDishQueries(dishQuery) : Promise.resolve(emptyDish),
+    ]);
     const restaurantRows = restaurantAxis.rows;
     const dbQueryMs = performance.now() - dbStart;
 
@@ -697,36 +643,19 @@ LIMIT 3
       userLocation,
     );
 
-    let openNowFilterMs = 0;
-    // Restaurants are already open-filtered by resolveRestaurantAxis (filter-BEFORE-paginate,
-    // over the full candidate set — the fix for "22 open pins but 1 card"). Only dishes still
-    // need the legacy post-filter here.
+    const openNowFilterMs = 0;
+    // Openness is applied IN SQL (membership) on both axes — rows arriving
+    // here are already open (or the graceful-degradation arm admitted the
+    // whole unsupported pool). Pagination and every count are therefore
+    // exact, including the dish axis (the old post-LIMIT JS filter made
+    // open-now dish pagination only approximately right).
     const filteredRestaurantRows = restaurantRows;
-    let filteredDishRows = dishRows;
-    let openNowApplied = restaurantAxis.openNowPrefiltered;
-    let openNowSupportedCount = 0;
-    let openNowUnsupportedCount = 0;
-    let openNowUnsupportedIds: string[] = [];
-    let openNowFilteredOut = 0;
-
-    if (needsOpenFilter) {
-      const openFilterStart = performance.now();
-
-      // Filter dishes (restaurants were filtered in the axis)
-      const dishFilter = this.filterDishRowsByOpenNow(
-        dishRows,
-        allRestaurantContexts,
-      );
-      filteredDishRows = dishFilter.rows;
-
-      openNowApplied = restaurantAxis.openNowPrefiltered || dishFilter.applied;
-      openNowSupportedCount = dishFilter.supportedCount;
-      openNowUnsupportedCount = dishFilter.unsupportedCount;
-      openNowUnsupportedIds = [...new Set(dishFilter.unsupportedIds)];
-      openNowFilteredOut = dishRows.length - filteredDishRows.length;
-
-      openNowFilterMs = performance.now() - openFilterStart;
-    }
+    const filteredDishRows = dishRows;
+    const openNowApplied = needsOpenFilter;
+    const openNowSupportedCount = 0;
+    const openNowUnsupportedCount = 0;
+    const openNowUnsupportedIds: string[] = [];
+    const openNowFilteredOut = 0;
 
     // Map results
     const mapRestaurantStart = performance.now();
@@ -2209,238 +2138,40 @@ LIMIT 3
   // when open-now is active, Phase 1 ranks + resolves openness over the WHOLE candidate set
   // (lean id+hours query, same conditions), then Phase 2 hydrates ONLY the open page. Same
   // evaluateOperatingStatus the map coverage uses ⇒ list open set == map open set.
+  /** B1 (round-5 ideal): openness is a SQL membership predicate — the
+   *  restaurant axis is one data query + one count query. The two-phase
+   *  candidate/openness/hydrate machine (and its gateFull sequencing) is
+   *  deleted; see buildOpenNowPredicateSql in the builder. */
   private async resolveRestaurantAxis(params: {
     restaurantQuery: {
       dataSql: Prisma.Sql;
       countSql: Prisma.Sql;
-      candidateSql: Prisma.Sql | null;
-    } | null;
-    needsOpenFilter: boolean;
-    baseOptions: BuildRestaurantQueryOptions;
-    pagination: { skip: number; take: number };
-    referenceDate: Date;
-    pooledGate?: {
-      threshold: number;
     } | null;
   }): Promise<{
     rows: RestaurantQueryRow[];
     total: number;
     softWordCounts?: Record<string, number> | null;
     fullRestaurants?: number;
-    /** Openness-aware gate verdict (spec §1.4.4a): set on the two-phase
-     *  path so the DISH query can be parameterized with the SAME decision
-     *  (red team A4/C3) instead of judging scarcity pre-openness. */
-    openGateFull?: boolean | null;
-    openNowPrefiltered: boolean;
   }> {
-    const {
-      restaurantQuery,
-      needsOpenFilter,
-      baseOptions,
-      pagination,
-      referenceDate,
-      pooledGate,
-    } = params;
-
+    const { restaurantQuery } = params;
     if (!restaurantQuery) {
-      return {
-        rows: [],
-        total: 0,
-        softWordCounts: null,
-        fullRestaurants: 0,
-        openGateFull: null,
-        openNowPrefiltered: false,
-      };
+      return { rows: [], total: 0, softWordCounts: null, fullRestaurants: 0 };
     }
-
-    // Non-open path: the base rich page + its count, exactly as before.
-    const runBase = async (): Promise<{
-      rows: RestaurantQueryRow[];
-      total: number;
-      softWordCounts?: Record<string, number> | null;
-      fullRestaurants?: number;
-      openGateFull?: boolean | null;
-      openNowPrefiltered: boolean;
-    }> => {
-      const [rows, countResult] = await Promise.all([
-        this.prisma.$queryRaw<RestaurantQueryRow[]>(restaurantQuery.dataSql),
-        this.prisma.$queryRaw<
-          Array<{
-            total_restaurants: bigint;
-            full_restaurants?: bigint | null;
-            soft_word_counts?: Record<string, number> | null;
-          }>
-        >(restaurantQuery.countSql),
-      ]);
-      return {
-        rows,
-        total: Number(countResult[0]?.total_restaurants ?? 0),
-        softWordCounts: countResult[0]?.soft_word_counts ?? null,
-        fullRestaurants: Number(countResult[0]?.full_restaurants ?? 0),
-        openGateFull: null,
-        openNowPrefiltered: false,
-      };
-    };
-
-    if (!needsOpenFilter || !restaurantQuery.candidateSql) {
-      return runBase();
-    }
-
-    // PHASE 1: rank + openness over the full candidate set.
-    const candidateRows = await this.prisma.$queryRaw<
-      RestaurantOpenNowCandidateRow[]
-    >(restaurantQuery.candidateSql);
-    let effectiveCandidateRows = candidateRows;
-    let openGateFull: boolean | null = null;
-    if (pooledGate) {
-      // STEP-3 GATE, OPENNESS-AWARE (spec §1.4.4a): the in-SQL count would
-      // judge scarcity on pre-openness rows (50 matches, 3 open would not
-      // relax). Decide here on the OPEN full set: when open all-word rows
-      // can fill a page, partial rows leave the candidate list entirely —
-      // the hydrate preserves candidate order, so nothing recomputes
-      // (§1.4.4b by construction).
-      const openFullCount = candidateRows.filter(
-        (row) =>
-          row.pooled_tier === 0 &&
-          this.resolveCandidateOpenNow(row, referenceDate) === true,
-      ).length;
-      openGateFull = openFullCount >= pooledGate.threshold;
-      if (openGateFull) {
-        effectiveCandidateRows = candidateRows.filter(
-          (row) => row.pooled_tier === 0,
-        );
-      }
-    }
-    // Red team A2/C9: the two-phase path used to drop the count row
-    // entirely, nulling soft_word_counts on every open-now request — a
-    // venue-side word then read as starved off the dish map alone. The
-    // coverage denominator is the graph, not the hour, so the openness-
-    // blind count is the right one to keep.
-    const pooledCountRow = pooledGate
-      ? (
-          await this.prisma.$queryRaw<
-            Array<{
-              total_restaurants: bigint;
-              full_restaurants?: bigint | null;
-              soft_word_counts?: Record<string, number> | null;
-            }>
-          >(restaurantQuery.countSql)
-        )[0]
-      : undefined;
-    const candidates = effectiveCandidateRows.map((row) => ({
-      restaurantId: row.restaurant_id,
-      isOpen: this.resolveCandidateOpenNow(row, referenceDate),
-    }));
-    const selection = selectOpenNowRestaurantPage(candidates, pagination);
-
-    // Graceful degradation: if NO candidate carries hours data, the open-now filter is
-    // inapplicable — fall back to the unfiltered page (matches the legacy "no supported row
-    // ⇒ don't filter" behavior) rather than showing an empty list.
-    if (selection.supportedCount === 0) {
-      return runBase();
-    }
-
-    if (selection.pageIds.length === 0) {
-      return {
-        rows: [],
-        total: selection.total,
-        softWordCounts: pooledCountRow?.soft_word_counts ?? null,
-        fullRestaurants: Number(pooledCountRow?.full_restaurants ?? 0),
-        openGateFull,
-        openNowPrefiltered: true,
-      };
-    }
-
-    // PHASE 2: hydrate the open page (rich query restricted to the page ids, order preserved).
-    const hydrateQuery = this.queryBuilder.buildRestaurantQuery({
-      ...baseOptions,
-      pagination: { skip: 0, take: selection.pageIds.length },
-      restrictToRestaurantIds: selection.pageIds,
-    });
-    const rows = await this.prisma.$queryRaw<RestaurantQueryRow[]>(
-      hydrateQuery.dataSql,
-    );
+    const [rows, countResult] = await Promise.all([
+      this.prisma.$queryRaw<RestaurantQueryRow[]>(restaurantQuery.dataSql),
+      this.prisma.$queryRaw<
+        Array<{
+          total_restaurants: bigint;
+          full_restaurants?: bigint | null;
+          soft_word_counts?: Record<string, number> | null;
+        }>
+      >(restaurantQuery.countSql),
+    ]);
     return {
       rows,
-      total: selection.total,
-      softWordCounts: pooledCountRow?.soft_word_counts ?? null,
-      fullRestaurants: Number(pooledCountRow?.full_restaurants ?? 0),
-      openGateFull,
-      openNowPrefiltered: true,
-    };
-  }
-
-  // Resolve a candidate row's openness with the SAME machinery the map coverage layer uses:
-  // build operating metadata from the location's hours/tz/offset, then evaluateOperatingStatus.
-  // null = unsupported (no hours / no schedule) ⇒ never passes the open-now filter.
-  private resolveCandidateOpenNow(
-    row: RestaurantOpenNowCandidateRow,
-    referenceDate: Date,
-  ): boolean | null {
-    const metadata = this.buildOperatingMetadataFromLocation(
-      row.hours,
-      row.utc_offset_minutes,
-      row.time_zone,
-    );
-    if (!metadata) {
-      return null;
-    }
-    const status = this.evaluateOperatingStatus(metadata, referenceDate);
-    if (!status) {
-      return null;
-    }
-    return status.isOpen === true;
-  }
-
-  private filterDishRowsByOpenNow(
-    rows: DishQueryRow[],
-    contexts: Map<string, RestaurantContext>,
-  ): {
-    rows: DishQueryRow[];
-    applied: boolean;
-    supportedCount: number;
-    unsupportedCount: number;
-    unsupportedIds: string[];
-  } {
-    const filtered: DishQueryRow[] = [];
-    let applied = false;
-    let supported = 0;
-    let unsupported = 0;
-    const unsupportedIds: string[] = [];
-
-    for (const row of rows) {
-      const status = contexts.get(row.restaurant_id)?.operatingStatus;
-
-      if (!status) {
-        unsupported += 1;
-        unsupportedIds.push(row.restaurant_id);
-        continue;
-      }
-
-      applied = true;
-      supported += 1;
-
-      if (status.isOpen) {
-        filtered.push(row);
-      }
-    }
-
-    if (!applied) {
-      return {
-        rows,
-        applied: false,
-        supportedCount: 0,
-        unsupportedCount: unsupported,
-        unsupportedIds,
-      };
-    }
-
-    return {
-      rows: filtered,
-      applied: true,
-      supportedCount: supported,
-      unsupportedCount: unsupported,
-      unsupportedIds,
+      total: Number(countResult[0]?.total_restaurants ?? 0),
+      softWordCounts: countResult[0]?.soft_word_counts ?? null,
+      fullRestaurants: Number(countResult[0]?.full_restaurants ?? 0),
     };
   }
 

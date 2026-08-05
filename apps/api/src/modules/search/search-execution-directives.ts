@@ -33,10 +33,6 @@ export interface SearchExecutionDirectives {
    * match_tier → exactMatch, so the chip and pooled ordering ride the
    * existing plumbing.
    *
-   * gateFull: the PARAMETERIZED gate decision (spec §1.4.4a/b). null =
-   * decide in-SQL from the pre-openness candidate count. true/false =
-   * the caller already decided on the openness-aware set (open-now
-   * restaurant axis) — SQL applies the verdict without recounting.
    */
   /** DIETARY WALLS (owner semantics 2026-08-04), per-projection:
    *  DISH projection — every wall with a foodAttributeId requires
@@ -56,7 +52,6 @@ export interface SearchExecutionDirectives {
     softFoodAttributeIds: string[];
     softRestaurantAttributeIds: string[];
     threshold: number;
-    gateFull: boolean | null;
     /** TIER-2 SIMILAR RING (round-5 ideal, spec §7.2 dissolved): the dense
      *  sibling ids ride the SAME dish scan as provenance tier 2 — admitted
      *  to the scan (an OR arm), EXCLUDED from the served page, counted by

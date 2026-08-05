@@ -53,7 +53,6 @@ function directives(
       softFoodAttributeIds: [SOFT_FOOD_ATTR],
       softRestaurantAttributeIds: [SOFT_REST_ATTR],
       threshold: 25,
-      gateFull: null,
       ...overrides,
     },
   };
@@ -107,12 +106,10 @@ describe('step-3 pooled richness gate (SQL shape)', () => {
     expect(sql).toContain('ORDER BY fc.pooled_tier ASC,');
   });
 
-  it('dish: gateFull=true restricts to full; gateFull=false admits everything (parameterized decision)', () => {
-    expect(dishSqlText(directives({ gateFull: true }))).toContain(
-      'WHERE fc.pooled_tier = 0 ORDER BY',
-    );
-    expect(dishSqlText(directives({ gateFull: false }))).not.toContain(
-      'pooled_full_count <',
+  it('B1: ONE gate arm — openness is membership, so the window count is openness-aware (gateFull is gone)', () => {
+    const sql = dishSqlText(directives());
+    expect(sql).toContain(
+      'fc.pooled_tier = 0 OR (fc.pooled_tier = 1 AND fc.pooled_full_count <',
     );
   });
 
@@ -137,17 +134,36 @@ describe('step-3 pooled richness gate (SQL shape)', () => {
     expect(sql).toContain('array_position');
   });
 
-  it('candidate SQL carries pooled_tier ungated so openness-aware gating happens in the executor', () => {
-    const result = builder.buildRestaurantQuery({
-      plan: plan(),
-      pagination: { skip: 0, take: 25 },
-      searchCenter: null,
-      directives: directives(),
-      includeCandidateSql: true,
+  it('B1: open-now is a SQL membership predicate over the interval table (no candidate SQL exists)', () => {
+    const openPlan = compileQueryPlanFromConstraints({
+      ...constraints(),
+      filters: { ...constraints().filters, openNow: true },
     });
-    const sql = (result.candidateSql?.sql ?? '').replace(/\s+/g, ' ');
-    expect(sql).toContain('AS pooled_tier');
-    expect(sql).not.toContain('pooled_full_count');
+    const dish = builder
+      .buildDishQuery({
+        plan: openPlan,
+        pagination: { skip: 0, take: 25 },
+        searchCenter: null,
+        directives: directives(),
+      })
+      .dataSql.sql.replace(/\s+/g, ' ');
+    const rest = builder
+      .buildRestaurantQuery({
+        plan: openPlan,
+        pagination: { skip: 0, take: 25 },
+        searchCenter: null,
+        directives: directives(),
+      })
+      .dataSql.sql.replace(/\s+/g, ' ');
+    for (const sql of [dish, rest]) {
+      expect(sql).toContain('derived_location_open_intervals');
+      // graceful degradation: the whole-pool unsupported arm
+      expect(sql).toContain('fl_any');
+    }
+    // and a non-open-now query carries none of it
+    expect(dishSqlText(directives())).not.toContain(
+      'derived_location_open_intervals',
+    );
   });
 
   it('step-5: both pooled count queries report per-soft-id coverage (soft_word_counts)', () => {
@@ -207,7 +223,6 @@ describe('step-3 pooled richness gate (SQL shape)', () => {
         softFoodAttributeIds: [],
         softRestaurantAttributeIds: [],
         threshold: 25,
-        gateFull: null,
         similarFoodIds: ['66666666-6666-6666-6666-666666666666'],
       },
     };

@@ -12,7 +12,6 @@ import type { SearchExecutionDirectives } from './search-execution-directives';
 // pathological query's scan; real viewport candidate sets sit orders of
 // magnitude below it, so list openness == map openness in practice. What
 // changes it: never tuning — only a proven pathological-scan incident.
-const OPEN_NOW_CANDIDATE_CAP = 50000;
 
 export interface BuildRestaurantQueryOptions {
   plan: QueryPlan;
@@ -29,14 +28,11 @@ export interface BuildRestaurantQueryOptions {
   // PHASE 1 (open-now two-phase candidates): also emit a LEAN query (restaurant_id + hours,
   // same conditions + ranking, NO page limit) so the executor can resolve openness over the
   // full candidate set and paginate the OPEN subset. Off by default ⇒ zero overhead.
-  includeCandidateSql?: boolean;
 }
 
 interface BuildRestaurantQueryResult {
   dataSql: Prisma.Sql;
   countSql: Prisma.Sql;
-  // The Phase-1 lean candidate query — null unless includeCandidateSql was requested.
-  candidateSql: Prisma.Sql | null;
   preview: string;
   metadata: {
     boundsApplied: boolean;
@@ -126,7 +122,6 @@ export class SearchQueryBuilder {
       excludeRestaurantIds = [],
       directives,
       restrictToRestaurantIds,
-      includeCandidateSql = false,
     } = options;
     const restrictIds =
       restrictToRestaurantIds && restrictToRestaurantIds.length
@@ -300,8 +295,17 @@ export class SearchQueryBuilder {
     const locationAggregatesCte = this.buildLocationAggregatesCte(searchCenter);
 
     // Build minimum votes where clause for main query
-    const minimumVotesWhereSql = filters.minimumVotes
-      ? Prisma.sql`WHERE COALESCE(rvt.total_upvotes, 0) >= ${filters.minimumVotes}`
+    const restaurantSelectConditions: Prisma.Sql[] = [];
+    if (filters.minimumVotes) {
+      restaurantSelectConditions.push(
+        Prisma.sql`COALESCE(rvt.total_upvotes, 0) >= ${filters.minimumVotes}`,
+      );
+    }
+    if (this.planRequestsOpenNow(plan)) {
+      restaurantSelectConditions.push(this.buildOpenNowPredicateSql('sl'));
+    }
+    const minimumVotesWhereSql = restaurantSelectConditions.length
+      ? Prisma.sql`WHERE ${Prisma.join(restaurantSelectConditions, ' AND ')}`
       : Prisma.sql``;
     const minimumVotesWherePreview = filters.minimumVotes
       ? `WHERE COALESCE(rvt.total_upvotes, 0) >= ${filters.minimumVotes}`
@@ -315,12 +319,11 @@ export class SearchQueryBuilder {
     // openness-aware candidate set and the order is id-position-preserved
     // (spec §1.4.4a/b).
     const pooledGateActive = Boolean(pooledGate) && !restrictIds;
+    // B1: openness lives in membership, so the window count is already
+    // openness-aware — the gateFull parameterization (spec §1.4.4a) died
+    // with the two-phase machine.
     const pooledRestGateWhereSql = pooledGateActive
-      ? pooledGate!.gateFull === null
-        ? Prisma.sql`WHERE rrx.match_tier = 0 OR rrx.pooled_full_count < ${pooledGate!.threshold}`
-        : pooledGate!.gateFull
-          ? Prisma.sql`WHERE rrx.match_tier = 0`
-          : Prisma.sql`WHERE TRUE`
+      ? Prisma.sql`WHERE rrx.match_tier = 0 OR rrx.pooled_full_count < ${pooledGate!.threshold}`
       : Prisma.sql``;
     // Outer ORDER for the pooled wrapper must use OUTPUT column names (the
     // inner aliases prs/rvt/fr are out of scope there).
@@ -678,37 +681,6 @@ WITH
 	LEFT JOIN restaurant_vote_totals rvt ON rvt.restaurant_id = fr.entity_id
 	${minimumVotesWhereSql}`;
 
-    // PHASE 1 (open-now): the LEAN candidate query. Same conditions, CTEs, and ranking as the
-    // rich list query, but selects only restaurant_id + hours (no LATERAL dish/tag joins) and
-    // is NOT page-limited (capped for safety). The executor evaluates openness over this full
-    // ranked set, then hydrates the open page via the rich query (restrictToRestaurantIds).
-    const candidateSql = includeCandidateSql
-      ? Prisma.sql`
-WITH
-  ${restaurantCte.sql},
-  ${filteredLocationsCte.sql},
-  ${selectedLocationsCte.sql},
-  ${restaurantVoteTotalsCte.sql},
-  ${publicRestaurantScoresCte.sql},
-  ranked_candidates AS (
-    SELECT
-      fr.entity_id AS restaurant_id,
-      ${pooledRestTierExpr ? Prisma.sql`${pooledRestTierExpr} AS pooled_tier,` : Prisma.sql`NULL::int AS pooled_tier,`}
-      sl.hours,
-      sl.utc_offset_minutes,
-      sl.time_zone
-    FROM filtered_restaurants fr
-    JOIN public_restaurant_scores prs ON prs.subject_id = fr.entity_id
-    JOIN selected_locations sl ON sl.restaurant_id = fr.entity_id
-    LEFT JOIN restaurant_vote_totals rvt ON rvt.restaurant_id = fr.entity_id
-    ${minimumVotesWhereSql}
-    ORDER BY ${restTierOrder}${restaurantOrder.sql}
-    LIMIT ${OPEN_NOW_CANDIDATE_CAP}
-  )
-SELECT restaurant_id, pooled_tier, hours, utc_offset_minutes, time_zone
-FROM ranked_candidates`
-      : null;
-
     const preview = `
 ${pooledGateActive ? '-- [POOLED GATE ACTIVE: soft attrs are provenance; window gate; preview shows base shape]\n' : ''}${withPreview}
 SELECT rr.*, COALESCE(td.top_dishes, '[]') AS top_dishes, COALESCE(td.total_dish_count, 0) AS total_dish_count, COALESCE(tm.matched_tags, '[]') AS matched_tags, CASE WHEN ... THEN 'mixed' END AS match_evidence_type, (COALESCE(td.total_dish_count, 0) > 0) AS has_menu_items
@@ -721,7 +693,6 @@ LEFT JOIN LATERAL (...matched tags subquery with LIMIT 5...) tm ON ${
     return {
       dataSql,
       countSql,
-      candidateSql,
       preview,
       metadata: {
         boundsApplied,
@@ -830,7 +801,10 @@ LEFT JOIN LATERAL (...matched tags subquery with LIMIT 5...) tm ON ${
           ' AND ',
         )}`
       : Prisma.sql``;
-    const combinedConnectionWhereSql = Prisma.sql`(${connectionWhereSql} ${ringAdmissionSql}) ${dietaryDishWallsSql} ${excludeConnectionsSql}`;
+    const dishOpenNowSql = this.planRequestsOpenNow(plan)
+      ? Prisma.sql`AND ${this.buildOpenNowPredicateSql('sl')}`
+      : Prisma.sql``;
+    const combinedConnectionWhereSql = Prisma.sql`(${connectionWhereSql} ${ringAdmissionSql}) ${dietaryDishWallsSql} ${dishOpenNowSql} ${excludeConnectionsSql}`;
     const combinedConnectionWherePreview =
       `${connectionWherePreview} ${excludeConnectionsPreview}`.trim();
 
@@ -982,17 +956,13 @@ filtered_connections AS (
     // count — a gate CTE referenced from WHERE gets INLINED by Postgres and
     // re-executes per row (measured 20.9s); the window aggregate is
     // computed once over the pool (round-2's proven 5.98ms shape).
-    // gateFull parameterizes the openness-aware decision (spec §1.4.4a);
-    // null decides in-SQL from the window count.
+    // B1: openness lives in membership — the window count is openness-
+    // aware by construction (gateFull died with the two-phase machine).
     // Tier 2 (the similar ring) is in the SCAN for the window counts but
     // never on the served page — the Include-similar chip re-queries with
     // the ring as tier-1 MEMBERS instead (membership flip, not a re-run).
     const pooledGateWhereSql = pooledGate
-      ? pooledGate.gateFull === null
-        ? Prisma.sql`WHERE fc.pooled_tier = 0 OR (fc.pooled_tier = 1 AND fc.pooled_full_count < ${pooledGate.threshold})`
-        : pooledGate.gateFull
-          ? Prisma.sql`WHERE fc.pooled_tier = 0`
-          : Prisma.sql`WHERE fc.pooled_tier < 2`
+      ? Prisma.sql`WHERE fc.pooled_tier = 0 OR (fc.pooled_tier = 1 AND fc.pooled_full_count < ${pooledGate.threshold})`
       : Prisma.sql``;
 
     // Build WITH clause
@@ -1718,6 +1688,41 @@ filtered_locations AS (
    * for no gain — the ground was already the judge, and a place with no
    * ground still never judges (the join simply finds nothing).
    */
+  /** B1 (round-5 ideal): open-now as a SQL membership predicate over the
+   *  derived interval table — DST-correct via the IANA zone, parity-proven
+   *  500/500 against the JS evaluator. The second arm is the graceful-
+   *  degradation contract: when NO location in the viewport pool carries
+   *  hours at all, the filter is inapplicable and nothing is hidden
+   *  (uncorrelated subquery — planned once as an InitPlan). Openness in
+   *  MEMBERSHIP means every window count (gate, similar, per-word) is
+   *  openness-aware by construction — the old two-phase candidate/hydrate
+   *  machine and the gateFull parameterization dissolve.
+   */
+  private buildOpenNowPredicateSql(locationAlias: string): Prisma.Sql {
+    const sl = Prisma.raw(locationAlias);
+    return Prisma.sql`(
+      EXISTS (
+        SELECT 1 FROM derived_location_open_intervals oi
+        WHERE oi.location_id = ${sl}.location_id
+          AND oi.dow = EXTRACT(dow FROM (now() AT TIME ZONE ${sl}.time_zone))::int
+          AND (EXTRACT(hour FROM (now() AT TIME ZONE ${sl}.time_zone))::int * 60
+               + EXTRACT(minute FROM (now() AT TIME ZONE ${sl}.time_zone))::int) >= oi.start_min
+          AND (EXTRACT(hour FROM (now() AT TIME ZONE ${sl}.time_zone))::int * 60
+               + EXTRACT(minute FROM (now() AT TIME ZONE ${sl}.time_zone))::int) < oi.end_min
+      )
+      OR NOT EXISTS (
+        SELECT 1 FROM filtered_locations fl_any
+        JOIN derived_location_open_intervals oi_any ON oi_any.location_id = fl_any.location_id
+      )
+    )`;
+  }
+
+  private planRequestsOpenNow(plan: QueryPlan): boolean {
+    return plan.restaurantFilters.some((filter) =>
+      Boolean((filter.payload as { openNow?: unknown } | undefined)?.openNow),
+    );
+  }
+
   private buildDistanceOrder(
     searchCenter: { lat: number; lng: number } | null | undefined,
     alias: string,
