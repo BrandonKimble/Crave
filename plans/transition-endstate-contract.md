@@ -450,3 +450,30 @@ finding class):
    do not churn): chrome twins, freezeUntilSnap ack routing, scroll-memory-survives-
    eviction, entry-stamp opt-in, F874 timing constants, frozen-world store, clamp
    filter, delivered-values liveness probe.
+
+## THE TWO AUTHORITIES LANDED (2026-08-04) — deferral corrected
+
+Owner pushed back on parking these as "post-burn-in": they are the class fixes for
+LIVE bugs, and burn-in is for unknown problems, not known ones. Both landed:
+
+DOMAIN AUTHORITY (6aee2bdf6, build-verified): one TrackDomainLegalRange() owns the
+legal tau domain; insets are its only output; exactly one contentInset assignment
+remains in the engine. applyRangeLawTo deleted, the posture ceiling deleted as a
+write (declaring the drag IS the act), prior-grow folded in as a phase, the two
+clamp filters kept as the DETECTION predicate only. F4 closes by identity
+(maxOffset === boundary in both directions, so mid-drag content growth cannot lift
+the ceiling nor shrink create a phantom wall); F7 closes by single-writer
+composition max(engineNeed, registeredBaseline). Falsifiers compile the real header
+on the host: yarn test:track-domain, 37 checks, 10 mutations proven RED.
+NOTE: the external-baseline seam has no live JS caller today (keyboard avoidance
+here is transform-based) — ratified mechanism, currently unexercised.
+
+MOTION AUTHORITY (e01afd164): facts in as transitions, state out as a total query
+API with episode identity. The fence bits, interrupt refs, excursion refs and the
+two rival edge subscriptions are gone; four rival encodings of "at rest" are now
+one. F2 closes AT THE SEED — a redraw arming mid-flight asks the authority instead
+of being born settled. Falsifier lives in the surface-runtime spec.
+
+STILL DEFERRED, and correctly: the scene-declaration schema collapse and the host
+extractions (structural, no behavioral payoff, churn risk before burn-in), and the
+native settle/hidden-depth move (bundled with the next real physics change).
