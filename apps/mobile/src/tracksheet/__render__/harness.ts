@@ -5,6 +5,8 @@
 // Tests drive the world (frame flips, publications, native events, scroll
 // facts) and assert on what the REAL host/page wiring did with it.
 
+import { resetTrackMotionAuthorityForTest } from '../track-motion-authority';
+
 type Listener = () => void;
 
 export type HarnessFrame = {
@@ -253,6 +255,9 @@ export type HarnessWorld = ReturnType<typeof buildWorld>;
 export const harness: { world: HarnessWorld } = { world: buildWorld() };
 
 export const resetHarness = (): HarnessWorld => {
+  // The motion authority is a module singleton (one authority per app): a prior
+  // test's live episode would make the next test's sheet "already moving".
+  resetTrackMotionAuthorityForTest();
   harness.world = buildWorld();
   return harness.world;
 };

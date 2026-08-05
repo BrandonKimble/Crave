@@ -143,6 +143,10 @@ export const useTrackSheetPhysics = (
             if (__DEV__ && attempt % 10 === 0) {
               console.log(`[TRACKDBG] attach retrying (attempt ${attempt})`);
             }
+            // PROVENANCE (F874): 150ms x floor-of-5 backoff, capped at 1s — five fast
+            // retries cover the common recycler-mount race, then it slows so a permanently
+            // failing attach costs one timer per second instead of one per 150ms. The cap
+            // is what makes an uncapped retry (see the note above) affordable.
             setTimeout(tryAttach, Math.min(1000, 150 * Math.ceil(attempt / 5)));
           });
       };
@@ -215,6 +219,9 @@ export const useTrackSheetPhysics = (
           contentHeight.value > 0
         ) {
           const now = Date.now();
+          // PROVENANCE (F874): 120ms pagination throttle — ~7 frames at 60Hz. It bounds
+          // how often a scroll can ask the list lane for more, and nothing more; it is not
+          // a settle window and no correctness depends on its exact value.
           if (now - lastActivityAt.value >= 120) {
             lastActivityAt.value = now;
             const offsetY = event.contentOffset.y - trackH - sigma.value;

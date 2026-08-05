@@ -87,7 +87,7 @@ import {
 } from './track-entry-readiness';
 import { trackSkeletonMaterialForScene } from './track-entry-skeleton';
 import { planHiddenExcursion, resolveHiddenPresentation } from './track-entry-hidden';
-import { hiddenEdgeEventMatchesArmed, sheetLegIsAtRest } from './track-sheet-fence';
+import { getTrackMotionAuthority, type TrackMotionTransition } from './track-motion-authority';
 
 // ─── TrackSheetRouteHost — THE PRODUCTION SHEET HOST ──────────────────────────
 //
@@ -118,7 +118,7 @@ const markSheetLegReady = (): void => {
   }
 };
 
-// THE FENCE, PENDING side (R7 — D2 closed; see track-sheet-fence.ts for the
+// THE FENCE, PENDING side (R7 — D2 closed; see track-motion-authority.ts for the
 // derivation): flip the surface's sheet-motion fence the instant a PROVEN motion
 // begins — a will-move command or a native drag begin. Keyed to a live/pending
 // search redraw exactly like the READY side, so unrelated surfaces never touch it.
@@ -130,17 +130,40 @@ const markSheetLegMotionPending = (): void => {
   }
 };
 
-// ─── THE ARMED-EXCURSION GENERATION (G-HIDDEN native red team) ────────────────
+// ─── THE ONE NATIVE EDGE SOURCE (motion authority) ────────────────────────────
 // Native stamps every trackHiddenEdgeCleared with the excursion generation it
-// minted at arm time; this register holds the generation OUR hide armed (from
-// the snapTo outcome). Module-scope because the two consumers live in two
-// components of this file — the deferred-swap gate and the hidden-settle
-// subscription — and both must reject an edge born of any other excursion.
-// One writer set: the hidden command's outcome arms it; a positive command,
-// a refusal, or an outcome with no generation clears it. NEVER cleared inside
-// an edge listener — the two listeners consume the SAME emission, and a clear
-// in one would starve the other.
-let armedHiddenExcursionGeneration: number | null = null;
+// minted at arm time. This file used to hold BOTH a module-scope
+// `armedHiddenExcursionGeneration` register AND two independent
+// NativeEventEmitter subscriptions to the same emission (the deferred-swap gate
+// and the hidden-settle completion), each re-validating the stamp by hand — the
+// textbook "no bus" tell. Now there is ONE subscription: it dispatches the raw
+// fact into the motion authority, which validates it against the episode that
+// armed it and fans the VALIDATED edge out to both consumers
+// (authority.subscribeHiddenEdge). The register is the authority's
+// state.armedExcursion.
+//
+// It lives here (not in the authority module) because the authority is
+// deliberately RN-free: the pure jest lane and the search surface runtime both
+// consult it, and neither may import the native boundary.
+const useNativeHiddenEdgeSource = (): void => {
+  React.useEffect(() => {
+    const physicsModule = NativeModules.TrackScrollPhysics;
+    if (physicsModule == null) {
+      return undefined;
+    }
+    const emitter = new NativeEventEmitter(physicsModule);
+    const sub = emitter.addListener(
+      'trackHiddenEdgeCleared',
+      (event: { generation?: number } | undefined) => {
+        getTrackMotionAuthority().dispatch({
+          type: 'excursion-edge',
+          generation: event?.generation ?? null,
+        });
+      }
+    );
+    return () => sub.remove();
+  }, []);
+};
 
 class ChromeProbeBoundary extends React.Component<
   { label: string; children: React.ReactNode },
@@ -172,6 +195,9 @@ export const TrackSheetRouteHost: React.FC = () => {
   // THE FLIP (rung 5): the track host is the DEFAULT. The deep link is the
   // emergency rollback + debug-visuals toggle (see track-flip-store).
   const state = useTrackFlipState();
+  // THE ONE native edge subscription for the whole track (see above): mounted
+  // once, at the root, feeding the motion authority.
+  useNativeHiddenEdgeSource();
 
   React.useEffect(() => {
     const handleUrl = (url: string | null) => {
@@ -345,33 +371,22 @@ const TrackSheetRouteSurface: React.FC<{ scene: OverlayKey }> = ({ scene: sceneO
   });
   const clearedTxnRef = React.useRef<unknown>(null);
   const [, bumpEdgeSeq] = React.useReducer((n: number) => n + 1, 0);
-  React.useEffect(() => {
-    const physicsModule = NativeModules.TrackScrollPhysics;
-    if (physicsModule == null) {
-      return undefined;
-    }
-    const emitter = new NativeEventEmitter(physicsModule);
-    const sub = emitter.addListener(
-      'trackHiddenEdgeCleared',
-      (event: { generation?: number } | undefined) => {
-        // GENERATION-STAMPED (G-HIDDEN native red team): only the edge of the
-        // excursion WE armed is a real boundary — a stale native target's
-        // event must never commit a swap.
-        if (
-          !hiddenEdgeEventMatchesArmed(armedHiddenExcursionGeneration, event?.generation ?? null)
-        ) {
-          return;
-        }
+  React.useEffect(
+    () =>
+      // THE AUTHORITY IS THE BUS (was: a second hand-rolled emitter subscription
+      // re-validating the generation stamp here). Only edges the authority
+      // matched to the excursion WE armed reach this listener — a stale native
+      // target's event can never commit a swap.
+      getTrackMotionAuthority().subscribeHiddenEdge(() => {
         // Record WHICH transaction's edge cleared (a later hide must hold again
         // even if this state lingers), offer the boundary, then re-render to
         // commit the swap in the next paint.
         clearedTxnRef.current = getLiveTransitionTxn();
         offerTransitionJoinInput('boundary');
         bumpEdgeSeq();
-      }
-    );
-    return () => sub.remove();
-  }, []);
+      }),
+    []
+  );
   const liveTxnForHide = getLiveTransitionTxn();
   const hideInFlight =
     liveTxnForHide != null &&
@@ -528,19 +543,33 @@ const useTrackScenePageChrome = (
     token: number;
     settleToken?: number | null;
   } | null>(null);
-  // Red team #4: commands carry a settleToken the motion plane WAITS on; the
-  // old host completed it at snap settle. The track completes it at the next
-  // settle fact (or immediately when the snap short-circuits to zero pixels).
-  const pendingSettleTokenRef = React.useRef<number | null>(null);
-  // G-INTERRUPT (A5): the live programmatic spring's DESTINATION. While a
-  // command's spring is in flight, promoteAtLeast must resolve against this
-  // target, never the instantaneous posture (a ±2pt mid-flight read
-  // misclassifies and can DEMOTE a sheet already on its way). Cleared at
-  // every settle fact and ignored while a finger owns τ (the pure resolver).
-  const inFlightSnapTargetRef = React.useRef<'expanded' | 'middle' | 'collapsed' | null>(null);
-  // R7 fence: a hidden excursion's flight is not a detent flight (no in-flight
-  // target by design) — track it separately so the at-rest decision stays total.
-  const hiddenExcursionInFlightRef = React.useRef(false);
+  // THE MOTION AUTHORITY (deep red team item 1) replaces THREE private refs
+  // that used to live here — pendingSettleTokenRef (red team #4's settle-token
+  // wait), inFlightSnapTargetRef (G-INTERRUPT/A5's spring destination) and
+  // hiddenExcursionInFlightRef (the R7 fence's excursion bit) — plus the
+  // module-scope armed-generation register. All four were one EPISODE wearing
+  // four coats; the authority stores it once, with an identity, and every
+  // consumer READS it (fence, interrupt read, hidden settle, reveal seed).
+  const motionAuthority = getTrackMotionAuthority();
+  // Every REST fact (settle observer, generation-matched screen edge, 700ms
+  // deadline) funnels here: restore the fence and complete the episode's
+  // settle token. The token rides the EPISODE now, so a superseded command's
+  // token can never be completed by a later episode's rest.
+  const applyMotionRestFact = React.useCallback(
+    (transition: TrackMotionTransition) => {
+      if (!transition.rest) {
+        return;
+      }
+      // R7 fence: every rest fact restores it — including the hidden edge,
+      // whose rest is not a detent and never reaches the settle observer.
+      markSheetLegReady();
+      const token = transition.ended?.settleToken ?? null;
+      if (token != null) {
+        sceneRuntime.routeSceneMotionRuntime.completeFromSheetSettle?.(token);
+      }
+    },
+    [sceneRuntime]
+  );
   const executeMotionCommand = React.useCallback(
     (snap: 'expanded' | 'middle' | 'collapsed' | 'hidden', settleToken: number | null) => {
       const commands = commandsRef.current;
@@ -568,7 +597,6 @@ const useTrackScenePageChrome = (
             : hiddenPlan != null
               ? hiddenPlan.targetPostureTau
               : 0;
-      pendingSettleTokenRef.current = settleToken;
       // THE ZERO-PIXEL SETTLE (joinWait red team): a same-posture switch
       // short-circuits inside native snapTo (<0.5pt) and produces NO settle
       // fact — waiting the 700ms fallback held every tab switch's revealed/
@@ -581,12 +609,19 @@ const useTrackScenePageChrome = (
         trackH
       );
       const willMove = Math.abs(currentPosture - postureTau) >= 0.5;
-      // A real flight records its destination for mid-flight reads; a hidden
-      // excursion records none (its target is not a detent posture — reads
-      // during a hide answer from the excursion's live τ) and a zero-move
-      // snap has no flight at all.
-      inFlightSnapTargetRef.current = willMove && snap !== 'hidden' ? snap : null;
-      hiddenExcursionInFlightRef.current = willMove && snap === 'hidden';
+      // THE COMMAND FACT into the authority. A real flight records its
+      // destination for mid-flight reads; a hidden excursion records none (its
+      // target is not a detent posture) and a zero-move snap opens no episode
+      // at all. A non-hidden command also supersedes any armed excursion —
+      // that law now lives in the reducer, not in a module-scope register.
+      const commandTransition = motionAuthority.dispatch({
+        type: 'command-issued',
+        willMove,
+        snapTo: snap,
+        settleToken,
+        atMs: Date.now(),
+      });
+      const episodeId = commandTransition.started?.episodeId ?? null;
       // R7 FENCE, PENDING (D2 closed): a command that WILL move is a proven
       // motion signal — flip the fence BEFORE the spring starts so a reveal can
       // never land mid-slide (the mid-slide latch in the surface runtime retries
@@ -596,43 +631,39 @@ const useTrackScenePageChrome = (
       if (willMove) {
         markSheetLegMotionPending();
       }
-      // A non-hidden command SUPERSEDES any armed excursion: its edge, if it
-      // ever fires, is stale from here on. (Native consumes the one-shot too;
-      // this is the JS half of the same law.)
-      if (snap !== 'hidden') {
-        armedHiddenExcursionGeneration = null;
-      }
       commands?.snapToTau(postureTau, (outcome) => {
+        if (episodeId == null) {
+          // A zero-move command opened no episode; a late outcome names none.
+          return;
+        }
         if (outcome.refused) {
           // THE FINGER OWNS TAU (native FIX 3): the command yielded to a live
-          // drag and is DEAD — no flight exists, nothing is re-issued. The
-          // user's gesture settle (or the 700ms deadline) is the rest fact
-          // that restores the fence and completes the token.
-          inFlightSnapTargetRef.current = null;
-          hiddenExcursionInFlightRef.current = false;
-          armedHiddenExcursionGeneration = null;
+          // drag and is DEAD — no machine target exists, nothing is re-issued.
+          // The episode becomes the drag it lost to (it is still moving), so
+          // the gesture settle or the deadline is what restores the fence and
+          // completes the token.
+          motionAuthority.dispatch({ type: 'command-refused', episodeId });
           return;
         }
         if (outcome.hiddenGeneration != null) {
           // The generation OUR hide armed — the stamp every edge event must
-          // match to be consumed (deferred swap + hidden settle).
-          armedHiddenExcursionGeneration = outcome.hiddenGeneration;
+          // match to be consumed (deferred swap + hidden settle). Episode-
+          // matched, so a superseded command's late outcome arms nothing.
+          motionAuthority.dispatch({
+            type: 'excursion-armed',
+            episodeId,
+            generation: outcome.hiddenGeneration,
+          });
         }
       });
       if (settleToken != null) {
-        if (!willMove || commands == null) {
-          pendingSettleTokenRef.current = null;
+        if (!willMove || commands == null || episodeId == null) {
           sceneRuntime.routeSceneMotionRuntime.completeFromSheetSettle?.(settleToken);
         } else {
           setTimeout(() => {
-            if (pendingSettleTokenRef.current === settleToken) {
-              pendingSettleTokenRef.current = null;
-              inFlightSnapTargetRef.current = null;
-              hiddenExcursionInFlightRef.current = false;
-              // R7 fence: the deadline is also the fence's never-strand restore.
-              markSheetLegReady();
-              sceneRuntime.routeSceneMotionRuntime.completeFromSheetSettle?.(settleToken);
-            }
+            // EPISODE-MATCHED (was: token-matched against a private ref). A
+            // deadline can only ever end the episode that armed it.
+            applyMotionRestFact(motionAuthority.dispatch({ type: 'deadline-expired', episodeId }));
             // PROVENANCE (F874, 2026-08-03): 700ms is a DEADLINE, not a duration — it is
             // the "the settle fact never arrived" backstop for a snap whose native spring
             // should have reported settle long before. It is deliberately longer than any
@@ -644,47 +675,30 @@ const useTrackScenePageChrome = (
         }
       }
     },
-    [commandsRef, sceneRuntime, snapPoints, trackH]
+    [applyMotionRestFact, commandsRef, motionAuthority, sceneRuntime, snapPoints, trackH]
   );
-  const completePendingSettle = React.useCallback(() => {
-    // Any settle fact ends the flight (G-INTERRUPT).
-    inFlightSnapTargetRef.current = null;
-    hiddenExcursionInFlightRef.current = false;
-    // R7 fence: every settle fact restores the fence — including the hidden-edge
-    // event, whose rest is not a detent and never reaches the settle observer.
-    markSheetLegReady();
-    const token = pendingSettleTokenRef.current;
-    if (token != null) {
-      pendingSettleTokenRef.current = null;
-      sceneRuntime.routeSceneMotionRuntime.completeFromSheetSettle?.(token);
-    }
-  }, [sceneRuntime]);
+  // THE SETTLE FACT: the detent rest observed on the track (gesture or
+  // programmatic). It ends whatever episode was live — the authority decides
+  // which, and whether a token is owed.
+  const reportSettleFact = React.useCallback(() => {
+    applyMotionRestFact(motionAuthority.dispatch({ type: 'settle' }));
+  }, [applyMotionRestFact, motionAuthority]);
+  // THE DRAG FACT: the finger takes τ. Opens a drag episode (so every consumer
+  // can SEE the sheet is moving — F2's window) and flips the fence pending.
+  const reportDragBeginFact = React.useCallback(() => {
+    motionAuthority.dispatch({ type: 'drag-begin', atMs: Date.now() });
+    markSheetLegMotionPending();
+  }, [motionAuthority]);
   // THE HIDDEN SETTLE (G-HIDDEN): a hide's rest is not a detent, so the
   // gesture/detent settle observer never fires for it — the native edge fact
   // (the sheet cleared the screen) IS its settle. Without this, every hide's
-  // settleToken rode the 700ms fallback.
-  React.useEffect(() => {
-    const physicsModule = NativeModules.TrackScrollPhysics;
-    if (physicsModule == null) {
-      return undefined;
-    }
-    const emitter = new NativeEventEmitter(physicsModule);
-    const sub = emitter.addListener(
-      'trackHiddenEdgeCleared',
-      (event: { generation?: number } | undefined) => {
-        // GENERATION-STAMPED (G-HIDDEN native red team): a stale excursion's
-        // edge is not OUR hide's settle — reject the mismatch, let the real
-        // rest fact (or the 700ms deadline) complete the token.
-        if (
-          !hiddenEdgeEventMatchesArmed(armedHiddenExcursionGeneration, event?.generation ?? null)
-        ) {
-          return;
-        }
-        completePendingSettle();
-      }
-    );
-    return () => sub.remove();
-  }, [completePendingSettle]);
+  // settleToken rode the 700ms fallback. The authority validates the stamp
+  // against the episode that armed it (was: a second emitter subscription
+  // re-checking a module-scope register by hand).
+  React.useEffect(
+    () => motionAuthority.subscribeHiddenEdge(applyMotionRestFact),
+    [applyMotionRestFact, motionAuthority]
+  );
   useAnimatedReaction(
     () => motionCommandValue.value,
     (command, previous) => {
@@ -710,13 +724,14 @@ const useTrackScenePageChrome = (
     }
     const posture = Math.min(Math.max(0, commands.readTau() - commands.readSigma()), trackH);
     return resolveSnapTargetForRead({
-      inFlightTarget: inFlightSnapTargetRef.current,
+      // READ, DON'T SHADOW: the in-flight target is the authority's episode.
+      inFlightTarget: motionAuthority.inFlightSnapTarget(),
       dragging: commands.readDragging(),
       posture,
       trackH,
       middleTau,
     });
-  }, [commandsRef, snapPoints, trackH]);
+  }, [commandsRef, motionAuthority, snapPoints, trackH]);
   React.useEffect(
     () =>
       sceneRuntime.routeSceneMotionRuntime.registerSheetMotionTarget({
@@ -771,21 +786,15 @@ const useTrackScenePageChrome = (
   React.useEffect(() => {
     const runtime = getSearchSurfaceRuntime();
     const offerSheetReadyIfAtRest = () => {
-      const commands = commandsRef.current;
-      if (
-        sheetLegIsAtRest({
-          dragging: commands?.readDragging() ?? false,
-          inFlightSnapTarget: inFlightSnapTargetRef.current,
-          pendingSettleToken: pendingSettleTokenRef.current,
-          hiddenExcursionInFlight: hiddenExcursionInFlightRef.current,
-        })
-      ) {
+      // ONE at-rest definition (motion authority): the four host refs this
+      // predicate used to project over ARE the authority's episode now.
+      if (motionAuthority.isAtRest()) {
         markSheetLegReady();
       }
     };
     offerSheetReadyIfAtRest();
     return runtime.subscribe(offerSheetReadyIfAtRest);
-  }, [commandsRef]);
+  }, [motionAuthority]);
 
   const descriptor = getPersistentHeaderDescriptor(scene);
   const Title = descriptor?.Title;
@@ -868,7 +877,8 @@ const useTrackScenePageChrome = (
     commandsRef,
     title,
     headerExtras,
-    completePendingSettle,
+    reportSettleFact,
+    reportDragBeginFact,
     geometry,
     navActionProgress,
     onNavActionPress,
@@ -895,7 +905,8 @@ const UnifiedTrackScenePage: React.FC<TrackScenePageProps> = ({
     commandsRef,
     title,
     headerExtras,
-    completePendingSettle,
+    reportSettleFact,
+    reportDragBeginFact,
     geometry,
     navActionProgress,
     onNavActionPress,
@@ -1447,11 +1458,13 @@ const UnifiedTrackScenePage: React.FC<TrackScenePageProps> = ({
         commandsRef={commandsRef}
         publicationBindings={sharedSheetPublicationBindings}
         onGestureSettle={onGestureSettle}
-        // R7 fence, pending side: a native drag begin is a proven motion fact.
-        onDragBegin={markSheetLegMotionPending}
-        // completePendingSettle restores the fence (markSheetLegReady) on every
-        // rest fact — the settle observer's rest included.
-        onSettle={completePendingSettle}
+        // R7 fence, pending side: a native drag begin is a proven motion fact —
+        // it OPENS a drag episode in the motion authority (so a redraw arming
+        // mid-drag can see the motion: F2) and flips the fence pending.
+        onDragBegin={reportDragBeginFact}
+        // The settle fact goes to the authority, which decides which episode it
+        // ends; the rest handler restores the fence and completes its token.
+        onSettle={reportSettleFact}
       />
     </View>
   );

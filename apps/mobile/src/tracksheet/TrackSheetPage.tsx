@@ -47,7 +47,7 @@ import {
 import { TrackSheetDockedStrip } from './TrackSheetStrip';
 import type { TrackEntryKey } from './track-entry-identity';
 import { computeOutgoingScroll, TrackEntryScrollMemory } from './track-entry-scroll-memory';
-import { resolveSnapRetryDecision } from './track-sheet-fence';
+import { resolveSnapRetryDecision } from './track-motion-authority';
 import { executeEntrySwitch, planEntrySwitch, TrackRestoreCoordinator } from './track-entry-switch';
 
 // ─── TrackSheetPage — THE sheet-page standard ──────────────────────────────────
@@ -663,7 +663,7 @@ export function TrackSheetPage({
         // mid-drag) ends the loop for good — the user's posture choice
         // supersedes the stale command intent; never re-issue after the drag.
         // The per-step verdict is pure (resolveSnapRetryDecision, falsified in
-        // track-sheet-fence.spec.ts). Each call mints a loop id so a stale
+        // track-motion-authority.spec.ts). Each call mints a loop id so a stale
         // promise from a superseded command can never schedule a retry.
         const loopId = snapLoopIdRef.current + 1;
         snapLoopIdRef.current = loopId;
