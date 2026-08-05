@@ -9,10 +9,13 @@ import type { OriginSnapshot } from '../../overlays/searchRouteSessionTypes';
  * committed presentation. Same module-registration pattern as the active-controller hook.
  */
 
-// The capturer takes the DEPARTING scene key explicitly: the session controller's own live
-// identity resolution is ROOT-COLLAPSED (built for the search-session slot), which mis-keys a
-// child departure's scroll lanes to the root scene — proven RED on the rig (lane 'profile'
-// carried the followList offset and the restore staged the wrong lane).
+// The capturer takes the DEPARTING scene key explicitly — NOT as a workaround (F1509 uncollapsed
+// the session controller's live-identity resolver) but because the reducer delivers the pre-push
+// active key ATOMICALLY with the state mutation, before any authority publication; D56's camera
+// capture is contractually keyed to the same parameter. History: the parameter originally
+// compensated for a root-collapsed resolver that mis-keyed a child departure's scroll lanes to
+// the root scene — proven RED on the rig (lane 'profile' carried the followList offset and the
+// restore staged the wrong lane); the collapse is gone, the atomicity reason remains.
 let currentOriginCapturer: ((departingSceneKey: OverlayKey) => OriginSnapshot) | null = null;
 
 export const registerRouteEntryOriginCapturer = (

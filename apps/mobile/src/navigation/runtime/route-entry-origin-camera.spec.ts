@@ -86,7 +86,9 @@ const createHarness = (): Harness => {
 
   const controller = createAppRouteOverlaySessionStateController({
     routeOverlayIdentityAuthority: {
-      getSnapshot: () => ({ rootOverlayKey: liveSceneKey }) as never,
+      // F1509: the resolver is uncollapsed — the identity snapshot serves BOTH facts.
+      getSnapshot: () =>
+        ({ activeOverlayRouteKey: liveSceneKey, rootOverlayKey: liveSceneKey }) as never,
     },
     routeOverlayRootAuthority: {
       getSnapshot: () => ({}) as never,

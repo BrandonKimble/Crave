@@ -68,7 +68,7 @@ type AppRouteOverlaySessionStateControllerArgs = {
 // Return-to-origin foundation (plans/return-to-origin-foundation-design.md §Capture).
 // The degenerate snapshot is the minimal origin: a scene identity + its LIVE detent, with
 // empty scroll/segment/anchor. The home roots capture EXACTLY this (see
-// buildCurrentOriginSnapshot); rich capture merges published live state onto it.
+// buildDockedRootOriginSnapshot); rich capture merges published live state onto it.
 // D56: `camera` is null HERE by construction. The camera is attached ONLY by the push-commit
 // capturer (below), never by the degenerate base and never by the dismiss-time origin build —
 // an origin is captured at DEPARTURE, never at RETURN.
@@ -277,24 +277,14 @@ export class AppRouteOverlaySessionStateController {
         // before any motion, in the same instant as the detent/scroll/segment fields. Two halves
         // of one snapshot, one instant. (The old camera lane read the map a commit AND a scene
         // transition later, from a slot keyed to search commits — F1503/F1502.)
+        // F1509: the detent is resolved child-aware INSIDE captureRichSceneOrigin (via
+        // resolveLiveSceneDetent) — the registration-site detent patch that used to overwrite
+        // the root-collapsed answer here is deleted with the collapse it compensated for.
         const originCamera = readRouteEntryOriginCamera();
-        const captured = {
+        return {
           ...this.captureRichSceneOrigin(departingSceneKey),
           camera: originCamera,
         };
-        // Ledger item 7 (red team code#2): captureRichSceneOrigin's detent comes from
-        // resolveLiveOriginIdentity, which is ROOT-collapsed (it only knows the top-level
-        // lanes). For a CHILD departure the ONE physical sheet's remembered snap for that
-        // scene is its live detent — same bug class as the scroll-lane mis-keying, one field
-        // over. Root scenes keep the root resolution (it encodes the docked nuances).
-        if (getAppOverlayRouteMetadata(departingSceneKey).role !== 'child') {
-          return captured;
-        }
-        const childSnap =
-          this.routeSheetSnapSessionActions.getRouteSceneSwitchSceneSnap(departingSceneKey);
-        return childSnap != null && childSnap !== 'hidden'
-          ? { ...captured, detent: childSnap }
-          : captured;
       }),
       registerRouteEntryOriginRestorer((origin) => {
         // Detent first (the pop switch's motion plan reads the remembered-snap ledger), then
@@ -358,30 +348,47 @@ export class AppRouteOverlaySessionStateController {
     }
   }
 
-  // Return-to-origin foundation — the (sceneKey, live detent) of the active origin at
-  // trigger time. sceneKey stays the ROOT overlay key (the collapsed scene identity:
-  // search|polls|lists|profile), byte-equivalent to the old createCurrentOriginContext
-  // `rootOverlay`; the TRUE child-scene generalization (pollDetail/restaurant) is a later
-  // phase. The detent is the LIVE snap (resolveSearchLaunchOriginSnap), not hard-coded.
-  private resolveLiveOriginIdentity(): { sceneKey: OverlayKey; detent: TabOverlaySnap } {
+  // F1509 — THE uncollapsed live-identity resolver. "Which scene is live" has one answer, and
+  // this returns it (`liveSceneKey`, the active route entry's key) ALONGSIDE the collapsed root
+  // answer (`dockedRootKey`) — because the docked-home dismiss lane genuinely wants the collapsed
+  // fact (red-team ruling on the F1509 row). Callers name the fact they mean; nothing re-derives
+  // either one. Note the push-commit capture lane still receives the departing scene key as an
+  // EXPLICIT delegate parameter — that is NOT a workaround for this resolver: the reducer delivers
+  // the pre-push active key atomically with the state mutation, before any authority publication,
+  // and D56's camera capture is contractually keyed to that same parameter.
+  private resolveLiveOriginIdentity(): { liveSceneKey: OverlayKey; dockedRootKey: OverlayKey } {
     const routeOverlayIdentitySnapshot = this.routeOverlayIdentityAuthority.getSnapshot();
-    const sceneKey = routeOverlayIdentitySnapshot.rootOverlayKey;
     return {
-      sceneKey,
-      // Two-posture seats: the live root detent IS the side's seat (home for search/polls,
-      // the ONE shared content seat otherwise) — read through the seat-routed ledger getter.
-      detent: resolveSearchLaunchOriginSnap({
-        overlay: sceneKey,
-        homeSeatSnap:
-          this.routeSheetSnapSessionActions.getRouteSceneSwitchSceneSnap(DOCKED_SCENE_KEY),
-        contentSeatSnap: this.routeSheetSnapSessionActions.getRouteSceneSwitchSceneSnap('lists'),
-      }),
+      liveSceneKey: routeOverlayIdentitySnapshot.activeOverlayRouteKey,
+      dockedRootKey: routeOverlayIdentitySnapshot.rootOverlayKey,
     };
   }
 
+  // F1509 — the live detent OF a given scene (the old registration-site detent patch, landed
+  // where it belongs). A CHILD scene's live detent is the ONE physical sheet's remembered snap
+  // for that scene; a root scene resolves through the two-posture seat ledger (home for
+  // search/polls, the ONE shared content seat otherwise — the seat routing encodes the docked
+  // nuances, keyed by the docked root). A child with no usable remembered snap degrades to the
+  // root-seat resolution, byte-identical to the pre-rederivation fallback.
+  private resolveLiveSceneDetent(sceneKey: OverlayKey, dockedRootKey: OverlayKey): TabOverlaySnap {
+    if (getAppOverlayRouteMetadata(sceneKey).role === 'child') {
+      const childSnap =
+        this.routeSheetSnapSessionActions.getRouteSceneSwitchSceneSnap(sceneKey);
+      if (childSnap != null && childSnap !== 'hidden') {
+        return childSnap;
+      }
+    }
+    return resolveSearchLaunchOriginSnap({
+      overlay: dockedRootKey,
+      homeSeatSnap:
+        this.routeSheetSnapSessionActions.getRouteSceneSwitchSceneSnap(DOCKED_SCENE_KEY),
+      contentSeatSnap: this.routeSheetSnapSessionActions.getRouteSceneSwitchSceneSnap('lists'),
+    });
+  }
+
   // Return-to-origin foundation (P3) — RICH capture for a scrollable scene (lists; profile
-  // joins in P5). The degenerate base carries the correct sceneKey + LIVE detent
-  // (resolveLiveOriginIdentity, the same source home uses); onto it we merge the scene's OWN
+  // joins in P5). The degenerate base carries the correct sceneKey + its LIVE detent
+  // (resolveLiveSceneDetent — child-aware, F1509); onto it we merge the scene's OWN
   // live scroll lane(s), pulled from the scene live-state registry (the panel published a
   // getter that reads its live scroll SharedValue at call time). Reading from the registry —
   // not a render hook — satisfies the CLAUDE.md rule that capture providers read live
@@ -391,7 +398,8 @@ export class AppRouteOverlaySessionStateController {
   // getters carry the SEGMENTED-scene axes: the profile publisher (P5) populates both (active
   // sub-tab + profileUserId); lists publishes neither (they stay null).
   private captureRichSceneOrigin(sceneKey: OverlayKey): OriginSnapshot {
-    const { detent } = this.resolveLiveOriginIdentity();
+    const { dockedRootKey } = this.resolveLiveOriginIdentity();
+    const detent = this.resolveLiveSceneDetent(sceneKey, dockedRootKey);
     const base = degenerateSnapshot(sceneKey, detent);
     const liveState = getOriginSceneLiveState(sceneKey);
     if (liveState == null) {
@@ -412,30 +420,65 @@ export class AppRouteOverlaySessionStateController {
     };
   }
 
-  // Source-agnostic capture (S-C.4 item 4 — the provider registry is collapsed into this one
-  // rule): the HOME roots ('search'/DOCKED_SCENE_KEY) capture the degenerate snapshot at their LIVE
-  // detent — home is the degenerate origin by design, its scroll/segment restore rides the
-  // remembered-snap machinery, never the origin snapshot. EVERY other scene captures rich:
-  // captureRichSceneOrigin merges any published live scroll/segment onto the degenerate base
-  // (and itself degrades to the base when the scene never published) — so a scene opts into
-  // scroll capture with ONE publication hook call, zero registration.
-  private buildCurrentOriginSnapshot(): OriginSnapshot {
-    const { sceneKey, detent } = this.resolveLiveOriginIdentity();
+  // F1508/F1509 — the dismiss lane's FALLBACK builder, keyed to the DOCKED ROOT by
+  // construction (never the live scene: at dismiss time the live scene is the search session
+  // being left, and "snapshot what you are leaving" is exactly the F1508 disease). The
+  // collapsed answer is the one this lane genuinely wants (red-team ruling on F1509): the
+  // clear-flush restore is a re-ROOT emission, so the only honest capture subject is the root
+  // lane beneath the session. The HOME roots ('search'/DOCKED_SCENE_KEY) capture the
+  // degenerate snapshot at their LIVE detent — home is the degenerate origin by design, its
+  // scroll/segment restore rides the remembered-snap machinery, never the origin snapshot.
+  // EVERY other root captures rich: captureRichSceneOrigin merges any published live
+  // scroll/segment onto the degenerate base (and itself degrades to the base when the scene
+  // never published).
+  private buildDockedRootOriginSnapshot(): OriginSnapshot {
+    const { liveSceneKey, dockedRootKey } = this.resolveLiveOriginIdentity();
+    if (__DEV__ && liveSceneKey !== dockedRootKey && liveSceneKey !== 'search') {
+      // F1508 tripwire: this fallback root-projects. Reaching it while a NON-search scene is
+      // live above the root means a departure happened whose origin was never captured at push
+      // commit — capture-at-departure is the law; snapshotting here is capture-at-return.
+      // eslint-disable-next-line no-console
+      console.warn(
+        `[return-to-origin] dismiss fallback root-projects live '${liveSceneKey}' onto root ` +
+          `'${dockedRootKey}' — the departure origin should have been captured at push commit (F1508)`
+      );
+    }
     const captured =
-      sceneKey === 'search' || sceneKey === DOCKED_SCENE_KEY
-        ? degenerateSnapshot(sceneKey, detent)
-        : this.captureRichSceneOrigin(sceneKey);
+      dockedRootKey === 'search' || dockedRootKey === DOCKED_SCENE_KEY
+        ? degenerateSnapshot(
+            dockedRootKey,
+            this.resolveLiveSceneDetent(dockedRootKey, dockedRootKey)
+          )
+        : this.captureRichSceneOrigin(dockedRootKey);
     return {
       ...captured,
       anchor: captured.anchor ?? null,
       // D56 — THE FOURTH CAMERA LANE IS CLOSED HERE. This builder runs at DISMISS time
-      // (captureSearchCloseOrigin, F1508): it snapshots the scene being LEFT, at the moment it
-      // is left. That is a photograph of the departure gate, not a return address — a camera on
-      // it would fly the map to the world the user is dismissing. The return address for the
-      // camera is the one captured at PUSH commit and carried on the popped entry; that origin
-      // reaches the arbiter through the pop's own origin restore, not through this lane.
+      // (captureSearchCloseOrigin, F1508): a camera on it would fly the map to the world the
+      // user is dismissing. The return address for the camera is the one captured at PUSH
+      // commit and carried on the popped entry; that origin reaches the arbiter through the
+      // pop's own origin restore, not through this lane.
       camera: null,
     };
+  }
+
+  // F1508 — the dismiss lane's PRIMARY source: the per-entry origin captured at PUSH COMMIT on
+  // the search-session entry above the root. Bedrock: an origin is captured at DEPARTURE, never
+  // at RETURN — this IS the departure-time snapshot, carried on the entry the whole session.
+  // Root-projected: this lane emits a re-ROOT (topLevelSwitch), so a CHILD-scene origin cannot
+  // ride it (a search pushed over a child returns to that child via the pop machinery, not the
+  // clear-flush restore) — a child origin falls back to the docked-root builder. Camera pinned
+  // null (D56): the camera return address rides the pop's own origin restore, never this lane.
+  private resolveSearchSessionEntryOrigin(): OriginSnapshot | null {
+    const routeState = this.routeSceneSwitchActions.getRouteState();
+    const sessionEntry = routeState.overlayRouteStack
+      .slice(1)
+      .find((entry) => entry.key === 'search');
+    const origin = sessionEntry?.origin ?? null;
+    if (origin == null || getAppOverlayRouteMetadata(origin.sceneKey).role === 'child') {
+      return null;
+    }
+    return { ...origin, camera: null };
   }
 
   // S-C.4 item 3 step 2 — the close-restore origin is a VALUE the caller holds (entries-as-
@@ -448,7 +491,13 @@ export class AppRouteOverlaySessionStateController {
     allowFallback = false,
     searchRootRestoreSnap,
   }: AppRouteSearchCloseRestoreOptions = {}): OriginSnapshot | null {
-    const resolvedOriginContext = allowFallback ? this.buildCurrentOriginSnapshot() : null;
+    // F1508: the per-entry origin (captured at DEPARTURE, at push commit) is the return
+    // address; the docked-root live build is only the fallback for the lanes that never
+    // pushed a session entry (search live on the docked root) — where the live scene IS the
+    // docked root, so the collapsed answer is correct by construction, not by accident.
+    const resolvedOriginContext = allowFallback
+      ? (this.resolveSearchSessionEntryOrigin() ?? this.buildDockedRootOriginSnapshot())
+      : null;
     return resolvedOriginContext?.sceneKey === 'search' && searchRootRestoreSnap
       ? {
           ...resolvedOriginContext,
