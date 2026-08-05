@@ -71,34 +71,3 @@ export const applySearchRestaurantRouteCommand = (
     }
   }
 };
-
-export const useActiveSearchRestaurantRouteRestaurantId = (): string | null => {
-  const routeSceneRuntime = useAppRouteSceneRuntime();
-  const selectRestaurantId = React.useCallback(
-    (state: RouteOverlayNavigationSnapshot): string | null => {
-      const activeOverlayRoute = state.activeOverlayRoute;
-      if (!isSearchRestaurantRouteEntry(activeOverlayRoute)) {
-        return null;
-      }
-      return activeOverlayRoute.params?.restaurantId ?? null;
-    },
-    []
-  );
-  const [restaurantId, setRestaurantId] = React.useState<string | null>(() =>
-    selectRestaurantId(routeSceneRuntime.routeSheetHostNavigationAuthority.getSnapshot())
-  );
-
-  React.useEffect(
-    () =>
-      routeSceneRuntime.routeSheetHostNavigationAuthority.registerTarget({
-        selector: selectRestaurantId,
-        syncNavigationSnapshot: (_snapshot, selectedRestaurantId) => {
-          setRestaurantId(selectedRestaurantId);
-        },
-        attributionLabel: 'SearchRestaurantRouteController',
-      }),
-    [routeSceneRuntime, selectRestaurantId]
-  );
-
-  return restaurantId;
-};

@@ -341,3 +341,5 @@ Progress:
 - the shared native sheet host is reused centrally
 - Search/Favorites/Polls/Profile produce overlay intents instead of owning overlay surfaces
 - route payload ownership is explicit and stack-local
+
+> **CORRECTION 2026-08-05 (F1496).** This line names `useActiveSearchRestaurantRouteRestaurantId()` as a live read path. It is no longer one: the hook had ZERO production consumers by 2026-08-05 (repo-wide grep found only this plan, one sibling plan, and the audit ledger) and was deleted in that pass. `applySearchRestaurantRouteCommand(...)` in `searchRestaurantRouteController.ts` is unaffected and remains the live command path. The sentence above describes the cutover's intent at authoring time; the read half did not survive later consolidation.
