@@ -11,7 +11,6 @@ export const useSearchRootMapHostPublicationAuthorityRuntime = ({
     hostLayerRuntime,
     (left, right) =>
       left.isInitialCameraReady === right.isInitialCameraReady &&
-      left.onProfilerRender === right.onProfilerRender &&
       left.markerEngineRef === right.markerEngineRef &&
       left.engineInputs === right.engineInputs &&
       left.hostConfig === right.hostConfig &&

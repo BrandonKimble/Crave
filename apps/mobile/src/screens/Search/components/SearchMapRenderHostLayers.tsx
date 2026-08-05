@@ -6,14 +6,11 @@ import styles from '../styles';
 import SearchMapWithMarkerEngine from './SearchMapWithMarkerEngine';
 export const SearchMapRenderHostLayers = React.memo(
   ({ hostLayerRuntime }: { hostLayerRuntime: SearchMapRenderHostLayerRuntime }) => {
-    const {
-      isInitialCameraReady,
-      onProfilerRender,
-      markerEngineRef,
-      engineInputs,
-      hostConfig,
-      presentationProps,
-    } = hostLayerRuntime;
+    const { isInitialCameraReady, markerEngineRef, engineInputs, hostConfig, presentationProps } =
+      hostLayerRuntime;
+    // F1618: read the callback off `hostConfig` — its one owner — instead of a duplicate
+    // top-level field that plumbed the identical value into the same composite twice.
+    const { onProfilerRender } = hostConfig;
 
     if (!onProfilerRender) {
       return (

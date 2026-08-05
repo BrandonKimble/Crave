@@ -65,7 +65,6 @@ export const useSearchRootMapSurfacePublicationRuntime = ({
       createSearchRootMapHostLayerRuntime({
         sessionCoreLane,
         stateFoundationLane,
-        mapPresentationRuntime,
         engineInputs,
         hostConfig,
         presentationProps,
@@ -73,7 +72,6 @@ export const useSearchRootMapSurfacePublicationRuntime = ({
     [
       engineInputs,
       hostConfig,
-      mapPresentationRuntime.onProfilerRender,
       presentationProps,
       sessionCoreLane.mapBootstrapRuntime.isInitialCameraReady,
       stateFoundationLane.rootPrimitivesRuntime.mapState.markerEngineRef,
