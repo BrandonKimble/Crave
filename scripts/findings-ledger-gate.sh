@@ -98,7 +98,14 @@ for entry in "${mapfile_lines[@]}"; do
     # Require a NEXT ACTION segment with non-trivial content after the
     # matching trailer. Take everything after the LAST "NEXT ACTION:" and
     # strip whitespace; require more than a few characters.
-    next_action="$(printf '%s' "$content" | grep -oE 'NEXT ACTION:.*$' | tail -1 | sed -E 's/^NEXT ACTION: ?//')"
+    # `|| true` IS LOAD-BEARING. Under `set -euo pipefail` a non-matching grep
+    # exits 1, fails the pipeline, and kills this script BEFORE the missing-
+    # NEXT-ACTION report below can name the offending row — so the gate exited
+    # 1 with ZERO output, indistinguishable from a crash. A gate that cannot
+    # say why it failed is the same disease as one that cannot fail at all.
+    # The tolerant form also accepts a parenthetical before the colon, e.g.
+    # `NEXT ACTION (question/options, spend semantics): ...`.
+    next_action="$(printf '%s' "$content" | grep -oE 'NEXT ACTION[^:]*:.*$' | tail -1 | sed -E 's/^NEXT ACTION[^:]*: ?//' || true)"
     next_action_trimmed="$(printf '%s' "$next_action" | sed -E 's/^[[:space:]]+|[[:space:]]+$//g')"
     if [[ -z "$next_action_trimmed" || "${#next_action_trimmed}" -lt 8 ]]; then
       missing_next_action+=("line ${line_no} (${fid}): STATUS: ${status_token} is OPEN-bucket but carries no discernible NEXT ACTION")
