@@ -13,7 +13,10 @@ import { LLMPost } from '../../external-integrations/llm/llm.types';
 import { ExtractionPipelineService } from './extraction-pipeline.service';
 import { CollectorSourceRegistryService } from './collector-source-registry.service';
 import { CollectionEvidenceService } from './collection-evidence.service';
-import { RedditGovernanceDenialError } from '../../external-integrations/reddit/reddit.exceptions';
+import {
+  RedditGovernanceDenialError,
+  RedditApiError,
+} from '../../external-integrations/reddit/reddit.exceptions';
 
 @Injectable()
 export class RedditBatchProcessingService implements OnModuleInit {
@@ -69,6 +72,7 @@ export class RedditBatchProcessingService implements OnModuleInit {
         posts: llmPosts,
         skippedDueToFreshness,
         skippedDueToDeltaThreshold,
+        skippedDueToFetchFailure,
         totalCandidates,
       } = await this.resolveLlmPosts(job, correlationId);
       const gatingDuration = Date.now() - gatingStart;
@@ -84,6 +88,7 @@ export class RedditBatchProcessingService implements OnModuleInit {
           processedPosts: llmPosts.length,
           skippedDueToFreshness,
           skippedDueToDeltaThreshold,
+          skippedDueToFetchFailure,
         },
       );
 
@@ -101,6 +106,7 @@ export class RedditBatchProcessingService implements OnModuleInit {
             totalCandidates,
             skippedDueToFreshness,
             skippedDueToDeltaThreshold,
+            skippedDueToFetchFailure,
           },
         );
 
@@ -129,15 +135,21 @@ export class RedditBatchProcessingService implements OnModuleInit {
           completedAt: new Date(),
           details: {
             warnings: [
+              // F1850: a fetch-failure skip is honesty-critical — it must
+              // never read like a freshness/delta gate decision (a
+              // DELIBERATE skip) when posts were actually LOST.
               skippedDueToFreshness + skippedDueToDeltaThreshold > 0
-                ? `Skipped batch: ${skippedDueToFreshness} fresh posts, ${skippedDueToDeltaThreshold} without enough new comments`
-                : 'Skipped batch: no eligible posts after gating',
+                ? `Skipped batch: ${skippedDueToFreshness} fresh posts, ${skippedDueToDeltaThreshold} without enough new comments${skippedDueToFetchFailure > 0 ? `, ${skippedDueToFetchFailure} fetch failures` : ''}`
+                : skippedDueToFetchFailure > 0
+                  ? `Skipped batch: ${skippedDueToFetchFailure} fetch failures, no eligible posts after gating`
+                  : 'Skipped batch: no eligible posts after gating',
             ],
             refetchGateSummary: {
               totalCandidates,
               processedPosts: 0,
               skippedDueToFreshness,
               skippedDueToDeltaThreshold,
+              skippedDueToFetchFailure,
             },
           },
         };
@@ -240,6 +252,7 @@ export class RedditBatchProcessingService implements OnModuleInit {
             processedPosts: llmPosts.length,
             skippedDueToFreshness,
             skippedDueToDeltaThreshold,
+            skippedDueToFetchFailure,
           },
         },
         rawMentionsSample: pipelineResult.rawMentionsSample,
@@ -353,6 +366,7 @@ export class RedditBatchProcessingService implements OnModuleInit {
     posts: LLMPost[];
     skippedDueToFreshness: number;
     skippedDueToDeltaThreshold: number;
+    skippedDueToFetchFailure: number;
     totalCandidates: number;
   }> {
     if (!this.refetchGateConfig) {
@@ -369,6 +383,7 @@ export class RedditBatchProcessingService implements OnModuleInit {
         posts: job.llmPosts,
         skippedDueToFreshness: 0,
         skippedDueToDeltaThreshold: 0,
+        skippedDueToFetchFailure: 0,
         totalCandidates: job.llmPosts.length,
       };
     }
@@ -391,6 +406,7 @@ export class RedditBatchProcessingService implements OnModuleInit {
         posts: [],
         skippedDueToFreshness,
         skippedDueToDeltaThreshold,
+        skippedDueToFetchFailure: 0,
         totalCandidates: job.postIds.length,
       };
     }
@@ -406,6 +422,17 @@ export class RedditBatchProcessingService implements OnModuleInit {
     });
 
     const llmPosts: LLMPost[] = [];
+    // F1850: a fetch failure used to be a bare `continue` — dropped with no
+    // counter and no durable record, indistinguishable from a legitimate
+    // freshness/delta skip. Mirrors the DECISIVE/TRANSIENT split already
+    // proven in `sweepOrphanCommentParents`
+    // (chronological-collection.worker.ts): a 404 / empty-payload / failed
+    // transform is a decisive "this post is gone" fact worth tombstoning;
+    // anything else (timeout, 5xx) is transient and left for a future
+    // listing to re-surface, per the reddit-collector's own log-and-move-on
+    // convention for transient errors.
+    let skippedDueToFetchFailure = 0;
+    const unfetchablePostIds: string[] = [];
 
     for (const postId of fetchPostIds) {
       try {
@@ -422,6 +449,8 @@ export class RedditBatchProcessingService implements OnModuleInit {
             postId,
             batchId: job.batchId,
           });
+          skippedDueToFetchFailure += 1;
+          unfetchablePostIds.push(postId);
           continue;
         }
 
@@ -436,6 +465,8 @@ export class RedditBatchProcessingService implements OnModuleInit {
             postId,
             batchId: job.batchId,
           });
+          skippedDueToFetchFailure += 1;
+          unfetchablePostIds.push(postId);
           continue;
         }
 
@@ -448,22 +479,67 @@ export class RedditBatchProcessingService implements OnModuleInit {
           // silent drops, no error branding).
           throw error;
         }
+        skippedDueToFetchFailure += 1;
+        const decisive =
+          error instanceof RedditApiError && error.statusCode === 404;
+        if (decisive) {
+          unfetchablePostIds.push(postId);
+        }
         this.logger.error(`Failed to retrieve post ${postId}`, {
           correlationId,
           postId,
           batchId: job.batchId,
           subreddit: job.subreddit,
+          decisive,
           error: error instanceof Error ? error.message : String(error),
         });
       }
+    }
+
+    if (unfetchablePostIds.length) {
+      await this.tombstoneUnfetchablePosts(unfetchablePostIds, correlationId);
     }
 
     return {
       posts: llmPosts,
       skippedDueToFreshness,
       skippedDueToDeltaThreshold,
+      skippedDueToFetchFailure,
       totalCandidates: job.postIds.length,
     };
+  }
+
+  /** F1850: decisive fetch failures (404 / empty payload / failed transform)
+   *  get the SAME honest tombstone `sweepOrphanCommentParents` already
+   *  proves out — a `keep=false` verdict so the loss is a durable, queryable
+   *  fact instead of a log line only `grep` can see. Best-effort: a
+   *  tombstone write failure never fails the batch (the counter above is
+   *  already the source of truth for THIS batch's reporting). */
+  private async tombstoneUnfetchablePosts(
+    postIds: string[],
+    correlationId: string,
+  ): Promise<void> {
+    await this.prismaService.collectionRelevanceVerdict
+      .createMany({
+        data: postIds.map((postId) => ({
+          platform: 'reddit',
+          postId,
+          keep: false,
+          reason: 'fetch_failed_decisive',
+          model: 'reddit-batch-fetch',
+          promptHash: null,
+        })),
+        skipDuplicates: true,
+      })
+      .catch((error: unknown) => {
+        this.logger.warn('Fetch-failure tombstone persistence failed', {
+          correlationId,
+          postIds: postIds.length,
+          error: {
+            message: error instanceof Error ? error.message : String(error),
+          },
+        });
+      });
   }
 
   private async determinePostFetchPlan(

@@ -10,7 +10,10 @@ jest.mock('p-limit', () => ({
 }));
 
 import { RedditBatchProcessingService } from './reddit-batch-processing.service';
-import { RedditGovernanceDenialError } from '../../external-integrations/reddit/reddit.exceptions';
+import {
+  RedditGovernanceDenialError,
+  RedditApiError,
+} from '../../external-integrations/reddit/reddit.exceptions';
 import type { BatchJob } from './batch-processing-queue.types';
 
 /**
@@ -36,6 +39,9 @@ function build() {
   const prismaService = {
     processedSource: {
       findMany: jest.fn().mockResolvedValue([]),
+    },
+    collectionRelevanceVerdict: {
+      createMany: jest.fn().mockResolvedValue({ count: 0 }),
     },
   };
   const rescoreCoordinator = { markDirty: jest.fn().mockResolvedValue(true) };
@@ -121,5 +127,81 @@ describe('RedditBatchProcessingService (§10 batch-side window proof)', () => {
     );
     // And nothing committed the window for an aborted batch.
     expect(h.sourceRegistry.commitPendingWindow).not.toHaveBeenCalled();
+  });
+
+  it('F1850 RED proof: a per-post fetch failure is reported, not silently dropped — "processed nothing" is distinguishable from "skipped by the gate"', async () => {
+    const h = build();
+    // A transient failure (no typed 404) — counted, but NOT tombstoned.
+    h.redditService.getCompletePostWithComments.mockRejectedValueOnce(
+      new Error('ECONNRESET'),
+    );
+    const result = await h.service.processBatch(
+      chronologicalJob(['p1']),
+      'corr-1',
+    );
+    expect(result.success).toBe(true);
+    expect(result.metrics.postsProcessed).toBe(0);
+    // The REVERTED defect returns this with no field at all — a naive
+    // reader cannot tell this apart from a legitimate freshness/delta skip.
+    expect(
+      result.details?.refetchGateSummary?.skippedDueToFetchFailure,
+    ).toBe(1);
+    expect(result.details?.warnings?.[0]).toMatch(/fetch failure/);
+    // Transient (non-404) failure: no durable tombstone — left for a future
+    // listing to re-surface, per the transient/decisive split.
+    expect(
+      h.prismaService.collectionRelevanceVerdict.createMany,
+    ).not.toHaveBeenCalled();
+  });
+
+  it('F1850: a DECISIVE fetch failure (404) is tombstoned via the same collectionRelevanceVerdict pattern sweepOrphanCommentParents proves out', async () => {
+    const h = build();
+    h.redditService.getCompletePostWithComments.mockRejectedValueOnce(
+      new RedditApiError('not found', 404),
+    );
+    const result = await h.service.processBatch(
+      chronologicalJob(['p1']),
+      'corr-1',
+    );
+    expect(
+      result.details?.refetchGateSummary?.skippedDueToFetchFailure,
+    ).toBe(1);
+    expect(
+      h.prismaService.collectionRelevanceVerdict.createMany,
+    ).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: [
+          expect.objectContaining({
+            platform: 'reddit',
+            postId: 'p1',
+            keep: false,
+            reason: 'fetch_failed_decisive',
+          }),
+        ],
+        skipDuplicates: true,
+      }),
+    );
+  });
+
+  it('F1850: an empty raw response (post gone from Reddit) is decisive and tombstoned', async () => {
+    const h = build();
+    h.redditService.getCompletePostWithComments.mockResolvedValueOnce({
+      rawResponse: [],
+      attribution: { postUrl: '' },
+    });
+    const result = await h.service.processBatch(
+      chronologicalJob(['p1']),
+      'corr-1',
+    );
+    expect(
+      result.details?.refetchGateSummary?.skippedDueToFetchFailure,
+    ).toBe(1);
+    expect(
+      h.prismaService.collectionRelevanceVerdict.createMany,
+    ).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: [expect.objectContaining({ postId: 'p1', keep: false })],
+      }),
+    );
   });
 });

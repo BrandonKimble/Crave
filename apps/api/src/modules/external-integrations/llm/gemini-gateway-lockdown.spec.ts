@@ -39,6 +39,21 @@ describe('Gemini gateway lockdown', () => {
   // production never ran — a fake measurement is worse than none.
   const files = [...walk(SRC_ROOT), ...walk(SCRIPTS_ROOT)];
 
+  // Callers whose rows are not generateContent requests (cache lifecycle
+  // tags, batch job accounting) have no generation profile by design.
+  const nonGeneration = new Set([
+    'llm.systemInstructionCache',
+    'llm.queryInstructionCache',
+    'llm.batchSystemCache',
+    'llm.callGeminiApi',
+    'gemini-batch.collection_extraction',
+    // F1811: the second real purpose this test's new registerIngestor scan
+    // caught — scripts/smoke-gemini-batch.ts's manual probe, a batch-job
+    // accounting tag, not a generateContent request. Same exemption class
+    // as collection_extraction above.
+    'gemini-batch.smoke_test',
+  ]);
+
   it('every usageCaller in the codebase has a caller profile', () => {
     // Two ways to make a Gemini GENERATION call: the internal option key
     // (usageCaller) and the public gateway (generateForCaller). Plain
@@ -58,15 +73,6 @@ describe('Gemini gateway lockdown', () => {
         seen.add(match[1]);
       }
     }
-    // Callers whose rows are not generateContent requests (cache lifecycle
-    // tags, batch job accounting) have no generation profile by design.
-    const nonGeneration = new Set([
-      'llm.systemInstructionCache',
-      'llm.queryInstructionCache',
-      'llm.batchSystemCache',
-      'llm.callGeminiApi',
-      'gemini-batch.collection_extraction',
-    ]);
     // Red team F2: the gate's caller was wrongly exempted here, which meant
     // deleting its profile kept CI green (the only guard left was a boot
     // crash). Generation callers are NEVER exempt.
@@ -75,6 +81,34 @@ describe('Gemini gateway lockdown', () => {
         !nonGeneration.has(caller) && !(caller in GEMINI_CALLER_PROFILES),
     );
     expect(unprofiled).toEqual([]);
+  });
+
+  it('every gemini-batch purpose has an explicit generation-exemption decision (F1811)', () => {
+    // F1811: `usageCaller:`/`generateForCaller(` above are QUOTED-STRING-ONLY
+    // regexes — gemini-batch.service.ts's ledger caller tag is a TEMPLATE
+    // LITERAL, `` caller: `gemini-batch.${purpose}` ``, invisible to both.
+    // Rather than widen those regexes to a fragile template-literal pattern,
+    // derive the actual set of registered batch purposes from the one
+    // greppable, always-literal call site — `registerIngestor('purpose', ...)`
+    // — and require EACH to appear in `nonGeneration` by name. A second
+    // purpose registered without updating the exemption set fails this test
+    // instead of silently escaping both completeness checks with zero CI
+    // signal, the same silent-drift shape the file's header docstring says
+    // killed the previous scanner generation.
+    const registeredPurposes = new Set<string>();
+    for (const file of files) {
+      const source = readFileSync(file, 'utf8');
+      for (const match of source.matchAll(
+        /registerIngestor\(\s*'([a-z0-9_.-]+)'/g,
+      )) {
+        registeredPurposes.add(match[1]);
+      }
+    }
+    expect(registeredPurposes.size).toBeGreaterThan(0);
+    const missingExemptionDecision = [...registeredPurposes]
+      .map((purpose) => `gemini-batch.${purpose}`)
+      .filter((caller) => !nonGeneration.has(caller));
+    expect(missingExemptionDecision).toEqual([]);
   });
 
   it('no profile is an orphan (a table entry with no live call site)', () => {

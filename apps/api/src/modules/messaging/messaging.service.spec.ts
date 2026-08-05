@@ -302,12 +302,68 @@ describe('unread + request derivation (§1.1/§2.4)', () => {
         ],
       }),
     ]);
-    prisma.message.count.mockResolvedValueOnce(3);
+    prisma.$queryRaw.mockResolvedValueOnce([
+      { conversation_id: CONVO, unread_count: 3n },
+    ]);
     const { conversations } = await service.listConversations(ME, {});
     expect(conversations[0].unreadCount).toBe(3);
-    const where = prisma.message.count.mock.calls[0][0].where;
-    expect(where.senderUserId).toEqual({ not: ME });
-    expect(where.createdAt).toEqual({ gt: cursor });
+  });
+
+  it('F1830 RED proof: decorateConversations issues exactly ONE aggregate query for the whole page, not one per row', async () => {
+    const OTHER1 = '11111111-1111-4111-8111-111111111111';
+    const OTHER2 = '22222222-2222-4222-8222-222222222222';
+    const CONVO1 = '33333333-3333-4333-8333-333333333333';
+    const CONVO2 = '44444444-4444-4444-8444-444444444444';
+    prisma.conversation.findMany.mockResolvedValueOnce([
+      conversation({
+        conversationId: CONVO1,
+        participants: [
+          participant(ME, { acceptedAt: new Date() }),
+          participant(OTHER1),
+        ],
+      }),
+      conversation({
+        conversationId: CONVO2,
+        participants: [
+          participant(ME, { acceptedAt: new Date() }),
+          participant(OTHER2),
+        ],
+      }),
+    ]);
+    // A REVERTED per-row fix would call `prisma.message.count` once per
+    // conversation (2x here); the fixed pipeline calls `$queryRaw` for the
+    // unread aggregate exactly once for the whole page.
+    prisma.$queryRaw.mockResolvedValueOnce([
+      { conversation_id: CONVO1, unread_count: 5n },
+      { conversation_id: CONVO2, unread_count: 2n },
+    ]);
+    const { conversations } = await service.listConversations(ME, {});
+    // Correct row mapping — a naive rewrite could zip results positionally
+    // instead of keying by conversation_id and silently swap counts.
+    const byId = new Map(conversations.map((c) => [c.conversationId, c]));
+    expect(byId.get(CONVO1)?.unreadCount).toBe(5);
+    expect(byId.get(CONVO2)?.unreadCount).toBe(2);
+    expect(prisma.message.count).not.toHaveBeenCalled();
+    // Exactly one $queryRaw call attributable to the unread aggregate for
+    // this page (listConversations issues no other raw query).
+    expect(prisma.$queryRaw).toHaveBeenCalledTimes(1);
+  });
+
+  it('F1830: a conversation absent from the aggregate result (no unread rows) maps to zero, not undefined/NaN', async () => {
+    const OTHER1 = '11111111-1111-4111-8111-111111111111';
+    const CONVO1 = '33333333-3333-4333-8333-333333333333';
+    prisma.conversation.findMany.mockResolvedValueOnce([
+      conversation({
+        conversationId: CONVO1,
+        participants: [
+          participant(ME, { acceptedAt: new Date() }),
+          participant(OTHER1),
+        ],
+      }),
+    ]);
+    prisma.$queryRaw.mockResolvedValueOnce([]);
+    const { conversations } = await service.listConversations(ME, {});
+    expect(conversations[0].unreadCount).toBe(0);
   });
 
   it('request-lane rule table', () => {

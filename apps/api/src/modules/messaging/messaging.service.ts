@@ -785,9 +785,57 @@ export class MessagingService {
     );
   }
 
-  /** Computes the derived DTO flags for a page of conversations in four
-   *  batched reads (blocks, follows, viewer-sent, last messages) + one
-   *  capped unread count per row. */
+  /** F1830: this used to run one `prisma.message.count()` PER ROW inside the
+   *  `rows.map` below — up to `limit + 1` extra round-trips per inbox page,
+   *  the same N+1 shape F660 cured for the badge. Reuses that fix's
+   *  `GROUP BY conversation_id` aggregate technique, keyed on THIS page's
+   *  `conversationIds` instead of the viewer's whole conversation set, and
+   *  preserves the `count({ take: UNREAD_DISPLAY_CAP })` cap semantics
+   *  exactly via `LEAST(count(*), ${UNREAD_DISPLAY_CAP})` — mathematically
+   *  identical to a DB-side `LIMIT`-bounded count, not a client-side cap. */
+  private async unreadCountsByConversation(
+    viewerUserId: string,
+    rows: ConversationWithParticipants[],
+  ): Promise<Map<string, number>> {
+    const conversationIds = rows.map((r) => r.conversationId);
+    // Per-conversation cursor: each row's OWN participant's lastReadMessageAt,
+    // not a single viewer-wide cutoff — mirrored via a VALUES join so the
+    // per-row cursor semantics of the original `message.count` are preserved.
+    const cursorRows: Array<{ conversation_id: string; cursor: Date | null }> =
+      rows.map((row) => ({
+        conversation_id: row.conversationId,
+        cursor:
+          row.participants.find((p) => p.userId === viewerUserId)
+            ?.lastReadMessageAt ?? null,
+      }));
+    if (conversationIds.length === 0) return new Map();
+    const unreadRows = await this.prisma.$queryRaw<
+      Array<{ conversation_id: string; unread_count: bigint }>
+    >`
+      SELECT m.conversation_id, LEAST(count(*), ${UNREAD_DISPLAY_CAP}) AS unread_count
+      FROM messages m
+      JOIN (
+        SELECT *
+        FROM jsonb_to_recordset(${JSON.stringify(cursorRows)}::jsonb)
+          AS t(conversation_id uuid, cursor timestamptz)
+      ) cursors
+        ON cursors.conversation_id = m.conversation_id
+      WHERE m.conversation_id = ANY(${conversationIds}::uuid[])
+        AND m.sender_user_id <> ${viewerUserId}::uuid
+        AND (
+          cursors.cursor IS NULL
+          OR m.created_at > cursors.cursor
+        )
+      GROUP BY m.conversation_id
+    `;
+    return new Map(
+      unreadRows.map((r) => [r.conversation_id, Number(r.unread_count)]),
+    );
+  }
+
+  /** Computes the derived DTO flags for a page of conversations in five
+   *  batched reads (blocks, follows, viewer-sent, last messages, and the
+   *  F1830 unread-count aggregate) — no per-row queries. */
   private async decorateConversations(
     viewerUserId: string,
     rows: ConversationWithParticipants[],
@@ -798,7 +846,7 @@ export class MessagingService {
       .map((r) => r.participants.find((p) => p.userId !== viewerUserId)?.userId)
       .filter((id): id is string => id != null);
 
-    const [blockedPeers, follows, viewerSentRows, lastMessages] =
+    const [blockedPeers, follows, viewerSentRows, lastMessages, unreadCounts] =
       await Promise.all([
         this.blocks.blockedPeerIds(viewerUserId),
         this.prisma.userFollow.findMany({
@@ -825,6 +873,7 @@ export class MessagingService {
             },
           },
         }),
+        this.unreadCountsByConversation(viewerUserId, rows),
       ]);
     const followsSet = new Set(follows.map((f) => f.followingUserId));
     const viewerSentSet = new Set(viewerSentRows.map((m) => m.conversationId));
@@ -844,17 +893,8 @@ export class MessagingService {
           throw new NotFoundException('Conversation not found');
         }
         // §2.4 unread derivation: inbound messages newer than the cursor,
-        // capped for display.
-        const unreadCount = await this.prisma.message.count({
-          where: {
-            conversationId: row.conversationId,
-            senderUserId: { not: viewerUserId },
-            ...(viewerParticipant.lastReadMessageAt
-              ? { createdAt: { gt: viewerParticipant.lastReadMessageAt } }
-              : {}),
-          },
-          take: UNREAD_DISPLAY_CAP,
-        });
+        // capped for display — read from the batched aggregate above.
+        const unreadCount = unreadCounts.get(row.conversationId) ?? 0;
         const lastMessageRow = row.lastMessageId
           ? (lastMessageById.get(row.lastMessageId) ?? null)
           : null;

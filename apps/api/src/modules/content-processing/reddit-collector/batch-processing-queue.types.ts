@@ -162,6 +162,11 @@ export interface BatchProcessingResult {
       processedPosts: number;
       skippedDueToFreshness: number;
       skippedDueToDeltaThreshold: number;
+      /** F1850: posts whose fetch/transform FAILED (transient error, 404,
+       *  empty raw response, or failed LLM transform) and were dropped from
+       *  this batch — distinct from a legitimate freshness/delta skip, which
+       *  is a deliberate gate decision, not a failure. */
+      skippedDueToFetchFailure: number;
     };
   };
 
