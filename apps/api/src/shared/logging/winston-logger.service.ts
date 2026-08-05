@@ -9,6 +9,7 @@ import {
 } from '../types/error-interfaces';
 import { LoggerService, LogMetadata } from './logger.interface';
 import { createWinstonConfig } from './winston.config';
+import { isSensitiveKey } from './redaction';
 
 @Injectable()
 export class WinstonLoggerService extends LoggerService {
@@ -257,18 +258,12 @@ export class WinstonLoggerService extends LoggerService {
       merged.context = this.contextName;
     }
 
-    const sensitiveFields = [
-      'password',
-      'token',
-      'secret',
-      'key',
-      'authorization',
-      'cookie',
-      'session',
-    ];
-
-    sensitiveFields.forEach((field) => {
-      if (field in merged) {
+    // F416: was an EXACT-key-match denylist (`password`/`token`/`secret`/
+    // `key`/`authorization`/`cookie`/`session`) — `apiKey`, `accessToken`,
+    // `clientSecret`, `sessionId` etc. all passed through verbatim.
+    // Case-insensitive substring match catches the whole family.
+    Object.keys(merged).forEach((field) => {
+      if (isSensitiveKey(field)) {
         merged[field] = '[REDACTED]';
       }
     });
@@ -302,18 +297,9 @@ export class WinstonLoggerService extends LoggerService {
     }
 
     const sanitized = { ...(obj as Record<string, unknown>) };
-    const sensitiveFields = [
-      'password',
-      'token',
-      'secret',
-      'key',
-      'authorization',
-      'cookie',
-      'session',
-    ];
 
-    sensitiveFields.forEach((field) => {
-      if (field in sanitized) {
+    Object.keys(sanitized).forEach((field) => {
+      if (isSensitiveKey(field)) {
         sanitized[field] = '[REDACTED]';
       }
     });

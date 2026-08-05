@@ -102,40 +102,11 @@ export class CorrelationUtils {
     };
   }
 
-  /**
-   * Extract user ID from JWT token in headers
-   */
-  static extractUserIdFromToken(
-    headers: Record<string, string | string[]>,
-  ): string | undefined {
-    const authorization = Array.isArray(headers.authorization)
-      ? headers.authorization[0]
-      : headers.authorization;
-
-    if (!authorization || !authorization.startsWith('Bearer ')) {
-      return undefined;
-    }
-
-    try {
-      // Extract JWT payload (this is a simplified version)
-      // In production, you'd use proper JWT verification
-      const token = authorization.substring(7);
-      const payloadStr = Buffer.from(token.split('.')[1], 'base64').toString();
-      const payload = JSON.parse(payloadStr) as Record<string, unknown>;
-
-      const sub = payload.sub;
-      const userId = payload.userId;
-
-      if (typeof sub === 'string') {
-        return sub;
-      }
-      if (typeof userId === 'string') {
-        return userId;
-      }
-
-      return undefined;
-    } catch {
-      return undefined;
-    }
-  }
+  // extractUserIdFromToken was deleted (F408, 2026-08-04): it base64-decoded
+  // the JWT payload segment with NO signature verification and stamped the
+  // result into every request log line — an attacker could author an
+  // arbitrary `Authorization: Bearer x.<base64 json>.x` and forge the
+  // server's own audit trail. The only trustworthy userId is the one
+  // ClerkAuthGuard verified and placed on `request.user.userId`; callers now
+  // read that directly (see LoggingInterceptor / GlobalExceptionFilter).
 }

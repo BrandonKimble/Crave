@@ -8,6 +8,7 @@ import { Observable } from 'rxjs';
 import { FastifyRequest, FastifyReply } from 'fastify';
 import { LoggerService } from './logger.interface';
 import { CorrelationUtils, RequestContext } from './correlation.utils';
+import { redactSensitiveDeep } from './redaction';
 
 /**
  * Logging interceptor for HTTP requests and responses
@@ -35,10 +36,11 @@ export class LoggingInterceptor implements NestInterceptor {
         request.ip,
       );
 
-    // Extract user ID from JWT if present
-    const userId = CorrelationUtils.extractUserIdFromToken(
-      request.headers as Record<string, string>,
-    );
+    // Populate userId from the VERIFIED identity ClerkAuthGuard placed on
+    // the request (guards run before interceptors in the Nest lifecycle).
+    // F408: this used to decode the raw JWT payload with no signature
+    // verification, letting any caller forge the userId in every log line.
+    const userId = (request as { user?: { userId?: string } }).user?.userId;
     if (userId) {
       requestContext.userId = userId;
     }
@@ -190,23 +192,17 @@ export class LoggingInterceptor implements NestInterceptor {
   private sanitizeBody(body: unknown): unknown {
     if (!body || typeof body !== 'object') return body;
 
-    const sanitized = { ...(body as Record<string, unknown>) };
-    const sensitiveFields = [
-      'password',
-      'token',
-      'secret',
-      'key',
-      'authorization',
-      'creditCard',
-      'ssn',
-      'email',
-    ];
-
-    sensitiveFields.forEach((field) => {
-      if (field in sanitized && sanitized[field]) {
-        sanitized[field] = '[REDACTED]';
-      }
-    });
+    // F416: was a TOP-LEVEL-ONLY exact-key match — a nested credential
+    // (or any user-authored content one level down: poll comments,
+    // messages, photo captions, list names) landed in the log stream, and
+    // post-F400 in Sentry `extra` too. `redactSensitiveDeep` recurses and
+    // matches case-insensitive substrings, same rule as the winston logger.
+    const sanitized = redactSensitiveDeep(body) as Record<string, unknown>;
+    // `email` isn't a credential but was historically redacted here too —
+    // keep that PII-minimization behavior at the top level.
+    if ('email' in sanitized && sanitized.email) {
+      sanitized.email = '[REDACTED]';
+    }
 
     return sanitized;
   }
