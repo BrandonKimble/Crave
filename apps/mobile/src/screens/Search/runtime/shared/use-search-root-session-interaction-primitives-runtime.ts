@@ -19,9 +19,6 @@ export const useSearchRootSessionInteractionPrimitivesRuntime = ({
   });
   const anySheetDraggingRef = React.useRef(false);
   const lastSearchRequestIdRef = React.useRef<string | null>(null);
-  const searchSurfaceRedrawCommitSpanPressureByOperationRef = React.useRef<Map<string, number>>(
-    new Map()
-  );
 
   const getPerfNow = React.useCallback(() => {
     if (typeof performance?.now === 'function') {
@@ -57,7 +54,6 @@ export const useSearchRootSessionInteractionPrimitivesRuntime = ({
       searchInteractionRef,
       anySheetDraggingRef,
       lastSearchRequestIdRef,
-      searchSurfaceRedrawCommitSpanPressureByOperationRef,
       getPerfNow,
       readRuntimeMemoryDiagnostics,
       resetShortcutCoverageState,

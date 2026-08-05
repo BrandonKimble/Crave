@@ -37,6 +37,8 @@ export const useSearchRuntimeRootStateCommitTelemetryRuntime = ({
   resultsPage: number | null;
 }): void => {
   void resultsPresentationSurfaceAuthority;
+  // F1735: the bus was only read for the deleted redraw-coordinator fields.
+  void searchRuntimeBus;
   const rootStateCommitSnapshotRef = React.useRef<SearchRootStateCommitSnapshot | null>(null);
   const latestRootFieldsRef = React.useRef({
     activeOverlayKey,
@@ -67,7 +69,6 @@ export const useSearchRuntimeRootStateCommitTelemetryRuntime = ({
       rootStateCommitSnapshotRef.current = null;
       return;
     }
-    const runtimeState = searchRuntimeBus.getState();
     const presentationSnapshot = resultsPresentationAuthority.getSnapshot();
     const latestRootFields = latestRootFieldsRef.current;
     const snapshot: SearchRootStateCommitSnapshot = {
@@ -101,8 +102,10 @@ export const useSearchRuntimeRootStateCommitTelemetryRuntime = ({
     emitRuntimeMechanismEvent('runtime_write_span', {
       domain: 'root_state_commit',
       label: 'search_root_state_commit',
-      operationId: runtimeState.searchSurfaceRedrawOperationId,
-      phase: runtimeState.searchSurfaceRedrawPhase,
+      // F1735: the redraw-coordinator bus fields are deleted (structural fossil);
+      // these only ever carried the permanent idle values.
+      operationId: null,
+      phase: 'idle',
       changedKeys,
       snapshot,
     });
@@ -110,7 +113,6 @@ export const useSearchRuntimeRootStateCommitTelemetryRuntime = ({
     emitRuntimeMechanismEvent,
     getActiveScenarioRunNumber,
     resultsPresentationAuthority,
-    searchRuntimeBus,
   ]);
 
   React.useEffect(() => {

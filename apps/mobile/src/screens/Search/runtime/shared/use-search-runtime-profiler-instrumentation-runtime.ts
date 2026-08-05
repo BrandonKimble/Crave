@@ -9,8 +9,6 @@ import {
 import { usePerfScenarioRuntimeStore } from '../../../../perf/perf-scenario-runtime-store';
 import { getActiveSearchNavSwitchAttributionProbe } from './search-nav-switch-perf-probe';
 import { logSearchProfilerSpan } from './search-runtime-profiler-log-runtime';
-import { applySearchSurfaceRedrawCommitSpanPressure } from './search-runtime-profiler-pressure-runtime';
-import type { SearchSurfaceRedrawCoordinatorLike } from './use-search-runtime-instrumentation-runtime-contract';
 
 const JS_FLOOR_PROBE_PROFILER_SPAN_LOG_MODE =
   process.env.EXPO_PUBLIC_PERF_SHORTCUT_PROBE_PROFILER_SPAN_LOG === '1';
@@ -50,8 +48,6 @@ type UseSearchRuntimeProfilerInstrumentationRuntimeArgs = {
   getPerfNow: () => number;
   getActiveScenarioRunNumber: () => number | null;
   resolveProfilerStageHint: () => string;
-  searchSurfaceRedrawCommitSpanPressureByOperationRef: React.MutableRefObject<Map<string, number>>;
-  searchSurfaceRedrawCoordinatorRef: React.MutableRefObject<SearchSurfaceRedrawCoordinatorLike>;
   searchMode: 'natural' | 'shortcut' | null;
   scenarioRunId: string | null;
 };
@@ -60,8 +56,6 @@ export const useSearchRuntimeProfilerInstrumentationRuntime = ({
   getPerfNow,
   getActiveScenarioRunNumber,
   resolveProfilerStageHint,
-  searchSurfaceRedrawCommitSpanPressureByOperationRef,
-  searchSurfaceRedrawCoordinatorRef,
   searchMode,
   scenarioRunId,
 }: UseSearchRuntimeProfilerInstrumentationRuntimeArgs): React.ProfilerOnRenderCallback | null => {
@@ -89,14 +83,6 @@ export const useSearchRuntimeProfilerInstrumentationRuntime = ({
         const commitSpanMs = Math.max(0, commitTime - startTime);
         const stageHint = resolveProfilerStageHint();
         const nowMs = getPerfNow();
-        applySearchSurfaceRedrawCommitSpanPressure({
-          id,
-          commitSpanMs,
-          resolvedRunNumber,
-          getPerfNow,
-          searchSurfaceRedrawCommitSpanPressureByOperationRef,
-          searchSurfaceRedrawCoordinatorRef,
-        });
         logSearchProfilerSpan({
           id,
           phase,
@@ -121,7 +107,6 @@ export const useSearchRuntimeProfilerInstrumentationRuntime = ({
             stageHint,
           })
         ) {
-          const handoffSnapshot = searchSurfaceRedrawCoordinatorRef.current.getSnapshot();
           logPerfScenarioAttributionEvent('Profiler', activeScenarioConfig, {
             event: 'scenario_profiler_span',
             id,
@@ -134,10 +119,12 @@ export const useSearchRuntimeProfilerInstrumentationRuntime = ({
             commitTimeMs: Number(commitTime.toFixed(3)),
             nowMs: Number(nowMs.toFixed(3)),
             searchMode,
-            handoffOperationId: handoffSnapshot.operationId,
-            handoffPhase: handoffSnapshot.phase,
-            handoffSeq: handoffSnapshot.seq,
-            handoffPage: handoffSnapshot.page,
+            // F1735: the redraw coordinator is deleted (structural fossil); these
+            // handoff fields only ever carried its permanent idle snapshot.
+            handoffOperationId: null,
+            handoffPhase: 'idle',
+            handoffSeq: null,
+            handoffPage: null,
           });
         }
       }
@@ -147,8 +134,6 @@ export const useSearchRuntimeProfilerInstrumentationRuntime = ({
       getActiveScenarioRunNumber,
       getPerfNow,
       resolveProfilerStageHint,
-      searchSurfaceRedrawCommitSpanPressureByOperationRef,
-      searchSurfaceRedrawCoordinatorRef,
       searchMode,
       scenarioRunId,
     ]

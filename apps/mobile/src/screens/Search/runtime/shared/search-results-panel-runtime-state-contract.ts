@@ -1,5 +1,4 @@
 import type { SearchResponse } from '../../../../types';
-import type { SearchSurfaceRedrawPhase } from '../controller/search-surface-redraw-phase';
 import type { ResultsPresentationReadModel } from './results-presentation-runtime-contract';
 import type { SearchFreezeClassification } from './search-freeze-classification-runtime';
 
@@ -39,13 +38,13 @@ export type SearchResultsPanelFiltersRuntimeState = {
   isPriceSelectorVisible: boolean;
 };
 
+/** F1735: the redraw-coordinator phase machine was a structural fossil (pinned at
+ *  'idle'), so the former SearchSurfaceRedrawPhase channel collapses to this two-valued
+ *  body-admission handoff derived from the surface authority's results identity. */
+export type SearchResultsBodyAdmissionHandoffPhase = 'idle' | 'markers_ready';
+
 export type SearchResultsPanelHydrationRuntimeState = {
-  searchSurfaceRedrawPhase: SearchSurfaceRedrawPhase;
-  rawSearchSurfaceRedrawPhase: SearchSurfaceRedrawPhase;
-  getRawSearchSurfaceRedrawPhase: () => SearchSurfaceRedrawPhase;
-  getAllowHydrationFinalizeCommit: () => boolean;
-  searchSurfaceRedrawCommitSpanPressureActive: boolean;
-  isSearchSurfaceRedrawChromeDeferred: boolean;
+  searchSurfaceRedrawPhase: SearchResultsBodyAdmissionHandoffPhase;
   chromeFreezeClassification: SearchFreezeClassification;
 };
 

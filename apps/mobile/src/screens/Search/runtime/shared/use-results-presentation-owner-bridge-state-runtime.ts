@@ -1,12 +1,9 @@
-import type React from 'react';
-
 import type { ResultsPresentationLog } from './results-presentation-runtime-contract';
 import type { ResultsPresentationAuthority } from './results-presentation-authority';
 import type { ResultsPresentationSurfaceAuthority } from './results-presentation-surface-authority';
 import type { SearchMapSourceFramePort } from '../map/search-map-source-frame-port';
 import type { SearchRuntimeBus } from './search-runtime-bus';
 import { useResultsPresentationOwnerBridgeRuntime } from './use-results-presentation-owner-bridge-runtime';
-import type { SearchSurfaceRedrawCoordinator } from '../controller/search-surface-redraw-coordinator';
 
 type UseResultsPresentationOwnerBridgeStateRuntimeArgs = {
   setActiveTab: (next: 'dishes' | 'restaurants') => void;
@@ -16,8 +13,6 @@ type UseResultsPresentationOwnerBridgeStateRuntimeArgs = {
   resultsPresentationSurfaceAuthority: ResultsPresentationSurfaceAuthority;
   searchMapSourceFramePort: SearchMapSourceFramePort;
   log: ResultsPresentationLog;
-  searchSurfaceRedrawCoordinatorRef: React.MutableRefObject<SearchSurfaceRedrawCoordinator>;
-  emitRuntimeMechanismEvent: (event: string, payload: Record<string, unknown>) => void;
 };
 
 export type ResultsPresentationOwnerBridgeStateRuntime = ReturnType<
@@ -32,8 +27,6 @@ export const useResultsPresentationOwnerBridgeStateRuntime = ({
   resultsPresentationSurfaceAuthority,
   searchMapSourceFramePort,
   log,
-  searchSurfaceRedrawCoordinatorRef,
-  emitRuntimeMechanismEvent,
 }: UseResultsPresentationOwnerBridgeStateRuntimeArgs): ResultsPresentationOwnerBridgeStateRuntime =>
   useResultsPresentationOwnerBridgeRuntime({
     setActiveTab,
@@ -43,6 +36,4 @@ export const useResultsPresentationOwnerBridgeStateRuntime = ({
     resultsPresentationSurfaceAuthority,
     searchMapSourceFramePort,
     log,
-    searchSurfaceRedrawCoordinatorRef,
-    emitRuntimeMechanismEvent,
   });

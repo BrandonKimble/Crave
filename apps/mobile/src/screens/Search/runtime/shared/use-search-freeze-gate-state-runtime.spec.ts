@@ -4,15 +4,14 @@ import { useSearchFreezeGateStateRuntime } from './use-search-freeze-gate-state-
 
 jest.mock('react', () => createReactHookHarnessModuleMock());
 
+// F1735: the gate reports only the live response-frame freeze — the surface-redraw
+// booleans it used to carry were pinned false by construction and are deleted.
 describe('useSearchFreezeGateStateRuntime', () => {
   it('reports the freeze edge published after the first render (never a boot-time sample)', () => {
     const bus = new SearchRuntimeBus();
     const harness = mountHook(() => useSearchFreezeGateStateRuntime(bus));
 
     expect(harness.latest()).toEqual({
-      isSearchSurfaceRedrawChromeFreezeActive: false,
-      isSearchSurfaceRedrawPreflightFreezeActive: false,
-      isSearchSurfaceRedrawActive: false,
       isResponseFrameFreezeActive: false,
       freezeClassification: 'none',
     });
@@ -21,20 +20,11 @@ describe('useSearchFreezeGateStateRuntime', () => {
 
     expect(harness.dirtyCount()).toBeGreaterThan(0);
     expect(harness.render()).toEqual({
-      isSearchSurfaceRedrawChromeFreezeActive: false,
-      isSearchSurfaceRedrawPreflightFreezeActive: false,
-      isSearchSurfaceRedrawActive: false,
       isResponseFrameFreezeActive: true,
       freezeClassification: 'recovery',
     });
 
-    bus.publish({ isSearchSurfaceRedrawChromeFreezeActive: true });
-    expect(harness.render().isSearchSurfaceRedrawChromeFreezeActive).toBe(true);
-
-    bus.publish({
-      isResponseFrameFreezeActive: false,
-      isSearchSurfaceRedrawChromeFreezeActive: false,
-    });
+    bus.publish({ isResponseFrameFreezeActive: false });
     expect(harness.render().freezeClassification).toBe('none');
 
     harness.unmount();
@@ -47,7 +37,7 @@ describe('useSearchFreezeGateStateRuntime', () => {
     const first = harness.latest();
     expect(harness.render()).toBe(first);
 
-    bus.publish({ isSearchSurfaceRedrawActive: true });
+    bus.publish({ isResponseFrameFreezeActive: true });
     const afterEdge = harness.render();
     expect(afterEdge).not.toBe(first);
     expect(harness.render()).toBe(afterEdge);

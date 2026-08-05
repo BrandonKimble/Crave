@@ -36,9 +36,6 @@ export const useSearchRootRouteSearchSceneHeaderPolicyRuntime = ({
   });
   const routeSearchSceneChromeFreezeRuntime = useSearchRootSearchSceneChromeFreezeRuntime({
     searchResultsRuntimeState: routeSearchSceneDataStateRuntime.routeSearchSceneResultsRuntimeState,
-    searchHydrationRuntimeState:
-      routeSearchSceneDataStateRuntime.routeSearchSceneHydrationRuntimeState,
-    resolvedResultsRuntime: routeSearchSceneDataStateRuntime.routeSearchSceneResolvedResultsRuntime,
     filtersHeaderRuntime: routeSearchSceneFiltersHeaderRuntime,
     effectiveFiltersHeaderHeight: routeSearchSceneHeaderLayoutRuntime.effectiveFiltersHeaderHeight,
   });

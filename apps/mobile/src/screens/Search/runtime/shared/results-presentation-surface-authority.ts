@@ -22,7 +22,6 @@ export type ResultsPresentationSurfaceAuthoritySnapshot = {
   resultsPreparedRowsKey: string | null;
   listPreparedRowsReady: boolean;
   isResultsHydrationSettled: boolean;
-  allowHydrationFinalizeCommit: boolean;
   searchSurfaceResultsTransactionKey: string | null;
   preparedRows: ResultsPresentationSurfacePreparedRowsSnapshot;
 };
@@ -73,7 +72,6 @@ const INITIAL_RESULTS_PRESENTATION_SURFACE_AUTHORITY_SNAPSHOT: ResultsPresentati
     resultsPreparedRowsKey: null,
     listPreparedRowsReady: false,
     isResultsHydrationSettled: true,
-    allowHydrationFinalizeCommit: true,
     searchSurfaceResultsTransactionKey: null,
     preparedRows: EMPTY_PREPARED_ROWS,
   };
@@ -272,7 +270,6 @@ export class ResultsPresentationSurfaceAuthority {
         resultsRequestKey: this.snapshot.resultsRequestKey,
         resultsIdentityKey: this.snapshot.resultsIdentityKey,
         hydratedResultsKey: this.snapshot.hydratedResultsKey,
-        allowHydrationFinalizeCommit: this.snapshot.allowHydrationFinalizeCommit,
         searchSurfaceResultsTransactionKey: this.snapshot.searchSurfaceResultsTransactionKey,
         preparedRowsReadyKey: this.snapshot.preparedRows.readyResultsIdentityKey,
       },

@@ -7,28 +7,9 @@ import type {
   ResultsPresentationReadModel,
   ResultsPresentationTransportState,
 } from './results-presentation-runtime-contract';
-import type { SearchSurfaceRedrawPhase } from '../controller/search-surface-redraw-phase';
 import type { ResultsPresentationAuthority } from './results-presentation-authority';
 import type { ResultsPresentationSurfaceAuthority } from './results-presentation-surface-authority';
 import type { SearchRuntimeBus } from './search-runtime-bus';
-
-export type SearchSurfaceRedrawCoordinatorLike = {
-  getSnapshot: () => {
-    operationId: string | null;
-    phase: SearchSurfaceRedrawPhase;
-    seq: number | null;
-    page: number | null;
-  };
-  advancePhase: (phase: SearchSurfaceRedrawPhase, payload?: Record<string, unknown>) => void;
-  subscribe: (
-    listener: (snapshot: {
-      operationId: string | null;
-      phase: SearchSurfaceRedrawPhase;
-      seq: number | null;
-      page: number | null;
-    }) => void
-  ) => () => void;
-};
 
 export type SearchRootStateCommitSnapshot = {
   searchMode: 'natural' | 'shortcut' | null;
@@ -84,8 +65,6 @@ export type UseSearchRuntimeInstrumentationRuntimeArgs = {
   searchRuntimeBus: SearchRuntimeBus;
   resultsPresentationAuthority: ResultsPresentationAuthority;
   resultsPresentationSurfaceAuthority: ResultsPresentationSurfaceAuthority;
-  searchSurfaceRedrawCoordinatorRef: React.MutableRefObject<SearchSurfaceRedrawCoordinatorLike>;
-  searchSurfaceRedrawCommitSpanPressureByOperationRef: React.MutableRefObject<Map<string, number>>;
   isSearchRequestLoadingRef: React.MutableRefObject<boolean>;
   readRuntimeMemoryDiagnostics: () => unknown;
   isSearchSessionActive: boolean;

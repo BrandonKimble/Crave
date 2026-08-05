@@ -19,9 +19,9 @@ export const useSearchRootSuggestionRuntime = ({
   rootSessionPrimitivesLane,
   rootDataPlaneRuntime,
 }: UseSearchRootSuggestionRuntimeArgs) => {
+  // F1735: the two redraw freeze flags this folded in were pinned false by construction
+  // (fossil coordinator); the response-frame freeze is the live input.
   const shouldFreezeSuggestionDisplayForSearchSurfaceRedraw =
-    rootDataPlaneRuntime.freezeGate.isSearchSurfaceRedrawChromeFreezeActive ||
-    rootDataPlaneRuntime.freezeGate.isSearchSurfaceRedrawPreflightFreezeActive ||
     rootDataPlaneRuntime.freezeGate.isResponseFrameFreezeActive;
   const suggestionPresentationPlaneRuntime = useSearchSuggestionPresentationPlaneRuntime({
     searchInteractionRef: rootSessionPrimitivesLane.primitives.searchInteractionRef,

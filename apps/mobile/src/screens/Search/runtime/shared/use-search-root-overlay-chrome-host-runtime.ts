@@ -205,10 +205,9 @@ export const useSearchRootOverlayChromeHostRuntime = ({
     ]
   );
   const runOneFreezeGate = stateFoundationLane.rootDataPlaneRuntime.freezeGate;
-  const isRunOneFreezeActive =
-    runOneFreezeGate.isSearchSurfaceRedrawChromeFreezeActive ||
-    runOneFreezeGate.isSearchSurfaceRedrawPreflightFreezeActive ||
-    runOneFreezeGate.isResponseFrameFreezeActive;
+  // F1735: the two redraw freeze flags this folded in were pinned false by construction
+  // (fossil coordinator); the response-frame freeze is the live input.
+  const isRunOneFreezeActive = runOneFreezeGate.isResponseFrameFreezeActive;
   const chromeFrameSnapshot = React.useMemo<SearchOverlayChromeFrameSnapshot>(
     () => ({
       isFocused: appEntryPlaneRuntime.isFocused,

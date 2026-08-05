@@ -7,7 +7,6 @@ import type {
   SearchMapMarkerEnterStartedPayload,
   SearchMapMarkerEnterSettledPayload,
 } from './search-map-protocol-contract';
-import type { SearchSurfaceRedrawCoordinator } from '../controller/search-surface-redraw-coordinator';
 import { searchMapRenderController } from '../map/search-map-render-controller';
 import {
   getSearchSurfaceRuntime,
@@ -38,16 +37,8 @@ type ExecutionBatchRef = NonNullable<ReturnType<typeof toExecutionBatchRef>>;
 
 export const useResultsPresentationMarkerEnterRuntime = ({
   runtimeMachineRef,
-  searchSurfaceRedrawCoordinatorRef,
-  flushPendingMarkerEnterSettled,
-  setPendingMarkerEnterSettled,
 }: {
   runtimeMachineRef: React.MutableRefObject<ResultsPresentationRuntimeMachine | null>;
-  searchSurfaceRedrawCoordinatorRef: React.MutableRefObject<SearchSurfaceRedrawCoordinator>;
-  flushPendingMarkerEnterSettled: () => boolean;
-  setPendingMarkerEnterSettled: (
-    pending: { operationId: string; payload: SearchMapMarkerEnterSettledPayload } | null
-  ) => void;
 }) => {
   const pendingMarkerEnterStartRef = React.useRef<{
     requestKey: string;
@@ -184,27 +175,12 @@ export const useResultsPresentationMarkerEnterRuntime = ({
       if (executionBatch == null) {
         return;
       }
-      if (!runtimeMachineRef.current!.markEnterBatchSettled(payload.requestKey, executionBatch)) {
-        return;
-      }
-      const coordinatorSnapshot = searchSurfaceRedrawCoordinatorRef.current.getSnapshot();
-      const operationId = coordinatorSnapshot.operationId;
-      if (!operationId || coordinatorSnapshot.phase === 'idle') {
-        setPendingMarkerEnterSettled(null);
-        return;
-      }
-      setPendingMarkerEnterSettled({
-        operationId,
-        payload,
-      });
-      flushPendingMarkerEnterSettled();
+      // F1735: the redraw-coordinator settle hand-off that used to follow this was a
+      // structural fossil — the coordinator's operationId was always null, so the pending
+      // settle was unconditionally discarded. The machine mark is the whole live effect.
+      runtimeMachineRef.current!.markEnterBatchSettled(payload.requestKey, executionBatch);
     },
-    [
-      flushPendingMarkerEnterSettled,
-      searchSurfaceRedrawCoordinatorRef,
-      runtimeMachineRef,
-      setPendingMarkerEnterSettled,
-    ]
+    [runtimeMachineRef]
   );
 
   return {

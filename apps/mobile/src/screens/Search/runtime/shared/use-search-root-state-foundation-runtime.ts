@@ -28,7 +28,6 @@ export const useSearchRootStateFoundationRuntime = ({
   const rootDataPlaneRuntime = useSearchRootDataPlaneRuntime({
     isSignedIn,
     rootSessionCoreLane: sessionCoreLane,
-    rootSessionPrimitivesLane: sessionPrimitivesLane,
     foregroundPolicyPublicationAuthority,
   });
   const rootSuggestionRuntime = useSearchRootSuggestionRuntime({

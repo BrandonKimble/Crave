@@ -11,7 +11,6 @@ import type {
   ProfileTransitionStatus,
   RestaurantPanelSnapshot,
 } from '../../../../navigation/runtime/app-route-profile-transition-state-contract';
-import type { SearchSurfaceRedrawPhase } from '../controller/search-surface-redraw-phase';
 import {
   IDLE_TOGGLE_INTERACTION_STATE,
   type ToggleInteractionState,
@@ -76,7 +75,6 @@ export type SearchRuntimeBusState = {
   toggleInteraction: ToggleInteractionState;
   shouldRetrySearchOnReconnect: boolean;
   hasSystemStatusBanner: boolean;
-  searchSurfaceRedrawCommitSpanPressureActive: boolean;
   activeTab: SearchRuntimeActiveTab;
   preferredActiveTab: SearchRuntimeActiveTab;
   hasActiveTabPreference: boolean;
@@ -92,14 +90,9 @@ export type SearchRuntimeBusState = {
   hasMoreRestaurants: boolean;
   isPaginationExhausted: boolean;
   resultsRequestKey: string | null;
-  // Surface-redraw-derived fields (bridged from SearchSurfaceRedrawCoordinator)
-  searchSurfaceRedrawPhase: SearchSurfaceRedrawPhase;
-  searchSurfaceRedrawOperationId: string | null;
-  isSearchSurfaceRedrawActive: boolean;
-  isSearchSurfaceRedrawPreflightFreezeActive: boolean;
-  isSearchSurfaceRedrawChromeFreezeActive: boolean;
-  isChromeDeferred: boolean;
-  searchSurfaceRedrawSelectionFeedbackOperationId: string | null;
+  // F1735: the surface-redraw coordinator fields that used to be bridged here were a
+  // structural fossil — the coordinator could never leave 'idle', so every field was
+  // pinned at its idle value. The whole channel is deleted.
   // Freeze gate fields (moved from useState hooks to bus for fewer re-renders)
   isResponseFrameFreezeActive: boolean;
   isSubmitChromePriming: boolean;
@@ -133,7 +126,6 @@ type SearchRuntimeBusDiagnosticEntry = {
   batchDepth: number;
   version: number;
   presentingPhase: SearchPresentingPhase;
-  searchSurfaceRedrawPhase: SearchSurfaceRedrawPhase;
   resultsPresentationStage: string | null;
   stack?: string[];
 };
@@ -173,7 +165,6 @@ const INITIAL_STATE: SearchRuntimeBusState = {
   toggleInteraction: IDLE_TOGGLE_INTERACTION_STATE,
   shouldRetrySearchOnReconnect: false,
   hasSystemStatusBanner: false,
-  searchSurfaceRedrawCommitSpanPressureActive: false,
   activeTab: 'dishes',
   preferredActiveTab: 'dishes',
   hasActiveTabPreference: false,
@@ -186,13 +177,6 @@ const INITIAL_STATE: SearchRuntimeBusState = {
   hasMoreRestaurants: false,
   isPaginationExhausted: false,
   resultsRequestKey: null,
-  searchSurfaceRedrawPhase: 'idle',
-  searchSurfaceRedrawOperationId: null,
-  isSearchSurfaceRedrawActive: false,
-  isSearchSurfaceRedrawPreflightFreezeActive: false,
-  isSearchSurfaceRedrawChromeFreezeActive: false,
-  isChromeDeferred: false,
-  searchSurfaceRedrawSelectionFeedbackOperationId: null,
   isResponseFrameFreezeActive: false,
   isSubmitChromePriming: false,
   profileShellState: IDLE_PROFILE_SHELL_STATE,
@@ -202,12 +186,7 @@ const resolveSearchRuntimeBusPolicyFactsSnapshot = (
   state: SearchRuntimeBusState
 ): SearchRuntimeBusPolicyFactsSnapshot => ({
   ...resolveResultsPresentationFreezePolicyFacts({
-    isSearchSurfaceRedrawChromeFreezeActive: state.isSearchSurfaceRedrawChromeFreezeActive,
-    isSearchSurfaceRedrawPreflightFreezeActive: state.isSearchSurfaceRedrawPreflightFreezeActive,
-    isSearchSurfaceRedrawActive: state.isSearchSurfaceRedrawActive,
     isResponseFrameFreezeActive: state.isResponseFrameFreezeActive,
-    isChromeDeferred: state.isChromeDeferred,
-    searchSurfaceRedrawCommitSpanPressureActive: state.searchSurfaceRedrawCommitSpanPressureActive,
   }),
 });
 
@@ -386,7 +365,6 @@ export class SearchRuntimeBus {
               ? undefined
               : notifiedListenerLabels.slice(0, 16),
           presentingPhase: this.state.presentingPhase,
-          searchSurfaceRedrawPhase: this.state.searchSurfaceRedrawPhase,
           resultsPresentationStage: null,
         },
       });
@@ -405,7 +383,6 @@ export class SearchRuntimeBus {
       batchDepth: this.batchDepth,
       version: this.version,
       presentingPhase: this.state.presentingPhase,
-      searchSurfaceRedrawPhase: this.state.searchSurfaceRedrawPhase,
       resultsPresentationStage: null,
     });
     if (this.diagnosticsRing.length > 32) {

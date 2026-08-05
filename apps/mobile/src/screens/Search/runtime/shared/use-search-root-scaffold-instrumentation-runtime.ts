@@ -45,12 +45,6 @@ export const useSearchRootScaffoldInstrumentationRuntime = ({
     searchRuntimeBus: rootSessionCoreLane.searchRuntimeBus,
     resultsPresentationAuthority: rootSessionCoreLane.resultsPresentationAuthority,
     resultsPresentationSurfaceAuthority: rootSessionCoreLane.resultsPresentationSurfaceAuthority,
-    searchSurfaceRedrawCoordinatorRef:
-      rootSessionCoreLane.searchSurfaceRedrawCoordinatorRef as Parameters<
-        typeof useSearchRuntimeInstrumentationRuntime
-      >[0]['searchSurfaceRedrawCoordinatorRef'],
-    searchSurfaceRedrawCommitSpanPressureByOperationRef:
-      rootSessionPrimitivesLane.primitives.searchSurfaceRedrawCommitSpanPressureByOperationRef,
     isSearchRequestLoadingRef: rootDataPlaneRuntime.runtimeFlags.isSearchRequestLoadingRef,
     readRuntimeMemoryDiagnostics: rootSessionPrimitivesLane.primitives.readRuntimeMemoryDiagnostics,
     isSearchSessionActive: rootDataPlaneRuntime.runtimeFlags.isSearchSessionActive,

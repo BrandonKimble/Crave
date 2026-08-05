@@ -30,17 +30,6 @@ export const useSearchRootRouteSearchSceneSelectorResultsRuntime = ({
       routeSearchSceneDataRuntime.routeSearchSceneHydrationKeyRuntime.shouldHydrateResultsForRender,
     searchSurfaceRedrawPhase:
       routeSearchSceneDataRuntime.routeSearchSceneHydrationRuntimeState.searchSurfaceRedrawPhase,
-    rawSearchSurfaceRedrawPhase:
-      routeSearchSceneDataRuntime.routeSearchSceneHydrationRuntimeState.rawSearchSurfaceRedrawPhase,
-    getRawSearchSurfaceRedrawPhase:
-      routeSearchSceneDataRuntime.routeSearchSceneHydrationRuntimeState
-        .getRawSearchSurfaceRedrawPhase,
-    getAllowHydrationFinalizeCommit:
-      routeSearchSceneDataRuntime.routeSearchSceneHydrationRuntimeState
-        .getAllowHydrationFinalizeCommit,
-    searchSurfaceRedrawCommitSpanPressureActive:
-      routeSearchSceneDataRuntime.routeSearchSceneHydrationRuntimeState
-        .searchSurfaceRedrawCommitSpanPressureActive,
     canLoadMore: routeSearchSceneDataRuntime.routeSearchSceneResultsRuntimeState.canLoadMore,
     isLoadingMore: routeSearchSceneDataRuntime.routeSearchSceneResultsRuntimeState.isLoadingMore,
     onDemandNotice: routeSearchSceneDataRuntime.routeSearchSceneOnDemandNotice,

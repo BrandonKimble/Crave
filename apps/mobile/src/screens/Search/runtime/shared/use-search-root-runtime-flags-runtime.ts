@@ -12,7 +12,7 @@ import type {
 type UseSearchRootRuntimeFlagsRuntimeArgs = {
   rootSessionCoreLane: Pick<
     SearchRootSessionCoreLane,
-    'searchRuntimeBus' | 'searchSurfaceRedrawCoordinatorRef'
+    'searchRuntimeBus'
   >;
   resultsArrivalState: Pick<SearchRootResultsArrivalState, 'resultsRequestKey'>;
   foregroundPolicyPublicationAuthority: SearchForegroundPolicyPublicationAuthority;
@@ -37,7 +37,6 @@ export const useSearchRootRuntimeFlagsRuntime = ({
     'root_runtime_flags'
   );
   const { searchMode, isSearchSessionActive } = runtimeFlagsState;
-  const searchSurfaceRedrawOperationId = searchRuntimeBus.getState().searchSurfaceRedrawOperationId;
 
   const isSearchRequestLoadingRef = React.useRef(false);
   const setSearchRequestLoading = React.useCallback(
@@ -64,17 +63,17 @@ export const useSearchRootRuntimeFlagsRuntime = ({
     () => ({
         searchMode,
         isSearchSessionActive,
-        searchSurfaceRedrawOperationId,
         isSearchLoading: isSearchRequestLoadingRef.current,
         isSearchRequestLoadingRef,
         setSearchRequestLoading,
-        hydrationOperationId:
-          searchSurfaceRedrawOperationId ?? resultsArrivalState.resultsRequestKey,
+        // F1735/F1032(b): the redraw-coordinator operationId could never be non-null, so
+        // the old redraw-operation-id-or-request-key fallback always resolved
+        // to the results request key — now stated directly.
+        hydrationOperationId: resultsArrivalState.resultsRequestKey,
       }),
     [
       isSearchSessionActive,
       resultsArrivalState.resultsRequestKey,
-      searchSurfaceRedrawOperationId,
       searchMode,
       setSearchRequestLoading,
     ]

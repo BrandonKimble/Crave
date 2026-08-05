@@ -1,5 +1,3 @@
-import type React from 'react';
-
 import type { ResultsPresentationLog } from './results-presentation-runtime-contract';
 import type { ResultsPresentationAuthority } from './results-presentation-authority';
 import type { ResultsPresentationSurfaceAuthority } from './results-presentation-surface-authority';
@@ -16,7 +14,6 @@ import {
   useResultsPresentationOwnerShellStateRuntime,
   type ResultsPresentationOwnerShellStateRuntime,
 } from './use-results-presentation-owner-shell-state-runtime';
-import type { SearchSurfaceRedrawCoordinator } from '../controller/search-surface-redraw-coordinator';
 
 export type ResultsPresentationOwnerStateSessionRuntime = {
   bridgeStateRuntime: ResultsPresentationOwnerBridgeStateRuntime;
@@ -41,8 +38,6 @@ export const useResultsPresentationOwnerStateSessionRuntime = ({
   resultsPresentationSurfaceAuthority,
   searchMapSourceFramePort,
   log,
-  searchSurfaceRedrawCoordinatorRef,
-  emitRuntimeMechanismEvent,
   onSearchSheetContentLaneChanged,
 }: {
   setActiveTab: (next: 'dishes' | 'restaurants') => void;
@@ -70,8 +65,6 @@ export const useResultsPresentationOwnerStateSessionRuntime = ({
   resultsPresentationSurfaceAuthority: ResultsPresentationSurfaceAuthority;
   searchMapSourceFramePort: SearchMapSourceFramePort;
   log: ResultsPresentationLog;
-  searchSurfaceRedrawCoordinatorRef: React.MutableRefObject<SearchSurfaceRedrawCoordinator>;
-  emitRuntimeMechanismEvent: (event: string, payload: Record<string, unknown>) => void;
   onSearchSheetContentLaneChanged?: (change: ResultsPresentationPolicyFactsLaneChange) => void;
 }): ResultsPresentationOwnerStateSessionRuntime => {
   const bridgeStateRuntime = useResultsPresentationOwnerBridgeStateRuntime({
@@ -82,9 +75,7 @@ export const useResultsPresentationOwnerStateSessionRuntime = ({
     resultsPresentationSurfaceAuthority,
     searchMapSourceFramePort,
     log,
-    searchSurfaceRedrawCoordinatorRef,
-    emitRuntimeMechanismEvent,
-  });
+      });
 
   const shellStateRuntime = useResultsPresentationOwnerShellStateRuntime({
     query,

@@ -1,28 +1,14 @@
 export type SearchFreezeClassification = 'none' | 'recovery' | 'close-handoff';
 
+/** F1735: the five surface-redraw inputs this used to fold in (chrome/preflight freeze,
+ *  active, chrome-deferred, commit-span pressure) were pinned false by construction —
+ *  the redraw coordinator could never leave 'idle'. Response-frame freeze is the one
+ *  live recovery input. */
 export const resolveSearchRecoveryFreezeClassification = ({
-  isSearchSurfaceRedrawChromeFreezeActive,
-  isSearchSurfaceRedrawPreflightFreezeActive,
-  isSearchSurfaceRedrawActive,
   isResponseFrameFreezeActive,
-  isChromeDeferred = false,
-  searchSurfaceRedrawCommitSpanPressureActive = false,
 }: {
-  isSearchSurfaceRedrawChromeFreezeActive?: boolean;
-  isSearchSurfaceRedrawPreflightFreezeActive?: boolean;
-  isSearchSurfaceRedrawActive?: boolean;
   isResponseFrameFreezeActive?: boolean;
-  isChromeDeferred?: boolean;
-  searchSurfaceRedrawCommitSpanPressureActive?: boolean;
-}): SearchFreezeClassification =>
-  isSearchSurfaceRedrawChromeFreezeActive ||
-  isSearchSurfaceRedrawPreflightFreezeActive ||
-  isSearchSurfaceRedrawActive ||
-  isResponseFrameFreezeActive ||
-  isChromeDeferred ||
-  searchSurfaceRedrawCommitSpanPressureActive
-    ? 'recovery'
-    : 'none';
+}): SearchFreezeClassification => (isResponseFrameFreezeActive ? 'recovery' : 'none');
 
 export const resolveSearchCloseHandoffFreezeClassification = ({
   isCloseHandoffActive,

@@ -61,10 +61,7 @@ export const useSearchRootSessionServicesFoundationRuntime = ({
     setMapCameraAnimation: rootPrimitivesRuntime.mapState.setMapCameraAnimation,
   });
   const sessionServicesRuntime = useSearchRuntimeSessionServicesRuntime();
-  const workCoordinationRuntime = useSearchRuntimeWorkCoordinationRuntime({
-    resultsPresentationSurfaceAuthority,
-    searchRuntimeBus,
-  });
+  const workCoordinationRuntime = useSearchRuntimeWorkCoordinationRuntime();
   const busRuntime = React.useMemo(
     () => ({
       searchRuntimeBus,

@@ -1,33 +1,23 @@
 import React from 'react';
 
-import type { SearchSurfaceRedrawCoordinator } from '../controller/search-surface-redraw-coordinator';
 import type { ResultsPresentationRuntimeMachine } from './results-presentation-runtime-machine';
 import { useResultsPresentationMarkerEnterRuntime } from './use-results-presentation-marker-enter-runtime';
-import { useResultsPresentationMarkerEnterSettleRuntime } from './use-results-presentation-marker-enter-settle-runtime';
 import { useResultsPresentationMarkerExitRuntime } from './use-results-presentation-marker-exit-runtime';
 
 type UseResultsPresentationMarkerRuntimeArgs = {
   runtimeMachineRef: React.MutableRefObject<ResultsPresentationRuntimeMachine | null>;
-  searchSurfaceRedrawCoordinatorRef: React.MutableRefObject<SearchSurfaceRedrawCoordinator>;
-  emitRuntimeMechanismEvent: (event: string, payload: Record<string, unknown>) => void;
   markSearchSheetCloseMapExitSettledRef: React.MutableRefObject<(requestKey: string) => void>;
 };
 
 export const useResultsPresentationMarkerRuntime = ({
   runtimeMachineRef,
-  searchSurfaceRedrawCoordinatorRef,
-  emitRuntimeMechanismEvent,
   markSearchSheetCloseMapExitSettledRef,
 }: UseResultsPresentationMarkerRuntimeArgs) => {
-  const markerEnterSettleRuntime = useResultsPresentationMarkerEnterSettleRuntime({
-    searchSurfaceRedrawCoordinatorRef,
-    emitRuntimeMechanismEvent,
-  });
+  // F1735: the marker-enter settle hand-off runtime (redraw-coordinator consumer) is
+  // deleted with the coordinator — it could never accept a settle (operationId was
+  // always null).
   const markerEnterRuntime = useResultsPresentationMarkerEnterRuntime({
     runtimeMachineRef,
-    searchSurfaceRedrawCoordinatorRef,
-    flushPendingMarkerEnterSettled: markerEnterSettleRuntime.flushPendingMarkerEnterSettled,
-    setPendingMarkerEnterSettled: markerEnterSettleRuntime.setPendingMarkerEnterSettled,
   });
   const markerExitRuntime = useResultsPresentationMarkerExitRuntime({
     runtimeMachineRef,

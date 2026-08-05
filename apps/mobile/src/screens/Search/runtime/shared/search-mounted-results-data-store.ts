@@ -36,7 +36,10 @@ import {
   resolveSearchResultsBodyAdmission,
   resolveSearchResultsBodyAdmissionPreparationRows,
 } from './search-results-body-admission-controller';
-import type { SearchSurfaceRedrawPhase } from '../controller/search-surface-redraw-phase';
+/** F1735: the redraw coordinator is deleted (structural fossil, pinned at 'idle').
+ *  The store's phase key survives as a two-valued admission label so view keys keep
+ *  their shape: 'idle' (no admission) or 'redraw_committed' (mounted-rows admission). */
+type SearchSurfaceRedrawPhase = 'idle' | 'redraw_committed';
 import { RESULTS_BOTTOM_PADDING } from '../../constants/search';
 import { getResultsPresentationSurfaceAuthority } from './results-presentation-surface-authority';
 import type { SearchRuntimeBus } from './search-runtime-bus';
@@ -1446,7 +1449,8 @@ export const useSearchMountedResultsBodyAuthorityOwner = ({
         isResultsHydrationSettled: true,
         searchSurfaceResultsTransactionKey: bodyRuntimeSnapshot.searchSurfaceResultsTransactionKey,
         resultsIdentityKey: runtimeState.resultsIdentityKey ?? null,
-        searchSurfaceRedrawPhase: runtimeState.searchSurfaceRedrawPhase,
+        // F1735: the bus phase was pinned 'idle' by construction; the field is deleted.
+        searchSurfaceRedrawPhase: 'idle',
         shouldHydrateResultsForRender: runtimeState.shouldHydrateResultsForRender ?? false,
       });
     };
@@ -1454,7 +1458,7 @@ export const useSearchMountedResultsBodyAuthorityOwner = ({
     publishRuntimeSnapshot();
     return searchRuntimeBus.subscribe(
       publishRuntimeSnapshot,
-      ['activeTab', 'searchSurfaceRedrawPhase'] as const,
+      ['activeTab'] as const,
       'mounted_results_body_authority'
     );
   }, [searchRuntimeBus]);

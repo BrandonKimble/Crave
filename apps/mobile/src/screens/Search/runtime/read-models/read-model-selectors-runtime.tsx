@@ -4,20 +4,16 @@ import type { FlashListProps } from '@shopify/flash-list';
 
 import type { FoodResult, RestaurantResult, SearchResponse } from '../../../../types';
 import type { RestaurantResultCardDescriptor } from '../../components/restaurant-result-card-descriptor';
-import {
-  isSearchSurfaceRedrawVisibleAdmissionPhase,
-  type SearchSurfaceRedrawPhase,
-} from '../controller/search-surface-redraw-phase';
 import type {
   SearchRouteResultsPolicyExactMatchWriterFacet,
   SearchRouteResultsPolicyReadModelProjectionFacet,
 } from '../shared/search-route-results-policy-domain-contract';
+import type { SearchResultsBodyAdmissionHandoffPhase } from '../shared/search-results-panel-runtime-state-contract';
 import type { PhaseBMaterializer } from '../scheduler/phase-b-materializer';
 import { commitSearchMountedResultsPreparedRowsTarget } from '../shared/search-mounted-results-data-store';
 import type { ResultsListItem } from './list-read-model-builder';
 import { useSearchResultsExactMatchStateRuntime } from './use-search-results-exact-match-state-runtime';
 import { useSearchResultsFlashListPolicyRuntime } from './use-search-results-flash-list-policy-runtime';
-import { useSearchResultsHydrationCommitPolicyRuntime } from './use-search-results-hydration-commit-policy-runtime';
 import { useSearchResultsHydrationKeyApplyRuntime } from './use-search-results-hydration-key-apply-runtime';
 import { useSearchResultsHydrationKeyCommitEmissionRuntime } from './use-search-results-hydration-key-commit-emission-runtime';
 import { useSearchResultsHydrationOperationIdRuntime } from './use-search-results-hydration-operation-id-runtime';
@@ -41,11 +37,7 @@ type UseSearchResultsReadModelSelectorsArgs = {
   results: SearchResponse | null;
   isInteractionLoadingActive: boolean;
   shouldHydrateResultsForRender: boolean;
-  searchSurfaceRedrawPhase: SearchSurfaceRedrawPhase;
-  rawSearchSurfaceRedrawPhase: SearchSurfaceRedrawPhase;
-  getRawSearchSurfaceRedrawPhase?: () => SearchSurfaceRedrawPhase;
-  getAllowHydrationFinalizeCommit?: () => boolean;
-  searchSurfaceRedrawCommitSpanPressureActive: boolean;
+  searchSurfaceRedrawPhase: SearchResultsBodyAdmissionHandoffPhase;
   canLoadMore: boolean;
   isLoadingMore: boolean;
   onDemandNotice: React.ReactNode;
@@ -116,10 +108,6 @@ export const useSearchResultsReadModelSelectors = (
     isInteractionLoadingActive,
     shouldHydrateResultsForRender,
     searchSurfaceRedrawPhase,
-    rawSearchSurfaceRedrawPhase,
-    getRawSearchSurfaceRedrawPhase,
-    getAllowHydrationFinalizeCommit,
-    searchSurfaceRedrawCommitSpanPressureActive,
     canLoadMore,
     isLoadingMore,
     onDemandNotice,
@@ -183,7 +171,6 @@ export const useSearchResultsReadModelSelectors = (
     results,
     resultsIdentityKey,
     shouldHydrateResultsForRender,
-    searchSurfaceRedrawCommitSpanPressureActive,
     emitRuntimeWriteSpan,
     projectionStateRuntime: resultsProjectionRuntime,
   });
@@ -198,11 +185,6 @@ export const useSearchResultsReadModelSelectors = (
     resultsIdentityKey,
     activeOverlayKey,
     settleStateRuntime: hydrationSettleStateRuntime,
-  });
-  const hydrationCommitPolicyRuntime = useSearchResultsHydrationCommitPolicyRuntime({
-    activeOverlayKey,
-    getAllowHydrationFinalizeCommit,
-    resultsIdentityKey,
   });
   const applyHydrationKey = useSearchResultsHydrationKeyApplyRuntime({
     setHydratedResultsKeySync,
@@ -220,34 +202,18 @@ export const useSearchResultsReadModelSelectors = (
     },
     [applyHydrationKey, emitHydrationKeyCommit]
   );
+  // F1735: the redraw-coordinator gates that used to condition these (raw phase past
+  // visible admission; the hydration-finalize allowance) were pinned at their permissive
+  // values by construction — the coordinator could never leave 'idle'. The live gate is
+  // the sheet interaction state.
   const canFinalizeRowsRelease = React.useCallback(() => {
     const interactionState = searchInteractionRef.current;
-    const latestRawSearchSurfaceRedrawPhase =
-      getRawSearchSurfaceRedrawPhase?.() ?? rawSearchSurfaceRedrawPhase;
-    const latestAllowHydrationFinalizeCommit = getAllowHydrationFinalizeCommit?.() ?? true;
-    const isPastVisibleAdmissionPhase = !isSearchSurfaceRedrawVisibleAdmissionPhase(
-      latestRawSearchSurfaceRedrawPhase
-    );
     return (
-      latestAllowHydrationFinalizeCommit &&
-      isPastVisibleAdmissionPhase &&
       interactionState.isResultsSheetDragging !== true &&
       interactionState.isResultsSheetSettling !== true
     );
-  }, [
-    getAllowHydrationFinalizeCommit,
-    getRawSearchSurfaceRedrawPhase,
-    rawSearchSurfaceRedrawPhase,
-    searchInteractionRef,
-  ]);
-  const canCommitHydrationKey = React.useCallback(() => {
-    const interactionState = searchInteractionRef.current;
-    return (
-      (getAllowHydrationFinalizeCommit?.() ?? true) &&
-      interactionState.isResultsSheetDragging !== true &&
-      interactionState.isResultsSheetSettling !== true
-    );
-  }, [getAllowHydrationFinalizeCommit, searchInteractionRef]);
+  }, [searchInteractionRef]);
+  const canCommitHydrationKey = canFinalizeRowsRelease;
   const onFinalizeRowsReleaseReady = React.useCallback(() => {
     commitSearchMountedResultsPreparedRowsTarget({
       resultsIdentityKey,
@@ -260,7 +226,9 @@ export const useSearchResultsReadModelSelectors = (
     resultsIdentityKey,
     hydratedResultsKey,
     activeOverlayKey,
-    shouldResetHydrationCommit: hydrationCommitPolicyRuntime.shouldResetHydrationCommit,
+    // F1735: the reset condition required the hydration-finalize allowance to be false, which
+    // the fossil coordinator could never produce — pinned false.
+    shouldResetHydrationCommit: false,
     phaseBMaterializerRef,
     resolveOperationId: resolveHydrationOperationId,
     commitHydrationKey,

@@ -11,7 +11,6 @@ import { useSearchRequestStatusRuntime } from './use-search-request-status-runti
 import { useSearchFilterStateRuntime } from './use-search-filter-state-runtime';
 import { useSearchFreezeGateRuntime } from './use-search-freeze-gate-runtime';
 import { useSearchHistoryRuntime } from './use-search-history-runtime';
-import type { SearchSurfaceRedrawCoordinator } from '../controller/search-surface-redraw-coordinator';
 import type { CameraIntentArbiter } from '../map/camera-intent-arbiter';
 import type { CameraSnapshot } from '../../../../navigation/runtime/app-route-profile-transition-state-contract';
 import type { PhaseBMaterializer } from '../scheduler/phase-b-materializer';
@@ -66,7 +65,6 @@ export type SearchRuntimePrimitivesRuntime = {
   searchInteractionRef: React.MutableRefObject<SearchRuntimeInteractionState>;
   anySheetDraggingRef: React.MutableRefObject<boolean>;
   lastSearchRequestIdRef: React.MutableRefObject<string | null>;
-  searchSurfaceRedrawCommitSpanPressureByOperationRef: React.MutableRefObject<Map<string, number>>;
   getPerfNow: () => number;
   /** F1334: `null` means "this platform exposes no JS-heap diagnostics", not "not implemented
    *  yet". Typed as an OPTION rather than as the literal `null` so consumers must handle the
@@ -91,7 +89,6 @@ export type SearchRootResultsArrivalState = {
 export type SearchRootRuntimeFlagsRuntime = {
   searchMode: 'natural' | 'shortcut' | null;
   isSearchSessionActive: boolean;
-  searchSurfaceRedrawOperationId: string | null;
   isSearchLoading: boolean;
   isSearchRequestLoadingRef: React.MutableRefObject<boolean>;
   setSearchRequestLoading: (isLoadingNext: boolean) => void;
@@ -144,7 +141,6 @@ export type SearchRootSessionCoreLane = {
   latestBoundsRef: React.MutableRefObject<MapBounds | null>;
   cameraIntentArbiter: CameraIntentArbiter;
   runtimeWorkSchedulerRef: React.MutableRefObject<RuntimeWorkScheduler>;
-  searchSurfaceRedrawCoordinatorRef: React.MutableRefObject<SearchSurfaceRedrawCoordinator>;
   phaseBMaterializerRef: React.MutableRefObject<PhaseBMaterializer>;
 };
 

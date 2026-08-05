@@ -1,5 +1,3 @@
-import type React from 'react';
-
 import type { ResultsPresentationLog } from './results-presentation-runtime-contract';
 import type { ResultsPresentationAuthority } from './results-presentation-authority';
 import type { ResultsPresentationSurfaceAuthority } from './results-presentation-surface-authority';
@@ -15,7 +13,6 @@ import {
   useResultsPresentationOwnerStateTransitionRuntime,
   type ResultsPresentationOwnerStateTransitionRuntime,
 } from './use-results-presentation-owner-state-transition-runtime';
-import type { SearchSurfaceRedrawCoordinator } from '../controller/search-surface-redraw-coordinator';
 import type { ResultsPresentationPolicyFactsLaneChange } from './results-presentation-policy-facts-controller';
 import type { RouteSceneSwitchAuthority } from './route-authority-contract';
 
@@ -47,8 +44,6 @@ export type UseResultsPresentationOwnerStateRuntimeArgs = {
   resultsPresentationSurfaceAuthority: ResultsPresentationSurfaceAuthority;
   searchMapSourceFramePort: SearchMapSourceFramePort;
   log: ResultsPresentationLog;
-  searchSurfaceRedrawCoordinatorRef: React.MutableRefObject<SearchSurfaceRedrawCoordinator>;
-  emitRuntimeMechanismEvent: (event: string, payload: Record<string, unknown>) => void;
   routeSceneVisibilityPolicyRuntime: RouteSceneVisibilityPolicyRuntime;
   onSearchSheetContentLaneChanged?: (change: ResultsPresentationPolicyFactsLaneChange) => void;
 };
@@ -78,8 +73,6 @@ export const useResultsPresentationOwnerStateRuntime = ({
   resultsPresentationSurfaceAuthority,
   searchMapSourceFramePort,
   log,
-  searchSurfaceRedrawCoordinatorRef,
-  emitRuntimeMechanismEvent,
   routeSceneVisibilityPolicyRuntime,
   onSearchSheetContentLaneChanged,
 }: UseResultsPresentationOwnerStateRuntimeArgs): ResultsPresentationOwnerStateRuntime => {
@@ -101,9 +94,7 @@ export const useResultsPresentationOwnerStateRuntime = ({
     resultsPresentationSurfaceAuthority,
     searchMapSourceFramePort,
     log,
-    searchSurfaceRedrawCoordinatorRef,
-    emitRuntimeMechanismEvent,
-    onSearchSheetContentLaneChanged,
+        onSearchSheetContentLaneChanged,
   });
 
   const transitionRuntime = useResultsPresentationOwnerStateTransitionRuntime({

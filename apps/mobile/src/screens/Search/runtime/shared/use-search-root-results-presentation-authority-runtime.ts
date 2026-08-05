@@ -137,10 +137,6 @@ export const useSearchRootResultsPresentationAuthorityRuntime = ({
     resultsPresentationSurfaceAuthority: sessionCoreLane.resultsPresentationSurfaceAuthority,
     searchMapSourceFramePort: sessionCoreLane.searchMapSourceFramePort,
     log: logControlPresentationDiag,
-    searchSurfaceRedrawCoordinatorRef: sessionCoreLane.searchSurfaceRedrawCoordinatorRef,
-    emitRuntimeMechanismEvent: rootInstrumentationRuntime.emitRuntimeMechanismEvent as Parameters<
-      typeof useResultsPresentationOwner
-    >[0]['emitRuntimeMechanismEvent'],
     resultsSheetRuntime: appRouteSharedSheetRuntimeOwner,
     clearTypedQuery: clearRestoreAuthorityRuntime.clearOwner.clearTypedQuery,
     clearSearchState: clearRestoreAuthorityRuntime.clearOwner.clearSearchState,

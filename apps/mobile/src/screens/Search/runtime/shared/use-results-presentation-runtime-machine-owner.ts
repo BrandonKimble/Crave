@@ -7,7 +7,6 @@ import type { SearchMapSourceFramePort } from '../map/search-map-source-frame-po
 import { type SearchRuntimeBus } from './search-runtime-bus';
 import type { ResultsPresentationRuntimeOwner } from './results-presentation-runtime-owner-contract';
 import type { ToggleInteractionLifecycleEvent } from './results-toggle-interaction-contract';
-import type { SearchSurfaceRedrawCoordinator } from '../controller/search-surface-redraw-coordinator';
 import { useResultsPresentationMachineCoreRuntime } from './use-results-presentation-machine-core-runtime';
 import { useResultsPresentationMarkerRuntime } from './use-results-presentation-marker-runtime';
 import { useResultsPresentationSurfaceTransactionRuntime } from './use-results-presentation-surface-transaction-runtime';
@@ -38,8 +37,6 @@ export type UseResultsPresentationRuntimeMachineOwnerArgs = {
   resultsPresentationSurfaceAuthority: ResultsPresentationSurfaceAuthority;
   searchMapSourceFramePort: SearchMapSourceFramePort;
   log: ResultsPresentationLog;
-  searchSurfaceRedrawCoordinatorRef: React.MutableRefObject<SearchSurfaceRedrawCoordinator>;
-  emitRuntimeMechanismEvent: (event: string, payload: Record<string, unknown>) => void;
   markSearchSheetCloseMapExitSettledRef: React.MutableRefObject<(requestKey: string) => void>;
   notifyIntentCompleteRef: React.MutableRefObject<((intentId: string) => void) | null>;
 };
@@ -50,8 +47,6 @@ export const useResultsPresentationRuntimeMachineOwner = ({
   resultsPresentationSurfaceAuthority,
   searchMapSourceFramePort,
   log,
-  searchSurfaceRedrawCoordinatorRef,
-  emitRuntimeMechanismEvent,
   markSearchSheetCloseMapExitSettledRef,
   notifyIntentCompleteRef,
 }: UseResultsPresentationRuntimeMachineOwnerArgs): ResultsPresentationRuntimeMachineOwner => {
@@ -72,8 +67,6 @@ export const useResultsPresentationRuntimeMachineOwner = ({
 
   const markerRuntime = useResultsPresentationMarkerRuntime({
     runtimeMachineRef: machineCoreRuntime.runtimeMachineRef,
-    searchSurfaceRedrawCoordinatorRef,
-    emitRuntimeMechanismEvent,
     markSearchSheetCloseMapExitSettledRef,
   });
 

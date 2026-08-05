@@ -22,7 +22,6 @@ import {
 import type { MapBounds } from '../../../../types';
 import { useSearchRuntimeProfilerInstrumentationRuntime } from './use-search-runtime-profiler-instrumentation-runtime';
 import { useSearchRuntimeProfilerStageHintRuntime } from './use-search-runtime-profiler-stage-hint-runtime';
-import { useSearchRuntimeSearchSurfaceRedrawTelemetryRuntime } from './use-search-runtime-surface-redraw-telemetry-runtime';
 import { useSearchRuntimeStallInstrumentationRuntime } from './use-search-runtime-stall-instrumentation-runtime';
 import { useSearchRuntimeStateTelemetryRuntime } from './use-search-runtime-state-telemetry-runtime';
 import searchPerfDebug from '../../search-perf-debug';
@@ -103,8 +102,6 @@ export const useSearchRuntimeInstrumentationRuntime = ({
   searchRuntimeBus,
   resultsPresentationAuthority,
   resultsPresentationSurfaceAuthority,
-  searchSurfaceRedrawCoordinatorRef,
-  searchSurfaceRedrawCommitSpanPressureByOperationRef,
   isSearchRequestLoadingRef,
   readRuntimeMemoryDiagnostics,
   isSearchSessionActive,
@@ -430,8 +427,6 @@ export const useSearchRuntimeInstrumentationRuntime = ({
     getPerfNow,
     getActiveScenarioRunNumber,
     resolveProfilerStageHint,
-    searchSurfaceRedrawCommitSpanPressureByOperationRef,
-    searchSurfaceRedrawCoordinatorRef,
     searchMode,
     scenarioRunId: isPerfScenarioAttributionActive(activeScenarioConfig)
       ? activeScenarioConfig.runId
@@ -447,12 +442,6 @@ export const useSearchRuntimeInstrumentationRuntime = ({
     scenarioRunId: isPerfScenarioAttributionActive(activeScenarioConfig)
       ? activeScenarioConfig.runId
       : null,
-  });
-
-  useSearchRuntimeSearchSurfaceRedrawTelemetryRuntime({
-    getActiveScenarioRunNumber,
-    emitRuntimeMechanismEvent,
-    searchSurfaceRedrawCoordinatorRef,
   });
 
   useSearchRuntimeStateTelemetryRuntime({

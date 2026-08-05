@@ -3,30 +3,17 @@ import React from 'react';
 import type { SearchRuntimeBus } from './search-runtime-bus';
 import { useSearchFreezeGateStateRuntime } from './use-search-freeze-gate-state-runtime';
 import { useSearchResponseFrameFreezeRuntime } from './use-search-response-frame-freeze-runtime';
-import { useSearchSurfaceRedrawStallPressureRuntime } from './use-search-surface-redraw-stall-pressure-runtime';
 import type { SearchFreezeClassification } from './search-freeze-classification-runtime';
-
-type SearchSurfaceRedrawCoordinatorLike = {
-  getSnapshot: () => {
-    operationId: string | null;
-    phase: string;
-  };
-  advancePhase: (phase: string, payload?: Record<string, unknown>) => void;
-};
 
 type UseSearchFreezeGateRuntimeArgs = {
   searchRuntimeBus: SearchRuntimeBus;
   resultsRequestKey: string | null;
-  searchMode: 'natural' | 'shortcut' | null;
-  getPerfNow: () => number;
-  searchSurfaceRedrawCoordinatorRef: React.MutableRefObject<SearchSurfaceRedrawCoordinatorLike>;
-  searchSurfaceRedrawCommitSpanPressureByOperationRef: React.MutableRefObject<Map<string, number>>;
 };
 
+/** F1735: the surface-redraw freeze flags and the stall-pressure runtime this gate used
+ *  to host were part of the redraw-coordinator fossil (phase machine pinned at 'idle',
+ *  every flag pinned false) and are deleted. */
 type UseSearchFreezeGateRuntimeResult = {
-  isSearchSurfaceRedrawChromeFreezeActive: boolean;
-  isSearchSurfaceRedrawPreflightFreezeActive: boolean;
-  isSearchSurfaceRedrawActive: boolean;
   isResponseFrameFreezeActive: boolean;
   freezeClassification: SearchFreezeClassification;
 };
@@ -34,10 +21,6 @@ type UseSearchFreezeGateRuntimeResult = {
 export const useSearchFreezeGateRuntime = ({
   searchRuntimeBus,
   resultsRequestKey,
-  searchMode,
-  getPerfNow,
-  searchSurfaceRedrawCoordinatorRef,
-  searchSurfaceRedrawCommitSpanPressureByOperationRef,
 }: UseSearchFreezeGateRuntimeArgs): UseSearchFreezeGateRuntimeResult => {
   useSearchResponseFrameFreezeRuntime({
     searchRuntimeBus,
@@ -46,23 +29,11 @@ export const useSearchFreezeGateRuntime = ({
 
   const freezeGateState = useSearchFreezeGateStateRuntime(searchRuntimeBus);
 
-  useSearchSurfaceRedrawStallPressureRuntime({
-    searchMode,
-    getPerfNow,
-    searchSurfaceRedrawCoordinatorRef,
-    searchSurfaceRedrawCommitSpanPressureByOperationRef,
-  });
-
   return React.useMemo<UseSearchFreezeGateRuntimeResult>(
     () => ({
-        isSearchSurfaceRedrawChromeFreezeActive:
-          freezeGateState.isSearchSurfaceRedrawChromeFreezeActive,
-        isSearchSurfaceRedrawPreflightFreezeActive:
-          freezeGateState.isSearchSurfaceRedrawPreflightFreezeActive,
-        isSearchSurfaceRedrawActive: freezeGateState.isSearchSurfaceRedrawActive,
-        isResponseFrameFreezeActive: freezeGateState.isResponseFrameFreezeActive,
-        freezeClassification: freezeGateState.freezeClassification,
-      }),
+      isResponseFrameFreezeActive: freezeGateState.isResponseFrameFreezeActive,
+      freezeClassification: freezeGateState.freezeClassification,
+    }),
     [freezeGateState]
   );
 };

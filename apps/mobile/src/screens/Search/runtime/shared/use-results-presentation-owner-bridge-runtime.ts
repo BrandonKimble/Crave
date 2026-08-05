@@ -8,7 +8,6 @@ import type { SearchRuntimeBus } from './search-runtime-bus';
 import type { ResultsPresentationRuntimeOwner } from './results-presentation-runtime-owner-contract';
 import { useResultsPresentationInteractionRuntime } from './use-results-presentation-interaction-runtime';
 import { useResultsPresentationRuntimeMachineOwner } from './use-results-presentation-runtime-machine-owner';
-import type { SearchSurfaceRedrawCoordinator } from '../controller/search-surface-redraw-coordinator';
 
 type UseResultsPresentationOwnerBridgeRuntimeArgs = {
   setActiveTab: (next: 'dishes' | 'restaurants') => void;
@@ -18,8 +17,6 @@ type UseResultsPresentationOwnerBridgeRuntimeArgs = {
   resultsPresentationSurfaceAuthority: ResultsPresentationSurfaceAuthority;
   searchMapSourceFramePort: SearchMapSourceFramePort;
   log: ResultsPresentationLog;
-  searchSurfaceRedrawCoordinatorRef: React.MutableRefObject<SearchSurfaceRedrawCoordinator>;
-  emitRuntimeMechanismEvent: (event: string, payload: Record<string, unknown>) => void;
 };
 
 type ResultsPresentationOwnerBridgeRuntime = {
@@ -36,8 +33,6 @@ export const useResultsPresentationOwnerBridgeRuntime = ({
   resultsPresentationSurfaceAuthority,
   searchMapSourceFramePort,
   log,
-  searchSurfaceRedrawCoordinatorRef,
-  emitRuntimeMechanismEvent,
 }: UseResultsPresentationOwnerBridgeRuntimeArgs): ResultsPresentationOwnerBridgeRuntime => {
   const markSearchSheetCloseMapExitSettledRef = React.useRef<(requestKey: string) => void>(
     () => {}
@@ -51,8 +46,6 @@ export const useResultsPresentationOwnerBridgeRuntime = ({
       resultsPresentationSurfaceAuthority,
       searchMapSourceFramePort,
       log,
-      searchSurfaceRedrawCoordinatorRef,
-      emitRuntimeMechanismEvent,
       markSearchSheetCloseMapExitSettledRef,
       notifyIntentCompleteRef,
     });

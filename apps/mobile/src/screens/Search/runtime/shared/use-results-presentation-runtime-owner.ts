@@ -24,7 +24,6 @@ export type {
   SearchHeaderVisualModel,
   SearchResultsShellModel,
 } from './results-presentation-shell-contract';
-import type { SearchSurfaceRedrawCoordinator } from '../controller/search-surface-redraw-coordinator';
 
 export type UseResultsPresentationOwnerArgs = {
   setActiveTab: (next: 'dishes' | 'restaurants') => void;
@@ -58,8 +57,6 @@ export type UseResultsPresentationOwnerArgs = {
   resultsPresentationSurfaceAuthority: ResultsPresentationSurfaceAuthority;
   searchMapSourceFramePort: SearchMapSourceFramePort;
   log: ResultsPresentationLog;
-  searchSurfaceRedrawCoordinatorRef: React.MutableRefObject<SearchSurfaceRedrawCoordinator>;
-  emitRuntimeMechanismEvent: (event: string, payload: Record<string, unknown>) => void;
   routeSceneVisibilityPolicyRuntime: RouteSceneVisibilityPolicyRuntime;
   onSearchSheetContentLaneChanged?: (change: ResultsPresentationPolicyFactsLaneChange) => void;
 };
@@ -87,8 +84,6 @@ export const useResultsPresentationOwner = ({
   resultsPresentationSurfaceAuthority,
   searchMapSourceFramePort,
   log,
-  searchSurfaceRedrawCoordinatorRef,
-  emitRuntimeMechanismEvent,
   routeSceneVisibilityPolicyRuntime,
   onSearchSheetContentLaneChanged,
 }: UseResultsPresentationOwnerArgs): ResultsPresentationOwner => {
@@ -115,9 +110,7 @@ export const useResultsPresentationOwner = ({
     resultsPresentationSurfaceAuthority,
     searchMapSourceFramePort,
     log,
-    searchSurfaceRedrawCoordinatorRef,
-    emitRuntimeMechanismEvent,
-    routeSceneVisibilityPolicyRuntime,
+        routeSceneVisibilityPolicyRuntime,
     onSearchSheetContentLaneChanged,
   });
 };

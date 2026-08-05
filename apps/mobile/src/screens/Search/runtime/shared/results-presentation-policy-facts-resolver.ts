@@ -8,39 +8,23 @@ import {
   type SearchFreezeClassification,
 } from './search-freeze-classification-runtime';
 
+/** F1735: the surface-redraw coordinator was a structural fossil (the phase machine could
+ *  never leave 'idle'), so every redraw-derived freeze input this resolver used to take
+ *  (chrome/preflight freeze, active, chrome-deferred, commit-span pressure) was pinned
+ *  false. The one live input is the response-frame freeze. */
 export type ResultsPresentationFreezePolicyInputs = {
-  isSearchSurfaceRedrawChromeFreezeActive: boolean;
-  isSearchSurfaceRedrawPreflightFreezeActive: boolean;
-  isSearchSurfaceRedrawActive: boolean;
   isResponseFrameFreezeActive: boolean;
-  isChromeDeferred: boolean;
-  searchSurfaceRedrawCommitSpanPressureActive: boolean;
 };
 
 export type ResultsPresentationFreezePolicyFacts = {
-  isSearchSurfaceRedrawChromeDeferred: boolean;
   freezeClassification: SearchFreezeClassification;
 };
 
 export const resolveResultsPresentationFreezePolicyFacts = ({
-  isSearchSurfaceRedrawChromeFreezeActive,
-  isSearchSurfaceRedrawPreflightFreezeActive,
-  isSearchSurfaceRedrawActive,
   isResponseFrameFreezeActive,
-  isChromeDeferred,
-  searchSurfaceRedrawCommitSpanPressureActive,
 }: ResultsPresentationFreezePolicyInputs): ResultsPresentationFreezePolicyFacts => ({
-  isSearchSurfaceRedrawChromeDeferred:
-    isSearchSurfaceRedrawChromeFreezeActive ||
-    searchSurfaceRedrawCommitSpanPressureActive ||
-    isChromeDeferred,
   freezeClassification: resolveSearchRecoveryFreezeClassification({
-    isSearchSurfaceRedrawChromeFreezeActive,
-    isSearchSurfaceRedrawPreflightFreezeActive,
-    isSearchSurfaceRedrawActive,
     isResponseFrameFreezeActive,
-    isChromeDeferred,
-    searchSurfaceRedrawCommitSpanPressureActive,
   }),
 });
 

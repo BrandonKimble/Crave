@@ -6,7 +6,7 @@ import {
 } from '../../../../perf/perf-scenario-attribution';
 import { usePerfScenarioRuntimeStore } from '../../../../perf/perf-scenario-runtime-store';
 import type { FoodResult, RestaurantResult, SearchResponse } from '../../../../types';
-import type { SearchSurfaceRedrawPhase } from '../controller/search-surface-redraw-phase';
+import type { SearchResultsBodyAdmissionHandoffPhase } from '../shared/search-results-panel-runtime-state-contract';
 import { type ResultsListItem } from './list-read-model-builder';
 import {
   buildSearchResultsSectionedProjection,
@@ -26,7 +26,7 @@ type SearchResultsSectionedProjectionStateRuntimeArgs = {
   results: SearchResponse | null;
   shouldRetainCommittedResults: boolean;
   readModelProjection?: SearchRouteResultsPolicyReadModelProjectionFacet;
-  searchSurfaceRedrawPhase: SearchSurfaceRedrawPhase;
+  searchSurfaceRedrawPhase: SearchResultsBodyAdmissionHandoffPhase;
 };
 
 export const useSearchResultsSectionedProjectionStateRuntime = ({

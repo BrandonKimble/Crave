@@ -2383,7 +2383,8 @@ export const useDirectSearchMapSourceController = ({
           owner: 'map_source_frame_publish',
           path: didPublishSourceFrame ? 'notified' : 'coalesced',
           durationMs: Number((args.getPerfNow() - publishStartMs).toFixed(3)),
-          handoffPhase: state.searchSurfaceRedrawPhase,
+          // F1735: the redraw-coordinator bus phase is deleted (pinned 'idle' forever).
+          handoffPhase: 'idle',
           searchMode,
           activeTab,
           pinCount: pinSourceStore.idsInOrder.length,
