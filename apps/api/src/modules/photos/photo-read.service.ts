@@ -230,12 +230,12 @@ export class PhotoReadService {
       : Prisma.empty;
     const rows = await this.prisma.$queryRaw<RawStripRow[]>`
       SELECT photo_id, user_id, restaurant_id, connection_id, public_id,
-             caption, taken_at, uploaded_at, focus_score
+             caption, taken_at, ticketed_at, focus_score
       FROM (
         SELECT *, ROW_NUMBER() OVER (
           PARTITION BY ${column}
           ORDER BY (focus_score IS NULL OR focus_score >= ${FOCUS_FLOOR}) DESC,
-                   uploaded_at DESC
+                   ticketed_at DESC
         ) AS rn
         FROM photos
         WHERE ${column} = ANY(${ids}::uuid[])
