@@ -379,6 +379,49 @@ failures=0
 SEARCH_SUBMIT_DISMISS_AUTHORITY_LIFECYCLE_PATTERN='(beginResultsEnter|beginResultsExit|markResultsHeaderReady|markPollsHeaderReady|mark[A-Za-z0-9_]*Settled)'
 SEARCH_SUBMIT_DISMISS_AUTHORITY_FILE_PATTERN='(^|/)screens/Search/runtime/shared/search-submit-dismiss-transition-visual-authority\.(ts|tsx|js|jsx|d\.ts)$'
 
+# ── F1793: A CHECK CANNOT BE FILED INTO THE WRONG MATCHER ──────────────────────
+# F1792 (2026-08-05): two content checks were appended to PATH_CHECKS. PATH_CHECKS
+# matches file PATHS, so a content pattern could never match — both entries passed
+# unconditionally while reading as protection. Planting the banned symbol PASSED.
+# The arrays are structurally identical bash strings, so the misfile was invisible
+# by eye; the only tell was the summary line counting 57 path checks instead of 202
+# content ones. Four earlier checks in this repo were also found wired to nothing.
+#
+# The invariant that makes it unrepresentable: a PATH pattern is anchored on a path
+# boundary `(^|/)` (all 55 are, by construction — they match a path segment), and a
+# CONTENT pattern never is (0 of 209). So the array a check belongs in is DERIVABLE
+# from the check itself, and a mismatch is a load-time failure rather than a silent
+# green. This runs before any scanning: a misfiled entry can never reach the loops.
+#
+# Deliberately NOT attempted: synthesising a matching input per entry to prove each
+# check can go RED. An arbitrary regex is not invertible, so that "proof" would be
+# a guess dressed as a guarantee — exactly the class this gate exists to kill. The
+# shape rule is enforceable and complete; per-entry RED proofs stay a human duty at
+# authoring time (see the RULE FOR ADDING CHECKS above).
+shape_failures=0
+for check in "${CONTENT_CHECKS[@]}" "${ROOT_CONTENT_CHECKS[@]}"; do
+  id="${check%%::*}"
+  rest="${check#*::}"
+  pattern="${rest%%::*}"
+  if [[ "$pattern" == *'(^|/)'* ]]; then
+    echo "[app-route-runtime-delete-gate] FAIL $id: path-anchored pattern '(^|/)' in a CONTENT check — this belongs in PATH_CHECKS (F1793). A path pattern scanned against file CONTENT can never match, which is a permanently-green check." >&2
+    shape_failures=$((shape_failures + 1))
+  fi
+done
+for check in "${PATH_CHECKS[@]}"; do
+  id="${check%%::*}"
+  rest="${check#*::}"
+  pattern="${rest%%::*}"
+  if [[ "$pattern" != *'(^|/)'* ]]; then
+    echo "[app-route-runtime-delete-gate] FAIL $id: PATH check without a path anchor '(^|/)' — a content pattern scanned against file PATHS can never match, which is a permanently-green check (F1792/F1793). Move it to CONTENT_CHECKS." >&2
+    shape_failures=$((shape_failures + 1))
+  fi
+done
+if [[ "$shape_failures" -gt 0 ]]; then
+  echo "[app-route-runtime-delete-gate] FAILED shape validation ($shape_failures misfiled checks) — no scanning was attempted." >&2
+  exit 1
+fi
+
 for check in "${CONTENT_CHECKS[@]}"; do
   id="${check%%::*}"
   rest="${check#*::}"
