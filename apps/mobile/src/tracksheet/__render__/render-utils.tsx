@@ -57,11 +57,37 @@ export const scrollTo = async (y: number): Promise<void> => {
   });
 };
 
-/** Two consecutive frames at (nearly) the same τ — the settle observer's
- * stability window — landing on a detent. */
-export const settleAt = async (detentTau: number): Promise<void> => {
+export const emitNative = async (name: string, payload?: unknown): Promise<void> => {
+  await act(async () => {
+    harness.world.emit(name, payload);
+  });
+};
+
+/** THE REST FACT, as the engine states it. The page no longer INFERS settle
+ * from τ stability — the native spring reports its own completion
+ * (trackDidSettle, one generation-stamped emission per motion episode), so the
+ * driver emits that event. τ is written first so every τ-rider sees the resting
+ * value in the same order a real frame would deliver it. */
+let settleGeneration = 0;
+export const settleAt = async (
+  detentTau: number,
+  options?: {
+    atDetent?: boolean;
+    hiddenEngaged?: boolean;
+    cause?: 'spring' | 'decelerate' | 'dragEnd';
+  }
+): Promise<void> => {
   await scrollTo(detentTau);
-  await scrollTo(detentTau + 0.2);
+  settleGeneration += 1;
+  await emitNative('trackDidSettle', {
+    generation: settleGeneration,
+    tau: detentTau,
+    posture: detentTau,
+    atDetent: options?.atDetent ?? true,
+    detentTau: (options?.atDetent ?? true) ? detentTau : null,
+    cause: options?.cause ?? 'spring',
+    hiddenEngaged: options?.hiddenEngaged ?? false,
+  });
 };
 
 export const beginDrag = async (y = 0): Promise<void> => {
@@ -94,12 +120,6 @@ export const sendMotionCommand = async (
       token: Date.now() + Math.random(),
       settleToken,
     };
-  });
-};
-
-export const emitNative = async (name: string, payload?: unknown): Promise<void> => {
-  await act(async () => {
-    harness.world.emit(name, payload);
   });
 };
 

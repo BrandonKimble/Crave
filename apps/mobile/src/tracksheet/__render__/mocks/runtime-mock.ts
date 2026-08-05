@@ -31,6 +31,25 @@ export const resolveSceneLoadingMaterial = (
   sceneKey: string
 ): { rowType: string; withStripHoles: boolean } | null => LOADING_MATERIALS[sceneKey] ?? null;
 
+// THE ONE SCENE-DECLARATION SCHEMA is PURE DATA (type-only imports) — the render lane runs
+// the REAL table rather than a mirror of it, so a schema/host disagreement shows RED here
+// too. The explicit '.ts' suffix dodges this file's own moduleNameMapper entry (which would
+// otherwise redirect the re-export back into this mock).
+export {
+  SCENE_DECLARATIONS,
+  getSceneFoundationSpec,
+  resolveSceneCreateFallbackRoute,
+  resolveSceneListPartsSource,
+  sceneDeclaresSharedRowSurface,
+  sceneHidesGrabHandle,
+  sceneIsChildRole,
+  sceneIsResidentTrackScene,
+  sceneMountedBodyIsEdgeToEdge,
+  sceneParticipatesInWorldJoin,
+  sceneReportsUserScrollActivity,
+  sceneUsesMountedTrackBody,
+} from '../../../navigation/runtime/scene-foundation-spec.ts';
+
 // ── app-route-persistent-header-registry ──
 const titleCache = new Map<string, React.ComponentType>();
 const stripCache = new Map<string, React.ComponentType>();

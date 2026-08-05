@@ -6,6 +6,10 @@
 // facts) and assert on what the REAL host/page wiring did with it.
 
 import { resetTrackMotionAuthorityForTest } from '../track-motion-authority';
+import {
+  TRACK_NATIVE_CONTRACT_VERSION,
+  TRACK_NATIVE_REQUIRED_CAPABILITIES,
+} from '../track-native-contract';
 
 type Listener = () => void;
 
@@ -67,24 +71,41 @@ const buildWorld = () => {
   // excursion (negative target). Tests may override per-call via
   // nextSnapOutcome.
   let hiddenGenerationCounter = 0;
+  // The hidden DEPTH is native now (ratified item 5): JS commands the intent
+  // through snapToHidden and the engine answers with the τ it aimed at. The
+  // stub derives it the same way TrackHiddenDepthForBounds does, from this
+  // world's geometry (collapsedTop 700, screen 844).
+  const HIDDEN_TARGET_TAU = -(844 - 700);
   const nativePhysics = {
     attach: (tag: number, cfg: unknown) => {
       record('attach', [tag, cfg]);
       return Promise.resolve();
     },
     detach: (tag: number) => record('detach', [tag]),
+    // The contract handshake's native half: constants a real binary exports.
+    contractVersion: TRACK_NATIVE_CONTRACT_VERSION,
+    capabilities: [...TRACK_NATIVE_REQUIRED_CAPABILITIES],
     snapTo: (tag: number, tau: number) => {
       record('snapTo', [tag, tau]);
       const override = world.nextSnapOutcome;
       if (override != null) {
         return Promise.resolve(override(tag, tau));
       }
-      if (tau < 0) {
-        hiddenGenerationCounter += 1;
-        world.lastHiddenGeneration = hiddenGenerationCounter;
-        return Promise.resolve({ refused: false, hiddenGeneration: hiddenGenerationCounter });
+      return Promise.resolve({ refused: false, targetTau: tau });
+    },
+    snapToHidden: (tag: number) => {
+      record('snapToHidden', [tag]);
+      const override = world.nextSnapOutcome;
+      if (override != null) {
+        return Promise.resolve(override(tag, HIDDEN_TARGET_TAU));
       }
-      return Promise.resolve({ refused: false });
+      hiddenGenerationCounter += 1;
+      world.lastHiddenGeneration = hiddenGenerationCounter;
+      return Promise.resolve({
+        refused: false,
+        targetTau: HIDDEN_TARGET_TAU,
+        hiddenGeneration: hiddenGenerationCounter,
+      });
     },
     refuse: (tag: number, offset: number) => record('refuse', [tag, offset]),
     pinChrome: (tag: number, contentTag: number | null) => record('pinChrome', [tag, contentTag]),
@@ -189,7 +210,10 @@ const buildWorld = () => {
     deliveredActivity: new Map<string, unknown>(),
     nextSnapOutcome: null as
       | null
-      | ((tag: number, tau: number) => { refused?: boolean; hiddenGeneration?: number }),
+      | ((
+          tag: number,
+          tau: number
+        ) => { refused?: boolean; hiddenGeneration?: number; targetTau?: number }),
     lastHiddenGeneration: 0,
     motionTarget: null as null | {
       sceneKey: string;

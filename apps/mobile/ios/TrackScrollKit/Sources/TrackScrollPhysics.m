@@ -1,5 +1,6 @@
 #import "TrackScrollPhysics.h"
 #import "TrackDomainRange.h"
+#import "TrackEngineFacts.h"
 #import "TrackShellSlot.h"
 
 #import <QuartzCore/QuartzCore.h>
@@ -163,10 +164,31 @@
 /// swap (A2) and the hide's settle both key on it. Carries the generation of
 /// the excursion whose edge this is.
 @property (nonatomic, copy) void (^onHiddenEdgeCleared)(NSInteger generation);
+/// ── THE SETTLE FACT (deep red team item 5 / abstraction finding 5) ──────────
+/// The engine knows the frame motion ENDS — the spring's closed form completes,
+/// UIKit's deceleration ends, a drag lifts with no deceleration behind it. JS
+/// used to INFER it by sampling τ for stability near a detent, which could not
+/// see a rest that was not on a detent (a hidden rest, a clamped rest, a park
+/// between detents) and suppressed a return to the SAME detent to avoid
+/// re-firing. The engine states the fact instead, ONCE per motion episode.
+///
+/// The episode is what makes "once" expressible: every motion START (drag
+/// begin, spring start) mints a generation and arms the pending flag; the first
+/// end-of-motion callback to arrive consumes it. A second callback for the same
+/// episode (didEndDecelerating chasing a spring that already reported) finds
+/// the flag down and says nothing — the same one-shot discipline the excursion
+/// edge uses, for the same reason.
+@property (nonatomic, assign) NSInteger settleGeneration;
+@property (nonatomic, assign) BOOL settlePending;
+/// Carries the whole rest fact: identity, resting τ/posture, and whether that
+/// rest is at a detent (DATA in the fact — never a gate on emitting it).
+@property (nonatomic, copy) void (^onSettled)(NSDictionary *body);
 /// Host scroll view (weak): lets slot registration ping a synchronous shell
 /// re-apply so a freshly recreated slot is positioned in the SAME UIKit
 /// transaction it appears in (the flash becomes unwritable).
 @property (nonatomic, weak) UIScrollView *hostScrollView;
+- (void)armMotionEpisode;
+- (void)reportSettleOn:(UIScrollView *)scrollView cause:(NSString *)cause;
 - (void)startSpringOn:(UIScrollView *)scrollView
              toTarget:(double)target
                 fromY:(double)y0
@@ -307,6 +329,12 @@ static void *kTrackClampGuardCtx = &kTrackClampGuardCtx;
   // in-flight bounce dies — the finger owns the track from here.
   self.ballisticArmed = NO;
   [self stopSpring];
+  // THE FINGER OPENS A MOTION EPISODE. Whatever was in flight is dead (the
+  // stopSpring above), and the rest this drag eventually reaches is a NEW fact
+  // with a new identity — which is precisely what the old JS sampler could not
+  // express, and why a drag that returned to the detent it started from never
+  // reported anything.
+  [self armMotionEpisode];
   self.dragStartTau = scrollView.contentOffset.y;
   // THE STASH: a drag that BEGINS in the chrome band is a posture drag — the
   // sheet must follow the finger immediately, list scroll preserved. σ moves
@@ -372,9 +400,70 @@ static void *kTrackClampGuardCtx = &kTrackClampGuardCtx;
     // authority now states the resting domain (range law + external baseline).
     [self applyDomainTo:scrollView];
   }
+  // DRAG END WITHOUT DECELERATION IS A REST. willEndDragging ran first and may
+  // have handed the track to the spring (a detent settle, the rubber return);
+  // if it did, the spring owns the rest fact and reports it at completion. Only
+  // a lift that leaves NOTHING moving settles here.
+  if (!decelerate && self.springLink == nil) {
+    [self reportSettleOn:scrollView cause:@"dragEnd"];
+  }
   if ([self.original respondsToSelector:@selector(scrollViewDidEndDragging:willDecelerate:)]) {
     [self.original scrollViewDidEndDragging:scrollView willDecelerate:decelerate];
   }
+}
+
+- (void)scrollViewDidEndDecelerating:(UIScrollView *)scrollView
+{
+  // UIKit's own deceleration ran out. The crossing intercept may have taken the
+  // track over mid-decel, in which case the spring is live and owns the rest.
+  if (self.springLink == nil) {
+    [self reportSettleOn:scrollView cause:@"decelerate"];
+  }
+  if ([self.original respondsToSelector:@selector(scrollViewDidEndDecelerating:)]) {
+    [self.original scrollViewDidEndDecelerating:scrollView];
+  }
+}
+
+// ONE MOTION EPISODE, ONE SETTLE. Minted at every motion start; the first
+// end-of-motion callback consumes the pending flag.
+- (void)armMotionEpisode
+{
+  self.settleGeneration += 1;
+  self.settlePending = YES;
+}
+
+- (void)reportSettleOn:(UIScrollView *)scrollView cause:(NSString *)cause
+{
+  if (!self.settlePending || scrollView == nil) {
+    return;
+  }
+  self.settlePending = NO;
+  if (self.onSettled == nil) {
+    return;
+  }
+  const NSUInteger count = self.snapOffsets.count;
+  double detents[16];
+  const int detentCount = (int)MIN(count, (NSUInteger)16);
+  for (int i = 0; i < detentCount; i++) {
+    detents[i] = self.snapOffsets[(NSUInteger)i].doubleValue;
+  }
+  // 2pt: the SAME tolerance the deleted JS sampler used, now applied to a rest
+  // the engine already proved rather than to a sampled frame that might still
+  // be moving.
+  const TrackSettleReading reading = TrackResolveSettleReading(
+      scrollView.contentOffset.y, self.stashSigma, detents, detentCount, 2.0);
+  self.onSettled(@{
+    @"generation": @(self.settleGeneration),
+    @"tau": @(scrollView.contentOffset.y),
+    @"posture": @(reading.posture),
+    @"atDetent": reading.atDetent ? @YES : @NO,
+    @"detentTau": reading.atDetent ? (id)@(reading.detentTau) : (id)[NSNull null],
+    @"cause": cause,
+    // A rest reached while the excursion is still engaged is an OFF-SCREEN
+    // rest: the hidden domain holds it there by design, and no detent applies.
+    @"hiddenEngaged": self.hiddenEngaged ? @YES : @NO,
+    @"hiddenGeneration": @(self.hiddenGeneration),
+  });
 }
 
 - (void)scrollViewWillEndDragging:(UIScrollView *)scrollView
@@ -860,6 +949,12 @@ static const double kTrackSpringOmega = 13.038404810405298; // sqrt(170)
   // setContentOffset:animated:NO kills it (decel=1 -> 0 in the trace). Same
   // offset, so the kill itself moves nothing.
   [self engineWrite:scrollView offsetY:scrollView.contentOffset.y];
+  // A SPRING IS A MOTION EPISODE. Starting one supersedes whatever episode was
+  // running (a drag that just released into this settle, a prior spring a
+  // command interrupted): the superseded episode's rest is never reported,
+  // exactly as the motion authority's reducer already treats a supersession —
+  // one rest fact per continuous stretch of motion, at its true end.
+  [self armMotionEpisode];
   self.springScrollView = scrollView;
   self.springStart = CACurrentMediaTime();
   self.springTarget = target;
@@ -918,6 +1013,11 @@ static const double kTrackSpringOmega = 13.038404810405298; // sqrt(170)
     if (self.hiddenEngaged && landedOnScreen) {
       [self closeHiddenExcursionOn:scrollView];
     }
+    // THE SETTLE FACT, at the frame the spring actually finished — reported
+    // AFTER the excursion close so the fact carries the settled state, not the
+    // state one line before it. A hide's spring lands off-screen and still
+    // settles here: its rest is real, it is simply not at a detent.
+    [self reportSettleOn:scrollView cause:@"spring"];
     return;
   }
   [self engineWrite:scrollView offsetY:self.springTarget + d];
@@ -941,7 +1041,34 @@ RCT_EXPORT_MODULE();
 - (NSArray<NSString *> *)supportedEvents
 {
   return @[ @"trackTopArrival", @"trackSigmaChanged", @"trackShellWarning",
-            @"trackHiddenEdgeCleared" ];
+            @"trackHiddenEdgeCleared", @"trackDidSettle" ];
+}
+
+// ─── THE CONTRACT HANDSHAKE ──────────────────────────────────────────────────
+// A JS bundle is reloaded in seconds; the binary under it is rebuilt and
+// reinstalled by hand. When they diverge, EVERY symptom is a silence: commands
+// resolve to nothing, the settle event never arrives, the fence never restores,
+// reveals wait out their deadline. The app limps, which is worse than a crash
+// because nothing names the cause. So the binary STATES what it speaks, JS
+// checks it at attach, and a mismatch is a loud dev-time failure with the fix
+// in the message. There is deliberately NO compatibility shim: an old binary is
+// a thing to reinstall, not a thing to support.
+// The capability list is not decoration — it is what makes the failure
+// ACTIONABLE (which surface is missing), and it is the reason the version and
+// the constant that carries it can never be dead-stripped: constantsToExport is
+// the module's own export path.
+- (NSDictionary *)constantsToExport
+{
+  return @{
+    @"contractVersion": @(TRACK_SCROLL_CONTRACT_VERSION),
+    @"capabilities": @[
+      @"snapToOutcome",        // snapTo resolves {refused, targetTau, hiddenGeneration?}
+      @"hiddenIntent",         // snapToHidden — the engine derives the depth
+      @"settleEvent",          // trackDidSettle
+      @"generationStampedEdge",// trackHiddenEdgeCleared carries its generation
+      @"externalBottomInset",  // the domain authority's external baseline seam
+    ],
+  };
 }
 
 - (dispatch_queue_t)methodQueue
@@ -1007,6 +1134,10 @@ RCT_EXPORT_METHOD(attach:(nonnull NSNumber *)reactTag
     proxy.onSigmaChanged = ^(CGFloat sigma) {
       [sigmaWeakSelf sendEventWithName:@"trackSigmaChanged" body:@{ @"sigma": @(sigma) }];
     };
+    __weak typeof(self) settleWeakSelf = self;
+    proxy.onSettled = ^(NSDictionary *body) {
+      [settleWeakSelf sendEventWithName:@"trackDidSettle" body:body];
+    };
     __weak typeof(self) hiddenWeakSelf = self;
     proxy.onHiddenEdgeCleared = ^(NSInteger generation) {
       [hiddenWeakSelf sendEventWithName:@"trackHiddenEdgeCleared"
@@ -1031,7 +1162,85 @@ RCT_EXPORT_METHOD(attach:(nonnull NSNumber *)reactTag
 // physics uses for detents/rubber — scene-switch snaps feel identical to
 // gesture-born settles (and JS-side scrollToOffset through animated wrappers
 // proved unreliable).
-// (short-circuit lives inside snapTo's UI block below)
+// (the short-circuit and the excursion arm live in TrackPerformSnap below)
+// THE ONE SNAP BODY. Both entry points — a detent command (posture number from
+// JS) and the hidden INTENT (posture derived natively, below) — are the same
+// operation on the same spring; only where the target came from differs. They
+// share this function so a law added to one can never be missing from the
+// other.
+static void TrackPerformSnap(UIScrollView *scrollView,
+                             CGFloat postureTarget,
+                             RCTPromiseResolveBlock resolve)
+{
+  TrackScrollDelegateProxy *proxy = objc_getAssociatedObject(scrollView, kTrackProxyKey);
+  // THE FINGER OWNS TAU (native red team): a command landing mid-drag would
+  // fight the pan frame-by-frame — and a negative one would arm an excursion
+  // UNDER the finger. The user's posture choice supersedes the command
+  // intent; the refusal is a FACT the caller sees (refused: YES), never a
+  // silent drop it retries into.
+  if (proxy != nil && (scrollView.isTracking || scrollView.isDragging)) {
+    resolve(@{ @"refused": @YES });
+    return;
+  }
+  // THE SHORT-CIRCUIT (ported from the old snap runtime): a seat within
+  // 0.5pt of the current τ commands NOTHING — a same-posture switch is
+  // provably zero pixels, never a spring that "confirms" the position.
+  // snapTo input is POSTURE-space: σ shifts it into τ-space.
+  const CGFloat sigma = proxy != nil ? proxy.stashSigma : 0;
+  const CGFloat target = postureTarget + sigma;
+  // targetTau rides EVERY resolve. The caller's retry loop measures |τ − target|
+  // to decide whether the command landed, and with the hidden target now
+  // derived natively the caller no longer knows that number — so the engine
+  // that chose it says it. (For a detent command it is the same number JS sent,
+  // shifted by the σ only native holds.)
+  if (fabs(scrollView.contentOffset.y - target) < 0.5) {
+    resolve(@{ @"refused": @NO, @"targetTau": @(target) });
+    return;
+  }
+  // G-HIDDEN (R4): a negative target is the HIDDEN EXCURSION — arm the
+  // one-shot screen-edge fact under a fresh generation, extend the τ domain
+  // (contentInset.top = |target|) so UIKit cannot clamp the glide at 0, and
+  // start the spring — ONE synchronous block, so no manual didScroll can
+  // slip between the arm and the flight. Growing the top inset never moves
+  // content; the excursion closes event-driven (spring completion / drag
+  // capture / superseding command). The glide itself is the SAME critically
+  // damped spring as every detent settle (OA5: every sheet glides).
+  // The target is NEGATIVE-BY-DERIVATION now (snapToHidden computes it from the
+  // live bounds); this test stays the sole arming condition so the excursion
+  // has exactly one birth, whichever entry point commanded it.
+  if (proxy != nil && target < -0.5) {
+    proxy.hiddenGeneration += 1;
+    proxy.hiddenEngaged = YES;
+    proxy.hiddenEdgeFired = NO;
+    proxy.hiddenTargetTau = target;
+    // Arming the excursion IS the domain input; the floor falls out of it.
+    [proxy applyDomainTo:scrollView];
+  } else if (proxy != nil && proxy.hiddenEngaged) {
+    // A positive snap SUPERSEDES a live excursion: consume the one-shot so
+    // the stale hiddenTargetTau can never fire an edge for a hide that is
+    // no longer happening. The extended domain survives the return glide
+    // (collapsing it at τ < 0 would clamp); the spring's completion closes.
+    proxy.hiddenEdgeFired = YES;
+  }
+  if (proxy == nil) {
+    [scrollView setContentOffset:CGPointMake(scrollView.contentOffset.x, target)
+                        animated:YES];
+    resolve(@{ @"refused": @NO, @"targetTau": @(target) });
+    return;
+  }
+  [proxy startSpringOn:scrollView
+              toTarget:target
+                 fromY:scrollView.contentOffset.y
+             velocityY:0];
+  if (target < -0.5) {
+    resolve(@{ @"refused": @NO,
+               @"targetTau": @(target),
+               @"hiddenGeneration": @(proxy.hiddenGeneration) });
+  } else {
+    resolve(@{ @"refused": @NO, @"targetTau": @(target) });
+  }
+}
+
 RCT_EXPORT_METHOD(snapTo:(nonnull NSNumber *)reactTag
                   offset:(nonnull NSNumber *)offset
                   resolver:(RCTPromiseResolveBlock)resolve
@@ -1044,63 +1253,49 @@ RCT_EXPORT_METHOD(snapTo:(nonnull NSNumber *)reactTag
       resolve(@{ @"refused": @NO });
       return;
     }
+    TrackPerformSnap(scrollView, offset.doubleValue, resolve);
+  }];
+}
+
+// ─── THE HIDDEN INTENT (ratified item 5: native hidden depth) ────────────────
+// JS says WHAT it wants ('hidden'); the engine says WHERE that is. The depth
+// used to be computed in JS from Dimensions.get('window') — a module-scope
+// screen snapshot commanding a pixel target against live UIKit bounds, which is
+// G-ROTATE's staleness with an address: after a bounds change the sheet would
+// glide to a depth derived from the previous screen and rest short of (or past)
+// the edge, and the screen-edge fact it arms would fire at the wrong τ.
+// Here the depth is read from the geometry the engine was BOUND with plus the
+// live window, in the same UI block that starts the spring — it cannot be
+// stale by construction. Everything else is preserved verbatim because it is
+// TrackPerformSnap: glide-only on the same critically damped spring (OA5), the
+// generation stamp, the one-shot edge, the deferred swap's boundary, and the R4
+// excursion floor stated by the domain authority.
+RCT_EXPORT_METHOD(snapToHidden:(nonnull NSNumber *)reactTag
+                  resolver:(RCTPromiseResolveBlock)resolve
+                  rejecter:(RCTPromiseRejectBlock)reject)
+{
+  [self.bridge.uiManager addUIBlock:^(RCTUIManager *uiManager, NSDictionary<NSNumber *, UIView *> *viewRegistry) {
+    UIView *root = viewRegistry[reactTag] ?: [uiManager viewForReactTag:reactTag];
+    UIScrollView *scrollView = root ? TrackFindScrollView(root) : nil;
+    if (scrollView == nil) {
+      resolve(@{ @"refused": @NO });
+      return;
+    }
     TrackScrollDelegateProxy *proxy = objc_getAssociatedObject(scrollView, kTrackProxyKey);
-    // THE FINGER OWNS TAU (native red team): a command landing mid-drag would
-    // fight the pan frame-by-frame — and a negative one would arm an excursion
-    // UNDER the finger. The user's posture choice supersedes the command
-    // intent; the refusal is a FACT the caller sees (refused: YES), never a
-    // silent drop it retries into.
-    if (proxy != nil && (scrollView.isTracking || scrollView.isDragging)) {
-      resolve(@{ @"refused": @YES });
-      return;
-    }
-    // THE SHORT-CIRCUIT (ported from the old snap runtime): a seat within
-    // 0.5pt of the current τ commands NOTHING — a same-posture switch is
-    // provably zero pixels, never a spring that "confirms" the position.
-    // snapTo input is POSTURE-space: σ shifts it into τ-space.
-    const CGFloat sigma = proxy != nil ? proxy.stashSigma : 0;
-    const CGFloat target = offset.doubleValue + sigma;
-    if (fabs(scrollView.contentOffset.y - target) < 0.5) {
-      resolve(@{ @"refused": @NO });
-      return;
-    }
-    // G-HIDDEN (R4): a negative target is the HIDDEN EXCURSION — arm the
-    // one-shot screen-edge fact under a fresh generation, extend the τ domain
-    // (contentInset.top = |target|) so UIKit cannot clamp the glide at 0, and
-    // start the spring — ONE synchronous block, so no manual didScroll can
-    // slip between the arm and the flight. Growing the top inset never moves
-    // content; the excursion closes event-driven (spring completion / drag
-    // capture / superseding command). The glide itself is the SAME critically
-    // damped spring as every detent settle (OA5: every sheet glides).
-    if (proxy != nil && target < -0.5) {
-      proxy.hiddenGeneration += 1;
-      proxy.hiddenEngaged = YES;
-      proxy.hiddenEdgeFired = NO;
-      proxy.hiddenTargetTau = target;
-      // Arming the excursion IS the domain input; the floor falls out of it.
-      [proxy applyDomainTo:scrollView];
-    } else if (proxy != nil && proxy.hiddenEngaged) {
-      // A positive snap SUPERSEDES a live excursion: consume the one-shot so
-      // the stale hiddenTargetTau can never fire an edge for a hide that is
-      // no longer happening. The extended domain survives the return glide
-      // (collapsing it at τ < 0 would clamp); the spring's completion closes.
-      proxy.hiddenEdgeFired = YES;
-    }
-    if (proxy == nil) {
-      [scrollView setContentOffset:CGPointMake(scrollView.contentOffset.x, target)
-                          animated:YES];
-      resolve(@{ @"refused": @NO });
-      return;
-    }
-    [proxy startSpringOn:scrollView
-                toTarget:target
-                   fromY:scrollView.contentOffset.y
-               velocityY:0];
-    if (target < -0.5) {
-      resolve(@{ @"refused": @NO, @"hiddenGeneration": @(proxy.hiddenGeneration) });
-    } else {
-      resolve(@{ @"refused": @NO });
-    }
+    // The shell geometry the engine holds; the module-scope mirror covers the
+    // window where bindShell has run but this proxy has not been configured.
+    const CGFloat expandedTop =
+        (proxy != nil && proxy.shellEnabled) ? proxy.shellExpandedTop : gTrackShellExpandedTop;
+    const CGFloat trackH =
+        (proxy != nil && proxy.shellTrackH > 0) ? proxy.shellTrackH : gTrackShellTrackH;
+    // THE LIVE BOUNDS: the window this scroll view is actually in, falling back
+    // to the main screen only when it is not in one yet.
+    UIWindow *window = scrollView.window;
+    const CGFloat screenH = window != nil ? CGRectGetHeight(window.bounds)
+                                          : CGRectGetHeight(UIScreen.mainScreen.bounds);
+    const CGFloat postureTarget =
+        TrackHiddenPostureTargetForBounds(expandedTop, trackH, screenH);
+    TrackPerformSnap(scrollView, postureTarget, resolve);
   }];
 }
 

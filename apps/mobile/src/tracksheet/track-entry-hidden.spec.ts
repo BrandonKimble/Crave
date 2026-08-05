@@ -1,9 +1,11 @@
 // G-HIDDEN falsifiers (R4) — against the EXACT modules the host executes.
 //
 // RED conditions (each proven by mutation before landing):
-//   (a) any hide path producing a non-glide placement → the plan type has no
-//       teleport variant AND the glide test pins targetPostureTau < 0; a
-//       0/positive target (an "instant place at collapsed" regression) fails.
+//   (a) OA5 (any hide path producing a non-glide placement) is now proven
+//       NATIVE-side: the depth derivation and its never-negative law moved to
+//       TrackEngineFacts.h and are falsified by TrackEngineFactsTests.c
+//       ("hidden depth from live bounds"); the command itself (snapToHidden)
+//       has no target, no mode and one spring body.
 //   (b) swap-at-edge ordering: resolveHiddenPresentation swapping BEFORE
 //       edgeCleared (a mid-flight content flip) fails the hold test.
 //   (c) a hide disturbing the outgoing entry's scroll memory: planEntrySwitch
@@ -11,41 +13,11 @@
 //   (d) re-present after hide not restoring: the remembered offset (including
 //       0) must come back with hadMemory=true.
 
-import {
-  planHiddenExcursion,
-  resolveHiddenPresentation,
-  computeHiddenDepth,
-} from './track-entry-hidden';
+import { resolveHiddenPresentation } from './track-entry-hidden';
 import { makeTrackEntryKey } from './track-entry-identity';
 import { TrackEntryScrollMemory } from './track-entry-scroll-memory';
 import { TrackEntryReadinessLedger } from './track-entry-readiness';
 import { planEntrySwitch } from './track-entry-switch';
-
-describe('hidden excursion plan (OA5: every hide glides)', () => {
-  it('plans a GLIDE with a negative tau target for every geometry', () => {
-    for (const [collapsedTop, screenH] of [
-      [700, 852],
-      [640, 852],
-      [500, 926],
-    ] as const) {
-      const plan = planHiddenExcursion({ collapsedTop, screenHeight: screenH });
-      expect(plan.kind).toBe('glide');
-      expect(plan.targetPostureTau).toBe(-(screenH - collapsedTop));
-      expect(plan.targetPostureTau).toBeLessThan(0);
-    }
-  });
-
-  it('depth is never negative (a collapsedTop already offscreen hides in place)', () => {
-    expect(computeHiddenDepth(900, 852)).toBe(0);
-  });
-
-  // The edge fact itself is NATIVE-owned (trackHiddenEdgeCleared, emitted by
-  // TrackScrollKit when τ reaches the excursion target). Its former JS mirror
-  // (`hasClearedScreenEdge`) was dead code — deleted (F3 kill-list). The
-  // host-side consumption of the real event — hold until the edge, offer the
-  // boundary, repaint — is falsified in the render lane against the real
-  // listener wiring: track-host-switch.render-spec.tsx ("deferred swap").
-});
 
 describe('deferred swap at the screen edge (A2)', () => {
   const frame = { frameScene: 'home', frameEntryId: null };

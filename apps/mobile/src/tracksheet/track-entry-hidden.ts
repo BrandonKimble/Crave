@@ -33,31 +33,27 @@
 // cross −depth and emits trackHiddenEdgeCleared); the DECISION of what to
 // paint while the fact is pending is pure, here, falsifiable.
 
-/** τ excursion below collapsed needed for the sheet's top edge to reach the
- * bottom screen edge: sheetTop(collapsed)=collapsedTop, so depth is the
- * remaining band. Never negative (a collapsedTop below the screen is already
- * offscreen). */
-export const computeHiddenDepth = (collapsedTop: number, screenHeight: number): number =>
-  Math.max(0, screenHeight - collapsedTop);
-
-export type HiddenExcursionPlan = {
-  /** The ONE shape a hide can take: a glide on the native spring. There is no
-   * teleport variant of this type — OA5 made it unrepresentable. */
-  kind: 'glide';
-  /** Posture-space target (σ added natively): −depth. */
-  targetPostureTau: number;
-};
-
-/** Every hide path plans through here; the return type cannot express an
- * instant placement (the OA5 falsifier: a non-glide hide is a compile-and-
- * jest-RED, not a review comment). */
-export const planHiddenExcursion = (args: {
-  collapsedTop: number;
-  screenHeight: number;
-}): HiddenExcursionPlan => ({
-  kind: 'glide',
-  targetPostureTau: -computeHiddenDepth(args.collapsedTop, args.screenHeight),
-});
+// THE DEPTH IS NATIVE-OWNED (ratified item 5, 2026-08-05). `computeHiddenDepth`
+// / `planHiddenExcursion` / `HiddenExcursionPlan` lived here and derived the
+// excursion's pixel target from Dimensions.get('window') at command time. The
+// derivation was correct; its INPUT could not be. A module-scope screen
+// snapshot commanding a pixel target against live UIKit bounds is G-ROTATE's
+// staleness with an address — after a bounds change the sheet glided to a depth
+// derived from the previous screen, and the one-shot screen-edge fact armed at
+// that stale target fired at the wrong τ (or never).
+//
+// The engine holds the shell geometry it was bound with and the live window, so
+// it states the depth itself, in the same UI block that starts the spring
+// (TrackHiddenDepthForBounds + snapToHidden, TrackScrollKit). JS now expresses
+// the INTENT — 'hidden' — and never a pixel.
+//
+// OA5 SURVIVES THE MOVE. The plan type made a teleport unrepresentable; the
+// native command does the same thing more strongly: snapToHidden takes no mode,
+// no duration and no target, and its one body is TrackPerformSnap — the same
+// critically damped spring every detent settle rides. There is no code path
+// that places the sheet at the hidden target without gliding there. The
+// arithmetic's falsifier moved with it (TrackEngineFactsTests.c, "hidden depth
+// from live bounds"), including the never-negative law.
 
 // THE EDGE FACT IS NATIVE-OWNED (F3 kill-list, 2026-08-04): a JS mirror of the
 // τ-vs-target comparison (`hasClearedScreenEdge`) lived here, exported and

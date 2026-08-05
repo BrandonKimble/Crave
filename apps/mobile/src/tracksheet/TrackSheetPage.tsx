@@ -2,6 +2,7 @@ import React from 'react';
 import {
   Dimensions,
   findNodeHandle,
+  NativeEventEmitter,
   NativeModules,
   Pressable,
   requireNativeComponent,
@@ -20,6 +21,11 @@ import Reanimated, {
   type SharedValue,
 } from 'react-native-reanimated';
 
+import {
+  resolveTrackSettleReport,
+  shouldConsumeTrackSettle,
+  type TrackNativeSettleEvent,
+} from './track-settle-fact';
 import { FrostedGlassBackground } from '../components/FrostedGlassBackground';
 import { TOGGLE_STRIP_BAND_HEIGHT } from '../toggles/toggle-strip-metrics';
 import { overlaySheetStyles } from '../overlays/overlaySheetStyles';
@@ -161,14 +167,29 @@ export type TrackSheetLeg = {
  * means a live drag owned τ when the command landed — THE FINGER OWNS TAU,
  * the command is dead, never re-issued. hiddenGeneration is present iff the
  * command armed a hidden excursion (the stamp trackHiddenEdgeCleared events
- * must match to be consumed). */
-export type TrackSnapOutcome = { refused: boolean; hiddenGeneration?: number };
+ * must match to be consumed). targetTau is the τ the ENGINE chose (σ already
+ * folded in) — for a hidden command that number exists only natively. */
+export type TrackSnapOutcome = {
+  refused: boolean;
+  hiddenGeneration?: number;
+  targetTau?: number;
+};
+
+/** THE COMMAND IS AN INTENT, NOT ALWAYS A PIXEL. A detent seat is a
+ * posture-space number JS owns; 'hidden' is a request whose depth only the
+ * engine can state without staleness (live bounds — see track-entry-hidden.ts
+ * for why the JS derivation was deleted). */
+export type TrackSnapCommandTarget = number | 'hidden';
 
 export type TrackSheetCommands = {
-  /** Programmatic settle to a τ (detent) — rides the native scroll animation.
-   * onOutcome reports native's verdict: a refusal (finger owns τ) or the
-   * armed hidden-excursion generation. */
-  snapToTau: (tau: number, onOutcome?: (outcome: TrackSnapOutcome) => void) => void;
+  /** Programmatic settle to a posture τ, or the hidden INTENT — both ride the
+   * same native critically damped spring (OA5). onOutcome reports native's
+   * verdict: a refusal (finger owns τ), the armed hidden-excursion generation,
+   * and the τ the engine actually aimed at. */
+  snapToTau: (
+    target: TrackSnapCommandTarget,
+    onOutcome?: (outcome: TrackSnapOutcome) => void
+  ) => void;
   /** Posture peeks (JS mirrors; used at rest for descriptor resolution). */
   readTau: () => number;
   readSigma: () => number;
@@ -529,12 +550,20 @@ export function TrackSheetPage({
     [boundScrollOffset, trackH]
   );
 
-  // ── THE SETTLE OBSERVER (gesture-written posture memory) ──
-  // UI-THREAD REACTION, never polling (jiggle fix, 2026-07-27): a 250ms JS
-  // interval reading physics during a spring animation stutters the motion —
-  // the sheet must never be sampled by the JS thread while it moves. This
-  // reaction fires once, on the frame the track comes to rest on a detent
-  // after a gesture.
+  // ── THE SETTLE OBSERVER: NATIVE FACT, NOT JS INFERENCE ──
+  // ~30 lines of τ-sampling lived here (an animated reaction that called it
+  // settled when two consecutive frames were within 0.5pt AND the posture was
+  // within 2pt of a detent, de-duplicated by a settleReportedTau one-shot). It
+  // was an INFERENCE of a fact the engine already knows exactly, and inference
+  // is why it had two structural holes: a rest that was not at a detent
+  // produced nothing at all (the hidden domain's off-screen rest, a clamped
+  // rest, a park between detents — each riding the 700ms deadline instead), and
+  // a return to the SAME detent produced nothing either, because the one-shot
+  // was never reset by a drag.
+  // The native spring reports its own completion now (trackDidSettle, one
+  // emission per motion episode, generation-stamped); the 700ms deadline stays
+  // as the LIVENESS BACKSTOP only. What a settle MEANS is pure
+  // (track-settle-fact.ts) and falsified without a renderer.
   const onGestureSettleRef = React.useRef(onGestureSettle);
   onGestureSettleRef.current = onGestureSettle;
   // ── THE DRAG-BEGIN OBSERVER (R7 fence, pending side) ──
@@ -556,45 +585,51 @@ export function TrackSheetPage({
   );
   const onSettleRef = React.useRef(onSettle);
   onSettleRef.current = onSettle;
-  const settleReportedTau = useSharedValue(-1);
-  const settleLastTau = useSharedValue(-1);
-  const reportSettle = React.useCallback((detentTau: number, owned: boolean) => {
-    onSettleRef.current?.(detentTau);
-    // Posture memory is gesture-written ONLY (inventory §5.10).
-    if (owned) {
-      onGestureSettleRef.current?.(detentTau);
+  /** The last engine motion-episode whose rest we consumed. Belt-and-braces
+   *  behind native's own one-shot: only a generation can tell a replayed
+   *  emission (a re-attach, a remounted listener) from a real new rest. */
+  const lastSettleGenerationRef = React.useRef(0);
+  React.useEffect(() => {
+    const physicsModule = NativeModules.TrackScrollPhysics;
+    if (physicsModule == null) {
+      return undefined;
     }
-  }, []);
-  useAnimatedReaction(
-    () => ({
-      value: tau.value,
-      dragging: physics.dragging.value,
-      owned: physics.userOwnsPosture.value,
-    }),
-    (current) => {
-      // The WRITER no longer gates the observation — only the finger does. A
-      // programmatic settle is still a settle; reportSettle routes by writer.
-      if (current.dragging) {
-        settleLastTau.value = -1;
-        return;
-      }
-      const stable =
-        settleLastTau.value >= 0 && Math.abs(current.value - settleLastTau.value) <= 0.5;
-      settleLastTau.value = current.value;
-      if (!stable) {
-        return;
-      }
-      const posture = current.value - physics.sigma.value;
-      for (const detent of physics.detentTaus) {
-        if (Math.abs(detent - posture) <= 2 && settleReportedTau.value !== detent) {
-          settleReportedTau.value = detent;
-          runOnJS(reportSettle)(detent, current.owned);
+    const emitter = new NativeEventEmitter(physicsModule);
+    const sub = emitter.addListener(
+      'trackDidSettle',
+      (event: Partial<TrackNativeSettleEvent> | undefined) => {
+        if (event == null || typeof event.generation !== 'number') {
           return;
         }
+        const fact: TrackNativeSettleEvent = {
+          generation: event.generation,
+          tau: event.tau ?? 0,
+          posture: event.posture ?? 0,
+          atDetent: event.atDetent === true,
+          detentTau: event.detentTau ?? null,
+          cause: event.cause ?? 'spring',
+          hiddenEngaged: event.hiddenEngaged === true,
+        };
+        if (!shouldConsumeTrackSettle(lastSettleGenerationRef.current, fact)) {
+          return;
+        }
+        lastSettleGenerationRef.current = fact.generation;
+        const report = resolveTrackSettleReport(fact, {
+          // The finger-authored latch: posture memory is gesture-written ONLY
+          // (inventory §5.10), and the WRITER never gated the rest fact itself.
+          userOwnsPosture: physics.userOwnsPosture.value,
+        });
+        // EVERY rest reaches the motion authority — including a rest at no
+        // detent, which the old sampler could not express at all. The detent
+        // (or null) is data on the fact, never a condition for reporting it.
+        onSettleRef.current?.(report.detentTau ?? fact.posture);
+        if (report.postureMemoryTau != null) {
+          onGestureSettleRef.current?.(report.postureMemoryTau);
+        }
       }
-    },
-    [physics, reportSettle]
-  );
+    );
+    return () => sub.remove();
+  }, [physics]);
 
   // ── THE SEAT: DELETED (F861, 2026-08-03) ──────────────────────────────────────
   // ~80 lines lived here that COULD NOT EXECUTE: the declarative re-asserting seat
@@ -644,7 +679,7 @@ export function TrackSheetPage({
       // recycler lays out is a silent no-op — the sheet sat at τ=0 while the OLD
       // sheet rendered the same page above it, and every visual check read the
       // wrong layer. Retry until τ actually reaches the target (or attempts cap).
-      snapToTau: (tauTarget, onOutcome) => {
+      snapToTau: (commandTarget, onOutcome) => {
         if (pendingSnapTimer.current != null) {
           clearTimeout(pendingSnapTimer.current);
           pendingSnapTimer.current = null;
@@ -668,9 +703,19 @@ export function TrackSheetPage({
         const loopId = snapLoopIdRef.current + 1;
         snapLoopIdRef.current = loopId;
         let attempts = 0;
-        const settleStep = (outcome?: { refused?: boolean; hiddenGeneration?: number }) => {
+        // THE TARGET THE ENGINE CHOSE. For a detent command JS knows it up
+        // front; for the hidden intent only native does (live bounds), and it
+        // reports it on every resolve. Until it is known the loop cannot
+        // measure arrival — and a distance it cannot measure must READ AS
+        // ARRIVED, never as "retry forever" against a track that already moved.
+        let resolvedTarget: number | null =
+          typeof commandTarget === 'number' ? commandTarget : null;
+        const settleStep = (outcome?: TrackSnapOutcome) => {
           if (snapLoopIdRef.current !== loopId) {
             return;
+          }
+          if (outcome?.targetTau != null) {
+            resolvedTarget = outcome.targetTau;
           }
           if (outcome?.hiddenGeneration != null) {
             onOutcome?.({ refused: false, hiddenGeneration: outcome.hiddenGeneration });
@@ -679,7 +724,7 @@ export function TrackSheetPage({
             dragging: physics.dragging.value,
             refused: outcome?.refused === true,
             attempts,
-            distance: Math.abs(tau.value - tauTarget),
+            distance: resolvedTarget == null ? 0 : Math.abs(tau.value - resolvedTarget),
           });
           if (decision === 'abort-finger' || decision === 'abort-refused') {
             onOutcome?.({ refused: true });
@@ -700,16 +745,30 @@ export function TrackSheetPage({
           attempts += 1;
           const nativePhysics = NativeModules.TrackScrollPhysics;
           const tag = trackTagRef.current;
-          if (nativePhysics?.snapTo == null || tag == null) {
-            // No native engine (tests / pre-attach): the wrapper issue keeps
-            // the old fire-and-forget shape; the distance check drives retry.
-            physics.snapToTau(tauTarget);
+          // THE HIDDEN INTENT goes to its own native entry point: JS names the
+          // intent, the engine derives the depth from its live bounds and
+          // answers with the τ it aimed at. A binary without snapToHidden is a
+          // CONTRACT failure, barked at attach (track-native-contract.ts) —
+          // never silently degraded into a JS-computed pixel target here.
+          const hidden = commandTarget === 'hidden';
+          const issue =
+            tag == null
+              ? null
+              : hidden
+                ? nativePhysics?.snapToHidden?.(tag)
+                : nativePhysics?.snapTo?.(tag, commandTarget);
+          if (issue == null) {
+            // No native engine (tests / pre-attach). A detent command still has
+            // the fire-and-forget wrapper; the hidden intent has no JS fallback
+            // by construction (its target is native-only), so the loop ends.
+            if (!hidden && typeof commandTarget === 'number') {
+              physics.snapToTau(commandTarget);
+            }
             settleStep(undefined);
             return;
           }
-          void Promise.resolve(nativePhysics.snapTo(tag, tauTarget)).then(
-            (outcome: { refused?: boolean; hiddenGeneration?: number } | undefined) =>
-              settleStep(outcome),
+          void Promise.resolve(issue).then(
+            (outcome: TrackSnapOutcome | undefined) => settleStep(outcome),
             () => settleStep(undefined)
           );
         };

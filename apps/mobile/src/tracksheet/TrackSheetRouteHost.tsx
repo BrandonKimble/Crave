@@ -1,13 +1,5 @@
 import React from 'react';
-import {
-  Dimensions,
-  Linking,
-  NativeEventEmitter,
-  NativeModules,
-  StyleSheet,
-  Text,
-  View,
-} from 'react-native';
+import { Linking, NativeEventEmitter, NativeModules, StyleSheet, Text, View } from 'react-native';
 
 import {
   runOnJS,
@@ -17,6 +9,19 @@ import {
   Easing,
 } from 'react-native-reanimated';
 import type { SheetSceneKey } from '../navigation/runtime/scene-foundation-spec';
+// THE ONE SCENE-DECLARATION SCHEMA — every per-scene fact this host used to hand-keep.
+import {
+  SCENE_DECLARATIONS,
+  resolveSceneCreateFallbackRoute,
+  resolveSceneListPartsSource,
+  sceneDeclaresSharedRowSurface,
+  sceneHidesGrabHandle,
+  sceneIsChildRole,
+  sceneIsResidentTrackScene,
+  sceneMountedBodyIsEdgeToEdge,
+  sceneReportsUserScrollActivity,
+  sceneUsesMountedTrackBody,
+} from '../navigation/runtime/scene-foundation-spec';
 
 import { getPersistentHeaderDescriptor } from '../navigation/runtime/app-route-persistent-header-registry';
 import {
@@ -86,7 +91,7 @@ import {
   type TrackEntryBodyResolution,
 } from './track-entry-readiness';
 import { trackSkeletonMaterialForScene } from './track-entry-skeleton';
-import { planHiddenExcursion, resolveHiddenPresentation } from './track-entry-hidden';
+import { resolveHiddenPresentation } from './track-entry-hidden';
 import { getTrackMotionAuthority, type TrackMotionTransition } from './track-motion-authority';
 
 // ─── TrackSheetRouteHost — THE PRODUCTION SHEET HOST ──────────────────────────
@@ -192,6 +197,7 @@ const probeStyles = StyleSheet.create({
 });
 
 export const TrackSheetRouteHost: React.FC = () => {
+  assertMountedBodyAgreement();
   // THE FLIP (rung 5): the track host is the DEFAULT. The deep link is the
   // emergency rollback + debug-visuals toggle (see track-flip-store).
   const state = useTrackFlipState();
@@ -430,30 +436,18 @@ const TrackSheetRouteSurface: React.FC<{ scene: OverlayKey }> = ({ scene: sceneO
   );
 };
 
-// The mounted-body registry's scene set (searchOverlayRouteHostContract) minus
-// the list-parts scenes and search (owns its dual-band composition — LAST).
-const ROOT_TRACK_SCENES = new Set<OverlayKey>([
-  'home',
-  'polls',
-  'lists',
-  'profile',
-  'search',
-] as OverlayKey[]);
-
-// Scenes whose bodies own their insets (in-list strips must bleed edge-to-edge —
-// the ToggleStrip band law barks inside any padded mount).
-const UNPADDED_BODY_SCENES = new Set<OverlayKey>(['listDetail'] as OverlayKey[]);
-
-// Tab scenes that become RESIDENTS on first visit (E1); child pages stay
-// transient (mount only while presented).
-const RESIDENT_TRACK_SCENES = new Set<OverlayKey>([
-  'search',
-  'home',
-  'polls',
-  'lists',
-  'profile',
-] as OverlayKey[]);
-
+// F872 DISCHARGED (the ONE scene-declaration schema, redteam finding 6): the three
+// hand-kept sets that used to live here — ROOT_TRACK_SCENES, RESIDENT_TRACK_SCENES,
+// UNPADDED_BODY_SCENES — plus the derived MOUNTED_TRACK_SCENES and the per-scene
+// ternaries (`legScene === 'polls' ? … : homeParts`, the polls create fallback, the
+// `scene === 'settings'` grab handle) are DELETED. Every one of those facts is now a
+// required column on the shared row in navigation/runtime/scene-foundation-spec.ts, read
+// through the derived selectors imported above. A scene that disagrees with itself is no
+// longer representable, and adding a scene is a single row edit.
+//
+// What stays here is the COMPONENT map: the schema declares `body.kind: 'mounted'`, this
+// map binds the key to its React component. (Registration cannot hoist into the pure
+// table without inverting the dependency — the table would import every panel.)
 const MOUNTED_BODY_COMPONENTS: Partial<
   Record<SearchRouteMountedSceneBodyKey, React.ComponentType<{ entry?: OverlayRouteEntry | null }>>
 > = {
@@ -472,24 +466,33 @@ const MOUNTED_BODY_COMPONENTS: Partial<
 };
 
 /**
- * The scenes whose bodies come from the mounted-body registry — DERIVED, never listed.
- *
- * F872 (2026-08-03): this was a SECOND hand-maintained list of the same twelve keys as
- * MOUNTED_BODY_COMPONENTS above. They agreed on the day they were written, and the failure
- * mode of disagreement is silent and ugly: a scene in the SET but not in the COMPONENT MAP
- * makes `renderMountedBody` return null — a blank sheet body, no error, no log. Deriving the
- * set from the map's own keys makes that state unrepresentable; adding a scene is now one
- * edit in one place.
+ * The COMPONENT-MAP ↔ SCHEMA agreement check (the F872 failure mode, kept as a falsifier
+ * now that the membership fact moved): a scene the schema declares `body.kind: 'mounted'`
+ * with no component here renders NOTHING — blank body, no error. The schema is the
+ * authority; this bark makes the disagreement loud instead of silent. (The reverse — a
+ * component with no mounted declaration — is dead weight and also barks.)
  */
-const MOUNTED_TRACK_SCENES = new Set<OverlayKey>(
-  Object.keys(MOUNTED_BODY_COMPONENTS) as OverlayKey[]
-);
-
-// NOT DONE (F872, recorded): the finding also proposed folding this file's role / residency
-// / padding sets (ROOT_TRACK_SCENES, RESIDENT_TRACK_SCENES, UNPADDED_BODY_SCENES) onto the
-// APP_OVERLAY_ROUTE_METADATA_BY_KEY table this file already consults. That is a change to
-// the shared route-metadata contract in navigation/, owned by another lane — it should land
-// there, with that table's own exhaustiveness guard, not as a local copy here.
+// (Run once at FIRST RENDER, not at module init: this file sits in an import cycle with the
+// panel modules, so SCENE_DECLARATIONS is not yet initialized when this module body runs.)
+let mountedBodyAgreementChecked = false;
+const assertMountedBodyAgreement = (): void => {
+  if (!__DEV__ || mountedBodyAgreementChecked) {
+    return;
+  }
+  mountedBodyAgreementChecked = true;
+  for (const sceneKey of Object.keys(SCENE_DECLARATIONS) as OverlayKey[]) {
+    const declaredMounted = sceneUsesMountedTrackBody(sceneKey);
+    const hasComponent =
+      MOUNTED_BODY_COMPONENTS[sceneKey as SearchRouteMountedSceneBodyKey] != null;
+    if (declaredMounted !== hasComponent) {
+      // eslint-disable-next-line no-console
+      console.error(
+        `[track-host] scene '${sceneKey}' declares mounted-body=${declaredMounted} in the scene ` +
+          `schema but ${hasComponent ? 'HAS' : 'has NO'} mounted body component here.`
+      );
+    }
+  }
+};
 
 /** A leg's resolved body — whatever phase produced it (content, frozen, or the
  * skeleton), it feeds TrackSheetPage's per-leg FlashList props. Loosely typed
@@ -579,24 +582,21 @@ const useTrackScenePageChrome = (
       // derivation). Before the excursion moves τ, snapshot the presented
       // entry's scroll — the deferred swap commits at τ=−depth, where the
       // live term is gone (planEntrySwitch suppresses hidden-domain saves).
-      const hiddenPlan =
-        snap === 'hidden'
-          ? planHiddenExcursion({
-              collapsedTop: snapPoints.collapsed,
-              screenHeight: Dimensions.get('window').height,
-            })
-          : null;
-      if (hiddenPlan != null) {
+      // THE DEPTH IS NATIVE (ratified item 5): this used to compute the target
+      // from Dimensions.get('window') — a module-scope screen snapshot against
+      // live UIKit bounds (G-ROTATE's staleness). The command now carries the
+      // INTENT and the engine states the pixel.
+      const isHidden = snap === 'hidden';
+      if (isHidden) {
         commands?.saveScrollForPresentedEntry();
       }
-      const postureTau =
-        snap === 'expanded'
+      const postureTau: number | 'hidden' = isHidden
+        ? 'hidden'
+        : snap === 'expanded'
           ? trackH
           : snap === 'middle'
             ? snapPoints.collapsed - snapPoints.middle
-            : hiddenPlan != null
-              ? hiddenPlan.targetPostureTau
-              : 0;
+            : 0;
       // THE ZERO-PIXEL SETTLE (joinWait red team): a same-posture switch
       // short-circuits inside native snapTo (<0.5pt) and produces NO settle
       // fact — waiting the 700ms fallback held every tab switch's revealed/
@@ -608,7 +608,10 @@ const useTrackScenePageChrome = (
         Math.max(0, (commands?.readTau() ?? 0) - (commands?.readSigma() ?? 0)),
         trackH
       );
-      const willMove = Math.abs(currentPosture - postureTau) >= 0.5;
+      // A hidden excursion ALWAYS moves: its target is below collapsed and the
+      // clamped posture above is >= 0, so the comparison was never in doubt —
+      // it is stated rather than computed now that the pixel lives natively.
+      const willMove = postureTau === 'hidden' || Math.abs(currentPosture - postureTau) >= 0.5;
       // THE COMMAND FACT into the authority. A real flight records its
       // destination for mid-flight reads; a hidden excursion records none (its
       // target is not a detent posture) and a zero-move snap opens no episode
@@ -801,7 +804,7 @@ const useTrackScenePageChrome = (
   // Rung-4 chrome parity: the kit renders the production chrome (cutout plate,
   // grab handle, HeaderNavAction). The host supplies title + action wiring.
   const { closeActiveRoute, promoteActiveSheet, pushRoute } = useAppOverlayRouteController();
-  const isChildScene = !ROOT_TRACK_SCENES.has(scene);
+  const isChildScene = sceneIsChildRole(scene);
   const navActionProgress = useSharedValue(isChildScene ? 1 : 0);
   React.useEffect(() => {
     // Inventory §1.4: 220ms out-cubic; source = scene role (child → X).
@@ -820,8 +823,9 @@ const useTrackScenePageChrome = (
       }
       return;
     }
-    if (!runHeaderCreateAction(scene) && scene === 'polls') {
-      pushRoute('pollCreation');
+    const createFallbackRoute = resolveSceneCreateFallbackRoute(scene);
+    if (!runHeaderCreateAction(scene) && createFallbackRoute != null) {
+      pushRoute(createFallbackRoute);
     }
   }, [closeActiveRoute, isChildScene, pushRoute, scene]);
   // G-EXTRAS (R6): the registry's per-scene Extras chrome renders LEFT of the
@@ -1039,7 +1043,9 @@ const UnifiedTrackScenePage: React.FC<TrackScenePageProps> = ({
                 {/* padding INSIDE the surface so the white plate spans the full
                   cell (padded-outside left frost gutters at the margins). */}
                 <View
-                  style={UNPADDED_BODY_SCENES.has(legScene) ? undefined : styles.mountedBodyInset}
+                  style={
+                    sceneMountedBodyIsEdgeToEdge(legScene) ? undefined : styles.mountedBodyInset
+                  }
                 >
                   <ChromeProbeBoundary label={`${legScene}.body`}>
                     <Body entry={legEntry ?? undefined} />
@@ -1109,7 +1115,7 @@ const UnifiedTrackScenePage: React.FC<TrackScenePageProps> = ({
   // not fork their scroll memory). Child scenes are ENTRY-KEYED and retained
   // as hidden legs with depth-K LRU (K=3): pushing B over A keeps A's leg —
   // hook state, strip selection, scroll — alive for a byte-exact pop-back.
-  const isResidentScene = RESIDENT_TRACK_SCENES.has(scene);
+  const isResidentScene = sceneIsResidentTrackScene(scene);
   const presentedEntryKey = makeTrackEntryKey(scene, isResidentScene ? null : entryId);
   const visitedResidentsRef = React.useRef(new Set<OverlayKey>());
   if (isResidentScene) {
@@ -1128,7 +1134,7 @@ const UnifiedTrackScenePage: React.FC<TrackScenePageProps> = ({
       let mountedResidentLeg = false;
       for (const requestedScene of consumeTrackScenePrewarmRequests()) {
         const decision = planScenePrewarm({
-          isResidentScene: RESIDENT_TRACK_SCENES.has(requestedScene as OverlayKey),
+          isResidentScene: sceneIsResidentTrackScene(requestedScene as OverlayKey),
           alreadyVisited: visitedResidentsRef.current.has(requestedScene as OverlayKey),
         });
         if (decision.kind === 'mountResidentLeg') {
@@ -1203,16 +1209,13 @@ const UnifiedTrackScenePage: React.FC<TrackScenePageProps> = ({
     ) {
       return { kind: 'list', rowCount: publishedBody.data?.length ?? 0 };
     }
+    const partsSource = resolveSceneListPartsSource(legScene);
     const partsFor =
-      legScene === 'polls'
-        ? pollsParts
-        : legScene === 'home' || legScene === 'search'
-          ? homeParts
-          : null;
+      partsSource === 'polls' ? pollsParts : partsSource === 'home' ? homeParts : null;
     if (partsFor != null && partsFor.sceneBodyContent.surfaceKind === 'list') {
       return { kind: 'list', rowCount: partsFor.sceneBodyContent.data?.length ?? 0 };
     }
-    if (MOUNTED_TRACK_SCENES.has(legScene)) {
+    if (sceneUsesMountedTrackBody(legScene)) {
       return { kind: 'mounted' };
     }
     return { kind: 'none' };
@@ -1260,7 +1263,7 @@ const UnifiedTrackScenePage: React.FC<TrackScenePageProps> = ({
         onEndReachedThreshold: publishedBody.onEndReachedThreshold,
       };
     } else if (resolution.kind === 'list') {
-      const partsFor = legScene === 'polls' ? pollsParts : homeParts;
+      const partsFor = resolveSceneListPartsSource(legScene) === 'polls' ? pollsParts : homeParts;
       const spec = partsFor.sceneBodyContent;
       if (spec.surfaceKind !== 'list') {
         // Unreachable by construction (the resolution said 'list'); typed out.
@@ -1356,16 +1359,17 @@ const UnifiedTrackScenePage: React.FC<TrackScenePageProps> = ({
               <View style={styles.mountedBodyInset}>{renderListLeader(leader)}</View>
             </SceneBodyFoundationSurface>
           ) : null,
-        rowSurfaceStyle: MOUNTED_TRACK_SCENES.has(legScene)
-          ? UNPADDED_BODY_SCENES.has(legScene)
+        rowSurfaceStyle: sceneUsesMountedTrackBody(legScene)
+          ? sceneMountedBodyIsEdgeToEdge(legScene)
             ? styles.mountedSurfaceUnpadded
             : styles.mountedSurface
           : (legEntryKey === presentedEntryKey && publishedBody?.surfaceKind === 'list') ||
-              legScene === 'polls'
+              sceneDeclaresSharedRowSurface(legScene)
             ? styles.rowSurface
             : undefined,
-        onUserListScrollActivity:
-          legScene === 'polls' ? pollsParts.sceneBodyTransport.onUserListScrollActivity : undefined,
+        onUserListScrollActivity: sceneReportsUserScrollActivity(legScene)
+          ? pollsParts.sceneBodyTransport.onUserListScrollActivity
+          : undefined,
       };
     });
     // resolveLegList / rendererForMountedEntry are render-scoped closures whose
@@ -1450,7 +1454,7 @@ const UnifiedTrackScenePage: React.FC<TrackScenePageProps> = ({
         headerExtras={headerExtras}
         navActionProgress={navActionProgress}
         onNavActionPress={onNavActionPress}
-        grabHandleHidden={scene === 'settings'}
+        grabHandleHidden={sceneHidesGrabHandle(scene)}
         onGrabHandlePress={onGrabHandlePress}
         legs={legs}
         presentedEntryKey={presentedEntryKey}

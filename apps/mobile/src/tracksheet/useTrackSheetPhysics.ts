@@ -8,6 +8,15 @@ import {
   type SharedValue,
 } from 'react-native-reanimated';
 
+import {
+  TRACK_NATIVE_CONTRACT_VERSION,
+  TRACK_NATIVE_REQUIRED_CAPABILITIES,
+  describeTrackNativeContractVerdict,
+  resolveTrackNativeContractVerdict,
+  trackNativeContractIsHealthy,
+  type TrackNativeContractReport,
+} from './track-native-contract';
+
 // ─── THE ONE TRACK physics (plans/page-composition-from-scratch-design.md) ─────
 //
 // One native UIScrollView is the ONLY motion engine: sheet travel and list
@@ -23,6 +32,45 @@ import {
 // is one-shot durable (the FlashList lesson). The CHROME is content inside this
 // same scroll view (see TrackSheetPage) and is pinned natively past H, so there
 // is no chrome region and no second input surface — one track, one engine.
+
+// ─── THE NATIVE-CONTRACT GUARD, wired ────────────────────────────────────────
+// The pure verdict lives in track-native-contract.ts; this is the one impure
+// half — read the binary's own declaration and BARK. Once per app run: the
+// failure is a property of the installed binary, so repeating it every attach
+// retry would bury it under its own noise.
+let contractCheckDone = false;
+const assertTrackNativeContract = (): void => {
+  if (contractCheckDone) {
+    return;
+  }
+  contractCheckDone = true;
+  const verdict = resolveTrackNativeContractVerdict(
+    NativeModules.TrackScrollPhysics as TrackNativeContractReport,
+    {
+      version: TRACK_NATIVE_CONTRACT_VERSION,
+      capabilities: TRACK_NATIVE_REQUIRED_CAPABILITIES,
+    }
+  );
+  if (trackNativeContractIsHealthy(verdict)) {
+    return;
+  }
+  // 'absent' is the pure/test lane and any host with no module at all — still a
+  // degradation, but not one a device user can act on, so it stays quiet
+  // outside dev. Every other verdict is a real binary answering wrong.
+  if (verdict.status === 'absent' && !__DEV__) {
+    return;
+  }
+  // eslint-disable-next-line no-console
+  console.error(describeTrackNativeContractVerdict(verdict));
+};
+
+/** The live verdict, for anything that must DEGRADE HONESTLY rather than wait
+ *  on a native answer that will never come. */
+export const readTrackNativeContractVerdict = () =>
+  resolveTrackNativeContractVerdict(NativeModules.TrackScrollPhysics as TrackNativeContractReport, {
+    version: TRACK_NATIVE_CONTRACT_VERSION,
+    capabilities: TRACK_NATIVE_REQUIRED_CAPABILITIES,
+  });
 
 export type TrackSheetGeometry = {
   /** Sheet top edge (screen y) when fully expanded. */
@@ -114,6 +162,11 @@ export const useTrackSheetPhysics = (
   const attachToTag = React.useCallback(
     (tag: number | null) => {
       const physics = NativeModules.TrackScrollPhysics;
+      // THE HANDSHAKE, at the one moment JS first depends on the binary. A
+      // stale binary's every symptom downstream is a silence (commands that
+      // never complete, a fence that never restores, reveals that wait out the
+      // deadline) — this is the only place that can still name the cause.
+      assertTrackNativeContract();
       if (physics?.attach == null || tag == null) {
         return;
       }
