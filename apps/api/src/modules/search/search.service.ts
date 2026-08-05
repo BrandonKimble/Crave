@@ -736,6 +736,9 @@ export class SearchService {
       // the "vegan failed in this viewport" signal — name the word.
       if (totalResults === 0) {
         const hardStarved = await this.collectDietaryTerms(request);
+        for (const name of request.dietary ?? []) {
+          if (!hardStarved.terms.includes(name)) hardStarved.terms.push(name);
+        }
         if (hardStarved.terms.length) {
           starved = {
             attributeIds: [
@@ -1595,9 +1598,37 @@ export class SearchService {
           .filter((id) => !dietary.has(id))
           .slice(0, SOFT_ID_CAP)
       : [];
-    // Hard-only membership: dietary attribute ids stay walls; soft ids move
-    // to provenance. Presence bookkeeping is untouched — it describes the
-    // QUERY the user asked, not the WHERE we execute.
+    // DIETARY WALLS (owner semantics 2026-08-04): a dietary requirement is
+    // per-projection — dish shows only with the DISH-side attribute; a
+    // restaurant shows with the VENUE-side attribute OR any dish carrying
+    // the dish-side one. So dietary ids leave the plain membership filters
+    // entirely and become structured walls; activation comes from BOTH the
+    // toggle strip (request.dietary names) and query-text grounding (one
+    // grounded side activates the whole pair).
+    const dietaryPairs = await this.dietaryConstraints.getDietaryPairs();
+    const wallNames = new Set<string>(
+      (params.request.dietary ?? [])
+        .map((name) => name.trim().toLowerCase())
+        .filter((name) => dietaryPairs.has(name)),
+    );
+    for (const [name, pair] of dietaryPairs) {
+      const grounded =
+        (pair.foodAttributeId &&
+          constraints.ids.foodAttributeIds.includes(pair.foodAttributeId)) ||
+        (pair.restaurantAttributeId &&
+          constraints.ids.restaurantAttributeIds.includes(
+            pair.restaurantAttributeId,
+          ));
+      if (grounded) wallNames.add(name);
+    }
+    const dietaryWalls = Array.from(wallNames).map((name) => ({
+      name,
+      ...dietaryPairs.get(name)!,
+    }));
+
+    // Membership: soft ids move to provenance; dietary ids move to WALLS.
+    // Presence bookkeeping is untouched — it describes the QUERY the user
+    // asked, not the WHERE we execute.
     const softSet = new Set([
       ...softFoodAttributeIds,
       ...softRestaurantAttributeIds,
@@ -1607,10 +1638,10 @@ export class SearchService {
       ids: {
         ...constraints.ids,
         foodAttributeIds: constraints.ids.foodAttributeIds.filter(
-          (id) => !softSet.has(id),
+          (id) => !softSet.has(id) && !dietary.has(id),
         ),
         restaurantAttributeIds: constraints.ids.restaurantAttributeIds.filter(
-          (id) => !softSet.has(id),
+          (id) => !softSet.has(id) && !dietary.has(id),
         ),
       },
     };
@@ -1648,6 +1679,7 @@ export class SearchService {
         constraints,
         params.planExpansion,
       ),
+      ...(dietaryWalls.length ? { dietaryWalls } : {}),
       ...(hasSoftIds || similarFoodIds.length
         ? {
             pooledGate: {

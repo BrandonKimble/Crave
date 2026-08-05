@@ -232,7 +232,35 @@ export class SearchQueryBuilder {
       ? `AND (r.entity_id = ANY(${this.formatUuidArray(restrictIds)}))`
       : '';
 
-    const combinedRestaurantWhereSql = Prisma.sql`${restaurantWhereSql} AND ${inventoryExistsSql} AND ${restaurantAttributeMatchSql} AND ${itemOrSignalMatchSql} ${excludeRestaurantsSql} ${restrictRestaurantsSql}`;
+    // DIETARY WALLS, restaurant projection (owner semantics 2026-08-04):
+    // a restaurant passes each wall when the VENUE carries the attribute
+    // OR ANY of its dishes does. Arms drop when a side has no entity
+    // (vegetarian has no venue row today). NOTE: deliberately NOT scoped
+    // to the query's connection match — a vegan wall asks "is this a
+    // vegan-viable venue", not "does the matching dish happen to be
+    // vegan" (that is the DISH projection's job).
+    const dietaryRestaurantWallsSql = (directives?.dietaryWalls ?? []).length
+      ? Prisma.sql`AND ${Prisma.join(
+          (directives?.dietaryWalls ?? []).map((wall) => {
+            const arms: Prisma.Sql[] = [];
+            if (wall.restaurantAttributeId) {
+              arms.push(
+                Prisma.sql`r.restaurant_attributes @> ARRAY[${wall.restaurantAttributeId}]::uuid[]`,
+              );
+            }
+            if (wall.foodAttributeId) {
+              arms.push(
+                Prisma.sql`EXISTS (SELECT 1 FROM core_restaurant_items dc WHERE dc.restaurant_id = r.entity_id AND dc.food_attributes @> ARRAY[${wall.foodAttributeId}]::uuid[])`,
+              );
+            }
+            return arms.length
+              ? Prisma.sql`(${Prisma.join(arms, ' OR ')})`
+              : Prisma.sql`TRUE`;
+          }),
+          ' AND ',
+        )}`
+      : Prisma.sql``;
+    const combinedRestaurantWhereSql = Prisma.sql`${restaurantWhereSql} AND ${inventoryExistsSql} AND ${restaurantAttributeMatchSql} AND ${itemOrSignalMatchSql} ${dietaryRestaurantWallsSql} ${excludeRestaurantsSql} ${restrictRestaurantsSql}`;
     const combinedRestaurantWherePreview =
       `${restaurantWherePreview} AND ${inventoryExistsPreview} AND ${restaurantAttributeMatchPreview} AND ${itemOrSignalMatchPreview} ${excludeRestaurantsPreview} ${restrictRestaurantsPreview}`.trim();
 
@@ -786,7 +814,23 @@ LEFT JOIN LATERAL (...matched tags subquery with LIMIT 5...) tm ON ${
     const ringAdmissionSql = similarRingIds.length
       ? Prisma.sql`OR c.food_id = ANY(${similarRingIds}::uuid[])`
       : Prisma.sql``;
-    const combinedConnectionWhereSql = Prisma.sql`(${connectionWhereSql} ${ringAdmissionSql}) ${excludeConnectionsSql}`;
+    // DIETARY WALLS, dish projection (owner semantics 2026-08-04): a dish
+    // serves ONLY when it carries the dish-side attribute itself; a wall
+    // with no dish-side entity does not constrain dishes.
+    const dietaryDishWallsSql = (directives?.dietaryWalls ?? []).some(
+      (wall) => wall.foodAttributeId,
+    )
+      ? Prisma.sql`AND ${Prisma.join(
+          (directives?.dietaryWalls ?? [])
+            .filter((wall) => wall.foodAttributeId)
+            .map(
+              (wall) =>
+                Prisma.sql`c.food_attributes @> ARRAY[${wall.foodAttributeId}]::uuid[]`,
+            ),
+          ' AND ',
+        )}`
+      : Prisma.sql``;
+    const combinedConnectionWhereSql = Prisma.sql`(${connectionWhereSql} ${ringAdmissionSql}) ${dietaryDishWallsSql} ${excludeConnectionsSql}`;
     const combinedConnectionWherePreview =
       `${connectionWherePreview} ${excludeConnectionsPreview}`.trim();
 

@@ -30,6 +30,42 @@ export class DietaryConstraintRegistry {
     this.logger = loggerService.setContext('DietaryConstraintRegistry');
   }
 
+  /** One dietary WALL per canonical name, with its per-projection ids
+   *  (owner semantics 2026-08-04): the DISH projection requires the
+   *  dish-side attribute; the RESTAURANT projection passes on venue-side
+   *  attribute OR any dish carrying the dish-side attribute. A name may
+   *  lack one side (vegetarian has no venue row today) — the wall then
+   *  has only the arms that exist. */
+  async getDietaryPairs(): Promise<
+    ReadonlyMap<
+      string,
+      { foodAttributeId?: string; restaurantAttributeId?: string }
+    >
+  > {
+    await this.getDietaryIds(); // refresh shared cache window
+    try {
+      const rows = await this.prisma.entity.findMany({
+        where: { constraintClass: 'dietary', status: 'active' },
+        select: { entityId: true, name: true, type: true },
+      });
+      const pairs = new Map<
+        string,
+        { foodAttributeId?: string; restaurantAttributeId?: string }
+      >();
+      for (const row of rows) {
+        const key = row.name.toLowerCase();
+        const pair = pairs.get(key) ?? {};
+        if (row.type === 'food_attribute') pair.foodAttributeId = row.entityId;
+        if (row.type === 'restaurant_attribute')
+          pair.restaurantAttributeId = row.entityId;
+        pairs.set(key, pair);
+      }
+      return pairs;
+    } catch {
+      return new Map();
+    }
+  }
+
   async getDietaryIds(): Promise<ReadonlySet<string>> {
     const now = Date.now();
     if (this.cache && this.cache.expiresAt > now) {

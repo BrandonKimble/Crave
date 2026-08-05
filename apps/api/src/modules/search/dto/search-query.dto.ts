@@ -159,6 +159,17 @@ export class SearchQueryRequestDto {
   @IsBoolean()
   includeSimilar?: boolean;
 
+  /** DIETARY TOGGLE STRIP (owner semantics 2026-08-04): canonical dietary
+   *  names (vegan | vegetarian | gluten free | halal | kosher |
+   *  pescatarian). Each becomes a HARD wall: the dish projection requires
+   *  the dish-side attribute; the restaurant projection passes on the
+   *  venue-side attribute OR any dish carrying the dish-side attribute.
+   *  Unknown names are ignored (the registry is the authority). */
+  @IsOptional()
+  @IsArray()
+  @IsString({ each: true })
+  dietary?: string[];
+
   /**
    * SEE-LOCATIONS mode (Leg 2 tail): the lean single-restaurant variant. When
    * true (with exactly one restaurant entity id), the pipeline skips ranking
@@ -393,6 +404,17 @@ export class NaturalSearchRequestDto {
   @IsOptional()
   @IsBoolean()
   includeSimilar?: boolean;
+
+  /** DIETARY TOGGLE STRIP (owner semantics 2026-08-04): canonical dietary
+   *  names (vegan | vegetarian | gluten free | halal | kosher |
+   *  pescatarian). Each becomes a HARD wall: the dish projection requires
+   *  the dish-side attribute; the restaurant projection passes on the
+   *  venue-side attribute OR any dish carrying the dish-side attribute.
+   *  Unknown names are ignored (the registry is the authority). */
+  @IsOptional()
+  @IsArray()
+  @IsString({ each: true })
+  dietary?: string[];
 
   @IsOptional()
   @IsUUID()

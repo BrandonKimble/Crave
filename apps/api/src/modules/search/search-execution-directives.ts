@@ -38,6 +38,20 @@ export interface SearchExecutionDirectives {
    * the caller already decided on the openness-aware set (open-now
    * restaurant axis) — SQL applies the verdict without recounting.
    */
+  /** DIETARY WALLS (owner semantics 2026-08-04), per-projection:
+   *  DISH projection — every wall with a foodAttributeId requires
+   *  `c.food_attributes @> [fa]` (dish-side only; a wall with no
+   *  dish-side id does not constrain dishes).
+   *  RESTAURANT projection — every wall requires
+   *  `(fr.restaurant_attributes @> [ra] OR EXISTS(dish with fa))`,
+   *  arms dropped when the side has no entity. Sourced from BOTH the
+   *  toggle strip (request.dietary names) and query-text grounding
+   *  (a grounded dietary id activates its whole pair). */
+  dietaryWalls?: Array<{
+    name: string;
+    foodAttributeId?: string;
+    restaurantAttributeId?: string;
+  }>;
   pooledGate?: {
     softFoodAttributeIds: string[];
     softRestaurantAttributeIds: string[];
