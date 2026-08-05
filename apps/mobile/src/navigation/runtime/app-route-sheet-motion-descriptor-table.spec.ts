@@ -34,6 +34,7 @@ import type {
 } from './app-overlay-route-transition-contract';
 import { resolveDefaultSheetMotionPlan } from './app-route-scene-transition-policy-runtime';
 import {
+  findAmbiguousSheetMotionDescriptorRowKeys,
   lookupDefaultSheetMotionDescriptorRow,
   SHEET_MOTION_DESCRIPTOR_TABLE,
 } from './app-route-sheet-motion-descriptor-table';
@@ -266,12 +267,10 @@ describe('sheet-motion descriptor table (P6 step 1)', () => {
   });
 
   it('has no ambiguous duplicate rows within a tier', () => {
-    const seen = new Set<string>();
-    for (const row of SHEET_MOTION_DESCRIPTOR_TABLE) {
-      const key = `${row.tier ?? 'default'}|${row.from}|${row.to}|${row.transitionKind}`;
-      expect(seen.has(key)).toBe(false);
-      seen.add(key);
-    }
+    // F1381: calls the SAME key-building/duplicate-detection the __DEV__ bark uses
+    // (app-route-sheet-motion-descriptor-table.ts) instead of restating it — amending
+    // the key shape can no longer leave one enforcer on the old rule.
+    expect(findAmbiguousSheetMotionDescriptorRowKeys(SHEET_MOTION_DESCRIPTOR_TABLE)).toEqual([]);
   });
 });
 

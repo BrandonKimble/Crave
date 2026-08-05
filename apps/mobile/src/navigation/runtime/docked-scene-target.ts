@@ -7,6 +7,7 @@
 // initialization must live where no cycle can reach them. Do not add runtime
 // imports to this file.
 import type { OverlayKey } from '../../overlays/types';
+import type { OverlayRouteEntry } from './app-overlay-route-types';
 
 export type AppOverlayTopLevelProductRouteKey = 'search' | 'home' | 'polls' | 'lists' | 'profile';
 
@@ -53,3 +54,48 @@ export const DOCKED_SCENE_KEY = 'home' satisfies AppOverlayTopLevelProductRouteK
 // Compile-time guard: the docked scene must remain a valid OverlayKey.
 const _dockedSceneIsOverlayKey: OverlayKey = DOCKED_SCENE_KEY;
 void _dockedSceneIsOverlayKey;
+
+/**
+ * F1365: byte-for-byte duplicate (down to a shared "F945" comment) between
+ * app-route-overlay-command-controller.ts and app-route-global-restaurant-route-controller.ts
+ * — one shared home so an owner-resolution fix can't land in one and not the other.
+ */
+export const getRouteOwnerSceneKey = (
+  route: OverlayRouteEntry
+): AppOverlayTopLevelProductRouteKey | null => {
+  const params = route.params as
+    | {
+        ownerSceneKey?: AppOverlayTopLevelProductRouteKey | null;
+        parentSceneKey?: AppOverlayTopLevelProductRouteKey | null;
+      }
+    | undefined;
+  const ownerSceneKey = params?.ownerSceneKey ?? params?.parentSceneKey ?? null;
+  return isTopLevelProductSceneKey(ownerSceneKey) ? ownerSceneKey : null;
+};
+
+/**
+ * F1365: the other half of the duplicate pair — `resolveCurrentSaveSheetOwner` and
+ * `resolveCurrentRestaurantOwner` were byte-for-byte identical apart from name. Both
+ * callers already have `activeOverlayRoute`/`rootOverlayKey` off their own route-state
+ * snapshot, so this takes those directly rather than a runtime object.
+ */
+export const resolveOwnerSceneKeyAndOpener = ({
+  activeRoute,
+  rootOverlayKey,
+}: {
+  activeRoute: OverlayRouteEntry;
+  rootOverlayKey: OverlayKey;
+}): {
+  ownerSceneKey: AppOverlayTopLevelProductRouteKey;
+  parentSceneKey: AppOverlayTopLevelProductRouteKey;
+  openerRouteKey: OverlayKey;
+} => {
+  const routeOwnerSceneKey = getRouteOwnerSceneKey(activeRoute);
+  const rootOwnerSceneKey = isTopLevelProductSceneKey(rootOverlayKey) ? rootOverlayKey : null;
+  const ownerSceneKey = routeOwnerSceneKey ?? rootOwnerSceneKey ?? 'search';
+  return {
+    ownerSceneKey,
+    parentSceneKey: ownerSceneKey,
+    openerRouteKey: activeRoute.key,
+  };
+};

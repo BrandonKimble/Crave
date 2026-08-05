@@ -54,14 +54,6 @@ const createHarness = (): Harness => {
     routeOverlayIdentityAuthority: {
       getSnapshot: () => ({ activeOverlayRouteKey, rootOverlayKey }) as never,
     },
-    routeOverlayRootAuthority: {
-      getSnapshot: () => ({}) as never,
-      registerTarget: () => () => undefined,
-    },
-    routeScenePolicyAuthority: {
-      subscribe: () => () => undefined,
-      getSnapshot: () => ({}) as never,
-    },
     routeSceneSwitchActions: {
       getRouteState: () => routeState,
       getPresentationFrame: () => ({ laneKind: 'top-level' }) as never,

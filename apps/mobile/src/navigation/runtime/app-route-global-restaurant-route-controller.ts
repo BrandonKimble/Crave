@@ -9,7 +9,7 @@ import type {
   OverlayKey,
   OverlayRouteEntry,
 } from './app-overlay-route-types';
-import { isTopLevelProductSceneKey } from './docked-scene-target';
+import { resolveOwnerSceneKeyAndOpener } from './docked-scene-target';
 import type { AppOverlayRouteCommandRuntime } from './app-overlay-route-command-runtime';
 import type { RouteSceneSwitchRouteStateSnapshot } from './app-route-scene-switch-controller';
 import {
@@ -54,21 +54,6 @@ export type AppRouteGlobalRestaurantRouteController = {
   authority: AppRouteGlobalRestaurantRouteAuthority;
   actions: AppRouteGlobalRestaurantRouteActions;
   dispose: () => void;
-};
-
-// F945: the hand-copied set + predicate that used to live here (and had already dropped
-// 'home') now come from the ONE leaf home, derived from ALL_TOP_LEVEL_SCENE_KEYS.
-const getRouteOwnerSceneKey = (
-  route: OverlayRouteEntry
-): AppOverlayTopLevelProductRouteKey | null => {
-  const params = route.params as
-    | {
-        ownerSceneKey?: AppOverlayTopLevelProductRouteKey | null;
-        parentSceneKey?: AppOverlayTopLevelProductRouteKey | null;
-      }
-    | undefined;
-  const ownerSceneKey = params?.ownerSceneKey ?? params?.parentSceneKey ?? null;
-  return isTopLevelProductSceneKey(ownerSceneKey) ? ownerSceneKey : null;
 };
 
 const isParentScopedRestaurantRouteEntry = (
@@ -241,17 +226,10 @@ class AppRouteGlobalRestaurantRouteRuntimeController
     openerRouteKey: OverlayKey;
   } {
     const routeState = this.routeOverlayRouteCommandRuntime.getRouteState();
-    const activeRoute = routeState.activeOverlayRoute;
-    const routeOwnerSceneKey = getRouteOwnerSceneKey(activeRoute);
-    const rootOwnerSceneKey = isTopLevelProductSceneKey(routeState.rootOverlayKey)
-      ? routeState.rootOverlayKey
-      : null;
-    const ownerSceneKey = routeOwnerSceneKey ?? rootOwnerSceneKey ?? 'search';
-    return {
-      ownerSceneKey,
-      parentSceneKey: ownerSceneKey,
-      openerRouteKey: activeRoute.key,
-    };
+    return resolveOwnerSceneKeyAndOpener({
+      activeRoute: routeState.activeOverlayRoute,
+      rootOverlayKey: routeState.rootOverlayKey,
+    });
   }
 
   private publishDraft(presentationDraft: GlobalRestaurantRouteDraft | null): void {

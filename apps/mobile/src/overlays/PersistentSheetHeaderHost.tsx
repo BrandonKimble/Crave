@@ -268,8 +268,9 @@ export const PersistentSheetHeaderHost: React.FC<{
     return null;
   }
   const TitleContent = descriptor.Title;
-  // Leg 6: descriptor.Action is a DEAD slot (host-owned HeaderNavAction below); the optional
-  // Extras slot renders LEFT of the nav action, riding the same transitionProgress.
+  // F1397: the DEAD `Action` slot (host-owned HeaderNavAction below made it fiction — every
+  // call site already passed none) is deleted from PersistentHeaderDescriptor. The Extras
+  // slot renders LEFT of the nav action, riding the same transitionProgress.
   const ExtrasContent = descriptor.Extras;
   // §Q redo T2 (ledger P-1): THE STRIP RIDES THE BODY BUNDLE. Chrome-leads (O-5) is
   // title + nav ONLY — during a HELD page switch the outgoing body stays visible, so

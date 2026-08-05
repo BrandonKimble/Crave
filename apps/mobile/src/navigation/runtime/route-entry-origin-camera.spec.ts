@@ -90,14 +90,6 @@ const createHarness = (): Harness => {
       getSnapshot: () =>
         ({ activeOverlayRouteKey: liveSceneKey, rootOverlayKey: liveSceneKey }) as never,
     },
-    routeOverlayRootAuthority: {
-      getSnapshot: () => ({}) as never,
-      registerTarget: () => () => undefined,
-    },
-    routeScenePolicyAuthority: {
-      subscribe: () => () => undefined,
-      getSnapshot: () => ({}) as never,
-    },
     routeSceneSwitchActions: {
       getRouteState: () => routeState,
       getPresentationFrame: () => ({ laneKind: 'top-level' }) as never,

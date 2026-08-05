@@ -2,11 +2,7 @@ import {
   resolveHeaderNavAction,
   resolveIsChildSceneRevealed,
 } from './app-route-presentation-frame-contract';
-import {
-  APP_OVERLAY_ROUTE_METADATA_BY_KEY,
-  getAppOverlayRouteMetadata,
-  type OverlayKey,
-} from './app-overlay-route-types';
+import { APP_OVERLAY_ROUTE_METADATA_BY_KEY, type OverlayKey } from './app-overlay-route-types';
 import { extendActiveRootFromNavReTap } from './app-search-route-command-runtime';
 import {
   createAppRouteSheetSnapSessionRuntime,
@@ -38,13 +34,39 @@ describe('resolveHeaderNavAction (PF chrome clock)', () => {
     expect(resolveHeaderNavAction('search', false)).toBe('close');
   });
 
+  // F1380: a LITERAL table, not a transcription of the implementation's own ternary —
+  // the sweep over ALL_KEYS below proves TOTALITY (every live key is covered), this
+  // table proves the MAPPING (if the rule itself goes wrong, the test must fail, not
+  // just re-derive the same wrong answer).
+  const EXPECTED_HEADER_NAV_ACTION_BY_KEY: Record<OverlayKey, 'create' | 'close'> = {
+    search: 'close',
+    sheetHost: 'close',
+    home: 'create',
+    polls: 'create',
+    lists: 'create',
+    profile: 'create',
+    restaurant: 'close',
+    saveList: 'close',
+    price: 'close',
+    scoreInfo: 'close',
+    pollCreation: 'close',
+    pollDetail: 'close',
+    userProfile: 'close',
+    listDetail: 'close',
+    followList: 'close',
+    notifications: 'close',
+    settings: 'close',
+    editProfile: 'close',
+    postPhotos: 'close',
+    messagesInbox: 'close',
+    dmSession: 'close',
+  };
+
   it('every topLevel presented scene rests at the plus; every other role shows the X', () => {
     for (const key of ALL_KEYS) {
-      const role = getAppOverlayRouteMetadata(key).role;
-      const expected = key === 'search' ? 'close' : role === 'topLevel' ? 'create' : 'close';
       expect({ key, action: resolveHeaderNavAction(key, false) }).toEqual({
         key,
-        action: expected,
+        action: EXPECTED_HEADER_NAV_ACTION_BY_KEY[key],
       });
     }
   });
@@ -61,13 +83,29 @@ describe('resolveHeaderNavAction (PF chrome clock)', () => {
   });
 });
 
+// F1380: same disease as the header-nav-action table above — a literal set, not a
+// `.role === 'child'` transcription of resolveIsChildSceneRevealed's own rule.
+const CHILD_ROLE_KEYS: ReadonlySet<OverlayKey> = new Set<OverlayKey>([
+  'restaurant',
+  'saveList',
+  'pollCreation',
+  'pollDetail',
+  'userProfile',
+  'listDetail',
+  'followList',
+  'notifications',
+  'settings',
+  'editProfile',
+  'postPhotos',
+  'messagesInbox',
+  'dmSession',
+]);
+
 describe('resolveIsChildSceneRevealed (nav-out on the frame)', () => {
   it('exact role parity with the deleted nav-out store writer, over the live table', () => {
     expect(resolveIsChildSceneRevealed(null, false)).toBe(false);
     for (const key of ALL_KEYS) {
-      expect(resolveIsChildSceneRevealed(key, false)).toBe(
-        getAppOverlayRouteMetadata(key).role === 'child'
-      );
+      expect(resolveIsChildSceneRevealed(key, false)).toBe(CHILD_ROLE_KEYS.has(key));
     }
   });
 

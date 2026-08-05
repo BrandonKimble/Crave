@@ -230,9 +230,7 @@ export const createAppRouteSceneRuntime = (): AppRouteSceneRuntime => {
     sceneInputAuthority: routeSceneFoundationRuntime.sceneInputAuthority,
     routeSceneSwitchRuntime,
   });
-  const routeVisualRuntime = createRouteVisualRuntime({
-    routeOverlayVisibilityAuthority: routeSceneFoundationRuntime.routeOverlayVisibilityAuthority,
-  });
+  const routeVisualRuntime = createRouteVisualRuntime();
   const routeSceneDisplayTargetRegistry = createAppRouteSceneDisplayTargetRegistry(
     routeSceneFoundationRuntime.routeOverlayDisplayAuthority
   );
@@ -242,8 +240,6 @@ export const createAppRouteSceneRuntime = (): AppRouteSceneRuntime => {
   });
   const routeOverlaySessionController = createAppRouteOverlaySessionStateController({
     routeOverlayIdentityAuthority: routeSceneFoundationRuntime.routeOverlayIdentityAuthority,
-    routeOverlayRootAuthority: routeSceneFoundationRuntime.routeOverlayRootAuthority,
-    routeScenePolicyAuthority: routeSceneFoundationRuntime.routeScenePolicyAuthority,
     routeSceneSwitchActions: routeSceneSwitchRuntime,
     routeSearchCommandActions,
     routeSheetSnapSessionAuthority: routeSheetSnapSessionRuntime.authority,

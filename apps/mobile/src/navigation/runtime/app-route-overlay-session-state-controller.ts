@@ -32,33 +32,17 @@ import type {
   AppRouteSheetSnapSessionActions,
   AppRouteSheetSnapSessionAuthority,
 } from './app-route-sheet-snap-session-runtime';
-import type { RouteScenePolicySnapshot } from './app-route-scene-policy-contract';
 import { resolveSearchLaunchOriginSnap } from './app-route-session-utils';
 import type { RouteOverlayIdentitySnapshot } from './route-overlay-navigation-snapshot-contract';
-import type { RouteOverlayRootSnapshot } from './route-overlay-display-snapshot-contract';
 import type { RouteSceneSwitchTransitionActions } from './app-route-scene-switch-controller';
 import type { RouteSceneSwitchRequestInput } from './app-overlay-route-transition-contract';
-
-type OutputAuthority<T> = {
-  subscribe: (listener: () => void, attributionLabel?: string) => () => void;
-  getSnapshot: () => T;
-};
 
 type SnapshotSource<T> = {
   getSnapshot: () => T;
 };
 
-type RootSnapshotTargetAuthority = SnapshotSource<RouteOverlayRootSnapshot> & {
-  registerTarget: (target: {
-    syncRootSnapshot: (snapshot: RouteOverlayRootSnapshot) => void;
-    attributionLabel: string;
-  }) => () => void;
-};
-
 type AppRouteOverlaySessionStateControllerArgs = {
   routeOverlayIdentityAuthority: SnapshotSource<RouteOverlayIdentitySnapshot>;
-  routeOverlayRootAuthority: RootSnapshotTargetAuthority;
-  routeScenePolicyAuthority: OutputAuthority<RouteScenePolicySnapshot>;
   routeSceneSwitchActions: RouteSceneSwitchTransitionActions;
   routeSearchCommandActions: AppSearchRouteCommandActions;
   routeSheetSnapSessionAuthority: AppRouteSheetSnapSessionAuthority;
@@ -226,8 +210,6 @@ export class AppRouteOverlaySessionStateController {
 
   constructor({
     routeOverlayIdentityAuthority,
-    routeOverlayRootAuthority,
-    routeScenePolicyAuthority,
     routeSceneSwitchActions,
     routeSearchCommandActions,
     routeSheetSnapSessionAuthority,
@@ -246,16 +228,14 @@ export class AppRouteOverlaySessionStateController {
       captureSearchCloseOrigin: this.captureSearchCloseOrigin.bind(this),
       restoreSearchCloseOrigin: this.restoreSearchCloseOrigin.bind(this),
     };
+    // F1367: computeSnapshot reads exactly two facts —
+    // routeSceneSwitchActions.getPresentationFrame().laneKind and
+    // sessionSnapshot.isDockedSceneDismissed (off routeSheetSnapSessionAuthority below).
+    // routeOverlayRootAuthority and routeScenePolicyAuthority used to also trigger a
+    // recompute here despite computeSnapshot never reading either — removed along with
+    // the constructor args (root/policy churn can no longer change this controller's
+    // one-boolean output, so it no longer subscribes to either).
     this.unsubscribers.push(
-      routeOverlayRootAuthority.registerTarget({
-        attributionLabel: 'AppRouteOverlaySessionRoot',
-        syncRootSnapshot: () => {
-          this.recompute(true);
-        },
-      }),
-      routeScenePolicyAuthority.subscribe(() => {
-        this.recompute(true);
-      }),
       routeSheetSnapSessionAuthority.subscribe(() => {
         this.recompute(true);
       }),

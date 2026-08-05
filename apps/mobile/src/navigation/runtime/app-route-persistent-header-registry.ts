@@ -29,14 +29,6 @@ export type PersistentHeaderExtrasProps = {
 export type PersistentHeaderDescriptor = {
   Title: React.ComponentType;
   /**
-   * DEAD SLOT (leg 6 — §4 HeaderNavAction): the header's action control is HOST-OWNED now
-   * (the one plus↔X HeaderNavAction on PersistentSheetHeaderHost); the host renders NOTHING
-   * from this slot. Kept optional only because the strip-wave panels (ListsPanel,
-   * PollsPanel, SaveListPanel — fenced this leg) still register their old close factories;
-   * delete this field with those registrations when the strip wave lands.
-   */
-  Action?: React.ComponentType;
-  /**
    * Optional per-scene EXTRAS chrome, rendered LEFT of the host-owned HeaderNavAction in the
    * action position. Receives `transitionProgress` (see PersistentHeaderExtrasProps) so
    * extras ride the same press-up-started 0→1 as the plus→X rotation.

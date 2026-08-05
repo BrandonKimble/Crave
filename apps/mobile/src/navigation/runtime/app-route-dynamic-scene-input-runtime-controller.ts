@@ -3,10 +3,7 @@ import React from 'react';
 import { withSearchNavSwitchRuntimeAttribution } from '../../screens/Search/runtime/shared/search-nav-switch-runtime-attribution';
 import {
   areAppRouteDynamicSceneInputRuntimesEqual,
-  areAppRoutePollsDynamicSceneInputRuntimesEqual,
   EMPTY_APP_ROUTE_DYNAMIC_SCENE_INPUT_RUNTIME,
-  EMPTY_APP_ROUTE_POLLS_DYNAMIC_SCENE_INPUT_RUNTIME,
-  selectAppRoutePollsDynamicSceneInputRuntime,
   type AppRouteDynamicSceneInputRuntime,
   type AppRoutePollsDynamicSceneInputRuntime,
 } from './app-route-dynamic-scene-inputs-contract';
@@ -35,16 +32,18 @@ export type AppRouteDynamicSceneInputRuntimeController = {
 };
 
 class AppRouteDynamicSceneInputController implements AppRouteDynamicSceneInputRuntimeController {
+  // F1395: `pollsRuntimeSnapshot` used to be a SECOND snapshot tracked alongside this one,
+  // with its own equality — but `AppRoutePollsDynamicSceneInputRuntime` IS
+  // `AppRouteDynamicSceneInputRuntime` (one field, `searchInteractionRef`), so the two
+  // equality checks could never disagree and the "polls" copy was dead weight. One snapshot.
   private runtimeSnapshot = EMPTY_APP_ROUTE_DYNAMIC_SCENE_INPUT_RUNTIME;
-
-  private pollsRuntimeSnapshot = EMPTY_APP_ROUTE_POLLS_DYNAMIC_SCENE_INPUT_RUNTIME;
 
   private readonly pollsRuntimeListeners = new Set<ListenerEntry>();
 
   public readonly authority: AppRouteDynamicSceneInputRuntimeAuthority = {
     subscribePollsRuntime: (listener, attributionLabel = 'anonymous') =>
       this.subscribePollsRuntime(listener, attributionLabel),
-    getPollsRuntimeSnapshot: () => this.pollsRuntimeSnapshot,
+    getPollsRuntimeSnapshot: () => this.runtimeSnapshot,
   };
 
   public readonly actions: AppRouteDynamicSceneInputRuntimeActions = {
@@ -54,7 +53,6 @@ class AppRouteDynamicSceneInputController implements AppRouteDynamicSceneInputRu
   public dispose(): void {
     this.pollsRuntimeListeners.clear();
     this.runtimeSnapshot = EMPTY_APP_ROUTE_DYNAMIC_SCENE_INPUT_RUNTIME;
-    this.pollsRuntimeSnapshot = EMPTY_APP_ROUTE_POLLS_DYNAMIC_SCENE_INPUT_RUNTIME;
   }
 
   private subscribePollsRuntime(listener: Listener, attributionLabel: string): () => void {
@@ -75,23 +73,12 @@ class AppRouteDynamicSceneInputController implements AppRouteDynamicSceneInputRu
         this.runtimeSnapshot,
         nextRuntime
       );
-      const nextPollsRuntime = selectAppRoutePollsDynamicSceneInputRuntime(nextRuntime);
-      const isSamePollsRuntime = areAppRoutePollsDynamicSceneInputRuntimesEqual(
-        this.pollsRuntimeSnapshot,
-        nextPollsRuntime
-      );
 
-      if (isSameRuntime && isSamePollsRuntime) {
+      if (isSameRuntime) {
         return;
       }
 
-      this.runtimeSnapshot = isSameRuntime ? this.runtimeSnapshot : nextRuntime;
-
-      if (isSamePollsRuntime) {
-        return;
-      }
-
-      this.pollsRuntimeSnapshot = nextPollsRuntime;
+      this.runtimeSnapshot = nextRuntime;
       this.notifyPollsRuntimeListeners();
     });
   }

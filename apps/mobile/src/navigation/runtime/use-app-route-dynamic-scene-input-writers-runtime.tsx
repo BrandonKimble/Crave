@@ -6,13 +6,8 @@ import {
 } from '../../overlays/searchRouteSceneLayoutContract';
 import type { RouteOverlayNavigationSnapshot } from './route-overlay-navigation-snapshot-contract';
 import type { RouteSceneLayoutSnapshot } from '../../screens/Search/runtime/shared/route-scene-layout-snapshot-contract';
-import { useAppRouteSheetSnapSessionSelector } from './app-route-sheet-snap-session-runtime';
 import type { OverlayRouteEntry } from './app-overlay-route-types';
 import type { AppRouteSceneRuntime } from './app-route-scene-runtime';
-import {
-  areAppRouteSceneSheetSessionInputStatesEqual,
-  type AppRouteSceneSheetSessionInputState,
-} from './app-route-dynamic-scene-inputs-contract';
 import { useAppRoutePollCreationSceneInputWriterRuntime } from './use-app-route-poll-creation-scene-input-writer-runtime';
 import { useAppRoutePollDetailSceneInputWriterRuntime } from './use-app-route-poll-detail-scene-input-writer-runtime';
 import { useRouteAuthoritySelector } from './use-route-authority-selector';
@@ -99,16 +94,6 @@ export const useAppRouteDynamicSceneInputWritersRuntime = ({
   });
   const sceneLayout = useAppRouteSceneLayoutRuntime({
     routeSceneRuntime,
-  });
-  const routeSheetSnapSessionState = useAppRouteSheetSnapSessionSelector({
-    authority: routeSceneRuntime.routeSheetSnapSessionAuthority,
-    selector: React.useCallback(
-      (snapshot): AppRouteSceneSheetSessionInputState => ({
-        isDockedSceneDismissed: snapshot.isDockedSceneDismissed,
-      }),
-      []
-    ),
-    isEqual: areAppRouteSceneSheetSessionInputStatesEqual,
   });
 
   useAppRoutePollCreationSceneInputWriterRuntime({

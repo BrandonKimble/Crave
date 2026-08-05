@@ -369,6 +369,29 @@ export const materializeSheetMotionDescriptorRule = ({
   return { kind: 'snapTo', snap: resolvedSnap, ...(rule.mode != null ? { mode: rule.mode } : {}) };
 };
 
+// F1381: the ONE key-building expression for the duplicate-row invariant — the __DEV__ bark
+// below and the spec both call this rather than hand-keeping a copy of the template string.
+export const buildSheetMotionDescriptorRowKey = (
+  row: Pick<SheetMotionDescriptorRow, 'tier' | 'from' | 'to' | 'transitionKind'>
+): string => `${row.tier ?? 'default'}|${row.from}|${row.to}|${row.transitionKind}`;
+
+/** Returns the row keys (F1381 shape) that occur more than once in `table`, in first-seen
+ *  duplicate order — empty when the table has no ambiguous rows. */
+export const findAmbiguousSheetMotionDescriptorRowKeys = (
+  table: readonly SheetMotionDescriptorRow[]
+): string[] => {
+  const seenRowKeys = new Set<string>();
+  const duplicateRowKeys: string[] = [];
+  for (const row of table) {
+    const rowKey = buildSheetMotionDescriptorRowKey(row);
+    if (seenRowKeys.has(rowKey)) {
+      duplicateRowKeys.push(rowKey);
+    }
+    seenRowKeys.add(rowKey);
+  }
+  return duplicateRowKeys;
+};
+
 // ─── __DEV__ TABLE INVARIANTS (asserted once at module init) ─────────────────────────────────
 // T1: a catch-all default row exists (every switch resolves to exactly one row).
 // AMBIGUITY: within a tier, no two DISTINCT rows may overlap at equal specificity — since
@@ -384,12 +407,7 @@ if (typeof __DEV__ !== 'undefined' && __DEV__) {
   if (!hasCatchAll) {
     console.error('[pageswitch] descriptor-table T1 violation: missing (*,*,*) catch-all row');
   }
-  const seenRowKeys = new Set<string>();
-  for (const row of SHEET_MOTION_DESCRIPTOR_TABLE) {
-    const rowKey = `${row.tier ?? 'default'}|${row.from}|${row.to}|${row.transitionKind}`;
-    if (seenRowKeys.has(rowKey)) {
-      console.error(`[pageswitch] descriptor-table ambiguous duplicate row: ${rowKey}`);
-    }
-    seenRowKeys.add(rowKey);
+  for (const rowKey of findAmbiguousSheetMotionDescriptorRowKeys(SHEET_MOTION_DESCRIPTOR_TABLE)) {
+    console.error(`[pageswitch] descriptor-table ambiguous duplicate row: ${rowKey}`);
   }
 }

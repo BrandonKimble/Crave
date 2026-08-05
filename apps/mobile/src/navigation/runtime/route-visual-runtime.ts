@@ -10,9 +10,6 @@ import {
   createRouteSheetVisualAssemblyRuntime,
   type RouteSheetVisualAssemblyRuntime,
 } from './route-sheet-visual-assembly-runtime';
-import type {
-  RouteShellOverlayVisibilityAuthority,
-} from './app-route-scene-foundation-runtime';
 
 export class RouteVisualRuntime {
   private readonly routeHostFoundationRuntime: RouteHostFoundationRuntime;
@@ -20,8 +17,6 @@ export class RouteVisualRuntime {
   private readonly routeSceneLayoutAssemblyRuntime: RouteSceneLayoutAssemblyRuntime;
 
   private readonly routeSheetVisualAssemblyRuntime: RouteSheetVisualAssemblyRuntime;
-
-  public readonly routeOverlayVisibilityAuthority: RouteShellOverlayVisibilityAuthority;
 
   public readonly routeSceneLayoutAuthority: RouteSceneLayoutAssemblyRuntime['routeSceneLayoutAuthority'];
 
@@ -39,11 +34,7 @@ export class RouteVisualRuntime {
 
   public readonly syncRouteHostVisualRuntime: RouteHostFoundationRuntime['routeHostSyncLane']['syncRouteHostVisualRuntime'];
 
-  constructor({
-    routeOverlayVisibilityAuthority,
-  }: {
-    routeOverlayVisibilityAuthority: RouteShellOverlayVisibilityAuthority;
-  }) {
+  constructor() {
     this.routeHostFoundationRuntime = createRouteHostFoundationRuntime();
     this.routeSceneLayoutAssemblyRuntime =
       createRouteSceneLayoutAssemblyRuntime({
@@ -53,7 +44,6 @@ export class RouteVisualRuntime {
       createRouteSheetVisualAssemblyRuntime({
         routeHostFoundationRuntime: this.routeHostFoundationRuntime,
       });
-    this.routeOverlayVisibilityAuthority = routeOverlayVisibilityAuthority;
     this.routeSceneLayoutAuthority =
       this.routeSceneLayoutAssemblyRuntime.routeSceneLayoutAuthority;
     this.routeHostOverlayGeometryAuthority =
@@ -81,9 +71,4 @@ export class RouteVisualRuntime {
   }
 }
 
-export const createRouteVisualRuntime = ({
-  routeOverlayVisibilityAuthority,
-}: ConstructorParameters<typeof RouteVisualRuntime>[0]): RouteVisualRuntime =>
-  new RouteVisualRuntime({
-    routeOverlayVisibilityAuthority,
-  });
+export const createRouteVisualRuntime = (): RouteVisualRuntime => new RouteVisualRuntime();

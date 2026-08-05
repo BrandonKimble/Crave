@@ -2,6 +2,7 @@ import type React from 'react';
 
 import type { OverlaySheetSnap } from '../../overlays/types';
 import type { SheetPosition } from '../../overlays/sheetUtils';
+import { DOCKED_SCENE_RESURRECT_SNAP } from './app-route-sheet-snap-session-runtime';
 
 type Listener = () => void;
 
@@ -118,7 +119,7 @@ export class AppRouteSharedSheetPresentationController
     }
     const homeSeatSheetSnap = input.getHomeSeatSheetSnap();
     const nextLogicalSnap: Exclude<OverlaySheetSnap, 'hidden'> =
-      homeSeatSheetSnap !== 'hidden' ? homeSeatSheetSnap : 'collapsed';
+      homeSeatSheetSnap !== 'hidden' ? homeSeatSheetSnap : DOCKED_SCENE_RESURRECT_SNAP;
     this.commitSnapshot({
       panelVisible: true,
       sheetState: nextLogicalSnap,
@@ -148,6 +149,12 @@ export class AppRouteSharedSheetPresentationController
     });
   }
 
+  // F1379: the honest form the repo already uses for unrecorded-derivation magic
+  // numbers (overlays/sheetUtils.ts) — named, but the derivation is not recorded.
+  /** Below this delta, a `navBarTopForSnaps` change is treated as float jitter, not a
+   *  real geometry change — skip the re-collapse commit. Derivation not recorded. */
+  private static readonly NAV_BAR_TOP_SNAP_JITTER_EPSILON_PX = 1;
+
   private syncCollapsedGeometry(previousNavBarTopForSnaps: number | null): void {
     const input = this.input;
     if (!input) {
@@ -167,7 +174,11 @@ export class AppRouteSharedSheetPresentationController
     if (!Number.isFinite(input.navBarTopForSnaps)) {
       return;
     }
-    if (Number.isFinite(previous) && Math.abs(input.navBarTopForSnaps - previous) < 1) {
+    if (
+      Number.isFinite(previous) &&
+      Math.abs(input.navBarTopForSnaps - previous) <
+        AppRouteSharedSheetPresentationController.NAV_BAR_TOP_SNAP_JITTER_EPSILON_PX
+    ) {
       return;
     }
     this.commitSnapshot({

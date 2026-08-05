@@ -74,6 +74,10 @@ export const useAppRouteSharedSheetValuesRuntime = ({
       ) {
         return;
       }
+      // F1376: mutate the IDENTITY-STABLE `snapPoints` object in place — its object
+      // reference is never reassigned, so any `=== ` identity comparison on `snapPoints`
+      // elsewhere is invariant across this update. Consumers must read its fields, never
+      // compare the object itself.
       currentSnapPoints.expanded = nextSnapPoints.expanded;
       currentSnapPoints.middle = nextSnapPoints.middle;
       currentSnapPoints.collapsed = nextSnapPoints.collapsed;

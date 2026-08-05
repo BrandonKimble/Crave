@@ -16,6 +16,11 @@ export type RouteSharedSheetVisualAuthority = {
   getSnapshot: () => RouteSharedSheetVisualBinding;
 };
 
+// F1376: `snapPoints` is an identity-stable mutable box (see the field doc on
+// AppRouteSharedSheetRuntimeOwner) — this `===` deliberately detects a REMOUNT (a new
+// runtime instance), not a geometry change. Its fields mutate in place on every
+// geometry recompute without ever changing this comparison's result; consumers read
+// `snapPoints.<field>` at animation time, not from this equality's pass/fail.
 const areRouteSharedSheetVisualBindingsEqual = (
   left: RouteSharedSheetVisualBinding,
   right: RouteSharedSheetVisualBinding

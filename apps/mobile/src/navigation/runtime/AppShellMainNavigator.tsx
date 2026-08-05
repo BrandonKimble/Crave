@@ -1,5 +1,5 @@
 import React from 'react';
-import { createStackNavigator, type StackNavigationOptions } from '@react-navigation/stack';
+import { createStackNavigator } from '@react-navigation/stack';
 
 import { RecentSearchesScreen, RecentlyViewedScreen, SearchScreen } from '../../screens';
 import type { RootStackParamList } from '../../types/navigation';
@@ -18,10 +18,12 @@ import { usePerfScenarioOverlaySceneCommand } from '../../perf/use-perf-scenario
 
 const Stack = createStackNavigator<RootStackParamList>();
 
+// F1399(b): `options?: StackNavigationOptions` used to be a per-scene configurability
+// slot that no entry below ever populated — `options={scene.options}` was always
+// undefined. Deleted; add it back with a real entry if a scene needs it.
 type MainStackSceneDefinition = {
   routeName: keyof RootStackParamList;
   component: React.ComponentType<object>;
-  options?: StackNavigationOptions;
 };
 
 const MAIN_STACK_SCENE_DEFINITIONS: MainStackSceneDefinition[] = [
@@ -107,7 +109,6 @@ const AppShellMainStack = React.memo(function AppShellMainStack() {
           key={scene.routeName}
           name={scene.routeName}
           component={scene.component}
-          options={scene.options}
         />
       ))}
     </Stack.Navigator>

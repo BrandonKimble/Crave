@@ -20,11 +20,17 @@ const AppRouteOverlayHostRuntimeBoundary = React.memo(function AppRouteOverlayHo
   const routeSceneRuntime = useAppRouteSceneRuntime();
   const routeSheetHostRuntimeOwner = useAppRouteSheetHostOwner();
   const authoritySurface = controller.authoritySurface;
-  const searchInteractionRef = useSyncExternalStore(
-    authoritySurface.subscribeSearchInteractionRef,
-    authoritySurface.getSearchInteractionRefSnapshot,
-    authoritySurface.getSearchInteractionRefSnapshot
+  // F1362: subscribe on the publication VERSION, not the search-interaction ref
+  // directly — the ref is unchanged when only `overlayLocalRestaurantSheetHostAuthority`
+  // swaps, so a useSyncExternalStore keyed on the ref snapshot bails out and the host
+  // renders a stale authority. The version bumps on every publish (ref OR authority),
+  // so this boundary always re-renders and re-reads the ref fresh below.
+  useSyncExternalStore(
+    authoritySurface.subscribeOverlayHostPublicationVersion,
+    authoritySurface.getOverlayHostPublicationVersionSnapshot,
+    authoritySurface.getOverlayHostPublicationVersionSnapshot
   );
+  const searchInteractionRef = authoritySurface.getSearchInteractionRefSnapshot();
 
   // BAIL-OUT FIX (perf attribution 2026-07-12): this merge used to be an inline spread
   // minting a NEW routeSheetHostRuntime object on every boundary render — every host in

@@ -1,7 +1,7 @@
 import type React from 'react';
 
 import type { UserListType } from '../../services/user-lists';
-import { isTopLevelProductSceneKey } from './docked-scene-target';
+import { resolveOwnerSceneKeyAndOpener } from './docked-scene-target';
 import type { OverlaySheetSnap } from '../../overlays/types';
 import type {
   AppOverlaySaveListTarget,
@@ -68,21 +68,6 @@ const areCommandSnapshotsEqual = (
   left: AppRouteOverlayCommandSnapshot,
   right: AppRouteOverlayCommandSnapshot
 ): boolean => left.saveSheetState === right.saveSheetState;
-
-// F945: the hand-copied set + predicate that used to live here (and had already dropped
-// 'home') now come from the ONE leaf home, derived from ALL_TOP_LEVEL_SCENE_KEYS.
-const getRouteOwnerSceneKey = (
-  route: OverlayRouteEntry
-): AppOverlayTopLevelProductRouteKey | null => {
-  const params = route.params as
-    | {
-        ownerSceneKey?: AppOverlayTopLevelProductRouteKey | null;
-        parentSceneKey?: AppOverlayTopLevelProductRouteKey | null;
-      }
-    | undefined;
-  const ownerSceneKey = params?.ownerSceneKey ?? params?.parentSceneKey ?? null;
-  return isTopLevelProductSceneKey(ownerSceneKey) ? ownerSceneKey : null;
-};
 
 class AppRouteOverlayCommandController {
   private readonly listeners = new Set<Listener>();
@@ -225,17 +210,10 @@ class AppRouteOverlayCommandController {
     openerRouteKey: OverlayKey;
   } {
     const routeState = this.routeOverlayRouteCommandRuntime.getRouteState();
-    const activeRoute = routeState.activeOverlayRoute;
-    const routeOwnerSceneKey = getRouteOwnerSceneKey(activeRoute);
-    const rootOwnerSceneKey = isTopLevelProductSceneKey(routeState.rootOverlayKey)
-      ? routeState.rootOverlayKey
-      : null;
-    const ownerSceneKey = routeOwnerSceneKey ?? rootOwnerSceneKey ?? 'search';
-    return {
-      ownerSceneKey,
-      parentSceneKey: ownerSceneKey,
-      openerRouteKey: activeRoute.key,
-    };
+    return resolveOwnerSceneKeyAndOpener({
+      activeRoute: routeState.activeOverlayRoute,
+      rootOverlayKey: routeState.rootOverlayKey,
+    });
   }
 
   private createSaveSheetRouteInstanceId(): string {

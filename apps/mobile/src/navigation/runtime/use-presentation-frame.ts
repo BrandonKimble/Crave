@@ -30,12 +30,21 @@ export const usePresentationFrame = (
 // Field-selector bridge (leg 6 — PF chrome clock): subscribe to ONE frame field without
 // re-rendering on unrelated frame mutations (revision bumps, entry-id churn). Same
 // flush-cadence publication as usePresentationFrame.
+//
+// F1382: `getSnapshot` MUST return a referentially stable value when the SELECTED value is
+// unchanged — useSyncExternalStore re-invokes getSnapshot on every render to decide whether
+// to bail out, and a selector returning a fresh object/tuple every call (unconstrained
+// TSelected, no isEqual) makes every call "changed", i.e. an infinite re-render loop. Sibling
+// authorities in this territory (createSnapshotSlot's subscribeSelector) already take an
+// isEqual for this reason; this hook now does too, defaulting to Object.is (safe no-op for
+// the one live boolean-selecting consumer).
 export const usePresentationFrameSelector = <TSelected>(
   routeSceneSwitchRuntime: Pick<
     AppRouteSceneSwitchRuntime,
     'getPresentationFrame' | 'subscribePresentationFrame'
   >,
-  selector: (frame: PresentationFrame) => TSelected
+  selector: (frame: PresentationFrame) => TSelected,
+  isEqual: (previousSelected: TSelected, nextSelected: TSelected) => boolean = Object.is
 ): TSelected => {
   const subscribe = React.useCallback(
     (onStoreChange: () => void) =>
@@ -44,10 +53,18 @@ export const usePresentationFrameSelector = <TSelected>(
   );
   const selectorRef = React.useRef(selector);
   selectorRef.current = selector;
-  const getSnapshot = React.useCallback(
-    () => selectorRef.current(routeSceneSwitchRuntime.getPresentationFrame()),
-    [routeSceneSwitchRuntime]
-  );
+  const isEqualRef = React.useRef(isEqual);
+  isEqualRef.current = isEqual;
+  const selectedRef = React.useRef<{ value: TSelected } | null>(null);
+  const getSnapshot = React.useCallback(() => {
+    const nextSelected = selectorRef.current(routeSceneSwitchRuntime.getPresentationFrame());
+    const current = selectedRef.current;
+    if (current != null && isEqualRef.current(current.value, nextSelected)) {
+      return current.value;
+    }
+    selectedRef.current = { value: nextSelected };
+    return nextSelected;
+  }, [routeSceneSwitchRuntime]);
   return React.useSyncExternalStore(subscribe, getSnapshot, getSnapshot);
 };
 
