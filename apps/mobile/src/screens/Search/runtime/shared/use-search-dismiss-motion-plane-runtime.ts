@@ -102,7 +102,6 @@ type SearchSurfaceMotionPlaneSample = {
 type SearchDismissMotionProofStage = 'early_progress' | 'mid_progress' | 'late_progress' | 'motion';
 
 type UseSearchDismissMotionPlaneRuntimeArgs = {
-  isCloseTransitionActive: boolean;
   sheetTranslateY: SharedValue<number>;
   currentSheetSnap: SheetPosition;
   snapPoints: Record<Exclude<SheetPosition, 'hidden'>, number> & { hidden?: number };
@@ -143,7 +142,6 @@ const resolveSearchDismissMotionProofStage = (
 };
 
 export const useSearchDismissMotionPlaneRuntime = ({
-  isCloseTransitionActive,
   sheetTranslateY,
   currentSheetSnap,
   snapPoints,

@@ -141,6 +141,15 @@ export class ResultsPresentationAuthority {
       this.snapshot.resultsPresentationTransport.snapshotKind ===
         nextSnapshot.resultsPresentationTransport.snapshotKind
     ) {
+      // F1300(a): syncVisualTargets already ran above and pushed this transport to
+      // every registered target, so the stored snapshot must agree with what live
+      // targets already hold — otherwise a target registering after this point is
+      // seeded (via addVisualTarget -> this.snapshot) with a stale transport that
+      // disagrees with the live ones. Store + bump version so the next publish's
+      // guard and addVisualTarget both see the same state visual targets already
+      // have; skip only the subscriber notify (the original intent of this guard).
+      this.snapshot = nextSnapshot;
+      this.version += 1;
       return;
     }
 

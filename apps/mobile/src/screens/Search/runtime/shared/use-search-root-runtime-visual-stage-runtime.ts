@@ -108,7 +108,6 @@ export const useSearchRootRuntimeVisualStageRuntime = ({
   const searchSurfaceCurrentSnap =
     routeSheetMotionState?.currentSnapPoint ?? appRouteSharedSheetRuntimeOwner.sheetState;
   const dismissMotionPlaneRuntime = useSearchDismissMotionPlaneRuntime({
-    isCloseTransitionActive: resultsPresentationOwner.shellModel.isCloseTransitionActive,
     sheetTranslateY: searchSurfaceSheetTranslateY,
     currentSheetSnap: searchSurfaceCurrentSnap,
     snapPoints: searchSurfaceSnapPoints,

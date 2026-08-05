@@ -32,10 +32,7 @@ import type {
   SearchResultsBodyAdmissionActiveList,
   SearchResultsBodyAdmissionSnapshot,
 } from './search-results-body-admission-controller';
-import {
-  resolveSearchResultsBodyAdmission,
-  resolveSearchResultsBodyAdmissionPreparationRows,
-} from './search-results-body-admission-controller';
+import { resolveSearchResultsBodyAdmission } from './search-results-body-admission-controller';
 /** F1735: the redraw coordinator is deleted (structural fossil, pinned at 'idle').
  *  The store's phase key survives as a two-valued admission label so view keys keep
  *  their shape: 'idle' (no admission) or 'redraw_committed' (mounted-rows admission). */
@@ -1351,11 +1348,7 @@ const prepareSearchMountedResultsRowsSnapshotInner = ({
     restaurants: fullRowsByTab.restaurants,
     results: mountedResults,
   });
-  const preparationRowsByTab = resolveSearchResultsBodyAdmissionPreparationRows({
-    activeTab: viewArgs.activeTab,
-    resultsIdentityKey: viewArgs.resultsIdentityKey,
-    rowsByTab: fullRowsByTab,
-  });
+  const preparationRowsByTab = fullRowsByTab;
   const rowsByTab = {
     dishes: preparationRowsByTab.dishes,
     restaurants: preparationRowsByTab.restaurants.map((row): ResultsListItem => {

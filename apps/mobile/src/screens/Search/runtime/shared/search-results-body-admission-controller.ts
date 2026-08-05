@@ -32,14 +32,6 @@ const resolveActiveRows = ({
   rowsByTab: SearchResultsBodyAdmissionRowsByTab;
 }): ResultsListItem[] => (activeTab === 'restaurants' ? rowsByTab.restaurants : rowsByTab.dishes);
 
-export const resolveSearchResultsBodyAdmissionPreparationRows = ({
-  rowsByTab,
-}: {
-  activeTab: 'dishes' | 'restaurants';
-  rowsByTab: SearchResultsBodyAdmissionRowsByTab;
-  resultsIdentityKey: string | null;
-}): SearchResultsBodyAdmissionRowsByTab => rowsByTab;
-
 export const resolveSearchResultsBodyAdmission = ({
   activeTab,
   fullRowsByTab,

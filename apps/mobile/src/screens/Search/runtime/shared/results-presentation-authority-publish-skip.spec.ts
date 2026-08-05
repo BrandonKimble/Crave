@@ -9,25 +9,27 @@ import {
 import { resolveResultsPresentationRuntimeState } from './results-presentation-runtime-machine-state';
 
 /**
- * F1300(a) — ATTRIBUTION SPEC, not a fix.
+ * F1300(a) — FIXED.
  *
  * `publishRuntimeState` has two early returns. The first (exit-started fanout absorb)
  * STORES the snapshot and bumps the version before returning. The second — the
- * `enter_mounted_hidden` + same-transactionId + same-snapshotKind skip — returns
- * WITHOUT storing, even though `syncVisualTargets(next.transport)` has ALREADY run
- * at the top of the method and pushed that transport to every registered target.
+ * `enter_mounted_hidden` + same-transactionId + same-snapshotKind skip — used to
+ * return WITHOUT storing, even though `syncVisualTargets(next.transport)` had
+ * ALREADY run at the top of the method and pushed that transport to every
+ * registered target.
  *
- * The finding asked which half is redundant and said it needed runtime attribution.
- * It does not: the divergence is observable through the authority's own public API,
- * because `addVisualTarget` seeds a newly-registering target from `this.snapshot`.
- * So after a skipped publish, targets registered BEFORE it hold the new transport
- * and any target registered AFTER it is seeded with the stale one — two visual
- * targets, one authority, two different answers.
+ * The divergence was observable through the authority's own public API, because
+ * `addVisualTarget` seeds a newly-registering target from `this.snapshot`. So after
+ * a skipped publish, targets registered BEFORE it held the new transport and any
+ * target registered AFTER it was seeded with the stale one — two visual targets,
+ * one authority, two different answers, decided only by registration order.
  *
- * These specs CHARACTERISE current behaviour (they pass as-is). They exist so the
- * fix can be chosen against evidence rather than a guess, and so whichever fix
- * lands has something that goes RED if it regresses. Read the assertions as "this
- * is what the code does today", not "this is what it should do".
+ * The fix: store the snapshot (and bump version) on this early return too, so the
+ * authority's own record always agrees with what it already pushed to live
+ * targets; only the subscriber NOTIFY is skipped, which was the guard's original
+ * intent (suppress churn during mounted-hidden re-publishes).
+ *
+ * These specs now assert the CORRECTED behaviour and go RED if it regresses.
  */
 
 const makeTransport = (
@@ -49,8 +51,8 @@ const makeTarget = (): ResultsPresentationVisualTarget & {
   };
 };
 
-describe('F1300(a) — the enter_mounted_hidden publish skip does not store what it synced', () => {
-  it('pushes the skipped transport to live targets but does not record it', () => {
+describe('F1300(a) — the enter_mounted_hidden publish skip stores what it synced', () => {
+  it('pushes the skipped transport to live targets and records it', () => {
     const authority = new ResultsPresentationAuthority();
 
     // Land a first state so the stored snapshot carries the transaction the skip
@@ -68,7 +70,7 @@ describe('F1300(a) — the enter_mounted_hidden publish skip does not store what
     liveTarget.received.length = 0;
 
     // A second publish on the SAME transaction and kind, still mounted-hidden, but
-    // carrying a new cover state. The guard skips it.
+    // carrying a new cover state. The guard skips the NOTIFY, not the store.
     const skipped = makeTransport({
       transactionId: 'txn-1',
       snapshotKind: 'results_enter',
@@ -80,11 +82,13 @@ describe('F1300(a) — the enter_mounted_hidden publish skip does not store what
     // syncVisualTargets ran BEFORE the guard, so the live target already has it...
     expect(liveTarget.received.at(-1)?.coverState).toBe('initial_loading');
 
-    // ...but the authority never recorded it.
-    expect(authority.getSnapshot().resultsPresentationTransport.coverState).toBe('hidden');
+    // ...and now the authority's own record agrees with what it already pushed.
+    expect(authority.getSnapshot().resultsPresentationTransport.coverState).toBe(
+      'initial_loading'
+    );
   });
 
-  it('seeds a late-registering target from the stale snapshot, so two targets disagree', () => {
+  it('seeds a late-registering target from the same transport live targets already hold', () => {
     const authority = new ResultsPresentationAuthority();
 
     authority.publishRuntimeState(
@@ -114,9 +118,10 @@ describe('F1300(a) — the enter_mounted_hidden publish skip does not store what
     const lateTarget = makeTarget();
     authority.addVisualTarget(lateTarget);
 
-    // THE DIVERGENCE, stated as an assertion: the same authority hands two targets
-    // two different cover states, decided only by when each registered.
+    // THE FIX, stated as an assertion: the same authority now hands every target
+    // — early-registered or late-registered — the same cover state, regardless of
+    // when each registered.
     expect(earlyTarget.received.at(-1)?.coverState).toBe('initial_loading');
-    expect(lateTarget.received.at(-1)?.coverState).toBe('hidden');
+    expect(lateTarget.received.at(-1)?.coverState).toBe('initial_loading');
   });
 });
