@@ -24,6 +24,7 @@ import {
   buildSearchWorldSliceKey,
   type SearchDesiredTuple,
 } from '../shared/search-desired-state-contract';
+import type { SearchWorldResolutionFailureReason } from '../resolver/search-world-resolver';
 
 export type SearchWorldTransitionClass =
   | 'session_enter'
@@ -194,7 +195,7 @@ export type SearchWorldReconcilerEnv = {
     presentationIntentKind?: 'search_this_area' | 'variant_rerun';
     requestDecoration?: SearchRequestDecoration;
     onResolutionBegan?: () => void;
-    onResolutionFailed?: (reason: string) => void;
+    onResolutionFailed?: (reason: SearchWorldResolutionFailureReason) => void;
   }) => Promise<void>;
   /** Surviving foreground effects for full enters (the old
    *  beginResolverSubmitForegroundUi body, now class-keyed here). */
@@ -203,7 +204,7 @@ export type SearchWorldReconcilerEnv = {
     tuple: SearchDesiredTuple;
     generation: number;
   }) => void;
-  onResolveFailed: (reason: string) => void;
+  onResolveFailed: (reason: SearchWorldResolutionFailureReason) => void;
 };
 
 export type SearchWorldReconciler = {
@@ -326,7 +327,10 @@ export const createSearchWorldReconciler = (
             },
           })
           .catch((error) => {
-            env.onResolveFailed(error instanceof Error ? error.message : 'unknown error');
+            env.onResolveFailed({
+              kind: 'failed',
+              message: error instanceof Error ? error.message : 'unknown error',
+            });
           });
         return { awaitVisualSync: true as const };
       },
@@ -385,7 +389,10 @@ export const createSearchWorldReconciler = (
             onResolutionFailed: env.onResolveFailed,
           })
           .catch((error) => {
-            env.onResolveFailed(error instanceof Error ? error.message : 'unknown error');
+            env.onResolveFailed({
+              kind: 'failed',
+              message: error instanceof Error ? error.message : 'unknown error',
+            });
           });
         return;
       }
@@ -455,7 +462,10 @@ export const createSearchWorldReconciler = (
             onResolutionFailed: env.onResolveFailed,
           })
           .catch((error) => {
-            env.onResolveFailed(error instanceof Error ? error.message : 'unknown error');
+            env.onResolveFailed({
+              kind: 'failed',
+              message: error instanceof Error ? error.message : 'unknown error',
+            });
           });
         return;
       }

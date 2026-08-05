@@ -83,6 +83,20 @@ export const useSearchClearOwner = <Suggestion>({
   inputRef,
   scrollResultsToTop,
 }: UseSearchClearOwnerArgs<Suggestion>): SearchClearOwner => {
+  // F1053(a): the refocus rAF used to fire unconditionally with no way to cancel
+  // it — the repo's known undisarmed-rAF burn pattern. Own it in a ref so a fresh
+  // clear supersedes a pending one and unmount cancels it, matching the correct
+  // shape in use-search-filter-modal-owner.ts:299-305.
+  const refocusRafRef = React.useRef<number | null>(null);
+  React.useEffect(() => {
+    return () => {
+      if (refocusRafRef.current != null) {
+        cancelAnimationFrame(refocusRafRef.current);
+        refocusRafRef.current = null;
+      }
+    };
+  }, []);
+
   const clearTypedQuery = React.useCallback(() => {
     cancelAutocomplete();
     setIsAutocompleteSuppressed(false);
@@ -183,7 +197,11 @@ export const useSearchClearOwner = <Suggestion>({
       scrollResultsToTop();
       isClearingSearchRef.current = false;
       if (shouldRefocusInput) {
-        requestAnimationFrame(() => {
+        if (refocusRafRef.current != null) {
+          cancelAnimationFrame(refocusRafRef.current);
+        }
+        refocusRafRef.current = requestAnimationFrame(() => {
+          refocusRafRef.current = null;
           inputRef.current?.focus();
         });
       }

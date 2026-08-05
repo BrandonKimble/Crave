@@ -59,7 +59,6 @@ type DishResultCardProps = {
   item: FoodResult;
   index: number;
   qualityColor: string;
-  isSaved: boolean;
   restaurantForDish?: RestaurantResult;
   onSavePress: () => void;
   /** Own/collaborator list detail: first pill = Edit (note + remove) —
@@ -84,7 +83,6 @@ const DishResultCard: React.FC<DishResultCardProps> = ({
   item,
   index,
   qualityColor,
-  isSaved,
   restaurantForDish,
   onSavePress,
   pillEditMode = false,
@@ -289,7 +287,7 @@ const DishResultCard: React.FC<DishResultCardProps> = ({
           the card-body heart/share moved here. */}
       <CardActionPillRow
         onSave={onSavePress}
-        isSaved={isSaved || isSavedAnywhere}
+        isSaved={isSavedAnywhere}
         editMode={pillEditMode}
         onShare={handleShare}
         phoneNumber={

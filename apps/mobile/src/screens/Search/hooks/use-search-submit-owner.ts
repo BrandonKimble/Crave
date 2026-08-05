@@ -434,19 +434,18 @@ const useSearchSubmitOwner = ({
         // abort (the abort is what clears the covers). No error toast either; the
         // system banner owns the offline story.
         if (useSystemStatusStore.getState().isOffline) {
-          logger.info('Search resolution paused offline', { message: reason });
+          logger.info('Search resolution paused offline', { message: reason.message });
           return;
         }
-        // A resolution canceled by a session exit (the close aborts the in-flight fetch)
-        // is expected lifecycle, not a failure — logging it as an error raised a dev
-        // LogBox toast on every dismiss-with-pending-fetch. Real failures stay loud.
-        const isCanceledByExit =
-          typeof reason === 'string' &&
-          (reason.includes('canceled') || reason.includes('runSearch returned no response'));
-        if (isCanceledByExit) {
-          logger.info('Search resolution superseded/canceled', { message: reason });
+        // F1050/F1005: the resolver classifies cancellation ONCE (it's the only side
+        // that can actually observe the abort) and hands the verdict down as
+        // `reason.kind` — no more re-deriving it here via the same string match the
+        // resolver already ran, which risked demoting a genuine failure that happened
+        // to contain "canceled" in BOTH places.
+        if (reason.kind === 'canceled') {
+          logger.info('Search resolution superseded/canceled', { message: reason.message });
         } else {
-          logger.error('Search resolution failed', { message: reason });
+          logger.error('Search resolution failed', { message: reason.message });
         }
         onPresentationIntentAbortRef.current?.();
       },

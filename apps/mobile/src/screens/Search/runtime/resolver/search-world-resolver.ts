@@ -89,6 +89,18 @@ export type SearchWorldResolverEnv = {
   }) => void;
 };
 
+// F1050/F1005: a plain string reason forced BOTH the resolver and the submit owner
+// to independently string-match `.includes('canceled')` to tell a canceled-by-exit
+// supersession from a real failure — two classifiers that had to agree, and a genuine
+// failure whose message happened to contain "canceled" would be silently demoted in
+// BOTH places. Classify ONCE, here, where the cancellation is actually detected, and
+// carry the verdict as data so downstream consumers switch on `kind` instead of
+// re-deriving it.
+export type SearchWorldResolutionFailureReason = {
+  kind: 'canceled' | 'failed';
+  message: string;
+};
+
 export type SearchWorldResolveArgs = {
   tuple: SearchDesiredTuple;
   generation: number;
@@ -107,7 +119,7 @@ export type SearchWorldResolveArgs = {
   onResolutionBegan?: () => void;
   /** Invoked when the resolution fails terminally — the trigger disarms its pending
    *  presentation so a failed rerun can't leave the cover armed until the watchdog. */
-  onResolutionFailed?: (reason: string) => void;
+  onResolutionFailed?: (reason: SearchWorldResolutionFailureReason) => void;
 };
 
 export type SearchWorldResolver = {
@@ -355,7 +367,7 @@ export const createSearchWorldResolver = (env: SearchWorldResolverEnv): SearchWo
       if (!isCanceled) {
         env.seam.failResolution({ generation, reason });
       }
-      args.onResolutionFailed?.(reason);
+      args.onResolutionFailed?.({ kind: isCanceled ? 'canceled' : 'failed', message: reason });
     }
   };
 

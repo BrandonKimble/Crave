@@ -644,13 +644,8 @@ const ListDetailReadyContent = React.memo(({ data }: { data: ListDetailReadyData
               index={index}
               rank={index + 1}
               qualityColor={getMarkerColorForRestaurant(restaurant)}
-              // F932(b), ATTRIBUTED: this is NOT "every row of a saved list renders as
-              // not-saved". The card computes `isSaved || isSavedAnywhere` where
-              // `isSavedAnywhere` is a live `useSavedMembership` read, so this prop
-              // means "the caller has no extra knowledge" and the card owns the truth.
-              // Every call site in the app passes `false` — the prop is dead, and its
-              // deletion belongs to the components/cards lane, not here.
-              isSaved={false}
+              // F1045: the dead `isSaved` prop was deleted from the card — the card
+              // owns saved-ness via `useSavedMembership` directly.
               pillEditMode={canEditRef.current}
               onSavePress={
                 canEditRef.current
@@ -686,8 +681,7 @@ const ListDetailReadyContent = React.memo(({ data }: { data: ListDetailReadyData
             item={dish}
             index={index}
             qualityColor={getMarkerColorForDish(dish)}
-            // F932(b): see the restaurant row above — the card derives saved-ness.
-            isSaved={false}
+            // F1045: see the restaurant row above — the card derives saved-ness.
             pillEditMode={canEditRef.current}
             restaurantForDish={restaurantsByIdForDishRows.get(dish.restaurantId)}
             onSavePress={
