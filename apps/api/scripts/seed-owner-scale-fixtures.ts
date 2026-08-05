@@ -265,7 +265,7 @@ async function seedOwnPhotos(ownerUserId: string): Promise<void> {
     }
     const sources = await prisma.photo.findMany({
       where: { restaurantId, status: 'live', visibility: 'public' },
-      orderBy: { uploadedAt: 'asc' },
+      orderBy: { ticketedAt: 'asc' },
       take: OWN_PHOTOS_PER_RESTAURANT - existing,
       select: { publicId: true },
     });
@@ -359,7 +359,7 @@ async function linkConnectionPhotos(ownerUserId: string): Promise<void> {
         connectionId: null,
         status: 'live',
       },
-      orderBy: { uploadedAt: 'desc' },
+      orderBy: { ticketedAt: 'desc' },
       take: 3,
       select: { photoId: true },
     });

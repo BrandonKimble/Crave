@@ -1,9 +1,9 @@
 /* eslint-disable @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-unsafe-return, @typescript-eslint/no-unsafe-call */
 /**
- * THE PUSH QUEUE, HONESTLY (D36 / F640 + F641 + F642).
+ * THE PUSH QUEUE, HONESTLY (D36 / F640 + F641 + F642; F643 + F644 Phase 3).
  *
- * Three defects, each of which this spec can show RED by reverting exactly one
- * line of notification-dispatcher.service.ts:
+ * Defects this spec can show RED by reverting exactly one line/shape of
+ * notification-dispatcher.service.ts:
  *
  *  1. F642 — `isRecord` accepted an ARRAY (`typeof [] === 'object'`), so Expo's
  *     DOCUMENTED batch error payload `{ data: [ { status: 'error', … } ] }`
@@ -18,6 +18,15 @@
  *  3. F641 — a `sending` row whose process died was stranded FOREVER.
  *     MUTATION: remove `sending` from that arm's status list → the reclaim
  *     test goes RED.
+ *  4. F643 — one HTTP request per device, awaited serially, was the shape.
+ *     Below, "batches by token" proves the fetch body is a single JSON
+ *     ARRAY of every sendable message, not N separate POSTs; "a bad
+ *     receipt at one index fails only that row" proves per-message
+ *     resolution survived batching (F642's positional fix, generalized).
+ *  5. F644 — buildMessage was `if (type === 'poll_release') … return null`.
+ *     MUTATION: delete the `follower_added` case (or the `default`
+ *     exhaustiveness check) → `tsc --noEmit` fails at the switch, not at
+ *     runtime.
  */
 import { $Enums } from '@prisma/client';
 import { NotificationDispatcherService } from './notification-dispatcher.service';
@@ -70,6 +79,16 @@ function createHarness(opts: {
           data: args.data,
         });
         return Promise.resolve({ attempts: 1 });
+      }),
+      // The batch take (F643): one call moves every row in the batch to
+      // `sending` — recorded per-id so existing per-notification assertions
+      // (built around the old one-`update`-per-row shape) still hold.
+      updateMany: jest.fn((args: any) => {
+        const ids: string[] = args.where.notificationId.in;
+        for (const notificationId of ids) {
+          updates.push({ notificationId, data: args.data });
+        }
+        return Promise.resolve({ count: ids.length });
       }),
     },
   };
@@ -241,5 +260,114 @@ describe('the queue actually retries and reclaims (F640 + F641)', () => {
     expect(updates[0].data.lastError).toBe('missing_token');
     // Without this, a token-less row would be retried every tick forever.
     expect(updates[0].data.attempts).toBeGreaterThan(0);
+  });
+});
+
+describe('batching by token (F643)', () => {
+  it('sends every device in ONE POST as a JSON array, not one request per device', async () => {
+    const rows = [
+      pendingRow({ notificationId: 'n1', device: { expoPushToken: 'tok-1' } }),
+      pendingRow({ notificationId: 'n2', device: { expoPushToken: 'tok-2' } }),
+      pendingRow({ notificationId: 'n3', device: { expoPushToken: 'tok-3' } }),
+    ];
+    const { service } = createHarness({ rows });
+    const fetchMock = jest.fn().mockResolvedValue({
+      ok: true,
+      statusText: 'OK',
+      json: () =>
+        Promise.resolve({
+          data: [{ status: 'ok' }, { status: 'ok' }, { status: 'ok' }],
+        }),
+    });
+    global.fetch = fetchMock as never;
+
+    await service.dispatchPending();
+
+    // RED under the reverted (serial, one-per-device) defect: fetch would be
+    // called 3 times with a single-object body each, not once with an array.
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    const [, options] = fetchMock.mock.calls[0];
+    const body = JSON.parse(options.body as string);
+    expect(Array.isArray(body)).toBe(true);
+    expect(body).toHaveLength(3);
+    expect(body.map((m: any) => m.to)).toEqual(['tok-1', 'tok-2', 'tok-3']);
+  });
+
+  it('a bad receipt at one index fails ONLY that row — the other two still send', async () => {
+    const rows = [
+      pendingRow({ notificationId: 'n1', device: { expoPushToken: 'tok-1' } }),
+      pendingRow({ notificationId: 'n2', device: { expoPushToken: 'tok-2' } }),
+      pendingRow({ notificationId: 'n3', device: { expoPushToken: 'tok-3' } }),
+    ];
+    const { service, updates } = createHarness({ rows });
+    global.fetch = jest.fn().mockResolvedValue({
+      ok: true,
+      statusText: 'OK',
+      json: () =>
+        Promise.resolve({
+          data: [
+            { status: 'ok' },
+            { status: 'error', message: 'DeviceNotRegistered' },
+            { status: 'ok' },
+          ],
+        }),
+    }) as never;
+
+    await service.dispatchPending();
+
+    const byId = (id: string) =>
+      updates.filter((u) => u.notificationId === id).map((u) => u.data.status);
+    expect(byId('n1')).toContain($Enums.NotificationStatus.sent);
+    expect(byId('n2')).toContain($Enums.NotificationStatus.failed);
+    expect(byId('n3')).toContain($Enums.NotificationStatus.sent);
+    const n2Failure = updates.find(
+      (u) =>
+        u.notificationId === 'n2' &&
+        u.data.status === $Enums.NotificationStatus.failed,
+    );
+    expect(n2Failure?.data.lastError).toBe('DeviceNotRegistered');
+  });
+
+  it('more than 100 sendable rows are split into multiple POSTs of ≤100', async () => {
+    const rows = Array.from({ length: 101 }, (_, i) =>
+      pendingRow({
+        notificationId: `n${i}`,
+        device: { expoPushToken: `tok-${i}` },
+      }),
+    );
+    const { service } = createHarness({ rows });
+    const fetchMock = jest.fn().mockResolvedValue({
+      ok: true,
+      statusText: 'OK',
+      json: () =>
+        Promise.resolve({
+          data: Array.from({ length: 100 }, () => ({ status: 'ok' })),
+        }),
+    });
+    global.fetch = fetchMock as never;
+
+    await service.dispatchPending();
+
+    // 101 sendable rows -> two batches (100 + 1), never one request of 101.
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    const sizes = fetchMock.mock.calls.map(
+      ([, options]: [string, RequestInit]) =>
+        JSON.parse(options.body as string).length,
+    );
+    expect(sizes.every((n: number) => n <= 100)).toBe(true);
+    expect(sizes).toEqual([100, 1]);
+  });
+});
+
+describe('exhaustive buildMessage switch (F644)', () => {
+  it('an in-app-feed-only type (follower_added) fails LOUD via an explicit case, not the poll_release fallthrough', async () => {
+    const { service, updates } = createHarness({
+      rows: [pendingRow({ type: $Enums.NotificationType.follower_added })],
+    });
+    await service.dispatchPending();
+
+    expect(updates).toHaveLength(1);
+    expect(updates[0].data.status).toBe($Enums.NotificationStatus.failed);
+    expect(updates[0].data.lastError).toBe('invalid_payload');
   });
 });

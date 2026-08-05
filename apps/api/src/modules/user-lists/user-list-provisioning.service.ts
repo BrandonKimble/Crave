@@ -6,11 +6,16 @@ import { LoggerService } from '../../shared';
 /**
  * Auto-created default lists (page-registry §8.7): every user owns four
  * system lists — restaurants side 'Been' + 'Want to go', dish side 'Tried' +
- * 'Want to try' (copy TBD by owner). They start empty, pin to the TOP of the
- * home ordering (kind rank, see UserListsService.listForUser), and
- * are not deletable (deleteList guard).
+ * 'Want to try' (copy TBD by owner). They start empty.
  *
- * SYSTEM_DEFAULT_LISTS order IS the pinned display order.
+ * Wave-2 §2: these are REGULAR lists — no pinned top-of-home slot, and
+ * (aside from the separate favorites-kind list) freely renamable, movable,
+ * and deletable like any other list (see UserListsService.orderHomeLists /
+ * deleteList). Their `kind` survives only as provisioning provenance.
+ *
+ * SYSTEM_DEFAULT_LISTS order is used ONLY to seed a stable intra-batch
+ * creation position (see provisioningSeedPosition below); it has no bearing
+ * on display order.
  */
 export const SYSTEM_DEFAULT_LISTS: ReadonlyArray<{
   kind: string;
@@ -31,8 +36,17 @@ export const SYSTEM_DEFAULT_LISTS: ReadonlyArray<{
   },
 ];
 
-/** Fixed pinned rank per kind; Number.MAX_SAFE_INTEGER for user lists. */
-export const kindRank = (kind: string | null | undefined): number => {
+/**
+ * Stable intra-batch creation-position seed for the system default lists
+ * (Been/Want-to-go/Tried/Want-to-try), so a single provisioning call creates
+ * them in a deterministic order. This is NOT a display rank — display order
+ * comes from UserListsService.orderHomeLists (custom position, else recently
+ * updated), which treats these lists like any other. Number.MAX_SAFE_INTEGER
+ * for anything outside SYSTEM_DEFAULT_LISTS (i.e. user-created lists).
+ */
+export const provisioningSeedPosition = (
+  kind: string | null | undefined,
+): number => {
   if (!kind) {
     return Number.MAX_SAFE_INTEGER;
   }
@@ -83,9 +97,9 @@ export class UserListProvisioningService {
       listType: entry.listType,
       visibility: UserListVisibility.private,
       kind: entry.kind,
-      // Display order comes from the kind rank (system lists always
-      // sort before user lists); position 1..4 only anchors intra-batch order.
-      position: kindRank(entry.kind) + 1,
+      // Position 1..4 anchors intra-batch creation order only; it does not
+      // control display order (see orderHomeLists / the module doc comment).
+      position: provisioningSeedPosition(entry.kind) + 1,
     }));
 
     const created = await this.prisma.userList.createMany({

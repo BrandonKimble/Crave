@@ -1731,7 +1731,11 @@ model Photo {
   caption         String?         @db.VarChar(512)
   /// EXIF DateTimeOriginal (capture time) — GPS is NEVER persisted.
   takenAt         DateTime?       @map("taken_at") @db.Timestamptz(3)
-  uploadedAt      DateTime        @default(now()) @map("uploaded_at") @db.Timestamptz(3)
+  /// Stamped at TICKET MINT (createUploadTicket), not at actual upload
+  /// completion — Cloudinary never reports back a completion timestamp we
+  /// store. reconcilePending reads this for both the grace window and the
+  /// abandoned-after-an-hour expiry, so the name must say what it is.
+  ticketedAt      DateTime        @default(now()) @map("ticketed_at") @db.Timestamptz(3)
   /// Cloudinary quality_analysis focus score 0..1 (blur<->sharp).
   focusScore      Float?          @map("focus_score")
   width           Int?
@@ -1751,9 +1755,9 @@ model Photo {
 
   reports PhotoReport[]
 
-  @@index([restaurantId, status, uploadedAt(sort: Desc)], map: "idx_photos_restaurant_status")
-  @@index([connectionId, status, uploadedAt(sort: Desc)], map: "idx_photos_connection_status")
-  @@index([userId, status, uploadedAt(sort: Desc)], map: "idx_photos_user_status")
+  @@index([restaurantId, status, ticketedAt(sort: Desc)], map: "idx_photos_restaurant_status")
+  @@index([connectionId, status, ticketedAt(sort: Desc)], map: "idx_photos_connection_status")
+  @@index([userId, status, ticketedAt(sort: Desc)], map: "idx_photos_user_status")
   @@index([status], map: "idx_photos_status")
   @@map("photos")
 }

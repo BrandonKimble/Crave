@@ -16,6 +16,10 @@ import {
 import { PhotoVisionService } from './photo-vision.service';
 import { SaveableEntityResolver } from '../entities/saveable-entity.resolver';
 
+/** `uploadedAt` is the client-facing field name (unchanged contract); it is
+ *  sourced from the Photo row's `ticketedAt` (stamped at upload-ticket
+ *  mint, not at upload completion — see schema.prisma Photo.ticketedAt /
+ *  F623). */
 export interface PhotoDto {
   photoId: string;
   userId: string;
@@ -29,6 +33,7 @@ export interface PhotoDto {
   urls: PhotoUrls;
 }
 
+
 const MAX_PENDING_TICKETS_PER_USER = 10;
 
 const PHOTO_DTO_SELECT = {
@@ -41,7 +46,7 @@ const PHOTO_DTO_SELECT = {
   visibility: true,
   caption: true,
   takenAt: true,
-  uploadedAt: true,
+  ticketedAt: true,
 } as const;
 
 type PhotoRow = Prisma.PhotoGetPayload<{ select: typeof PHOTO_DTO_SELECT }>;
@@ -483,17 +488,17 @@ export class PhotosService {
     const stale = await this.prisma.photo.findMany({
       where: {
         status: PhotoStatus.pending,
-        uploadedAt: { lt: new Date(Date.now() - graceMinutes * 60_000) },
+        ticketedAt: { lt: new Date(Date.now() - graceMinutes * 60_000) },
       },
-      select: { photoId: true, publicId: true, uploadedAt: true },
-      orderBy: { uploadedAt: 'asc' },
+      select: { photoId: true, publicId: true, ticketedAt: true },
+      orderBy: { ticketedAt: 'asc' },
       take: batch,
     });
     let settled = 0;
     let failed = 0;
     for (const photo of stale) {
       // F622: was un-caught inside the loop — one Cloudinary error aborted
-      // the whole sweep, and because the batch is ordered `uploadedAt asc`,
+      // the whole sweep, and because the batch is ordered `ticketedAt asc`,
       // a persistently-failing row at the HEAD wedged the queue forever
       // (the exact stuck-pending state this cron exists to prevent). A
       // per-photo failure is now logged and counted; the sweep keeps going.
@@ -502,7 +507,7 @@ export class PhotosService {
         if (!asset.exists) {
           // Ticket issued but upload never happened (or was destroyed):
           // expire abandoned rows after an hour.
-          if (photo.uploadedAt.getTime() < Date.now() - 60 * 60_000) {
+          if (photo.ticketedAt.getTime() < Date.now() - 60 * 60_000) {
             await this.prisma.photo.update({
               where: { photoId: photo.photoId },
               data: { status: PhotoStatus.removed, moderatedAt: new Date() },
@@ -554,7 +559,9 @@ export class PhotosService {
       visibility: photo.visibility,
       caption: photo.caption,
       takenAt: photo.takenAt,
-      uploadedAt: photo.uploadedAt,
+      // ticketedAt -> the client-facing `uploadedAt` field (contract
+      // unchanged; see PhotoDto doc comment / F623).
+      uploadedAt: photo.ticketedAt,
       urls: this.cloudinary.buildUrls(photo.publicId),
     };
   }

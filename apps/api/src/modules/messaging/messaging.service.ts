@@ -77,7 +77,7 @@ export class MessagingService {
 
   /** §1.1: request ⇔ never replied AND not following AND not accepted. */
   private isRequestFor(
-    viewerParticipant: ConversationParticipant,
+    viewerParticipant: Pick<ConversationParticipant, 'acceptedAt'>,
     viewerHasSentMessage: boolean,
     viewerFollowsOther: boolean,
   ): boolean {
@@ -283,6 +283,18 @@ export class MessagingService {
     };
   }
 
+  /**
+   * F660: this used to run `decorateConversations` — the FULL conversation
+   * DTO pipeline (per-row `message.count`, per-row `toMessageDtos` on the
+   * last message, which for an `entity_share` last message calls
+   * `sharePackages.resolve`) — just to throw the DTO away and keep a
+   * boolean. That is ~2N+3 queries to produce ONE integer badge, on the
+   * endpoint the client polls most often. Reuses the three batched reads
+   * `decorateConversations` already does for isRequest/frozen (blocks,
+   * follows, viewer-sent) but replaces the per-row unread `count` AND the
+   * last-message resolution with one aggregate query that never builds a
+   * message DTO — a badge doesn't need one.
+   */
   async unreadCount(viewerUserId: string): Promise<{ total: number }> {
     // Total badge (§2.4): accepted, non-request, non-frozen conversations
     // with at least one unseen inbound message. Launch scale: the viewer's
@@ -294,14 +306,79 @@ export class MessagingService {
         participants: { some: { userId: viewerUserId } },
         lastMessageId: { not: null },
       },
-      include: { participants: { include: { user: this.peerSelect() } } },
+      select: {
+        conversationId: true,
+        participants: {
+          select: { userId: true, acceptedAt: true },
+        },
+      },
     });
-    const decorated = await this.decorateConversations(viewerUserId, rows);
-    return {
-      total: decorated.filter(
-        (c) => !c.isRequest && !c.frozen && c.unreadCount > 0,
-      ).length,
-    };
+    if (rows.length === 0) return { total: 0 };
+
+    const conversationIds = rows.map((r) => r.conversationId);
+    const otherIds = rows
+      .map((r) => r.participants.find((p) => p.userId !== viewerUserId)?.userId)
+      .filter((id): id is string => id != null);
+
+    const [blockedPeers, follows, viewerSentRows, unreadRows] =
+      await Promise.all([
+        this.blocks.blockedPeerIds(viewerUserId),
+        this.prisma.userFollow.findMany({
+          where: {
+            followerUserId: viewerUserId,
+            followingUserId: { in: otherIds },
+          },
+          select: { followingUserId: true },
+        }),
+        this.prisma.message.findMany({
+          where: {
+            conversationId: { in: conversationIds },
+            senderUserId: viewerUserId,
+          },
+          distinct: ['conversationId'],
+          select: { conversationId: true },
+        }),
+        // ONE aggregate for "has an unread inbound message", across every
+        // candidate conversation, instead of a `message.count` per row.
+        this.prisma.$queryRaw<Array<{ conversation_id: string }>>`
+          SELECT m.conversation_id
+          FROM messages m
+          JOIN conversation_participants cp
+            ON cp.conversation_id = m.conversation_id
+           AND cp.user_id = ${viewerUserId}::uuid
+          WHERE m.conversation_id = ANY(${conversationIds}::uuid[])
+            AND m.sender_user_id <> ${viewerUserId}::uuid
+            AND (
+              cp.last_read_message_at IS NULL
+              OR m.created_at > cp.last_read_message_at
+            )
+          GROUP BY m.conversation_id
+        `,
+      ]);
+    const followsSet = new Set(follows.map((f) => f.followingUserId));
+    const viewerSentSet = new Set(viewerSentRows.map((m) => m.conversationId));
+    const unreadSet = new Set(unreadRows.map((r) => r.conversation_id));
+
+    let total = 0;
+    for (const row of rows) {
+      if (!unreadSet.has(row.conversationId)) continue;
+      const viewerParticipant = row.participants.find(
+        (p) => p.userId === viewerUserId,
+      );
+      const otherParticipant = row.participants.find(
+        (p) => p.userId !== viewerUserId,
+      );
+      if (!viewerParticipant || !otherParticipant) continue;
+      if (blockedPeers.has(otherParticipant.userId)) continue;
+      const isRequest = this.isRequestFor(
+        viewerParticipant,
+        viewerSentSet.has(row.conversationId),
+        followsSet.has(otherParticipant.userId),
+      );
+      if (isRequest) continue;
+      total += 1;
+    }
+    return { total };
   }
 
   // ----------------------------------------------------------------- write

@@ -41,7 +41,7 @@ function makeService(overrides?: {
           status: 'pending',
           caption: data.caption ?? null,
           takenAt: data.takenAt ?? null,
-          uploadedAt: new Date(),
+          ticketedAt: new Date(),
         }),
       ),
       update: jest.fn().mockImplementation(({ data }) =>
@@ -54,7 +54,7 @@ function makeService(overrides?: {
           status: data?.status ?? 'pending',
           caption: null,
           takenAt: null,
-          uploadedAt: new Date(),
+          ticketedAt: new Date(),
           reportCount: data?.reportCount?.increment ? 3 : 0,
           ...data,
         }),
@@ -316,7 +316,7 @@ describe('PhotosService lifecycle', () => {
         connectionId: null,
         caption: null,
         takenAt: null,
-        uploadedAt: new Date(),
+        ticketedAt: new Date(),
       },
     });
     await expect(service.getPhoto('p1', 'someone-else')).rejects.toThrow(
@@ -338,7 +338,7 @@ describe('PhotosService lifecycle', () => {
         connectionId: null,
         caption: null,
         takenAt: null,
-        uploadedAt: new Date(),
+        ticketedAt: new Date(),
       },
     });
     await expect(service.getPhoto('p1', 'someone-else')).rejects.toThrow(
@@ -369,7 +369,7 @@ describe('PhotosService lifecycle', () => {
       {
         photoId: 'p1',
         publicId: 'crave/test/photos/p1',
-        uploadedAt: new Date(Date.now() - 2 * 60 * 60_000),
+        ticketedAt: new Date(Date.now() - 2 * 60 * 60_000),
       },
     ]);
     cloudinary.getAsset.mockResolvedValueOnce({ exists: false });
@@ -387,12 +387,12 @@ describe('PhotosService lifecycle', () => {
       {
         photoId: 'p-head-broken',
         publicId: 'crave/test/photos/p-head-broken',
-        uploadedAt: new Date(Date.now() - 20 * 60_000),
+        ticketedAt: new Date(Date.now() - 20 * 60_000),
       },
       {
         photoId: 'p-tail-ok',
         publicId: 'crave/test/photos/p-tail-ok',
-        uploadedAt: new Date(Date.now() - 15 * 60_000),
+        ticketedAt: new Date(Date.now() - 15 * 60_000),
       },
     ]);
     cloudinary.getAsset

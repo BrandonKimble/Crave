@@ -33,6 +33,15 @@ const MAX_DELIVERY_ATTEMPTS = 3;
 /** Also the `sending` lease: a row held longer than this lost its owner. */
 const RETRY_BACKOFF_MS = 5 * 60 * 1000;
 
+/**
+ * F643: Expo's push endpoint IS a batch API — it documents accepting up to
+ * 100 messages per POST. One HTTP request per device, awaited serially, was
+ * modeling "send a notification" when the vendor models "send a batch": a
+ * release to 5k devices took ~50 minutes to drain sequentially. Owner cap,
+ * matching Expo's documented limit exactly (not a tuning guess).
+ */
+const EXPO_BATCH_SIZE = 100;
+
 interface PushPayload {
   to: string;
   title: string;
@@ -84,103 +93,174 @@ export class NotificationDispatcherService {
       orderBy: { createdAt: 'asc' },
     });
 
+    // Permanent, pre-send failures (no token / unpushable type) never touch
+    // Expo — sort them out first so only genuinely sendable rows are batched.
+    const sendable: Array<{
+      notification: Notification & { device: NotificationDevice | null };
+      message: PushPayload;
+    }> = [];
     for (const notification of pending) {
-      await this.dispatchNotification(notification);
+      if (!notification.device?.expoPushToken) {
+        // PERMANENT: no retry can conjure a token. Terminal by exhausting
+        // the attempt budget, so the retry predicate needs no second
+        // vocabulary.
+        await this.markFailed(notification.notificationId, 'missing_token', {
+          permanent: true,
+        });
+        continue;
+      }
+      const message = this.buildMessage(notification);
+      if (!message) {
+        // PERMANENT: buildMessage is a pure function of the row (F644) — a
+        // retry produces the same null.
+        await this.markFailed(
+          notification.notificationId,
+          'invalid_payload',
+          { permanent: true },
+        );
+        continue;
+      }
+      sendable.push({ notification, message });
+    }
+
+    for (let i = 0; i < sendable.length; i += EXPO_BATCH_SIZE) {
+      await this.dispatchBatch(sendable.slice(i, i + EXPO_BATCH_SIZE));
     }
   }
 
-  private async dispatchNotification(
-    notification: Notification & { device: NotificationDevice | null },
+  /**
+   * One Expo POST per up-to-100 messages (F643), instead of one request per
+   * device awaited serially. The lease/attempt bookkeeping is unchanged —
+   * every row in the batch is taken (`sending`, attempts+1) before the
+   * request, and settled individually from the response, so a batch-level
+   * failure (network error, malformed response) fails every row in it
+   * exactly the way an individual failure used to.
+   */
+  private async dispatchBatch(
+    batch: Array<{
+      notification: Notification & { device: NotificationDevice | null };
+      message: PushPayload;
+    }>,
   ): Promise<void> {
-    if (!notification.device?.expoPushToken) {
-      // PERMANENT: no retry can conjure a token. Terminal by exhausting the
-      // attempt budget, so the retry predicate needs no second vocabulary.
-      await this.markFailed(notification.notificationId, 'missing_token', {
-        permanent: true,
-      });
-      return;
-    }
+    if (batch.length === 0) return;
 
-    const message = this.buildMessage(notification);
-    if (!message) {
-      // PERMANENT: buildMessage is a pure function of the row (F644) — a
-      // retry produces the same null.
-      await this.markFailed(notification.notificationId, 'invalid_payload', {
-        permanent: true,
-      });
-      return;
-    }
+    await this.prisma.notification.updateMany({
+      where: {
+        notificationId: { in: batch.map((b) => b.notification.notificationId) },
+      },
+      data: {
+        status: $Enums.NotificationStatus.sending,
+        attempts: { increment: 1 },
+      },
+    });
 
     try {
-      await this.prisma.notification.update({
-        where: { notificationId: notification.notificationId },
-        data: {
-          status: $Enums.NotificationStatus.sending,
-          attempts: { increment: 1 },
-        },
-      });
-
       const response = await fetch(EXPO_PUSH_URL, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(message),
+        body: JSON.stringify(batch.map((b) => b.message)),
       });
 
       const payloadRaw: unknown = await response.json();
-      const payload = this.parseExpoResponse(payloadRaw);
-      if (!response.ok || payload.status === 'error') {
-        const errorMessage =
-          payload.message ?? payload.errorMessage ?? response.statusText;
-        throw new Error(errorMessage);
-      }
+      const receipts = this.parseExpoBatchReceipts(payloadRaw, batch.length);
 
-      await this.prisma.notification.update({
-        where: { notificationId: notification.notificationId },
-        data: {
-          status: $Enums.NotificationStatus.sent,
-          sentAt: new Date(),
-          lastError: null,
-        },
-      });
+      await Promise.all(
+        batch.map((item, index) =>
+          this.applyReceipt(
+            item.notification.notificationId,
+            response.ok,
+            response.statusText,
+            receipts[index] ?? {},
+          ),
+        ),
+      );
     } catch (error) {
-      await this.markFailed(
-        notification.notificationId,
-        error instanceof Error ? error.message : String(error),
+      const reason = error instanceof Error ? error.message : String(error);
+      await Promise.all(
+        batch.map((item) =>
+          this.markFailed(item.notification.notificationId, reason),
+        ),
       );
     }
   }
 
+  private async applyReceipt(
+    notificationId: string,
+    responseOk: boolean,
+    responseStatusText: string,
+    receipt: { status?: string; message?: string },
+  ): Promise<void> {
+    if (!responseOk || receipt.status === 'error') {
+      await this.markFailed(
+        notificationId,
+        receipt.message ?? responseStatusText ?? 'unknown_error',
+      );
+      return;
+    }
+    await this.prisma.notification.update({
+      where: { notificationId },
+      data: {
+        status: $Enums.NotificationStatus.sent,
+        sentAt: new Date(),
+        lastError: null,
+      },
+    });
+  }
+
+  /**
+   * F644: `NotificationType` is wider than what can be pushed (e.g.
+   * `follower_added` is an in-app-feed-only type — see
+   * UserNotificationFeedService — and is never enqueued into this push
+   * table). The old shape was an `if (type === 'poll_release') … return
+   * null`, so ANY future producer that enqueues a new type into THIS table
+   * silently mints permanently-failed rows with no signal at the call site
+   * that added the producer. A switch over every `NotificationType` member,
+   * with an exhaustiveness check in `default`, makes an unhandled type a
+   * COMPILE ERROR instead of a runtime shrug: adding a member to the schema
+   * enum without adding a case here fails `tsc`, naming this file.
+   */
   private buildMessage(
     notification: Notification & { device: NotificationDevice | null },
   ): PushPayload | null {
     if (!notification.device?.expoPushToken) {
       return null;
     }
+    const expoPushToken = notification.device.expoPushToken;
 
-    if (notification.type === 'poll_release') {
-      const payload = notification.payload as {
-        placeId?: string | null;
-        placeName?: string | null;
-        pollIds?: string[];
-      } | null;
-      const placeLabel = payload?.placeName ?? null;
-      return {
-        to: notification.device.expoPushToken,
-        sound: 'default',
-        title: placeLabel
-          ? `📊 ${placeLabel} polls are live`
-          : '📊 Weekly polls are live',
-        body: 'Vote on this week’s dishes and see what’s trending now.',
-        data: {
-          type: 'poll_release',
-          pollIds: payload?.pollIds ?? [],
-          placeId: payload?.placeId ?? null,
-          placeName: placeLabel,
-        },
-      };
+    switch (notification.type) {
+      case $Enums.NotificationType.poll_release: {
+        const payload = notification.payload as {
+          placeId?: string | null;
+          placeName?: string | null;
+          pollIds?: string[];
+        } | null;
+        const placeLabel = payload?.placeName ?? null;
+        return {
+          to: expoPushToken,
+          sound: 'default',
+          title: placeLabel
+            ? `📊 ${placeLabel} polls are live`
+            : '📊 Weekly polls are live',
+          body: 'Vote on this week’s dishes and see what’s trending now.',
+          data: {
+            type: 'poll_release',
+            pollIds: payload?.pollIds ?? [],
+            placeId: payload?.placeId ?? null,
+            placeName: placeLabel,
+          },
+        };
+      }
+      case $Enums.NotificationType.follower_added:
+        // In-app-feed-only type (UserNotificationFeedService); never
+        // enqueued into the push table today. Not (yet) pushable.
+        return null;
+      default: {
+        // Exhaustiveness: a new NotificationType enum member that reaches
+        // this switch without a case fails HERE at compile time.
+        const _exhaustive: never = notification.type;
+        return _exhaustive;
+      }
     }
-
-    return null;
   }
 
   /**
@@ -212,67 +292,56 @@ export class NotificationDispatcherService {
   }
 
   /**
-   * EXPO'S OWN DOCUMENTED SHAPES, INCLUDING THE ARRAY (D36/F642).
+   * EXPO'S OWN DOCUMENTED SHAPES, INCLUDING THE ARRAY (D36/F642), now read
+   * POSITIONALLY (F643): a batch POST gets back `{ data: [receipt, …] }` in
+   * REQUEST ORDER — one receipt per message, not "any error fails the
+   * whole send" (that collapsing was correct only when every request held
+   * exactly one message). Each index is resolved to its own outcome so one
+   * bad token in a 100-message batch fails ONLY that row.
    *
-   * `isRecord` used to accept an ARRAY (`typeof [] === 'object'`), so the
-   * documented BATCH response — `{ data: [ { status: 'error', … } ] }` —
-   * parsed to `{ status: undefined }` and, with a 200, was recorded as SENT.
-   * A failure detector that reads success on the vendor's own error payload is
-   * an always-green instrument. Arrays are now rejected AS RECORDS and handled
-   * explicitly: any receipt reporting `error` fails the send.
+   * `isRecord` rejects arrays (`typeof [] === 'object'` is otherwise true)
+   * — the F642 defect in one line, still load-bearing here.
    */
-  private parseExpoResponse(payload: unknown): {
-    status?: string;
-    message?: string;
-    errorMessage?: string;
-  } {
+  private parseExpoBatchReceipts(
+    payload: unknown,
+    expectedCount: number,
+  ): Array<{ status?: string; message?: string }> {
     if (!this.isRecord(payload)) {
-      return {};
+      return new Array(expectedCount).fill({});
     }
 
     const dataRaw = payload['data'];
-    // The batch form: data is an ARRAY of per-message receipts. One error in
-    // it is an error for this send (we post one message per request).
     const receipts = this.asArray(dataRaw);
     if (receipts.length > 0) {
-      const errored = receipts.find(
-        (receipt) =>
-          this.isRecord(receipt) &&
-          this.getStringField(receipt, 'status') === 'error',
+      return receipts.map((receipt) =>
+        this.isRecord(receipt)
+          ? {
+              status: this.getStringField(receipt, 'status'),
+              message:
+                this.getStringField(receipt, 'message') ??
+                this.getStringField(receipt, 'details'),
+            }
+          : {},
       );
-      if (this.isRecord(errored)) {
-        return {
-          status: 'error',
-          message:
-            this.getStringField(errored, 'message') ??
-            this.getStringField(errored, 'details'),
-        };
-      }
-      const first = receipts[0];
-      return {
-        status: this.isRecord(first)
-          ? this.getStringField(first, 'status')
-          : undefined,
+    }
+
+    // `data` came back as a single (non-array) object, or absent. Neither
+    // is a valid per-message batch receipt set, so whatever request-level
+    // signal exists (a lone receipt, or `errors`) applies to EVERY message
+    // in the batch — we cannot tell which one it was about.
+    if (this.isRecord(dataRaw)) {
+      const single = {
+        status: this.getStringField(dataRaw, 'status'),
+        message: this.getStringField(dataRaw, 'message'),
       };
+      return new Array(expectedCount).fill(single);
     }
-    const data = this.isRecord(dataRaw) ? dataRaw : undefined;
-    const status = data ? this.getStringField(data, 'status') : undefined;
-    const message = data ? this.getStringField(data, 'message') : undefined;
-
     const errorsRaw = this.asArray(payload['errors']);
-    let errorMessage: string | undefined;
-    if (errorsRaw.length > 0) {
-      const firstError = errorsRaw[0];
-      if (this.isRecord(firstError)) {
-        errorMessage = this.getStringField(firstError, 'message');
-      }
+    if (errorsRaw.length > 0 && this.isRecord(errorsRaw[0])) {
+      const message = this.getStringField(errorsRaw[0], 'message');
+      return new Array(expectedCount).fill({ status: 'error', message });
     }
-
-    return {
-      status,
-      message,
-      errorMessage,
-    };
+    return new Array(expectedCount).fill({});
   }
 
   /** An ARRAY is not a record — the F642 defect in one line. */

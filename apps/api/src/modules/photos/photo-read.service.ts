@@ -3,7 +3,10 @@ import { PhotoStatus, PhotoVisibility, Prisma } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { CloudinaryService, type PhotoUrls } from './cloudinary.service';
 
-/** The card/strip/gallery-facing photo shape: ready-made URLs + credit. */
+/** The card/strip/gallery-facing photo shape: ready-made URLs + credit.
+ *  `uploadedAt` is the client-facing field name (unchanged contract); it is
+ *  sourced from the Photo row's `ticketedAt` (stamped at upload-ticket
+ *  mint — see schema.prisma Photo.ticketedAt / F623). */
 export interface PhotoStripItemDto {
   photoId: string;
   userId: string;
@@ -255,7 +258,7 @@ export class PhotoReadService {
       publicId: row.public_id,
       caption: row.caption,
       takenAt: row.taken_at,
-      uploadedAt: row.uploaded_at,
+      ticketedAt: row.ticketed_at,
       focusScore: row.focus_score,
     };
   }
@@ -287,7 +290,7 @@ export class PhotoReadService {
     const [all, totalCount, dishRows] = await Promise.all([
       this.prisma.photo.findMany({
         where: visibleWhere,
-        orderBy: { uploadedAt: 'desc' },
+        orderBy: { ticketedAt: 'desc' },
         skip: offset,
         take: limit,
         select: PHOTO_STRIP_SELECT,
@@ -325,12 +328,12 @@ export class PhotoReadService {
       : Prisma.empty;
     const rows = await this.prisma.$queryRaw<RawStripRow[]>`
       SELECT photo_id, user_id, restaurant_id, connection_id, public_id,
-             caption, taken_at, uploaded_at, focus_score
+             caption, taken_at, ticketed_at, focus_score
       FROM (
         SELECT *, ROW_NUMBER() OVER (
           PARTITION BY connection_id
           ORDER BY (focus_score IS NULL OR focus_score >= ${FOCUS_FLOOR}) DESC,
-                   uploaded_at DESC
+                   ticketed_at DESC
         ) AS rn
         FROM photos
         WHERE restaurant_id = ${restaurantId}::uuid
@@ -366,7 +369,7 @@ export class PhotoReadService {
             status: PhotoStatus.live,
             visibility: PhotoVisibility.public,
           },
-      orderBy: { uploadedAt: 'desc' },
+      orderBy: { ticketedAt: 'desc' },
       take: Math.min(params.limit ?? 200, 500),
       select: {
         ...PHOTO_STRIP_SELECT,
@@ -394,7 +397,9 @@ export class PhotoReadService {
       connectionId: row.connectionId,
       caption: row.caption,
       takenAt: row.takenAt,
-      uploadedAt: row.uploadedAt,
+      // ticketedAt -> the client-facing `uploadedAt` field (contract
+      // unchanged; see PhotoStripItemDto doc comment / F623).
+      uploadedAt: row.ticketedAt,
       urls: this.cloudinary.buildUrls(row.publicId),
     };
   }
@@ -408,7 +413,7 @@ const PHOTO_STRIP_SELECT = {
   publicId: true,
   caption: true,
   takenAt: true,
-  uploadedAt: true,
+  ticketedAt: true,
   focusScore: true,
 } as const;
 
@@ -420,7 +425,7 @@ interface RawStripRow {
   public_id: string;
   caption: string | null;
   taken_at: Date | null;
-  uploaded_at: Date;
+  ticketed_at: Date;
   focus_score: number | null;
 }
 
@@ -432,6 +437,6 @@ interface PhotoStripRow {
   publicId: string;
   caption: string | null;
   takenAt: Date | null;
-  uploadedAt: Date;
+  ticketedAt: Date;
   focusScore: number | null;
 }

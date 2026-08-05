@@ -3,7 +3,7 @@ import { NotFoundException } from '@nestjs/common';
 import {
   UserListProvisioningService,
   SYSTEM_DEFAULT_LISTS,
-  kindRank,
+  provisioningSeedPosition,
 } from './user-list-provisioning.service';
 import { UserListsService } from './user-lists.service';
 import { UserListAccessPolicy } from './user-list-access.policy';
@@ -295,11 +295,17 @@ describe('system-default guards + home ordering (UserListsService)', () => {
     expect(result.map((row: any) => row.listId)).toEqual(['u2', 'u1']);
   });
 
-  it('kindRank orders been < want_to_go < tried < want_to_try < user lists', () => {
-    expect(kindRank('been')).toBeLessThan(kindRank('want_to_go'));
-    expect(kindRank('want_to_go')).toBeLessThan(kindRank('tried'));
-    expect(kindRank('tried')).toBeLessThan(kindRank('want_to_try'));
-    expect(kindRank(null)).toBe(Number.MAX_SAFE_INTEGER);
+  it('provisioningSeedPosition orders been < want_to_go < tried < want_to_try < user lists', () => {
+    expect(provisioningSeedPosition('been')).toBeLessThan(
+      provisioningSeedPosition('want_to_go'),
+    );
+    expect(provisioningSeedPosition('want_to_go')).toBeLessThan(
+      provisioningSeedPosition('tried'),
+    );
+    expect(provisioningSeedPosition('tried')).toBeLessThan(
+      provisioningSeedPosition('want_to_try'),
+    );
+    expect(provisioningSeedPosition(null)).toBe(Number.MAX_SAFE_INTEGER);
   });
 
   it('addItem on a RESTAURANT list resolves a connection target to its restaurant (save-sheet flip)', async () => {

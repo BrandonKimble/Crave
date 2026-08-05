@@ -91,6 +91,10 @@ function makePrisma() {
     },
   };
   prisma.$transaction = jest.fn((fn: any) => fn(prisma));
+  // F660: unreadCount's "has unread" aggregate (replacing a per-row
+  // `message.count`). Empty by default; badge tests supply the rows they
+  // need to see counted.
+  prisma.$queryRaw = jest.fn().mockResolvedValue([]);
   return prisma;
 }
 
@@ -361,8 +365,38 @@ describe('unread + request derivation (§1.1/§2.4)', () => {
     prisma.conversation.findMany.mockResolvedValueOnce([
       conversation(), // request (unread would not count)
     ]);
-    prisma.message.count.mockResolvedValue(5);
+    prisma.$queryRaw.mockResolvedValueOnce([{ conversation_id: CONVO }]);
     await expect(service.unreadCount(ME)).resolves.toEqual({ total: 0 });
+  });
+
+  it('unread-count badge: F660 RED proof — the aggregate result is what gates the count, not a per-row DTO', async () => {
+    prisma.conversation.findMany.mockResolvedValueOnce([
+      conversation({
+        // Not a request (accepted) and not frozen (no block row).
+        participants: [
+          participant(ME, { acceptedAt: new Date() }),
+          participant(THEM),
+        ],
+      }),
+    ]);
+    // No row in the aggregate result => zero unread, even though the old
+    // per-row `message.count` mock would have said otherwise.
+    prisma.$queryRaw.mockResolvedValueOnce([]);
+    await expect(service.unreadCount(ME)).resolves.toEqual({ total: 0 });
+
+    prisma.conversation.findMany.mockResolvedValueOnce([
+      conversation({
+        participants: [
+          participant(ME, { acceptedAt: new Date() }),
+          participant(THEM),
+        ],
+      }),
+    ]);
+    prisma.$queryRaw.mockResolvedValueOnce([{ conversation_id: CONVO }]);
+    await expect(service.unreadCount(ME)).resolves.toEqual({ total: 1 });
+    // The badge never touches `message.count` or the last-message DTO
+    // pipeline (sharePackages.resolve) — it is a pure aggregate read.
+    expect(prisma.message.count).not.toHaveBeenCalled();
   });
 });
 
