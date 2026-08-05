@@ -4,7 +4,7 @@ import { perfNow as resolvePerfNow } from './perf-clock';
 import React from 'react';
 import { NativeModules, Linking } from 'react-native';
 
-import { startJsFrameSampler } from './js-frame-sampler';
+import { startJsFrameSampler, type JsFrameSamplerLiveness } from './js-frame-sampler';
 import { startJsTaskLatencySampler } from './js-task-latency-sampler';
 import { parsePerfScenarioDeepLinkEvent } from './perf-scenario-deep-link';
 import {
@@ -186,6 +186,11 @@ export const PerfScenarioCoordinator: React.FC = () => {
   activeConfigRef.current = activeConfig;
   const measuredRepeatLoopActiveRef = React.useRef(false);
   const bufferedSamplerEventsRef = React.useRef<BufferedSamplerEvent[]>([]);
+  // F852 — the JS frame sampler's `getLiveness()` read at scenario stop, so
+  // `scenario_sampling_stopped` can carry an UNCONDITIONAL liveness fact
+  // (windowsObserved/badWindowsObserved) instead of relying on the RED-only
+  // per-window channel to prove the rAF loop ran at all.
+  const jsFrameSamplerLivenessRef = React.useRef<(() => JsFrameSamplerLiveness) | null>(null);
 
   const flushBufferedSamplerEvents = React.useCallback(
     (config: RuntimePerfScenarioConfig, reason: string) => {
@@ -963,6 +968,7 @@ export const PerfScenarioCoordinator: React.FC = () => {
     }
 
     const stopCallbacks: Array<() => void> = [];
+    jsFrameSamplerLivenessRef.current = null;
 
     // F850: the UI sampler attaches FIRST, so `scenario_sampling_started`
     // reports the START RETURN — what is actually being measured — instead of
@@ -1015,19 +1021,19 @@ export const PerfScenarioCoordinator: React.FC = () => {
     }
 
     if (activeConfig.jsFrameSampler.enabled) {
-      stopCallbacks.push(
-        startJsFrameSampler({
-          windowMs: activeConfig.jsFrameSampler.windowMs,
-          stallFrameMs: activeConfig.jsFrameSampler.stallFrameMs,
-          logOnlyBelowFps: activeConfig.jsFrameSampler.logOnlyBelowFps,
-          onWindow: (summary) => {
-            emitOrBufferJsSamplerEvent(activeConfig, 'JsFrameSampler', summary);
-          },
-          onStall: (event) => {
-            emitOrBufferJsSamplerEvent(activeConfig, 'JsFrameSampler', event);
-          },
-        })
-      );
+      const jsFrameSamplerHandle = startJsFrameSampler({
+        windowMs: activeConfig.jsFrameSampler.windowMs,
+        stallFrameMs: activeConfig.jsFrameSampler.stallFrameMs,
+        logOnlyBelowFps: activeConfig.jsFrameSampler.logOnlyBelowFps,
+        onWindow: (summary) => {
+          emitOrBufferJsSamplerEvent(activeConfig, 'JsFrameSampler', summary);
+        },
+        onStall: (event) => {
+          emitOrBufferJsSamplerEvent(activeConfig, 'JsFrameSampler', event);
+        },
+      });
+      jsFrameSamplerLivenessRef.current = jsFrameSamplerHandle.getLiveness;
+      stopCallbacks.push(jsFrameSamplerHandle);
     }
 
     if (activeConfig.jsTaskLatencySampler.enabled) {
@@ -1069,12 +1075,21 @@ export const PerfScenarioCoordinator: React.FC = () => {
       flushPerfScenarioStackAttributionAggregates(activeConfig, 'scenario_sampling_stopped');
       flushPerfScenarioAttributionEventBuffer(activeConfig, 'scenario_sampling_stopped');
       flushBufferedSamplerEvents(activeConfig, 'scenario_sampling_stopped');
+      // F852 — read liveness BEFORE stopping (stop() doesn't clear the counts,
+      // but reading first keeps this trivially correct regardless).
+      const jsFrameSamplerLiveness = jsFrameSamplerLivenessRef.current?.() ?? null;
       stopCallbacks.forEach((stop) => {
         stop();
       });
       logScenarioEvent(
         withScenarioMetadata(activeConfig, {
           event: 'scenario_sampling_stopped',
+          // F852 — UNCONDITIONAL liveness fact: null means the JS frame
+          // sampler was disabled for this scenario; a non-null object with
+          // windowsObserved:0 means it was enabled but the rAF loop never
+          // produced a single window (the world the RED-only channel alone
+          // cannot distinguish from "everything was perfect").
+          jsFrameSamplerLiveness,
         })
       );
     };

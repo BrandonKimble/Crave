@@ -74,9 +74,36 @@ const toOptionalFps = (frameMs: number): number | null => {
   return 1000 / frameMs;
 };
 
-const startJsFrameSampler = (options: JsFrameSamplerOptions): (() => void) => {
+/**
+ * F852 — THE UNCONDITIONAL HALF. `shouldLogWindow` (below) stays RED-only —
+ * proven on-device (2026-08-05) to emit a steady stream when
+ * `logOnlyBelowFps` is raised above the refresh rate, and to go silent
+ * whenever the rAF loop truly isn't running. But per-window RED-only logging
+ * still means "no output" during a normal run is ambiguous by construction.
+ * `windowsObserved`/`badWindowsObserved` are counted regardless of the log
+ * gate and handed back via `getLiveness()` on the returned stop handle, so a
+ * caller can emit ONE unconditional liveness fact at scenario end
+ * (`windowsObserved > 0` proves the loop ran; `badWindowsObserved` says how
+ * much of it was bad) without turning the per-window channel chatty.
+ */
+type JsFrameSamplerLiveness = {
+  windowsObserved: number;
+  badWindowsObserved: number;
+};
+
+type JsFrameSamplerStopHandle = (() => void) & {
+  getLiveness: () => JsFrameSamplerLiveness;
+};
+
+const startJsFrameSampler = (options: JsFrameSamplerOptions): JsFrameSamplerStopHandle => {
+  let windowsObserved = 0;
+  let badWindowsObserved = 0;
+  const getLiveness = (): JsFrameSamplerLiveness => ({ windowsObserved, badWindowsObserved });
+
   if (typeof requestAnimationFrame !== 'function' || typeof cancelAnimationFrame !== 'function') {
-    return () => undefined;
+    const noop = (() => undefined) as JsFrameSamplerStopHandle;
+    noop.getLiveness = getLiveness;
+    return noop;
   }
 
   const getNow = options.getNow ?? defaultNow;
@@ -154,9 +181,11 @@ const startJsFrameSampler = (options: JsFrameSamplerOptions): (() => void) => {
     // window then qualifies as bad and the channel must produce a steady stream of
     // [SearchPerf][JsFrameSampler] window lines. If it stays silent at 200, the
     // sampler is not running and the silence at 55 meant nothing.
+    windowsObserved += 1;
     const shouldLogWindow =
       stallCount > 0 || avgFps < logOnlyBelowFps || floorFps < logOnlyBelowFps;
     if (shouldLogWindow) {
+      badWindowsObserved += 1;
       options.onWindow?.(summary);
     }
     resetWindow(nowMs);
@@ -227,14 +256,21 @@ const startJsFrameSampler = (options: JsFrameSamplerOptions): (() => void) => {
 
   rafHandle = requestAnimationFrame(onFrame);
 
-  return () => {
+  const stop = (() => {
     stopped = true;
     if (rafHandle != null) {
       cancelAnimationFrame(rafHandle);
       rafHandle = null;
     }
-  };
+  }) as JsFrameSamplerStopHandle;
+  stop.getLiveness = getLiveness;
+  return stop;
 };
 
-export type { JsFrameSamplerOptions, JsFrameSamplerStallEvent, JsFrameSamplerWindowSummary };
+export type {
+  JsFrameSamplerLiveness,
+  JsFrameSamplerOptions,
+  JsFrameSamplerStallEvent,
+  JsFrameSamplerWindowSummary,
+};
 export { startJsFrameSampler };
