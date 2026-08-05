@@ -53,58 +53,75 @@ export const useSearchForegroundSuggestionSubmitRuntime = ({
 }: UseSearchForegroundSuggestionSubmitRuntimeArgs): SearchForegroundSuggestionSubmitRuntime => {
   const { submitSearch, runRestaurantEntitySearch } = submitRuntime;
 
+  // F1029: this teardown prologue used to be transcribed three times (user lane, poll
+  // lane, entity lane) and had silently diverged — the user/poll copies cleared
+  // `suggestions` unconditionally while the entity copy alone consulted
+  // `beginSubmitTransition()`'s hold. Investigated: it is NOT drift. User/poll rows PUSH
+  // a full child screen (userProfile / poll detail) that covers the search surface, so
+  // there is nothing for the suggestion-panel close animation to hold visually open —
+  // `beginSubmitTransition()` exists to freeze suggestion content while search's OWN
+  // panel animates closed in place, which only the entity lane (query submit, staying on
+  // the search surface) does. One shared prologue now takes that as an explicit,
+  // documented parameter instead of three copies that could still drift unnoticed.
+  const tearDownSuggestionSurfaceForCommit = React.useCallback(
+    (holdList: boolean): boolean => {
+      isSearchEditingRef.current = false;
+      allowSearchBlurExitRef.current = true;
+      ignoreNextSearchBlurRef.current = true;
+      suppressAutocompleteResults();
+      const shouldDeferSuggestionClear = holdList ? beginSubmitTransition() : false;
+      cancelAutocomplete();
+      setIsSearchFocused(false);
+      setIsSuggestionPanelActive(false);
+      dismissSearchKeyboard();
+      if (!shouldDeferSuggestionClear) {
+        setSuggestions([]);
+      }
+      return shouldDeferSuggestionClear;
+    },
+    [
+      allowSearchBlurExitRef,
+      beginSubmitTransition,
+      cancelAutocomplete,
+      dismissSearchKeyboard,
+      ignoreNextSearchBlurRef,
+      isSearchEditingRef,
+      setIsSearchFocused,
+      setIsSuggestionPanelActive,
+      setSuggestions,
+      suppressAutocompleteResults,
+    ]
+  );
+
   const handleSuggestionPress = React.useCallback(
     (match: AutocompleteMatch, options?: { seeLocations?: boolean }) => {
       if (match.matchType === 'user' || match.entityType === 'user') {
         // Person row (user lane): not a search — tear down the suggestion surface and
         // PUSH the userProfile page (the follow-drill child push; origin capture and
-        // pop-back ride the standard rails). match.entityId is the userId.
-        isSearchEditingRef.current = false;
-        allowSearchBlurExitRef.current = true;
-        ignoreNextSearchBlurRef.current = true;
-        suppressAutocompleteResults();
-        cancelAutocomplete();
-        setIsSearchFocused(false);
-        setIsSuggestionPanelActive(false);
-        dismissSearchKeyboard();
-        setSuggestions([]);
+        // pop-back ride the standard rails). match.entityId is the userId. No hold: the
+        // pushed screen covers the search surface, so nothing needs the list preserved.
+        tearDownSuggestionSurfaceForCommit(false);
         openUserProfile(match.entityId);
         return;
       }
       if (match.matchType === 'poll' || match.entityType === 'poll') {
         // §8.1 poll lane: this isn't a search — tear down the suggestion surface
         // and open the poll's detail (via the polls home, the same cross-surface
-        // entry the profile screen uses). match.entityId is the pollId.
-        isSearchEditingRef.current = false;
-        allowSearchBlurExitRef.current = true;
-        ignoreNextSearchBlurRef.current = true;
-        suppressAutocompleteResults();
-        cancelAutocomplete();
-        setIsSearchFocused(false);
-        setIsSuggestionPanelActive(false);
-        dismissSearchKeyboard();
-        setSuggestions([]);
+        // entry the profile screen uses). match.entityId is the pollId. No hold, same
+        // reason as the user lane above.
+        tearDownSuggestionSurfaceForCommit(false);
         openPollDetail(match.entityId);
         return;
       }
-      isSearchEditingRef.current = false;
-      allowSearchBlurExitRef.current = true;
-      ignoreNextSearchBlurRef.current = true;
-      suppressAutocompleteResults();
       const typedPrefix = query;
       // MATCHING ≠ DISPLAY (i18n N10): submit the canonical token when the
       // server provides one — a localized display name must never become
       // the matcher's input.
       const nextQuery = match.submitToken ?? match.name;
-      const shouldDeferSuggestionClear = beginSubmitTransition();
-      cancelAutocomplete();
-      setIsSearchFocused(false);
-      setIsSuggestionPanelActive(false);
-      dismissSearchKeyboard();
+      // Entity/query lane: search stays on the search surface and animates its own
+      // panel closed, so it holds the suggestion list open across that animation.
+      tearDownSuggestionSurfaceForCommit(true);
       setQuery(nextQuery);
-      if (!shouldDeferSuggestionClear) {
-        setSuggestions([]);
-      }
       // "See locations" chip (multi-location restaurants): a committed
       // see-locations search — the server's lean variant returns the
       // restaurant's IN-VIEW locations as pins, the single-restaurant collapse
@@ -164,24 +181,15 @@ export const useSearchForegroundSuggestionSubmitRuntime = ({
       );
     },
     [
-      allowSearchBlurExitRef,
-      beginSubmitTransition,
-      cancelAutocomplete,
-      dismissSearchKeyboard,
-      ignoreNextSearchBlurRef,
-      isSearchEditingRef,
       openPollDetail,
       openUserProfile,
       openRestaurantProfilePreview,
       pendingRestaurantSelectionRef,
       query,
       runRestaurantEntitySearch,
-      setIsSearchFocused,
-      setIsSuggestionPanelActive,
       setQuery,
-      setSuggestions,
       submitSearch,
-      suppressAutocompleteResults,
+      tearDownSuggestionSurfaceForCommit,
     ]
   );
 

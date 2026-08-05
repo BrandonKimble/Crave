@@ -33,9 +33,19 @@ export const useSearchForegroundInteractionRenderRegistrationRuntime = ({
 }: UseSearchForegroundInteractionRenderRegistrationRuntimeArgs): void => {
   const { registerPendingMutationWorkCancel, cancelToggleInteraction } = effectsRuntimeArgs;
 
-  registerPendingMutationWorkCancel(() => {
-    cancelToggleInteraction();
-  });
+  // F1031 family: this used to call registerPendingMutationWorkCancel directly in the render
+  // body with no unregister — a side effect writable by a discarded render, and (worse) a
+  // handler over this instance's closures that outlives unmount. Same defect F1326 fixed for
+  // the perf-scenario command refs; same fix shape — register in an effect, restore the inert
+  // no-op default on cleanup.
+  React.useEffect(() => {
+    registerPendingMutationWorkCancel(() => {
+      cancelToggleInteraction();
+    });
+    return () => {
+      registerPendingMutationWorkCancel(() => {});
+    };
+  }, [registerPendingMutationWorkCancel, cancelToggleInteraction]);
 };
 
 export const useSearchForegroundInteractionEffectsRuntime = ({

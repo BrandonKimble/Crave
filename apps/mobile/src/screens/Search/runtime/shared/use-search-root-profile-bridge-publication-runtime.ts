@@ -12,6 +12,9 @@ export const useSearchRootProfileBridgePublicationRuntime = ({
   profileBridgeAuthorityRuntime,
   profileOwner,
 }: UseSearchRootProfileBridgePublicationRuntimeArgs): void => {
+  // F1031 family: assigned in an effect (good) but with no unmount cleanup — after this
+  // instance unmounts these refs kept pointing at its dead closures, reachable from whatever
+  // reads the profile bridge. Same fix shape as F1326: restore the inert defaults on cleanup.
   React.useEffect(() => {
     profileBridgeAuthorityRuntime.profileBridge.profilePresentationActiveRef.current =
       profileOwner.profileViewState.presentation.isPresentationActive;
@@ -19,6 +22,12 @@ export const useSearchRootProfileBridgePublicationRuntime = ({
       profileOwner.profileActions.closeRestaurantProfile;
     profileBridgeAuthorityRuntime.profileBridge.resetRestaurantProfileFocusSessionRef.current =
       profileOwner.profileActions.resetRestaurantProfileFocusSession;
+    return () => {
+      profileBridgeAuthorityRuntime.profileBridge.profilePresentationActiveRef.current = false;
+      profileBridgeAuthorityRuntime.profileBridge.closeRestaurantProfileRef.current = () => {};
+      profileBridgeAuthorityRuntime.profileBridge.resetRestaurantProfileFocusSessionRef.current =
+        () => {};
+    };
   }, [
     profileBridgeAuthorityRuntime.profileBridge.closeRestaurantProfileRef,
     profileBridgeAuthorityRuntime.profileBridge.profilePresentationActiveRef,

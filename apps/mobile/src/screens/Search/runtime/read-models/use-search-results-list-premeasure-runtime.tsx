@@ -27,8 +27,20 @@ export const useSearchResultsListPremeasureRuntime = ({
     if (!preMeasureKeys) {
       return null;
     }
+    // F1036(a): TopFoodPreMeasure latches `done` permanently once its FIRST batch finishes
+    // measuring, then renders null forever — it never re-arms for a later, different batch.
+    // Mounted here with no `key`, so when `restaurants` changes React reconciled it as an
+    // UPDATE (same instance, `done` still true) instead of a remount, and the new batch's
+    // uncached widths were silently never measured. Key on a CONTENT signature (not object
+    // identity — a fresh `preMeasureKeys` object every render must NOT force a remount loop)
+    // so only a genuinely different set of items/moreCounts to measure gets a fresh instance.
+    const contentKey = `${preMeasureKeys.items.map((item) => item.connectionId).join(',')}|${preMeasureKeys.moreCounts.join(',')}`;
     return (
-      <TopFoodPreMeasure items={preMeasureKeys.items} moreCounts={preMeasureKeys.moreCounts} />
+      <TopFoodPreMeasure
+        key={contentKey}
+        items={preMeasureKeys.items}
+        moreCounts={preMeasureKeys.moreCounts}
+      />
     );
   }, [preMeasureKeys]);
 };
