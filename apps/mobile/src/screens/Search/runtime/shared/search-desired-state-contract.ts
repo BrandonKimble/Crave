@@ -83,6 +83,13 @@ export type SearchQueryIdentity =
 /** Server-resolved filter variant. Every field is part of the resolution key. */
 export type SearchFilterVariant = {
   openNow: boolean;
+  /** DIETARY WALLS (owner semantics 2026-08-04): canonical dietary names
+   *  the user has toggled on (vegan | vegetarian | gluten free | halal |
+   *  kosher | pescatarian). A LENS, exactly like openNow — a hard
+   *  fact-projection over ONE world, sliced server-side (the dish
+   *  projection requires the dish-side attribute; the restaurant
+   *  projection passes on venue-side OR any qualifying dish). */
+  dietary: readonly string[];
   /** Normalized ascending price levels; empty = any. */
   priceLevels: readonly number[];
   rising: boolean;
@@ -128,6 +135,7 @@ export type SearchDesiredTuple = {
 export type SearchTupleWriteCause =
   | 'initial_submit'
   | 'chip_open_now'
+  | 'chip_dietary'
   | 'chip_rising'
   | 'chip_price'
   | 'chip_include_similar'
@@ -153,6 +161,7 @@ export type SearchTupleWriteCause =
 
 export const DEFAULT_SEARCH_FILTER_VARIANT: SearchFilterVariant = {
   openNow: false,
+  dietary: [],
   priceLevels: [],
   rising: false,
   includeSimilar: false,
@@ -167,6 +176,10 @@ export const IDLE_SEARCH_DESIRED_TUPLE: SearchDesiredTuple = {
 
 const areNumberArraysEqual = (a: readonly number[], b: readonly number[]): boolean =>
   a.length === b.length && a.every((value, index) => value === b[index]);
+
+/** Dietary walls are a SET — order never distinguishes two lenses. */
+const areStringArraysEqual = (a: readonly string[], b: readonly string[]): boolean =>
+  a.length === b.length && [...a].sort().every((value, index) => value === [...b].sort()[index]);
 
 export const areSearchQueryIdentitiesEqual = (
   a: SearchQueryIdentity,
@@ -229,6 +242,7 @@ export const areSearchFilterVariantsEqual = (
   b: SearchFilterVariant
 ): boolean =>
   a.openNow === b.openNow &&
+  areStringArraysEqual(a.dietary, b.dietary) &&
   a.rising === b.rising &&
   a.includeSimilar === b.includeSimilar &&
   (a.listSort ?? null) === (b.listSort ?? null) &&
@@ -265,6 +279,7 @@ export const areSearchDesiredTuplesEqual = (
 
 export type SearchLens = {
   openNow: boolean;
+  dietary: readonly string[];
   priceLevels: readonly number[];
   rising: boolean;
   listSort?: 'custom' | 'best' | 'recent';
@@ -273,6 +288,7 @@ export type SearchLens = {
 
 export const selectSearchLens = (tuple: SearchDesiredTuple): SearchLens => ({
   openNow: tuple.filterVariant.openNow,
+  dietary: tuple.filterVariant.dietary,
   priceLevels: tuple.filterVariant.priceLevels,
   rising: tuple.filterVariant.rising,
   listSort: tuple.filterVariant.listSort,
@@ -281,6 +297,7 @@ export const selectSearchLens = (tuple: SearchDesiredTuple): SearchLens => ({
 
 export const areSearchLensesEqual = (a: SearchLens, b: SearchLens): boolean =>
   a.openNow === b.openNow &&
+  areStringArraysEqual(a.dietary, b.dietary) &&
   a.rising === b.rising &&
   (a.listSort ?? null) === (b.listSort ?? null) &&
   (a.cityPlaceId ?? null) === (b.cityPlaceId ?? null) &&
@@ -290,7 +307,7 @@ export const areSearchLensesEqual = (a: SearchLens, b: SearchLens): boolean =>
  *  the DEFAULT lens serializes to the same token everywhere so the unlensed slice is
  *  the canonical page-1 world. */
 export const buildSearchLensKey = (lens: SearchLens): string =>
-  `open:${lens.openNow ? 1 : 0}|price:${lens.priceLevels.join(',')}|rising:${lens.rising ? 1 : 0}${lens.listSort != null ? `|sort:${lens.listSort}` : ''}${lens.cityPlaceId != null ? `|city:${lens.cityPlaceId}` : ''}`;
+  `open:${lens.openNow ? 1 : 0}|diet:${[...lens.dietary].sort().join(',')}|price:${lens.priceLevels.join(',')}|rising:${lens.rising ? 1 : 0}${lens.listSort != null ? `|sort:${lens.listSort}` : ''}${lens.cityPlaceId != null ? `|city:${lens.cityPlaceId}` : ''}`;
 
 /** WORLD IDENTITY equality (M-1 session coercion + S2's identity-keyed cache): the
  *  lens is EXCLUDED — a lens flip over a live session is a slice presentation, never

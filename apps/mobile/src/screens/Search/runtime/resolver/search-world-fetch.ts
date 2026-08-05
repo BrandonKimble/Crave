@@ -53,6 +53,7 @@ export type SearchWorldFetchEnv = {
     listId: string,
     options: {
       openNow?: boolean;
+      dietary?: string[];
       userLocation?: Coordinate;
       targetUserId?: string | null;
       shareSlug?: string | null;
@@ -75,6 +76,12 @@ const attachTupleScopeToPayload = (
   const filters = tuple.filterVariant;
   if (filters.openNow) {
     payload.openNow = true;
+  }
+  // DIETARY WALLS: canonical names ride as their own field — the server
+  // resolves each to its per-projection attribute pair (dish requires the
+  // dish-side attribute; restaurant passes on venue-side OR any dish).
+  if (filters.dietary.length > 0) {
+    payload.dietary = [...filters.dietary];
   }
   if (filters.priceLevels.length > 0) {
     payload.priceLevels = [...filters.priceLevels];
@@ -167,6 +174,8 @@ export const createSearchWorldFetcher =
     } else if (identity.kind === 'list') {
       response = await env.getFavoritesListResults(identity.listId, {
         openNow: tuple.filterVariant.openNow || undefined,
+        dietary:
+          tuple.filterVariant.dietary.length > 0 ? [...tuple.filterVariant.dietary] : undefined,
         userLocation: userLocation ?? undefined,
         // Virtual-All from ANOTHER user's surface: scope the union to the owner.
         targetUserId: identity.targetUserId ?? undefined,

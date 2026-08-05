@@ -33,6 +33,7 @@ import { NoSignal, RecordsSignal } from '../signals/records-signal.decorator';
 import { RequestLocale, type SupportedLocale } from '../../shared/locale';
 import type { RestaurantMatchedTag } from '@crave-search/shared';
 import { EntityDisplayService } from '../entity-display/entity-display.service';
+import { DietaryConstraintRegistry } from './dietary-constraints';
 
 @Controller('search')
 @UseGuards(ClerkAuthGuard)
@@ -48,6 +49,7 @@ export class SearchController {
     // are. Localizing here, at the response boundary, keeps the executor (and
     // its SQL, and its caches) speaking canonical names end to end.
     private readonly entityDisplay: EntityDisplayService,
+    private readonly dietaryConstraints: DietaryConstraintRegistry,
     loggerService: LoggerService,
   ) {
     this.logger = loggerService.setContext('SearchController');
@@ -161,6 +163,14 @@ export class SearchController {
     @CurrentUser() user: User,
   ): Promise<{ inserted: number }> {
     return this.searchService.recordCacheAttribution(request, user.userId);
+  }
+
+  /** DIETARY TOGGLE OPTIONS: the curated vocabulary is the authority, so
+   *  the strip renders what the registry offers (no client-side list). */
+  @Get('dietary-options')
+  @NoSignal('static vocabulary read; not a demand act')
+  async dietaryOptions(): Promise<Array<{ name: string; label: string }>> {
+    return this.dietaryConstraints.listDietaryOptions();
   }
 
   @Get('history')

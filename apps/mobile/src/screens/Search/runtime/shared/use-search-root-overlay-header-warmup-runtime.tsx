@@ -12,6 +12,8 @@ type UseSearchRootOverlayHeaderWarmupRuntimeArgs = {
 };
 
 const NOOP = (): void => undefined;
+const NOOP_WITH_NAME = (_name: string): void => undefined;
+const EMPTY_DIETARY_OPTIONS: ReadonlyArray<{ name: string; label: string }> = [];
 
 // The hidden warmup render exists purely to measure the strip's LAYOUT — its chip states are
 // irrelevant, so it renders against a detached throwaway bus (SearchFilters requires a live
@@ -86,6 +88,12 @@ export const useSearchRootOverlayHeaderWarmupRuntime = ({
             searchRuntimeBus: WARMUP_DETACHED_BUS,
             onTabChange: NOOP,
             onToggleOpenNow: NOOP,
+            // Warmup measures LAYOUT only — the dietary chips are absent
+            // here on purpose: the strip's width is measured with the
+            // chips the live header will render (options arrive with the
+            // first real render, and the seat re-measures then).
+            dietaryOptions: EMPTY_DIETARY_OPTIONS,
+            onToggleDietary: NOOP_WITH_NAME,
             onToggleIncludeSimilar: NOOP,
             onToggleSortSelector: NOOP,
             onTogglePriceSelector: NOOP,

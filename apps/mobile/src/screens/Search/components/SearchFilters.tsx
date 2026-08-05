@@ -38,6 +38,11 @@ export type SearchFiltersProps = {
   onTabChange: (value: SegmentValue) => void;
   openNow: boolean;
   onToggleOpenNow: () => void;
+  /** DIETARY WALLS (owner semantics 2026-08-04): the OPTIONS come from the
+   *  server's curated vocabulary; the ACTIVE set is the lens. Hard by rule —
+   *  a dietary chip never softens, so thin results are the honest answer. */
+  dietaryOptions: ReadonlyArray<{ name: string; label: string }>;
+  onToggleDietary: (name: string) => void;
   includeSimilarActive: boolean;
   onToggleIncludeSimilar: () => void;
   // metadata.similarAvailable from the committed page-1 response; the availability chip
@@ -62,6 +67,8 @@ const SearchFilters: React.FC<SearchFiltersProps> = ({
   onTabChange,
   openNow,
   onToggleOpenNow,
+  dietaryOptions,
+  onToggleDietary,
   includeSimilarActive,
   onToggleIncludeSimilar,
   similarAvailableCount,
@@ -82,6 +89,7 @@ const SearchFilters: React.FC<SearchFiltersProps> = ({
       // old optimistic `pendingTabSwitchTab ?? activeTab` read, by the writer's invariant).
       activeTab: state.desiredTuple.tab as SegmentValue,
       openNow: state.desiredTuple.filterVariant.openNow,
+      dietary: state.desiredTuple.filterVariant.dietary,
       includeSimilarActive: state.desiredTuple.filterVariant.includeSimilar,
       similarAvailableCount: state.results?.metadata?.similarAvailable ?? 0,
       risingActive: state.desiredTuple.filterVariant.rising,
@@ -93,6 +101,8 @@ const SearchFilters: React.FC<SearchFiltersProps> = ({
     (left, right) =>
       left.activeTab === right.activeTab &&
       left.openNow === right.openNow &&
+      left.dietary.length === right.dietary.length &&
+      left.dietary.every((name) => right.dietary.includes(name)) &&
       left.includeSimilarActive === right.includeSimilarActive &&
       left.similarAvailableCount === right.similarAvailableCount &&
       left.risingActive === right.risingActive &&
@@ -112,6 +122,7 @@ const SearchFilters: React.FC<SearchFiltersProps> = ({
   const isSortSelectorVisible = liveChipState.isSortSelectorVisible;
   activeTab = liveChipState.activeTab;
   openNow = liveChipState.openNow;
+  const activeDietary = liveChipState.dietary;
   includeSimilarActive = liveChipState.includeSimilarActive;
   similarAvailableCount = liveChipState.similarAvailableCount;
   risingActive = liveChipState.risingActive;
@@ -163,6 +174,17 @@ const SearchFilters: React.FC<SearchFiltersProps> = ({
         accessibilityLabel="Toggle open now results"
         testID="search-open-now-toggle"
       />
+      {dietaryOptions.map((option) => (
+        <FilterChip
+          key={`dietary-${option.name}`}
+          label={option.label}
+          active={activeDietary.includes(option.name)}
+          onPress={() => onToggleDietary(option.name)}
+          accentColor={accentColor}
+          accessibilityLabel={`Toggle ${option.label} results`}
+          testID={`search-dietary-${option.name.replace(/\s+/g, '-')}-toggle`}
+        />
+      ))}
       <FilterChip
         key="price"
         label={priceButtonLabel}

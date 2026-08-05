@@ -35,6 +35,8 @@ type QueryMutationOrchestrator = {
   toggleIncludeSimilar: () => void;
   toggleRising: () => void;
   toggleOpenNow: () => void;
+  /** Toggle ONE canonical dietary wall (vegan | vegetarian | …). */
+  toggleDietary: (name: string) => void;
   commitPriceSelection: () => void;
   closePriceSelector: () => void;
   dismissPriceSelector: () => void;
@@ -64,11 +66,17 @@ export const useQueryMutationOrchestrator = (
     (
       buildFilterVariant: () => {
         openNow?: boolean;
+        dietary?: string[];
         priceLevels?: number[];
         rising?: boolean;
         includeSimilar?: boolean;
       },
-      cause: 'chip_open_now' | 'chip_rising' | 'chip_price' | 'chip_include_similar'
+      cause:
+        | 'chip_open_now'
+        | 'chip_dietary'
+        | 'chip_rising'
+        | 'chip_price'
+        | 'chip_include_similar'
     ) => {
       void captureFreshTupleBounds()
         .catch(() => null)
@@ -141,6 +149,23 @@ export const useQueryMutationOrchestrator = (
     );
   }, [searchRuntimeBus, setIsPriceSelectorVisible, writeChipVariantTuple]);
 
+  /** DIETARY WALL toggle (owner semantics 2026-08-04): one canonical name
+   *  in/out of the lens. Hard by rule — the server never softens these, so
+   *  a thin result is the honest answer plus a per-word demand signal. */
+  const toggleDietary = React.useCallback(
+    (name: string) => {
+      setIsPriceSelectorVisible(false);
+      writeChipVariantTuple(() => {
+        const current = searchRuntimeBus.getState().desiredTuple.filterVariant.dietary;
+        const next = current.includes(name)
+          ? current.filter((entry) => entry !== name)
+          : [...current, name];
+        return { dietary: next };
+      }, 'chip_dietary');
+    },
+    [searchRuntimeBus, setIsPriceSelectorVisible, writeChipVariantTuple]
+  );
+
   const commitPriceSelection = React.useCallback(() => {
     const snapshot = pendingPriceRangeRef.current;
     const sheet = priceSheetRef.current;
@@ -204,6 +229,7 @@ export const useQueryMutationOrchestrator = (
     toggleIncludeSimilar,
     toggleRising,
     toggleOpenNow,
+    toggleDietary,
     commitPriceSelection,
     closePriceSelector,
     dismissPriceSelector,

@@ -3,6 +3,7 @@ import React from 'react';
 import type { SearchRuntimeBus } from './search-runtime-bus';
 import { ACTIVE_TAB_COLOR, CONTENT_HORIZONTAL_PADDING } from '../../constants/search';
 import { useSearchFilterChipReadModel } from '../read-models/chip-read-model-builder';
+import { useDietaryOptions } from '../../hooks/use-dietary-options';
 import type { SearchRootFilterModalControlLane } from './use-search-root-control-plane-runtime-contract';
 import type { SearchRootStateFoundationLane } from './use-search-root-foundation-runtime';
 import type { useSearchResultsPanelFiltersRuntimeState } from './use-search-results-panel-filters-runtime-state';
@@ -34,6 +35,10 @@ export const useSearchRootSearchSceneFiltersHeaderRuntime = ({
     },
     [scheduleTabToggleCommit]
   );
+  // The strip's dietary OPTIONS are the server's curated vocabulary; the
+  // ACTIVE set is read live from the bus inside the strip (like every other
+  // chip), so no per-flip prop churn reaches this memo.
+  const dietaryOptions = useDietaryOptions();
   const filterChipReadModel = useSearchFilterChipReadModel({
     requestVersionKey: hydrationKeyRuntime.requestVersionKey,
     activeTab: searchResultsRuntimeState.activeTab,
@@ -55,6 +60,8 @@ export const useSearchRootSearchSceneFiltersHeaderRuntime = ({
       onTabChange: handleInteractionTabChange,
       openNow: filterChipReadModel.openNow,
       onToggleOpenNow: filterModalControlLane.filterModalRuntime.toggleOpenNow,
+      dietaryOptions,
+      onToggleDietary: filterModalControlLane.filterModalRuntime.toggleDietary,
       includeSimilarActive: filterChipReadModel.includeSimilarActive,
       similarAvailableCount: filterChipReadModel.similarAvailableCount,
       onToggleIncludeSimilar: filterModalControlLane.filterModalRuntime.toggleIncludeSimilar,
@@ -79,6 +86,8 @@ export const useSearchRootSearchSceneFiltersHeaderRuntime = ({
       filterChipReadModel.similarAvailableCount,
       filterChipReadModel.risingActive,
       filterModalControlLane.filterModalRuntime.toggleOpenNow,
+      filterModalControlLane.filterModalRuntime.toggleDietary,
+      dietaryOptions,
       filterModalControlLane.filterModalRuntime.togglePriceSelector,
       filterModalControlLane.filterModalRuntime.toggleSortSelector,
       filterModalControlLane.filterModalRuntime.toggleIncludeSimilar,

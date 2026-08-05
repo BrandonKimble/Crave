@@ -47,6 +47,9 @@ export const normalizePriceLevels = (levels: unknown): number[] => {
 // per-field setters back here — publish to the bus instead.
 export type SearchRuntimeMirroredState = {
   openNow: boolean;
+  /** Canonical dietary names the user has toggled ON (a persisted lifestyle
+   *  preference — it survives app restarts like the other filter fields). */
+  dietary: string[];
   priceLevels: number[];
   risingActive: boolean;
   activeTab: SearchActiveTab;
@@ -63,13 +66,14 @@ const defaultState = {
   preferredActiveTab: 'dishes',
   hasActiveTabPreference: false,
   openNow: false,
+  dietary: [],
   priceLevels: [],
   risingActive: false,
 } as const satisfies SearchRuntimeMirroredState;
 
 // The persisted subset — the three FILTER fields, and only those. Derived from one list so
 // `partialize` and the migration's key-strip can never drift apart.
-const PERSISTED_KEYS = ['openNow', 'priceLevels', 'risingActive'] as const;
+const PERSISTED_KEYS = ['openNow', 'dietary', 'priceLevels', 'risingActive'] as const;
 type PersistedKey = (typeof PERSISTED_KEYS)[number];
 
 export const normalizeActiveTab = (tab: unknown): SearchActiveTab => {
@@ -170,6 +174,7 @@ export const useSearchStore = create<SearchState>()(
       }),
       partialize: (state) => ({
         openNow: state.openNow,
+        dietary: state.dietary,
         priceLevels: state.priceLevels,
         risingActive: state.risingActive,
       }),

@@ -145,6 +145,8 @@ type SearchFilterModalOwner = {
   toggleIncludeSimilar: () => void;
   toggleRising: () => void;
   toggleOpenNow: () => void;
+  /** Toggle ONE canonical dietary wall (server-curated vocabulary). */
+  toggleDietary: (name: string) => void;
   closePriceSelector: () => void;
   dismissPriceSelector: () => void;
   handlePriceDone: () => void;
@@ -250,6 +252,7 @@ export const useSearchFilterModalOwner = ({
     toggleIncludeSimilar,
     toggleRising,
     toggleOpenNow,
+    toggleDietary,
     closePriceSelector,
     dismissPriceSelector,
     handlePriceDone,
@@ -349,6 +352,7 @@ export const useSearchFilterModalOwner = ({
       toggleIncludeSimilar,
       toggleRising,
       toggleOpenNow,
+      toggleDietary,
       closePriceSelector,
       dismissPriceSelector,
       handlePriceDone,
@@ -384,6 +388,7 @@ export const useSearchFilterModalOwner = ({
       summaryReelItems,
       toggleIncludeSimilar,
       toggleOpenNow,
+      toggleDietary,
       togglePriceSelector,
       toggleRising,
     ]

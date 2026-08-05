@@ -415,6 +415,13 @@ export interface NaturalSearchRequest {
   // backend filters by the exact polygon (ST_Covers) instead of the AABB `bounds`.
   viewportPolygon?: Array<[number, number]>;
   openNow?: boolean;
+  /** DIETARY WALLS (owner semantics 2026-08-04): canonical dietary names
+   *  (vegan | vegetarian | gluten free | halal | kosher | pescatarian).
+   *  Each is a HARD wall — the dish projection requires the dish-side
+   *  attribute; the restaurant projection passes on the venue-side
+   *  attribute OR any dish carrying the dish-side one. Unknown names are
+   *  ignored (the server's dietary registry is the authority). */
+  dietary?: string[];
   priceLevels?: number[];
   minimumVotes?: number;
   risingActive?: boolean;

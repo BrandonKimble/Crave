@@ -30,6 +30,21 @@ export class DietaryConstraintRegistry {
     this.logger = loggerService.setContext('DietaryConstraintRegistry');
   }
 
+  /** The dietary toggle strip's OPTIONS — the curated vocabulary IS the
+   *  authority (spec §1.3: "a small CURATED constraintClass flag on the
+   *  attribute entities themselves, closed set, owner-approved"). The app
+   *  renders whatever this returns, so adding/removing a lifestyle toggle
+   *  is a curation act in ONE place, never a hand-list in the client. */
+  async listDietaryOptions(): Promise<Array<{ name: string; label: string }>> {
+    const pairs = await this.getDietaryPairs();
+    return Array.from(pairs.keys())
+      .sort()
+      .map((name) => ({
+        name,
+        label: name.replace(/\b\w/g, (c) => c.toUpperCase()),
+      }));
+  }
+
   /** One dietary WALL per canonical name, with its per-projection ids
    *  (owner semantics 2026-08-04): the DISH projection requires the
    *  dish-side attribute; the RESTAURANT projection passes on venue-side

@@ -35,6 +35,9 @@ export interface StructuredSearchRequest {
   // backend filters by the exact polygon (ST_Covers) instead of the AABB `bounds`.
   viewportPolygon?: Array<[number, number]>;
   openNow?: boolean;
+  /** DIETARY WALLS (owner semantics 2026-08-04): canonical dietary names;
+   *  the server resolves each to its per-projection attribute pair. */
+  dietary?: string[];
   pagination?: Pagination;
   includeSqlPreview?: boolean;
   userLocation?: Coordinate;
@@ -715,6 +718,14 @@ export const searchService = {
         signal: options.signal,
       }
     );
+    return data;
+  },
+  /** DIETARY TOGGLE OPTIONS — the server's curated vocabulary is the
+   *  authority (no hand-list in the client; adding a lifestyle toggle is a
+   *  curation act on the entities). */
+  dietaryOptions: async (): Promise<Array<{ name: string; label: string }>> => {
+    const { data } =
+      await api.get<Array<{ name: string; label: string }>>('/search/dietary-options');
     return data;
   },
   restaurantDishes: async (restaurantId: string): Promise<FoodResult[]> => {

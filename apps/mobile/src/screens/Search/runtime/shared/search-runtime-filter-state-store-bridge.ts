@@ -33,6 +33,7 @@ const readMirroredStateFromStore = (): SearchRuntimeMirroredState => {
   const storeState = useSearchStore.getState();
   return {
     openNow: storeState.openNow,
+    dietary: storeState.dietary,
     priceLevels: storeState.priceLevels,
     risingActive: storeState.risingActive,
     activeTab: normalizeActiveTab(storeState.activeTab),
@@ -43,6 +44,7 @@ const readMirroredStateFromStore = (): SearchRuntimeMirroredState => {
 
 const toMirroredState = (busState: SearchRuntimeBusState): SearchRuntimeMirroredState => ({
   openNow: busState.desiredTuple.filterVariant.openNow,
+  dietary: [...busState.desiredTuple.filterVariant.dietary],
   priceLevels: [...busState.desiredTuple.filterVariant.priceLevels],
   risingActive: busState.desiredTuple.filterVariant.rising,
   activeTab: busState.activeTab,
@@ -63,6 +65,7 @@ export const seedSearchRuntimeBusFromSearchStore = (searchRuntimeBus: SearchRunt
     {
       filterVariant: {
         openNow: mirrored.openNow,
+        dietary: mirrored.dietary,
         priceLevels: mirrored.priceLevels,
         rising: mirrored.risingActive,
       },
