@@ -10,6 +10,7 @@ import {
   isDisplayable,
   normalizeSurface,
 } from '../content-processing/entity-resolver/entity-identity';
+import { addAliases } from '../content-processing/entity-resolver/entity-alias.service';
 import {
   AUTO_APPROVE_SCORE,
   NoopLabelGenerator,
@@ -223,6 +224,40 @@ export class LabelSweepService {
         },
       });
       written += 1;
+
+      // SEARCH SURFACES ride the same verdict. The label is what a user READS;
+      // these are what they can MATCH — and the surfaces are the half that
+      // moved the launch gate (77.3% -> 96.7%). Locale-TAGGED, so P0-a keeps
+      // them out of the unlocalized aliases[] projection and only the
+      // locale-aware gazetteer sees them; source 'knowledge_synthesis' marks
+      // them INFERRED, so P0-b's collision guard refuses any that already name
+      // a different concept (the soup->caldo class).
+      const surfaces = Array.from(
+        new Set([form, ...(label.aliases ?? [])].map((s) => s.trim())),
+      ).filter(Boolean);
+      if (surfaces.length) {
+        try {
+          await this.prisma.$transaction(async (tx) => {
+            await addAliases(
+              tx,
+              label.entityId,
+              surfaces.map((surface) => ({
+                form: surface,
+                locale,
+                source: 'knowledge_synthesis' as const,
+              })),
+            );
+          });
+        } catch (error) {
+          // A surface that fails to bank must never cost the label that did
+          // write — display and matching degrade independently by design.
+          this.logger.warn(
+            `Vocabulary surfaces failed to bank entity=${label.entityId} locale=${locale}: ${
+              error instanceof Error ? error.message : String(error)
+            }`,
+          );
+        }
+      }
     }
     return written;
   }

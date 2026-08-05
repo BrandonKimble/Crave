@@ -57,6 +57,18 @@ export interface GeneratedLabel {
   /** How many of the N samples produced this exact form. */
   consensusVotes: number;
   consensusSamples: number;
+  /**
+   * SEARCH SURFACES for this concept in this locale — every way a native
+   * speaker would TYPE it (gender/number variants, regional variants). The
+   * label is what a user READS; these are what they can MATCH, and they are
+   * the half that moved the launch gate 77.3% -> 96.7%.
+   *
+   * They ride together because they are ONE judgment about one concept in one
+   * language; paying for that twice would be waste. They are STORED apart
+   * (`entity_labels` vs `entity_alias`) because display and matching have
+   * different laws. Optional, so label-only generators stay valid.
+   */
+  aliases?: string[];
 }
 
 /**

@@ -143,6 +143,16 @@ export const GEMINI_CALLER_PROFILES: Record<string, GeminiCallerProfile> = {
     context: 'query',
     maxOutputTokens: MODEL_MAX_OUTPUT,
   },
+  // THE VOCABULARY PASS (concept-graph plan). Flash-Lite, single draw, 20
+  // concepts per call: measured 217 in / 182 out tokens per call, and 3 runs
+  // x 6 anchors produced 100% agreement, so a bigger model or a consensus
+  // triple would buy nothing. Whole-corpus cost across six locales is under
+  // $10 at batch pricing.
+  'labels.vocabulary': {
+    model: FLASH_LITE,
+    context: 'query',
+    maxOutputTokens: MODEL_MAX_OUTPUT,
+  },
   'photos.is_food': {
     // gemini-2.5 tier: no thinking control exists (and no HIGH default to
     // guard against); a yes/no on a thumbnail needs no more model than this.

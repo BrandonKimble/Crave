@@ -1,7 +1,9 @@
 import { Global, Module } from '@nestjs/common';
 import { PrismaModule } from '../../prisma/prisma.module';
+import { LLMModule } from '../external-integrations/llm/llm.module';
 import { EntityDisplayService } from './entity-display.service';
 import { LabelSweepService } from './label-sweep.service';
+import { VocabularyGenerator } from './vocabulary-generator';
 
 /**
  * N10 — the display boundary as a module.
@@ -14,8 +16,8 @@ import { LabelSweepService } from './label-sweep.service';
  */
 @Global()
 @Module({
-  imports: [PrismaModule],
-  providers: [EntityDisplayService, LabelSweepService],
-  exports: [EntityDisplayService, LabelSweepService],
+  imports: [PrismaModule, LLMModule],
+  providers: [EntityDisplayService, LabelSweepService, VocabularyGenerator],
+  exports: [EntityDisplayService, LabelSweepService, VocabularyGenerator],
 })
 export class EntityDisplayModule {}
