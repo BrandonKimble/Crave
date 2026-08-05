@@ -108,22 +108,6 @@ const hasSearchSurfaceResultsBodyBundle = (
 ): bundle is SearchSurfaceResultsBodyBundle =>
   bundle?.sceneBodyContent != null && bundle.sceneBodyTransport != null;
 
-// THE LIST-DATA FENCE (P-12 cut — the press-up stall's structural fix). Two closers,
-// one law: the list target renders NOTHING mid-episode.
-// - REDRAW LIVE (P-12, attributed 2026-07-15: SearchMountedResultsListTarget rendered
-//   10x/313ms inside the press-up window — every store write during the submit fan-out
-//   re-rendered rows that sat INVISIBLE under the cover/skeleton until the joint):
-//   while a redraw transaction is live (uncommitted — the episode's reveal commits and
-//   clears the slot), every intermediate write coalesces; the commit publish re-notifies
-//   and ONE render lands the final rows at the admission tick.
-// - SHEET MOVING (eye-verified 2026-07-13): a ~28ms render + Fabric mount inside the
-//   reveal slide's first frames froze the UI-thread spring.
-// The lazy getter re-reads the live authority when the fence opens (latest-wins).
-const isSearchListDataFenceClosed = (): boolean => {
-  const snapshot = getSearchSurfaceRuntime().getSnapshot();
-  return snapshot.redrawTransaction != null || !snapshot.sheetMotionSettled;
-};
-
 let motionFencedListDataSnapshot: SearchMountedResultsListDataSnapshot | null = null;
 
 // THE PENDING BLOCK (pending-block arc 2026-07-18, skeleton-sheet law §1): while a
@@ -335,6 +319,18 @@ const getLandingSlicedSnapshot = (
 
 let wasRedrawEpisodeLive = false;
 
+// THE LIST-DATA FENCE (P-12 cut — the press-up stall's structural fix). Two closers,
+// one law: the list target renders NOTHING mid-episode.
+// - REDRAW LIVE (P-12, attributed 2026-07-15: SearchMountedResultsListTarget rendered
+//   10x/313ms inside the press-up window — every store write during the submit fan-out
+//   re-rendered rows that sat INVISIBLE under the cover/skeleton until the joint):
+//   while a redraw transaction is live (uncommitted — the episode's reveal commits and
+//   clears the slot), every intermediate write coalesces; the commit publish re-notifies
+//   and ONE render lands the final rows at the admission tick.
+// - SHEET MOVING (eye-verified 2026-07-13): a ~28ms render + Fabric mount inside the
+//   reveal slide's first frames froze the UI-thread spring.
+// The two closers are read directly below (`redrawTransaction != null`,
+// `!sheetMotionSettled`) — this IS the fence; there is no separate closed-check.
 const getMotionFencedListDataSnapshot = (): SearchMountedResultsListDataSnapshot => {
   const surfaceSnapshot = getSearchSurfaceRuntime().getSnapshot();
   if (surfaceSnapshot.redrawTransaction != null) {

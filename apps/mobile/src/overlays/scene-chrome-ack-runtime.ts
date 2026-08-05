@@ -10,11 +10,16 @@ import { offerTransitionJoinInput } from '../navigation/runtime/transition-engin
 // joinSceneChromeAck ceremony (34ms watchdog) was deleted with the inversion — the ENGINE
 // owns the liveness degrade now (join_liveness_degrade in transition-transaction.ts).
 //
-// Module-scope store (the house live-state pattern): ONE writer (PersistentSheetHeaderHost).
+// Module-scope store (the house live-state pattern). TWO writers share this single global
+// slot: PersistentSheetHeaderHost (post-commit, useLayoutEffect on its sceneKey) and
+// tracksheet/TrackSheetRouteHost. Both dedupe against the SAME `chromeAckSceneKey`, so two
+// hosts alternating scene keys can each defeat the other's dedupe and re-offer 'chrome'
+// (F1457(b)) — a real question, unverified: needs a device/rig repro of the alternating-writer
+// case, not settled by reading the code, so it is left OPEN rather than "fixed" here.
 
 let chromeAckSceneKey: OverlayKey | null = null;
 
-/** THE one writer: PersistentSheetHeaderHost, post-commit (useLayoutEffect on its sceneKey). */
+/** Post-commit ack. TWO writers share this slot — see the module comment above (F1457(b)). */
 export const recordSceneChromeAck = (sceneKey: OverlayKey): void => {
   if (chromeAckSceneKey === sceneKey) {
     return;
@@ -24,8 +29,6 @@ export const recordSceneChromeAck = (sceneKey: OverlayKey): void => {
   // (consumed iff the txn's plan declared 'chrome').
   offerTransitionJoinInput('chrome');
 };
-
-export const getSceneChromeAckSceneKey = (): OverlayKey | null => chromeAckSceneKey;
 
 /** Test seam (jest): reset the module store between cases. */
 export const __resetSceneChromeAckForTest = (): void => {

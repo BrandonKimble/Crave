@@ -105,11 +105,13 @@ const areRouteSheetHostRuntimesFieldEqual = (
   right: AppRouteSheetHostRuntime
 ): boolean =>
   // F975(e): the shared field comparison has ONE home now
-  // (app-route-sheet-host-runtime-contract). This host adds the registry conjunct on top,
-  // because THIS host is the one that feeds NavSilhouetteHost, whose rendered output reads
-  // `routeSceneDisplayTargetRegistry.activeTabIndexValue`.
-  areAppRouteSheetHostRuntimesFieldEqual(left, right) &&
-  left.routeSceneDisplayTargetRegistry === right.routeSceneDisplayTargetRegistry;
+  // (app-route-sheet-host-runtime-contract). `routeSceneDisplayTargetRegistry` is EXCLUDED
+  // there deliberately — it is a singleton constructed once (app-route-scene-runtime.ts) and
+  // threaded unchanged for process lifetime, so any per-field comparison of it can never be
+  // false. This host already compares it as a top-level prop (see
+  // areAppOverlayRouteHostPropsEqual below); a second, always-true comparison here is not a
+  // guard (F1486).
+  areAppRouteSheetHostRuntimesFieldEqual(left, right);
 
 const AppOverlayRouteHost = ({
   overlayChromeHostAuthority,

@@ -1,8 +1,5 @@
-import {
-  __resetSceneChromeAckForTest,
-  getSceneChromeAckSceneKey,
-  recordSceneChromeAck,
-} from './scene-chrome-ack-runtime';
+import { __resetSceneChromeAckForTest, recordSceneChromeAck } from './scene-chrome-ack-runtime';
+import * as transitionTransaction from '../navigation/runtime/transition-engine/transition-transaction';
 import {
   computeSceneChromeHeight,
   HEADER_STRIP_BOTTOM_SPACER_HEIGHT,
@@ -11,7 +8,9 @@ import { TOGGLE_STRIP_BAND_HEIGHT } from '../toggles/toggle-strip-metrics';
 import { OVERLAY_TAB_HEADER_HEIGHT } from './overlay-chrome-metrics';
 
 // The ack store (T5 — the join itself is engine-owned; see transition-transaction.spec.ts
-// for the {paint, chrome} join + the join_liveness_degrade RED proof).
+// for the {paint, chrome} join + the join_liveness_degrade RED proof). The module's only
+// real product is the `offerTransitionJoinInput('chrome')` call it triggers (F1457) — the
+// spec asserts on that, not on a getter that existed only for this spec to read.
 
 declare const global: { __DEV__?: boolean };
 
@@ -23,12 +22,28 @@ describe('scene-chrome-ack-runtime', () => {
   });
   afterEach(() => {
     jest.useRealTimers();
+    jest.restoreAllMocks();
   });
 
-  it('the store is single-valued (last committed scene wins)', () => {
+  it('offers the chrome join input on the first ack for a scene', () => {
+    const offerSpy = jest.spyOn(transitionTransaction, 'offerTransitionJoinInput');
+    recordSceneChromeAck('polls');
+    expect(offerSpy).toHaveBeenCalledWith('chrome');
+    expect(offerSpy).toHaveBeenCalledTimes(1);
+  });
+
+  it('dedupes a repeated ack for the SAME scene (no re-offer)', () => {
+    const offerSpy = jest.spyOn(transitionTransaction, 'offerTransitionJoinInput');
+    recordSceneChromeAck('polls');
+    recordSceneChromeAck('polls');
+    expect(offerSpy).toHaveBeenCalledTimes(1);
+  });
+
+  it('offers again when the acked scene changes (last committed scene wins)', () => {
+    const offerSpy = jest.spyOn(transitionTransaction, 'offerTransitionJoinInput');
     recordSceneChromeAck('polls');
     recordSceneChromeAck('lists');
-    expect(getSceneChromeAckSceneKey()).toBe('lists');
+    expect(offerSpy).toHaveBeenCalledTimes(2);
   });
 });
 

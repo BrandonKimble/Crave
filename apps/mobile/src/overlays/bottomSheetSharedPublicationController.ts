@@ -23,15 +23,6 @@ export type BottomSheetSharedTouchBlockingAuthority = {
   getSnapshot: () => boolean;
 };
 
-const areBottomSheetSharedPublicationSnapshotsEqual = (
-  left: BottomSheetSharedPublicationSnapshot,
-  right: BottomSheetSharedPublicationSnapshot
-): boolean =>
-  left.effectiveShowsVerticalScrollIndicator ===
-    right.effectiveShowsVerticalScrollIndicator &&
-  left.scrollHeaderHeight === right.scrollHeaderHeight &&
-  left.touchBlockingEnabled === right.touchBlockingEnabled;
-
 export class BottomSheetSharedPublicationController {
   private snapshot: BottomSheetSharedPublicationSnapshot;
 
@@ -105,10 +96,11 @@ export class BottomSheetSharedPublicationController {
   }
 
   private setLayoutSnapshot(snapshot: BottomSheetSharedPublicationSnapshot): void {
-    if (areBottomSheetSharedPublicationSnapshotsEqual(this.snapshot, snapshot)) {
-      return;
-    }
-
+    // No equality re-check here (F1478(a)): both callers (setEffectiveShowsVerticalScrollIndicator's
+    // `=== value` guard, setScrollHeaderHeight's `< 0.5` delta guard) already early-return on an
+    // unchanged value before reaching this point, so a snapshot re-comparison here could never
+    // decide anything — it was a guard that could not show red. If a future caller needs a raw
+    // no-pre-guard path, add the check back at that call site, not as dead weight here.
     this.snapshot = snapshot;
     this.layoutListeners.forEach((listener) => {
       listener();

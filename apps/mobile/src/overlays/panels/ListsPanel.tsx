@@ -193,9 +193,12 @@ const ListsListTile = React.memo(
     const isEditingTile = editHandleGesture != null;
     // Edit mode: the ellipsis seat becomes the grab handle (§1.1 — center-right is
     // the handle's home, wave-3 §3.2's freed region on cards).
-    // Ellipsis ↔ handle CROSSFADE, synced to the strip morph tempo (240ms — the
-    // leg-13 "ellipsis fade sync" item): keyed conditional siblings fade in/out via
-    // layout animations, so the seat swap rides the same beat as the action row.
+    // Ellipsis ↔ handle CROSSFADE, synced to the strip morph tempo — CUTOUT_FADE_IN_MS
+    // (toggle-strip-cutout-fade.ts's "THE STRIP TEMPO", also edit-mode-session.ts's
+    // ACTION_ROW_MORPH_MS, F1495) — the leg-13 "ellipsis fade sync" item: keyed
+    // conditional siblings fade in/out via layout animations, so the seat swap rides
+    // the same beat as the action row. (Prose, not a compiled reference — if the tempo
+    // ever moves, grep CUTOUT_FADE_IN_MS's consumers, this comment can drift.)
     const affordance = isEditingTile ? (
       <Reanimated.View key="handle" entering={FadeIn.duration(240)} exiting={FadeOut.duration(240)}>
         <GestureDetector gesture={editHandleGesture}>

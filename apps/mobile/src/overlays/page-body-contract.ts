@@ -200,8 +200,11 @@ export const resolvePageContentBodyState = <TData>(args: {
   if (args.isError || (!args.isPending && args.data == null)) {
     return { kind: 'error', failure: { isError: true, what: args.what, retry: args.retry } };
   }
-  if (args.isPending || args.data == null) {
+  if (args.isPending) {
     return { kind: 'pending' };
   }
-  return { kind: 'present', data: args.data };
+  // args.data is non-null here: the first branch above already returned 'error' for
+  // every (!isPending && data == null) case, so reaching this line with isPending
+  // false means data != null. TS can't carry that across the generic, hence the cast.
+  return { kind: 'present', data: args.data as TData };
 };

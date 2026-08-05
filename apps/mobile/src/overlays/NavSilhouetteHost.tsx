@@ -113,8 +113,10 @@ const areNavSilhouetteHostPropsEqual = (
 ): boolean =>
   previousProps.overlayGateHostAuthority === nextProps.overlayGateHostAuthority &&
   previousProps.overlayShellHostAuthority === nextProps.overlayShellHostAuthority &&
-  previousProps.routeSceneDisplayTargetRegistry.activeTabIndexValue ===
-    nextProps.routeSceneDisplayTargetRegistry.activeTabIndexValue &&
+  // `routeSceneDisplayTargetRegistry` is a singleton for process lifetime (constructed once
+  // in app-route-scene-runtime.ts and threaded unchanged), so comparing any of its fields
+  // can never be false — deleted as a non-guard (F1486). The registry object itself is
+  // already compared upstream by AppOverlayRouteHost's top-level prop equality.
   previousProps.routeOverlayTransitionActions.requestOverlaySwitch ===
     nextProps.routeOverlayTransitionActions.requestOverlaySwitch &&
   previousProps.routeSheetSnapSessionAuthority === nextProps.routeSheetSnapSessionAuthority &&

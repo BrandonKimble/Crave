@@ -19,6 +19,7 @@ import {
 } from './edit-mode-session-core';
 import { acquireOverlaySheetEditLock } from './overlaySheetEditLockRuntime';
 import type { OverlayKey } from './types';
+import { CUTOUT_FADE_IN_MS } from '../toggles/toggle-strip-cutout-fade';
 
 // ─── Edit-mode SESSION primitive (leg 10 step 6; charter §6 owner clarification) ─────────────
 //
@@ -40,7 +41,10 @@ import type { OverlayKey } from './types';
 // with grid geometry. Save/persistence also stays with the surface (the PATCH vocabulary is
 // per-API); call `exit()` after a successful save.
 
-const ACTION_ROW_MORPH_MS = 240;
+// F1495: was an independent `= 240` — now the SAME declaration as the strip's cutout-fade
+// tempo (toggle-strip-cutout-fade.ts's "THE STRIP TEMPO — one declaration, two consumers"),
+// so drift between the action-row morph and the strip citizen-entry tempo is unrepresentable.
+const ACTION_ROW_MORPH_MS = CUTOUT_FADE_IN_MS;
 
 export type EditModeSession = {
   /** True while the mode session is live. */
