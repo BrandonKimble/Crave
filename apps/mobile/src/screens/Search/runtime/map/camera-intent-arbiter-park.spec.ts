@@ -287,3 +287,47 @@ describe('D61 camera intent park-and-replay (F1716)', () => {
     expect(harness.surrenders).toHaveLength(0);
   });
 });
+
+describe('F1374 — a superseded completion is CANCELLED, never abandoned', () => {
+  /**
+   * MUTATION PROOF: delete the commit-side supersede notification in
+   * camera-intent-arbiter.commitInternal (the `if (this.pendingProgrammaticCameraCompletionId
+   * != null)` block) and this spec goes RED — no 'cancelled' payload is emitted for the
+   * first animation's completion id.
+   *
+   * Why it matters beyond bookkeeping: consumers arm on a completion id and evict only on a
+   * matching completion (use-app-route-scene-camera-motion-target-runtime keeps two Maps
+   * keyed by settleToken). A completion that is silently replaced never arrives, so the
+   * entry lives until unmount and the scene-switch settle waits on a plane that can never
+   * land.
+   */
+  it('emits cancelled for the first animation when a newer commit supersedes it', () => {
+    const harness = createHarness();
+
+    harness.arbiter.commit(METRO_OVERVIEW);
+    const firstCompletionId = harness.executedCommands[0]?.completionId ?? null;
+    expect(firstCompletionId).not.toBeNull();
+    expect(harness.completions).toHaveLength(0);
+
+    // A newer animated intent supersedes the first while it is still in flight.
+    harness.arbiter.commit({ ...METRO_OVERVIEW, center: [-97.75, 30.3], zoom: 11 });
+
+    const cancelled = harness.completions.filter((payload) => payload.status === 'cancelled');
+    expect(cancelled).toHaveLength(1);
+    expect(cancelled[0]?.animationCompletionId).toBe(firstCompletionId);
+  });
+
+  it('resolves an armed completion exactly once — the supersede does not also finish it', () => {
+    const harness = createHarness();
+
+    harness.arbiter.commit(METRO_OVERVIEW);
+    const firstCompletionId = harness.executedCommands[0]?.completionId ?? null;
+    harness.arbiter.commit({ ...METRO_OVERVIEW, center: [-97.75, 30.3], zoom: 11 });
+
+    const forFirst = harness.completions.filter(
+      (payload) => payload.animationCompletionId === firstCompletionId
+    );
+    expect(forFirst).toHaveLength(1);
+    expect(forFirst[0]?.status).toBe('cancelled');
+  });
+});

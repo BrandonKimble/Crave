@@ -257,6 +257,26 @@ export class CameraIntentArbiter {
       // wins) and any armed watchdog for the prior animation.
       this.parkedIntent = null;
       this.clearWatchdog();
+      // F1374 — AND THE PRIOR PENDING COMPLETION. Superseding used to overwrite
+      // `pendingProgrammaticCameraCompletionId` in silence, so whoever armed on the OLD
+      // id was never told it would not arrive. Consumers that key state on the completion
+      // (use-app-route-scene-camera-motion-target-runtime keeps two Maps by settleToken,
+      // evicted only on a matching completion) then waited forever and hung the
+      // scene-switch settle. `setGestureActive` has always notified 'cancelled' here; a
+      // commit-side supersede owes exactly the same notification. One law, both paths:
+      // an armed completion resolves EXACTLY ONCE — finished, or cancelled.
+      if (this.pendingProgrammaticCameraCompletionId != null) {
+        const supersededCompletionId = this.pendingProgrammaticCameraCompletionId;
+        const supersededRequestToken = this.pendingProgrammaticCameraRequestToken;
+        this.pendingProgrammaticCameraCompletionId = null;
+        this.pendingProgrammaticCameraRequestToken = null;
+        this.pendingControlledCameraStateSync = null;
+        this.notifyProgrammaticCameraAnimationCompletion({
+          animationCompletionId: supersededCompletionId,
+          status: 'cancelled',
+          requestToken: supersededRequestToken,
+        });
+      }
       this.lastCommittedCameraTarget = {
         center: [intent.center[0], intent.center[1]],
         zoom: intent.zoom,
