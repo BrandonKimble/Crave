@@ -210,6 +210,17 @@ export type SceneTrackDeclaration = {
    * action of its own. Replaces the host's `scene === 'polls'` create fallback.
    */
   createFallbackRoute: OverlayKey | null;
+  /**
+   * G-A11Y — THE DESTINATION NAME a screen reader hears when this scene becomes the
+   * track's presented entry. The ONE TRACK swaps DATA on a persistent list instead of
+   * mounting a screen, so assistive tech receives no navigation event of its own: the
+   * host states one (announce + move focus) and this literal is what it says. Required
+   * on every row for the worldJoin reason — a new scene that forgot its name would be
+   * SILENTLY unannounced (the exact failure a screen-reader user cannot detect), so
+   * omission is a tsc error instead. The header Title is a React COMPONENT (registry,
+   * not this table) and cannot be read as text; this is the announcement's only home.
+   */
+  a11yName: string;
 };
 
 // ─── THE ROW ─────────────────────────────────────────────────────────────────────────
@@ -241,6 +252,7 @@ export const SCENE_DECLARATIONS: Record<OverlayKey, SceneDeclaration> = {
       residency: 'resident',
       body: { kind: 'parts', source: 'home', rowSurface: false, reportsUserScrollActivity: false },
       createFallbackRoute: null,
+      a11yName: 'Search results',
     },
     // Excluded by design: search owns its never-null page (the mounted scene bundle authority).
     foundation: null,
@@ -265,6 +277,7 @@ export const SCENE_DECLARATIONS: Record<OverlayKey, SceneDeclaration> = {
       residency: 'resident',
       body: { kind: 'parts', source: 'home', rowSurface: false, reportsUserScrollActivity: false },
       createFallbackRoute: null,
+      a11yName: 'Home',
     },
     // HOME (home-surface-charter): shelves of curated-list cards — tile skeleton,
     // NO filter strip on home by design (strip: 'none').
@@ -293,6 +306,7 @@ export const SCENE_DECLARATIONS: Record<OverlayKey, SceneDeclaration> = {
       body: { kind: 'parts', source: 'polls', rowSurface: true, reportsUserScrollActivity: true },
       // The polls header plus creates a poll when the scene registered no create action.
       createFallbackRoute: 'pollCreation',
+      a11yName: 'Polls',
     },
     foundation: {
       skeleton: { rowType: 'restaurant' },
@@ -320,6 +334,7 @@ export const SCENE_DECLARATIONS: Record<OverlayKey, SceneDeclaration> = {
       residency: 'resident',
       body: { kind: 'mounted', inset: 'padded' },
       createFallbackRoute: null,
+      a11yName: 'Lists',
     },
     foundation: {
       skeleton: { rowType: 'tile' },
@@ -347,6 +362,7 @@ export const SCENE_DECLARATIONS: Record<OverlayKey, SceneDeclaration> = {
       residency: 'resident',
       body: { kind: 'mounted', inset: 'padded' },
       createFallbackRoute: null,
+      a11yName: 'Profile',
     },
     foundation: {
       skeleton: { rowType: 'restaurant' },
@@ -371,6 +387,7 @@ export const SCENE_DECLARATIONS: Record<OverlayKey, SceneDeclaration> = {
       residency: 'transient',
       body: { kind: 'mounted', inset: 'padded' },
       createFallbackRoute: null,
+      a11yName: 'Save to list',
     },
     foundation: {
       skeleton: { rowType: 'tile' },
@@ -395,6 +412,7 @@ export const SCENE_DECLARATIONS: Record<OverlayKey, SceneDeclaration> = {
       residency: 'transient',
       body: { kind: 'published-lane' },
       createFallbackRoute: null,
+      a11yName: 'New poll',
     },
     foundation: {
       skeleton: { rowType: 'comment' },
@@ -419,6 +437,7 @@ export const SCENE_DECLARATIONS: Record<OverlayKey, SceneDeclaration> = {
       residency: 'transient',
       body: { kind: 'published-lane' },
       createFallbackRoute: null,
+      a11yName: 'Poll',
     },
     foundation: {
       skeleton: { rowType: 'comment' },
@@ -443,6 +462,7 @@ export const SCENE_DECLARATIONS: Record<OverlayKey, SceneDeclaration> = {
       residency: 'transient',
       body: { kind: 'published-lane' },
       createFallbackRoute: null,
+      a11yName: 'Restaurant',
     },
     foundation: {
       skeleton: { rowType: 'dish' },
@@ -467,6 +487,7 @@ export const SCENE_DECLARATIONS: Record<OverlayKey, SceneDeclaration> = {
       residency: 'transient',
       body: { kind: 'none' },
       createFallbackRoute: null,
+      a11yName: 'Sheet',
     },
     // Excluded by design: the shell sentinel frame, not a scene.
     foundation: null,
@@ -486,6 +507,7 @@ export const SCENE_DECLARATIONS: Record<OverlayKey, SceneDeclaration> = {
       residency: 'transient',
       body: { kind: 'none' },
       createFallbackRoute: null,
+      a11yName: 'Price',
     },
     // Excluded by design: modal (the OverlayModalSheet system sits outside the foundation).
     foundation: null,
@@ -506,6 +528,7 @@ export const SCENE_DECLARATIONS: Record<OverlayKey, SceneDeclaration> = {
       residency: 'transient',
       body: { kind: 'mounted', inset: 'padded' },
       createFallbackRoute: null,
+      a11yName: 'Profile',
     },
     // Stub-pass scenes (plans/page-registry.md §1) — foundation decisions stated ahead
     // of the real bodies; their design passes revise values, never optionality.
@@ -534,6 +557,7 @@ export const SCENE_DECLARATIONS: Record<OverlayKey, SceneDeclaration> = {
       // any padded mount) — the body owns its own insets.
       body: { kind: 'mounted', inset: 'edge-to-edge' },
       createFallbackRoute: null,
+      a11yName: 'List',
     },
     foundation: {
       skeleton: { rowType: 'restaurant' },
@@ -563,6 +587,7 @@ export const SCENE_DECLARATIONS: Record<OverlayKey, SceneDeclaration> = {
       residency: 'transient',
       body: { kind: 'mounted', inset: 'padded' },
       createFallbackRoute: null,
+      a11yName: 'Follows',
     },
     foundation: {
       skeleton: { rowType: 'tile' },
@@ -587,6 +612,7 @@ export const SCENE_DECLARATIONS: Record<OverlayKey, SceneDeclaration> = {
       residency: 'transient',
       body: { kind: 'mounted', inset: 'padded' },
       createFallbackRoute: null,
+      a11yName: 'Notifications',
     },
     foundation: {
       skeleton: { rowType: 'comment' },
@@ -611,6 +637,7 @@ export const SCENE_DECLARATIONS: Record<OverlayKey, SceneDeclaration> = {
       residency: 'transient',
       body: { kind: 'mounted', inset: 'padded' },
       createFallbackRoute: null,
+      a11yName: 'Settings',
     },
     foundation: {
       skeleton: { rowType: 'tile' },
@@ -638,6 +665,7 @@ export const SCENE_DECLARATIONS: Record<OverlayKey, SceneDeclaration> = {
       residency: 'transient',
       body: { kind: 'mounted', inset: 'padded' },
       createFallbackRoute: null,
+      a11yName: 'Edit profile',
     },
     foundation: {
       skeleton: { rowType: 'tile' },
@@ -663,6 +691,7 @@ export const SCENE_DECLARATIONS: Record<OverlayKey, SceneDeclaration> = {
       residency: 'transient',
       body: { kind: 'mounted', inset: 'padded' },
       createFallbackRoute: null,
+      a11yName: 'Add photos',
     },
     // W2 (page-registry §7.4): the post page — photo tiles; no filter strip.
     foundation: {
@@ -691,6 +720,7 @@ export const SCENE_DECLARATIONS: Record<OverlayKey, SceneDeclaration> = {
       residency: 'transient',
       body: { kind: 'mounted', inset: 'padded' },
       createFallbackRoute: null,
+      a11yName: 'Messages',
     },
     // W3 messaging (§4.1): inbox = person rows; DM thread = message rows.
     foundation: {
@@ -716,6 +746,7 @@ export const SCENE_DECLARATIONS: Record<OverlayKey, SceneDeclaration> = {
       residency: 'transient',
       body: { kind: 'mounted', inset: 'padded' },
       createFallbackRoute: null,
+      a11yName: 'Conversation',
     },
     foundation: {
       skeleton: { rowType: 'comment' },
@@ -740,6 +771,7 @@ export const SCENE_DECLARATIONS: Record<OverlayKey, SceneDeclaration> = {
       residency: 'transient',
       body: { kind: 'none' },
       createFallbackRoute: null,
+      a11yName: 'Score details',
     },
     // Excluded by design: modal (the OverlayModalSheet system sits outside the foundation).
     foundation: null,
@@ -804,6 +836,10 @@ export const sceneReportsUserScrollActivity = (sceneKey: OverlayKey): boolean =>
   const body = SCENE_DECLARATIONS[sceneKey]?.track.body;
   return body?.kind === 'parts' && body.reportsUserScrollActivity;
 };
+
+/** G-A11Y: the destination name announced when this scene becomes the presented entry. */
+export const resolveSceneA11yName = (sceneKey: OverlayKey): string =>
+  SCENE_DECLARATIONS[sceneKey].track.a11yName;
 
 /** Replaces the host's `scene === 'polls'` header-create fallback. */
 export const resolveSceneCreateFallbackRoute = (sceneKey: OverlayKey): OverlayKey | null =>
