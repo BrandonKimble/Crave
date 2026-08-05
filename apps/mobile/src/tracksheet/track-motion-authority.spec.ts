@@ -283,18 +283,28 @@ describe('at-rest agreement (no consumer shadows the authority)', () => {
       .filter((line) => !/^\s*(\/\/|\*|\/\*)/.test(line))
       .join('\n');
 
-  it('the host keeps NO private motion refs — it reads the authority', () => {
-    const host = readCode('TrackSheetRouteHost.tsx');
-    expect(host).not.toMatch(/inFlightSnapTargetRef/);
-    expect(host).not.toMatch(/pendingSettleTokenRef/);
-    expect(host).not.toMatch(/hiddenExcursionInFlightRef/);
-    expect(host).not.toMatch(/armedHiddenExcursionGeneration/);
-    expect(host).toMatch(/getTrackMotionAuthority\(\)/);
+  // RE-HOMED with the host extractions (2026-08-05): the motion wiring left the
+  // .tsx for use-track-motion-controller.ts. A scanner still pointed at the old
+  // file would be vacuously green, so it follows the code — and now covers BOTH
+  // the orchestrator and the controller, which is strictly stronger.
+  const MOTION_HOST_FILES = ['TrackSheetRouteHost.tsx', 'use-track-motion-controller.ts'];
+
+  it('no track file keeps private motion refs — they read the authority', () => {
+    for (const file of MOTION_HOST_FILES) {
+      const source = readCode(file);
+      expect(source).not.toMatch(/inFlightSnapTargetRef/);
+      expect(source).not.toMatch(/pendingSettleTokenRef/);
+      expect(source).not.toMatch(/hiddenExcursionInFlightRef/);
+      expect(source).not.toMatch(/armedHiddenExcursionGeneration/);
+    }
+    expect(readCode('use-track-motion-controller.ts')).toMatch(/getTrackMotionAuthority\(\)/);
   });
 
-  it('exactly ONE native subscription to the hidden-edge fact exists in the host', () => {
-    const host = read('TrackSheetRouteHost.tsx');
-    const subscriptions = host.match(/addListener\(\s*\n?\s*'trackHiddenEdgeCleared'/g) ?? [];
+  it('exactly ONE native subscription to the hidden-edge fact exists on the track', () => {
+    const subscriptions = fs
+      .readdirSync(__dirname)
+      .filter((name) => /\.tsx?$/.test(name) && !/\.spec\.tsx?$/.test(name))
+      .flatMap((name) => read(name).match(/addListener\(\s*\n?\s*'trackHiddenEdgeCleared'/g) ?? []);
     expect(subscriptions).toHaveLength(1);
   });
 
