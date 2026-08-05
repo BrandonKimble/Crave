@@ -12,7 +12,19 @@ scattered list to edit, that's a smell — prefer deriving from metadata.
 - `APP_OVERLAY_ROUTE_METADATA_BY_KEY` entry — `app-overlay-route-types.ts`
   (role, sheetPolicy, `sceneSwitch`, `sceneInput`, `staticSceneInput`, …).
 - `OverlayRouteParamsMap` entry — the route's params.
-- The scene-policy `Record<OverlayKey>` — `app-route-scene-policy-registry.ts`.
+- **THE ONE SCENE-DECLARATION SCHEMA row** — `scene-foundation-spec.ts`
+  (`SCENE_DECLARATIONS`). ONE row per scene, three groups, every column a REQUIRED
+  literal:
+  - `policy` — snaps / posture seat / chrome policy (was the scene-policy registry's
+    own `Record`; that file is now a derived view).
+  - `track` — `role`, `residency`, `body` (`parts` | `mounted` | `published-lane` |
+    `none`), `createFallbackRoute` (was three hand-kept `Set`s plus per-scene
+    ternaries inside `TrackSheetRouteHost.tsx`).
+  - `foundation` — skeleton / strip / grabHandle / snapLock / worldJoin, or `null`
+    for the four keys deliberately outside the sheet foundation.
+
+  A missing row and a half-filled row are BOTH tsc errors that name the key/column;
+  the parity sweep lives in `scene-declaration-schema-parity.spec.ts`.
 
 **Let the compiler find the rest.** The `Record<OverlayKey>` registries and the
 **completeness assertions** in `app-overlay-route-types.ts` turn a forgotten key
