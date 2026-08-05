@@ -32,15 +32,18 @@ const selectRouteOverlaySessionSnapshot = (
   };
 };
 
+// F1322: typed React.RefObject (readonly `current`), not MutableRefObject — the
+// getter is the one writer (derived live off the committed PresentationFrame);
+// there is no setter to lie about. A consumer that tries `.current = …` now
+// gets a compile error instead of a silent no-op.
 const createRouteOverlaySessionSnapshotRef = (
   routeSceneSwitchRuntime: AppRouteSceneRuntime['routeSceneSwitchRuntime']
-): React.MutableRefObject<AppRouteOverlaySessionSnapshot> => {
-  const ref = {} as React.MutableRefObject<AppRouteOverlaySessionSnapshot>;
+): React.RefObject<AppRouteOverlaySessionSnapshot> => {
+  const ref = {} as { current: AppRouteOverlaySessionSnapshot };
   Object.defineProperty(ref, 'current', {
     configurable: false,
     enumerable: true,
     get: () => selectRouteOverlaySessionSnapshot(routeSceneSwitchRuntime.getPresentationFrame()),
-    set: () => {},
   });
   return ref;
 };

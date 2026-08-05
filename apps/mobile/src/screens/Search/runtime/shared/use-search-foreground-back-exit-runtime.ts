@@ -12,7 +12,6 @@ type UseSearchForegroundBackExitRuntimeArgs = Pick<
   | 'isSearchLoading'
   | 'isSearchSessionActive'
   | 'shouldTreatSearchAsResults'
-  | 'showPollsOverlay'
   | 'cancelAutocomplete'
   | 'restoreDockedScene'
   | 'suppressAutocompleteResults'
@@ -36,7 +35,6 @@ export const useSearchForegroundBackExitRuntime = ({
   isSearchLoading,
   isSearchSessionActive,
   shouldTreatSearchAsResults,
-  showPollsOverlay,
   cancelAutocomplete,
   restoreDockedScene,
   suppressAutocompleteResults,
@@ -63,7 +61,7 @@ export const useSearchForegroundBackExitRuntime = ({
     if (!isSearchSessionActive) {
       cancelAutocomplete();
       setIsAutocompleteSuppressed(false);
-      if (!showPollsOverlay && !isSearchLoading) {
+      if (!isSearchLoading) {
         restoreDockedScene();
       }
     }
@@ -78,7 +76,6 @@ export const useSearchForegroundBackExitRuntime = ({
     setIsAutocompleteSuppressed,
     setQuery,
     shouldTreatSearchAsResults,
-    showPollsOverlay,
   ]);
 
   const handleSearchBack = React.useCallback(() => {

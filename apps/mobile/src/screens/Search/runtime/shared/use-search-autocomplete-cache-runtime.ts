@@ -1,7 +1,7 @@
 import React from 'react';
 
 import type { AutocompleteMatch } from '../../../../services/autocomplete';
-import { AUTOCOMPLETE_CACHE_TTL_MS } from '../../constants/search';
+import { AUTOCOMPLETE_CACHE_TTL_MS, MAX_AUTOCOMPLETE_CACHE_ENTRIES } from '../../constants/search';
 import {
   normalizeAutocompleteQuery,
   writeAutocompleteSuggestions,
@@ -30,8 +30,6 @@ type SearchAutocompleteCacheRuntime = {
   writeAutocompleteCache: (rawQuery: string, matches: AutocompleteMatch[]) => void;
   showCachedSuggestionsIfFresh: (rawQuery: string) => boolean;
 };
-
-const MAX_AUTOCOMPLETE_CACHE_ENTRIES = 64;
 
 export const useSearchAutocompleteCacheRuntime = ({
   cancelAutocomplete,

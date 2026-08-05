@@ -18,7 +18,6 @@ export type SearchOverlayStoreRuntime = {
   rootOverlay: OverlayKey;
   isSearchOverlay: boolean;
   showListsOverlay: boolean;
-  showPollsOverlay: boolean;
   showProfileOverlay: boolean;
   getIdentitySnapshot: () => Pick<
     SearchOverlayStoreRuntime,
@@ -26,7 +25,6 @@ export type SearchOverlayStoreRuntime = {
     | 'rootOverlay'
     | 'isSearchOverlay'
     | 'showListsOverlay'
-    | 'showPollsOverlay'
     | 'showProfileOverlay'
   >;
   registerTransientDismissor: (handler: () => void) => () => void;

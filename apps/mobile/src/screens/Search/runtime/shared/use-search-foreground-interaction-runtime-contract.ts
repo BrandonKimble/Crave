@@ -116,7 +116,7 @@ export type SearchForegroundSubmitRuntimeArgs = {
   isLoadingMore: boolean;
   isSearchSessionActive: boolean;
   isSuggestionPanelActive: boolean;
-  shouldShowDockedSceneRef: React.MutableRefObject<AppRouteOverlaySessionSnapshot>;
+  shouldShowDockedSceneRef: React.RefObject<AppRouteOverlaySessionSnapshot>;
   suppressAutocompleteResults: () => void;
   cancelAutocomplete: () => void;
   dismissSearchKeyboard: () => void;
@@ -154,7 +154,6 @@ export type SearchForegroundEditingRuntimeArgs = {
   isSuggestionPanelActive: boolean;
   isSuggestionPanelVisible: boolean;
   shouldTreatSearchAsResults: boolean;
-  showPollsOverlay: boolean;
   profilePresentationActive: boolean;
   captureSearchSessionQuery: () => void;
   dismissTransientOverlays: () => void;

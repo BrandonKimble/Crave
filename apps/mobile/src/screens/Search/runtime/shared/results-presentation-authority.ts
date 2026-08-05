@@ -4,6 +4,7 @@ import { useSyncExternalStore } from 'react';
 import {
   isPerfScenarioAttributionActive,
   logPerfScenarioAttributionEvent,
+  logPerfScenarioStackAttribution,
 } from '../../../../perf/perf-scenario-attribution';
 import { usePerfScenarioRuntimeStore } from '../../../../perf/perf-scenario-runtime-store';
 import type {
@@ -246,19 +247,36 @@ export class ResultsPresentationAuthority {
   }
 
   private notify(changedKeys: ReadonlySet<ResultsPresentationAuthorityKey>): void {
+    const notifiedListenerLabels: string[] = [];
     this.listeners.forEach((listenerRecord, listener) => {
-      const { observedKeys } = listenerRecord;
+      const { observedKeys, debugLabel } = listenerRecord;
       if (observedKeys == null) {
+        if (debugLabel != null) {
+          notifiedListenerLabels.push(debugLabel);
+        }
         listener();
         return;
       }
       for (const key of observedKeys) {
         if (changedKeys.has(key)) {
+          if (debugLabel != null) {
+            notifiedListenerLabels.push(debugLabel);
+          }
           listener();
           return;
         }
       }
     });
+    if (notifiedListenerLabels.length > 0) {
+      logPerfScenarioStackAttribution({
+        owner: 'results_presentation_authority_notify',
+        path: Array.from(changedKeys).join('|'),
+        details: {
+          notifiedListenerLabels,
+          version: this.version,
+        },
+      });
+    }
   }
 }
 

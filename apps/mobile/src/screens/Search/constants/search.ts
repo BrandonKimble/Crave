@@ -108,6 +108,11 @@ export const MARKER_SHADOW_STYLE = {
 };
 
 export const AUTOCOMPLETE_CACHE_TTL_MS = 5 * 60 * 1000;
+// F1304: owner-chosen bound on the autocomplete prefix cache (not derived —
+// a session's typed-query cardinality is small; this just caps unbounded
+// growth). Lives beside its TTL sibling instead of as a bare literal in the
+// cache runtime.
+export const MAX_AUTOCOMPLETE_CACHE_ENTRIES = 64;
 export const SEARCH_THIS_AREA_COLOR = '#0ea5e9';
 export const MAP_MOVE_MIN_DISTANCE_MILES = 0.1;
 export const MAP_MOVE_DISTANCE_RATIO = 0.08;

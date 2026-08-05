@@ -16,14 +16,12 @@ const selectRouteIdentityRuntime = (
   | 'rootOverlay'
   | 'isSearchOverlay'
   | 'showListsOverlay'
-  | 'showPollsOverlay'
   | 'showProfileOverlay'
 > => ({
   activeOverlayKey: snapshot.activeOverlayRouteKey,
   rootOverlay: snapshot.rootOverlayKey,
   isSearchOverlay: snapshot.rootOverlayKey === 'search',
   showListsOverlay: snapshot.rootOverlayKey === 'lists',
-  showPollsOverlay: false,
   showProfileOverlay: snapshot.rootOverlayKey === 'profile',
 });
 
@@ -71,10 +69,6 @@ export const useSearchRootOverlayStoreRuntime = ({
           showListsOverlay: {
             enumerable: true,
             get: () => routeIdentityRef.current.showListsOverlay,
-          },
-          showPollsOverlay: {
-            enumerable: true,
-            get: () => routeIdentityRef.current.showPollsOverlay,
           },
           showProfileOverlay: {
             enumerable: true,

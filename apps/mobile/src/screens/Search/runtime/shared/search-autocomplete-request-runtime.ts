@@ -1,8 +1,15 @@
 import type React from 'react';
 
 import type { AutocompleteMatch } from '../../../../services/autocomplete';
+import { foldSuggestionText } from '../../utils/suggestion-match-highlight';
 
-export const normalizeAutocompleteQuery = (value: string): string => value.trim().toLowerCase();
+// F1304: the cache key must fold the same way the placeholder filter and
+// highlighter do (foldSuggestionText — case AND accent insensitive), or an
+// accented query mints a cache key its own filter would never have produced,
+// and the query can never hit the entry it just populated. `.trim()` first —
+// foldSuggestionText is not itself whitespace-aware.
+export const normalizeAutocompleteQuery = (value: string): string =>
+  foldSuggestionText(value.trim());
 
 export const writeAutocompleteSuggestions = (
   setSuggestions: React.Dispatch<React.SetStateAction<AutocompleteMatch[]>>,

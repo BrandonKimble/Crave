@@ -113,7 +113,6 @@ describe('useSearchRootForegroundEditingRuntimeArgs', () => {
     expect(args.isSuggestionPanelActive).toBe(true);
     expect(args.isSuggestionPanelVisible).toBe(true);
     expect(args.shouldTreatSearchAsResults).toBe(true);
-    expect(args.showPollsOverlay).toBe(false);
     expect(args.profilePresentationActive).toBe(false);
     expect(args.searchSessionQueryRef).toBe(
       lane.rootPrimitivesRuntime.searchState.searchSessionQueryRef

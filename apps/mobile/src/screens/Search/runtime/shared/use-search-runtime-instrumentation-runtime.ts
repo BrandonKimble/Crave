@@ -23,7 +23,7 @@ import type { MapBounds } from '../../../../types';
 import { useSearchRuntimeProfilerInstrumentationRuntime } from './use-search-runtime-profiler-instrumentation-runtime';
 import { useSearchRuntimeProfilerStageHintRuntime } from './use-search-runtime-profiler-stage-hint-runtime';
 import { useSearchRuntimeStallInstrumentationRuntime } from './use-search-runtime-stall-instrumentation-runtime';
-import { useSearchRuntimeStateTelemetryRuntime } from './use-search-runtime-state-telemetry-runtime';
+import { useSearchRuntimeRootStateCommitTelemetryRuntime } from './use-search-runtime-root-state-commit-telemetry-runtime';
 import searchPerfDebug from '../../search-perf-debug';
 import { logger } from '../../../../utils';
 
@@ -444,7 +444,7 @@ export const useSearchRuntimeInstrumentationRuntime = ({
       : null,
   });
 
-  useSearchRuntimeStateTelemetryRuntime({
+  useSearchRuntimeRootStateCommitTelemetryRuntime({
     searchRuntimeBus,
     resultsPresentationAuthority,
     resultsPresentationSurfaceAuthority,

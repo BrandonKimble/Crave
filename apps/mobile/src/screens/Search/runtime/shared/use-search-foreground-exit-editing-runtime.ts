@@ -15,7 +15,6 @@ type UseSearchForegroundExitEditingRuntimeArgs = Pick<
   | 'isSearchSessionActive'
   | 'isSuggestionPanelActive'
   | 'shouldTreatSearchAsResults'
-  | 'showPollsOverlay'
   | 'profilePresentationActive'
   | 'cancelAutocomplete'
   | 'beginSuggestionCloseHold'
@@ -45,7 +44,6 @@ export const useSearchForegroundExitEditingRuntime = ({
   isSearchSessionActive,
   isSuggestionPanelActive,
   shouldTreatSearchAsResults,
-  showPollsOverlay,
   profilePresentationActive,
   cancelAutocomplete,
   beginSuggestionCloseHold,
@@ -86,7 +84,6 @@ export const useSearchForegroundExitEditingRuntime = ({
     isSearchLoading,
     isSearchSessionActive,
     shouldTreatSearchAsResults,
-    showPollsOverlay,
     cancelAutocomplete,
     restoreDockedScene,
     suppressAutocompleteResults,

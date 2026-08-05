@@ -60,3 +60,19 @@ export const SEARCH_RESULTS_BANDS = {
 
 export const resolveSearchResultsBand = (activeTab: 'dishes' | 'restaurants') =>
   activeTab === 'dishes' ? SEARCH_RESULTS_BANDS.dishes : SEARCH_RESULTS_BANDS.restaurants;
+
+// F1325: FlashList uses `overrideItemLayout` in PREFERENCE to `estimatedItemSize`
+// for layout, so these are the numbers that actually govern row geometry — they
+// used to be five bare integers hardcoded in the list-item TRANSPORT runtime,
+// duplicating (and able to silently drift from) the estimates above. One home:
+// dish/restaurant match the per-tab estimates exactly (a kind-tagged
+// mounted_restaurant_card row is the same visual height as a shape-only
+// restaurant row); section and the untyped-kind fallback have no per-tab
+// estimate to duplicate, so they live here as their own facts.
+export const SEARCH_RESULTS_ROW_KIND_HEIGHTS = {
+  section: 44,
+  mountedRestaurantCard: SEARCH_RESULTS_BANDS.restaurants.estimatedRowHeight,
+  kindFallback: 88,
+  dish: SEARCH_RESULTS_BANDS.dishes.estimatedRowHeight,
+  restaurant: SEARCH_RESULTS_BANDS.restaurants.estimatedRowHeight,
+} as const;

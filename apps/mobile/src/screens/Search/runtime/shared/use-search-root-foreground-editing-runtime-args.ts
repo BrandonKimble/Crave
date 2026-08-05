@@ -68,7 +68,6 @@ export const useSearchRootForegroundEditingRuntimeArgs = ({
       shouldTreatSearchAsResults:
         resultsPresentationOwner.shellModel.backdropTarget === 'results' &&
         rootDataPlaneRuntime.runtimeFlags.isSearchSessionActive,
-      showPollsOverlay: false,
       profilePresentationActive: profileOwner.profileViewState.presentation.isPresentationActive,
       searchSessionQueryRef: searchState.searchSessionQueryRef,
       isSearchEditingRef: searchState.isSearchEditingRef,
