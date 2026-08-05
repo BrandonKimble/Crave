@@ -29,6 +29,7 @@ import { SearchSiblingExpansionService } from './search-sibling-expansion.servic
 import { DietaryConstraintRegistry } from './dietary-constraints';
 import { UnsegmentedResidueService } from './unsegmented-residue.service';
 import { ScoringTerritoryRefreshService } from './scoring-territory-refresh.service';
+import { OpenIntervalsBuilderService } from './open-intervals-builder.service';
 
 @Module({
   imports: [
@@ -66,6 +67,7 @@ import { ScoringTerritoryRefreshService } from './scoring-territory-refresh.serv
     DietaryConstraintRegistry,
     UnsegmentedResidueService,
     ScoringTerritoryRefreshService,
+    OpenIntervalsBuilderService,
   ],
   exports: [
     SearchService,

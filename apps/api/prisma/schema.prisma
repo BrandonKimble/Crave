@@ -1871,6 +1871,20 @@ model EntityWordDelete {
   @@map("derived_entity_word_deletes")
 }
 
+/// SQL-evaluable openness (B1, round-5 ideal): derived from location hours
+/// via the same JS chain the runtime evaluated with; midnight-crossing
+/// split across days. Rebuilt nightly + after location refresh.
+model LocationOpenInterval {
+  locationId String @map("location_id") @db.Uuid
+  dow        Int    @db.SmallInt
+  startMin   Int    @map("start_min") @db.SmallInt
+  endMin     Int    @map("end_min") @db.SmallInt
+
+  @@id([locationId, dow, startMin])
+  @@index([locationId], map: "idx_location_open_intervals_loc")
+  @@map("derived_location_open_intervals")
+}
+
 model OnDemandUnsegmentedResidue {
   residueId       String    @id @default(dbgenerated("gen_random_uuid()")) @map("residue_id") @db.Uuid
   residueText     String    @map("residue_text") @db.VarChar(500)
