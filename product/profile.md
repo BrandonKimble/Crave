@@ -47,7 +47,15 @@ The friend graph is the trust axis. The Crave Score is crowd consensus; the frie
 
 ## Shareable lists (virality)
 
-List-sharing is our primary intended virality surface; a public ranked list is a far more compelling shareable artifact than an unordered pile, and it's the acquisition hook in a no-ad-budget model. Each list carries a short share slug and a share toggle; sharing creates or rotates the slug, revoking disables sharing while retaining the slug as inactive, and a public read endpoint serves the list by slug. Lists open via app deep links (`crave-search://favorites/lists/{slug}`) and web universal links (`https://<domain>/l/{slug}`) with an install CTA when the app isn't present. Share events (created/opened/copied/revoked) are tracked to analytics.
+List-sharing is our primary intended virality surface; a public ranked list is a far more compelling shareable artifact than an unordered pile, and it's the acquisition hook in a no-ad-budget model. Each list carries a short share slug and a share toggle; sharing creates or rotates the slug, revoking disables sharing while retaining the slug as inactive, and a public read endpoint serves the list by slug. Lists open via app deep links (`crave-search://favorites/lists/{slug}`) and web universal links (`https://<domain>/l/{slug}`) with an install CTA when the app isn't present.
+
+> **CORRECTION 2026-08-04 (Phase-3 doc-territory drain, audit F747) —
+> wrong deep-link scheme.** The app's URL scheme is `crave`
+> (`apps/mobile/app.json:5`); `crave-search` is only the app name/slug
+> (lines 3-4). The real deep link is `crave://l/<slug>`
+> (`ListDetailPanel.tsx:120,1456`; `desire-url-codec.spec.ts`), with the
+> invite variant `crave://l/{slug}?join=1`. The web universal link
+> `https://<domain>/l/{slug}` above is correct as written. Share events (created/opened/copied/revoked) are tracked to analytics.
 
 A branded **"Share your bookmarks" infographic** generates a shareable image of a user's top 5–10 saved dish/restaurant pairs ("found through community recommendations using Crave").
 

@@ -2,6 +2,16 @@
 
 Last updated: 2026-04-13
 Status: mostly delivered
+
+> **CORRECTION 2026-08-04 (Phase-3 doc-territory drain, audit F722) —
+> restaurant identity no longer has a market dimension.** This doc's
+> "delivered" claims for `core_entity_market_presence` (lines then 48, 60,
+> 77, 322) describe a table that no longer exists: it is absent from
+> `apps/api/prisma/schema.prisma` (its creating migration
+> `20260414123000` survives in history, but the model was dropped in the
+> 2026-07-22 markets extermination). Any market-membership behavior
+> described below is historical only; there is no live replacement
+> concept — restaurant identity is market-agnostic today.
 Scope:
 
 - `/Users/brandonkimble/crave-search/apps/api/src/modules/restaurant-enrichment/**`

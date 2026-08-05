@@ -75,6 +75,15 @@
   dishes from the user's own quiz answers + one evidence quote, after city
   pick, before auth/wall) is the payoff beat and the single highest-leverage
   unbuilt piece of the flow.
+  > **CORRECTION 2026-08-04 (Phase-3 doc-territory drain, audit F749) —
+  > the teaser screen IS BUILT.** `apps/api/src/modules/teaser/{module,
+  > controller,service}.ts` is wired at `app.module.ts:26,112`;
+  > `apps/mobile/src/screens/onboarding/OnboardingTeaser.tsx` implements
+  > `STEP_IDS.teaser` (`constants/onboarding.ts:484-485`). Its placement
+  > differs from this spec — it sits at the END of the quiz, immediately
+  > before the account step, not "after city pick" — which is an owner
+  > call (see `business/signal/redteam/verdict.md`'s 2026-08-03
+  > correction, item F1221), but existence is no longer hypothetical.
 - The **taste-profile questions are not throat-clearing** — they are the
   teaser's _inputs_ and the paywall copy's raw material. The more real the
   wiring, the more the investment psychology compounds.
@@ -117,6 +126,11 @@ honest SHORT track: waitlist-info → cuisines → always-craving (framed as
 seeding-priority signal for the bench cities) → preview pick → waitlist
 account. Live users continue the full arc, now city-aware throughout.
 ONBOARDING_VERSION → 4.
+
+> **CORRECTION 2026-08-04 (Phase-3 doc-territory drain, audit F749) —
+> superseded version.** `ONBOARDING_VERSION` is now `6`
+> (`packages/shared/src/constants/index.ts:12`), not the `4`/`5` this
+> doc's latest entries state.
 
 Neighborhoods: no question ANYWHERE — superseded by passive inference (owner's
 call, better than the first-session prompt idea). The home surface infers the

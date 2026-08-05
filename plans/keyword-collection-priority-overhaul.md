@@ -688,13 +688,26 @@ We are skipping tests, so validation is operational:
 
 ## References (Code Touchpoints)
 
-- Scheduler: `apps/api/src/modules/content-processing/reddit-collector/keyword-search-scheduler.service.ts`
+> **CORRECTION 2026-08-04 (Phase-3 doc-territory drain, audit F725) — four
+> of the paths below are deleted.** Verified against `git ls-files`:
+> `keyword-search-scheduler.service.ts`, `entity-priority-selection.service.ts`,
+> `polls/poll-scheduler.service.ts`, and
+> `coverage-key/coverage-key-resolver.service.ts` do not exist.
+> `KeywordSearchSchedulerService` survives only as a tombstone reference
+> (`keyword-sort-plan.ts:2`). The live equivalents are
+> `keyword-sort-plan.ts`, `keyword-slice-selection.service.ts`, and
+> `collector-pacer.service.ts` (all present, same directory). The other
+> paths in this list (`search.service.ts`, `on-demand-request.service.ts`,
+> `Search/index.tsx`, `observability-overhaul.md`) are still live and
+> unaffected.
+
+- Scheduler: `apps/api/src/modules/content-processing/reddit-collector/keyword-search-scheduler.service.ts` (DELETED — see correction above; live equivalent `keyword-sort-plan.ts` / `keyword-slice-selection.service.ts`)
 - Orchestrator: `apps/api/src/modules/content-processing/reddit-collector/keyword-search-orchestrator.service.ts`
-- Current selection service: `apps/api/src/modules/content-processing/reddit-collector/entity-priority-selection.service.ts`
+- Current selection service: `apps/api/src/modules/content-processing/reddit-collector/entity-priority-selection.service.ts` (DELETED — see correction above; live equivalent `keyword-slice-selection.service.ts`)
 - Search logging + metadata: `apps/api/src/modules/search/search.service.ts`
 - Demand aggregation: `apps/api/src/modules/analytics/search-demand.service.ts`
-- Poll topics from search demand: `apps/api/src/modules/polls/poll-scheduler.service.ts`
-- Coverage key resolution: `apps/api/src/modules/coverage-key/coverage-key-resolver.service.ts`
+- Poll topics from search demand: `apps/api/src/modules/polls/poll-scheduler.service.ts` (DELETED — see correction above)
+- Coverage key resolution: `apps/api/src/modules/coverage-key/coverage-key-resolver.service.ts` (DELETED — see correction above)
 - On-demand requests (legacy): `apps/api/src/modules/search/on-demand-request.service.ts`, `apps/api/prisma/schema.prisma` (`OnDemandRequest`)
 - Search UI shortcuts (mobile): `apps/mobile/src/screens/Search/index.tsx`
 - Observability plan: `plans/observability-overhaul.md`

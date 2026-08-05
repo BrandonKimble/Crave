@@ -72,6 +72,15 @@ from SERVER truth, never local inference. Gate placement per
 business/monetization-and-gating.md (dish-level = premium, restaurant-level
 = free) — flag-gated rollout so dev/dogfood stays open.
 
+> **CORRECTION 2026-08-04 (Phase-3 doc-territory drain, audit F751) — dead
+> link.** `business/monetization-and-gating.md` was deleted 2026-07-12 and
+> is marked superseded wholesale
+> (`business/signal/panels/p4-share-link-policy/verdict.md:17`). It is
+> also superseded on substance: gating today is a hard paywall (everything
+> gated), not the dish-level/restaurant-level split cited above. Current
+> canon is `business/signal/blueprint.md` §2 ("The wall — price, staging,
+> spec").
+
 ## Purchase flows (how the pieces talk)
 
 - **iOS:** mobile `react-native-purchases` SDK (app_user_id = Clerk id) →

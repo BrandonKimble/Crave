@@ -129,7 +129,10 @@ Three doc homes, by purpose:
   Start at [product/README.md](product/README.md). **Before building in an area, read its file;
   when an idea comes up, add it there.**
 - **`business/`** — the business model: [pricing/model](business/business-model.md),
-  [free-vs-paid gating](business/monetization-and-gating.md), and mined BRD/PRD material.
+  [free-vs-paid gating](business/monetization-and-gating.md) (**dead link — deleted
+  2026-07-12, superseded wholesale; current gating canon is
+  `business/signal/blueprint.md` §2, "The wall — price, staging, spec" — audit F751,
+  2026-08-04**), and mined BRD/PRD material.
   Start at [business/README.md](business/README.md). Relevant to monetization, Stripe/onboarding,
   and the dish-vs-free gating split.
 

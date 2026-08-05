@@ -132,6 +132,16 @@ uploadedAt, status (pending|live|hidden|removed), qualityScore,
 width/height. Plus photo_events (impression|tap, batched). List-item note +
 tags live on the favorites side (see product/favorites.md), not on Photo.
 
+> **CORRECTION 2026-08-04 (Phase-3 doc-territory drain, audit F748) —
+> field names drifted from the as-built model** (`schema.prisma:1580`,
+> `model Photo`). The dish link is `connectionId`, not `dishId`. The
+> quality field is `focusScore` (Cloudinary quality_analysis focus,
+> 0..1), not `qualityScore`. There is no `storageKey` field. Fields ADDED
+> since and not listed above: `visibility` (`PhotoVisibility`
+> public/private), `reportCount`, `pendingDishName`, `bytes`,
+> `moderatedAt`. `PhotoEvent`/`PhotoEventType` are correct as claimed
+> above.
+
 ## Considered and DEFERRED (do not relitigate without the owner)
 
 - **User feed**: parked, ~50-50 but deliberately avoided. Polls are the

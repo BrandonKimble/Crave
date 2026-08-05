@@ -104,6 +104,18 @@ A **Friends lens** (an opt-in toggle that filters results to _only_ friend-saved
 ## Discovery, demand layer & performance
 
 - **Discovery surfaces (Crave+).** Trending Deep Dives, Rising Stars, Hidden Gems, Neighborhood Insights, Time-Based Trends, Category Deep-Dives — "South Austin's rising stars", "what's hot for breakfast", "Austin's top-discussed pizza this month" — all built on the momentum axis. Smart alerts ("a dish you saved is getting a fresh wave of praise") combine momentum with favorites.
+- **CORRECTION 2026-08-04 (Phase-3 doc-territory drain, audit F743):** the
+  line below names an exterminated table. The live aggregate is
+  `SignalDemandDaily` (`@@map("signal_demand_daily")`, schema.prisma:2277)
+  on the signals substrate. The code declares the old name dead in
+  multiple places (`search-popularity.service.ts:15`: "the old
+  user_search_demand_daily / search_events reads are dead here";
+  `analytics.module.ts:7`: "SearchDemandService over
+  user_search_demand_daily) is DEAD"), and
+  `signal-demand-read.territory.spec.ts:91` asserts the old string never
+  appears in generated SQL. (The 2026-08-03 correction block further down
+  this file covers the scoring formula and page-1 shape; it does not
+  cover this line.)
 - **Search-demand layer.** A rebuildable `user_search_demand_daily` aggregate draws from search logs, cache reveals, on-demand asks, views, favorite events, and autocomplete selections, splitting `sourceKind` (provenance) from `signalKind` (interpretation) so consumers opt into signal kinds, with a dual market scope (UI `marketKey` vs `collectableMarketKey`). Polls, on-demand, and keyword collection share one scoring vocabulary: per-user log-scaled demand, distinct-user breadth as the main signal, diminishing repeat-ask power, recency with smooth decay, and recovery curves rather than hard caps.
 - **Caching & indexing.** Cache frequent/viral queries with 24h retention so a follow-up "best tacos" is instant; cache reveals clone server-owned attribution (fresh searchRequestId, original id in metadata) distinguished by `eventKind`. Targets: <400ms cached, <3s uncached-with-LLM. `core_entities` text search uses a name prefix index, name trigram, and name+aliases FTS, with batched multi-term expansion and a gated phonetic fallback.
 

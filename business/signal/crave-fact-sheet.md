@@ -164,6 +164,19 @@ happens after the full Austin load, before launch judgment on feel.
 
 ---
 
+## CORRECTION 2026-08-04 (Phase-3 doc-territory drain, audit F749) — "Onboarding as built (17 steps)" is pre-redesign
+
+Correction note only; nothing above is deleted.
+
+The "Onboarding as built (17 steps, single linear machine)" section (around
+line 67) is superseded by the 2026-07-25/26 onboarding redesign: city pick
+moved to step 4, the rating-ask step was REMOVED ENTIRELY (no such step
+exists in the code — see also `business/signal/redteam/verdict.md`'s
+2026-08-03 correction, item F1220), and `contexts`, `dietaryNeeds`, `spice`,
+`spotYouLove`, and `teaser` steps were added. The canonical, current step
+order lives in `apps/mobile/src/constants/onboarding.ts` — treat this
+document's step list as historical.
+
 ## CORRECTION 2026-08-03 (repo rederivation, audit F742) — "one command onboards a market" is no longer true
 
 Correction note only; nothing above is deleted.

@@ -1528,6 +1528,18 @@ That undifferentiated flatness is precisely how a red gate and a dead cluster
 stayed invisible. **Porting the api-side lockdown here is the standing
 proposal (F716).**
 
+**CORRECTED 2026-08-04 (audit F716/F1653).** This whole section is now
+historical: `scripts/scripts-containment-gate.sh` exists, is wired into
+`ci.yml`, classifies every script under both `scripts` and `maestro`
+(`SCAN_ROOTS="scripts maestro"`), and passes (56 scripts, all classified) —
+mutation-proven RED on an unclassified/misclassified file. `app-route-runtime-delete-gate.sh`,
+`crave-score-cutover-delete-gate.sh`, and `search-results-prepared-rows-delete-gate.sh`
+are all wired into CI and pass. The four `search-runtime-s4/s5/s6/natural`
+scripts named above were retired 2026-08-03. The 11 `lod-*` files carry
+`@script-class: dead-scaffolding` headers now instead of sitting
+undifferentiated. Left for the record so a reader lands on the fix, not the
+disease.
+
 ### The 2026-07-06 map-saga deletion, and its blast radius
 
 Commit `9f0d26a5a` deleted 22 map-saga maestro flows as "verified-dead
@@ -1547,6 +1559,17 @@ never updated, and each now points at a file that does not exist:
 **The lesson to carry: when you delete a fixture, grep for its consumers.** The
 same commit's message says "map-accept.sh kept", which is true of the runner
 and false of everything it runs.
+
+**CORRECTED 2026-08-04 (audit F708/F1651, Phase-3 residue drain).**
+`scripts/perf-scenario-scale-probe.sh` and its report script
+(`scripts/perf-scenario-scale-probe-report.js`) were RETIRED — banking re-grep
+found zero references outside this doc, audit/, and the user's own memory
+file. `maestro/perf/map-accept.sh` no longer exists in the tree either (it is
+gone, not merely broken) — the "kept" framing above is now fully stale for
+that file. `maestro/perf/README.md`'s Map LOD Pan/Zoom section still names a
+deleted flow (`search-map-lod-pan-zoom.yaml`) and now carries its own dated
+correction note rather than being struck outright — repair vs retire is an
+owner call (F1652).
 
 ### `packages/shared` — the cross-app contract
 

@@ -80,8 +80,15 @@ This means 10 log rows can qualify a market/entity even if they came from a smal
 
 Source files:
 
-- `apps/api/src/modules/analytics/search-demand.service.ts`
-- `apps/api/src/modules/polls/poll-scheduler.service.ts`
+> **CORRECTION 2026-08-04 (Phase-3 doc-territory drain, audit F726) — two
+> of these three paths do not exist.** Verified via `git ls-files`:
+> `analytics/search-demand.service.ts` and `polls/poll-scheduler.service.ts`
+> are absent from the tree; only `keyword-slice-selection.service.ts`
+> (referenced elsewhere in this doc) is present. Read the source-file
+> lists in this doc as historical pointers, not live code paths.
+
+- `apps/api/src/modules/analytics/search-demand.service.ts` (DELETED — see correction above)
+- `apps/api/src/modules/polls/poll-scheduler.service.ts` (DELETED — see correction above)
 
 ### Query Suggestions
 

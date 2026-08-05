@@ -15,7 +15,7 @@ Favorites is the user's personal save layer: restaurant and dish lists, public/p
 A parent toggle splits **Restaurants | Dishes**, mirroring the result-sheet split. A list is one type or the other — no mixed lists.
 
 - **Restaurant lists (free):** lists that contain only restaurants — the normal saved-list behavior every app has.
-- **Dish lists (Crave+):** lists of dishes, where a dish is always saved as a restaurant+dish pairing. This is "save your favorite dishes." The entire dish-list-creation side is gated behind Crave+ — free users make restaurant lists like a normal app. This is consistent with dishes being the paid hero across Crave (see `business/monetization-and-gating.md`).
+- **Dish lists (Crave+):** lists of dishes, where a dish is always saved as a restaurant+dish pairing. This is "save your favorite dishes." The entire dish-list-creation side is gated behind Crave+ — free users make restaurant lists like a normal app. This is consistent with dishes being the paid hero across Crave (see `business/monetization-and-gating.md` — **CORRECTION 2026-08-04 (Phase-3 doc-territory drain, audit F751): this file was deleted 2026-07-12 and superseded wholesale; the current canon is `business/signal/blueprint.md` §2, "The wall — price, staging, spec"**).
 
 The save flow is locked to content type: a restaurant card saves only into restaurant lists, a dish result only into dish lists. Every entity surface — search results, restaurant detail, dish rows — has a save/unsave affordance with a clear saved indicator.
 

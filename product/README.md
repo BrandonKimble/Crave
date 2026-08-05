@@ -44,6 +44,14 @@ what we want it to be — not a backlog, log, or history.
   layer, rising/trending, power list filters) is the **dormant pivot framing** — keep the
   machinery mothballed, don't build per-feature gates into new surfaces. See
   [`../business/monetization-and-gating.md`](../business/monetization-and-gating.md).
+  > **CORRECTION 2026-08-04 (Phase-3 doc-territory drain, audit F751) —
+  > dead link.** `business/monetization-and-gating.md` was deleted
+  > 2026-07-12 (`business/README.md:18-20` records the removal;
+  > `business/signal/panels/p4-share-link-policy/verdict.md:17` rules it
+  > "superseded wholesale … not revived, verbatim or scoped"). The
+  > freemium-vs-hard-paywall disclosure above is still accurate, but its
+  > cited evidence is gone. The current canon is
+  > `business/signal/blueprint.md` §2 ("The wall — price, staging, spec").
 - **Gating principle:** gate what Google/Yelp/Beli structurally _can't_ do; keep free the
   things they do (we just do them better — the free tier is the "this app is good" taste).
 

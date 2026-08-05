@@ -8,6 +8,19 @@ Execution-ready target plan. This supersedes `plans/contextual-score-cutover-pla
 > `60 + 39.9·sigmoid(…)` curve, and the soft target bands (`60.0-68.0` … `96.0-99.5`) below are
 > DEAD. The score model is now `crave-score-v3` (`plans/crave-score-v3-endorsement-redesign-plan.md`)
 > and the public display is the native `0–10` scale (`plans/crave-score-1to10-scale-migration.md`):
+
+> **⚠️ CORRECTION 2026-08-04 (Phase-3 doc-territory drain, audit F723) —
+> the market layer of this schema is also dead.** Every `core_markets`,
+> `core_entity_market_presence`, `core_crave_score_market_stats`, and
+> `scoring_market_key` reference below (including the "New score
+> projection" table) describes machinery removed in the 2026-07-22 markets
+> extermination. Verified: none of those identifiers appear in
+> `apps/api/prisma/schema.prisma`. Live scoring tables are only
+> `core_crave_score_runs` (schema.prisma:668), `core_public_entity_scores`
+> (schema.prisma:632), and `crave_score_calibration_epochs` — none carry a
+> market dimension. This is scoped to the market columns only; the doc's
+> other two supersession banners already cover the display-band/curve
+> changes correctly.
 > `display_score = 10·global_percentile`, stored at 2 decimals, 1dp on cards / 2dp in the
 > score-info sheet, delta in rating points (no `/10`). `confidenceLabel` (the `'early'|'solid'|
 > 'strong'` field in `ScoreInfoSummary` below) is also DELETED everywhere. Read this plan for its

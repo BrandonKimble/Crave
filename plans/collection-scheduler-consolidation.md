@@ -1,5 +1,18 @@
 # Collection Scheduler Consolidation (audit item 5)
 
+> **CORRECTION 2026-08-04 (Phase-3 doc-territory drain, audit F724) —
+> COMPLETE-then-exterminated.** The "BUILD STATUS: COMPLETE 2026-07-08"
+> below was true when written, but the consolidation it describes was
+> itself later removed. `collection_schedules` is absent from
+> `apps/api/prisma/schema.prisma` (cadence now lives on
+> `source_collection_lanes`, schema.prisma:483 area, keyed per
+> (source, lane)); `CollectionSchedulerService` has no class definition
+> anywhere in `apps/api/src` — it survives only as a tombstone comment
+> (`keyword-search-orchestrator.service.ts:78`: "the old
+> CollectionSchedulerService that used to plan here was exterminated").
+> The live owner of collection pacing today is `CollectorPacerService`
+> (`collector-pacer.service.ts`). Read everything below as historical.
+
 **BUILD STATUS: COMPLETE 2026-07-08** (529ef13d table → 4c5591eb loop+steps 2-4 →
 5039c2fb / 577f6d81 step 5). All map-era planning deleted; hot-spike whitelist and
 lastTopRelevanceRunAt now durable in collection_schedules rows (the map-empty

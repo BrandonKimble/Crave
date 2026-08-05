@@ -10,6 +10,16 @@
 
 Notifications are Crave's re-engagement and retention engine: they pull people back when something they care about changes — a poll they're in closes, a place they saved gets a new #1 dish, a spot they bookmarked starts surging. The pipe is real end-to-end: Expo push as the transport, a device registry (`NotificationDevice`, keyed by `expoPushToken`, optional `userId` + `city`), a queued/scheduled `Notification` table, a per-minute dispatcher cron, and a mobile deep-link listener. Today only `poll_release` flows through it; everything below is the vision for what rides on top.
 
+> **CORRECTION 2026-08-04 (Phase-3 doc-territory drain, audit F746) —
+> under-claims shipped work.** "Today only `poll_release` flows through
+> it" is stale. `NotificationType` (schema.prisma:1980) has TWO live
+> values: `poll_release` and `follower_added` — and `follower_added` is
+> shipped end-to-end: producer `user-follow.service.ts:85`, feed
+> enrichment `user-notification-feed.service.ts:46,52,83`, and the mobile
+> renderer + deep link in `NotificationsPanel.tsx:21,37,63` (whose own
+> comment says "today's producer set = follower_added"). The "{user}
+> started following you" alert listed below as vision is already live.
+
 The `NotificationType` enum is the extension point: every new alert is a new enum value + a `buildMessage` branch + a deep-link handler + a producer that enqueues. The rails are laid.
 
 ## Gating frame

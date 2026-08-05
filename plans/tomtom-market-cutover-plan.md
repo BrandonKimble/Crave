@@ -1,5 +1,20 @@
 # TomTom Market Cutover Plan
 
+> **CORRECTION 2026-08-04 (Phase-3 doc-territory drain, audit F720) — the
+> markets system this plan describes was fully exterminated 2026-07-22.**
+> The "## Status" block below claims this cutover is "Implemented in the
+> current workspace" and instructs keeping `core_markets` "as the canonical
+> runtime contract." Neither is true today. Verified against the tree:
+> `core_markets`, `MarketType`, and `market_bootstrap_events` have ZERO hits
+> in `apps/api/prisma/schema.prisma`; `apps/api/src/modules/markets/` is not
+> tracked; the two gate scripts this doc cites
+> (`scripts/tomtom-market-cutover-delete-gate.sh`,
+> `scripts/tomtom-market-deploy-gate.sh`) do not exist anywhere in the repo.
+> The markets extermination (2026-07-22) removed the entire market layer;
+> only tombstone comments remain (`user-list-results.assembler.ts:118`,
+> `autocomplete.service.ts:998`). Read everything below as historical design
+> context only — none of it describes the active runtime.
+
 ## Status
 
 Implemented in the current workspace. Treat this file as historical design
