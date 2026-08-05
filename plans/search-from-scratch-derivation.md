@@ -380,6 +380,32 @@ Also still owed to the calibration tail: ~44-name placement curation
 Cutover harness 9/9 PASS (tier ordering, disjoint pagination, open-now,
 dietary-hard zero-result honesty, residue staging).
 
+**B1–B3 CLOSE-OUT (2026-08-04, owner-directed — commits 344fa92fc →
+fa79bc044):**
+
+- **B1 open-now → SQL (8a627b968)**: IANA tz self-heals from coordinates
+  (geo-tz; utc_offset was DST-naive; 11,141 rows backfilled);
+  derived_location_open_intervals via the SAME JS chain (parity 500/500);
+  openness is now a MEMBERSHIP predicate on both projections with the
+  graceful-degradation whole-pool arm — every window count is
+  openness-aware by construction, the two-phase candidate/hydrate machine
+  AND the gateFull parameterization (§1.4.4a) are DELETED (net −466
+  lines), and open-now dish pagination is exact for the first time.
+  Ground-truthed: 25/25 served restaurants confirmed open by the JS
+  evaluator; 233ms.
+- **B2 dietary walls + toggle (abcbfabda + fa79bc044)**: per-projection
+  owner semantics — dish serves only with the DISH-side attribute; a
+  restaurant serves with the VENUE-side attribute OR any dish carrying
+  the dish-side one. request.dietary[] (canonical names) flows end-to-end
+  through the natural path; query-text grounding activates the whole
+  pair (venue-side vegan's 219 restaurants no longer invisible).
+  Ground-truthed per-row on the mirror. REMAINING: the mobile toggle
+  strip UI (a precise one-surface task, held only because the parallel
+  session is actively editing the Search mobile runtime).
+- **B3 Stripe rail**: already restored by the payments lane (endpoints,
+  service, CheckoutSession model, 19 green specs) — verified, nothing to
+  do server-side; the dual-button paywall UI is mobile work.
+
 **ROUND 5 IMPLEMENTATION (2026-08-02, owner: "implement the ideal
 abstractions" — commits 8cadbb95d → 77c7eb1bc, all empirically
 verified on the mirror):**
