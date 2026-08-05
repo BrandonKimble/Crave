@@ -6,7 +6,6 @@ import { retrySearchDesiredResolution } from './search-desired-state-writer';
 import { selectIsSearchSessionActive } from './search-desired-tuple-selectors';
 
 import type { AppRouteSceneRuntime } from '../../../../navigation/runtime/app-route-scene-runtime';
-import { createResultsSurfacePolicyController } from './results-surface-policy-controller';
 import { createResultsSurfaceReadModelPolicyController } from './results-surface-read-model-policy-controller';
 import { createSearchRuntimeBus, type SearchRuntimeBus } from './search-runtime-bus';
 import {
@@ -61,7 +60,6 @@ export const useSearchRouteResultsPolicyDomainRuntime = ({
       routeSceneVisibilityPolicyRuntime: routeSceneRuntime.routeSceneVisibilityPolicyRuntime,
       suggestionPanelStateController,
     });
-    const surfacePolicyController = createResultsSurfacePolicyController();
     const readModelPolicyController = createResultsSurfaceReadModelPolicyController();
     runtimeRef.current = {
       searchRuntimeBus,
@@ -77,7 +75,6 @@ export const useSearchRouteResultsPolicyDomainRuntime = ({
         foregroundPolicyPublicationAuthority.suggestionPanelStateController,
       foregroundPolicyDomain,
       foregroundPolicyPublicationAuthority,
-      surfacePolicyController,
       readModelPolicyController,
       readModelPolicyWriters: {
         exactMatch: readModelPolicyController.getExactMatchController(),
@@ -169,7 +166,6 @@ export const useSearchRouteResultsPolicyDomainRuntime = ({
       runtime.resultsPresentationSurfaceAuthority.reset();
       runtime.searchMapSourceFramePort.reset();
       runtime.primitiveUiStateController.reset();
-      runtime.surfacePolicyController.reset();
       runtime.readModelPolicyController.reset(null);
     };
   }, [runtime]);

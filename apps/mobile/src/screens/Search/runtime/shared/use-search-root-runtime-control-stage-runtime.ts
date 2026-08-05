@@ -10,7 +10,6 @@ import { useSearchRootControlProfileExperienceRuntime } from './use-search-root-
 import { useSearchRootControlResultsExperienceRuntime } from './use-search-root-control-results-experience-runtime';
 import { useSearchRootFilterModalRuntime } from './use-search-root-filter-modal-runtime';
 import { useSearchRootSubmitControlRuntime } from './use-search-root-submit-control-runtime';
-import type { ResultsSurfacePolicyController } from './results-surface-policy-controller';
 import { createSearchForegroundTransientCleanupActions } from './search-foreground-transient-cleanup-actions';
 import type { SearchForegroundPolicyPublicationAuthority } from './search-foreground-policy-publication-authority';
 import type {
@@ -28,7 +27,6 @@ export const useSearchRootRuntimeControlStageRuntime = ({
   sessionAssemblyRuntime,
   stateAssemblyRuntime,
   overlayFoundationAssemblyRuntime,
-  resultsSurfacePolicyController,
   foregroundPolicyPublicationAuthority,
 }: {
   appEntryPlaneRuntime: ReturnType<typeof useSearchScreenAppEntryPlaneRuntime>;
@@ -41,7 +39,6 @@ export const useSearchRootRuntimeControlStageRuntime = ({
   overlayFoundationAssemblyRuntime: ReturnType<
     typeof useSearchRootRuntimeOverlayFoundationAssemblyRuntime
   >;
-  resultsSurfacePolicyController?: ResultsSurfacePolicyController;
   foregroundPolicyPublicationAuthority?: SearchForegroundPolicyPublicationAuthority;
 }): {
   controlAuthorityRuntime: ReturnType<typeof useSearchRootControlAuthorityRuntime>;
@@ -57,7 +54,6 @@ export const useSearchRootRuntimeControlStageRuntime = ({
     mapViewportIntentRuntime: overlayFoundationAssemblyRuntime.mapViewportIntentRuntime,
     stateFoundationLane: stateAssemblyRuntime.stateFoundationLane,
     rootOverlayFoundationRuntime: overlayFoundationAssemblyRuntime.rootOverlayFoundationRuntime,
-    resultsSurfacePolicyController,
     foregroundPolicyPublicationAuthority,
   });
   const profileControlRuntime = useSearchRootControlProfileExperienceRuntime({

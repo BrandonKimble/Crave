@@ -3,7 +3,6 @@ import type { SearchRuntimeBus } from './search-runtime-bus';
 import type { ResultsPresentationAuthority } from './results-presentation-authority';
 import type { ResultsPresentationSurfaceAuthority } from './results-presentation-surface-authority';
 import type { SearchMapSourceFramePort } from '../map/search-map-source-frame-port';
-import type { ResultsSurfacePolicyController } from './results-surface-policy-controller';
 import type { ResultsSurfaceReadModelPolicyController } from './results-surface-read-model-policy-controller';
 import type { SearchResultsExactMatchOwnerController } from '../read-models/results-read-model-exact-match-state';
 import type { SearchResultsRetainedResultsController } from './results-retained-read-model-controller';
@@ -54,7 +53,6 @@ export type SearchRouteResultsPolicyRuntime = {
   suggestionPanelStateController: SearchSuggestionPanelStateController;
   foregroundPolicyDomain: SearchForegroundPolicyDomainController;
   foregroundPolicyPublicationAuthority: SearchForegroundPolicyPublicationAuthority;
-  surfacePolicyController: ResultsSurfacePolicyController;
   readModelPolicyController: ResultsSurfaceReadModelPolicyController;
   readModelPolicyWriters: SearchRouteResultsPolicyReadModelWriterFacets;
 };

@@ -126,7 +126,6 @@ type SearchRuntimeBusDiagnosticEntry = {
   batchDepth: number;
   version: number;
   presentingPhase: SearchPresentingPhase;
-  resultsPresentationStage: string | null;
   stack?: string[];
 };
 
@@ -365,7 +364,6 @@ export class SearchRuntimeBus {
               ? undefined
               : notifiedListenerLabels.slice(0, 16),
           presentingPhase: this.state.presentingPhase,
-          resultsPresentationStage: null,
         },
       });
     }
@@ -383,7 +381,6 @@ export class SearchRuntimeBus {
       batchDepth: this.batchDepth,
       version: this.version,
       presentingPhase: this.state.presentingPhase,
-      resultsPresentationStage: null,
     });
     if (this.diagnosticsRing.length > 32) {
       this.diagnosticsRing.splice(0, this.diagnosticsRing.length - 32);

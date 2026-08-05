@@ -68,7 +68,6 @@ export const useSearchRootRuntimeStageRuntime = ({
     sessionAssemblyRuntime,
     stateAssemblyRuntime,
     overlayFoundationAssemblyRuntime,
-    resultsSurfacePolicyController: searchRouteResultsPolicyRuntime.surfacePolicyController,
     foregroundPolicyPublicationAuthority:
       searchRouteResultsPolicyRuntime.foregroundPolicyPublicationAuthority,
   });

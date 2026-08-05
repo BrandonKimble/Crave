@@ -7,7 +7,6 @@ import { useSearchRootControlFoundationAuthorityRuntime } from './use-search-roo
 import { useSearchRootControlPresentationAuthorityRuntime } from './use-search-root-control-presentation-authority-runtime';
 import type { SearchRootStateFoundationLane } from './use-search-root-foundation-runtime';
 import type { SearchRootSessionCoreLane } from './use-search-root-session-runtime-contract';
-import type { ResultsSurfacePolicyController } from './results-surface-policy-controller';
 import type { SearchForegroundPolicyPublicationAuthority } from './search-foreground-policy-publication-authority';
 
 type UseSearchRootControlAuthorityRuntimeArgs = {
@@ -15,7 +14,6 @@ type UseSearchRootControlAuthorityRuntimeArgs = {
   mapViewportIntentRuntime: SearchRootMapViewportIntentRuntime;
   stateFoundationLane: SearchRootStateFoundationLane;
   rootOverlayFoundationRuntime: SearchRootOverlayFoundationRuntime;
-  resultsSurfacePolicyController?: ResultsSurfacePolicyController;
   foregroundPolicyPublicationAuthority?: SearchForegroundPolicyPublicationAuthority;
 };
 
@@ -24,7 +22,6 @@ export const useSearchRootControlAuthorityRuntime = ({
   mapViewportIntentRuntime,
   stateFoundationLane,
   rootOverlayFoundationRuntime,
-  resultsSurfacePolicyController,
   foregroundPolicyPublicationAuthority,
 }: UseSearchRootControlAuthorityRuntimeArgs): SearchRootControlAuthorityRuntimeValue => {
   const foundationAuthorityRuntime = useSearchRootControlFoundationAuthorityRuntime({
@@ -40,7 +37,6 @@ export const useSearchRootControlAuthorityRuntime = ({
     profileBridgeAuthorityRuntime: foundationAuthorityRuntime.profileBridgeAuthorityRuntime,
     clearRestoreAuthorityRuntime: foundationAuthorityRuntime.clearRestoreAuthorityRuntime,
     autocompleteAuthorityRuntime: foundationAuthorityRuntime.autocompleteAuthorityRuntime,
-    resultsSurfacePolicyController,
     foregroundPolicyPublicationAuthority,
   });
   const autocompleteControlLane = React.useMemo(

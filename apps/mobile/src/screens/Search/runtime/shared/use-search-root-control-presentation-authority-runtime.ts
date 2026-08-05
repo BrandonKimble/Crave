@@ -14,7 +14,6 @@ import { useSearchRootResultsInteractionAuthorityRuntime } from './use-search-ro
 import { useSearchRootResultsPresentationAuthorityRuntime } from './use-search-root-results-presentation-authority-runtime';
 import type { SearchRootClearRestoreAuthorityRuntime } from './search-root-control-ports-runtime-contract';
 import type { SearchRootSessionCoreLane } from './use-search-root-session-runtime-contract';
-import type { ResultsSurfacePolicyController } from './results-surface-policy-controller';
 import type { SearchForegroundPolicyPublicationAuthority } from './search-foreground-policy-publication-authority';
 
 type UseSearchRootControlPresentationAuthorityRuntimeArgs = {
@@ -24,7 +23,6 @@ type UseSearchRootControlPresentationAuthorityRuntimeArgs = {
   profileBridgeAuthorityRuntime: SearchRootProfileBridgeAuthorityRuntime;
   clearRestoreAuthorityRuntime: SearchRootClearRestoreAuthorityRuntime;
   autocompleteAuthorityRuntime: SearchRootAutocompleteAuthorityRuntime;
-  resultsSurfacePolicyController?: ResultsSurfacePolicyController;
   foregroundPolicyPublicationAuthority?: SearchForegroundPolicyPublicationAuthority;
 };
 
@@ -42,7 +40,6 @@ export const useSearchRootControlPresentationAuthorityRuntime = ({
   profileBridgeAuthorityRuntime,
   clearRestoreAuthorityRuntime,
   autocompleteAuthorityRuntime,
-  resultsSurfacePolicyController,
   foregroundPolicyPublicationAuthority,
 }: UseSearchRootControlPresentationAuthorityRuntimeArgs): SearchRootControlPresentationAuthorityRuntime => {
   const resultsInteractionAuthorityRuntime = useSearchRootResultsInteractionAuthorityRuntime();
@@ -52,7 +49,6 @@ export const useSearchRootControlPresentationAuthorityRuntime = ({
     rootOverlayFoundationRuntime,
     profileBridgeAuthorityRuntime,
     clearRestoreAuthorityRuntime,
-    resultsSurfacePolicyController,
     foregroundPolicyPublicationAuthority,
   });
   const foregroundInputAuthorityRuntime = useSearchRootForegroundInputAuthorityRuntime({

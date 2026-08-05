@@ -8,7 +8,6 @@ import type {
 import type { SearchRootOverlayFoundationRuntime } from './search-root-overlay-foundation-runtime-contract';
 import type { SearchRootStateFoundationLane } from './use-search-root-foundation-runtime';
 import type { SearchRootSessionCoreLane } from './use-search-root-session-runtime-contract';
-import type { ResultsSurfacePolicyController } from './results-surface-policy-controller';
 import type { SearchForegroundPolicyPublicationAuthority } from './search-foreground-policy-publication-authority';
 import { deferMountedResultsCleanupUntilAfterDismiss } from './search-mounted-results-data-store';
 import { useResultsPresentationOwner } from './use-results-presentation-runtime-owner';
@@ -21,7 +20,6 @@ type UseSearchRootResultsPresentationAuthorityRuntimeArgs = {
   rootOverlayFoundationRuntime: SearchRootOverlayFoundationRuntime;
   profileBridgeAuthorityRuntime: SearchRootProfileBridgeAuthorityRuntime;
   clearRestoreAuthorityRuntime: SearchRootClearRestoreAuthorityRuntime;
-  resultsSurfacePolicyController?: ResultsSurfacePolicyController;
   foregroundPolicyPublicationAuthority?: SearchForegroundPolicyPublicationAuthority;
 };
 
@@ -31,7 +29,6 @@ export const useSearchRootResultsPresentationAuthorityRuntime = ({
   rootOverlayFoundationRuntime,
   profileBridgeAuthorityRuntime,
   clearRestoreAuthorityRuntime,
-  resultsSurfacePolicyController,
   foregroundPolicyPublicationAuthority,
 }: UseSearchRootResultsPresentationAuthorityRuntimeArgs): SearchRootResultsPresentationAuthorityRuntime => {
   const { rootPrimitivesRuntime, rootDataPlaneRuntime } = stateFoundationLane;
@@ -75,17 +72,7 @@ export const useSearchRootResultsPresentationAuthorityRuntime = ({
         ? Change
         : never
     ) => {
-      resultsSurfacePolicyController?.updateShellFacts({
-        hasActiveSearchContent: change.hasActiveSearchContent,
-        closeLaneState: change.closeTransitionState,
-        holdDockedLane: change.holdDockedLane,
-        surfaceVisualPolicy: change.surfaceVisualPolicy,
-      });
-      const policyFacts = sessionCoreLane.resultsPresentationAuthority.readPolicyFactsSnapshot(
-        sessionCoreLane.searchRuntimeBus.getPolicyFactsSnapshot()
-      );
-      const laneKind = change.searchSheetContentLane.kind;
-      if (laneKind === 'docked_scene') {
+      if (change.searchSheetContentLane.kind === 'docked_scene') {
         const transportSnapshot =
           sessionCoreLane.resultsPresentationAuthority.getSnapshot().resultsPresentationTransport;
         const activeRedrawTransactionId =
@@ -97,20 +84,8 @@ export const useSearchRootResultsPresentationAuthorityRuntime = ({
           deferMountedResultsCleanupUntilAfterDismiss('search_sheet_content_lane_docked_scene');
         }
       }
-      resultsSurfacePolicyController?.updatePanelInputs({
-        renderPolicy: policyFacts.renderPolicy,
-        allowsInteractionLoadingState:
-          laneKind !== 'results_closing' && laneKind !== 'docked_scene',
-        isSearchLoading: sessionCoreLane.searchRuntimeBus.getState().isSearchLoading,
-        freezeClassification: policyFacts.freezeClassification,
-        shouldUsePlaceholderRows: false,
-      });
     },
-    [
-      resultsSurfacePolicyController,
-      sessionCoreLane.resultsPresentationAuthority,
-      sessionCoreLane.searchRuntimeBus,
-    ]
+    [sessionCoreLane.resultsPresentationAuthority]
   );
   const resultsPresentationOwner = useResultsPresentationOwner({
     setActiveTab: rootPrimitivesRuntime.searchState.setActiveTab,

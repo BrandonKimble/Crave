@@ -3,8 +3,6 @@ import { shouldLogSearchNavSwitchProfilerSpanLogs } from './search-nav-switch-pe
 
 const JS_FLOOR_PROBE_PROFILER_SPAN_LOG_MIN_MS = 12;
 const NAV_SWITCH_PROFILER_LOG_MIN_MS = 4;
-const SHOULD_LOG_PROFILER = false;
-const PROFILER_MIN_MS = Number.POSITIVE_INFINITY;
 
 export const logSearchProfilerSpan = ({
   id,
@@ -38,13 +36,12 @@ export const logSearchProfilerSpan = ({
     startedAtMs: number;
   } | null;
 }): void => {
-  if (SHOULD_LOG_PROFILER && actualDuration >= PROFILER_MIN_MS) {
-    logger.debug(
-      `[SearchPerf] Profiler ${id} ${phase} actual=${actualDuration.toFixed(
-        1
-      )}ms base=${baseDuration.toFixed(1)}ms`
-    );
-  }
+  // F1042(2): a dead `SHOULD_LOG_PROFILER = false` / `PROFILER_MIN_MS = Infinity`
+  // branch used to sit here — two independent, undocumented kill switches with no
+  // caller and no way to enable them (unlike the blessed dormant map/stall
+  // instruments, which have a real threshold waiting behind their flag and are
+  // documented as intentionally dormant). This block was pure dead code duplicating
+  // the two live, param-driven branches below it. Deleted rather than repaired.
 
   if (
     shouldEmitProfilerSpanLog &&

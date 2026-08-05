@@ -12,14 +12,9 @@ export type SearchForegroundPolicyDomainSnapshot = {
   foregroundPolicyInputs: AppRouteSceneForegroundPolicyInputs;
 };
 
-export type SearchForegroundPolicyDomainDiagnostics = SearchForegroundPolicyDomainSnapshot & {
-  readyForPublication: boolean;
-};
-
 export type SearchForegroundPolicyDomainController = {
   getSnapshot: () => SearchForegroundPolicyDomainSnapshot;
   getForegroundPolicyInputs: () => AppRouteSceneForegroundPolicyInputs;
-  readDiagnostics: () => SearchForegroundPolicyDomainDiagnostics;
 };
 
 export const createSearchForegroundPolicyDomainController = ({
@@ -54,9 +49,5 @@ export const createSearchForegroundPolicyDomainController = ({
   return {
     getSnapshot,
     getForegroundPolicyInputs: () => getSnapshot().foregroundPolicyInputs,
-    readDiagnostics: () => ({
-      ...getSnapshot(),
-      readyForPublication: true,
-    }),
   };
 };

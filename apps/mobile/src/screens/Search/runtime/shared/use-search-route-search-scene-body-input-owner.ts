@@ -354,7 +354,16 @@ export const useSearchRouteSearchSceneBodyInputOwner = ({
       owner: 'search_surface_results_body_bundle_sync',
       path: 'structural',
       details: {
-        activeList: stableSceneBodyTransport.activeList,
+        // F1042(6): `stableSceneBodyTransport.activeList` is intentionally forced to
+        // `undefined` (this hook does not forward it downstream — the live consumer,
+        // BottomSheetSceneStackListBodySurface, reads the real primary/secondary
+        // identity from the published results-data-store snapshot instead). Logging
+        // that field here made the event structurally incapable of reporting anything
+        // but `null`. The real per-render decision is `rawSceneBodyTransport.activeList`
+        // (resolveSearchResultsBodyAdmission -> routeSearchSceneRenderRuntime.activeList),
+        // which is still in scope on this hook — read it directly so the attribution
+        // event can show RED (a mismatched/unexpected list identity).
+        activeList: rawSceneBodyTransportRef.current.activeList,
         // Instance identity: distinguishes a hook REMOUNT (new instance ids) from two
         // live instances PING-PONGING the latest-wins body bundle sync.
         bodyInputOwnerInstanceId: bodyInputOwnerInstanceIdRef.current,
@@ -366,13 +375,19 @@ export const useSearchRouteSearchSceneBodyInputOwner = ({
       sceneBodyTransport: stableSceneBodyTransport,
     });
     markSearchMountedBodyInputScenarioWorkSpan({
-      activeList: stableSceneBodyTransport.activeList,
+      activeList: rawSceneBodyTransportRef.current.activeList,
       durationMs: nowMs() - startedAtMs,
       handoffPhase: latestHandoffPhase,
       hydratedResultsKey: latestHydratedResultsKey,
       hydrationOperationId: null,
     });
-  }, [handoffPhaseRef, hydratedResultsKeyRef, stableSceneBodyContent, stableSceneBodyTransport]);
+  }, [
+    handoffPhaseRef,
+    hydratedResultsKeyRef,
+    rawSceneBodyTransportRef,
+    stableSceneBodyContent,
+    stableSceneBodyTransport,
+  ]);
   React.useEffect(() => {
     const targetSnapPointMiddle =
       targetSnapPoints == null || !Number.isFinite(targetSnapPoints.middle)
