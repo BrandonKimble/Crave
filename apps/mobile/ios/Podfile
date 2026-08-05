@@ -14,6 +14,22 @@ inhibit_all_warnings!
 
 prepare_react_native_project!
 
+# F1117: the Mapbox iOS SDK resolves from Mapbox's private CocoaPods endpoint, which
+# requires a MAPBOX_DOWNLOADS_TOKEN secret (conventionally in ~/.netrc) that nothing
+# in this repo documents or checks for. A missing token used to surface as a bare 401
+# deep inside `pod install`, reading as "the map dependency is broken" rather than
+# "you are missing a credential". Fail loud and named instead, with a pointer to the
+# doc (.claude/skills/service-access/references/http-only.md's Mapbox section).
+has_netrc_mapbox_entry = File.exist?(File.expand_path('~/.netrc')) &&
+  File.read(File.expand_path('~/.netrc')).include?('api.mapbox.com')
+unless ENV['MAPBOX_DOWNLOADS_TOKEN'] || has_netrc_mapbox_entry
+  Pod::UI.warn(
+    'F1117: no MAPBOX_DOWNLOADS_TOKEN env var and no api.mapbox.com entry in ' \
+    '~/.netrc. `pod install` will 401 fetching the Mapbox iOS SDK. See the Mapbox ' \
+    'download-token setup in .claude/skills/service-access/references/http-only.md.'
+  )
+end
+
 # Map-platform upgrade (Phase 0): pin the Mapbox iOS SDK to 11.26.0-rc.1 to unlock
 # ViewAnnotation.enableSymbolLayerCollision + variableAnchors (our labels win over
 # basemap). rnmapbox 10.3.x reads this override (the 10.2.x ~> 11.16.2 hardcode is gone).

@@ -25,7 +25,6 @@ export const useProfileOwnerActionStatePortsRuntime = ({
   ProfileActionExecutionPorts,
   | 'setDismissBehavior'
   | 'setShouldClearSearchOnDismiss'
-  | 'capturePreviousForegroundUiRestoreStateIfAbsent'
   | 'capturePreparedProfileTransitionSnapshot'
   | 'setNextFocusSession'
   | 'setMultiLocationZoomBaseline'
@@ -43,7 +42,6 @@ export const useProfileOwnerActionStatePortsRuntime = ({
         setProfileShouldClearSearchOnDismiss,
         setProfileMultiLocationZoomBaseline,
       },
-      foregroundRuntimeState: { capturePreviousForegroundUiRestoreStateIfAbsent },
     },
     hydrationRuntime: { seedRestaurantProfile },
     focusRuntime: { setRestaurantFocusSession },
@@ -53,7 +51,6 @@ export const useProfileOwnerActionStatePortsRuntime = ({
     () => ({
       setDismissBehavior: setProfileDismissBehavior,
       setShouldClearSearchOnDismiss: setProfileShouldClearSearchOnDismiss,
-      capturePreviousForegroundUiRestoreStateIfAbsent,
       capturePreparedProfileTransitionSnapshot,
       setNextFocusSession: setRestaurantFocusSession,
       setMultiLocationZoomBaseline: setProfileMultiLocationZoomBaseline,
@@ -68,7 +65,6 @@ export const useProfileOwnerActionStatePortsRuntime = ({
     }),
     [
       capturePreparedProfileTransitionSnapshot,
-      capturePreviousForegroundUiRestoreStateIfAbsent,
       hydrateRestaurantProfileById,
       nativeExecutionModel.transitionExecutionModel,
       setMapHighlightedRestaurantId,

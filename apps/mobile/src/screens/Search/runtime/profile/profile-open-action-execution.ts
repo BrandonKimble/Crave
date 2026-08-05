@@ -40,9 +40,7 @@ export const executeProfileOpenPresentationPlan = ({
 }): void => {
   ports.setDismissBehavior(plan.dismissBehavior);
   ports.setShouldClearSearchOnDismiss(plan.shouldClearSearchOnDismiss);
-  const savedForegroundUiState = ports.prepareForegroundUiForProfileOpen({
-    captureSaveSheetState: true,
-  });
+  ports.prepareForegroundUiForProfileOpen();
   ports.capturePreparedProfileTransitionSnapshot(transitionSnapshotCapture);
   if (plan.nextFocusSession) {
     ports.setNextFocusSession(plan.nextFocusSession);
@@ -56,7 +54,6 @@ export const executeProfileOpenPresentationPlan = ({
     selectedLocationId: plan.selectedLocationId,
   });
   ports.openPreparedProfilePresentation(restaurant.restaurantId, plan.targetCamera);
-  ports.capturePreviousForegroundUiRestoreStateIfAbsent(savedForegroundUiState);
   ports.hydrateRestaurantProfileById(restaurant.restaurantId);
   if (plan.shouldTrackRestaurantView) {
     ports.deferRecentlyViewedTrack(restaurant.restaurantId, restaurant.restaurantName);

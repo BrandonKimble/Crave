@@ -2203,11 +2203,16 @@ the trap note itself is deleted. Going back to prebuild is a real migration
   no pure kernel to test, and `plans/android-parity.md` §5 is its home.
 - `android/` — a Java parity port, **frozen 2026-06-17, no build profile, no
   Mapbox download token, never compiled by anything** (F1110); D52 ruled REWRITE,
-  not repair (`plans/android-parity.md`). **Corrected counts (F1704): 57 tracked
-  files, of which 16 are `.java` totalling 11,684 lines** — the long-quoted
-  "34 files / ~11,150 lines" was never re-measured. F1705 re-verified the plan's
-  drift table exactly (11 iOS externs vs 8 Java `@ReactMethod`; 6 shared, 5
-  iOS-only, 2 Java-only dead names; zero `MapLod`/`TrackScroll` hits; zero
+  not repair (`plans/android-parity.md`). **Corrected counts (re-measured 2026-08-05,
+  F1704 phase-3 close): 56 tracked files, of which 15 are `.java` totalling 11,231
+  lines** — F1704's own "57 files / 16 `.java` / 11,684 lines" is itself now stale
+  (`SearchChromeScalarSurfaceRegistryModule.java`, the third F1068 scalar-surface
+  copy F1704 flagged, has since been deleted by another pass), which is itself the
+  same lesson one level down from the long-quoted, never-re-measured "34 files /
+  ~11,150 lines" F1704 originally corrected. Re-derive this count at the moment it's
+  used (`git ls-files apps/mobile/android`), don't quote it forward. F1705
+  re-verified the plan's drift table exactly (11 iOS externs vs 8 Java `@ReactMethod`;
+  6 shared, 5 iOS-only, 2 Java-only dead names; zero `MapLod`/`TrackScroll` hits; zero
   `android` keys in eas.json; nothing invokes `gradlew`).
 
 **How JS reaches native.** Every Swift module is bridged from ONE file,

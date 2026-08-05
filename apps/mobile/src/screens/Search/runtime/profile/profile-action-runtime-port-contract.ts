@@ -1,7 +1,6 @@
 import type { Coordinate, MapBounds, RestaurantResult, SearchResponse } from '../../../../types';
 import type {
   CameraSnapshot,
-  ProfileForegroundUiRestoreState,
   ProfileTransitionSnapshotCapture,
   ProfileTransitionStatus,
   RestaurantFocusSession,
@@ -15,17 +14,10 @@ import type {
   SearchProfileSource,
 } from './profile-action-model-contract';
 
-export type { ProfileForegroundUiRestoreState } from '../../../../navigation/runtime/app-route-profile-transition-state-contract';
-
 export type ProfileActionExecutionPorts = {
-  prepareForegroundUiForProfileOpen: (options?: {
-    captureSaveSheetState?: boolean;
-  }) => ProfileForegroundUiRestoreState | null;
+  prepareForegroundUiForProfileOpen: () => void;
   setDismissBehavior: (dismissBehavior: 'restore' | 'clear') => void;
   setShouldClearSearchOnDismiss: (shouldClearSearchOnDismiss: boolean) => void;
-  capturePreviousForegroundUiRestoreStateIfAbsent: (
-    restoreState: ProfileForegroundUiRestoreState | null
-  ) => void;
   capturePreparedProfileTransitionSnapshot: (
     snapshotCapture: ProfileTransitionSnapshotCapture
   ) => void;

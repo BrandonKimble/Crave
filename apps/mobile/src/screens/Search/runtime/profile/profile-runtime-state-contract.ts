@@ -2,7 +2,6 @@ import type { SearchRuntimeProfileShellState } from '../shared/search-runtime-bu
 import type { RestaurantProfileSeed } from '../../../../navigation/runtime/app-route-profile-transition-state-contract';
 import type { ProfileAutoOpenRuntimeState } from './profile-auto-open-runtime-state';
 import type { ProfileCloseFinalizationRuntimeState } from './profile-close-finalization-runtime-state';
-import type { ProfileCloseForegroundRuntimeState } from './profile-close-foreground-runtime-state';
 import type { ProfileClosePolicyRuntimeState } from './profile-close-policy-runtime-state';
 import type { ProfileFocusRuntimeState } from './profile-focus-runtime-state';
 import type { ProfileShellStatePublisher } from './profile-shell-state-publisher';
@@ -10,7 +9,6 @@ import type { ProfileTransitionRuntimeState } from './profile-transition-runtime
 
 export type ProfileCloseRuntimeState = {
   policyRuntimeState: ProfileClosePolicyRuntimeState;
-  foregroundRuntimeState: ProfileCloseForegroundRuntimeState;
   finalizationRuntimeState: ProfileCloseFinalizationRuntimeState;
 };
 

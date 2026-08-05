@@ -1,5 +1,4 @@
 import type {
-  ProfileForegroundUiRestoreState,
   ProfileTransitionState,
   RestaurantFocusSession,
   HydratedRestaurantProfile,
@@ -17,7 +16,6 @@ export type ProfileCloseState = {
   multiLocationZoomBaseline: number | null;
   dismissBehavior: 'restore' | 'clear';
   shouldClearSearchOnDismiss: boolean;
-  previousForegroundUiRestoreState: ProfileForegroundUiRestoreState | null;
 };
 
 type ProfileRuntimeState = {
@@ -49,7 +47,6 @@ const createInitialProfileCloseState = (): ProfileCloseState => ({
   multiLocationZoomBaseline: null,
   dismissBehavior: 'restore',
   shouldClearSearchOnDismiss: false,
-  previousForegroundUiRestoreState: null,
 });
 
 const createInitialProfileRuntimeState = (): ProfileRuntimeState => ({

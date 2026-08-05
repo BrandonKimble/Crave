@@ -58,5 +58,3 @@ export type ProfileTransitionState = {
   status: ProfileTransitionStatus;
   savedResultsScrollOffset: number | null;
 };
-
-export type ProfileForegroundUiRestoreState = unknown;

@@ -25,32 +25,30 @@ export const useProfileAppForegroundExecutionRuntime = ({
 }: UseProfileAppForegroundExecutionRuntimeArgs): ProfileAppForegroundExecutionRuntime => {
   const { dismissSearchInteractionUi, ensureInitialCameraReady } = foregroundExecutionArgs;
 
-  const prepareForegroundUiForProfileOpen = React.useCallback(
-    (options?: { captureSaveSheetState?: boolean }) => {
-      // S-C.3-B step 3 (ledger item 10): the ensureAppSearchRouteSearchScene re-root is
-      // DELETED — a restaurant profile opens as a push over whatever is on the stack; the
-      // root persists (entries-as-values).
-      dismissTransientOverlays();
-      dismissSearchInteractionUi();
-      ensureInitialCameraReady();
-      const { saveSheetState } = routeOverlayCommandAuthority.getSnapshot();
-      if (options?.captureSaveSheetState && saveSheetState.visible) {
-        const previousSaveSheetState = saveSheetState;
-        routeOverlayCommandActions.setSaveSheetState((prev) => ({
-          ...prev,
-          visible: false,
-        }));
-        return previousSaveSheetState;
-      }
-      return null;
-    },
-    [
-      dismissSearchInteractionUi,
-      ensureInitialCameraReady,
-      routeOverlayCommandActions,
-      routeOverlayCommandAuthority,
-    ]
-  );
+  const prepareForegroundUiForProfileOpen = React.useCallback(() => {
+    // S-C.3-B step 3 (ledger item 10): the ensureAppSearchRouteSearchScene re-root is
+    // DELETED — a restaurant profile opens as a push over whatever is on the stack; the
+    // root persists (entries-as-values).
+    dismissTransientOverlays();
+    dismissSearchInteractionUi();
+    ensureInitialCameraReady();
+    // F1055 / D50 (2026-08-03): a profile open always dismisses the save sheet — it does
+    // NOT come back on close (finish-or-cancel). The prior capture-and-maybe-restore
+    // machinery had no reader on the restore side (verified repo-wide, zero call sites)
+    // and is deleted; this hide is unconditional.
+    const { saveSheetState } = routeOverlayCommandAuthority.getSnapshot();
+    if (saveSheetState.visible) {
+      routeOverlayCommandActions.setSaveSheetState((prev) => ({
+        ...prev,
+        visible: false,
+      }));
+    }
+  }, [
+    dismissSearchInteractionUi,
+    ensureInitialCameraReady,
+    routeOverlayCommandActions,
+    routeOverlayCommandAuthority,
+  ]);
 
   return React.useMemo<ProfileAppForegroundExecutionRuntime>(
     () => ({

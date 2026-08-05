@@ -207,8 +207,17 @@ and expensive to discover in stage 4.
 
 ### Stage 2 — Delete the Java mirror
 
-The moment stage 1's regenerated skeleton lands and compiles, `git rm` the 34 tracked
-Java files (~11.2k lines). **Timing is the point:** not before (the mirror is the only
+The moment stage 1's regenerated skeleton lands and compiles, `git rm` the tracked
+files under `apps/mobile/android` — 56 tracked files as of 2026-08-05 (`git ls-files
+apps/mobile/android | wc -l`), of which 15 are `.java` totalling 11,231 lines
+(re-measured; supersedes the earlier "34 files / ~11.2k lines" and F1704's "57 files /
+16 .java / 11,684 lines" — `SearchChromeScalarSurfaceRegistryModule.java`, the third
+copy of the F1068 scalar surface F1704 flagged, has since been deleted by another
+pass, accounting for the delta). Re-measure again at execution time — this number
+drifts. 22 of the tracked files are binary assets (launcher/splash PNGs, the debug
+keystore, `gradle-wrapper.jar`) that a regenerated Expo prebuild will re-emit; order
+regenerate-then-delete so those aren't deleted and re-added in the same diff.
+**Timing is the point:** not before (the mirror is the only
 existing reference for how someone previously read the map controller, and deleting it
 while nothing compiles leaves the tree with _neither_), and not never (F1110's core
 harm is that every map grep returns two answers and every iOS change presents as "and

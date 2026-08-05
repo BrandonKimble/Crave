@@ -13,7 +13,6 @@ export const finalizePreparedProfileCloseRecord = ({
   clearRestaurantPanelSnapshot();
   resetRestaurantFocusSession();
   controllerState.runtime.close.multiLocationZoomBaseline = null;
-  controllerState.runtime.close.previousForegroundUiRestoreState = null;
   controllerState.runtime.close.dismissBehavior = 'restore';
   controllerState.runtime.close.shouldClearSearchOnDismiss = false;
   resetProfileTransitionState(controllerState.runtime.transition);
@@ -50,17 +49,4 @@ export const setProfileMultiLocationZoomBaselineOnRecord = (
   multiLocationZoomBaseline: number | null
 ): void => {
   controllerState.runtime.close.multiLocationZoomBaseline = multiLocationZoomBaseline;
-};
-
-export const getPreviousForegroundUiRestoreStateFromRecord = (
-  controllerState: ProfileControllerState
-) => controllerState.runtime.close.previousForegroundUiRestoreState;
-
-export const capturePreviousForegroundUiRestoreStateIfAbsentOnRecord = (
-  controllerState: ProfileControllerState,
-  restoreState: ProfileControllerState['runtime']['close']['previousForegroundUiRestoreState']
-): void => {
-  if (restoreState && !controllerState.runtime.close.previousForegroundUiRestoreState) {
-    controllerState.runtime.close.previousForegroundUiRestoreState = restoreState;
-  }
 };

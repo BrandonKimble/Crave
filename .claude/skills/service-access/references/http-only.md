@@ -30,6 +30,20 @@ curl -s "https://api.mapbox.com/tokens/v2?access_token=$MAPBOX_TOKEN" | jq .
 ⚠️ It's an `EXPO_PUBLIC_` var — it ships in the client bundle and is public by
 design. Scope-limited, but never treat it as a secret.
 
+**A SEPARATE, undocumented secret gates `pod install` (F1117).** The Mapbox iOS
+SDK resolves from Mapbox's private CocoaPods maven, which requires a
+`MAPBOX_DOWNLOADS_TOKEN` — distinct from the public runtime token above, and
+NOT the same credential. Conventionally it lives in `~/.netrc` as an
+`api.mapbox.com` entry (Mapbox's own docs: log in at mapbox.com → Account →
+tokens → create a "Downloads:Read" scoped secret token → add to `~/.netrc`
+as `machine api.mapbox.com login mapbox password <secret-token>`), or export
+`MAPBOX_DOWNLOADS_TOKEN` before running `pod install`. Without it, `pod
+install` 401s deep inside CocoaPods dependency resolution — it reads as "the
+map dependency is broken", not "you're missing a credential". The Podfile
+carries a preflight check (`apps/mobile/ios/Podfile`, tagged `F1117`) that
+warns loudly and points back here if neither is present, so a fresh machine
+or CI worker gets a named error instead of a bare 401.
+
 The custom iOS map is **shipped and precious** (~9.7k lines). Don't make map
 changes as a side effect of anything else.
 

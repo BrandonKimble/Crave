@@ -1,7 +1,6 @@
 import React from 'react';
 
 import { useProfileCloseFinalizationRuntimeState } from './profile-close-finalization-runtime-state';
-import { useProfileCloseForegroundRuntimeState } from './profile-close-foreground-runtime-state';
 import { useProfileClosePolicyRuntimeState } from './profile-close-policy-runtime-state';
 import type { ProfileControllerState } from './profile-runtime-state-record';
 import type { ProfileCloseRuntimeState } from './profile-runtime-state-contract';
@@ -22,9 +21,6 @@ export const useProfileCloseRuntimeStateOwner = ({
   const closePolicyRuntimeState = useProfileClosePolicyRuntimeState({
     profileControllerStateRef,
   });
-  const closeForegroundRuntimeState = useProfileCloseForegroundRuntimeState({
-    profileControllerStateRef,
-  });
   const closeFinalizationRuntimeState = useProfileCloseFinalizationRuntimeState({
     profileControllerStateRef,
     clearRestaurantPanelSnapshot,
@@ -35,9 +31,8 @@ export const useProfileCloseRuntimeStateOwner = ({
   return React.useMemo(
     () => ({
       policyRuntimeState: closePolicyRuntimeState,
-      foregroundRuntimeState: closeForegroundRuntimeState,
       finalizationRuntimeState: closeFinalizationRuntimeState,
     }),
-    [closeFinalizationRuntimeState, closeForegroundRuntimeState, closePolicyRuntimeState]
+    [closeFinalizationRuntimeState, closePolicyRuntimeState]
   );
 };

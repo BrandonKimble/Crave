@@ -35,7 +35,6 @@ export type {
   ProfileActionExecutionPorts,
   ProfileActionRuntime,
   ProfileAutoOpenActionExecutionPorts,
-  ProfileForegroundUiRestoreState,
   ProfileRefreshSelectionExecutionPorts,
 } from './profile-action-runtime-port-contract';
 export type {

@@ -1,9 +1,5 @@
-import type { ProfileForegroundUiRestoreState } from './app-route-profile-transition-state-contract';
-
 export type ProfileAppForegroundExecutionRuntime = {
-  prepareForegroundUiForProfileOpen: (options?: {
-    captureSaveSheetState?: boolean;
-  }) => ProfileForegroundUiRestoreState | null;
+  prepareForegroundUiForProfileOpen: () => void;
 };
 
 // L3 slice 4: the machine's route-intent + close-finalization arms are DELETED — the
