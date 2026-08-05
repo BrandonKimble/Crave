@@ -18,9 +18,8 @@ import {
 // computed chrome geometry + its jest contracts consume them there); re-exported here
 // so style consumers keep their import path.
 export * from './overlay-chrome-metrics';
-// Route overlay layer order: search chrome < dim scrim < sheet < bottom nav.
+// Route overlay layer order: search chrome < sheet < bottom nav.
 export const OVERLAY_CHROME_ZINDEX = 10;
-export const OVERLAY_BACKDROP_SCRIM_ZINDEX = 80;
 export const OVERLAY_STACK_ZINDEX = 90;
 export const OVERLAY_NAV_SILHOUETTE_ZINDEX = 120;
 

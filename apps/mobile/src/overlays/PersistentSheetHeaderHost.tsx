@@ -349,6 +349,7 @@ export const PersistentSheetHeaderHost: React.FC<{
         onGrabHandlePress={grabHandleHidden ? undefined : promoteActiveSheet}
         grabHandleAccessibilityLabel="Expand sheet"
         grabHandleHidden={grabHandleHidden}
+        sceneKey={sceneKey}
       />
       {StripContent != null ? (
         // HEADER-EXTENSION STRIP MOUNT (audit D4.2): the band renders directly under the

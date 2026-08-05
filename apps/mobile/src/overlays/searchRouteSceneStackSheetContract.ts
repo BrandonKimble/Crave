@@ -1,8 +1,4 @@
 import type {
-  SearchRouteOverlaySheetPolicy,
-  SearchRouteOverlayRouteScope,
-} from './searchRouteOverlayRuntimeContract';
-import type {
   SearchRouteInlineSceneChromePublication,
   SearchRouteMountedSceneChromeSurface,
   SearchRouteSceneBodyContentSpec,
@@ -46,12 +42,6 @@ export type SearchRouteSceneStackChromeEntry = {
   overlayComponent: SearchRouteInlineSceneChromePublication['overlayComponent'];
 };
 
-export type SearchRouteSceneStackSheetSceneProps = {
-  overlayRouteScope: SearchRouteOverlayRouteScope;
-  overlaySheetPolicy: SearchRouteOverlaySheetPolicy;
-  activeSceneFrameEntry: SearchRouteSceneStackFrameEntry;
-};
-
 export type SearchRouteSceneStackPresentationState = {
   sheetTranslateY: SharedValue<number>;
   sheetScrollOffset: SharedValue<number>;
@@ -69,11 +59,6 @@ export type SearchRouteSceneStackChromeVisualState = {
   navSilhouetteSheetExclusionModeValue:
     | SharedValue<AppRouteNavSilhouetteSheetExclusionModeValue>
     | DerivedValue<AppRouteNavSilhouetteSheetExclusionModeValue>;
-};
-
-export type SearchRouteSceneStackSheetSurfaceProps = SearchRouteSceneStackSheetSceneProps & {
-  presentationState: SearchRouteSceneStackPresentationState;
-  chromeVisualState: SearchRouteSceneStackChromeVisualState;
 };
 
 export const areSearchRouteSceneStackBodyContentEntriesEqual = (

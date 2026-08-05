@@ -17,9 +17,6 @@ export type HomeShelfRow =
   | { kind: 'shelf'; shelfKey: string; title: string; shelf: HomeShelf }
   | { kind: 'cityPicker'; shelfKey: 'city_picker'; title: string; cities: HomeFeedCity[] };
 
-export const HOME_SHELF_ROW_TYPE_SHELF = 'shelf';
-export const HOME_SHELF_ROW_TYPE_CITY_PICKER = 'cityPicker';
-
 export const buildHomeShelfRows = (feed: HomeFeedResponse | null): HomeShelfRow[] => {
   if (feed == null) {
     return [];

@@ -6,14 +6,14 @@ export type BottomSheetSharedPublicationSnapshot = {
 
 type BottomSheetSharedPublicationListener = () => void;
 
-export type BottomSheetSharedPublicationInputAuthority = {
+type BottomSheetSharedPublicationInputAuthority = {
   setEffectiveShowsVerticalScrollIndicator: (value: boolean) => void;
   setScrollHeaderHeight: (value: number) => void;
   resetScrollHeaderHeight: () => void;
   setTouchBlockingEnabled: (value: boolean) => void;
 };
 
-export type BottomSheetSharedPublicationOutputAuthority = {
+type BottomSheetSharedPublicationOutputAuthority = {
   subscribe: (listener: BottomSheetSharedPublicationListener) => () => void;
   getSnapshot: () => BottomSheetSharedPublicationSnapshot;
 };
@@ -23,7 +23,10 @@ export type BottomSheetSharedTouchBlockingAuthority = {
   getSnapshot: () => boolean;
 };
 
-export class BottomSheetSharedPublicationController {
+// F1496: not exported — the factory below (createBottomSheetSharedPublicationController)
+// is the only sanctioned construction point and its return type is inferred from it; the
+// class name itself had zero external importers (repo-wide grep confirmed).
+class BottomSheetSharedPublicationController {
   private snapshot: BottomSheetSharedPublicationSnapshot;
 
   private readonly layoutListeners = new Set<BottomSheetSharedPublicationListener>();

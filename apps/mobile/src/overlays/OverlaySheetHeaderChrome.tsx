@@ -40,6 +40,10 @@ type OverlaySheetHeaderChromeProps = {
   /** W4 (scene-foundation `grabHandle: 'hidden'`): suppresses the handle bar AND its
    *  cutout entirely (full-page-illusion scenes — settings is the first consumer). */
   grabHandleHidden?: boolean;
+  /** F1493: the row bark below is keyed by this, not by the measured height — two
+   *  different broken scenes that happen to lay out at the same height must NOT
+   *  silence each other. */
+  sceneKey: string;
 };
 
 const PADDING_TOP = 0;
@@ -55,6 +59,9 @@ const PADDING_HORIZONTAL = OVERLAY_HORIZONTAL_PADDING;
 // clips it. THAT is falsifiable, and it is the exact defect the constants can suffer.
 // RED recipe: bump OVERLAY_HEADER_CLOSE_BUTTON_SIZE's contribution here (or render a
 // taller actionButton) and this barks on first present.
+// F1493: keyed by sceneKey (the name's own claim), not by the measured height — two
+// different broken scenes that happen to lay out at the same height must not silence
+// each other, and one scene oscillating sub-pixel must not grow this set unbounded.
 const barkedRowGeometryScenes = new Set<string>();
 
 const DEFAULT_MASK_PADDING = 2;
@@ -98,6 +105,7 @@ const OverlaySheetHeaderChrome: React.FC<OverlaySheetHeaderChromeProps> = ({
   onGrabHandlePress,
   grabHandleAccessibilityLabel = 'Close sheet',
   grabHandleHidden = false,
+  sceneKey,
 }) => {
   const { width: windowWidth } = useWindowDimensions();
 
@@ -116,21 +124,24 @@ const OverlaySheetHeaderChrome: React.FC<OverlaySheetHeaderChromeProps> = ({
     if (Math.abs(measuredRowHeight - OVERLAY_HEADER_CLOSE_BUTTON_SIZE) <= 0.5) {
       return;
     }
-    // Per DISTINCT measured height, not once per app lifetime: a second, differently
-    // broken row must not be silenced by the first.
-    const barkKey = measuredRowHeight.toFixed(2);
-    if (barkedRowGeometryScenes.has(barkKey)) {
+    // F1493: per DISTINCT SCENE, not once per app lifetime — a second, differently broken
+    // scene must not be silenced by the first. (Previously keyed by the measured height
+    // itself, which let two different broken scenes at the same height silence each
+    // other, and let one scene oscillating sub-pixel across rotation/font-scale add an
+    // unbounded number of entries.)
+    if (barkedRowGeometryScenes.has(sceneKey)) {
       return;
     }
-    barkedRowGeometryScenes.add(barkKey);
+    barkedRowGeometryScenes.add(sceneKey);
     // eslint-disable-next-line no-console
     console.error(
-      `[CHROME-GEOMETRY] the sheet header ROW laid out at ${measuredRowHeight}px but the ` +
-        `declared chrome sum assumes OVERLAY_HEADER_CLOSE_BUTTON_SIZE (${OVERLAY_HEADER_CLOSE_BUTTON_SIZE}px) — ` +
+      `[CHROME-GEOMETRY] scene '${sceneKey}': the sheet header ROW laid out at ` +
+        `${measuredRowHeight}px but the declared chrome sum assumes ` +
+        `OVERLAY_HEADER_CLOSE_BUTTON_SIZE (${OVERLAY_HEADER_CLOSE_BUTTON_SIZE}px) — ` +
         `OVERLAY_TAB_HEADER_HEIGHT is now stale and the pinned header box is CLIPPING this row ` +
         `(overlay-chrome-metrics.ts).`
     );
-  }, []);
+  }, [sceneKey]);
 
   const cutoutBackground = React.useMemo(() => {
     const maskHeight = headerHeight + maskPadding * 2;
