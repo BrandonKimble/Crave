@@ -20,6 +20,7 @@ import {
   type ResultsPresentationFreezePolicyFacts,
 } from './results-presentation-policy-facts-resolver';
 import { logPerfScenarioStackAttribution } from '../../../../perf/perf-scenario-attribution';
+import { logger } from '../../../../utils/logger';
 export type SearchRuntimeActiveTab = 'dishes' | 'restaurants';
 export type SearchRuntimeSearchMode = 'natural' | 'shortcut' | null;
 /** S4c token economy: the phase of the world currently being presented. Published by
@@ -307,23 +308,33 @@ export class SearchRuntimeBus {
     const startedAt = resolveSearchRuntimeBusPerfNow();
     let notifiedListenerCount = 0;
     const notifiedListenerLabels: string[] = [];
+    // F1004: one listener's throw must not abort delivery to the rest of the fan-out —
+    // otherwise a single bad subscriber silently freezes an arbitrary subset of the search
+    // surface while `version` has already advanced, desyncing the bus from what it believes
+    // it published. Each listener is isolated; a throw is logged loudly and the loop continues.
+    const invokeListener = (listener: SearchRuntimeBusListener, debugLabel: string | null) => {
+      notifiedListenerCount += 1;
+      if (debugLabel != null) {
+        notifiedListenerLabels.push(debugLabel);
+      }
+      try {
+        listener();
+      } catch (error) {
+        logger.warn('[search-runtime-bus] listener threw during notify; continuing fan-out', {
+          debugLabel,
+          error,
+        });
+      }
+    };
     this.listeners.forEach((listenerRecord, listener) => {
       const { observedKeys, debugLabel } = listenerRecord;
       if (observedKeys == null || changedKeys == null) {
-        notifiedListenerCount += 1;
-        if (debugLabel != null) {
-          notifiedListenerLabels.push(debugLabel);
-        }
-        listener();
+        invokeListener(listener, debugLabel);
         return;
       }
       for (const key of observedKeys) {
         if (changedKeys.has(key)) {
-          notifiedListenerCount += 1;
-          if (debugLabel != null) {
-            notifiedListenerLabels.push(debugLabel);
-          }
-          listener();
+          invokeListener(listener, debugLabel);
           return;
         }
       }

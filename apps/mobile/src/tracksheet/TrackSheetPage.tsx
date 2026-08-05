@@ -26,6 +26,7 @@ import {
   shouldConsumeTrackSettle,
   type TrackNativeSettleEvent,
 } from './track-settle-fact';
+import { trackNativeDeclaresCapability } from './track-native-contract';
 import { FrostedGlassBackground } from '../components/FrostedGlassBackground';
 import { TOGGLE_STRIP_BAND_HEIGHT } from '../toggles/toggle-strip-metrics';
 import { overlaySheetStyles } from '../overlays/overlaySheetStyles';
@@ -53,7 +54,6 @@ import {
 import { TrackSheetDockedStrip } from './TrackSheetStrip';
 import type { TrackEntryKey } from './track-entry-identity';
 import { computeOutgoingScroll, TrackEntryScrollMemory } from './track-entry-scroll-memory';
-import { resolveSnapRetryDecision } from './track-motion-authority';
 import { executeEntrySwitch, planEntrySwitch, TrackRestoreCoordinator } from './track-entry-switch';
 
 // ─── TrackSheetPage — THE sheet-page standard ──────────────────────────────────
@@ -261,6 +261,12 @@ export type TrackSheetPageProps = {
    * Commanded flights flip pending at the command (willMove), so this covers
    * exactly the gesture half. */
   onDragBegin?: () => void;
+  /** G-A11Y — THE DESTINATION HEADER. The screen-reader cursor must land on the
+   * incoming page's header on a switch, never stay stranded mid-list in the page
+   * that just left. The page owns which chrome layer is PRESENTED this commit
+   * (they are all mounted and opacity-flipped), so it points this ref at that
+   * layer; the host's announcer resolves it to a node handle and focuses it. */
+  headerFocusRef?: React.MutableRefObject<unknown>;
 };
 
 export function TrackSheetPage({
@@ -285,6 +291,7 @@ export function TrackSheetPage({
   onGestureSettle,
   onSettle,
   onDragBegin,
+  headerFocusRef,
 }: TrackSheetPageProps): React.ReactElement {
   // Pagination signals route to the PRESENTED leg only (hidden legs emit no
   // scroll events anyway; this keeps the physics hook identity stable).
@@ -594,6 +601,13 @@ export function TrackSheetPage({
     if (physicsModule == null) {
       return undefined;
     }
+    // ASK BEFORE SUBSCRIBING: a binary that predates the settle event throws a
+    // native "not a supported event type" error from addListener, and that text
+    // buries the contract bark that actually names the fix. The bark has already
+    // fired by now; staying silent here keeps it the only message on screen.
+    if (!trackNativeDeclaresCapability(physicsModule, 'settleEvent')) {
+      return undefined;
+    }
     const emitter = new NativeEventEmitter(physicsModule);
     const sub = emitter.addListener(
       'trackDidSettle',
@@ -642,7 +656,7 @@ export function TrackSheetPage({
   // It was SUPERSEDED, not forgotten: the host's own note says "THE PARALLEL SEAT IS
   // DELETED — the track host registers as the 'sheetHost' motion target and consumes
   // the descriptor table's commands". That path is live below (motionCommandValue /
-  // registerSheetMotionTarget / the pendingSnapTimer command lane). This corpse was
+  // registerSheetMotionTarget / the motion-command lane). This corpse was
   // left mounted beside it, carrying some of the file's hardest-won comments — which is
   // exactly why it was dangerous: a reader debugging posture would have read the
   // seat's reasoning as current and edited dead code.
@@ -655,10 +669,6 @@ export function TrackSheetPage({
   // target must die the moment a finger lands, or its spring and the drag fight for a
   // few frames ("bounces back, then continues once it realizes I'm swiping").
 
-  const pendingSnapTimer = React.useRef<ReturnType<typeof setTimeout> | null>(null);
-  /** One live retry loop at a time: each snapToTau call mints an id; a stale
-   * loop's async native answer is dropped instead of scheduling a retry. */
-  const snapLoopIdRef = React.useRef(0);
   React.useEffect(() => {
     if (commandsRef == null) {
       return;
@@ -675,110 +685,53 @@ export function TrackSheetPage({
           computeOutgoingScroll(tau.value, trackH, physics.sigma.value)
         );
       },
-      // RETRYING SNAP (anti-trap, 2026-07-26): a scrollToOffset issued before the
-      // recycler lays out is a silent no-op — the sheet sat at τ=0 while the OLD
-      // sheet rendered the same page above it, and every visual check read the
-      // wrong layer. Retry until τ actually reaches the target (or attempts cap).
+      // ONE COMMAND, ONE ANSWER (the 12x200ms retry loop is DELETED — see
+      // track-motion-authority.ts for the full derivation). JS issues the
+      // intent exactly once and reports what the ENGINE said: a refusal (THE
+      // FINGER OWNS TAU — never re-issued against the user's own posture
+      // choice), and the excursion generation the engine minted. Arrival is not
+      // JS's to infer: trackDidSettle states it. If no answer ever comes, the
+      // LIVENESS BACKSTOP degrades the episode once (track-motion-deadline.ts)
+      // — a bounded degrade, never a stream of stale commands.
       snapToTau: (commandTarget, onOutcome) => {
-        if (pendingSnapTimer.current != null) {
-          clearTimeout(pendingSnapTimer.current);
-          pendingSnapTimer.current = null;
+        const nativePhysics = NativeModules.TrackScrollPhysics;
+        const tag = trackTagRef.current;
+        // THE HIDDEN INTENT goes to its own native entry point: JS names the
+        // intent, the engine derives the depth from its live bounds and answers
+        // with the τ it aimed at. A binary without snapToHidden is a CONTRACT
+        // failure, barked at attach (track-native-contract.ts) — never silently
+        // degraded into a JS-computed pixel target here.
+        const hidden = commandTarget === 'hidden';
+        const issue =
+          tag == null
+            ? null
+            : hidden
+              ? nativePhysics?.snapToHidden?.(tag)
+              : nativePhysics?.snapTo?.(tag, commandTarget);
+        if (issue == null) {
+          // No native engine (tests / pre-attach). A detent command still has
+          // the fire-and-forget wrapper; the hidden intent has no JS fallback by
+          // construction (its target is native-only).
+          if (!hidden && typeof commandTarget === 'number') {
+            physics.snapToTau(commandTarget);
+          }
+          return;
         }
-        // Native spring settle (TrackScrollKit snapTo) — retry until τ moves
-        // (a pre-attach call is a no-op; the recycler may still be mounting).
-        // PROVENANCE (F874, 2026-08-03): 12 x 200ms = a 2.4s ceiling on "the recycler is
-        // still mounting". Chosen, not measured: it must outlast a cold list mount and must
-        // NOT outlast a user's patience with a sheet that has not moved. A budget that
-        // EXPIRES is deliberate — an uncapped retry here would fight a user who dragged the
-        // sheet in the meantime. If this ever expires in practice, the defect is upstream
-        // (a snap issued against a track that never attaches), not a number to raise.
-        //
-        // THE FINGER OWNS TAU, both sides (native red team FIX 3): a live drag
-        // aborts before issuing, and a native `refused` (the command landed
-        // mid-drag) ends the loop for good — the user's posture choice
-        // supersedes the stale command intent; never re-issue after the drag.
-        // The per-step verdict is pure (resolveSnapRetryDecision, falsified in
-        // track-motion-authority.spec.ts). Each call mints a loop id so a stale
-        // promise from a superseded command can never schedule a retry.
-        const loopId = snapLoopIdRef.current + 1;
-        snapLoopIdRef.current = loopId;
-        let attempts = 0;
-        // THE TARGET THE ENGINE CHOSE. For a detent command JS knows it up
-        // front; for the hidden intent only native does (live bounds), and it
-        // reports it on every resolve. Until it is known the loop cannot
-        // measure arrival — and a distance it cannot measure must READ AS
-        // ARRIVED, never as "retry forever" against a track that already moved.
-        let resolvedTarget: number | null =
-          typeof commandTarget === 'number' ? commandTarget : null;
-        const settleStep = (outcome?: TrackSnapOutcome) => {
-          if (snapLoopIdRef.current !== loopId) {
-            return;
-          }
-          if (outcome?.targetTau != null) {
-            resolvedTarget = outcome.targetTau;
-          }
-          if (outcome?.hiddenGeneration != null) {
-            onOutcome?.({ refused: false, hiddenGeneration: outcome.hiddenGeneration });
-          }
-          const decision = resolveSnapRetryDecision({
-            dragging: physics.dragging.value,
-            refused: outcome?.refused === true,
-            attempts,
-            distance: resolvedTarget == null ? 0 : Math.abs(tau.value - resolvedTarget),
-          });
-          if (decision === 'abort-finger' || decision === 'abort-refused') {
-            onOutcome?.({ refused: true });
-            return;
-          }
-          if (decision === 'retry') {
-            pendingSnapTimer.current = setTimeout(trySnap, 200);
-          }
-        };
-        const trySnap = () => {
-          if (snapLoopIdRef.current !== loopId) {
-            return;
-          }
-          if (physics.dragging.value) {
-            onOutcome?.({ refused: true });
-            return;
-          }
-          attempts += 1;
-          const nativePhysics = NativeModules.TrackScrollPhysics;
-          const tag = trackTagRef.current;
-          // THE HIDDEN INTENT goes to its own native entry point: JS names the
-          // intent, the engine derives the depth from its live bounds and
-          // answers with the τ it aimed at. A binary without snapToHidden is a
-          // CONTRACT failure, barked at attach (track-native-contract.ts) —
-          // never silently degraded into a JS-computed pixel target here.
-          const hidden = commandTarget === 'hidden';
-          const issue =
-            tag == null
-              ? null
-              : hidden
-                ? nativePhysics?.snapToHidden?.(tag)
-                : nativePhysics?.snapTo?.(tag, commandTarget);
-          if (issue == null) {
-            // No native engine (tests / pre-attach). A detent command still has
-            // the fire-and-forget wrapper; the hidden intent has no JS fallback
-            // by construction (its target is native-only), so the loop ends.
-            if (!hidden && typeof commandTarget === 'number') {
-              physics.snapToTau(commandTarget);
+        void Promise.resolve(issue).then(
+          (outcome: TrackSnapOutcome | undefined) => {
+            if (outcome?.refused === true) {
+              onOutcome?.({ refused: true });
+              return;
             }
-            settleStep(undefined);
-            return;
-          }
-          void Promise.resolve(issue).then(
-            (outcome: TrackSnapOutcome | undefined) => settleStep(outcome),
-            () => settleStep(undefined)
-          );
-        };
-        trySnap();
+            if (outcome?.hiddenGeneration != null) {
+              onOutcome?.({ refused: false, hiddenGeneration: outcome.hiddenGeneration });
+            }
+          },
+          () => undefined
+        );
       },
     };
     return () => {
-      if (pendingSnapTimer.current != null) {
-        clearTimeout(pendingSnapTimer.current);
-      }
       commandsRef.current = null;
     };
   }, [commandsRef, physics, tau, trackH]);
@@ -1014,6 +967,13 @@ export function TrackSheetPage({
             return (
               <View
                 key={entry.entryKey}
+                // G-A11Y: the PRESENTED layer is the destination header the
+                // screen-reader cursor is moved to. Only one layer holds the
+                // ref at a time — React detaches the outgoing layer's ref and
+                // attaches the incoming one in the same commit as the flip.
+                ref={isPresented ? (headerFocusRef as never) : undefined}
+                accessibilityRole="header"
+                testID={`track-chrome-layer:${entry.entryKey}`}
                 style={isPresented ? styles.chromeStackLayer : styles.chromeStackLayerHidden}
                 pointerEvents={isPresented ? 'box-none' : 'none'}
               >

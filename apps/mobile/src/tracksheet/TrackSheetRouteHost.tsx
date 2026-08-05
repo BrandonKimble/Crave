@@ -34,6 +34,7 @@ import { ChromeProbeBoundary, renderListLeader } from './track-sheet-chrome-part
 import { runTrackCommitTxnBridge } from './track-txn-bridge';
 import { useNativeHiddenEdgeSource, useTrackMotionController } from './use-track-motion-controller';
 import { assertMountedBodyAgreement, useTrackLegResolver } from './use-track-leg-resolver';
+import { useTrackA11yAnnouncer } from './use-track-a11y-announcer';
 
 // ─── TrackSheetRouteHost — THE PRODUCTION SHEET HOST ──────────────────────────
 //
@@ -423,6 +424,11 @@ const UnifiedTrackScenePage: React.FC<TrackScenePageProps> = ({
     onGestureSettle,
   } = useTrackScenePageChrome(scene, snapPoints);
   const { presentedEntryKey, legs } = useTrackLegResolver({ scene, entryId, entry });
+  // G-A11Y: the swap IS the navigation event. The host states it (announce +
+  // move the cursor to the destination's header) because nothing else can —
+  // one persistent list emits no screen change. Decision: track-a11y-plan.ts.
+  const headerFocusRef = React.useRef<unknown>(null);
+  useTrackA11yAnnouncer({ presentedEntryKey, scene, headerFocusRef });
 
   return (
     <View style={styles.root} pointerEvents="box-none">
@@ -436,6 +442,7 @@ const UnifiedTrackScenePage: React.FC<TrackScenePageProps> = ({
         onGrabHandlePress={onGrabHandlePress}
         legs={legs}
         presentedEntryKey={presentedEntryKey}
+        headerFocusRef={headerFocusRef}
         debugHud={debugVisuals}
         commandsRef={commandsRef}
         publicationBindings={sharedSheetPublicationBindings}

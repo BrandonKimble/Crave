@@ -38,6 +38,7 @@ export const resolveSceneLoadingMaterial = (
 export {
   SCENE_DECLARATIONS,
   getSceneFoundationSpec,
+  resolveSceneA11yName,
   resolveSceneCreateFallbackRoute,
   resolveSceneListPartsSource,
   sceneDeclaresSharedRowSurface,

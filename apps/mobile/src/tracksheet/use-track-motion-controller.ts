@@ -13,7 +13,7 @@
 // and the reanimated command channel.
 
 import React from 'react';
-import { NativeEventEmitter, NativeModules } from 'react-native';
+import { AppState, NativeEventEmitter, NativeModules } from 'react-native';
 import { runOnJS, useAnimatedReaction, useSharedValue } from 'react-native-reanimated';
 
 import type { OverlayKey } from '../navigation/runtime/app-overlay-route-types';
@@ -26,20 +26,23 @@ import {
   type TrackSnapCommand,
 } from './track-motion-authority';
 import {
+  initialMotionDeadlineState,
+  reduceMotionDeadline,
+  SETTLE_DEADLINE_MS,
+  type MotionDeadlineEvent,
+} from './track-motion-deadline';
+import {
   classifyTrackSettleDetent,
   planTrackMotionCommand,
   resolveTrackPosture,
 } from './track-motion-plan';
 import type { TrackSheetCommands } from './TrackSheetPage';
 
-/** PROVENANCE (F874, 2026-08-03): 700ms is a DEADLINE, not a duration — the
- * "the settle fact never arrived" backstop for a snap whose native spring
- * should have reported settle long before. Deliberately longer than any real
- * spring so it never PREEMPTS a genuine settle (that would complete the token
- * early and let chrome move before the sheet did), and short enough that a lost
- * settle costs one visible beat rather than a wedged transition. Not measured
- * against the spring; sized to be safely past it. */
-const SETTLE_DEADLINE_MS = 700;
+// The 700ms constant, its provenance and the whole backstop law now live in
+// track-motion-deadline.ts (G-APPSTATE): a timer is a LIVENESS BACKSTOP against
+// a missing engine fact — episode-scoped, suspended-time-aware, and incapable of
+// manufacturing a settle. This file keeps only the parts that cannot be pure:
+// the OS timer, the AppState subscription, and the dispatch into the authority.
 
 // ── THE R7 FENCE, both sides ─────────────────────────────────────────────────
 // READY side: the faithful port of the old host's snap-SETTLE producer for the
@@ -99,6 +102,71 @@ export const useNativeHiddenEdgeSource = (): void => {
   }, []);
 };
 
+// ─── THE BACKSTOP ADAPTER (G-APPSTATE) ────────────────────────────────────────
+// The pure reducer (track-motion-deadline.ts) owns every decision; this hook
+// owns the two things that cannot be pure: ONE OS timer and the AppState
+// subscription. Anything other than 'active' counts as suspended — 'inactive'
+// (call banner, app switcher, control centre) is exactly where the runloop
+// starts freezing, and the conservative direction is safe: a resumed backstop is
+// granted a fresh budget, so mis-classifying can only ever make it fire LATER,
+// never early.
+const useTrackMotionDeadline = (
+  onExpire: (episodeId: number) => void
+): { arm: (episodeId: number) => void; disarm: (episodeId: number) => void } => {
+  const stateRef = React.useRef(initialMotionDeadlineState);
+  const timerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
+  const onExpireRef = React.useRef(onExpire);
+  onExpireRef.current = onExpire;
+  const applyRef = React.useRef<(event: MotionDeadlineEvent) => void>(() => undefined);
+  const apply = React.useCallback((event: MotionDeadlineEvent) => {
+    const { state, effect } = reduceMotionDeadline(stateRef.current, event);
+    stateRef.current = state;
+    if (effect.type === 'cancel' || effect.type === 'schedule') {
+      if (timerRef.current != null) {
+        clearTimeout(timerRef.current);
+        timerRef.current = null;
+      }
+    }
+    if (effect.type === 'schedule') {
+      const scheduleId = effect.scheduleId;
+      timerRef.current = setTimeout(() => {
+        timerRef.current = null;
+        // The SCHEDULE ID is what makes a resume stampede harmless: a timer that
+        // outlived a suspend names a schedule the reducer has already retired.
+        applyRef.current({ type: 'timer-fired', scheduleId, atMs: Date.now() });
+      }, effect.delayMs);
+    }
+    if (effect.type === 'expire') {
+      onExpireRef.current(effect.episodeId);
+    }
+  }, []);
+  applyRef.current = apply;
+  React.useEffect(() => {
+    const subscription = AppState.addEventListener('change', (status: string) => {
+      apply(
+        status === 'active'
+          ? { type: 'app-resumed', atMs: Date.now() }
+          : { type: 'app-suspended', atMs: Date.now() }
+      );
+    });
+    return () => {
+      subscription?.remove?.();
+      if (timerRef.current != null) {
+        clearTimeout(timerRef.current);
+        timerRef.current = null;
+      }
+    };
+  }, [apply]);
+  return React.useMemo(
+    () => ({
+      arm: (episodeId: number) =>
+        apply({ type: 'arm', episodeId, budgetMs: SETTLE_DEADLINE_MS, atMs: Date.now() }),
+      disarm: (episodeId: number) => apply({ type: 'disarm', episodeId }),
+    }),
+    [apply]
+  );
+};
+
 export type TrackMotionControllerDeps = {
   /** The PRESENTED scene — posture memory is written under it. */
   scene: OverlayKey;
@@ -139,16 +207,27 @@ export const useTrackMotionController = ({
   // an identity, and every consumer READS it.
   const motionAuthority = getTrackMotionAuthority();
 
-  // Every REST fact (settle observer, generation-matched screen edge, 700ms
-  // deadline) funnels here: restore the fence and complete the episode's settle
-  // token. The token rides the EPISODE, so a superseded command's token can
-  // never be completed by a later episode's rest.
-  const applyMotionRestFact = React.useCallback(
+  // Every RELEASE reaches here: a proven rest fact (settle observer,
+  // generation-matched screen edge) or a DEGRADE (the liveness backstop expired
+  // without one). Both restore the fence and complete the episode's settle
+  // token — a waiting transition may never wedge — but only rest is a FACT. The
+  // token rides the EPISODE, so a superseded command's token can never be
+  // completed by a later episode's release.
+  const applyMotionReleaseFact = React.useCallback(
     (transition: TrackMotionTransition) => {
-      if (!transition.rest) {
+      if (!transition.rest && !transition.degraded) {
         return;
       }
-      // R7 fence: every rest fact restores it — including the hidden edge, whose
+      if (__DEV__ && transition.degraded) {
+        // A degrade is ALWAYS an upstream defect (a settle the engine never
+        // stated, or a command native never answered). Silence here is how the
+        // old deadline passed for a settle for months.
+        // eslint-disable-next-line no-console
+        console.warn(
+          `[track] motion episode ${transition.ended?.episodeId ?? '?'} released WITHOUT a rest fact (liveness backstop)`
+        );
+      }
+      // R7 fence: every release restores it — including the hidden edge, whose
       // rest is not a detent and never reaches the settle observer.
       markSheetLegReady();
       const token = transition.ended?.settleToken ?? null;
@@ -157,6 +236,36 @@ export const useTrackMotionController = ({
       }
     },
     [sceneRuntime]
+  );
+
+  // THE BACKSTOP, armed per commanded episode. Its expiry is a DEGRADE, not a
+  // settle (the authority refuses to call it rest).
+  const deadline = useTrackMotionDeadline(
+    React.useCallback(
+      (episodeId: number) => {
+        applyMotionReleaseFact(motionAuthority.dispatch({ type: 'deadline-expired', episodeId }));
+      },
+      [applyMotionReleaseFact, motionAuthority]
+    )
+  );
+
+  // THE BACKSTOP IS DISARMED BY FACTS. Any episode that ENDS (settle, edge,
+  // supersession) retires its schedule, and so does an episode that becomes a
+  // DRAG: the finger owns τ for as long as a human wants, and no wall clock may
+  // bound a gesture. A dragged sheet's rest fact always arrives — the engine
+  // emits settle at every rest, dragEnd and deceleration included.
+  React.useEffect(
+    () =>
+      motionAuthority.subscribe((transition) => {
+        if (transition.ended != null) {
+          deadline.disarm(transition.ended.episodeId);
+        }
+        const live = transition.state.episode;
+        if (live != null && live.kind === 'drag') {
+          deadline.disarm(live.episodeId);
+        }
+      }),
+    [deadline, motionAuthority]
   );
 
   const executeMotionCommand = React.useCallback(
@@ -189,7 +298,10 @@ export const useTrackMotionController = ({
       // lives in the reducer, not in a module-scope register.
       const commandTransition = motionAuthority.dispatch({
         type: 'command-issued',
-        willMove,
+        // NO ENGINE, NO EPISODE: with the page unmounted no command is issued at
+        // all, so nothing is owed a rest fact — the same shape as a zero-pixel
+        // snap (the token completes below rather than waiting out a backstop).
+        willMove: willMove && commands != null,
         snapTo: snap,
         settleToken,
         atMs: Date.now(),
@@ -229,31 +341,31 @@ export const useTrackMotionController = ({
           });
         }
       });
-      if (settleToken != null) {
-        if (!willMove || commands == null || episodeId == null) {
+      if (episodeId == null) {
+        if (settleToken != null) {
           // THE ZERO-PIXEL SETTLE (joinWait red team): a same-posture switch
           // short-circuits inside native snapTo and produces NO settle fact —
-          // complete the token now; the timer stays only as the safety net for
-          // snaps that genuinely move.
+          // complete the token now. There is no episode to back a backstop.
           sceneRuntime.routeSceneMotionRuntime.completeFromSheetSettle?.(settleToken);
-        } else {
-          setTimeout(() => {
-            // EPISODE-MATCHED (was: token-matched against a private ref). A
-            // deadline can only ever end the episode that armed it.
-            applyMotionRestFact(motionAuthority.dispatch({ type: 'deadline-expired', episodeId }));
-          }, SETTLE_DEADLINE_MS);
         }
+        return;
       }
+      // ARM THE LIVENESS BACKSTOP for the episode that just opened — for EVERY
+      // commanded episode, not only token-bearing ones: the R7 fence's pending
+      // bit is owed a restore too, and an unbacked flip used to be able to
+      // strand it. Episode-scoped by construction (the reducer cancels a
+      // superseded schedule instead of leaving an OS timer alive).
+      deadline.arm(episodeId);
     },
-    [applyMotionRestFact, middleTau, motionAuthority, sceneRuntime, trackH]
+    [deadline, middleTau, motionAuthority, sceneRuntime, trackH]
   );
 
   // THE SETTLE FACT: the detent rest observed on the track (gesture or
   // programmatic). It ends whatever episode was live — the authority decides
   // which, and whether a token is owed.
   const reportSettleFact = React.useCallback(() => {
-    applyMotionRestFact(motionAuthority.dispatch({ type: 'settle' }));
-  }, [applyMotionRestFact, motionAuthority]);
+    applyMotionReleaseFact(motionAuthority.dispatch({ type: 'settle' }));
+  }, [applyMotionReleaseFact, motionAuthority]);
 
   // THE DRAG FACT: the finger takes τ. Opens a drag episode (so every consumer
   // can SEE the sheet is moving — F2's window) and flips the fence pending.
@@ -268,8 +380,8 @@ export const useTrackMotionController = ({
   // settleToken rode the deadline. The authority validates the stamp against the
   // episode that armed it.
   React.useEffect(
-    () => motionAuthority.subscribeHiddenEdge(applyMotionRestFact),
-    [applyMotionRestFact, motionAuthority]
+    () => motionAuthority.subscribeHiddenEdge(applyMotionReleaseFact),
+    [applyMotionReleaseFact, motionAuthority]
   );
 
   useAnimatedReaction(

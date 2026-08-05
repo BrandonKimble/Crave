@@ -154,6 +154,16 @@ const buildWorld = () => {
     },
   };
 
+  // ── assistive tech (G-A11Y): what the track SAID and where it moved the
+  //    screen-reader cursor. Announcements are recorded in order; focus targets
+  //    are the node handles the RN mock mints per view instance.
+  const a11y = {
+    announcements: [] as string[],
+    focusHandles: [] as number[],
+    /** handle → the mocked node it names (so a focus target is identifiable). */
+    nodesByHandle: new Map<number, unknown>(),
+  };
+
   // ── scene-input publication lane ──
   const sceneInputListeners = new Map<string, Set<Listener>>();
   const sceneInputSnapshots = new Map<string, SceneInputSnapshot>();
@@ -198,6 +208,7 @@ const buildWorld = () => {
     },
     txn,
     surface,
+    a11y,
     sceneInputListeners,
     sceneInputSnapshots,
     publishSceneInput,

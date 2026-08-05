@@ -131,3 +131,17 @@ export const describeTrackNativeContractVerdict = (
     }
   }
 };
+
+/**
+ * Does the INSTALLED binary declare this capability?
+ *
+ * A stale binary does not merely no-op the surfaces it lacks: subscribing to an
+ * event it never registered throws a native RCTEventEmitter error whose text
+ * ("`trackDidSettle` is not a supported event type") buries the actionable
+ * verdict this module already printed. Callers ask FIRST; the contract bark
+ * stays the one message that names the fix.
+ */
+export const trackNativeDeclaresCapability = (
+  report: TrackNativeContractReport | null | undefined,
+  capability: (typeof TRACK_NATIVE_REQUIRED_CAPABILITIES)[number]
+): boolean => Array.isArray(report?.capabilities) && report.capabilities.includes(capability);

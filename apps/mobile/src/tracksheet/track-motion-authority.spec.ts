@@ -12,11 +12,8 @@ import {
   initialTrackMotionState,
   reduceTrackMotion,
   resetTrackMotionAuthorityForTest,
-  resolveSnapRetryDecision,
-  SNAP_RETRY_MAX_ATTEMPTS,
   trackMotionStateInFlightSnapTarget,
   trackMotionStateIsAtRest,
-  type SnapRetryFacts,
   type TrackMotionEvent,
   type TrackMotionState,
 } from './track-motion-authority';
@@ -61,13 +58,27 @@ describe('the authority is TOTAL over "at rest" (the one definition)', () => {
     expect(trackMotionStateIsAtRest(run([command('middle', 1), { type: 'settle' }]))).toBe(true);
   });
 
-  it('every rest fact releases it: the 700ms deadline (never-strand backstop)', () => {
+  // G-APPSTATE REDERIVATION: the backstop RELEASES, it does not attest. RED if
+  // 'deadline-expired' ever goes back to rest:true (a timer manufacturing the
+  // one fact only the engine can state).
+  it('the liveness backstop DEGRADES the episode — it never manufactures a rest fact', () => {
     const started = reduceTrackMotion(initialTrackMotionState, command('middle', 1));
     const episodeId = started.started!.episodeId;
     const ended = reduceTrackMotion(started.state, { type: 'deadline-expired', episodeId });
-    expect(ended.rest).toBe(true);
+    expect(ended.rest).toBe(false);
+    expect(ended.degraded).toBe(true);
     expect(ended.ended?.settleToken).toBe(1);
+    // The episode is over either way: nothing may hang on a fact that is not coming.
     expect(trackMotionStateIsAtRest(ended.state)).toBe(true);
+  });
+
+  it('a real rest fact is never marked degraded (settle / screen edge)', () => {
+    const settled = reduceTrackMotion(
+      reduceTrackMotion(initialTrackMotionState, command('middle', 1)).state,
+      { type: 'settle' }
+    );
+    expect(settled.rest).toBe(true);
+    expect(settled.degraded).toBe(false);
   });
 
   it('every rest fact releases it: the generation-matched screen edge (a hide has no detent rest)', () => {
@@ -144,6 +155,7 @@ describe('episode identity rejects stale facts', () => {
     });
     expect(lateDeadline.accepted).toBe(false);
     expect(lateDeadline.rest).toBe(false);
+    expect(lateDeadline.degraded).toBe(false);
     expect(trackMotionStateIsAtRest(lateDeadline.state)).toBe(false);
   });
 
@@ -314,35 +326,22 @@ describe('at-rest agreement (no consumer shadows the authority)', () => {
   });
 });
 
-// ─── FIX 3: the snap-retry decision (THE FINGER OWNS TAU, both sides) ─────────
-// Moved here with track-sheet-fence.ts. If the loop ever retries into a live
-// drag or re-issues a refused command, the spring fights the pan frame-by-frame.
-describe('resolveSnapRetryDecision (retrying snap loop, per-step verdict)', () => {
-  const step: SnapRetryFacts = { dragging: false, refused: false, attempts: 1, distance: 300 };
-
-  it('a live finger aborts — the user owns τ', () => {
-    expect(resolveSnapRetryDecision({ ...step, dragging: true })).toBe('abort-finger');
-  });
-
-  it('a native refusal aborts FOR GOOD — the stale command is never re-issued', () => {
-    expect(resolveSnapRetryDecision({ ...step, refused: true })).toBe('abort-refused');
-  });
-
-  it('the finger outranks even a refusal verdict', () => {
-    expect(resolveSnapRetryDecision({ ...step, dragging: true, refused: true })).toBe(
-      'abort-finger'
-    );
-  });
-
-  it('arrived (within 1pt) → done, no further issues', () => {
-    expect(resolveSnapRetryDecision({ ...step, distance: 0.5 })).toBe('done');
-  });
-
-  it('attempts budget expired → done (F874: a budget that EXPIRES is deliberate)', () => {
-    expect(resolveSnapRetryDecision({ ...step, attempts: SNAP_RETRY_MAX_ATTEMPTS })).toBe('done');
-  });
-
-  it('short of the target with budget left → retry', () => {
-    expect(resolveSnapRetryDecision(step)).toBe('retry');
+// ─── THE RETRY LOOP IS DELETED (G-APPSTATE rederivation) ─────────────────────
+// resolveSnapRetryDecision's suite lived here. The loop it governed is gone —
+// snapTo resolves, so a refusal and the engine's own target are FACTS, and
+// arrival is trackDidSettle's to state. This scanner is what keeps it gone: a
+// re-issuing snap loop is a stale command generator, and a suspended app is
+// exactly where it fires into a world that moved on.
+describe('no snap command is ever re-issued on a timer', () => {
+  it('the page issues its snap once — no retry timer, no attempt budget', () => {
+    const page = fs.readFileSync(path.join(__dirname, 'TrackSheetPage.tsx'), 'utf8');
+    const code = page
+      .split('\n')
+      .filter((line) => !/^\s*(\/\/|\*|\/\*)/.test(line))
+      .join('\n');
+    expect(code).not.toMatch(/pendingSnapTimer|snapLoopIdRef|resolveSnapRetryDecision/);
+    // The one issue site per command: exactly one snapTo and one snapToHidden call.
+    expect(code.match(/nativePhysics\?\.snapTo\?\./g) ?? []).toHaveLength(1);
+    expect(code.match(/nativePhysics\?\.snapToHidden\?\./g) ?? []).toHaveLength(1);
   });
 });

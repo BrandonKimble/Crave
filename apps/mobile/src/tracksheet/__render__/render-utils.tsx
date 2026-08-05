@@ -18,7 +18,15 @@ export const flushAsync = async (): Promise<void> => {
 export const renderHost = async (): Promise<ReactTestRenderer> => {
   let renderer: ReactTestRenderer | null = null;
   await act(async () => {
-    renderer = TestRenderer.create(<TrackSheetRouteHost />);
+    renderer = TestRenderer.create(<TrackSheetRouteHost />, {
+      // ONLY the chrome header layers get a node instance: the G-A11Y focus
+      // target must be resolvable to a handle. Every other host ref stays null
+      // (react-test-renderer's default), so no other wiring changes shape.
+      createNodeMock: (element) =>
+        (element.props as { accessibilityRole?: string }).accessibilityRole === 'header'
+          ? { props: element.props }
+          : null,
+    });
   });
   // Flush the native attach promise so the physics engine is bound.
   await flushAsync();
@@ -134,6 +142,18 @@ export const clearRecords = (world: HarnessWorld): void => {
   world.surface.readyMarks.length = 0;
   world.surface.motionPendingMarks.length = 0;
   world.settleCompletions.length = 0;
+  world.a11y.announcements.length = 0;
+  world.a11y.focusHandles.length = 0;
+};
+
+/** The mocked node a focus handle names (its testID identifies the chrome layer). */
+export const focusedNodeTestId = (world: HarnessWorld): string | null => {
+  const handle = world.a11y.focusHandles[world.a11y.focusHandles.length - 1];
+  if (handle == null) {
+    return null;
+  }
+  const node = world.a11y.nodesByHandle.get(handle) as { props?: { testID?: string } } | undefined;
+  return node?.props?.testID ?? null;
 };
 
 /** A published list-body snapshot for the scene-input lane. */

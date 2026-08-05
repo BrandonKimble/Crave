@@ -1,8 +1,9 @@
 // ─── THE MOTION AUTHORITY (deep red team round 2, ratified item 1) ────────────
 //
-// THE PROBLEM IT DELETES. The system has five PROVEN motion facts — a command
-// issued with willMove, a native drag begin, a settle, the hidden excursion's
-// generation-stamped screen-edge event, and the 700ms deadline — and, before
+// THE PROBLEM IT DELETES. The system has four PROVEN motion facts — a command
+// issued with willMove, a native drag begin, a settle, and the hidden
+// excursion's generation-stamped screen-edge event (the liveness backstop in
+// track-motion-deadline.ts is deliberately NOT one of them) — and, before
 // this module, no AUTHORITY over them. Every consumer kept its own ledger: the
 // fence read four host refs, the interrupt read a private inFlightSnapTargetRef,
 // the host kept hiddenExcursionInFlightRef plus a module-scope
@@ -95,7 +96,10 @@ export type TrackMotionEvent =
   | { type: 'settle' }
   /** THE EDGE FACT: native trackHiddenEdgeCleared, generation-stamped. */
   | { type: 'excursion-edge'; generation: number | null }
-  /** THE DEADLINE FACT: the 700ms never-strand backstop for one episode. */
+  /** THE DEADLINE NON-FACT (G-APPSTATE): the liveness backstop for one episode
+   *  ran out of FOREGROUND budget. It proves nothing about the sheet — it ends
+   *  the episode DEGRADED so waiting consumers are released. See
+   *  track-motion-deadline.ts for why a timer may never manufacture a fact. */
   | { type: 'deadline-expired'; episodeId: number };
 
 export type TrackMotionTransition = {
@@ -106,9 +110,15 @@ export type TrackMotionTransition = {
   started: TrackMotionEpisode | null;
   /** The episode this event ended, if any. */
   ended: TrackMotionEpisode | null;
-  /** The event PROVES the sheet is at rest (settle / consumed edge / deadline).
-   *  A supersession ends an episode WITHOUT rest. */
+  /** The event PROVES the sheet is at rest (settle / consumed edge). A
+   *  supersession ends an episode WITHOUT rest, and so does a DEGRADE — the
+   *  backstop never invents this bit (G-APPSTATE rederivation). */
   rest: boolean;
+  /** The episode ended because its rest fact NEVER ARRIVED (the liveness
+   *  backstop expired). Liveness consumers (fence restore, settle token) must
+   *  release on it; fact consumers (posture memory, the world join's at-reveal
+   *  audit) must not treat it as rest. Always a defect upstream — it barks. */
+  degraded: boolean;
   /** A generation-matched screen-edge crossing — the deferred swap's boundary.
    *  True even when the episode already expired (see armedExcursion). */
   hiddenEdge: boolean;
@@ -120,6 +130,7 @@ const idle = (state: TrackMotionState, accepted = false): TrackMotionTransition 
   started: null,
   ended: null,
   rest: false,
+  degraded: false,
   hiddenEdge: false,
 });
 
@@ -157,6 +168,7 @@ export const reduceTrackMotion = (
         // abandoned exactly as the old ref-overwrite abandoned it.
         ended: state.episode,
         rest: false,
+        degraded: false,
         hiddenEdge: false,
       };
     }
@@ -215,6 +227,7 @@ export const reduceTrackMotion = (
         started,
         ended: null,
         rest: false,
+        degraded: false,
         hiddenEdge: false,
       };
     }
@@ -227,6 +240,7 @@ export const reduceTrackMotion = (
         started: null,
         ended: state.episode,
         rest: true,
+        degraded: false,
         hiddenEdge: false,
       };
     }
@@ -248,6 +262,7 @@ export const reduceTrackMotion = (
         ended: endsEpisode ? state.episode : null,
         // A hide's rest is not a detent — THIS is its settle.
         rest: endsEpisode,
+        degraded: false,
         hiddenEdge: true,
       };
     }
@@ -261,8 +276,11 @@ export const reduceTrackMotion = (
         accepted: true,
         started: null,
         ended: state.episode,
-        // The never-strand backstop: a lost settle costs one beat, never a hang.
-        rest: true,
+        // THE BACKSTOP MAY NOT MANUFACTURE A FACT (G-APPSTATE): no settle was
+        // observed, so this is NOT rest — it is a DEGRADE. Liveness consumers
+        // release on it; the fact stays absent, and it barks.
+        rest: false,
+        degraded: true,
         hiddenEdge: false,
       };
     }
@@ -351,31 +369,23 @@ export const resetTrackMotionAuthorityForTest = (): void => {
   SHARED_TRACK_MOTION_AUTHORITY.reset();
 };
 
-// ─── THE SNAP-RETRY DECISION (native red team FIX 3, pure) ────────────────────
-// Lived in track-sheet-fence.ts, which this module absorbed. It belongs here:
-// its two governing facts (a live finger, a native refusal) are motion facts,
-// and both are episode-ending events above. 'done' covers arrival (τ within
-// 1pt) and the attempts budget (F874: a budget that EXPIRES is deliberate).
-export const SNAP_RETRY_MAX_ATTEMPTS = 12;
-
-export type SnapRetryFacts = {
-  /** The finger owns τ right now (physics.dragging). */
-  dragging: boolean;
-  /** Native answered the last issue with refused (a drag owned τ there). */
-  refused: boolean;
-  /** Issues so far, counting the one this verdict follows. */
-  attempts: number;
-  /** |τ − target| after the last issue. */
-  distance: number;
-};
-
-export type SnapRetryDecision = 'abort-finger' | 'abort-refused' | 'retry' | 'done';
-
-export const resolveSnapRetryDecision = (facts: SnapRetryFacts): SnapRetryDecision =>
-  facts.dragging
-    ? 'abort-finger'
-    : facts.refused
-      ? 'abort-refused'
-      : facts.distance <= 1 || facts.attempts >= SNAP_RETRY_MAX_ATTEMPTS
-        ? 'done'
-        : 'retry';
+// ─── THE SNAP-RETRY LOOP: DELETED (G-APPSTATE rederivation, 2026-08-05) ──────
+// `resolveSnapRetryDecision` + SNAP_RETRY_MAX_ATTEMPTS (12 x 200ms) lived here,
+// driving a re-issuing loop in TrackSheetPage. Both are gone, because the
+// premise under them was gone twice over:
+//   • WHY IT EXISTED: native snapTo used to be fire-and-forget, so a snap issued
+//     before the track attached was a SILENT no-op (the sheet sat at τ=0 while
+//     the old sheet rendered above it). The loop re-issued until τ moved.
+//   • WHY IT COULD NOT DO THAT ANY MORE: snapTo now RESOLVES, and a pre-attach
+//     call resolves with no targetTau — which the loop's own "a distance it
+//     cannot measure reads as ARRIVED" rule turned into 'done' on the first
+//     step. The one case it was written for was the one case it no longer
+//     retried.
+//   • WHAT IT DID INSTEAD: snapTo resolves when the spring STARTS, not when it
+//     arrives, so |τ − target| was measured mid-flight and read as 'retry' —
+//     re-issuing the command (restarting the spring, and bumping the hidden
+//     excursion's generation) every 200ms for up to 2.4s of every real motion.
+//   • WHAT COVERS IT NOW, as engine facts: `refused` (the finger owns τ),
+//     `targetTau`/`hiddenGeneration` (the engine states its own target), and
+//     trackDidSettle (arrival). Liveness if none of them arrive is the
+//     backstop's job — one degrade, not twelve stale commands.
