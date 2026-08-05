@@ -276,6 +276,31 @@ aliases onto archived junk entities.
 
 ## 8. MEASURED FACTS (all executed, 2026-08-04/05)
 
+### 8.0 THE PRODUCTION PIPELINE, BUILT AND RUN (2026-08-05)
+
+P0-a, P0-b and the vocabulary pass are IMPLEMENTED and were run end to end
+through the real service against the live local corpus:
+
+- Swept **3,000** of 8,560 due `es` concepts (~26% coverage): **2,896 written**,
+  104 abstained (an abstain writes nothing — the watermark stays honest).
+  Corpus now holds **3,117 `es` labels and 5,430 `es` surfaces**.
+- **Launch gate: 77.3% → 90.0%** on the REAL pipeline at that partial coverage.
+  single_noun 75.0 → **95.0**, attribute 70.0 → **100**, homograph 85 → **90**,
+  negation held **100**. Two clauses GREEN (top-1 95.0%, negation 100%); two
+  still RED (constraint preservation 75.0%, one homograph mis-grounding).
+- The earlier TARGETED experiment — enriching exactly the 110 concepts the gold
+  corpus expects — reached **96.7%**. The gap between 90.0% and 96.7% is
+  coverage, not capability: the sweep orders by age, not by what the gold set
+  asks for, and 8,412 concepts remain due.
+- **P0-b is working:** the pre-guard targeted run produced 2 homograph
+  mis-groundings; this run, with 22× more surfaces, produced 1 — and that one
+  (`lima → key lime`) is NOT a collision (no entity is named `lima`, so the
+  guard correctly did not fire). It is a milder SPECIFICITY error: the corpus
+  has `key lime` but no plain `lime`, so the Spanish word attached to the
+  nearest available concept. That class is the substitutability pass's job.
+- **P0-a is holding:** zero locale-tagged forms leaked into `aliases[]` across
+  5,430 new tagged surfaces.
+
 - **Enumeration lift — the central premise, now proven.** One vocabulary pass over
   110 gold concepts (275 `es` alias rows, `entity_alias` only, not projected):
   **overall 77.3% → 96.7%**; single_noun 75.0 → **97.5%**; compound 50.0 → **96.7%**;
