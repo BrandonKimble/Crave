@@ -1010,6 +1010,7 @@ export class SearchQueryInterpretationService {
       bounds: request.bounds,
       userLocation: request.userLocation,
       openNow: request.openNow,
+      dietary: request.dietary,
       pagination: request.pagination,
       includeSqlPreview: request.includeSqlPreview,
       compactResponse: request.compactResponse,
