@@ -5,7 +5,6 @@ import {
   runOnJS,
   useAnimatedReaction,
   withSpring,
-  useSharedValue,
 } from 'react-native-reanimated';
 import type { SharedValue } from 'react-native-reanimated';
 
@@ -43,11 +42,6 @@ type RuntimeSnapValues = {
 
 type UseBottomSheetSharedSnapExecutionRuntimeArgs = {
   motionCommandValue?: SharedValue<BottomSheetMotionCommand | null>;
-  preventSwipeDismiss: boolean;
-  expandedSnap: number;
-  middleSnap: number;
-  collapsedSnap: number;
-  hiddenSnap?: number;
   sheetY: SharedValue<number>;
   headerHeight: SharedValue<number>;
   isDragging: SharedValue<boolean>;
@@ -61,16 +55,16 @@ type UseBottomSheetSharedSnapExecutionRuntimeArgs = {
   dispatchSnapChange: BottomSheetSharedDispatchSnapChange;
   notifySnapStart: BottomSheetSharedNotifySnapStart;
   notifySnapSettleComplete: BottomSheetSharedNotifySnapSettleComplete;
-  runtimeConfigValues?: BottomSheetSharedRuntimeConfigSharedValues;
+  // F1476: was optional. The sole caller (useBottomSheetSharedRuntime.tsx) always
+  // supplies a fully-populated object from useBottomSheetSharedRuntimeConfigValues,
+  // which returns unconditionally (fallback-vs-authority is handled INSIDE it, not
+  // by omitting this prop) — so every `?? mirror` fallback that used to exist here
+  // was unreachable. Made required so a future caller can't silently reopen that gap.
+  runtimeConfigValues: BottomSheetSharedRuntimeConfigSharedValues;
 };
 
 export const useBottomSheetSharedSnapExecutionRuntime = ({
   motionCommandValue,
-  preventSwipeDismiss,
-  expandedSnap,
-  middleSnap,
-  collapsedSnap,
-  hiddenSnap,
   sheetY,
   headerHeight,
   isDragging,
@@ -86,80 +80,23 @@ export const useBottomSheetSharedSnapExecutionRuntime = ({
   notifySnapSettleComplete,
   runtimeConfigValues,
 }: UseBottomSheetSharedSnapExecutionRuntimeArgs): BottomSheetSharedSnapExecutionResult => {
-  // MOUNT-STABLE CALLBACKS (red team 2): snap-number props re-created
-  // resolveDestination/startSpring per presented scene, which re-minted the sheet
-  // pans downstream (the stale-relations disease). Worklets read SV mirrors instead.
-  const expandedSnapMirror = useSharedValue(expandedSnap);
-  const middleSnapMirror = useSharedValue(middleSnap);
-  const collapsedSnapMirror = useSharedValue(collapsedSnap);
-  const hiddenSnapMirror = useSharedValue(hiddenSnap ?? Number.NaN);
-  const preventSwipeDismissMirror = useSharedValue(preventSwipeDismiss);
-  React.useEffect(() => {
-    expandedSnapMirror.value = expandedSnap;
-    middleSnapMirror.value = middleSnap;
-    collapsedSnapMirror.value = collapsedSnap;
-    hiddenSnapMirror.value = hiddenSnap ?? Number.NaN;
-    preventSwipeDismissMirror.value = preventSwipeDismiss;
-  }, [
-    collapsedSnap,
-    collapsedSnapMirror,
-    expandedSnap,
-    expandedSnapMirror,
-    hiddenSnap,
-    hiddenSnapMirror,
-    middleSnap,
-    middleSnapMirror,
-    preventSwipeDismiss,
-    preventSwipeDismissMirror,
-  ]);
-
-  const snapCandidates = React.useMemo(() => {
-    const points = [expandedSnap, middleSnap, collapsedSnap];
-    if (typeof hiddenSnap === 'number' && !preventSwipeDismiss) {
-      points.push(hiddenSnap);
-    }
-    points.sort((a, b) => a - b);
-    const deduped: number[] = [];
-    for (let i = 0; i < points.length; i += 1) {
-      const candidate = points[i];
-      const previous = deduped[deduped.length - 1];
-      if (previous === undefined || Math.abs(candidate - previous) >= 0.5) {
-        deduped.push(candidate);
-      }
-    }
-    return deduped;
-  }, [collapsedSnap, expandedSnap, hiddenSnap, middleSnap, preventSwipeDismiss]);
-
+  // F1476: this used to mirror snap-number props into SharedValues with a JS-effect
+  // sync, as a mount-stable fallback for when `runtimeConfigValues` was absent. It
+  // never was — see the type comment above — so the mirrors and their sync effect
+  // were pure write-only dead weight; deleted. `runtimeConfigValues` IS the
+  // mount-stable SharedValue source (it survives descriptor-prop churn on its own).
   const resolveRuntimeSnapValues = React.useCallback(() => {
     'worklet';
-    const runtimeExpandedSnap = runtimeConfigValues?.expandedSnap.value ?? expandedSnapMirror.value;
-    const runtimeMiddleSnap = runtimeConfigValues?.middleSnap.value ?? middleSnapMirror.value;
-    const runtimeCollapsedSnap =
-      runtimeConfigValues?.collapsedSnap.value ?? collapsedSnapMirror.value;
-    const runtimeHiddenSnap = runtimeConfigValues
-      ? runtimeConfigValues.hasHiddenSnap.value
-        ? runtimeConfigValues.hiddenSnap.value
-        : undefined
-      : Number.isNaN(hiddenSnapMirror.value)
-        ? undefined
-        : hiddenSnapMirror.value;
-    const runtimePreventSwipeDismiss =
-      runtimeConfigValues?.preventSwipeDismiss.value ?? preventSwipeDismissMirror.value;
     return {
-      expanded: runtimeExpandedSnap,
-      middle: runtimeMiddleSnap,
-      collapsed: runtimeCollapsedSnap,
-      hidden: runtimeHiddenSnap,
-      preventSwipeDismiss: runtimePreventSwipeDismiss,
+      expanded: runtimeConfigValues.expandedSnap.value,
+      middle: runtimeConfigValues.middleSnap.value,
+      collapsed: runtimeConfigValues.collapsedSnap.value,
+      hidden: runtimeConfigValues.hasHiddenSnap.value
+        ? runtimeConfigValues.hiddenSnap.value
+        : undefined,
+      preventSwipeDismiss: runtimeConfigValues.preventSwipeDismiss.value,
     };
-  }, [
-    collapsedSnapMirror,
-    expandedSnapMirror,
-    hiddenSnapMirror,
-    middleSnapMirror,
-    preventSwipeDismissMirror,
-    runtimeConfigValues,
-  ]);
+  }, [runtimeConfigValues]);
 
   const resolveRuntimeSnapCandidates = React.useCallback((values: RuntimeSnapValues): number[] => {
     'worklet';
@@ -199,18 +136,10 @@ export const useBottomSheetSharedSnapExecutionRuntime = ({
         velocity,
         gestureStartValue,
         gateDistance: Math.min(headerHeight.value || SNAP_GATE_FALLBACK_PX, SNAP_GATE_FALLBACK_PX),
-        points: runtimeConfigValues
-          ? resolveRuntimeSnapCandidates(runtimeSnapValues)
-          : snapCandidates,
+        points: resolveRuntimeSnapCandidates(runtimeSnapValues),
       });
     },
-    [
-      headerHeight,
-      resolveRuntimeSnapCandidates,
-      resolveRuntimeSnapValues,
-      runtimeConfigValues,
-      snapCandidates,
-    ]
+    [headerHeight, resolveRuntimeSnapCandidates, resolveRuntimeSnapValues]
   );
 
   const startSpring = React.useCallback(

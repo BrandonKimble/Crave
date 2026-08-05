@@ -45,7 +45,6 @@ export type PollsPanelFeedRuntime = {
 export const usePollsPanelFeedRuntime = ({
   visible,
   params,
-  mode = 'docked',
   currentSnap,
   initialSnapPoint,
   interactionRef,
@@ -68,8 +67,9 @@ export const usePollsPanelFeedRuntime = ({
   const feedTime = usePollsFeedControlsStore((state) => state.feedTime);
 
   const contentBottomPadding = resolveChinlessContentBottomPadding(insets.bottom);
-  const initialSnap: PollsPanelInitialSnapPoint =
-    initialSnapPoint ?? (mode === 'overlay' ? 'middle' : 'collapsed');
+  // F1494: mode is now the single literal 'docked' (see polls-panel-runtime-contract.ts),
+  // so this always resolved to 'collapsed' — the 'overlay' arm was dead.
+  const initialSnap: PollsPanelInitialSnapPoint = initialSnapPoint ?? 'collapsed';
   const resolvedSnap = currentSnap ?? initialSnap;
   const headerAction: 'create' | 'close' =
     resolvedSnap === 'collapsed' || resolvedSnap === 'hidden' ? 'create' : 'close';

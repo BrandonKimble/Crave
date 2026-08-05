@@ -952,6 +952,11 @@ const styles = StyleSheet.create({
   stateCloseText: {
     color: '#0f172a',
   },
+  // F1466: title→action gap for this panel's persistent-header title group. Verified
+  // NOT a duplicate of PollsPanel's `persistentHeaderTitleGroup.paddingRight: 10` —
+  // that 10 is a parity shim reconstructing a specific pre-hoist 22px total (12px title
+  // marginRight + 10px gap); this panel has no such precursor to match, so 12 is this
+  // panel's own independently-chosen value, not a drifted copy.
   headerTextGroup: {
     flex: 1,
     paddingRight: 12,

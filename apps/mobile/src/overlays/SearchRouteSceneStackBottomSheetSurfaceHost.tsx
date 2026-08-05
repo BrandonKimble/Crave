@@ -123,7 +123,18 @@ const SearchRouteSceneStackBottomSheetInteractionGate = React.memo(
   }>) => {
     useSearchNavSwitchCommitAttribution('SearchRouteSceneStackBottomSheetInteractionGate');
     const renderStartedAtMs = startSearchNavSwitchRuntimeAttributionSpan();
-    const touchBlockingEnabled = touchBlockingAuthority.getSnapshot();
+    // F1479: was a bare `getSnapshot()` read. This component is `React.memo`'d with
+    // stable prop objects (`touchBlockingAuthority` is a stable authority reference,
+    // not the boolean itself), so a touch-blocking flip previously took effect only if
+    // the parent happened to re-render for an unrelated reason — a real, if
+    // intermittent, gesture-correctness latch. `useSyncExternalStore` subscribes this
+    // component directly to the authority, like `publicationSnapshot` above it in the
+    // same family (useBottomSheetSharedPublicationRuntime.tsx) already does.
+    const touchBlockingEnabled = React.useSyncExternalStore(
+      touchBlockingAuthority.subscribe,
+      touchBlockingAuthority.getSnapshot,
+      touchBlockingAuthority.getSnapshot
+    );
 
     const interactionGate = (
       <Animated.View

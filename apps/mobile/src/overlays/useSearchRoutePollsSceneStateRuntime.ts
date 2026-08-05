@@ -47,8 +47,10 @@ export const createSearchRoutePollsSceneStateRuntime = ({
   interactionRef,
 }: UseSearchRoutePollsSceneStateRuntimeArgs): SearchRoutePollsSceneStateRuntime => {
   const mode: PollsPanelMode = 'docked';
-  // Content page now: opens at the content seat (expanded); the collapsed
-  // docked-bar initial is history.
+  // F1494: this constant is 'collapsed', not 'expanded' — corrected 2026-08-05.
+  // The prior comment here ("opens at the content seat (expanded); the collapsed
+  // docked-bar initial is history") contradicted the line it annotated; verified
+  // against the sole producer, the actual initial seat is the docked/collapsed one.
   const initialSnapPoint: PollsPanelInitialSnapPoint = 'collapsed';
   const physicalPollsSheetSnap = commandState.pollsSheetSnap;
   const isPollsVisible = overlayVisibilityState.isPollsRoot && physicalPollsSheetSnap !== 'hidden';

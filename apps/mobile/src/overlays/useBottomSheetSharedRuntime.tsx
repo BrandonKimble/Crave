@@ -372,11 +372,6 @@ export const useBottomSheetSharedRuntime = ({
   // set by the scene descriptors: unplumbing that prop chain is its own rederivation.
   const { resolveDestination, startSpring } = useBottomSheetSharedSnapExecutionRuntime({
     motionCommandValue,
-    preventSwipeDismiss,
-    expandedSnap,
-    middleSnap,
-    collapsedSnap,
-    hiddenSnap,
     sheetY,
     headerHeight: publicationRuntime.headerHeight,
     isDragging,
