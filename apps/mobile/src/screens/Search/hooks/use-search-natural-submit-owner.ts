@@ -23,17 +23,14 @@ type UseSearchNaturalSubmitOwnerArgs = {
   resolveNaturalSearchAttemptConfig: (
     options?: SubmitSearchOptions
   ) => ResolveNaturalSearchAttemptConfigResult;
-  logSearchPhase?: (label: string, options?: { reset?: boolean }) => void;
 };
 
 export const useSearchNaturalSubmitOwner = ({
   prepareNaturalSearchEntry,
   resolveNaturalSearchAttemptConfig,
-  logSearchPhase = () => {},
 }: UseSearchNaturalSubmitOwnerArgs) => {
   const submitSearch = React.useCallback(
     async (options?: SubmitSearchOptions, overrideQuery?: string) => {
-      logSearchPhase('submitSearch:start', { reset: true });
       const naturalAttemptConfig = resolveNaturalSearchAttemptConfig(options);
       const contextRecord =
         naturalAttemptConfig.submissionContext != null &&
@@ -77,7 +74,7 @@ export const useSearchNaturalSubmitOwner = ({
         throw new Error('submitSearch: append reached the deleted legacy lane');
       }
     },
-    [logSearchPhase, prepareNaturalSearchEntry, resolveNaturalSearchAttemptConfig]
+    [prepareNaturalSearchEntry, resolveNaturalSearchAttemptConfig]
   );
 
   return React.useMemo(

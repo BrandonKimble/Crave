@@ -1,6 +1,15 @@
 // The REVEAL STATECHART — the one sequenced thing in the desired-state architecture.
 // Chartered in plans/search-desired-state-architecture.md §5.
 //
+// NOT WIRED YET (F1043, confirmed 2026-08-05): `transitionReveal` has zero production
+// importers today — the shipped reveal runs through `search-surface-redraw-phase` +
+// the `results-presentation-*` machinery instead. This is chartered, owed future work,
+// not orphan scaffolding: `plans/search-s4-reconciler-edit-map.md` names the exact host
+// (`ROOT/runtime/reconciler/search-reveal-statechart-host.ts`) that wires this pure
+// machine into the S4 reconciler migration. Do not delete this file or its spec while
+// that plan is open; do not assume the model-tested spec below covers shipped behavior
+// until that host exists and imports it.
+//
 // Small, closed, subordinate: the reconciler eats ALL source/interleaving combinatorics
 // upstream (trigger sources write the desired tuple; they never talk to this machine).
 // This machine owns only the genuinely ordered choreography of one reveal:

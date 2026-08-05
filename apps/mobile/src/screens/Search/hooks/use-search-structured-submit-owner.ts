@@ -34,7 +34,6 @@ type UseSearchStructuredSubmitOwnerArgs = {
   /** S3-pre commit-moment adopt: awaits the SETTLED native camera (bounds + polygon)
    *  before the tuple write, so the resolver reads bounds from the tuple only. */
   captureFreshTupleBounds: () => Promise<SearchCommittedBounds | null>;
-  logSearchPhase?: (label: string, options?: { reset?: boolean }) => void;
   resetMapMoveFlag: () => void;
 };
 
@@ -42,12 +41,10 @@ export const useSearchStructuredSubmitOwner = ({
   searchRuntimeBus,
   viewportBoundsService,
   captureFreshTupleBounds,
-  logSearchPhase = () => {},
   resetMapMoveFlag,
 }: UseSearchStructuredSubmitOwnerArgs) => {
   const runRestaurantEntitySearch = React.useCallback(
     async (params: RunRestaurantEntitySearchParams) => {
-      logSearchPhase('runRestaurantEntitySearch:start', { reset: true });
       const trimmedName = params.restaurantName.trim();
       if (!trimmedName) {
         return;
@@ -72,7 +69,7 @@ export const useSearchStructuredSubmitOwner = ({
         'entity_tap'
       );
     },
-    [logSearchPhase, resetMapMoveFlag, searchRuntimeBus, viewportBoundsService]
+    [resetMapMoveFlag, searchRuntimeBus, viewportBoundsService]
   );
 
   // Wave-4 §3 (favorites-as-search RESTORED): a list open IS a list-identity tuple
@@ -104,7 +101,6 @@ export const useSearchStructuredSubmitOwner = ({
       };
     }): Promise<void> => {
       const isReslice = params.slice != null;
-      logSearchPhase('launchListSearchResults:start', { reset: !isReslice });
       // A re-slice keeps the user's map context (the world is bounds-independent; the
       // map re-slice is driven by membership, not a fresh viewport). Only a fresh enter
       // resets the move flag.
@@ -143,12 +139,11 @@ export const useSearchStructuredSubmitOwner = ({
         isReslice ? 'list_reslice' : 'favorites_launch'
       );
     },
-    [logSearchPhase, resetMapMoveFlag, searchRuntimeBus, viewportBoundsService]
+    [resetMapMoveFlag, searchRuntimeBus, viewportBoundsService]
   );
 
   const submitViewportShortcut = React.useCallback(
     async (targetTab: SegmentValue, submittedLabel: string, options: RunBestHereOptions) => {
-      logSearchPhase('runBestHere:start', { reset: true });
       // S2: the trigger writes the DESIRED TUPLE first (identity + tab + adopted viewport);
       // the writer projects searchMode/submittedQuery/session in the same publish. The
       // submit machinery below still executes the resolution until S3's resolver.
@@ -177,13 +172,7 @@ export const useSearchStructuredSubmitOwner = ({
       // S4b: the submit IS the tuple write — the reconciler classifies the transition,
       // derives the presentation intent, and drives resolution.
     },
-    [
-      captureFreshTupleBounds,
-      logSearchPhase,
-      resetMapMoveFlag,
-      searchRuntimeBus,
-      viewportBoundsService,
-    ]
+    [captureFreshTupleBounds, resetMapMoveFlag, searchRuntimeBus, viewportBoundsService]
   );
 
   return React.useMemo(

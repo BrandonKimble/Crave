@@ -14,15 +14,9 @@ import { formatPriceRangeSummary, getRangeFromLevels, type PriceRangeTuple } fro
 
 type UseSearchFilterModalOwnerArgs = {
   searchRuntimeBus: SearchRuntimeBus;
-  openNow: boolean;
-  includeSimilarActive: boolean;
   risingActive: boolean;
   priceLevels: readonly number[];
   panelVisible: boolean;
-  setIncludeSimilar: (next: boolean) => void;
-  setRisingActive: (next: boolean) => void;
-  setOpenNow: (next: boolean) => void;
-  setPriceLevels: (next: number[]) => void;
   captureFreshTupleBounds: Parameters<
     typeof useQueryMutationOrchestrator
   >[0]['captureFreshTupleBounds'];

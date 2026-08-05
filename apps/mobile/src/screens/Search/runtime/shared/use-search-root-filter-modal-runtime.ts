@@ -72,15 +72,9 @@ export const useSearchRootFilterModalRuntime = ({
   );
   const filterModalOwner = useSearchFilterModalOwner({
     searchRuntimeBus: sessionCoreLane.searchRuntimeBus,
-    openNow: rootDataPlaneRuntime.filterStateRuntime.openNow,
-    includeSimilarActive: rootDataPlaneRuntime.filterStateRuntime.includeSimilarActive,
     risingActive: rootDataPlaneRuntime.filterStateRuntime.risingActive,
     priceLevels: rootDataPlaneRuntime.filterStateRuntime.priceLevels,
     panelVisible: appRouteSharedSheetRuntimeOwner.panelVisible,
-    setIncludeSimilar: rootDataPlaneRuntime.filterStateRuntime.setIncludeSimilar,
-    setRisingActive: rootDataPlaneRuntime.filterStateRuntime.setRisingActive,
-    setOpenNow: rootDataPlaneRuntime.filterStateRuntime.setOpenNow,
-    setPriceLevels: rootDataPlaneRuntime.filterStateRuntime.setPriceLevels,
     captureFreshTupleBounds: submitRuntimeResult.captureFreshTupleBounds,
     registerTransientDismissor: rootOverlayStoreRuntime.registerTransientDismissor,
     onMechanismEvent: rootInstrumentationRuntime.emitRuntimeMechanismEvent,

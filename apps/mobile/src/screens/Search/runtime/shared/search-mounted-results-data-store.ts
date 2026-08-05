@@ -42,7 +42,7 @@ import {
 type SearchSurfaceRedrawPhase = 'idle' | 'redraw_committed';
 import { RESULTS_BOTTOM_PADDING } from '../../constants/search';
 import { getResultsPresentationSurfaceAuthority } from './results-presentation-surface-authority';
-import type { SearchRuntimeBus } from './search-runtime-bus';
+import { logRevealSyncDebug, logSrinullDebug } from './search-mounted-results-debug-flag';
 import type { SearchRuntimeInteractionState } from './use-search-root-session-runtime-contract';
 import { getSearchSurfaceRuntime } from '../surface/search-surface-runtime';
 
@@ -742,11 +742,9 @@ const publishSearchMountedResultsPreparedRowsSnapshot = ({
   source: string;
 }): void => {
   const authority = getResultsPresentationSurfaceAuthority();
-  // eslint-disable-next-line no-console
-  if (__DEV__)
-    console.log(
-      `[REVEALSYNC] preparedRows src=${source} ready=${ready} count=${activeRowCount} jsNowMs=${(globalThis.performance?.now?.() ?? 0).toFixed(1)}`
-    );
+  logRevealSyncDebug(
+    `preparedRows src=${source} ready=${ready} count=${activeRowCount} jsNowMs=${(globalThis.performance?.now?.() ?? 0).toFixed(1)}`
+  );
   // TR5-N empty-variant: activeRowCount === 0 WITH a results identity is a legitimate,
   // first-class variant (e.g. open-now filtered every row out) — it stages and commits like
   // any other page so the reveal joint can open on the empty state. Only a NULL identity
@@ -904,11 +902,11 @@ export const publishSearchMountedResultsDataSnapshot = (
     resultsQueryIdentity?: SearchQueryIdentity | null;
   }
 ): boolean => {
-  if (__DEV__ && results == null && snapshot.results != null) {
+  if (results == null && snapshot.results != null) {
     // [SRINULL] attribution: WHO clears the mounted-results data store (the map projection's
     // source) while the results surface may still be live? Top stack frames name the caller.
-    console.log(
-      `[SRINULL] data-store CLEARED (had rrk=${snapshot.resultsRequestKey}) by:\n${new Error().stack?.split('\n').slice(1, 5).join('\n')}`
+    logSrinullDebug(
+      `data-store CLEARED (had rrk=${snapshot.resultsRequestKey}) by:\n${new Error().stack?.split('\n').slice(1, 5).join('\n')}`
     );
   }
   const nextResultsRequestKey = results?.metadata?.searchRequestId ?? null;
@@ -1022,16 +1020,12 @@ const logRowsAdmissionTransition = (
   previous: SearchMountedResultsRowsSnapshot,
   next: Omit<SearchMountedResultsRowsSnapshot, 'version'>
 ): void => {
-  if (!__DEV__) {
-    return;
-  }
   if (
     previous.admission.mode !== next.admission.mode ||
     previous.admission.renderRowCount !== next.admission.renderRowCount
   ) {
-    // eslint-disable-next-line no-console
-    console.log(
-      `[REVEALSYNC] rowsAdmission ${previous.admission.mode}:${previous.admission.renderRowCount} -> ${next.admission.mode}:${next.admission.renderRowCount} jsNowMs=${(globalThis.performance?.now?.() ?? Date.now()).toFixed(1)}`
+    logRevealSyncDebug(
+      `rowsAdmission ${previous.admission.mode}:${previous.admission.renderRowCount} -> ${next.admission.mode}:${next.admission.renderRowCount} jsNowMs=${(globalThis.performance?.now?.() ?? Date.now()).toFixed(1)}`
     );
   }
 };
@@ -1433,41 +1427,6 @@ export function showMoreSearchMountedResultsExactRestaurants(): void {
     prepareSearchMountedResultsRowsSnapshot(lastRowsPreparationInput);
   }
 }
-
-export const useSearchMountedResultsBodyAuthorityOwner = ({
-  searchRuntimeBus,
-}: {
-  searchRuntimeBus: SearchRuntimeBus;
-}): void => {
-  React.useEffect(() => {
-    const publishRuntimeSnapshot = (): void => {
-      const runtimeState = searchRuntimeBus.getState() as ReturnType<
-        SearchRuntimeBus['getState']
-      > & {
-        hydratedResultsKey?: string | null;
-        resultsIdentityKey?: string | null;
-        shouldHydrateResultsForRender?: boolean;
-      };
-      publishSearchMountedResultsBodyRuntimeSnapshot({
-        activeTab: runtimeState.activeTab ?? 'restaurants',
-        hydratedResultsKey: runtimeState.hydratedResultsKey ?? null,
-        isResultsHydrationSettled: true,
-        searchSurfaceResultsTransactionKey: bodyRuntimeSnapshot.searchSurfaceResultsTransactionKey,
-        resultsIdentityKey: runtimeState.resultsIdentityKey ?? null,
-        // F1735: the bus phase was pinned 'idle' by construction; the field is deleted.
-        searchSurfaceRedrawPhase: 'idle',
-        shouldHydrateResultsForRender: runtimeState.shouldHydrateResultsForRender ?? false,
-      });
-    };
-
-    publishRuntimeSnapshot();
-    return searchRuntimeBus.subscribe(
-      publishRuntimeSnapshot,
-      ['activeTab'] as const,
-      'mounted_results_body_authority'
-    );
-  }, [searchRuntimeBus]);
-};
 
 export const useSearchMountedResultsDataSnapshot = (): SearchMountedResultsDataSnapshot =>
   React.useSyncExternalStore(
