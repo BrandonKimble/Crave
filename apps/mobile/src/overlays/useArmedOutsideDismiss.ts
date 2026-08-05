@@ -38,9 +38,15 @@ export const useArmedOutsideDismiss = ({
         .enabled(enabled)
         .manualActivation(true)
         .cancelsTouchesInView(false)
-        .onTouchesDown(() => {
+        .onTouchesDown((event) => {
           'worklet';
-          fired.value = false;
+          // Reset only on the gesture's FIRST finger (numberOfTouches === 1): onTouchesDown
+          // fires per finger, not per gesture, so resetting unconditionally let a SECOND
+          // finger landing after the first already dismissed re-arm the guard and fire a
+          // second dismiss (F1492).
+          if (event.numberOfTouches === 1) {
+            fired.value = false;
+          }
         })
         .onTouchesMove((_event, stateManager) => {
           'worklet';

@@ -26,9 +26,13 @@ import {
   logPerfScenarioAttributionEvent,
 } from '../perf/perf-scenario-attribution';
 import { usePerfScenarioRuntimeStore } from '../perf/perf-scenario-runtime-store';
+import {
+  SEARCH_RESULTS_LIST_DEFAULT_DRAW_DISTANCE,
+  SEARCH_RESULTS_LIST_DEFAULT_INITIAL_DRAW_BATCH_SIZE,
+} from './overlay-chrome-metrics';
 
-const DEFAULT_DRAW_DISTANCE = 140;
-const DEFAULT_INITIAL_DRAW_BATCH_SIZE = 8;
+const DEFAULT_DRAW_DISTANCE = SEARCH_RESULTS_LIST_DEFAULT_DRAW_DISTANCE;
+const DEFAULT_INITIAL_DRAW_BATCH_SIZE = SEARCH_RESULTS_LIST_DEFAULT_INITIAL_DRAW_BATCH_SIZE;
 const INACTIVE_SECONDARY_DRAW_DISTANCE = 0;
 const INACTIVE_SECONDARY_INITIAL_DRAW_BATCH_SIZE = 1;
 const AnimatedFlashList = Animated.createAnimatedComponent(

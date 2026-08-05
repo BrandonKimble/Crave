@@ -49,6 +49,10 @@ import {
   getSearchSurfaceRuntime,
   type SearchSurfaceResultsBodyBundle,
 } from '../screens/Search/runtime/surface/search-surface-runtime';
+import {
+  SEARCH_RESULTS_LIST_DEFAULT_DRAW_DISTANCE,
+  SEARCH_RESULTS_LIST_DEFAULT_INITIAL_DRAW_BATCH_SIZE,
+} from './overlay-chrome-metrics';
 
 type SearchMountedListBodyContentSpec = Extract<
   SearchRouteSceneBodyContentSpec,
@@ -64,8 +68,8 @@ const AnimatedFlashList = Animated.createAnimatedComponent(
   FlashList as React.ComponentType<object>
 ) as typeof FlashList;
 
-const DEFAULT_DRAW_DISTANCE = 140;
-const DEFAULT_INITIAL_DRAW_BATCH_SIZE = 8;
+const DEFAULT_DRAW_DISTANCE = SEARCH_RESULTS_LIST_DEFAULT_DRAW_DISTANCE;
+const DEFAULT_INITIAL_DRAW_BATCH_SIZE = SEARCH_RESULTS_LIST_DEFAULT_INITIAL_DRAW_BATCH_SIZE;
 const MAX_PREPARED_ROWS_INITIAL_DRAW_BATCH_SIZE = 32;
 const EMPTY_SEARCH_MOUNTED_RESULTS_LIST_DATA: ResultsListItem[] = [];
 const nowMs = (): number => globalThis.performance?.now?.() ?? Date.now();
@@ -296,8 +300,13 @@ const getLandingSlicedSnapshot = (
     // tab's rows are pure post-ramp work: they land with the held beats (or instantly
     // via the tab-flip release below). primary = restaurants, secondary = dishes.
     landingSliceActiveTab = getSearchMountedResultsRowsSnapshot().activeTab;
-    const primaryAboveFold = landingSliceActiveTab === 'restaurants' ? LANDING_ABOVE_FOLD_ROWS : 0;
-    const secondaryAboveFold = landingSliceActiveTab === 'dishes' ? LANDING_ABOVE_FOLD_ROWS : 0;
+    // Band key ↔ transport lane mapping consulted from its declared home
+    // (search-results-page-bands.ts: "'restaurants' = the PRIMARY list lane; 'dishes' =
+    // the SECONDARY list lane") rather than re-spelled as independent literals (F1459).
+    const primaryAboveFold =
+      landingSliceActiveTab === SEARCH_RESULTS_BANDS.restaurants.key ? LANDING_ABOVE_FOLD_ROWS : 0;
+    const secondaryAboveFold =
+      landingSliceActiveTab === SEARCH_RESULTS_BANDS.dishes.key ? LANDING_ABOVE_FOLD_ROWS : 0;
     landingSliceSnapshot = {
       ...base,
       primaryData: base.primaryData.slice(0, primaryAboveFold),

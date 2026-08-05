@@ -250,6 +250,16 @@ export const publishSearchResultsPageBundle = (
     const transactionId =
       getSearchSurfaceRuntime().getSnapshot().dismissTransaction?.id ?? 'unknown';
     if (nextSnapshot != null) {
+      // F1455: ARM WITHOUT DISARM — a prior publish(null) in this SAME dismiss armed
+      // deferredVisibleDismissPageBundleClear (+ its settle subscription). A fresh
+      // publish(non-null) supersedes that stale clear intent; without disarming here the
+      // parked clear survives to fire on a LATER settle and wipes a bundle this call
+      // explicitly asked to keep.
+      if (deferredVisibleDismissPageBundleClear) {
+        deferredVisibleDismissPageBundleClear = false;
+        deferredVisibleDismissPageBundleClearLogKey = null;
+        clearDeferredVisibleDismissPageBundleSubscription();
+      }
       const frozenLogKey = `${transactionId}|${nextSnapshot.kind}`;
       if (visibleDismissPageBundleFrozenLogKey !== frozenLogKey) {
         visibleDismissPageBundleFrozenLogKey = frozenLogKey;

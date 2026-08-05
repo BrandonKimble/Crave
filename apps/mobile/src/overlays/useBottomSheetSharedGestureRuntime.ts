@@ -48,11 +48,6 @@ type UseBottomSheetSharedGestureRuntimeArgs = {
   maxScrollOffset: SharedValue<number>;
   scrollViewportHeight: SharedValue<number>;
   boundaryFactsKnown: SharedValue<boolean>;
-  preventSwipeDismiss: boolean;
-  expandedSnap: number;
-  middleSnap: number;
-  collapsedSnap: number;
-  hiddenSnap?: number;
   headerHeight: SharedValue<number>;
   expandTouchInHeader: SharedValue<boolean>;
   expandGestureOwner: SharedValue<number>;
@@ -92,7 +87,7 @@ type UseBottomSheetSharedGestureRuntimeArgs = {
     shouldNotifyHidden?: boolean,
     source?: BottomSheetSnapChangeSource
   ) => void;
-  runtimeConfigValues?: BottomSheetSharedRuntimeConfigSharedValues;
+  runtimeConfigValues: BottomSheetSharedRuntimeConfigSharedValues;
 };
 
 export const useBottomSheetSharedGestureRuntime = ({
@@ -101,11 +96,6 @@ export const useBottomSheetSharedGestureRuntime = ({
   maxScrollOffset,
   scrollViewportHeight,
   boundaryFactsKnown,
-  preventSwipeDismiss,
-  expandedSnap,
-  middleSnap,
-  collapsedSnap,
-  hiddenSnap,
   headerHeight,
   expandTouchInHeader,
   expandGestureOwner,
@@ -150,29 +140,21 @@ export const useBottomSheetSharedGestureRuntime = ({
   // never-re-rendered containers (polls) holding Gesture.Native relations to DETACHED
   // pans — native scroll outside live arbitration (the double-motion/shake). Worklets
   // now read these through stable SV mirrors, so the gesture set mints ONCE.
-  const expandedSnapValue = useSharedValue(expandedSnap);
-  const middleSnapValue = useSharedValue(middleSnap);
-  const collapsedSnapValue = useSharedValue(collapsedSnap);
-  const hiddenSnapValue = useSharedValue(hiddenSnap ?? Number.NaN);
-  const preventSwipeDismissValue = useSharedValue(preventSwipeDismiss);
-  React.useEffect(() => {
-    expandedSnapValue.value = expandedSnap;
-    middleSnapValue.value = middleSnap;
-    collapsedSnapValue.value = collapsedSnap;
-    hiddenSnapValue.value = hiddenSnap ?? Number.NaN;
-    preventSwipeDismissValue.value = preventSwipeDismiss;
-  }, [
-    collapsedSnap,
-    collapsedSnapValue,
-    expandedSnap,
-    expandedSnapValue,
-    hiddenSnap,
-    hiddenSnapValue,
-    middleSnap,
-    middleSnapValue,
-    preventSwipeDismiss,
-    preventSwipeDismissValue,
-  ]);
+  //
+  // F1476b: `runtimeConfigValues` is REQUIRED (same banking as F1476/the exec-runtime
+  // sibling — the sole caller, useBottomSheetSharedRuntime.tsx:391, always supplies it;
+  // `.shouldEnableScroll` is read unconditionally at that file's own :446 with no null
+  // guard). These five mirrors used to be double-written: an UNGUARDED effect off raw
+  // number props (deleted below) AND the animated reaction a few lines down that IS
+  // guarded on `runtimeConfigValues != null` — two writers racing on the same five
+  // values, one of them dead weight since `runtimeConfigValues` was never absent.
+  const expandedSnapValue = useSharedValue(runtimeConfigValues.expandedSnap.value);
+  const middleSnapValue = useSharedValue(runtimeConfigValues.middleSnap.value);
+  const collapsedSnapValue = useSharedValue(runtimeConfigValues.collapsedSnap.value);
+  const hiddenSnapValue = useSharedValue(
+    runtimeConfigValues.hasHiddenSnap.value ? runtimeConfigValues.hiddenSnap.value : Number.NaN
+  );
+  const preventSwipeDismissValue = useSharedValue(runtimeConfigValues.preventSwipeDismiss.value);
   // Boundary-physics local state (the bottom-overscroll pan's touch bookkeeping).
   const overscrollPanActive = useSharedValue(false);
   const overscrollAxisLock = useSharedValue(0);
@@ -181,37 +163,30 @@ export const useBottomSheetSharedGestureRuntime = ({
   const overscrollCatchPull = useSharedValue(0);
   const overscrollLastTouchY = useSharedValue(0);
 
-  React.useEffect(() => {
-    if (runtimeConfigValues != null) {
-      return;
-    }
-    ownedGestureEnabledValue.value = gestureEnabled ? 1 : 0;
-  }, [gestureEnabled, ownedGestureEnabledValue, runtimeConfigValues]);
-
   // ─── IMMUTABLE PANS (gesture redesign) ────────────────────────────────────────────
   // INVARIANT: nothing a pan worklet captures may have changeable JS identity — the
   // polls disease was Gesture.Native relations pointing at DETACHED pan objects after
   // a re-mint (boot-mounted leg, never re-rendered). Facts reach the pans through the
   // owned SV mirrors below; effects leave through the command bus. The reactions and
   // executor may re-mint freely — they are NOT gesture identity.
+  //
+  // F1476b: the JS-thread `gestureEnabled`-prop effect that used to live here (guarded
+  // `if (runtimeConfigValues != null) return`) was dead by the same F1476 banking —
+  // `runtimeConfigValues` is never absent at the sole call site, so that guard always
+  // took the early return. Deleted; `ownedGestureEnabledValue` is now written ONLY by
+  // this reaction, same as the other four mirrors.
   useAnimatedReaction(
-    () =>
-      runtimeConfigValues == null
-        ? null
-        : {
-            expanded: runtimeConfigValues.expandedSnap.value,
-            middle: runtimeConfigValues.middleSnap.value,
-            collapsed: runtimeConfigValues.collapsedSnap.value,
-            hidden: runtimeConfigValues.hasHiddenSnap.value
-              ? runtimeConfigValues.hiddenSnap.value
-              : Number.NaN,
-            preventSwipeDismiss: runtimeConfigValues.preventSwipeDismiss.value,
-            gestureEnabled: runtimeConfigValues.gestureEnabled.value,
-          },
+    () => ({
+      expanded: runtimeConfigValues.expandedSnap.value,
+      middle: runtimeConfigValues.middleSnap.value,
+      collapsed: runtimeConfigValues.collapsedSnap.value,
+      hidden: runtimeConfigValues.hasHiddenSnap.value
+        ? runtimeConfigValues.hiddenSnap.value
+        : Number.NaN,
+      preventSwipeDismiss: runtimeConfigValues.preventSwipeDismiss.value,
+      gestureEnabled: runtimeConfigValues.gestureEnabled.value,
+    }),
     (config) => {
-      if (config == null) {
-        return;
-      }
       // Write-on-change only: the prepared object is re-created every frame, so the
       // callback runs per frame — unconditional writes were per-frame SV churn (the
       // owner's lag report). Compare before writing.

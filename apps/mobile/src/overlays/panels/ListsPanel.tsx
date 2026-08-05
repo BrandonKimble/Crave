@@ -827,7 +827,7 @@ const ListsContent = React.memo(({ items }: { items: readonly UserListSummary[] 
             onPress: () => void handleToggleUseOwnPhotos(list),
           },
           {
-            label: isPinned ? 'Unpin from profile' : 'Pin on profile',
+            label: isPinned ? 'Unpin from profile' : 'Pin to profile',
             icon: isPinned ? (
               <PinOff size={19} color={TILE_TEXT} />
             ) : (
