@@ -48,7 +48,7 @@ export const useSearchRootRuntimeFlagsRuntime = ({
       searchRuntimeBus.publish({
         isSearchLoading: isLoadingNext,
       });
-      foregroundPolicyPublicationAuthority.publishCurrent('searchLoading');
+      foregroundPolicyPublicationAuthority.publishCurrent();
     },
     [foregroundPolicyPublicationAuthority, searchRuntimeBus]
   );

@@ -53,7 +53,7 @@ export const useSearchRootRouteSearchSceneDataStateRuntime = ({
     );
   }, [routeSceneSwitchAuthority]);
   const routeSearchSceneResolvedResultsRuntime = useSearchResultsPanelRetainedResultsRuntime({
-    results: routeSearchSceneResultsRuntimeState.results,
+    results: null,
     searchSheetContentLane: routeSearchSceneSearchSheetContentLane,
     retainedResultsWriter: readModelPolicyWriters.retainedResults,
   });

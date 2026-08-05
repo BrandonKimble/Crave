@@ -5,7 +5,6 @@ import type { SearchFreezeClassification } from './search-freeze-classification-
 export type SearchResultsPayload = SearchResponse | null;
 
 export type SearchResultsPanelResultsRuntimeState = {
-  results: SearchResultsPayload;
   resultsRequestKey: string | null;
   resultsIdentityCandidateKey: string | null;
   resultsPage: number | null;

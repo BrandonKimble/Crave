@@ -7,15 +7,8 @@ import type { RouteShellSceneInputLane } from '../../../../navigation/runtime/ap
 import type { SearchForegroundPolicyDomainController } from './search-foreground-policy-domain-controller';
 import type { SearchSuggestionPanelStateController } from './search-suggestion-panel-state-controller';
 
-export type SearchForegroundPolicyPublicationReason =
-  | 'suggestionPanelActive'
-  | 'inputMode'
-  | 'closeTransitionActive'
-  | 'searchSessionActive'
-  | 'searchLoading';
-
 export type SearchForegroundPolicyPublicationAuthority = {
-  publishCurrent: (reason: SearchForegroundPolicyPublicationReason) => boolean;
+  publishCurrent: () => boolean;
   suggestionPanelStateController: SearchSuggestionPanelStateController;
   routeSceneVisibilityPolicyRuntime: RouteSceneVisibilityPolicyRuntime;
 };
@@ -33,7 +26,7 @@ export const createSearchForegroundPolicyPublicationAuthority = ({
 }): SearchForegroundPolicyPublicationAuthority => {
   let lastPublishedForegroundPolicyInputs: AppRouteSceneForegroundPolicyInputs | null = null;
 
-  const publishCurrent = (_reason: SearchForegroundPolicyPublicationReason): boolean => {
+  const publishCurrent = (): boolean => {
     const foregroundPolicyInputs = foregroundPolicyDomain.getForegroundPolicyInputs();
     if (
       lastPublishedForegroundPolicyInputs != null &&
@@ -58,14 +51,14 @@ export const createSearchForegroundPolicyPublicationAuthority = ({
     setIsSuggestionPanelActive(nextValue) {
       const nextSnapshot = suggestionPanelStateController.setIsSuggestionPanelActive(nextValue);
       if (nextSnapshot != null) {
-        publishCurrent('suggestionPanelActive');
+        publishCurrent();
       }
       return nextSnapshot;
     },
     reset() {
       const nextSnapshot = suggestionPanelStateController.reset();
       if (nextSnapshot != null) {
-        publishCurrent('suggestionPanelActive');
+        publishCurrent();
       }
       return nextSnapshot;
     },
@@ -87,13 +80,13 @@ export const createSearchForegroundPolicyPublicationAuthority = ({
       ),
     updateInputMode(inputMode) {
       const nextSnapshot = routeSceneVisibilityPolicyRuntime.updateInputMode(inputMode);
-      publishCurrent('inputMode');
+      publishCurrent();
       return nextSnapshot;
     },
     updateCloseTransitionActive(isCloseTransitionActive) {
       const nextSnapshot =
         routeSceneVisibilityPolicyRuntime.updateCloseTransitionActive(isCloseTransitionActive);
-      publishCurrent('closeTransitionActive');
+      publishCurrent();
       return nextSnapshot;
     },
     updateFromRouteScenePolicySnapshot:

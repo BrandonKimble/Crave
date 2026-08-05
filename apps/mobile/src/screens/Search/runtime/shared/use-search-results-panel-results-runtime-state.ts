@@ -9,7 +9,6 @@ export const useSearchResultsPanelResultsRuntimeState = (
   return useSearchRuntimeBusSelector(
     searchRuntimeBus,
     (state) => ({
-      results: null,
       resultsRequestKey: state.resultsRequestKey,
       resultsIdentityCandidateKey: state.resultsIdentityCandidateKey,
       resultsPage: state.resultsPage,

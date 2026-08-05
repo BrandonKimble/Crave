@@ -14,6 +14,10 @@ import {
   selectSearchSurfaceVisualPolicy,
 } from './search-surface-runtime';
 import { resetTransitionTxnHolderForTest } from '../../../../navigation/runtime/transition-engine/transition-transaction';
+import {
+  getTrackMotionAuthority,
+  resetTrackMotionAuthorityForTest,
+} from '../../../../tracksheet/track-motion-authority';
 
 // The engine holder is module-scope; a prior test's live episode would make the next
 // test's staging DEFER (route-window semantics) and its offers bounce.
@@ -59,6 +63,66 @@ describe('SearchSurfaceRuntime sheet-motion fence (redraw-object shrink: SURFACE
     runtime.markRedrawSheetReady(id);
     const snapshot = runtime.getSnapshot();
     const stillPending = snapshot.redrawTransaction;
+    expect(stillPending == null || stillPending.committedAtMs != null).toBe(true);
+  });
+});
+
+// ─── F2 (deep red team round 2) — the redraw born mid-flight ─────────────────
+// THE BUG THIS CLOSES: a redraw arming while the sheet was ALREADY in motion
+// was born sheetMotionSettled:true, because the seed had no authority to ask —
+// the at-rest fact lived in three refs inside a React hook. Its reveal could
+// land mid-slide. The seed now ASKS THE MOTION AUTHORITY.
+// PROVEN RED by mutation: drop `&& getTrackMotionAuthority().isAtRest()` from
+// publishArmedRedrawTransaction and the first two cases below fail.
+describe('F2: a redraw armed MID-FLIGHT is born NOT settled (the seed asks the motion authority)', () => {
+  beforeEach(() => resetTrackMotionAuthorityForTest());
+  afterEach(() => resetTrackMotionAuthorityForTest());
+
+  it('armed during a live DRAG → born fenced, and it opens only on a real rest fact', () => {
+    getTrackMotionAuthority().dispatch({ type: 'drag-begin', atMs: 0 });
+    const runtime = new SearchSurfaceRuntime();
+    const id = runtime.beginRedrawTransaction({ reason: 'toggle' });
+    expect(runtime.getSnapshot().redrawTransaction?.id).toBe(id);
+    expect(runtime.getSnapshot().sheetMotionSettled).toBe(false);
+    // The REAL rest fact (the settle observer) ends the episode; the host's
+    // rest handler is what marks the leg ready — nothing else may open it.
+    const transition = getTrackMotionAuthority().dispatch({ type: 'settle' });
+    expect(transition.rest).toBe(true);
+    runtime.markRedrawSheetReady(id);
+    expect(runtime.getSnapshot().sheetMotionSettled).toBe(true);
+  });
+
+  it('armed during a commanded FLIGHT → born fenced (the F2 window, any producer)', () => {
+    getTrackMotionAuthority().dispatch({
+      type: 'command-issued',
+      willMove: true,
+      snapTo: 'expanded',
+      settleToken: 1,
+      atMs: 0,
+    });
+    const runtime = new SearchSurfaceRuntime();
+    const id = runtime.beginRedrawTransaction({ reason: 'submit' });
+    expect(runtime.getSnapshot().sheetMotionSettled).toBe(false);
+    void id;
+  });
+
+  it('armed AT REST → still born open (a sheet that never moves has no settle to wait for)', () => {
+    expect(getTrackMotionAuthority().isAtRest()).toBe(true);
+    const runtime = new SearchSurfaceRuntime();
+    runtime.beginRedrawTransaction({ reason: 'toggle' });
+    expect(runtime.getSnapshot().sheetMotionSettled).toBe(true);
+  });
+
+  it('THE MID-SLIDE LAW holds for the mid-flight arm: the commit defers until the fence restores', () => {
+    getTrackMotionAuthority().dispatch({ type: 'drag-begin', atMs: 0 });
+    const runtime = new SearchSurfaceRuntime();
+    const id = runtime.beginRedrawTransaction({ reason: 'submit' });
+    runtime.markRedrawCardsReady(id);
+    runtime.markRedrawNativeMarkerFrameReady(id);
+    expect(runtime.getSnapshot().redrawTransaction?.committedAtMs ?? null).toBeNull();
+    getTrackMotionAuthority().dispatch({ type: 'settle' });
+    runtime.markRedrawSheetReady(id);
+    const stillPending = runtime.getSnapshot().redrawTransaction;
     expect(stillPending == null || stillPending.committedAtMs != null).toBe(true);
   });
 });

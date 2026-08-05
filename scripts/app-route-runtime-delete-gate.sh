@@ -681,8 +681,9 @@ if [[ -e "$search_map_component_file" ]] &&
   [[ -e "$search_map_render_controller_ios_bridge_file" ]] && {
     ! rg -q --fixed-strings "searchMapRenderController.platform === 'ios' ||" "$search_map_component_file" ||
     ! rg -q --fixed-strings "searchMapRenderController.platform === 'android'" "$search_map_component_file" ||
-    ! rg -q --fixed-strings "handleMapViewPress = nativePressOwnerEnabled ? undefined : handleMapPress" "$search_map_component_file" ||
-    ! rg -q --fixed-strings "handleMarkerScenePressTarget = nativePressOwnerEnabled ? undefined : handleMapPress" "$search_map_component_file" ||
+    ! rg -q --fixed-strings "const handleMapViewPress = undefined;" "$search_map_component_file" ||
+    ! rg -q --fixed-strings "const handleMarkerScenePressTarget = undefined;" "$search_map_component_file" ||
+    rg -q --fixed-strings "handleMapPress" "$search_map_component_file" ||
     ! rg -q --fixed-strings ".configureNativePressTargeting({" "$search_map_component_file" ||
     ! rg -q --fixed-strings "type: 'native_press_target_resolved'" "$search_map_render_controller_file" ||
     ! rg -q --fixed-strings "configureNativePressTargeting is required on \${Platform.OS}" "$search_map_render_controller_file" ||

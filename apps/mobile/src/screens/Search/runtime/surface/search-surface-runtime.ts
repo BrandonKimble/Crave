@@ -9,6 +9,7 @@ import {
   subscribeTransitionTxn,
   type TransitionJoinInput,
 } from '../../../../navigation/runtime/transition-engine/transition-transaction';
+import { getTrackMotionAuthority } from '../../../../tracksheet/track-motion-authority';
 import { reportSearchFlowContractViolation } from '../shared/search-flow-contracts';
 import { auditWorldJoinAtReveal } from './world-join-contract';
 import { sceneParticipatesInWorldJoin } from '../../../../navigation/runtime/scene-foundation-spec';
@@ -653,6 +654,7 @@ export class SearchSurfaceRuntime {
       return;
     }
     this.pendingRedrawMotionArm = null;
+    const motionExpected = this.redrawSheetMotionExpectedTransactionId === id;
     const { reason, query, bounds, filters, targetTab, coverState, dataMode } =
       pendingRedrawMotionArm.input;
     this.publish({
@@ -686,11 +688,28 @@ export class SearchSurfaceRuntime {
       // eye-verified 2026-07-13: snap START's runOnJS roundtrip lands ~10-30ms after
       // the command and heavy applies froze the slide's first frames through the gap).
       // Every snap-command path restores at settle (recordSharedSheetSnap).
-      sheetMotionSettled: this.redrawSheetMotionExpectedTransactionId !== id,
+      //
+      // F2 CLOSED (deep red team round 2 — THE MOTION AUTHORITY). This used to
+      // read ONLY the expectation flag, so a redraw arming while the sheet was
+      // ALREADY in motion (a live drag, a flight commanded by any other path)
+      // was born settled:true and its reveal could land mid-slide. There was no
+      // authority to ASK — the at-rest fact lived in three refs inside a React
+      // hook, reachable only by the push producers. There is one now: the seed
+      // ASKS IT. A redraw armed mid-flight is born NOT settled and joins the
+      // reveal only when a real rest fact (settle / hidden edge / deadline)
+      // restores the fence through markRedrawSheetReady.
+      sheetMotionSettled: !motionExpected && getTrackMotionAuthority().isAtRest(),
     });
     this.redrawSheetMotionExpectedTransactionId = null;
     this.q2RedrawCommitPendingFenceRestore = false;
-    this.stageQ2ShadowTransitionTxn(id);
+    // THE STAGING DECISION IS THE EXPECTATION'S, NOT THE FENCE'S. A route-
+    // coupled reveal ENTER defers the world episode until the route txn
+    // terminates (design §3). A redraw armed mid-flight by ANY OTHER motion
+    // (F2) is not route-coupled: its episode stages now, and the mid-slide law
+    // (commitRevealedRedrawRespectingFence) is what holds its commit until the
+    // fence restores. Conflating the two would have parked such an episode on a
+    // route-txn event that may never come.
+    this.stageQ2ShadowTransitionTxn(id, motionExpected);
   }
 
   // S1 episode stager (reveal-pipeline unification §2/§3): stationary in-place
@@ -698,7 +717,7 @@ export class SearchSurfaceRuntime {
   // route-coupled reveal ENTER) DEFERS the world episode until the route txn
   // terminates — with the S1 unified producers the deferred join is total (Q-2c's
   // falsification was the per-lane marks, not the two-txn shape).
-  private stageQ2ShadowTransitionTxn(id: string): void {
+  private stageQ2ShadowTransitionTxn(id: string, motionExpected: boolean): void {
     const liveTxn = getLiveTransitionTxn();
     if (
       liveTxn != null &&
@@ -716,8 +735,7 @@ export class SearchSurfaceRuntime {
       }
       return;
     }
-    const bornSheetReady = this.snapshot.sheetMotionSettled !== false;
-    if (!bornSheetReady) {
+    if (motionExpected) {
       // Motion-expected arm = a route-coupled reveal ENTER (design §3): the push txn
       // reveals the skeleton; the world episode defers until it terminates.
       this.q2ShadowTxnId = null;

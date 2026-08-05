@@ -88,16 +88,3 @@ export const formatPriceRangeSummary = (range: PriceRangeTuple): string => {
   return formatPriceRangeText(toPriceLevelRange(normalized));
 };
 
-export const normalizePriceFilter = (levels?: number[] | null): number[] => {
-  if (!Array.isArray(levels) || levels.length === 0) {
-    return [];
-  }
-
-  return Array.from(
-    new Set(
-      levels
-        .map((level) => Math.round(level))
-        .filter((level) => Number.isInteger(level) && level >= 1 && level <= 4)
-    )
-  ).sort((a, b) => a - b);
-};

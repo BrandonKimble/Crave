@@ -1,5 +1,5 @@
 import type { Coordinate, MapBounds } from '../../../types';
-import { getBoundsCenter, getBoundsDiagonalMiles, haversineDistanceMiles } from './geo';
+import { getBoundsCenter, getBoundsDiagonalMiles } from './geo';
 
 // ---------------------------------------------------------------------------
 // OVERLAP-ALLOWED REGION — where shortcut-search pins are allowOverlap:true (all
@@ -51,46 +51,6 @@ export const resolveOverlapRegion = ({
   }
   const center = userLocation ?? getBoundsCenter(submittedBounds);
   return { kind: 'radius', center, radiusMiles };
-};
-
-// Ray-casting point-in-polygon over [lng, lat] corners.
-const isPointInPolygon = (lng: number, lat: number, polygon: LngLat[]): boolean => {
-  let inside = false;
-  for (let i = 0, j = polygon.length - 1; i < polygon.length; j = i, i += 1) {
-    const [xi, yi] = polygon[i];
-    const [xj, yj] = polygon[j];
-    const intersects = yi > lat !== yj > lat && lng < ((xj - xi) * (lat - yi)) / (yj - yi) + xi;
-    if (intersects) {
-      inside = !inside;
-    }
-  }
-  return inside;
-};
-
-// True if the coordinate is inside the overlap region. No region yet → treat as
-// in-region (show rank) so the first paint isn't all-scored.
-export const isWithinOverlapRegion = (
-  region: OverlapRegion | null,
-  coord: [number, number]
-): boolean => {
-  if (!region) {
-    return true;
-  }
-  const [lng, lat] = coord;
-  if (region.kind === 'viewport') {
-    // Prefer the screen-accurate polygon (pitch/twist-aware); fall back to the AABB.
-    if (region.polygon) {
-      return isPointInPolygon(lng, lat, region.polygon);
-    }
-    const b = region.bounds;
-    return (
-      lat >= b.southWest.lat &&
-      lat <= b.northEast.lat &&
-      lng >= b.southWest.lng &&
-      lng <= b.northEast.lng
-    );
-  }
-  return haversineDistanceMiles(region.center, { lat, lng }) <= region.radiusMiles;
 };
 
 // Web-Mercator zoom level at which a circle of `radiusMiles` (its diameter, plus

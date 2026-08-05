@@ -18,11 +18,15 @@ type SearchSuggestionLayoutGeometryRuntime = {
   suggestionTopFillHeight: number;
 };
 
-const SEARCH_SUGGESTION_LAYOUT_PIXEL_SCALE = 1;
-const SEARCH_SUGGESTION_LAYOUT_CUTOUT_EDGE_SLOP = 1 / SEARCH_SUGGESTION_LAYOUT_PIXEL_SCALE;
+// F1338: this was expressed as a fictional "pixel scale" hardcoded to 1 (never true on a
+// shipping @2x/@3x iPhone) wrapped around a hand-tuned 1pt slop. Named honestly instead —
+// this is the tuned point value, not a device-pixel scale, so `PixelRatio.roundToNearestPixel`
+// is not the right substitute here without re-tuning the cutout edge by eye in the sim
+// (CLAUDE.md: the eye is the oracle for feel surfaces). No visual change from this rename.
+const SEARCH_SUGGESTION_CUTOUT_EDGE_SLOP_PT = 1;
+const SEARCH_SUGGESTION_LAYOUT_CUTOUT_EDGE_SLOP = SEARCH_SUGGESTION_CUTOUT_EDGE_SLOP_PT;
 
-const ceilSuggestionLayoutToPixel = (value: number) =>
-  Math.ceil(value * SEARCH_SUGGESTION_LAYOUT_PIXEL_SCALE) / SEARCH_SUGGESTION_LAYOUT_PIXEL_SCALE;
+const ceilSuggestionLayoutToPixel = (value: number) => Math.ceil(value);
 
 export const useSearchSuggestionLayoutGeometryRuntime = ({
   shouldDriveSuggestionLayout,

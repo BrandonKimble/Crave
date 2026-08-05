@@ -44,6 +44,7 @@ export const useSnapshotAuthority = <TSnapshot>(
         selector: (snapshot: TSnapshot) => unknown;
         isEqual: EqualityFn<unknown>;
         selected: unknown;
+        attributionLabel?: string;
       }
     >()
   );
@@ -65,11 +66,12 @@ export const useSnapshotAuthority = <TSnapshot>(
           listenersRef.current.delete(listener);
         };
       },
-      subscribeSelector: (selector, listener, selectorIsEqual = Object.is) => {
+      subscribeSelector: (selector, listener, selectorIsEqual = Object.is, attributionLabel) => {
         selectorListenersRef.current.set(listener, {
           selector,
           isEqual: selectorIsEqual as EqualityFn<unknown>,
           selected: selector(snapshotRef.current),
+          attributionLabel,
         });
         return () => {
           selectorListenersRef.current.delete(listener);
@@ -98,7 +100,15 @@ export const useSnapshotAuthority = <TSnapshot>(
             return;
           }
           record.selected = nextSelected;
-          listener();
+          if (record.attributionLabel) {
+            withSearchNavSwitchRuntimeAttribution(
+              attributionOwner ?? 'snapshotAuthority',
+              record.attributionLabel,
+              listener
+            );
+          } else {
+            listener();
+          }
         });
       }
     );

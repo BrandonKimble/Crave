@@ -3,7 +3,6 @@ import { Dimensions } from 'react-native';
 import { colors as themeColors } from '../../../constants/theme';
 import { FONT_SIZES } from '../../../constants/typography';
 import { OVERLAY_HORIZONTAL_PADDING } from '../../../overlays/overlaySheetStyles';
-import { CONTROL_HEIGHT } from './ui';
 
 export const SCREEN_HEIGHT = Dimensions.get('window').height;
 export const SCREEN_WIDTH = Dimensions.get('window').width;
@@ -19,7 +18,6 @@ export const CARD_GAP = 6;
 export const SHARED_SECTION_GAP = CARD_GAP;
 export const FIRST_RESULT_TOP_PADDING_EXTRA = 8;
 export const SECTION_GAP = SHARED_SECTION_GAP;
-export const TOP_FOOD_INLINE_WIDTH_BUFFER = CONTENT_HORIZONTAL_PADDING;
 export const ACTIVE_TAB_COLOR = themeColors.primary;
 const deriveDarkerHexColor = (hexColor: string, factor = 0.72) => {
   const raw = hexColor.replace('#', '');
@@ -52,8 +50,6 @@ export const USA_FALLBACK_CENTER: [number, number] = [-98.5795, 39.8283];
 export const USA_FALLBACK_ZOOM = 3.2;
 export const TOP_FOOD_RENDER_LIMIT = 3;
 export const SINGLE_LOCATION_ZOOM_LEVEL = 13;
-export const TIGHT_BOUNDS_THRESHOLD_DEGREES = 0.002;
-export const RESTAURANT_FIT_BOUNDS_PADDING = 80;
 export const PIN_MARKER_SIZE = 28;
 export const PIN_MARKER_SCALE = 1;
 export const PIN_MARKER_RENDER_SIZE = PIN_MARKER_SIZE * PIN_MARKER_SCALE;
@@ -96,10 +92,7 @@ export const SEARCH_BAR_HOLE_PADDING = 0;
 export const SEARCH_BAR_HOLE_RADIUS = 14;
 export const SHORTCUT_CHIP_HOLE_PADDING = 0;
 export const SHORTCUT_CHIP_HOLE_RADIUS = 12;
-export const SEARCH_SUGGESTION_PANEL_OVERLAP = 12;
-export const SEARCH_SUGGESTION_PANEL_PADDING_TOP = 0;
 export const SEARCH_SUGGESTION_PANEL_PADDING_BOTTOM = 0;
-export const SEARCH_SUGGESTION_TOP_FILL_HEIGHT = 220;
 export const SEARCH_SUGGESTION_HEADER_PADDING_BOTTOM = 9;
 export const SEARCH_SUGGESTION_HEADER_PADDING_OVERLAP = 1;
 export const SEARCH_SUGGESTION_HEADER_PANEL_GAP = 0;
@@ -118,24 +111,17 @@ export const AUTOCOMPLETE_CACHE_TTL_MS = 5 * 60 * 1000;
 export const SEARCH_THIS_AREA_COLOR = '#0ea5e9';
 export const MAP_MOVE_MIN_DISTANCE_MILES = 0.1;
 export const MAP_MOVE_DISTANCE_RATIO = 0.08;
-export const CLOSE_BUTTON_HOLE_PADDING = 0;
-export const CLOSE_BUTTON_HOLE_Y_OFFSET = 0;
-export const RESULTS_HEADER_MASK_PADDING = 2;
 
-export const TOGGLE_HEIGHT = CONTROL_HEIGHT;
 export const NAV_TOP_PADDING = 8;
 export const NAV_BOTTOM_PADDING = 0;
 export const RESULT_HEADER_ICON_SIZE = 35;
-export const RESULT_CLOSE_ICON_SIZE = RESULT_HEADER_ICON_SIZE;
 export const SECONDARY_METRIC_ICON_SIZE = 14;
 export const VOTE_ICON_SIZE = SECONDARY_METRIC_ICON_SIZE;
 export const RESULT_ACTIONS_LEFT_GAP = 24;
 export const SPACING_XS = 2;
 export const SPACING_SM = 3;
-export const SPACING_MD = 5;
 export const CARD_LINE_GAP = 6;
 export const RANK_BADGE_WIDTH = 32;
-export const RESULT_TITLE_RIGHT_PADDING = 48;
 export const RESULT_DETAILS_INDENT = RANK_BADGE_WIDTH + CARD_LINE_GAP;
 export const CARD_VERTICAL_PADDING = 12;
 export const CARD_VERTICAL_PADDING_BALANCE = 2;
@@ -145,7 +131,5 @@ export const SEGMENT_OPTIONS = [
   { label: 'Dishes', value: 'dishes' as const },
 ] as const;
 
-// Default segment for first launch
-export const DEFAULT_SEGMENT: SegmentValue = 'dishes';
 
 export type SegmentValue = (typeof SEGMENT_OPTIONS)[number]['value'];

@@ -43,7 +43,6 @@ import {
 } from '../constants/search';
 
 import styles from '../styles';
-import { isLngLatTuple } from '../utils/geo';
 import { MARKER_VIEW_OVERSCAN_STYLE } from './marker-visibility';
 import { useSearchMapNativeRenderOwner } from './hooks/use-search-map-native-render-owner';
 import {
@@ -986,41 +985,6 @@ type SearchMapPressEvent = {
   point?: { x?: unknown; y?: unknown } | null;
 };
 
-const getPointFromMapPressFeature = (
-  feature: SearchMapPressEvent
-): { x: number; y: number } | null => {
-  const topLevelPoint = feature.point;
-  if (topLevelPoint && typeof topLevelPoint === 'object') {
-    const x = topLevelPoint.x;
-    const y = topLevelPoint.y;
-    if (
-      typeof x === 'number' &&
-      Number.isFinite(x) &&
-      typeof y === 'number' &&
-      Number.isFinite(y)
-    ) {
-      return { x, y };
-    }
-  }
-
-  const properties = feature.properties;
-  if (!properties || typeof properties !== 'object' || Array.isArray(properties)) {
-    return null;
-  }
-  const x =
-    typeof properties.screenPointX === 'number' && Number.isFinite(properties.screenPointX)
-      ? properties.screenPointX
-      : null;
-  const y =
-    typeof properties.screenPointY === 'number' && Number.isFinite(properties.screenPointY)
-      ? properties.screenPointY
-      : null;
-  if (x == null || y == null) {
-    return null;
-  }
-  return { x, y };
-};
-
 // Invisible collision obstacle used to make label placement respect pin bases.
 //
 // This layer creates a collision box at each pin coordinate using the base silhouette, but renders
@@ -1098,30 +1062,6 @@ type SearchMapRenderedPressTarget = {
   targetKind: 'pin' | 'label' | 'dot';
 };
 
-const getCoordinateFromMapPressEvent = (event: SearchMapPressEvent): Coordinate | null => {
-  if (event.geometry?.type === 'Point' && isLngLatTuple(event.geometry.coordinates)) {
-    return { lng: event.geometry.coordinates[0], lat: event.geometry.coordinates[1] };
-  }
-  const coordinates = event.coordinates;
-  if (isLngLatTuple(coordinates)) {
-    return { lng: coordinates[0], lat: coordinates[1] };
-  }
-  if (coordinates && typeof coordinates === 'object' && !Array.isArray(coordinates)) {
-    const record = coordinates as Record<string, unknown>;
-    const lng = record.longitude ?? record.lng;
-    const lat = record.latitude ?? record.lat;
-    if (
-      typeof lng === 'number' &&
-      Number.isFinite(lng) &&
-      typeof lat === 'number' &&
-      Number.isFinite(lat)
-    ) {
-      return { lng, lat };
-    }
-  }
-  return null;
-};
-
 const commitSearchMapRestaurantPressTarget = ({
   pressTarget,
   pressCoordinate,
@@ -1138,7 +1078,6 @@ const commitSearchMapRestaurantPressTarget = ({
 };
 
 type SearchMapInteractionRuntime = {
-  handleMapPress: (feature: SearchMapPressEvent) => void;
   nativePressOwnerEnabled: boolean;
 };
 
@@ -1234,29 +1173,8 @@ const useSearchMapInteractionRuntime = ({
   const [nativePressTargetingErrorMessage, setNativePressTargetingErrorMessage] = React.useState<
     string | null
   >(null);
-  const resolveNativePressTarget = React.useCallback(
-    async ({
-      point,
-      dotQueryBox,
-      tapCoordinate,
-    }: {
-      point: { x: number; y: number };
-      dotQueryBox?: [number, number, number, number] | null;
-      tapCoordinate?: Coordinate | null;
-    }): Promise<SearchMapRenderedPressTarget | null> =>
-      searchMapRenderController.queryRenderedPressTarget({
-        instanceId: nativeRenderOwnerInstanceId,
-        point,
-        ...(dotQueryBox ? { dotLayerIds: [visibleDotLayerId], dotQueryBox } : {}),
-        ...(tapCoordinate ? { tapCoordinate } : {}),
-      }),
-    [visibleDotLayerId, nativeRenderOwnerInstanceId]
-  );
-
-  const pinPressResolutionSeqRef = React.useRef(0);
   const onMarkerPressRef = React.useRef(onMarkerPress);
   const onBlankMapPressRef = React.useRef(onBlankMapPress);
-  const resolveNativePressTargetRef = React.useRef(resolveNativePressTarget);
 
   React.useEffect(() => {
     onMarkerPressRef.current = onMarkerPress;
@@ -1265,10 +1183,6 @@ const useSearchMapInteractionRuntime = ({
   React.useEffect(() => {
     onBlankMapPressRef.current = onBlankMapPress;
   }, [onBlankMapPress]);
-
-  React.useEffect(() => {
-    resolveNativePressTargetRef.current = resolveNativePressTarget;
-  }, [resolveNativePressTarget]);
 
   const commitRestaurantPressTarget = React.useCallback(
     (pressTarget: SearchMapRenderedPressTarget, pressCoordinate: Coordinate | null) => {
@@ -1338,50 +1252,11 @@ const useSearchMapInteractionRuntime = ({
     );
   }, [commitRestaurantPressTarget, nativePressOwnerEnabled, nativeRenderOwnerInstanceId]);
 
-  const handleMapPress = React.useCallback(
-    (feature: SearchMapPressEvent) => {
-      const point = getPointFromMapPressFeature(feature);
-      const tapCoordinate = getCoordinateFromMapPressEvent(feature);
-      if (!point) {
-        onBlankMapPressRef.current();
-        return;
-      }
-      const queryBox = [
-        point.x - dotTapIntentRadiusPx,
-        point.y - dotTapIntentRadiusPx,
-        point.x + dotTapIntentRadiusPx,
-        point.y + dotTapIntentRadiusPx,
-      ] as [number, number, number, number];
-      const pressSeq = ++pinPressResolutionSeqRef.current;
-      void resolveNativePressTargetRef
-        .current({
-          point,
-          dotQueryBox: queryBox,
-          tapCoordinate,
-        })
-        .then((pressTarget) => {
-          if (pressSeq !== pinPressResolutionSeqRef.current) {
-            return;
-          }
-          if (!pressTarget) {
-            onBlankMapPressRef.current();
-            return;
-          }
-          commitRestaurantPressTarget(pressTarget, tapCoordinate);
-        })
-        .catch(() => {
-          // Native exact hit testing is authoritative for map press resolution.
-        });
-    },
-    [dotTapIntentRadiusPx, commitRestaurantPressTarget, nativeRenderOwnerInstanceId]
-  );
-
   if (nativePressTargetingErrorMessage != null) {
     throw new Error(nativePressTargetingErrorMessage);
   }
 
   return {
-    handleMapPress,
     nativePressOwnerEnabled,
   };
 };
@@ -1936,7 +1811,7 @@ const SearchMap: React.FC<SearchMapProps> = ({
     onNativeMountedSourceCountsChanged?.(mountedSourceCounts);
   }, [mountedSourceCounts, onNativeMountedSourceCountsChanged, sourceFramePort]);
 
-  const { handleMapPress, nativePressOwnerEnabled } = useSearchMapInteractionRuntime({
+  useSearchMapInteractionRuntime({
     nativeRenderOwnerInstanceId,
     onMarkerPress,
     onBlankMapPress: onPress,
@@ -2065,8 +1940,13 @@ const SearchMap: React.FC<SearchMapProps> = ({
     onTouchEnd?.();
   }, [onTouchEnd]);
 
-  const handleMapViewPress = nativePressOwnerEnabled ? undefined : handleMapPress;
-  const handleMarkerScenePressTarget = nativePressOwnerEnabled ? undefined : handleMapPress;
+  // F1022: the JS map-press JS handler (+ its point/coordinate parsers) was dead on both
+  // shipped platforms — the native-press-owner flag is unconditionally true ('ios'/'android'
+  // are the only platforms this ships on), and the native render owner throws when
+  // unavailable, so there was never a live fallback to preserve. Deleted; these two
+  // optional press-handler props are simply never wired now.
+  const handleMapViewPress = undefined;
+  const handleMarkerScenePressTarget = undefined;
 
   const markerSceneProps = React.useMemo<SearchMapMarkerSceneProps | null>(
     () =>

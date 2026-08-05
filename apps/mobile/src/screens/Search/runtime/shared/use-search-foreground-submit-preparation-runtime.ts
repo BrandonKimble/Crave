@@ -44,19 +44,21 @@ export const useSearchForegroundSubmitPreparationRuntime = ({
     suppressAutocompleteResults();
     if (isSuggestionPanelActive) {
       const shouldDeferSuggestionClear = beginSubmitTransition();
-      if (typeof React.startTransition === 'function') {
-        React.startTransition(() => {
-          setIsSuggestionPanelActive(false);
-        });
-      } else {
-        setIsSuggestionPanelActive(false);
-      }
       if (!shouldDeferSuggestionClear) {
         setSuggestions([]);
       }
     }
     setIsSearchFocused(false);
-    setIsSuggestionPanelActive(false);
+    // F1030: the panel teardown write is hoisted out of the branch — ONE call, always
+    // deprioritized, instead of a startTransition write inside the branch that an
+    // unconditional urgent write seven lines below fully defeated.
+    if (typeof React.startTransition === 'function') {
+      React.startTransition(() => {
+        setIsSuggestionPanelActive(false);
+      });
+    } else {
+      setIsSuggestionPanelActive(false);
+    }
     dismissSearchKeyboard();
     resetFocusedMapState();
   }, [

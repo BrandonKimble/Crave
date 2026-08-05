@@ -704,14 +704,15 @@ const shouldNotifySearchMountedResultsListDecorations = (): boolean => {
   );
 };
 
-const __t1dbgMark = (name: string): void => {
-  if (__DEV__) console.log(`[T1DBG] ${name} t=${performance.now().toFixed(1)}`);
-};
 const publishSearchMountedResultsListDataSnapshotIfChanged = (): void => {
-  __t1dbgMark('listDataPublish');
   if (!shouldNotifySearchMountedResultsListDecorations()) {
     return;
   }
+  logPerfScenarioStackAttribution({
+    owner: 'search_mounted_results_data_writer',
+    path: 'listDataPublish',
+    details: {},
+  });
   const nextSnapshot = resolveSearchMountedResultsListDataSnapshot();
   if (
     mountedResultsListDataSnapshot.debugRowsSnapshotVersion ===
@@ -1312,12 +1313,16 @@ const prepareRestaurantCardDescriptorsById = ({
 };
 
 export const prepareSearchMountedResultsRowsSnapshot = (
-  ...__t1dbgArgs: [PrepareSearchMountedResultsRowsSnapshotArgs]
+  args: PrepareSearchMountedResultsRowsSnapshotArgs
 ) => {
-  if (__DEV__) console.log(`[T1DBG] rowsPrepare:start t=${performance.now().toFixed(1)}`);
-  const __t1dbgResult = prepareSearchMountedResultsRowsSnapshotInner(...__t1dbgArgs);
-  if (__DEV__) console.log(`[T1DBG] rowsPrepare:end t=${performance.now().toFixed(1)}`);
-  return __t1dbgResult;
+  const startedAtMs = nowMs();
+  const result = prepareSearchMountedResultsRowsSnapshotInner(args);
+  logPerfScenarioStackAttribution({
+    owner: 'search_mounted_results_data_writer',
+    path: 'rowsPrepare',
+    details: { durationMs: nowMs() - startedAtMs },
+  });
+  return result;
 };
 const prepareSearchMountedResultsRowsSnapshotInner = ({
   resultsDataSnapshot = snapshot,

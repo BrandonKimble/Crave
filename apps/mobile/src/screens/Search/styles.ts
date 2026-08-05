@@ -78,76 +78,12 @@ const styles = StyleSheet.create({
   statusBarFadeLayer: {
     ...StyleSheet.absoluteFillObject,
   },
-  markerView: {
-    flex: 0,
-    alignSelf: 'flex-start',
-  },
-  userLocationMarkerView: {
-    zIndex: 10000,
-    elevation: 10000,
-  },
-  pinWrapper: {
-    width: PIN_MARKER_RENDER_SIZE,
-    height: PIN_MARKER_RENDER_SIZE,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: 'transparent',
-  },
-  pinShadow: {
-    ...MARKER_SHADOW_STYLE,
-    shadowColor: '#000000',
-    shadowOpacity: 0.27,
-    shadowOffset: { width: 0, height: 1.25 },
-    shadowRadius: 1.25,
-    elevation: 3,
-  },
-  pinBase: {
-    position: 'absolute',
-    width: PIN_BASE_WIDTH * PIN_BASE_SCALE,
-    height: PIN_BASE_HEIGHT * PIN_BASE_SCALE,
-    resizeMode: 'contain',
-  },
-  pinFill: {
-    position: 'absolute',
-    width: PIN_FILL_RENDER_WIDTH,
-    height: PIN_FILL_RENDER_HEIGHT,
-    resizeMode: 'contain',
-    left: PIN_FILL_LEFT_OFFSET,
-    top: PIN_FILL_TOP_OFFSET,
-  },
-  pinRankWrapper: {
-    // Container exactly matches pin fill bounds, centered on pin fill
-    position: 'absolute',
-    left: PIN_RANK_LEFT,
-    top: PIN_RANK_TOP,
-    width: PIN_RANK_CONTAINER_WIDTH,
-    height: PIN_RANK_CONTAINER_HEIGHT,
-    // Flexbox centering as primary method
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  pinRank: {
-    // Multiple centering methods for cross-platform reliability
-    fontSize: PIN_RANK_FONT_SIZE,
-    fontWeight: '700',
-    color: '#fff',
-    textAlign: 'center', // Horizontal centering
-    textAlignVertical: 'center', // Android vertical centering
-    lineHeight: PIN_RANK_CONTAINER_HEIGHT, // iOS vertical centering fallback
-    includeFontPadding: false, // Remove Android extra padding
-  },
-  pinRankHidden: {
-    opacity: 0,
-  },
   overlay: {
     flex: 1,
     justifyContent: 'flex-start',
     paddingBottom: 24,
     zIndex: OVERLAY_CHROME_ZINDEX,
     elevation: OVERLAY_CHROME_ZINDEX,
-  },
-  searchChromeHidden: {
-    opacity: 0,
   },
   searchContainer: {
     paddingHorizontal: SEARCH_HORIZONTAL_PADDING,
@@ -206,12 +142,6 @@ const styles = StyleSheet.create({
     // Matches the SegmentedToggle inactive label color.
     color: '#111827',
   },
-  promptCardTopShadow: {
-    borderRadius: 0,
-  },
-  promptCardWrapper: {
-    borderRadius: 0,
-  },
   promptCard: {
     borderRadius: 16,
     paddingHorizontal: 10,
@@ -234,9 +164,6 @@ const styles = StyleSheet.create({
     paddingVertical: 2,
     gap: 8,
   },
-  searchBarTint: {
-    backgroundColor: 'transparent',
-  },
   searchSurface: {
     ...StyleSheet.absoluteFillObject,
     backgroundColor: 'transparent',
@@ -244,10 +171,6 @@ const styles = StyleSheet.create({
     borderColor: 'transparent',
     overflow: 'hidden',
     zIndex: 10,
-  },
-  searchSurfaceSolidBackground: {
-    ...StyleSheet.absoluteFillObject,
-    backgroundColor: '#ffffff',
   },
   searchSurfaceScroll: {
     alignSelf: 'stretch',
@@ -302,40 +225,6 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(255, 255, 255, 0.6)',
     borderWidth: 1,
     borderColor: 'rgba(241, 245, 249, 0.8)',
-  },
-  recentSectionSurface: {
-    paddingHorizontal: 14,
-    paddingVertical: 10,
-    borderRadius: 14,
-    backgroundColor: 'rgba(255, 255, 255, 0.6)',
-    borderWidth: 1,
-    borderColor: 'rgba(241, 245, 249, 0.8)',
-  },
-  autocompleteLoadingRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingVertical: 10,
-    borderBottomWidth: 1,
-    borderBottomColor: '#f1f5f9',
-  },
-  autocompleteLoadingText: {
-    fontSize: FONT_SIZES.body,
-    lineHeight: LINE_HEIGHTS.body,
-    color: themeColors.textBody,
-    marginLeft: 8,
-  },
-  autocompleteEmptyText: {
-    paddingHorizontal: 0,
-    paddingVertical: 10,
-    fontSize: FONT_SIZES.body,
-    lineHeight: LINE_HEIGHTS.body,
-    color: themeColors.textBody,
-  },
-  autocompleteItem: {
-    paddingHorizontal: 0,
-    paddingVertical: 10,
-    borderBottomWidth: 1,
-    borderBottomColor: '#f1f5f9',
   },
   autocompleteItemLast: {
     borderBottomWidth: 0,
@@ -455,32 +344,6 @@ const styles = StyleSheet.create({
   scoreInfoIconButton: {
     padding: 0,
   },
-  scoreInfoOverlay: {
-    ...StyleSheet.absoluteFillObject,
-    zIndex: 130,
-    justifyContent: 'flex-end',
-  },
-  scoreInfoBackdrop: {
-    ...StyleSheet.absoluteFillObject,
-    backgroundColor: 'rgba(15, 23, 42, 0.2)',
-  },
-  scoreInfoSheet: {
-    backgroundColor: '#ffffff',
-    borderTopLeftRadius: OVERLAY_CORNER_RADIUS,
-    borderTopRightRadius: OVERLAY_CORNER_RADIUS,
-    paddingHorizontal: CONTENT_HORIZONTAL_PADDING,
-    paddingTop: 12,
-  },
-  scoreInfoGrabHandleWrapper: {
-    alignItems: 'center',
-    marginBottom: 6,
-  },
-  scoreInfoGrabHandle: {
-    width: 42,
-    height: 4,
-    borderRadius: 2,
-    backgroundColor: '#e2e8f0',
-  },
   scoreInfoContent: {
     gap: 12,
   },
@@ -538,9 +401,6 @@ const styles = StyleSheet.create({
     color: themeColors.textBody,
     lineHeight: LINE_HEIGHTS.body,
   },
-  pollsIcon: {
-    transform: [{ rotate: '90deg' }, { scaleX: -1 }],
-  },
   resultsShadow: {
     position: 'absolute',
     top: 0,
@@ -581,62 +441,6 @@ const styles = StyleSheet.create({
     backgroundColor: 'transparent',
     paddingHorizontal: CONTENT_HORIZONTAL_PADDING,
   },
-  closeShellHeaderTitlePlaceholder: {
-    flex: 1,
-    minHeight: 1,
-  },
-  closeVisualHeaderTitleContainer: {
-    flex: 1,
-    minWidth: 0,
-  },
-  closeVisualHeaderTitleText: {
-    flex: 1,
-    color: themeColors.text,
-    fontSize: FONT_SIZES.title,
-    lineHeight: LINE_HEIGHTS.title,
-    minWidth: 0,
-  },
-  closeVisualHeaderBadge: {
-    height: OVERLAY_HEADER_CLOSE_BUTTON_SIZE,
-    paddingHorizontal: 10,
-    borderRadius: OVERLAY_HEADER_CLOSE_BUTTON_SIZE / 2,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: 'transparent',
-  },
-  closeVisualHeaderBadgeText: {
-    color: themeColors.text,
-    fontSize: FONT_SIZES.body,
-    lineHeight: LINE_HEIGHTS.body,
-  },
-  closeVisualHeaderActionButton: {
-    marginRight: 0,
-  },
-  resultsHeaderHandle: {
-    backgroundColor: 'transparent',
-  },
-  resultsCard: {
-    flex: 1,
-    borderTopLeftRadius: OVERLAY_CORNER_RADIUS,
-    borderTopRightRadius: OVERLAY_CORNER_RADIUS,
-    paddingVertical: 0,
-    paddingHorizontal: 0,
-    backgroundColor: 'transparent',
-    alignSelf: 'stretch',
-  },
-  resultsCardSurface: {
-    backgroundColor: '#ffffff',
-  },
-  resultsCardCentered: {
-    flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: 48,
-  },
-  resultsScroll: {
-    flex: 1,
-    backgroundColor: 'transparent',
-  },
   resultsListHeader: {
     position: 'relative',
     overflow: 'hidden',
@@ -674,9 +478,6 @@ const styles = StyleSheet.create({
     marginBottom: 0,
     paddingLeft: 0,
   },
-  resultsInner: {
-    width: '100%',
-  },
   loadMoreSpacer: {
     minHeight: 120,
     alignItems: 'stretch',
@@ -688,33 +489,8 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     paddingTop: 8,
   },
-  resultFiltersWrapper: {
-    marginTop: -3,
-    marginBottom: 14,
-    gap: 0,
-  },
-  priceSheetOverlay: {
-    ...StyleSheet.absoluteFillObject,
-    justifyContent: 'flex-end',
-    alignItems: 'center',
-  },
-  priceSheetBackdrop: {
-    ...StyleSheet.absoluteFillObject,
-    backgroundColor: 'rgba(15, 23, 42, 0.2)',
-  },
   resultsSheetContainer: {
     flex: 1,
-  },
-  priceSheetContainer: {
-    position: 'absolute',
-    left: 0,
-    right: 0,
-    bottom: 0,
-    borderTopLeftRadius: OVERLAY_CORNER_RADIUS,
-    borderTopRightRadius: OVERLAY_CORNER_RADIUS,
-    backgroundColor: '#ffffff',
-    paddingHorizontal: OVERLAY_HORIZONTAL_PADDING,
-    paddingTop: 12,
   },
   priceSheetHeaderRow: {
     flexDirection: 'row',
@@ -731,11 +507,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 8,
   },
-  priceSheetHeadline: {
-    flex: 1,
-    minWidth: 0,
-    color: '#0f172a',
-  },
   priceSheetHeadlineSuffix: {
     color: '#0f172a',
     flexShrink: 1,
@@ -751,11 +522,6 @@ const styles = StyleSheet.create({
   },
   priceSheetSummaryMeasureText: {
     opacity: 0,
-  },
-  priceSheetHeadlineAnimatedLayer: {
-    ...StyleSheet.absoluteFillObject,
-    justifyContent: 'center',
-    alignItems: 'center',
   },
   priceSheetSummaryPill: {
     position: 'relative',
@@ -778,54 +544,6 @@ const styles = StyleSheet.create({
     paddingHorizontal: PRICE_SLIDER_WRAPPER_HORIZONTAL_PADDING,
     marginTop: 0,
     marginBottom: 4,
-  },
-  rankSheetHeaderRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    gap: 12,
-    paddingVertical: 8,
-    marginBottom: 8,
-  },
-  rankSheetHeadline: {
-    flex: 1,
-    minWidth: 0,
-    color: '#0f172a',
-  },
-  rankSheetOptions: {
-    width: '100%',
-    flexDirection: 'row',
-    alignItems: 'stretch',
-    justifyContent: 'space-between',
-    marginBottom: 20,
-  },
-  rankSheetOption: {
-    height: CONTROL_HEIGHT + 12,
-    flexGrow: 1,
-    flexShrink: 1,
-    flexBasis: 0,
-    borderRadius: CONTROL_RADIUS + 4,
-    paddingHorizontal: CONTROL_HORIZONTAL_PADDING + 6,
-    paddingVertical: CONTROL_VERTICAL_PADDING + 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    flexDirection: 'row',
-    gap: 8,
-    backgroundColor: '#f8fafc',
-    borderWidth: 1,
-    borderColor: '#e5e7eb',
-    overflow: 'hidden',
-  },
-  rankSheetOptionSelected: {
-    backgroundColor: `${themeColors.primary}14`,
-    borderColor: themeColors.primary,
-  },
-  rankSheetOptionText: {
-    color: '#0f172a',
-    textAlign: 'center',
-  },
-  rankSheetOptionTextSelected: {
-    color: themeColors.primary,
   },
   sheetActionsRow: {
     width: '100%',
@@ -929,9 +647,6 @@ const styles = StyleSheet.create({
     paddingTop:
       CARD_VERTICAL_PADDING - CARD_VERTICAL_PADDING_BALANCE + FIRST_RESULT_TOP_PADDING_EXTRA - 8,
   },
-  resultItemWithFilters: {
-    paddingTop: CARD_VERTICAL_PADDING - CARD_VERTICAL_PADDING_BALANCE,
-  },
   resultPressable: {
     width: '100%',
   },
@@ -948,13 +663,6 @@ const styles = StyleSheet.create({
     gap: RESULT_ACTIONS_LEFT_GAP,
     minHeight: 32,
     marginBottom: 0,
-  },
-  resultActions: {
-    width: 32,
-    flexDirection: 'column',
-    alignItems: 'center',
-    gap: 4,
-    marginRight: -(CONTENT_HORIZONTAL_PADDING / 2),
   },
   resultTitleContainer: {
     flex: 1,
@@ -1000,19 +708,6 @@ const styles = StyleSheet.create({
     color: '#9ca3af',
     letterSpacing: 0.2,
   },
-  coverageBadge: {
-    alignSelf: 'flex-start',
-    paddingHorizontal: 8,
-    paddingVertical: 2,
-    borderRadius: 10,
-    borderWidth: 1,
-    borderColor: themeColors.border,
-    backgroundColor: '#eef2f6',
-  },
-  coverageBadgeText: {
-    color: themeColors.textBody,
-    letterSpacing: 0.2,
-  },
   resultMetaLine: {
     marginTop: 0,
   },
@@ -1043,26 +738,8 @@ const styles = StyleSheet.create({
     lineHeight: LINE_HEIGHTS.body,
     marginHorizontal: SPACING_SM,
   },
-  metricValueRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-  },
   metricValue: {
     color: themeColors.textPrimary,
-  },
-  metricCountersInline: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 14,
-  },
-  metricCounterItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-  },
-  metricCounterText: {
-    color: themeColors.textBody,
   },
   metricSupportRow: {
     marginTop: 0,
@@ -1089,17 +766,6 @@ const styles = StyleSheet.create({
     flexShrink: 1,
     minWidth: 0,
     columnGap: SPACING_XS,
-  },
-  resultMetaLineRight: {
-    marginTop: 0,
-    marginLeft: 'auto',
-    alignItems: 'flex-end',
-    maxWidth: '65%',
-    flexShrink: 1,
-  },
-  resultMetaLineInline: {
-    marginTop: 0,
-    flexShrink: 1,
   },
   resultMetaText: {
     color: themeColors.textBody,
@@ -1134,55 +800,6 @@ const styles = StyleSheet.create({
   resultMetaDistance: {
     color: themeColors.textBody,
   },
-  dishMetaRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    columnGap: 8,
-    marginTop: 0,
-  },
-  userLocationWrapper: {
-    width: 36,
-    height: 36,
-    alignItems: 'center',
-    justifyContent: 'center',
-    zIndex: 100,
-  },
-  userLocationHaloWrapper: {
-    width: 22,
-    height: 22,
-    borderRadius: 11,
-    alignItems: 'center',
-    justifyContent: 'center',
-    overflow: 'hidden',
-    backgroundColor: 'rgba(255, 255, 255, 0.65)',
-  },
-  userLocationShadow: {
-    width: 22,
-    height: 22,
-    borderRadius: 11,
-    alignItems: 'center',
-    justifyContent: 'center',
-    ...MARKER_SHADOW_STYLE,
-  },
-  userLocationDot: {
-    width: 9,
-    height: 9,
-    borderRadius: 4.5,
-    backgroundColor: themeColors.secondaryAccent,
-  },
-  userLocationHalo: {
-    width: 34,
-    height: 34,
-    borderRadius: 17,
-    overflow: 'hidden',
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: 'rgba(255, 255, 255, 0.65)',
-  },
-  shareButton: {
-    padding: 4,
-    borderRadius: 999,
-  },
   likeButton: {
     padding: 4,
     borderRadius: 999,
@@ -1198,20 +815,6 @@ const styles = StyleSheet.create({
     alignSelf: 'stretch',
     width: '100%',
     minWidth: 0,
-  },
-  secondaryMetricsRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-    marginTop: 6,
-  },
-  secondaryMetricItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-  },
-  secondaryMetricInline: {
-    color: themeColors.textBody,
   },
   // The empty-results block top-aligns inside the results surface (which spans from the
   // header to the screen bottom — most of it below the sheet's collapsed fold), so it
@@ -1235,42 +838,6 @@ const styles = StyleSheet.create({
   },
   textSlate900: {
     color: themeColors.textPrimary,
-  },
-  textSlate700: {
-    color: themeColors.textBody,
-  },
-  textSlate600: {
-    color: themeColors.textBody,
-  },
-  textSlate500: {
-    color: themeColors.textMuted,
-  },
-  textRed600: {
-    color: '#dc2626',
-  },
-  dishTitle: {
-    fontSize: FONT_SIZES.subtitle,
-    lineHeight: LINE_HEIGHTS.subtitle,
-    flexShrink: 1,
-    minWidth: 0,
-  },
-  dishCardTitle: {
-    flexShrink: 1,
-    minWidth: 0,
-  },
-  dishRestaurantName: {
-    color: themeColors.textMuted,
-    flexShrink: 1,
-    minWidth: 0,
-  },
-  dishSubtitle: {
-    fontSize: FONT_SIZES.body,
-    lineHeight: LINE_HEIGHTS.body,
-    marginTop: 4,
-  },
-  dishSubtitleSmall: {
-    fontSize: FONT_SIZES.caption,
-    lineHeight: LINE_HEIGHTS.caption,
   },
   topFoodSection: {
     marginTop: 0,
@@ -1303,29 +870,6 @@ const styles = StyleSheet.create({
   matchedTagText: {
     color: themeColors.textBody,
   },
-  topFoodLabel: {
-    color: themeColors.textBody,
-    letterSpacing: 0.6,
-    textTransform: 'none',
-  },
-  topFoodLabelStrong: {
-    color: themeColors.textBody,
-  },
-  topFoodHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: SPACING_SM,
-  },
-  topFoodAvgRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: SPACING_SM,
-  },
-  topFoodDivider: {
-    flex: 1,
-    height: 0,
-    backgroundColor: 'transparent',
-  },
   topFoodInlineRow: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -1343,41 +887,6 @@ const styles = StyleSheet.create({
   topFoodInlineLineText: {
     color: themeColors.textBody,
     flexShrink: 1,
-    minWidth: 0,
-  },
-  topFoodInlineLineMeasureContainer: {
-    position: 'absolute',
-    opacity: 0,
-    left: -10000,
-    top: 0,
-    pointerEvents: 'none',
-  },
-  topFoodInlineEllipsisRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    minWidth: 0,
-  },
-  topFoodInlineEllipsisToken: {
-    flexShrink: 1,
-    minWidth: 0,
-  },
-  topFoodInlineList: {
-    flex: 1,
-    flexDirection: 'row',
-    flexWrap: 'nowrap',
-    columnGap: CARD_LINE_GAP,
-    flexShrink: 1,
-    minWidth: 0,
-  },
-  topFoodInlineItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    columnGap: 6,
-    minWidth: 0,
-  },
-  topFoodInlineText: {
-    color: themeColors.textBody,
-    flexShrink: 0,
     minWidth: 0,
   },
   topFoodRankInline: {
@@ -1412,20 +921,11 @@ const styles = StyleSheet.create({
   topFoodMeasureText: {
     color: themeColors.textBody,
   },
-  resultContentStatusLine: {
-    marginTop: 0,
-    marginBottom: 0,
-  },
   loadingText: {
     marginTop: 16,
     fontSize: FONT_SIZES.subtitle,
     lineHeight: LINE_HEIGHTS.subtitle,
     textAlign: 'center',
-  },
-  glassHighlightSmall: {
-    position: 'absolute',
-    width: 0,
-    height: 0,
   },
 });
 

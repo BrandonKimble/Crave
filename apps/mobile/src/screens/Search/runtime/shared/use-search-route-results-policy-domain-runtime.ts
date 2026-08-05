@@ -154,7 +154,7 @@ export const useSearchRouteResultsPolicyDomainRuntime = ({
           return;
         }
         lastPublishedSessionActive = nextSessionActive;
-        foregroundPolicyPublicationAuthority.publishCurrent('searchSessionActive');
+        foregroundPolicyPublicationAuthority.publishCurrent();
       },
       ['desiredTuple'] as const,
       'foreground_policy_session_active_edge'
