@@ -854,6 +854,53 @@ describe('SpendAnalyticsService.refreshBackstop (§24.4 item 4 / §24.1 Tier 3)'
     expect(call.create.microUsdPerUnit).toBe(90_000);
     expect(resetLimit).toHaveBeenCalledWith('gemini.monthlySpend', 90_000);
   });
+
+  it('F126: a zero-derivation run (no trailing spend) emits a loud ops alert instead of silently returning', async () => {
+    // Root cause of the live prod defect (F126): with ZERO gemini spend in
+    // the trailing window, derivedLimitMicros <= 0 and the method used to
+    // `return` with no signal at all — indistinguishable from a healthy
+    // "nothing to derive yet" boot state, which is exactly how
+    // spend_unit_costs(backstop.gemini, month).refreshed_at froze while the
+    // nightly kept firing. RED under the reverted silent-return code: no
+    // findMany call ever returns spend, so upsert is never called and (pre-
+    // fix) opsAlerts.emit was never called either — this spec proves the
+    // loud path exists.
+    const upsert = jest.fn().mockResolvedValue({});
+    const findUnique = jest.fn().mockResolvedValue(null);
+    const findMany = jest.fn().mockResolvedValue([]);
+    const emit = jest.fn();
+    const service = new SpendAnalyticsService(
+      {
+        apiUsageEvent: { findMany },
+        spendUnitCost: { upsert, findUnique },
+      } as never,
+      stubLogger() as never,
+      {} as never,
+      { emit } as never,
+      {
+        pools: {
+          poolStatus: jest.fn().mockReturnValue({ limit: 1 }),
+          resetLimit: jest.fn(),
+        },
+      } as never,
+    );
+
+    await (
+      service as unknown as {
+        refreshBackstop(a: Date, b: Date, c: Date): Promise<void>;
+      }
+    ).refreshBackstop(WINDOW_START, WINDOW_END, WINDOW_END);
+
+    expect(upsert).not.toHaveBeenCalled();
+    expect(emit).toHaveBeenCalledTimes(1);
+    expect(emit).toHaveBeenCalledWith(
+      expect.objectContaining({
+        severity: 'warn',
+        kind: 'gemini_backstop',
+        dedupeKey: `gemini_backstop_refresh_noop:${WINDOW_END.toISOString().slice(0, 10)}`,
+      }),
+    );
+  });
 });
 
 /**

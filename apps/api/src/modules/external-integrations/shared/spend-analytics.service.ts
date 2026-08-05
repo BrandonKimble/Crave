@@ -927,7 +927,23 @@ export class SpendAnalyticsService {
     const derivedLimitMicros = scaleBilled(trailingBilled, BACKSTOP_MULTIPLE);
     if (derivedLimitMicros <= 0) {
       // No measured spend yet in the trailing window — nothing to derive;
-      // the env-seeded boot value stands (§24.4 item 4).
+      // the env-seeded boot value stands (§24.4 item 4). SILENCE HERE IS
+      // THE FAILURE MODE the sibling boot-time check in governance.service.ts
+      // (applyDerivedGeminiBackstop) already forbids for the missing-row
+      // case: an owner-seeded value silently outliving the derivation it was
+      // meant to be replaced by looks identical to "nothing to derive yet",
+      // so a nightly that stopped producing real spend (this exact case,
+      // frozen refreshed_at on backstop.gemini/month) is invisible until
+      // someone thinks to look. Say so, same alert shape as governance's.
+      this.opsAlerts.emit({
+        severity: 'warn',
+        kind: 'gemini_backstop',
+        title: 'Gemini backstop refresh produced no derivation this run',
+        body: `The trailing-window winsorized spend derived a non-positive limit (derivedLimitMicros=${derivedLimitMicros}), so backstop.gemini/month was not written this run and the previous value (env seed or a stale derived row) stands unchanged.`,
+        // Bucketed by day (same convention as governance.service.ts's
+        // gemini_backstop_underived): a constant key would fire once ever.
+        dedupeKey: `gemini_backstop_refresh_noop:${now.toISOString().slice(0, 10)}`,
+      });
       return;
     }
     const priorRow = await this.prisma.spendUnitCost.findUnique({
