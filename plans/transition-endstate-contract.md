@@ -507,3 +507,91 @@ throughout, which is what makes "pure relocation" a test result and not a claim.
 REMAINING (unchanged): the burn-in watchlist, and owner ratifications (re-tap
 semantics; the presented 'search' leg resolving through homeParts). R8 (old-system
 delete) still gated on owner burn-in.
+
+## G-A11Y RE-DERIVATION CHECKPOINT (2026-08-05, landed)
+
+The row said "announce + move focus on switch". The re-derivation refused that shape as a
+call site and asked what the ACCESSIBLE MODEL of a persistent surface whose content is
+replaced actually is. Answer: THE SWAP IS THE NAVIGATION EVENT, and its identity is the
+identity the whole track already runs on — the ENTRY (G-ENTRY). One presented entry is one
+screen to the user. So the pure core (track-a11y-plan.ts, `TrackA11yAnnouncementLedger`)
+has exactly ONE input axis — the PAINTED entry key plus the destination's declared name —
+and everything the row's naive shape would have leaked is UNREPRESENTABLE rather than
+merely avoided: readiness phase is not a parameter, so a cold entry's skeleton→real-rows
+sequence cannot double-announce (it is one navigation); motion is not a parameter, so no
+announcement can attach to a dismissal or a slide — during a hidden excursion the PAINTED
+entry is still the outgoing one (A2's deferred swap), so the core is silent by identity and
+the destination announces itself once, when it is actually painted. The adapter
+(use-track-a11y-announcer.ts) is the only AccessibilityInfo caller and runs on EVERY commit
+with no dependency array ON PURPOSE: a dep list would make the effect the suppressor and
+the ledger unfalsifiable decoration — the law must be where the RED lands. Focus: the page
+owns which chrome layer is presented (all layers are mounted and opacity-flipped), so it
+attaches the host's ref to that layer and the cursor moves to the DESTINATION's header
+instead of being stranded mid-list.
+ONE CONTRACT SHARPENING, in the schema's own idiom: the announcement TEXT is a REQUIRED
+literal column `track.a11yName` on every SCENE_DECLARATIONS row (the worldJoin shape). A
+scene that forgot its name would be SILENTLY unannounced — the one defect class a
+screen-reader user cannot detect — so omission is a tsc error. The header Title is a React
+component in the registry and cannot be read as text; this column is the announcement's
+only possible home.
+Falsifiers (same change): 5 pure checks (track-a11y-plan.spec.ts, incl. "no scene has an
+empty name") + 5 render-lane checks against the real host chain
+(**render**/track-host-a11y.render-spec.tsx). RED-proven by four mutations: latch removed →
+2 render + 2 pure RED (skeleton double-announce, same-entry re-render); focus ref detached →
+2 RED; entry-keyed → scene-keyed → 1 RED (same-scene push); announce call removed → 3 RED.
+Kill-list: none — the rung ADDED a fact nothing previously stated; no dead branch or
+superseded attempt was created or revealed (the render lane's AccessibilityInfo stub is new
+instrumentation, not scaffolding).
+
+## G-ROTATE — OWNER RULING (2026-08-05): PORTRAIT-ONLY, with one un-pinned edge
+
+Owner ruling: the app is PORTRAIT-ONLY, so "snap points derive from a startup seed and must
+recompute on a dimension change" is not a concern to fix. Evidence, iPhone: `app.json`
+`"orientation": "portrait"`, and `ios/cravesearch/Info.plist`
+`UISupportedInterfaceOrientations` = Portrait + PortraitUpsideDown only (no landscape) —
+the window's dimensions cannot change on iPhone, so a startup seed cannot go stale. The
+G-ROTATE staleness that DID have teeth is already gone by other means: the hidden
+excursion's depth is derived from live native bounds (d9df23bd4), not a JS Dimensions copy.
+THE ROW STAYS OPEN, narrowed, because the config does not pin what the ruling claims on one
+edge: `TARGETED_DEVICE_FAMILY = "1,2"` + `"supportsTablet": true`, and
+`UISupportedInterfaceOrientations~ipad` DOES list LandscapeLeft/LandscapeRight — an iPad
+build can rotate, and `TrackSheetPage.tsx`'s module-scope `const SCREEN =
+Dimensions.get('window')` (grab-handle x, close-button x, drawDistance, tail height) would
+then be stale. Nothing was deleted on the strength of the ruling: these are LIVE readers,
+not dead scaffolding, and replacing them with `useWindowDimensions` is a behavior change
+that only earns its risk if iPad is a real target. OWNER FYI / the row's whole remaining
+question: is iPad a shipping target? A "no" is one edit (drop the ~ipad landscape entries,
+device family 1) and G-ROTATE dies with it; a "yes" makes the SCREEN snapshot a real bug to
+fix.
+
+## G-A11Y / G-APPSTATE / G-ROTATE — executed (2026-08-05)
+
+G-A11Y (be8402ae8) CLOSED. The accessible identity of a data-swapping persistent
+surface is the ENTRY: one presented entry = one screen. The pure core takes only
+{painted entry, name}, so readiness cannot leak (skeleton→rows cannot
+double-announce — phase is not a parameter) and motion cannot leak (a hidden
+excursion still paints the OUTGOING entry, so it is silent by identity). The
+announcement name is a REQUIRED column on all 21 scene rows: a silently
+unannounced scene is the one defect its audience cannot report, so omission is a
+tsc error. 10 falsifiers, 4 mutations RED incl. against the real host chain.
+
+G-APPSTATE (973d8e094) CLOSED, with the fact list amended: FOUR proven motion
+facts (command, drag begin, settle, edge) plus ONE non-fact. A wall clock is a
+LIVENESS BACKSTOP against a fact that never arrived — it gets no seat at the
+authority's table and MAY NOT manufacture what it cannot observe. deadline-expired
+now DEGRADES (rest:false, degraded:true) and barks instead of completing a settle;
+liveness consumers release on a degrade (a backstop that cannot release is a
+second way to hang), fact consumers do not. Episode-scoped and suspended-time-
+aware. Two derived laws: no wall clock may bound a GESTURE; every commanded
+episode is backstopped, not only token-bearing ones. KILL: the 12x200ms snap retry
+loop — a LIVE DEFECT (snapTo resolves at spring START, so it measured mid-flight
+distance and re-issued the command every 200ms through up to 2.4s of every real
+motion, restarting the spring and bumping the excursion generation).
+
+G-ROTATE NARROWED, not closed. Owner ruled portrait-only; verified for iPhone
+(app.json portrait; Info.plist portrait-only) and the depth staleness that had
+teeth is gone (native bounds, d9df23bd4). BUT supportsTablet:true, device family
+"1,2", and UISupportedInterfaceOrientations~ipad lists landscape — an iPad build
+rotates, and TrackSheetPage's module-scope Dimensions snapshot would be stale.
+OWNER QUESTION: is iPad a shipping target? No = one config edit and the row dies.
+Yes = the snapshot is a real bug. Nothing deleted on the strength of the ruling.
