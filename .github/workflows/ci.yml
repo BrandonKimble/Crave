@@ -192,6 +192,16 @@ jobs:
       - name: 'Static guard: audit ledger path uniqueness'
         run: scripts/audit-coverage-ledger-gate.sh
 
+      # WIRED 2026-08-04 (F1781 aftermath). THE LEDGER MUST ANSWER "WHAT IS OWED".
+      # F1010 ruled "rederive = bulk delete", F1011 and F1033(c) ruled likewise —
+      # all three sat ESCALATED and were never executed, and 761 lines of dead code
+      # survived TWO 'clean' passes because no grep could distinguish a closed row
+      # from an open one. Statuses are now a closed vocabulary and every OPEN row
+      # must name its next action. This is the gate that keeps a recorded verdict
+      # from silently becoming a forgotten one.
+      - name: 'Static guard: findings ledger status vocabulary'
+        run: bash scripts/findings-ledger-gate.sh
+
       # WIRED 2026-08-03 (D37/F703 + F758). Run by nothing since its creation;
       # the day it was repaired it caught a live no-fake-estimates violation
       # (`?? 0` painting unscored restaurants as the worst map tier). The
