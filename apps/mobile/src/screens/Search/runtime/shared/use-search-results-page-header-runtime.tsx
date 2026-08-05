@@ -16,13 +16,11 @@ import { useSearchSurfaceRuntimeSelector } from '../surface/search-surface-runti
 
 type UseSearchResultsPageHeaderRuntimeArgs = {
   headerTitle: string;
-  activeTabColor: string;
   handleCloseResults: () => void;
 };
 
 export const useSearchResultsPageHeaderRuntime = ({
   headerTitle,
-  activeTabColor,
   handleCloseResults,
 }: UseSearchResultsPageHeaderRuntimeArgs): void => {
   // Retained-page signal kept from the pre-P5 header: while the results page is live OR held
@@ -40,11 +38,9 @@ export const useSearchResultsPageHeaderRuntime = ({
       headerTitle.trim().length > 0 ? headerTitle : (retainedTitleRef.current ?? 'Results');
     return {
       headerTitle: resolvedHeaderTitle,
-      activeTabColor,
       handleCloseResults,
     };
   }, [
-    activeTabColor,
     handleCloseResults,
     headerTitle,
     shouldRetainResultsPage,

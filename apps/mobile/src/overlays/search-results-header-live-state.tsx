@@ -17,7 +17,6 @@ import { registerHeaderCloseAction } from '../navigation/runtime/header-nav-acti
 export type SearchResultsHeaderLiveState = {
   /** Resolved title — the submitted query text, retained across blanks; 'Results' seed. */
   headerTitle: string;
-  activeTabColor: string;
   handleCloseResults: () => void;
   /**
    * The search runtime's own header-height observer (results header height drives the wash/empty

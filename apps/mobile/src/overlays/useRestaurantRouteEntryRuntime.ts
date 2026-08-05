@@ -26,15 +26,11 @@ type RestaurantRouteEntrySource =
 type UseRestaurantRouteEntryRuntimeArgs = RestaurantRouteEntrySource & {
   hostConfig: RestaurantRoutePanelHostConfig | null;
   onRequestClose: RestaurantRoutePanelContract['onRequestClose'];
-  isActive: boolean;
-  onProfilerRender: React.ProfilerOnRenderCallback | null;
 };
 
 export type RestaurantRouteEntryRuntime = {
-  isActive: boolean;
   panel: RestaurantRoutePanelContract | null;
   hostConfig: RestaurantRoutePanelHostConfig | null;
-  onProfilerRender: React.ProfilerOnRenderCallback | null;
 };
 
 type RetainedRestaurantRoutePanelDraft = {
@@ -59,8 +55,6 @@ const useStableEvent = <TArgs extends readonly unknown[], TResult>(
 export const useRestaurantRouteEntryRuntime = ({
   hostConfig,
   onRequestClose,
-  isActive,
-  onProfilerRender,
   ...source
 }: UseRestaurantRouteEntryRuntimeArgs): RestaurantRouteEntryRuntime => {
   const sourcePanelDraft = 'panelDraft' in source ? source.panelDraft : undefined;
@@ -111,11 +105,9 @@ export const useRestaurantRouteEntryRuntime = ({
 
   return React.useMemo(
     () => ({
-      isActive,
       panel,
       hostConfig,
-      onProfilerRender,
     }),
-    [hostConfig, isActive, onProfilerRender, panel]
+    [hostConfig, panel]
   );
 };

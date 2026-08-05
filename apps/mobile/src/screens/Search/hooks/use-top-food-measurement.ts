@@ -16,35 +16,6 @@ const MORE_WIDTH_TEMPLATE_DIGIT = '8';
 const MORE_WIDTH_TEMPLATE_MAX_DIGITS = 4;
 // Keep this small; avoid rendering tokens that end up ellipsizing/clipping.
 const MORE_WIDTH_FIT_SLACK_PX = 8;
-const TOP_FOOD_INLINE_AVAILABLE_WIDTH_TOLERANCE_PX = 1;
-
-export const RESTAURANT_CARD_TOP_FOOD_MEASUREMENT_ITEM_GAP_PX = 0;
-
-let topFoodMeasurementCacheVersion = 0;
-let cachedTopFoodInlineAvailableWidth: number | null = null;
-
-const bumpTopFoodMeasurementCacheVersion = (): void => {
-  topFoodMeasurementCacheVersion += 1;
-};
-
-export const getTopFoodMeasurementCacheVersion = (): number => topFoodMeasurementCacheVersion;
-
-export const getCachedTopFoodInlineAvailableWidth = (): number | null =>
-  cachedTopFoodInlineAvailableWidth;
-
-export const setCachedTopFoodInlineAvailableWidth = (width: number): void => {
-  if (!Number.isFinite(width) || width <= 0) {
-    return;
-  }
-  if (
-    cachedTopFoodInlineAvailableWidth == null ||
-    Math.abs(cachedTopFoodInlineAvailableWidth - width) >=
-      TOP_FOOD_INLINE_AVAILABLE_WIDTH_TOLERANCE_PX
-  ) {
-    cachedTopFoodInlineAvailableWidth = width;
-    bumpTopFoodMeasurementCacheVersion();
-  }
-};
 
 const getMoreWidthTemplateCount = (hiddenCount: number): number => {
   const digits = Math.max(1, hiddenCount.toString().length);
@@ -75,7 +46,6 @@ class LruWidthCache<TKey> {
       this.map.delete(key);
     }
     this.map.set(key, value);
-    bumpTopFoodMeasurementCacheVersion();
     if (this.map.size > this.maxSize) {
       const oldestKey = this.map.keys().next().value as TKey | undefined;
       if (oldestKey !== undefined) {
@@ -328,93 +298,6 @@ const resolveMeasuredTopFoodLayout = ({
   return {
     visibleTopFoods: candidateTopFoods.slice(0, resolvedBestCount),
     hiddenTopFoodCount: hiddenCount,
-  };
-};
-
-const getCachedMoreWidth = (hiddenCount: number): number | undefined => {
-  const direct = topFoodMoreWidthCache.get(hiddenCount);
-  if (typeof direct === 'number') return direct;
-  const templateCount = getMoreWidthTemplateCount(hiddenCount);
-  return topFoodMoreWidthCache.get(templateCount);
-};
-
-export const resolveCachedTopFoodLayout = ({
-  availableWidth,
-  itemGap,
-  maxToRender,
-  topFoodItems,
-  totalTopFoodCount,
-}: {
-  availableWidth: number | null | undefined;
-  itemGap: number;
-  maxToRender: number;
-  topFoodItems: readonly TopFoodItem[];
-  totalTopFoodCount?: number;
-}): CachedTopFoodLayout | null => {
-  if (!availableWidth || !Number.isFinite(availableWidth) || topFoodItems.length === 0) {
-    return null;
-  }
-  const candidateTopFoods = topFoodItems.slice(0, maxToRender);
-  if (candidateTopFoods.length === 0) {
-    return null;
-  }
-  const resolvedTotalTopFoodCount = Math.max(
-    totalTopFoodCount ?? topFoodItems.length,
-    topFoodItems.length
-  );
-  const topFoodMoreCounts = computeTopFoodMoreCounts({
-    candidateTopFoodsLength: candidateTopFoods.length,
-    resolvedTotalTopFoodCount,
-  });
-  const hasCachedItems = candidateTopFoods.every(
-    (food) => typeof topFoodItemWidthCache.get(food.connectionId) === 'number'
-  );
-  if (!hasCachedItems) {
-    return null;
-  }
-  const hasCachedMoreCounts = topFoodMoreCounts.every(
-    (count) => typeof topFoodMoreWidthCache.get(count) === 'number'
-  );
-  if (!hasCachedMoreCounts) {
-    return null;
-  }
-  const resolvedLayout = resolveMeasuredTopFoodLayout({
-    availableWidth,
-    candidateTopFoods,
-    getItemWidth: (connectionId) => topFoodItemWidthCache.get(connectionId),
-    getMoreWidth: getCachedMoreWidth,
-    itemGap,
-    resolvedTotalTopFoodCount,
-  });
-  return {
-    availableWidth,
-    hiddenTopFoodCount: resolvedLayout.hiddenTopFoodCount,
-    visibleTopFoods: resolvedLayout.visibleTopFoods,
-  };
-};
-
-export const resolveEstimatedTopFoodLayout = ({
-  topFoodItems,
-  totalTopFoodCount,
-  maxToRender,
-}: {
-  topFoodItems: readonly TopFoodItem[];
-  totalTopFoodCount?: number;
-  maxToRender: number;
-}): CachedTopFoodLayout | null => {
-  const candidateTopFoods = topFoodItems.slice(0, maxToRender);
-  if (candidateTopFoods.length === 0) {
-    return null;
-  }
-  const resolvedTotalTopFoodCount = Math.max(
-    totalTopFoodCount ?? topFoodItems.length,
-    topFoodItems.length
-  );
-  const visibleCount = Math.min(1, candidateTopFoods.length);
-  return {
-    availableWidth: cachedTopFoodInlineAvailableWidth ?? 0,
-    visibleTopFoods: candidateTopFoods.slice(0, visibleCount),
-    hiddenTopFoodCount: Math.max(0, resolvedTotalTopFoodCount - visibleCount),
   };
 };
 

@@ -259,7 +259,6 @@ export const useSearchResultsReadModelSelectors = (
   // Publishes the results header model to the persistent-header live-state store (P5) — no
   // component comes back; the hoisted chrome renders it.
   useSearchResultsPageHeaderRuntime({
-    activeTabColor,
     handleCloseResults,
     headerTitle: listHeaderTitle,
   });

@@ -249,8 +249,6 @@ const RestaurantRouteSceneInputHost = ({
       closeRuntime.closeRestaurantRoute(parentPresentationDraft.sessionToken);
     },
     hostConfig: null,
-    isActive: isActiveParentRestaurant,
-    onProfilerRender: null,
   });
   const parentRestaurantContentSpecRuntime = useRestaurantRouteContentSpecRuntime({
     panel: parentRestaurantEntryRuntime.panel,
@@ -314,8 +312,6 @@ const RestaurantRouteSceneInputHost = ({
     onToggleFavorite: restaurantControlSelectionSnapshot.onToggleFavorite,
     onRequestClose: restaurantControlSelectionSnapshot.closeRestaurantProfile,
     hostConfig: searchRestaurantHostConfig,
-    isActive: isActiveSearchRestaurant,
-    onProfilerRender: null,
   });
   const searchRestaurantContentSpecRuntime = useRestaurantRouteContentSpecRuntime({
     panel: searchRestaurantEntryRuntime.panel,
