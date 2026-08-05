@@ -23,8 +23,14 @@ export const useSearchSuggestionHeaderLayoutPresentationRuntime = ({
   resolvedSearchShortcutsFrame,
   frozenCutoutEdgeSlop,
 }: UseSearchSuggestionHeaderLayoutPresentationRuntimeArgs) => {
-  const suggestionHeaderContentBottomRef = React.useRef(0);
-  const frozenSuggestionHeaderContentBottom = suggestionHeaderContentBottomRef.current;
+  // A useState, not a ref: this value is PUBLISHED to consumers (below), and a ref write
+  // does not trigger a re-render — a consumer reading a ref snapshot can observe a stale
+  // last-known-good value across the render where the freeze first engages (bedrock: a
+  // published value must be able to change its readers). The write is gated exactly like
+  // the prior ref write (only while unfrozen and only for a real, positive measurement),
+  // so it fires at most once per freeze cycle — the extra render is bounded.
+  const [frozenSuggestionHeaderContentBottom, setFrozenSuggestionHeaderContentBottom] =
+    React.useState(0);
 
   const suggestionHeaderContentBottom = React.useMemo(() => {
     if (!shouldDriveSuggestionLayout) {
@@ -67,15 +73,17 @@ export const useSearchSuggestionHeaderLayoutPresentationRuntime = ({
 
   React.useEffect(() => {
     if (!shouldFreezeSuggestionHeader && suggestionHeaderContentBottom > 0) {
-      suggestionHeaderContentBottomRef.current = suggestionHeaderContentBottom;
+      setFrozenSuggestionHeaderContentBottom((previous) =>
+        previous === suggestionHeaderContentBottom ? previous : suggestionHeaderContentBottom
+      );
     }
   }, [shouldFreezeSuggestionHeader, suggestionHeaderContentBottom]);
 
   return React.useMemo(
     () => ({
       suggestionHeaderContentBottom,
-      suggestionHeaderContentBottomFallback: suggestionHeaderContentBottomRef.current,
+      suggestionHeaderContentBottomFallback: frozenSuggestionHeaderContentBottom,
     }),
-    [suggestionHeaderContentBottom]
+    [suggestionHeaderContentBottom, frozenSuggestionHeaderContentBottom]
   );
 };

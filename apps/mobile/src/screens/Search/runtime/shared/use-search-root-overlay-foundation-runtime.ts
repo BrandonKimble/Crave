@@ -106,21 +106,39 @@ export const useSearchRootOverlayFoundationRuntime = ({
     rootDataPlaneRuntime,
     rootOverlayStoreRuntime,
   });
-  return {
-    routeSceneRuntime,
-    routeOverlaySessionSnapshot: routeOverlaySessionSnapshotRef.current,
-    routeOverlaySessionSnapshotRef,
-    routeOverlaySessionActions: routeSceneRuntime.routeOverlaySessionActions,
-    routeOverlayCommandSnapshotRef,
-    routeOverlayCommandActions: routeSceneRuntime.routeOverlayCommandActions,
-    routeOverlayRouteCommandRuntime: routeSceneRuntime.routeOverlayRouteCommandRuntime,
-    routeOverlayTransitionActions: routeSceneRuntime.routeOverlayTransitionActions,
-    routeSheetSnapSessionActions: routeSceneRuntime.routeSheetSnapSessionActions,
-    routeSearchCommandActions: routeSceneRuntime.routeSearchCommandActions,
-    rootOverlaySessionSurfaceRuntime,
-    rootSharedSheetRuntimeLane,
-    appRouteSharedSheetRuntimeOwner,
-    rootInstrumentationRuntime,
-    rootOverlayStoreRuntime,
-  };
+  // Memoised like every sibling assembly hook in this wave (F1348): this aggregate is
+  // threaded into ~20 consumers, some of which take the whole object rather than a field
+  // path — an unmemoised return handed a fresh identity to every one of them on every
+  // render. `routeOverlaySessionSnapshot` (a materialized snapshot from the live getter on
+  // `routeOverlaySessionSnapshotRef`) was dropped: no consumer read it — every call site
+  // already reads the ref directly, which is the correct way to observe a value that can
+  // change between this hook's renders.
+  return React.useMemo(
+    () => ({
+      routeSceneRuntime,
+      routeOverlaySessionSnapshotRef,
+      routeOverlaySessionActions: routeSceneRuntime.routeOverlaySessionActions,
+      routeOverlayCommandSnapshotRef,
+      routeOverlayCommandActions: routeSceneRuntime.routeOverlayCommandActions,
+      routeOverlayRouteCommandRuntime: routeSceneRuntime.routeOverlayRouteCommandRuntime,
+      routeOverlayTransitionActions: routeSceneRuntime.routeOverlayTransitionActions,
+      routeSheetSnapSessionActions: routeSceneRuntime.routeSheetSnapSessionActions,
+      routeSearchCommandActions: routeSceneRuntime.routeSearchCommandActions,
+      rootOverlaySessionSurfaceRuntime,
+      rootSharedSheetRuntimeLane,
+      appRouteSharedSheetRuntimeOwner,
+      rootInstrumentationRuntime,
+      rootOverlayStoreRuntime,
+    }),
+    [
+      routeSceneRuntime,
+      routeOverlaySessionSnapshotRef,
+      routeOverlayCommandSnapshotRef,
+      rootOverlaySessionSurfaceRuntime,
+      rootSharedSheetRuntimeLane,
+      appRouteSharedSheetRuntimeOwner,
+      rootInstrumentationRuntime,
+      rootOverlayStoreRuntime,
+    ]
+  );
 };

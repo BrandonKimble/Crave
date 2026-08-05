@@ -19,7 +19,6 @@ import type {
 
 export type SearchRootOverlayFoundationRuntime = {
   routeSceneRuntime: AppRouteSceneRuntime;
-  routeOverlaySessionSnapshot: AppRouteOverlaySessionSnapshot;
   routeOverlaySessionSnapshotRef: React.RefObject<AppRouteOverlaySessionSnapshot>;
   routeOverlaySessionActions: AppRouteOverlaySessionActions;
   routeOverlayCommandSnapshotRef: React.MutableRefObject<AppRouteOverlayCommandSnapshot>;
