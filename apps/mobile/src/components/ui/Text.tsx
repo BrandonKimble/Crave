@@ -8,6 +8,7 @@ import {
 } from 'react-native';
 
 import { TYPE_SCALE } from '../../constants/typography';
+import { colors as themeColors } from '../../constants/theme';
 
 const typeScale: Record<'title' | 'subtitle' | 'body' | 'caption', TextStyle> = TYPE_SCALE;
 
@@ -54,7 +55,8 @@ export const Text: React.FC<TextProps> = ({
 
 const styles = StyleSheet.create({
   base: {
-    color: '#0f172a',
+    // F894 (2026-08-04): was a hardcoded '#0f172a' restating the theme token by value.
+    color: themeColors.textPrimary,
   },
 });
 

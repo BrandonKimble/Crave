@@ -24,22 +24,48 @@ import {
  *   use `createToggleStripConsequenceSeam` directly and, if their slice is
  *   synchronous (`settleMs: 0`), never observably leave 'settled'.
  */
+type ContentToggleDeclaration<TKind extends string> = Omit<
+  Extract<ToggleStripConsequenceDeclaration<TKind>, { consequence: 'content' }>,
+  'consequence'
+>;
+
+// F1559 (2026-08-04): `surfaceName` and `settleMs` are CREATION ARGUMENTS, not live
+// declaration fields — the seam is built once (`useMemo(…, [])`) and these two are read
+// only at that build, so a later change to either is silently ignored. That used to be
+// emergent (both were read through the SAME latest-value ref the three live callbacks
+// use, so nothing distinguished "frozen" from "live" in the types or a comment). Naming
+// them here states the freeze instead of leaving it to be discovered by whoever tries to
+// vary one.
+type ContentToggleCreationArgs<TKind extends string> = Pick<
+  ContentToggleDeclaration<TKind>,
+  'surfaceName' | 'settleMs'
+>;
+
 export const useContentToggle = <TKind extends string>(
-  declaration: Omit<
-    Extract<ToggleStripConsequenceDeclaration<TKind>, { consequence: 'content' }>,
-    'consequence'
-  >
+  declaration: ContentToggleDeclaration<TKind>
 ): { seam: ToggleStripConsequenceSeam<TKind>; phase: ToggleStripContentPhase } => {
+  // LIVE fields: forwarded through a latest-value ref, so a caller may swap these
+  // callbacks across renders and the seam picks up the new one on its next invocation.
   const declarationRef = React.useRef(declaration);
   declarationRef.current = declaration;
+
+  // FROZEN fields: captured ONCE, at creation, into their own ref — never re-read from
+  // `declarationRef` inside the seam builder, so nothing here can look live by accident.
+  const creationArgsRef = React.useRef<ContentToggleCreationArgs<TKind> | null>(null);
+  if (creationArgsRef.current == null) {
+    creationArgsRef.current = {
+      surfaceName: declaration.surfaceName,
+      ...(declaration.settleMs != null ? { settleMs: declaration.settleMs } : {}),
+    };
+  }
+  const creationArgs = creationArgsRef.current;
+
   const seam = React.useMemo(
     () =>
       createToggleStripConsequenceSeam<TKind>({
         consequence: 'content',
-        surfaceName: declarationRef.current.surfaceName,
-        ...(declarationRef.current.settleMs != null
-          ? { settleMs: declarationRef.current.settleMs }
-          : {}),
+        surfaceName: creationArgs.surfaceName,
+        ...(creationArgs.settleMs != null ? { settleMs: creationArgs.settleMs } : {}),
         onInteractionState: (state) => declarationRef.current.onInteractionState?.(state),
         onLifecycle: (event) => declarationRef.current.onLifecycle?.(event),
         ...(declarationRef.current.captureControlBaseline != null
@@ -53,6 +79,9 @@ export const useContentToggle = <TKind extends string>(
             }
           : {}),
       }),
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- creationArgs is a ref-frozen
+    // snapshot by design (F1559): re-running this memo when it "changes" would defeat the
+    // freeze it exists to document.
     []
   );
   React.useEffect(() => () => seam.dispose(), [seam]);

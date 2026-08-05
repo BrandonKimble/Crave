@@ -1,6 +1,6 @@
 import {
   AUTO_SCROLL_EDGE_BAND_PX,
-  AUTO_SCROLL_MAX_STEP_PX,
+  AUTO_SCROLL_MAX_SPEED_PX_PER_SEC,
   computeDragFrame,
   type DragFrameInput,
 } from './reorder-drag-math';
@@ -56,13 +56,13 @@ describe('computeDragFrame', () => {
     ).toBe(0);
     // Half-depth into the band: half the max step.
     const half = computeDragFrame({ ...base, absoluteY: 700 - AUTO_SCROLL_EDGE_BAND_PX / 2 });
-    expect(half.autoScrollStep).toBeCloseTo(AUTO_SCROLL_MAX_STEP_PX / 2);
+    expect(half.autoScrollStep).toBeCloseTo(AUTO_SCROLL_MAX_SPEED_PX_PER_SEC / 2);
     // At (or past) the edge: full step; top band mirrors with negative sign.
     expect(computeDragFrame({ ...base, absoluteY: 700 }).autoScrollStep).toBe(
-      AUTO_SCROLL_MAX_STEP_PX
+      AUTO_SCROLL_MAX_SPEED_PX_PER_SEC
     );
     expect(computeDragFrame({ ...base, absoluteY: 100 }).autoScrollStep).toBe(
-      -AUTO_SCROLL_MAX_STEP_PX
+      -AUTO_SCROLL_MAX_SPEED_PX_PER_SEC
     );
   });
 

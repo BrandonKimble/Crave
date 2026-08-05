@@ -6,6 +6,7 @@ import { Text } from './ui/Text';
 import { announceFailureIfOnline } from './app-modal-store';
 import { closeListEdit, listEditStore, type ListEditPayload } from './list-edit-store';
 import { useSingletonSurfaceHost } from './singleton-surface-store';
+import { SegmentedToggle } from './SegmentedToggle';
 import { colors as themeColors } from '../constants/theme';
 import { userListKeys } from '../hooks/use-user-lists';
 import { userListsService, type UserListVisibility } from '../services/user-lists';
@@ -21,6 +22,11 @@ import SquircleSpinner from './SquircleSpinner';
 const FORM_BORDER = '#e2e8f0';
 const INK = '#0f172a';
 const SUBTLE = '#64748b';
+
+const VISIBILITY_OPTIONS = [
+  { label: 'Private', value: 'private' },
+  { label: 'Public', value: 'public' },
+] as const satisfies readonly { label: string; value: UserListVisibility }[];
 
 type FormState = {
   name: string;
@@ -104,31 +110,14 @@ const ListEditForm: React.FC<{ payload: ListEditPayload }> = ({ payload }) => {
         <Text variant="caption" style={styles.visibilityLabel}>
           Visibility
         </Text>
-        <View style={styles.visibilityToggle}>
-          {(['private', 'public'] as UserListVisibility[]).map((value) => {
-            const isActive = form.visibility === value;
-            return (
-              <Pressable
-                key={value}
-                onPress={() => setForm((prev) => ({ ...prev, visibility: value }))}
-                style={[styles.visibilityOption, isActive && styles.visibilityOptionActive]}
-                accessibilityRole="button"
-                accessibilityState={{ selected: isActive }}
-              >
-                <Text
-                  variant="caption"
-                  weight="semibold"
-                  style={[
-                    styles.visibilityOptionText,
-                    isActive && styles.visibilityOptionTextActive,
-                  ]}
-                >
-                  {value === 'private' ? 'Private' : 'Public'}
-                </Text>
-              </Pressable>
-            );
-          })}
-        </View>
+        {/* F898: adopts the house SegmentedToggle — pages never hand-roll segment rows. */}
+        <SegmentedToggle
+          options={VISIBILITY_OPTIONS}
+          value={form.visibility}
+          onChange={(value) => setForm((prev) => ({ ...prev, visibility: value }))}
+          accessibilityLabel="Toggle list visibility between private and public"
+          testID="list-edit-visibility-toggle"
+        />
       </View>
       <View style={styles.actions}>
         <Pressable
@@ -210,27 +199,6 @@ const styles = StyleSheet.create({
   visibilityLabel: {
     color: SUBTLE,
     marginBottom: 6,
-  },
-  visibilityToggle: {
-    flexDirection: 'row',
-    backgroundColor: '#f1f5f9',
-    borderRadius: 999,
-    padding: 4,
-  },
-  visibilityOption: {
-    flex: 1,
-    alignItems: 'center',
-    paddingVertical: 8,
-    borderRadius: 999,
-  },
-  visibilityOptionActive: {
-    backgroundColor: INK,
-  },
-  visibilityOptionText: {
-    color: SUBTLE,
-  },
-  visibilityOptionTextActive: {
-    color: '#ffffff',
   },
   actions: {
     flexDirection: 'row',

@@ -11,8 +11,21 @@
  * Worklet-pure: no captures, no JS-thread reads — callable from the UI thread.
  */
 
+// F889 (2026-08-04): no stated derivation for this band width — an undocumented constant,
+// not a measured fact or an owner decision. Left as-is; naming it honestly here rather than
+// fabricating a rationale.
 export const AUTO_SCROLL_EDGE_BAND_PX = 96;
-export const AUTO_SCROLL_MAX_STEP_PX = 14;
+
+/**
+ * F889 (2026-08-04): this used to be `AUTO_SCROLL_MAX_STEP_PX = 14`, a PX-PER-FRAME constant
+ * applied once per `useFrameCallback` tick regardless of the device's actual refresh rate.
+ * At 60Hz that is 14 * 60 = 840px/s; at 120Hz (most of the fleet — ProMotion) the callback
+ * fires twice as often, so the same per-frame constant silently DOUBLES the auto-scroll
+ * speed to ~1680px/s. Expressed here as a px/SECOND speed (840, chosen to reproduce the
+ * original 60Hz feel exactly — not a new measurement) so the frame pump can scale it by the
+ * actual elapsed frame time instead of assuming 60Hz.
+ */
+export const AUTO_SCROLL_MAX_SPEED_PX_PER_SEC = 840;
 
 export type DragFrameInput = {
   /** Last gesture translationY sample (frozen while the finger is stationary). */
@@ -80,7 +93,11 @@ export type DragFrameResult = {
   translateX: number;
   /** The clamped slot the lifted item currently occupies. */
   slot: number;
-  /** Signed px/frame auto-scroll step (0 outside the edge bands). */
+  /**
+   * Signed auto-scroll SPEED in px/SECOND (0 outside the edge bands) — refresh-rate
+   * independent. The consumer multiplies by the actual elapsed frame time to get the
+   * distance to scroll this frame; see AUTO_SCROLL_MAX_SPEED_PX_PER_SEC.
+   */
   autoScrollStep: number;
 };
 
@@ -137,14 +154,18 @@ export const computeDragFrame = (input: DragFrameInput): DragFrameResult => {
   const maxSlot = input.itemCount - 1;
   const slot = Math.max(minSlot, Math.min(maxSlot, rawSlot));
 
-  // Edge bands → proportional auto-scroll step (0 outside the bands).
+  // Edge bands → proportional auto-scroll SPEED in px/second (0 outside the bands). The
+  // frame pump (useReorderDrag's useFrameCallback) converts this to an actual per-frame
+  // distance using the real elapsed frame time — see AUTO_SCROLL_MAX_SPEED_PX_PER_SEC.
   const topDepth = input.viewportTopY + AUTO_SCROLL_EDGE_BAND_PX - input.absoluteY;
   const bottomDepth = input.absoluteY - (input.viewportBottomY - AUTO_SCROLL_EDGE_BAND_PX);
   let autoScrollStep = 0;
   if (topDepth > 0) {
-    autoScrollStep = -Math.min(1, topDepth / AUTO_SCROLL_EDGE_BAND_PX) * AUTO_SCROLL_MAX_STEP_PX;
+    autoScrollStep =
+      -Math.min(1, topDepth / AUTO_SCROLL_EDGE_BAND_PX) * AUTO_SCROLL_MAX_SPEED_PX_PER_SEC;
   } else if (bottomDepth > 0) {
-    autoScrollStep = Math.min(1, bottomDepth / AUTO_SCROLL_EDGE_BAND_PX) * AUTO_SCROLL_MAX_STEP_PX;
+    autoScrollStep =
+      Math.min(1, bottomDepth / AUTO_SCROLL_EDGE_BAND_PX) * AUTO_SCROLL_MAX_SPEED_PX_PER_SEC;
   }
 
   return { translate, translateX, slot, autoScrollStep };

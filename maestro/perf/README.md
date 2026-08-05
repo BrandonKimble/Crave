@@ -103,6 +103,14 @@ shared rows/pins/labels/native-enter/cover-release contracts after the tap.
 
 ### Map LOD Pan/Zoom
 
+> **CORRECTED 2026-08-04 (audit F1652).** `maestro/perf/flows/search-map-lod-pan-zoom.yaml`
+> does not exist in the repo (verified: `ls` fails). The `animate_map_camera` command
+> action below IS live in `PerfScenarioCoordinator.tsx`, but no committed flow reaches
+> it — it is reachable only from the dead `[lodev]` scaffolding (audit F709). Do not
+> run the command below expecting a working flow; either author a real
+> `search-map-lod-pan-zoom.yaml` before using it, or treat this section as historical
+> intent, not a working recipe.
+
 ```sh
 yarn perf:scenario:ios maestro/perf/flows/search-map-lod-pan-zoom.yaml search_map_lod_pan_zoom
 ```

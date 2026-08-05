@@ -42,20 +42,21 @@ export const LifecycleHarnessBridge: React.FC = () => {
             routeSceneRuntime.routeSheetSnapSessionActions?.getRouteSceneSwitchSceneSnap?.(scene) ??
             null;
         } catch {
-          // F868 — THIS CONVERTS AN EXCEPTION INTO A PLAUSIBLE VALUE. The matrix
-          // asserts on these snaps, and `null` is also a legitimate answer
-          // ("that scene has no snap"), so a throwing snap reader is
-          // indistinguishable from a closed sheet: the probe reports a healthy
-          // state for a broken one.
+          // F868 — FIXED: a throwing snap reader used to collapse to `null`,
+          // which is ALSO the legitimate "no snap / closed sheet" answer, so
+          // the probe reported a healthy state for a broken one. Now it reports
+          // the distinct sentinel 'unreadable' — never equal to any real snap
+          // name ('closed' | 'middle' | 'expanded' | ... | null), so any matrix
+          // assertion comparing against a real snap value fails loudly instead
+          // of silently passing.
           //
-          // RED RECIPE (needs the sim + `scripts/rig/lifecycle-matrix.sh`, so it
-          // is recorded rather than automated): make
+          // RED RECIPE (needs the sim + `scripts/rig/lifecycle-matrix.sh`): make
           // `getRouteSceneSwitchSceneSnap` throw for one scene — e.g. add
           // `if (scene === 'listDetail') throw new Error('probe RED');` at the
-          // top of the runtime's implementation — then run the matrix. Today
-          // every listDetail snap assertion still passes (null reads as closed).
-          // The fix, when this is designed, is a third value: 'unreadable'.
-          sheetSnaps[scene] = null;
+          // top of the runtime's implementation — then run the matrix. Before
+          // this fix every listDetail snap assertion still passed (null read as
+          // closed); now it fails, because 'unreadable' !== the asserted value.
+          sheetSnaps[scene] = 'unreadable';
         }
       }
       const residentEntry = resolveResidentWorldEntry(routeState);

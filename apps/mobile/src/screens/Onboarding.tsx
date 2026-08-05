@@ -265,25 +265,20 @@ const OnboardingScreen: React.FC<OnboardingProps> = ({ navigation: _navigation }
   const regretCraveAnim = React.useRef(new Animated.Value(0)).current;
   const [graphTrackWidth, setGraphTrackWidth] = React.useState(0);
   const calendarAnimation = React.useRef<Animated.CompositeAnimation | null>(null);
-  const calendarDayAnims = React.useRef<Animated.Value[]>([]).current;
-  const calendarColorAnims = React.useRef<Animated.Value[]>([]).current;
-  if (calendarDayAnims.length === 0) {
-    for (let i = 0; i < 60; i += 1) {
-      calendarDayAnims.push(new Animated.Value(0));
-      calendarColorAnims.push(new Animated.Value(0));
-    }
-  }
   const { width: viewportWidth } = useWindowDimensions();
   const progress = React.useRef(new Animated.Value(0)).current;
   const ctaPulse = React.useRef(new Animated.Value(0)).current;
   const ctaPressScale = React.useRef(new Animated.Value(1)).current;
   const ctaTransitionScale = React.useRef(new Animated.Value(1)).current;
   const [isAnimating, setIsAnimating] = React.useState(false);
-  const { triggerCalendarAnimation } = useOnboardingAnimationLane({
-    calendarAnimation,
-    calendarDayAnims,
-    calendarColorAnims,
-  });
+  // F815: 30 is the calendar comparison graph's day count per column (see
+  // `totalDays = 30` below, "30 days (full month)") — the hook owns the
+  // Animated.Value arrays and derives their count from this, not a bare 60.
+  const { triggerCalendarAnimation, calendarDayAnims, calendarColorAnims } =
+    useOnboardingAnimationLane({
+      calendarAnimation,
+      daysPerCalendarColumn: 30,
+    });
   const {
     isSignedIn,
     oauthStatus,

@@ -37,36 +37,43 @@ send() {
   local verb="$1" id="$2" payload="${3:-}"
   local url="crave://lifecycle-harness?verb=${verb}&id=${id}"
   [ -n "$payload" ] && url="${url}&payload=$(enc "$payload")"
-  local start_size
-  start_size=$(stat -f%z "$METRO_LOG")
-  xcrun simctl openurl "$UDID" "$url" || { echo ""; return; }
+  xcrun simctl openurl "$UDID" "$url" || { echo "__NO_ACK__"; return; }
   for _ in $(seq 1 40); do
     sleep 0.5
     local ack
-    ack=$(tail -c +"$start_size" "$METRO_LOG" | grep -F "[HARNESS-ACK] {\"id\":\"${id}\"" | tail -1)
+    # F854: grep the WHOLE log for this call's id, not a byte-offset window —
+    # CLAUDE.md banks Metro's fd as truncate-mode, so a mid-run truncation makes
+    # any stat-f%z offset stale (tail -c +offset silently reads nothing past
+    # EOF). Every id is unique per send() call (flow+step+$RUN), so scoping by
+    # offset bought nothing but a truncation hazard; `tail -1` still selects the
+    # freshest match if the id is ever seen more than once.
+    ack=$(grep -F "[HARNESS-ACK] {\"id\":\"${id}\"" "$METRO_LOG" | tail -1)
     if [ -n "$ack" ]; then echo "${ack#*\[HARNESS-ACK\] }"; return; fi
   done
-  echo ""
+  echo "__NO_ACK__"
 }
 
 # F854 — THE HARNESS'S OWN DEATH IS REPORTED AS AN EXPECTED RED.
 #
-# `send()` returns "" after a 20s ack timeout, and `check()`'s `except: print("0")`
-# maps that empty string to the SAME "0" a genuine assertion failure produces. So a
-# crashed app, a dead Metro, or a URL the bridge never received all read as
-# "EXPECTED-RED (old-code defect)" on the rows flagged with expected_red=1 — the
-# run reports the defect it was looking for, having measured nothing at all.
+# FIXED: send() now returns the sentinel "__NO_ACK__" (never "") after a 20s ack
+# timeout. check() treats that sentinel as a harness fault — a crashed app, a dead
+# Metro, or a URL the bridge never received now prints "HARNESS-FAULT: no ack —
+# harness unreachable" and always counts as FAIL, regardless of expected_red. A
+# real assertion failure still falls through to the ordinary python eval path,
+# so "EXPECTED-RED (old-code defect)" only ever means "the harness answered and
+# the answer was the known-bad one" — never "the harness never answered".
 #
-# RED RECIPE (recorded, not automated — it needs the simulator): run this script
-# with the app NOT installed, or with `APP_BUNDLE` set to a nonexistent id. Every
-# send times out, and the matrix should FAIL LOUDLY ("no ack — harness unreachable")
-# rather than print a tidy list of EXPECTED-REDs. Today it prints the tidy list.
-# The fix, when this is designed: send() must return a distinguishable
-# NO_ACK sentinel and check() must treat it as a harness fault, never an assertion.
+# RED RECIPE (still needs the simulator to run, but the fix is now in place):
+# run this script with the app NOT installed, or with `APP_BUNDLE` set to a
+# nonexistent id. Every send times out; the matrix now fails loudly instead of
+# printing a tidy EXPECTED-RED list.
 #
 # assert <name> <ack-json> <python-expr over parsed ack as a> [expected_red]
 check() {
   local name="$1" ack="$2" expr="$3" expected_red="${4:-0}"
+  if [ "$ack" = "__NO_ACK__" ]; then
+    echo "  HARNESS-FAULT: no ack — harness unreachable: $name"; FAIL=$((FAIL+1)); return
+  fi
   local ok
   ok=$(python3 - "$ack" "$expr" <<'PY'
 import json,sys

@@ -122,8 +122,16 @@ export const useReorderDrag = ({
   onDragStateChangeRef.current = onDragStateChange;
   const scrollAdapterRef = React.useRef(scrollAdapter);
   scrollAdapterRef.current = scrollAdapter;
+  // F1561 (2026-08-04): was an unconditional `.value` write in the render body — a
+  // Reanimated shared-value mutation during render is undefined-ordering with respect to
+  // the UI thread and invisible to React's own bail-out reasoning. The three JS refs above
+  // are the LEGAL form of this "latest value" trick (`React.useRef`, mirrored in the same
+  // spot); a shared value crossing to the UI thread needs an effect instead, matching the
+  // sibling `rowIndexSV`/`slotIndexSV` pattern in ReorderableRows.tsx/ReorderableGrid.tsx.
   const itemCountSV = useSharedValue(itemCount);
-  itemCountSV.value = itemCount;
+  React.useEffect(() => {
+    itemCountSV.value = itemCount;
+  }, [itemCount, itemCountSV]);
 
   const scrollOffsetSV = scrollAdapter?.scrollOffset ?? null;
   const fallbackScrollOffset = useSharedValue(0);
@@ -200,13 +208,18 @@ export const useReorderDrag = ({
   // scrollTo; the recompute below replays the LAST gesture sample against the moving
   // scroll offset each frame, so a STATIONARY finger keeps the lifted row finger-pinned
   // and keeps advancing activeSlotIndex while the container auto-scrolls under it.
-  const autoScrollFrame = useFrameCallback(() => {
+  const autoScrollFrame = useFrameCallback((frameInfo) => {
     'worklet';
     if (activeKey.value == null) {
       return;
     }
     if (autoScrollStep.value !== 0) {
-      runOnJS(scrollByJS)(autoScrollStep.value);
+      // F889 (2026-08-04): autoScrollStep is a px/SECOND speed, not a px/frame constant —
+      // scale by the ACTUAL elapsed frame time so the auto-scroll speed is refresh-rate
+      // independent. Reanimated's frameInfo omits timeSincePreviousFrame on the very first
+      // tick; fall back to a 60Hz frame so that tick isn't a silent no-op or a huge jump.
+      const deltaMs = frameInfo.timeSincePreviousFrame ?? 1000 / 60;
+      runOnJS(scrollByJS)((autoScrollStep.value * deltaMs) / 1000);
     }
     applyDragFrame(lastTranslationY.value, lastTranslationX.value, lastAbsoluteY.value);
   }, false);

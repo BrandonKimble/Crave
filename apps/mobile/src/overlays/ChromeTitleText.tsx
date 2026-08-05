@@ -44,7 +44,9 @@ export const ChromeTitleText = ({
 
 const styles = StyleSheet.create({
   chromeTitle: {
-    color: themeColors.text,
+    // F894 (2026-08-04): was `themeColors.text` (#1A1A1A) — this file's only consumer of a
+    // token with no stated distinction from `textPrimary` (#0f172a); collapsed onto it.
+    color: themeColors.textPrimary,
   },
 });
 

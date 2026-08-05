@@ -94,3 +94,6 @@ packages/*/src/**/*.js
 *.tmp.ts
 *.tmp.js
 __pycache__/
+
+# F1662: maestro perf run debris — scratch sink, never committed
+maestro/perf/debug-output/

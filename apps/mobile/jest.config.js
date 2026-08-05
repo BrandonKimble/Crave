@@ -16,7 +16,7 @@ module.exports = {
   testEnvironment: 'node',
   setupFiles: ['<rootDir>/jest.setup.js'],
   roots: ['<rootDir>/src'],
-  testMatch: ['**/*.spec.ts'],
+  testMatch: ['**/*.spec.ts?(x)'],
   moduleFileExtensions: ['ts', 'js', 'json', 'node'],
   // @sentry/react-native ships untranspiled ESM and node_modules is not transformed in
   // this hermetic lane — see jest.sentry-stub.js for why a stub (not an avoidance) is

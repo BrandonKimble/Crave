@@ -28,6 +28,7 @@ import {
   type ShareModalConfig,
 } from './share-modal-store';
 import { useSingletonSurfaceHost } from './singleton-surface-store';
+import { isInteractableAuthor } from '../services/author-identity';
 
 /**
  * THE universal share modal (W3, page-registry §9b). One OverlayModalSheet
@@ -55,7 +56,9 @@ const TargetAvatar = ({
   onToggle: (userId: string) => void;
 }) => (
   <Pressable
-    onPress={() => onToggle(peer.userId)}
+    // A ghost cannot receive a share: there is nobody to deliver it to.
+    onPress={() => peer.userId && onToggle(peer.userId)}
+    disabled={!isInteractableAuthor(peer)}
     accessibilityRole="button"
     accessibilityState={{ selected }}
     accessibilityLabel={`Send to ${peerDisplayName(peer)}`}
@@ -354,11 +357,11 @@ const ShareModalContent = ({ config }: { config: ShareModalConfig }) => {
               keyboardShouldPersistTaps="handled"
               contentContainerStyle={styles.targetsRow}
             >
-              {targets.map((peer) => (
+              {targets.filter(isInteractableAuthor).map((peer) => (
                 <TargetAvatar
-                  key={peer.userId}
+                  key={peer.userId ?? ''}
                   peer={peer}
-                  selected={selectedIds.has(peer.userId)}
+                  selected={selectedIds.has(peer.userId ?? '')}
                   onToggle={toggleTarget}
                 />
               ))}

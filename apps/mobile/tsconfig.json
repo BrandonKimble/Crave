@@ -11,5 +11,5 @@
     "composite": true,
     "noEmit": false
   },
-  "exclude": ["node_modules", "**/*.spec.ts", "src/tracksheet/__render__"]
+  "exclude": ["node_modules", "**/*.spec.ts", "**/*.spec.tsx", "src/tracksheet/__render__"]
 }
