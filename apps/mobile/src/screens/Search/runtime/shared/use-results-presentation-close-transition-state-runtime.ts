@@ -19,7 +19,7 @@ import type { ResultsPresentationShellLocalState } from './use-results-presentat
 import { createSearchCloseTransitionState } from './results-presentation-shell-close-transition-state';
 import {
   applySearchCloseCollapsedReached,
-  applySearchCloseMapExitSettled,
+  applySearchCloseMapExitSettledForTelemetry,
   applySearchCloseSheetSettled,
 } from './results-presentation-shell-close-transition-state';
 import {
@@ -287,13 +287,12 @@ export const useResultsPresentationCloseTransitionStateRuntime = ({
 
   const markSearchSheetCloseMapExitSettled = React.useCallback(
     (closeIntentId: string) => {
-      shellLocalState.setSearchCloseTransitionState((current) => {
-        const update = applySearchCloseMapExitSettled({
+      shellLocalState.setSearchCloseTransitionState((current) =>
+        applySearchCloseMapExitSettledForTelemetry({
           current,
           closeIntentId,
-        });
-        return update.nextState;
-      });
+        })
+      );
     },
     [shellLocalState]
   );
