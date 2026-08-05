@@ -11,7 +11,6 @@ export const SEARCH_SUBMIT_NATURAL_SCENARIO = 'search_submit_natural';
 export const SEARCH_SUBMIT_SEARCH_THIS_AREA_SCENARIO = 'search_submit_search_this_area';
 export const SEARCH_PIN_SELECTION_PROFILE_OPEN_SCENARIO = 'search_pin_selection_profile_open';
 export const SEARCH_MAP_LOD_SCENARIO_PREFIX = 'search_map_lod_';
-export const MARKET_DEMAND_SCENARIO_PREFIX = 'market_demand_';
 
 const DEFAULT_SEARCH_PERF_ATTRIBUTION_SCENARIOS = new Set([
   SEARCH_SUBMIT_DISMISS_REPEAT_SCENARIO,
@@ -30,7 +29,6 @@ export const isPerfScenarioAttributionActive = (
   (scenarioName == null
     ? DEFAULT_SEARCH_PERF_ATTRIBUTION_SCENARIOS.has(config.scenario) ||
       config.scenario.startsWith(SEARCH_MAP_LOD_SCENARIO_PREFIX) ||
-      config.scenario.startsWith(MARKET_DEMAND_SCENARIO_PREFIX) ||
       config.scenario.startsWith(`${SEARCH_SUBMIT_DISMISS_REPEAT_SCENARIO}_`) ||
       config.scenario.startsWith(`${SEARCH_SUBMIT_DISMISS_INTERRUPT_SCENARIO}_`)
     : config.scenario === scenarioName || config.scenario.startsWith(`${scenarioName}_`));

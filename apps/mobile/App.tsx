@@ -58,7 +58,6 @@ import { scheduleResidentShellPrewarm } from './src/overlays/shell-residency-man
 import { LifecycleHarnessCoordinator } from './src/perf/lifecycle-harness/LifecycleHarnessCoordinator';
 import { LifecycleHarnessBridge } from './src/perf/lifecycle-harness/LifecycleHarnessBridge';
 import { CutoutSkeletonDevPreview } from './src/components/skeletons/CutoutSkeletonDevPreview';
-import { OneTrackPrototype } from './src/screens/OneTrackPrototype';
 import { useSystemStatusStore } from './src/store/systemStatusStore';
 import { OVERLAY_CORNER_RADIUS } from './src/overlays/overlaySheetStyles';
 import { colors } from './src/constants/theme';
@@ -196,7 +195,6 @@ function App() {
                 opened from the Lists home plus and per-list ellipsis "Edit". */}
             <ListEditHost />
             {__DEV__ ? <CutoutSkeletonDevPreview /> : null}
-            {__DEV__ ? <OneTrackPrototype /> : null}
             <StatusBar style={isBannerVisible ? 'light' : 'auto'} />
           </SafeAreaProvider>
         </View>

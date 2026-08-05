@@ -37,9 +37,10 @@ shouldHideBottomNavForSearchResultsMotion =
   && inputMode !== 'editing'                                   // keyboard up = editing, not hiding
   && (backdropTarget === 'results' || isSearchResultsSurfaceOwner)
   && surfaceVisualPolicy.phase !== 'results_dismissing'
-  && !isPersistentPollHandoffCommitted
+  && !isDockedSceneHandoffCommitted
 shouldHideBottomNavForSuggestionSurface = isSuggestionPanelActive
-shouldHideBottomNavForMotion = (results) || (suggestion)        // → drives the motion target
+hasExternalNavHideIntent = useIsChildSceneRevealed(...)          // top-of-stack entry is a child scene
+shouldHideBottomNavForMotion = (results) || (suggestion) || (hasExternalNavHideIntent)  // → drives the motion target
 shouldHideBottomNavForRender = (suggestion only)               // → drives pointerEvents
 ```
 
@@ -77,7 +78,7 @@ per-frame. Keep it that way — don't add JS state that re-renders on nav motion
 | ----------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------- |
 | `components/SearchBottomNav.tsx`                                                                                                                | The nav bar view. Reads `navOpacity`/`navTranslateY` (animated style) + `shouldHideBottomNav` (pointerEvents).                    |
 | `runtime/shared/use-search-foreground-bottom-nav-visual-runtime.ts`                                                                             | **The decision + motion command.** `shouldHide*` flags, `commandBottomNavMotion`, the UI worklet.                                 |
-| `runtime/shared/search-bottom-nav-motion-runtime.ts`                                                                                            | Motion contract: `'hide'\|'show'` target, 360ms duration, the command-sink registry.                                              |
+| `runtime/shared/use-search-foreground-visual-runtime-contract.ts`                                                                               | Motion contract: `'hide'\|'show'` target, `SEARCH_BOTTOM_NAV_MOTION_DURATION_MS = 360`. (The old separate command-sink registry was deleted on purpose — "ONE derivation commands the nav".) |
 | `runtime/shared/use-results-presentation-shell-local-state.ts`                                                                                  | **Owns `backdropTarget`** (`'results'` vs `'default'`) from `hasActiveSearchContent`.                                             |
 | `runtime/shared/use-search-root-overlay-foreground-visual-presentation-source-runtime.ts`                                                       | Normalizes `'default'`→`'none'`; assembles the visual inputs.                                                                     |
 | `runtime/shared/use-search-foreground-visual-runtime.ts`                                                                                        | Aggregates the foreground visual runtime; forwards inputs to the nav decision.                                                    |
@@ -110,7 +111,11 @@ hide path is the delicate one.
 - **The "during motion" hide** depends on `isSearchResultsSurfaceOwner` (bottom-band owner / clip
   mode), not just `backdropTarget` — that's what prevents the nav from flashing back during the
   open/close animation. Touch with care.
-- **`isPersistentPollHandoffCommitted`** suppresses the results-hide during the search→polls
-  handoff. It exists for a reason; don't remove it when reworking polls.
+- **`isDockedSceneHandoffCommitted`** suppresses the results-hide during a docked-scene handoff
+  (generalized from the search→polls case). It exists for a reason; don't remove it when
+  reworking scene handoffs.
+- **`hasExternalNavHideIntent`** is a third disjunct on `shouldHideBottomNavForMotion`: the
+  top-of-stack entry being a child scene also hides the nav (`useIsChildSceneRevealed`). Don't
+  assume child scenes keep the nav — they don't.
 - **Never add JS state that updates on nav motion.** The motion is a UI worklet; JS fires once per
   decision change. Re-rendering on motion is the regression class V4's perf gate guards against.
