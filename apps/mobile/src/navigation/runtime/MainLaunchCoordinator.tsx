@@ -20,7 +20,13 @@ const BOOT_LOCATION_STORAGE_KEY = 'boot:lastKnownLocation';
 // Cold GPS fixes routinely take 1-3s; only block startup briefly, then paint the
 // best immediate source (last-known/cached) and EASE to the fresh fix when it lands.
 const STARTUP_LOCATION_MAX_WAIT_MS = 1_500;
+// How old a cached boot location can be before it's distrusted and a fresh fix is
+// required. Named but its value is the shipped constant, not a measurement —
+// derivation not recorded.
 const MAX_STORED_LOCATION_AGE_MS = 6 * 60 * 60 * 1000;
+// Both launch-readiness escape hatches below (map-readiness gate and route-readiness
+// gate) share this timeout. Named but its value is the shipped constant, not a
+// measurement — derivation not recorded.
 const MAIN_LAUNCH_READY_TIMEOUT_MS = 10_000;
 
 export type StartupLocationSnapshot = {
@@ -573,6 +579,8 @@ export const MainLaunchCoordinator: React.FC<{ children: React.ReactNode }> = ({
         locationWatchRef.current = await Location.watchPositionAsync(
           {
             accuracy: Location.Accuracy.Balanced,
+            // Watch cadence floors: named but their values are the shipped constants,
+            // not measurements — derivation not recorded.
             timeInterval: 20_000,
             distanceInterval: 50,
           },

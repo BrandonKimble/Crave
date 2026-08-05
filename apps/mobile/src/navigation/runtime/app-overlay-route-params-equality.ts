@@ -118,6 +118,12 @@ export const areOverlayRouteParamsEqualForKey = <K extends OverlayKey>(
  * Entry-value equality: same stack instance (entryId), same scene key (explicit guard —
  * two entries of different keys are unequal BY KEY, never by param-shape accident),
  * and per-scene params equality.
+ *
+ * F1364: this deliberately omits `.desire` (unlike the algebra module's
+ * `areOverlayRoutesEqual`) — this comparator's only live use is per-scene params
+ * comparison in the host-authority slot chain (F1361), which never reads `desire`.
+ * If a consumer here starts caring about desire, add the field explicitly rather
+ * than assume it is covered.
  */
 export const areOverlayRouteEntryValuesEqual = (
   left: OverlayRouteEntry,

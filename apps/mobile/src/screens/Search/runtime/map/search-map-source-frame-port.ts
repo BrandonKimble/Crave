@@ -133,8 +133,7 @@ export type SearchMapSourceFramePort = {
   reset: () => void;
   subscribe: (
     listener: () => void,
-    observedKeys?: readonly SearchMapSourceFrameSnapshotKey[],
-    debugLabel?: string
+    observedKeys?: readonly SearchMapSourceFrameSnapshotKey[]
   ) => () => void;
 };
 
@@ -201,7 +200,6 @@ const SOURCE_FRAME_KEYS: readonly SearchMapSourceFrameSnapshotKey[] = [
 
 type SearchMapSourceFrameListenerRecord = {
   observedKeys: ReadonlySet<SearchMapSourceFrameSnapshotKey> | null;
-  debugLabel: string | null;
 };
 
 export const createSearchMapSourceFramePort = (): SearchMapSourceFramePort => {
@@ -329,12 +327,11 @@ export const createSearchMapSourceFramePort = (): SearchMapSourceFramePort => {
       nativeVisibleMarkers = null;
       notify(new Set(Object.keys(snapshot) as SearchMapSourceFrameSnapshotKey[]));
     },
-    subscribe: (listener, observedKeys, debugLabel) => {
+    subscribe: (listener, observedKeys) => {
       const scopedKeys =
         observedKeys != null && observedKeys.length > 0 ? new Set(observedKeys) : null;
       listeners.set(listener, {
         observedKeys: scopedKeys,
-        debugLabel: debugLabel ?? null,
       });
       return () => {
         listeners.delete(listener);
@@ -349,20 +346,18 @@ export const useSearchMapSourceFrameSelector = <T>(
   sourceFramePort: SearchMapSourceFramePort | null | undefined,
   selector: (snapshot: SearchMapSourceFrameSnapshot) => T,
   isEqual: EqualityFn<T> = Object.is,
-  observedKeys?: readonly SearchMapSourceFrameSnapshotKey[],
-  debugLabel?: string
+  observedKeys?: readonly SearchMapSourceFrameSnapshotKey[]
 ): T => {
   const observedKeysSignature =
     observedKeys != null && observedKeys.length > 0 ? observedKeys.join('|') : '';
   const scopedObservedKeys = React.useMemo(() => observedKeys, [observedKeysSignature]);
-  const cacheRef = React.useRef<{ version: number; selected: T }>({
-    version: -1,
+  const cacheRef = React.useRef<{ selected: T }>({
     selected: selector(sourceFramePort?.getSnapshot() ?? EMPTY_SEARCH_MAP_SOURCE_FRAME_SNAPSHOT),
   });
   const subscribe = React.useCallback(
     (listener: () => void) =>
-      sourceFramePort?.subscribe(listener, scopedObservedKeys, debugLabel) ?? (() => undefined),
-    [debugLabel, scopedObservedKeys, sourceFramePort]
+      sourceFramePort?.subscribe(listener, scopedObservedKeys) ?? (() => undefined),
+    [scopedObservedKeys, sourceFramePort]
   );
 
   return useSyncExternalStore(

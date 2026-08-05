@@ -68,7 +68,6 @@ export class ViewportBoundsService {
   // inside it overlap/rank; outside it collision-cull/score. Resolved at submit time
   // (where userLocation + shortcut intent are known) and read by the source builder.
   private overlapRegion: OverlapRegion | null = null;
-  private revision = 0;
   private readonly subscribers = new Set<BoundsSubscriber>();
 
   public readonly boundsRef: MutableRefObject<MapBounds | null>;
@@ -99,7 +98,6 @@ export class ViewportBoundsService {
       return false;
     }
     this.bounds = cloneBounds(nextBounds);
-    this.revision += 1;
     const snapshot = this.getBounds();
     this.subscribers.forEach((subscriber) => {
       subscriber(snapshot);
@@ -150,10 +148,6 @@ export class ViewportBoundsService {
 
   public getOverlapRegion(): OverlapRegion | null {
     return this.overlapRegion;
-  }
-
-  public getRevision(): number {
-    return this.revision;
   }
 
   public subscribe(subscriber: BoundsSubscriber): () => void {

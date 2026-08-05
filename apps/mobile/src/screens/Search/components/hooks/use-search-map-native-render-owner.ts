@@ -2153,6 +2153,14 @@ const useSearchMapNativeRenderOwnerStatus = ({
     selectedRestaurantIdRef.current = selectedRestaurantId;
   }, [selectedRestaurantId]);
 
+  // F1021: the ready-timeout watchdog below guards on `isPresentationActiveRef.current`
+  // but effects don't re-run on a ref mutation — only on a dep change. Without this tick,
+  // the watchdog effect below runs once (usually while presentation is still idle,
+  // pre-submit), returns early, and NEVER re-evaluates when presentation later goes
+  // active — so a hung native owner never trips the fatal-error escape hatch. This tick
+  // is armed/disarmed from the SAME presentation-active transition that updates the ref,
+  // giving the watchdog effect a dep that actually changes when arming state changes.
+  const [presentationActiveWatchdogTick, setPresentationActiveWatchdogTick] = React.useState(0);
   React.useEffect(() => {
     const updatePresentationActiveRef = () => {
       const nextPresentationState = deriveSearchMapNativePresentationState({
@@ -2160,8 +2168,13 @@ const useSearchMapNativeRenderOwnerStatus = ({
         selectedRestaurantId: selectedRestaurantIdRef.current,
         sourceFramePort: sourceFramePortRef.current,
       });
-      isPresentationActiveRef.current =
+      const nextIsPresentationActive =
         deriveSearchMapRenderPresentationStatusState(nextPresentationState).isPresentationActive;
+      if (nextIsPresentationActive === isPresentationActiveRef.current) {
+        return;
+      }
+      isPresentationActiveRef.current = nextIsPresentationActive;
+      setPresentationActiveWatchdogTick((tick) => tick + 1);
     };
     updatePresentationActiveRef();
     return resultsPresentationAuthority.subscribe(
@@ -2886,7 +2899,13 @@ const useSearchMapNativeRenderOwnerStatus = ({
     return () => {
       clearTimeout(timeoutId);
     };
-  }, [isAttached, isMapStyleReady, isNativeAvailable, isNativeOwnerReady]);
+  }, [
+    isAttached,
+    isMapStyleReady,
+    isNativeAvailable,
+    isNativeOwnerReady,
+    presentationActiveWatchdogTick,
+  ]);
 
   const reportNativeFatalError = React.useCallback((message: string) => {
     setHasSyncedInitialFrame(false);
@@ -3973,8 +3992,7 @@ const useSearchMapNativeRenderOwnerSync = ({
         'markersRenderKey',
         'mapSearchSurfaceResultsSourcesReady',
         'mapSearchSurfaceResultsSourcesReadyKey',
-      ] as const,
-      'search_map_native_render_owner_source_frame'
+      ] as const
     );
   }, [sourceFramePort]);
 };

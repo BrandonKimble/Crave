@@ -1497,8 +1497,7 @@ const SearchMap: React.FC<SearchMapProps> = ({
       labelCollisionSourceStore: snapshot.labelCollisionSourceStore,
     }),
     areDirectSourceFrameStoresEqual,
-    DIRECT_SOURCE_FRAME_STORE_KEYS,
-    'search_map_render_source_frame_stores'
+    DIRECT_SOURCE_FRAME_STORE_KEYS
   );
   const sourceFrameIsAuthoritative = sourceFramePort != null;
   const activePinSourceStore = sourceFrameIsAuthoritative

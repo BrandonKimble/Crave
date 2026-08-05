@@ -199,7 +199,10 @@ export const buildRestaurantResultCardDescriptor = ({
     distanceLabel,
     hasStatus,
     matchedTags,
-    priceRangeLabel: getPriceRangeLabel(restaurant.priceLevel) ?? null,
+    // Prefer the REAL Google price range from the server (RestaurantPanel does the same)
+    // over the client-derived level bucket — no-fake-estimates law: an observed range
+    // beats an invented one.
+    priceRangeLabel: restaurant.priceRangeText ?? getPriceRangeLabel(restaurant.priceLevel) ?? null,
     primaryFoodHighlight,
     primaryFoodTerm: primaryFoodHighlight?.term ?? null,
     qualityColor,

@@ -227,7 +227,15 @@ type NativeOverlayTargetAuthorities = {
 const areOverlayRoutesEqual = (
   left: RouteOverlayNavigationSnapshot['activeOverlayRoute'],
   right: RouteOverlayNavigationSnapshot['activeOverlayRoute']
-): boolean => left === right || (left.entryId === right.entryId && left.params === right.params);
+): boolean =>
+  left === right ||
+  (left.entryId === right.entryId &&
+    left.params === right.params &&
+    // F1364: `desire` participates in value identity in the algebra module's
+    // comparator (`app-overlay-route-stack-algebra.ts`) for the same field on the
+    // same OverlayRouteEntry type — align here so a desire-only stamp is not
+    // silently swallowed by this lane too.
+    left.desire === right.desire);
 
 const areOverlayRouteStacksEqual = (
   left: readonly RouteOverlayNavigationSnapshot['activeOverlayRoute'][],

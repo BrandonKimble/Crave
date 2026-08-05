@@ -696,8 +696,7 @@ export const useResultsPresentationSurfaceTransactionRuntime = ({
         'isShortcutCoverageLoading',
         'mapSearchSurfaceResultsSourcesReady',
         'mapSearchSurfaceResultsSourcesReadyKey',
-      ] as const,
-      'search_surface_results_transaction_map_source_imperative_gate'
+      ] as const
     );
     const unsubscribeSearchSurfaceRuntime = getSearchSurfaceRuntime().subscribe(() => {
       maybeCommitStagedSearchSurfaceResultsTransaction('surface_runtime_notify');

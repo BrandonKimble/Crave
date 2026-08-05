@@ -134,6 +134,8 @@ const APP_ROUTE_SCENE_STACK_KEYS = APP_ROUTE_SCENE_INPUT_KEYS;
 
 type AppRouteSceneStackKey = AppRouteSceneInputKey;
 
+// Gates when a scene's data lane is allowed to start after admission becomes possible.
+// Named but its value is the shipped constant, not a measurement — derivation not recorded.
 const SCENE_DATA_LANE_QUIET_DELAY_MS = 350;
 
 // W1 slice 1 — stable fallback states for getSceneEntryMountState (reference-stable so the
@@ -356,6 +358,23 @@ const markSceneStackArrayDiff = (
     left.some((value, index) => !Object.is(value, right[index]))
   ) {
     markSceneStackDiff(`field:${field}`);
+  }
+};
+
+// F1355: these attribution marks have no tracked "previous" value to diff against
+// (the field is freshly derived each pass, not carried on `this.snapshot`) — so
+// unlike `markSceneStackFieldDiff`/`markSceneStackArrayDiff` above, which report a
+// real CHANGE, these report only that the value is currently non-empty. Named
+// `present:X` (not `field:X`) so the attribution log cannot be misread as a diff.
+const markSceneStackFieldPresent = (field: string, value: unknown): void => {
+  if (value != null) {
+    markSceneStackDiff(`present:${field}`);
+  }
+};
+
+const markSceneStackArrayPresent = (field: string, value: readonly unknown[]): void => {
+  if (value.length > 0) {
+    markSceneStackDiff(`present:${field}`);
   }
 };
 
@@ -2152,7 +2171,7 @@ class AppRouteSceneStackLayerStateController {
     });
   }
 
-  private createSceneActivitySnapshot({
+  private commitSceneActivitySnapshot({
     sceneKey,
     sceneEntry,
     activeSceneKey,
@@ -2243,7 +2262,7 @@ class AppRouteSceneStackLayerStateController {
       canActivatePresentedRetainedMountedBody ||
       canPrewarmRetainedMountedBody ||
       canPrewarmSearchDismissPollData;
-    const isDataLaneReady = this.isSceneDataLaneReady({
+    const isDataLaneReady = this.admitSceneDataLaneIfReady({
       sceneKey,
       canAdmitDataLane,
       // "Immediate admission" lane (no quiet timer): the prewarm paths AND the P4
@@ -2315,7 +2334,7 @@ class AppRouteSceneStackLayerStateController {
       'sceneStack',
       `sceneActivity:${sceneKey}:createSnapshot`,
       () =>
-        this.createSceneActivitySnapshot({
+        this.commitSceneActivitySnapshot({
           sceneKey,
           sceneEntry,
           activeSceneKey,
@@ -2451,7 +2470,7 @@ class AppRouteSceneStackLayerStateController {
     this.dataLaneTimers.delete(sceneKey);
   }
 
-  private isSceneDataLaneReady({
+  private admitSceneDataLaneIfReady({
     sceneKey,
     canAdmitDataLane,
     allowInactiveDataLaneAdmission,
@@ -3153,9 +3172,8 @@ class AppRouteSceneStackLayerStateController {
           this.snapshot.handoffSceneKey,
           nextSnapshot.handoffSceneKey
         );
-        markSceneStackFieldDiff(
+        markSceneStackFieldPresent(
           'routeSwitch.pendingSceneKey',
-          null,
           resolvedRouteSceneSwitchSnapshot.pendingSceneKey
         );
         markSceneStackFieldDiff(
@@ -3183,11 +3201,7 @@ class AppRouteSceneStackLayerStateController {
           nextSnapshot.activeSceneChromeEntry,
           'activeSceneChromeEntry'
         );
-        markSceneStackArrayDiff(
-          'bodyRefreshSceneKeys',
-          [],
-          Array.from(bodyRefreshSceneKeys).sort()
-        );
+        markSceneStackArrayPresent('bodyRefreshSceneKeys', Array.from(bodyRefreshSceneKeys).sort());
 
         if (areLayerSnapshotsEqual(this.snapshot, nextSnapshot)) {
           // Entry-mount units can change with an otherwise-identical layer snapshot (settle
@@ -3296,21 +3310,18 @@ class AppRouteSceneStackLayerStateController {
         if (shouldNotifyActiveChromeListeners) {
           markSceneStackDiff('notify:activeChrome:reason:activeSceneChromeEntry');
         }
-        markSceneStackArrayDiff('sceneBodyKeysToSync', [], [...sceneBodyKeysToSync].sort());
-        markSceneStackArrayDiff('changedSceneBodyKeys', [], [...changedSceneBodyKeys].sort());
-        markSceneStackArrayDiff(
+        markSceneStackArrayPresent('sceneBodyKeysToSync', [...sceneBodyKeysToSync].sort());
+        markSceneStackArrayPresent('changedSceneBodyKeys', [...changedSceneBodyKeys].sort());
+        markSceneStackArrayPresent(
           'changedSceneActivityKeys',
-          [],
           [...changedSceneActivityKeys].sort()
         );
-        markSceneStackArrayDiff(
+        markSceneStackArrayPresent(
           'changedSceneBodySurfaceKeys',
-          [],
           [...changedSceneBodySurfaceKeys].sort()
         );
-        markSceneStackArrayDiff(
+        markSceneStackArrayPresent(
           'changedScenePresentationKeys',
-          [],
           [...changedScenePresentationKeys].sort()
         );
         this.snapshot = nextSnapshot;
