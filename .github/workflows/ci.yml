@@ -94,6 +94,20 @@ jobs:
           REDIS_HOST: localhost
           REDIS_PORT: 6379
 
+      # The track sheet's HOST-WIRING falsifiers and the native engine's pure
+      # falsifiers were a LOCAL RITUAL: `yarn test` runs only the default jest
+      # project (pure *.spec.ts), so the render lane (built specifically to go
+      # RED when host wiring is deleted) and the C suites (the domain authority
+      # + engine facts, with their mutation ledgers) never ran here. A falsifier
+      # nobody runs is a comment. Both lanes bite in CI now.
+      - name: Test (track sheet render lane — host wiring falsifiers)
+        working-directory: apps/mobile
+        run: yarn test:tracksheet-render
+
+      - name: Test (native engine pure falsifiers)
+        working-directory: apps/mobile
+        run: yarn test:track-domain
+
       # DO THE GUARDS STILL BITE? For every entry in the invariant registry,
       # apply a mutation that must break it and require the check to FAIL.
       #
