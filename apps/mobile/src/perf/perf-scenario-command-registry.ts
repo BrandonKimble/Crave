@@ -21,9 +21,6 @@ type PerfScenarioCommandRegistrySnapshot = {
         label?: string | null;
       }) => boolean)
     | null;
-  moveMapForSearchThisArea:
-    | ((input: { lat: number; lng: number; zoom: number; label?: string | null }) => boolean)
-    | null;
   submitShortcutRestaurants: (() => Promise<void>) | null;
   // Verification harness: drive the restaurant<->dish tab toggle through its REAL flow
   // (scheduleTabToggleCommit) so a deep link can validate the canonical-swap toggle without the
@@ -59,7 +56,6 @@ const commandRegistry: PerfScenarioCommandRegistrySnapshot = {
   closeResults: null,
   setMapCamera: null,
   animateMapCamera: null,
-  moveMapForSearchThisArea: null,
   submitShortcutRestaurants: null,
   toggleTab: null,
   flipOpenNow: null,
@@ -91,7 +87,6 @@ export const registerPerfScenarioCommands = ({
   closeResults,
   setMapCamera,
   animateMapCamera,
-  moveMapForSearchThisArea,
   submitShortcutRestaurants,
   toggleTab,
   flipOpenNow,
@@ -108,9 +103,6 @@ export const registerPerfScenarioCommands = ({
   }
   if (animateMapCamera) {
     commandRegistry.animateMapCamera = animateMapCamera;
-  }
-  if (moveMapForSearchThisArea) {
-    commandRegistry.moveMapForSearchThisArea = moveMapForSearchThisArea;
   }
   if (submitShortcutRestaurants) {
     commandRegistry.submitShortcutRestaurants = submitShortcutRestaurants;
@@ -145,12 +137,6 @@ export const registerPerfScenarioCommands = ({
       commandRegistry.animateMapCamera = null;
     }
     if (
-      moveMapForSearchThisArea &&
-      commandRegistry.moveMapForSearchThisArea === moveMapForSearchThisArea
-    ) {
-      commandRegistry.moveMapForSearchThisArea = null;
-    }
-    if (
       submitShortcutRestaurants &&
       commandRegistry.submitShortcutRestaurants === submitShortcutRestaurants
     ) {
@@ -181,7 +167,6 @@ export const readPerfScenarioCommandRegistry = (): PerfScenarioCommandRegistrySn
   closeResults: commandRegistry.closeResults,
   setMapCamera: commandRegistry.setMapCamera,
   animateMapCamera: commandRegistry.animateMapCamera,
-  moveMapForSearchThisArea: commandRegistry.moveMapForSearchThisArea,
   submitShortcutRestaurants: commandRegistry.submitShortcutRestaurants,
   toggleTab: commandRegistry.toggleTab,
   flipOpenNow: commandRegistry.flipOpenNow,

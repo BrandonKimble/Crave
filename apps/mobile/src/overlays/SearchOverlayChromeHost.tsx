@@ -67,6 +67,10 @@ const areSearchOverlayChromeHostSelectionsEqual = (
 
 const VISIBLE_CHROME_LAYER_STYLE = { opacity: 1 };
 const HIDDEN_CHROME_LAYER_STYLE = { opacity: 0, zIndex: -1 };
+// UNATTRIBUTED (F1499): no recorded derivation for either value or the 90pt gap between them —
+// only that the bottom-nav-hidden case must outrank the visible case in this stacking context.
+const SEARCH_OVERLAY_SUGGESTION_ZINDEX_BOTTOM_NAV_HIDDEN = 200;
+const SEARCH_OVERLAY_SUGGESTION_ZINDEX_BOTTOM_NAV_VISIBLE = 110;
 
 const resolveChromeLayerStyle = (
   containerSnapshot: SearchOverlayChromeContainerSnapshot,
@@ -78,7 +82,9 @@ const resolveChromeLayerStyle = (
   shouldRenderChromeHost ? VISIBLE_CHROME_LAYER_STYLE : HIDDEN_CHROME_LAYER_STYLE,
   shouldRenderChromeHost && containerSnapshot.isSuggestionOverlayVisible
     ? {
-        zIndex: containerSnapshot.shouldHideBottomNavForRender ? 200 : 110,
+        zIndex: containerSnapshot.shouldHideBottomNavForRender
+          ? SEARCH_OVERLAY_SUGGESTION_ZINDEX_BOTTOM_NAV_HIDDEN
+          : SEARCH_OVERLAY_SUGGESTION_ZINDEX_BOTTOM_NAV_VISIBLE,
       }
     : null,
 ];

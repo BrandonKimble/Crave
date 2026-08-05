@@ -70,8 +70,6 @@ const useAppRouteSceneChromeSheetProgressRuntime = ({
     interpolate(searchChromeTransitionProgress.value, [0, 1], [0.985, 1], Extrapolation.CLAMP)
   );
 
-  const searchChromeTranslateY = useDerivedValue(() => 0);
-
   const searchBarInputAnimatedStyle = useAnimatedStyle(() => ({
     opacity: searchChromeVisibilityProgress ? searchChromeVisibilityProgress.value : 1,
   }));
@@ -80,7 +78,6 @@ const useAppRouteSceneChromeSheetProgressRuntime = ({
     () => ({
       searchChromeOpacity,
       searchChromeScale,
-      searchChromeTranslateY,
       searchChromeTransitionProgress,
       searchChromeVisibilityProgress,
       searchBarInputAnimatedStyle,
@@ -89,7 +86,6 @@ const useAppRouteSceneChromeSheetProgressRuntime = ({
       searchBarInputAnimatedStyle,
       searchChromeOpacity,
       searchChromeScale,
-      searchChromeTranslateY,
       searchChromeTransitionProgress,
       searchChromeVisibilityProgress,
     ]
@@ -137,12 +133,8 @@ export const useAppRouteSceneChromeTransitionRuntime = ({
     [overlayBackdropSheetTopY, sheetTranslateY]
   );
 
-  const {
-    searchChromeOpacity,
-    searchChromeScale,
-    searchChromeTranslateY,
-    searchBarInputAnimatedStyle,
-  } = useAppRouteSceneChromeSheetProgressRuntime({
+  const { searchChromeOpacity, searchChromeScale, searchBarInputAnimatedStyle } =
+    useAppRouteSceneChromeSheetProgressRuntime({
     expandedSnap,
     middleSnap,
     sheetTranslateY,
@@ -159,7 +151,6 @@ export const useAppRouteSceneChromeTransitionRuntime = ({
       overlayBackdropSheetTopY,
       searchChromeOpacity,
       searchChromeScale,
-      searchChromeTranslateY,
       searchBarInputAnimatedStyle,
     }),
     [
@@ -171,7 +162,6 @@ export const useAppRouteSceneChromeTransitionRuntime = ({
       searchBarInputAnimatedStyle,
       searchChromeOpacity,
       searchChromeScale,
-      searchChromeTranslateY,
     ]
   );
 };

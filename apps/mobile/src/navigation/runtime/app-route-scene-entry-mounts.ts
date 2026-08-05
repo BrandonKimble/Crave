@@ -35,6 +35,14 @@ export type SceneEntryMountUnit = {
  * Depth-K eviction (verdict §5.3, anchor-adjudicated K=3): entries deeper than K below the
  * stack top unmount their body unit but KEEP the entry (data/origin live on the entry and the
  * query cache), so a pop-return remounts skeleton-free. A memory knob, not a UX knob.
+ *
+ * F1387: numerically equal to `RESIDENT_UNIT_RETENTION_LIMIT` (shell-residency-registry.ts) but
+ * NOT the same fact — this bounds mount DEPTH by stack position, that bounds how many POPPED
+ * resident identities stay retained; each is independently derived (this one from the K=3
+ * verdict, that one from a measured prototype). For a residency-managed scene the retention
+ * pass re-pushes evicted resident units up to its own limit regardless of this one, so this
+ * constant does not bound the mounted-unit count for those scenes — do not "fix" the drift by
+ * merging them without re-deriving which number should actually govern that case.
  */
 export const SCENE_ENTRY_MOUNT_DEPTH_LIMIT = 3;
 

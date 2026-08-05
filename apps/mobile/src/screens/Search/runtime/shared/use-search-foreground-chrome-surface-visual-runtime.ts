@@ -14,7 +14,6 @@ type UseSearchForegroundChromeSurfaceVisualRuntimeArgs = Pick<
   | 'suggestionProgress'
   | 'searchChromeOpacity'
   | 'searchChromeScale'
-  | 'searchChromeTranslateY'
 >;
 
 export const useSearchForegroundChromeSurfaceVisualRuntime = ({
@@ -23,7 +22,6 @@ export const useSearchForegroundChromeSurfaceVisualRuntime = ({
   suggestionProgress,
   searchChromeOpacity,
   searchChromeScale,
-  searchChromeTranslateY,
 }: UseSearchForegroundChromeSurfaceVisualRuntimeArgs): SearchForegroundChromeSurfaceVisualRuntime => {
   const searchSurfaceAnimatedStyle = useAnimatedStyle(() => ({
     opacity: suggestionProgress.value,
@@ -35,21 +33,19 @@ export const useSearchForegroundChromeSurfaceVisualRuntime = ({
     const chromeAlpha = 1 - suggestionProgress.value;
     const shouldLockSearchChromeTransform = isSuggestionPanelActive || isSuggestionOverlayVisible;
     const chromeScale = shouldLockSearchChromeTransform ? 1 : searchChromeScale.value;
-    const chromeTranslateY = shouldLockSearchChromeTransform ? 0 : searchChromeTranslateY.value;
     return {
       opacity: searchChromeOpacity.value,
       backgroundColor: `rgba(255, 255, 255, ${chromeAlpha})`,
       shadowOpacity: Number(SEARCH_BAR_SHADOW.shadowOpacity ?? 0) * chromeAlpha,
       elevation: chromeAlpha > 0 ? Number(SEARCH_BAR_SHADOW.elevation ?? 0) : 0,
       transformOrigin: SEARCH_CHROME_SCALE_TRANSFORM_ORIGIN,
-      transform: [{ translateY: chromeTranslateY }, { scale: chromeScale }],
+      transform: [{ translateY: 0 }, { scale: chromeScale }],
     };
   }, [
     isSuggestionOverlayVisible,
     isSuggestionPanelActive,
     searchChromeOpacity,
     searchChromeScale,
-    searchChromeTranslateY,
     suggestionProgress,
   ]);
   const suggestionPanelAnimatedStyle = useAnimatedStyle(() => ({

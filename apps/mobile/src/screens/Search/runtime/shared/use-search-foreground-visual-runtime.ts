@@ -28,7 +28,6 @@ export const useSearchForegroundVisualRuntime = ({
   searchChromeTransitionProgress: _searchChromeTransitionProgress,
   searchChromeOpacity,
   searchChromeScale,
-  searchChromeTranslateY,
   isSearchSessionActive,
   mapMovedSinceSearch,
   isSearchLoading,
@@ -56,7 +55,6 @@ export const useSearchForegroundVisualRuntime = ({
     backdropTarget,
     suggestionProgress,
     searchChromeScale,
-    searchChromeTranslateY,
     shouldDisableSearchShortcuts,
     shouldRenderSearchOverlay,
     headerShortcutsVisibleTarget,
@@ -69,7 +67,6 @@ export const useSearchForegroundVisualRuntime = ({
     suggestionProgress,
     searchChromeOpacity,
     searchChromeScale,
-    searchChromeTranslateY,
   });
   const searchThisAreaVisualRuntime = useSearchForegroundSearchThisAreaVisualRuntime({
     isSuggestionPanelActive,

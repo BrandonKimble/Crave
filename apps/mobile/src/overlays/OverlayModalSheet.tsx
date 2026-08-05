@@ -18,11 +18,20 @@ import Reanimated, {
   withTiming,
 } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { OVERLAY_CORNER_RADIUS, OVERLAY_HORIZONTAL_PADDING } from './overlaySheetStyles';
+import {
+  OVERLAY_CORNER_RADIUS,
+  OVERLAY_HORIZONTAL_PADDING,
+  OVERLAY_NAV_SILHOUETTE_ZINDEX,
+} from './overlaySheetStyles';
 import { OVERLAY_TIMING_CONFIG } from './sheetUtils';
 import { useArmedOutsideDismiss } from './useArmedOutsideDismiss';
 
 const SCREEN_HEIGHT = Dimensions.get('window').height;
+
+// FACT: must sit above OVERLAY_NAV_SILHOUETTE_ZINDEX (120, overlaySheetStyles.ts) — every modal
+// sheet renders over the nav silhouette. UNATTRIBUTED: the +10 headroom itself has no recorded
+// derivation (F1499).
+const OVERLAY_MODAL_SHEET_ZINDEX = OVERLAY_NAV_SILHOUETTE_ZINDEX + 10;
 
 // THE STANDARD MODAL SURFACE (owner spec, 2026-07-08): every modal in the app renders
 // through this sheet. Dimmed backdrop kept, no snap points, no grab handle — but
@@ -116,7 +125,7 @@ const OverlayModalSheet = React.forwardRef<OverlayModalSheetHandle, OverlayModal
       children,
       scrollable = false,
       sheetStyle,
-      zIndex = 130,
+      zIndex = OVERLAY_MODAL_SHEET_ZINDEX,
       maxBackdropOpacity = 0.2,
       paddingHorizontal = OVERLAY_HORIZONTAL_PADDING,
       paddingTop = 8,

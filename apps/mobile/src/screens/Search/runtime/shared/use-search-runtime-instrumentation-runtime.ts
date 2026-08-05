@@ -269,62 +269,6 @@ export const useSearchRuntimeInstrumentationRuntime = ({
     },
     [cameraIntentArbiter, emitRuntimeMechanismEvent, ensureInitialCameraReady]
   );
-  const moveMapForSearchThisAreaPerfCommand = React.useCallback(
-    ({ lat, lng, zoom }: { lat: number; lng: number; zoom: number; label?: string | null }) => {
-      const previousBounds = viewportBoundsService.getBounds();
-      ensureInitialCameraReady();
-      const accepted = cameraIntentArbiter.commit({
-        center: [lng, lat],
-        zoom,
-        animationMode: 'none',
-        animationDurationMs: 0,
-        allowDuringGesture: true,
-      });
-      if (!accepted) {
-        return false;
-      }
-      const bounds = buildScenarioCameraBounds({ lat, lng, zoom });
-      viewportBoundsService.setBounds(bounds, { center: [lng, lat], zoom });
-      const didMarkMapMoved =
-        isSearchOverlay && isSearchSessionActive
-          ? markMapMovedIfNeeded(bounds, { fallbackBaselineBounds: previousBounds })
-          : false;
-      const scenarioConfig = activeScenarioConfigRef.current;
-      if (isPerfScenarioAttributionActive(scenarioConfig)) {
-        logPerfScenarioAttributionEvent('VisualReadiness', scenarioConfig, {
-          event: 'map_post_results_movement_contract',
-          source: 'perf_scenario_command',
-          syntheticUserGesture: true,
-          materialUserGesture: true,
-          mapMovedSinceSearchRequested: didMarkMapMoved,
-          mapMoveAdmissionSource: didMarkMapMoved ? 'perf_command' : 'blocked',
-          resultSheetSnapRequested: false,
-          searchThisAreaRevealScheduled: didMarkMapMoved,
-          searchBaselinePresent: viewportBoundsService.getSearchBaselineBounds() != null,
-          gestureBaselineWouldMark: previousBounds != null,
-          isSearchOverlay,
-          isSearchSessionActive,
-          ...summarizeBounds(bounds),
-          zoom,
-        });
-      }
-      if (!didMarkMapMoved) {
-        return false;
-      }
-      scheduleMapIdleEnter({ releaseGestureGate: true });
-      return true;
-    },
-    [
-      cameraIntentArbiter,
-      isSearchOverlay,
-      isSearchSessionActive,
-      markMapMovedIfNeeded,
-      scheduleMapIdleEnter,
-      ensureInitialCameraReady,
-      viewportBoundsService,
-    ]
-  );
-
   const setScaleProbeMarkersPerfCommand = React.useCallback(
     ({
       count,
@@ -371,7 +315,6 @@ export const useSearchRuntimeInstrumentationRuntime = ({
         closeResults: closeResultsPerfCommand,
         setMapCamera: setMapCameraPerfCommand,
         animateMapCamera: animateMapCameraPerfCommand,
-        moveMapForSearchThisArea: moveMapForSearchThisAreaPerfCommand,
         submitShortcutRestaurants: submitShortcutRestaurantsPerfCommand,
         toggleTab: toggleTabPerfCommand,
         flipOpenNow: flipOpenNowPerfCommand,
@@ -380,7 +323,6 @@ export const useSearchRuntimeInstrumentationRuntime = ({
     [
       animateMapCameraPerfCommand,
       closeResultsPerfCommand,
-      moveMapForSearchThisAreaPerfCommand,
       setMapCameraPerfCommand,
       submitShortcutRestaurantsPerfCommand,
       toggleTabPerfCommand,

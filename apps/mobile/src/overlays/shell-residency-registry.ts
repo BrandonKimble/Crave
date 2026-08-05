@@ -68,7 +68,11 @@ export const RESIDENT_SHELL_PREWARM_SCENES: readonly ResidencyManagedSceneKey[] 
 /** How many popped identities a multi-entry managed scene retains resident — the
  *  EVICTION LAW's first live budget (last-N exemption; the stack-pinned set is
  *  always exempt). The measured prototype says commitment is what the budget
- *  counts (~170KB/image-free row; RSS sticky) — N stays small. */
+ *  counts (~170KB/image-free row; RSS sticky) — N stays small.
+ *
+ *  F1387: numerically equal to `SCENE_ENTRY_MOUNT_DEPTH_LIMIT`
+ *  (navigation/runtime/app-route-scene-entry-mounts.ts) but a DIFFERENT fact, independently
+ *  derived — see that constant's comment for why they must not be silently merged. */
 export const RESIDENT_UNIT_RETENTION_LIMIT = 3;
 
 /** THE RESIDENT-UNIT IDENTITY (the eviction law's shell identity): what a resident

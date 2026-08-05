@@ -31,7 +31,6 @@ export type UseSearchForegroundVisualRuntimeArgs = {
   searchChromeTransitionProgress: SharedValue<number>;
   searchChromeOpacity: SharedValue<number>;
   searchChromeScale: SharedValue<number>;
-  searchChromeTranslateY: SharedValue<number>;
   isSearchSessionActive: boolean;
   mapMovedSinceSearch: boolean;
   isSearchLoading: boolean;

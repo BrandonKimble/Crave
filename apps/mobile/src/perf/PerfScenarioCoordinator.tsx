@@ -424,45 +424,6 @@ export const PerfScenarioCoordinator: React.FC = () => {
       return;
     }
 
-    if (event.action === 'move_map_for_search_this_area') {
-      if (
-        !registry.moveMapForSearchThisArea ||
-        event.lat == null ||
-        event.lng == null ||
-        event.zoom == null
-      ) {
-        logPayload({
-          event: 'perf_scenario_command_failed',
-          action: event.action,
-          reason: registry.moveMapForSearchThisArea
-            ? 'missing_camera_parameters'
-            : 'search_this_area_move_command_not_registered',
-          hasMoveMapForSearchThisArea: registry.moveMapForSearchThisArea != null,
-          lat: event.lat,
-          lng: event.lng,
-          zoom: event.zoom,
-        });
-        return;
-      }
-      const accepted = registry.moveMapForSearchThisArea({
-        lat: event.lat,
-        lng: event.lng,
-        zoom: event.zoom,
-        label: event.label,
-      });
-      logPayload({
-        event: accepted ? 'perf_scenario_command_executed' : 'perf_scenario_command_failed',
-        action: event.action,
-        step: 'move_map_for_search_this_area',
-        reason: accepted ? null : 'camera_commit_rejected_or_move_not_admitted',
-        lat: event.lat,
-        lng: event.lng,
-        zoom: event.zoom,
-        label: event.label,
-      });
-      return;
-    }
-
     if (event.action === 'set_system_offline') {
       // FAILURE-MATRIX RIG LEVER (foundation-hardening plan §D): pins the system
       // status store's isOffline via the dev override — real host-Wi-Fi flapping

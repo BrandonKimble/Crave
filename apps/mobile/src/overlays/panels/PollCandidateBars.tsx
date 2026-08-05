@@ -29,6 +29,9 @@ const ACCENT = themeColors.primary;
 const BAR_HEIGHT = 36;
 const BAR_RADIUS = 11;
 const BAR_GAP = 7;
+// FEEL/UNATTRIBUTED (F1499): the card-preview "half-peek" clip height, as a fraction of
+// BAR_HEIGHT. Not literally 0.5 — no recorded reason for the difference.
+const PEEK_CLIP_HEIGHT_RATIO = 0.46;
 const MIN_VISIBLE_FRACTION = 0.03; // a sliver of fill for any non-zero candidate
 
 // Graduated fill: rank 1 is the most saturated light-pink (a strong tint of the brand
@@ -245,7 +248,10 @@ const styles = StyleSheet.create({
     gap: BAR_GAP,
   },
   peekClip: {
-    height: Math.round(BAR_HEIGHT * 0.46),
+    // FEEL/UNATTRIBUTED (F1499): "half-peek" (prop doc above) is the intent, but 0.46 is not
+    // 0.5 — no recorded reason for the 4% short. Named so a future pass can't mistake this for
+    // the exact half the doc comment describes.
+    height: Math.round(BAR_HEIGHT * PEEK_CLIP_HEIGHT_RATIO),
     overflow: 'hidden',
   },
   barRow: {

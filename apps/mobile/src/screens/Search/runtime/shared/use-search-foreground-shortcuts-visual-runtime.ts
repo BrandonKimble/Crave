@@ -24,7 +24,6 @@ type UseSearchForegroundShortcutsVisualRuntimeArgs = Pick<
   | 'backdropTarget'
   | 'suggestionProgress'
   | 'searchChromeScale'
-  | 'searchChromeTranslateY'
   | 'shouldDisableSearchShortcuts'
   | 'shouldRenderSearchOverlay'
   | 'headerShortcutsVisibleTarget'
@@ -38,7 +37,6 @@ export const useSearchForegroundShortcutsVisualRuntime = ({
   backdropTarget,
   suggestionProgress,
   searchChromeScale,
-  searchChromeTranslateY,
   shouldDisableSearchShortcuts,
   shouldRenderSearchOverlay,
   headerShortcutsVisibleTarget,
@@ -142,17 +140,15 @@ export const useSearchForegroundShortcutsVisualRuntime = ({
         ? 1
         : shortcutOpacityProgress.value;
     const chromeScale = shouldLockSearchChromeTransform ? 1 : searchChromeScale.value;
-    const chromeTranslateY = shouldLockSearchChromeTransform ? 0 : searchChromeTranslateY.value;
     return {
       opacity,
       transformOrigin: SEARCH_CHROME_SCALE_TRANSFORM_ORIGIN,
-      transform: [{ translateY: chromeTranslateY }, { scale: chromeScale }],
+      transform: [{ translateY: 0 }, { scale: chromeScale }],
     };
   }, [
     isShortcutExitingToResults,
     isSuggestionOverlayVisible,
     searchChromeScale,
-    searchChromeTranslateY,
     shortcutOpacityProgress,
     shouldLockSearchChromeTransform,
     suggestionProgress,
