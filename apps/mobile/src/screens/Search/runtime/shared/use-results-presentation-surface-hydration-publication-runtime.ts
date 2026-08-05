@@ -5,9 +5,22 @@ import {
   commitSearchMountedResultsHydrationRuntimeSnapshot,
   registerSearchMountedResultsMotionInteractionRef,
 } from './search-mounted-results-data-store';
-import type { SearchRootSearchSceneListHydrationPatch } from './use-search-root-search-scene-list-hydration-patch-runtime';
 import type { RouteSceneSwitchAuthority } from './route-authority-contract';
 import type { SearchRuntimeInteractionState } from './use-search-root-session-runtime-contract';
+
+// F1012 *-patch-runtime collapse: this type lived in
+// use-search-root-search-scene-list-hydration-patch-runtime.ts, the root of a ten-file
+// hook chain that assembled it across four levels. The chain is inlined into
+// use-search-root-search-scene-list-hydration-publication-runtime.ts; the type now lives
+// with its terminal consumer (this file).
+export type SearchRootSearchSceneListHydrationPatch = {
+  resultsIdentityKey: string | null;
+  hydratedResultsKey: string | null;
+  resultsPreparedRowsKey: string | null;
+  listPreparedRowsReady: boolean;
+  shouldHydrateResultsForRender: boolean;
+  isResultsHydrationSettled: boolean;
+};
 
 type HydrationPublicationPayload = {
   activeTab: 'dishes' | 'restaurants';
