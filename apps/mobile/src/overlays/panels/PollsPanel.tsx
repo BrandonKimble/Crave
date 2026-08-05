@@ -61,46 +61,48 @@ const SURFACE = themeColors.surface;
 // read ambiguously).
 const FEED_STATE_VALUES = ['active', 'closed'] as const;
 
+// F1468: OPTIONS arrays are DERIVED from the LABEL_BY_VALUE Record, not hand-kept
+// beside it. The Record<Union, string> is total (TS forces every union member to be
+// present), so deriving the array from it makes the array total too — a new union
+// member that isn't given a label fails to compile, instead of silently missing its
+// chip in the sheet. Record key ORDER is the array's display order (JS preserves
+// string-key insertion order), so the Records below are declared in display order.
+function deriveSelectorOptions<TValue extends string>(
+  labelByValue: Record<TValue, string>
+): ReadonlyArray<{ label: string; value: TValue }> {
+  return (Object.keys(labelByValue) as TValue[]).map((value) => ({
+    value,
+    label: labelByValue[value],
+  }));
+}
+
 // Type filter (§6): exclusive, always one active (default All). Chips display the
 // VALUE, never the axis name (§3) — 'All' at rest, accented value when overridden.
-const TYPE_OPTIONS: ReadonlyArray<{ label: string; value: PollFeedType }> = [
-  { label: 'All', value: 'all' },
-  { label: 'Polls', value: 'polls' },
-  { label: 'Discussions', value: 'discussions' },
-];
 const TYPE_LABEL_BY_VALUE: Record<PollFeedType, string> = {
   all: 'All',
   polls: 'Polls',
   discussions: 'Discussions',
 };
+const TYPE_OPTIONS = deriveSelectorOptions(TYPE_LABEL_BY_VALUE);
 
 // MASTER sort (wave-2 §3): New (default — chronological; what the API always did
 // when the old "Default" omitted the param) | Trending | Top. Time folds INTO Top:
 // the period chip exists only while Top is the sort (a conditional strip citizen).
-const SORT_SELECTOR_OPTIONS: ReadonlyArray<{ label: string; value: PollFeedSort }> = [
-  { label: 'New', value: 'new' },
-  { label: 'Trending', value: 'trending' },
-  { label: 'Top', value: 'top' },
-];
 const SORT_LABEL_BY_VALUE: Record<PollFeedSort, string> = {
   new: 'New',
-  top: 'Top',
   trending: 'Trending',
+  top: 'Top',
 };
+const SORT_SELECTOR_OPTIONS = deriveSelectorOptions(SORT_LABEL_BY_VALUE);
 
 // Top's time period (§3): Today + This month join the set; only rendered under Top.
-const TIME_OPTIONS: ReadonlyArray<{ label: string; value: PollFeedTime }> = [
-  { label: 'Today', value: 'today' },
-  { label: 'This week', value: 'this_week' },
-  { label: 'This month', value: 'this_month' },
-  { label: 'All time', value: 'all_time' },
-];
 const TIME_LABEL_BY_VALUE: Record<PollFeedTime, string> = {
-  all_time: 'All time',
   today: 'Today',
   this_week: 'This week',
   this_month: 'This month',
+  all_time: 'All time',
 };
+const TIME_OPTIONS = deriveSelectorOptions(TIME_LABEL_BY_VALUE);
 
 // The polls feed is RE-SORTABLE. FlashList's maintain-visible-content-position
 // (chat-style, on by default) anchors the old top row when the Live/Results split or
@@ -535,10 +537,7 @@ const PollsFeedStrip = React.memo(() => {
             toggleOptionSelector({
               key: 'poll-feed-time',
               title: 'Top period',
-              options: TIME_OPTIONS.map((option) => ({
-                value: option.value,
-                label: option.label,
-              })),
+              options: TIME_OPTIONS,
               value: feedTime,
               onSelect: (value) => setFeedTime(value),
               accentColor: ACCENT,

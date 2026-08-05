@@ -18,6 +18,7 @@ import {
   type UserProfilePollRow,
 } from '../../services/polls';
 import { userListsService, type UserListSummary } from '../../services/user-lists';
+import { deriveListDetailVerbs } from './list-detail-verbs';
 import { userListKeys } from '../../hooks/use-user-lists';
 import { photosService, type FoodLogGroupDto } from '../../services/photos';
 import { openPostPhotosFunnel } from '../PostPhotosFunnelHost';
@@ -306,13 +307,24 @@ export const ProfileSectionsBody = React.memo(
             onPress: () => handleShareList(list),
           },
         ];
-        // Wave-2 §2: system defaults are REGULAR lists — deletable like any other.
-        actions.push({
-          label: 'Delete list',
-          style: 'destructive',
-          testID: 'user-profile-list-delete',
-          onPress: () => handleDeleteList(list),
+        // F1464: handleListLongPress only fires when isOwnProfile (viewer owns every
+        // list it renders for), so this is the model's owner + concrete case — same
+        // rule ListDetailPanel/ListsPanel render from. Favorites (server-guarded
+        // undeletable) does NOT get a Delete row here either, one home for the rule.
+        const verbs = deriveListDetailVerbs({
+          source: 'favorites',
+          viewerRole: 'owner',
+          isVirtualAll: false,
+          kind: list.kind,
         });
+        if (verbs.canDelete) {
+          actions.push({
+            label: 'Delete list',
+            style: 'destructive',
+            testID: 'user-profile-list-delete',
+            onPress: () => handleDeleteList(list),
+          });
+        }
         actions.push({ label: 'Cancel', style: 'cancel' });
         showAppModal({ title: list.name, actions });
       },
@@ -535,8 +547,14 @@ export const ProfileSectionsBody = React.memo(
             ))
           );
         }
-        default:
-          return null;
+        default: {
+          // F1469: activeSection is the closed ProfileSectionKey union with all four
+          // cases handled above — this arm is unreachable BY CONSTRUCTION. Typing it
+          // `never` (rather than falling through to `return null`) turns a fifth
+          // section into a tsc error instead of a silently-blank render.
+          const exhaustive: never = activeSection;
+          return exhaustive;
+        }
       }
     };
 

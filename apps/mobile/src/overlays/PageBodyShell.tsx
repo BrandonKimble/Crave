@@ -30,6 +30,16 @@ import type {
 
 const APPENDING_TAIL_ROWS = 2;
 
+// ONE active-band resolution rule (F1461): an explicit activeBandKey wins if it
+// names a declared band, else the spec's first band is the default. Both call
+// sites below share this so the fallback rule can only change in one place.
+function resolveActiveBand<TBand extends { key: string }>(
+  bands: readonly TBand[],
+  activeBandKey: string | undefined,
+): TBand {
+  return (activeBandKey != null ? bands.find((candidate) => candidate.key === activeBandKey) : null) ?? bands[0];
+}
+
 // A list body is an ordered band set with ONE ACTIVE (L1 A#14/B#15) — the shell
 // interprets exactly the active band: its row template, its pending face, its empty
 // view, its OWN closed state. Bands are item-type-erased in the spec (defineListBand
@@ -46,9 +56,7 @@ const PageListBody = ({
   bandStates: Readonly<Record<string, PageBodyState<unknown>>>;
   activeBandKey?: string;
 }): React.ReactElement | null => {
-  const band =
-    (activeBandKey != null ? spec.bands.find((candidate) => candidate.key === activeBandKey) : null) ??
-    spec.bands[0];
+  const band = resolveActiveBand(spec.bands, activeBandKey);
   const state = bandStates[band.key] ?? { kind: 'pending' as const };
   const material = resolveSceneLoadingMaterial(spec.scene);
   const RowComponent = band.row.Component as ErasedBandRowComponent;
@@ -208,10 +216,7 @@ export const PageBodyShell = <TItem,>(
     if (listProps == null) {
       return null;
     }
-    const band =
-      (listProps.activeBandKey != null
-        ? listProps.spec.bands.find((candidate) => candidate.key === listProps.activeBandKey)
-        : null) ?? listProps.spec.bands[0];
+    const band = resolveActiveBand(listProps.spec.bands, listProps.activeBandKey);
     return listProps.bandStates[band.key] ?? null;
   })();
   const failure =

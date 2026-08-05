@@ -391,6 +391,7 @@ export const useBottomSheetSceneStackBodyContentRuntime = ({
       </SceneScrollFactsSceneKeyContext.Provider>
     );
   }, [
+    bodyScrollRuntime.contentOverscroll,
     bodyScrollRuntime.scrollOffset,
     hasFoundationWhiteLayer,
     sceneBodyInner,

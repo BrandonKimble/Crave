@@ -308,14 +308,6 @@ const styles = StyleSheet.create({
   avatarNotice: {
     color: '#64748b',
   },
-  stateBody: {
-    paddingBottom: 48,
-    alignItems: 'center',
-    gap: 16,
-  },
-  stateText: {
-    color: '#0f172a',
-  },
   fieldLabel: {
     color: '#64748b',
   },

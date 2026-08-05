@@ -11,13 +11,9 @@ import {
 import { createProfileQueryOptions } from '../profileSceneQueryOptions';
 import { useProfilePanelActionsRuntime } from './profile-panel-actions-runtime';
 import { useProfilePanelIdentityRuntime } from './profile-panel-identity-runtime';
-import type {
-  ProfilePanelActionsRuntime,
-  ProfileSceneHeaderProps,
-} from './profile-panel-runtime-contract';
+import type { ProfileSceneHeaderProps } from './profile-panel-runtime-contract';
 
 export type ProfilePanelBodyModelRuntime = {
-  actionsRuntime: ProfilePanelActionsRuntime;
   headerProps: ProfileSceneHeaderProps;
   // The signed-in user's own id — the key the shared ProfileSectionsBody fetches its four sections
   // against. Null while the getMe read is still resolving (the sections stay a skeleton until then).
@@ -106,13 +102,12 @@ export const useProfilePanelBodyModelRuntime = ({
 
   return React.useMemo(
     () => ({
-      actionsRuntime,
       headerProps,
       userId,
       activeSection,
       onSelectSection: setActiveSection,
       sectionsEnabled,
     }),
-    [actionsRuntime, headerProps, userId, activeSection, sectionsEnabled]
+    [headerProps, userId, activeSection, sectionsEnabled]
   );
 };
