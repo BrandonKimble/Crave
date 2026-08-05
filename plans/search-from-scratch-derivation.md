@@ -399,9 +399,15 @@ fa79bc044):**
   the dish-side one. request.dietary[] (canonical names) flows end-to-end
   through the natural path; query-text grounding activates the whole
   pair (venue-side vegan's 219 restaurants no longer invisible).
-  Ground-truthed per-row on the mirror. REMAINING: the mobile toggle
-  strip UI (a precise one-surface task, held only because the parallel
-  session is actively editing the Search mobile runtime).
+  Ground-truthed per-row on the mirror. **STRIP SHIPPED (bfba64dd0)**:
+  chips are a LENS (SearchFilterVariant + SearchLens + lens key + lens
+  equality — a flip re-slices the SAME world, server-side, no new
+  session), persisted with the other filter fields, and the OPTIONS come
+  from GET /search/dietary-options — the curated constraint_class
+  vocabulary is the authority, so adding/retiring a toggle is one
+  curation act on the data and no client list exists. The new lens spec
+  caught a real bug mid-build (set-equality on the variant comparator
+  only ⇒ vegan→vegetarian would have served the cached slice).
 - **B3 Stripe rail**: already restored by the payments lane (endpoints,
   service, CheckoutSession model, 19 green specs) — verified, nothing to
   do server-side; the dual-button paywall UI is mobile work.
