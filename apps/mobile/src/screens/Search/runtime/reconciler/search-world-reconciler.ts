@@ -39,7 +39,6 @@ export type SearchWorldTransitionClass =
   | 'retoggle_reversal'
   | 'session_exit'
   | 'boot_noop'
-  | 'response_tab_adopt'
   /** No tuple delta, but the desire is NOT what's presented — a re-assertion of an
    *  unresolved desire (the failure retry). Presented content reruns in place; a bare
    *  session re-enters. */
@@ -215,31 +214,57 @@ export type SearchWorldReconciler = {
 const areDietarySetsEqual = (a: readonly string[], b: readonly string[]): boolean =>
   a.length === b.length && a.every((name) => b.includes(name));
 
-const deriveToggleKindFromFilterDelta = (
-  prev: SearchDesiredTuple['filterVariant'],
-  next: SearchDesiredTuple['filterVariant']
+const areSearchPriceLevelsEqual = (a: readonly number[], b: readonly number[]): boolean =>
+  a.length === b.length && a.every((level, index) => level === b[index]);
+
+/** F1074: DERIVED, never defaulted. Every arm is an explicit equality check against the
+ *  axis that actually moved — 'filter_price' used to be an unconditional terminal arm
+ *  (a guess wearing a label), so a `retoggle_reversal` reaching here with an IDENTICAL
+ *  filterVariant (a bounds-only A→B→A pan-back: the cards key is bounds-inclusive, see
+ *  buildSearchCardsWorldKey) was silently mislabeled as a price-chip toggle. Bounds is
+ *  now a real, named arm; a delta on neither axis is a contract violation, not a guess. */
+export const deriveToggleKindFromDesiredDelta = (
+  prev: SearchDesiredTuple,
+  next: SearchDesiredTuple
 ):
   | 'filter_open_now'
   | 'filter_rising'
   | 'filter_price'
   | 'filter_dietary'
-  | 'filter_include_similar' => {
-  if (prev.openNow !== next.openNow) {
+  | 'filter_include_similar'
+  | 'search_this_area' => {
+  const prevFilter = prev.filterVariant;
+  const nextFilter = next.filterVariant;
+  if (prevFilter.openNow !== nextFilter.openNow) {
     return 'filter_open_now';
   }
-  // Dietary before the price FALLTHROUGH: 'filter_price' is the default arm,
-  // so a new chip that forgets its branch silently wears the price toggle's
-  // interaction identity (rig attribution + its settleMs override seam).
-  if (!areDietarySetsEqual(prev.dietary, next.dietary)) {
+  // Dietary before price: kept ahead of the (now explicit, non-default) price check so a
+  // new chip that forgets its own branch still fails LOUD (the contract violation below)
+  // rather than silently wearing another chip's interaction identity.
+  if (!areDietarySetsEqual(prevFilter.dietary, nextFilter.dietary)) {
     return 'filter_dietary';
   }
-  if (prev.rising !== next.rising) {
+  if (prevFilter.rising !== nextFilter.rising) {
     return 'filter_rising';
   }
-  if (prev.includeSimilar !== next.includeSimilar) {
+  if (prevFilter.includeSimilar !== nextFilter.includeSimilar) {
     return 'filter_include_similar';
   }
-  return 'filter_price';
+  if (!areSearchPriceLevelsEqual(prevFilter.priceLevels, nextFilter.priceLevels)) {
+    return 'filter_price';
+  }
+  // No filter axis moved. A retoggle_reversal's cards key is bounds-inclusive
+  // (buildSearchCardsWorldKey), so an A→B→A pan-then-search-this-area-back reversal can
+  // reach here with prev.filterVariant === next.filterVariant field-for-field — name it
+  // for the axis that actually changed, the same interaction kind area_rerun already uses.
+  if (!areSearchCommittedBoundsEqual(prev.committedBounds, next.committedBounds)) {
+    return 'search_this_area';
+  }
+  // Neither filter nor bounds moved. retoggle_reversal/variant_rerun/lens_flip are only
+  // reached with SOME delta (the classifier requires it), so this is unreachable by
+  // construction — a contract violation names the break instead of guessing a label.
+  reportSearchFlowContractViolation('toggle_kind_unclassifiable_delta', {});
+  return 'search_this_area';
 };
 
 export const createSearchWorldReconciler = (
@@ -374,7 +399,7 @@ export const createSearchWorldReconciler = (
           tuple: next,
           generation,
           cause,
-          kind: deriveToggleKindFromFilterDelta(prev.filterVariant, next.filterVariant),
+          kind: deriveToggleKindFromDesiredDelta(prev, next),
           decoration,
         });
         return;
@@ -436,9 +461,9 @@ export const createSearchWorldReconciler = (
       }
       case 'session_exit':
       case 'boot_noop':
-      case 'response_tab_adopt':
         // session_exit: close choreography stays trigger-owned until S4c.
-        // response_tab_adopt: the resolver's own mid-resolution write — same episode.
+        // The resolver's own mid-resolution tab-adopt write never reaches this switch:
+        // the subscription's cause guard above returns before classification runs.
         return;
     }
   };

@@ -142,10 +142,9 @@ export const useSearchResultsReadModelSelectors = (
   );
 
   const searchRequestId = results?.metadata?.searchRequestId ?? null;
-  const searchRequestIdentity = results?.metadata?.searchRequestId ?? null;
   const resolveHydrationOperationId = useSearchResultsHydrationOperationIdRuntime({
     hydrationOperationId,
-    searchRequestIdentity,
+    searchRequestIdentity: searchRequestId,
   });
 
   const exactMatchStateRuntime = useSearchResultsExactMatchStateRuntime({

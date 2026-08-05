@@ -3,7 +3,10 @@ jest.mock('../../../../utils', () => ({
   logger: { debug: jest.fn(), info: jest.fn(), warn: jest.fn(), error: jest.fn() },
 }));
 
-import { classifySearchWorldTransition } from './search-world-reconciler';
+import {
+  classifySearchWorldTransition,
+  deriveToggleKindFromDesiredDelta,
+} from './search-world-reconciler';
 import {
   buildSearchWorldSliceKey,
   IDLE_SEARCH_DESIRED_TUPLE,
@@ -163,6 +166,87 @@ describe('classifySearchWorldTransition', () => {
       presentedCardsKey: null,
     });
     expect(t.class).toBe('session_exit');
+  });
+
+  it('idle → idle, no presented world, is a boot_noop', () => {
+    const t = classifySearchWorldTransition({
+      prev: idle,
+      next: idle,
+      presentedCardsKey: null,
+    });
+    expect(t.class).toBe('boot_noop');
+    expect(t.intent).toBeNull();
+  });
+
+  it('an equal-tuple write whose desire is NOT what is presented is a reassert_unresolved (the retry path) — RERUNS IN PLACE when something was presented', () => {
+    // F1079: the retry path is the ONE branch that decides in-place rerun vs. fresh
+    // re-entry (:174-181) — presentedCardsKey != null means SOMETHING is on screen, so
+    // the reassert reruns it rather than re-entering as a bare session.
+    const tuple = shortcut();
+    const t = classifySearchWorldTransition({
+      prev: tuple,
+      next: tuple,
+      presentedCardsKey: 'some-other-world-key',
+    });
+    expect(t.class).toBe('reassert_unresolved');
+    expect(t.intent).toEqual({
+      presentationIntentKind: 'variant_rerun',
+      preserveSheetState: true,
+      entrySurface: 'results',
+    });
+  });
+
+  it('an equal-tuple write with NOTHING presented is a reassert_unresolved that RE-ENTERS as a bare session', () => {
+    const tuple = shortcut();
+    const t = classifySearchWorldTransition({
+      prev: tuple,
+      next: tuple,
+      presentedCardsKey: null,
+    });
+    expect(t.class).toBe('reassert_unresolved');
+    expect(t.intent).toEqual({
+      presentationIntentKind: undefined,
+      preserveSheetState: false,
+      entrySurface: 'home',
+    });
+  });
+});
+
+describe('deriveToggleKindFromDesiredDelta (F1074 — a bounds-only reversal must not be labeled filter_price)', () => {
+  it('MUTATION PROOF: a bounds-only delta (identical filterVariant) derives search_this_area, never the filter_price default', () => {
+    // This is exactly the retoggle_reversal shape F1074 found: cardsKey is
+    // bounds-inclusive, so an A→B→A pan-back reaches the toggle-kind derivation with
+    // prev.filterVariant === next.filterVariant field-for-field. Reverting the fix (make
+    // the function's terminal arm an unconditional `return 'filter_price'`, as it used to
+    // be) turns this RED.
+    const prev = shortcut({
+      committedBounds: {
+        bounds: { northEast: { lat: 1, lng: 1 }, southWest: { lat: 0, lng: 0 } },
+        viewportPolygon: null,
+        camera: null,
+      },
+    });
+    const next = shortcut({
+      committedBounds: {
+        bounds: { northEast: { lat: 2, lng: 2 }, southWest: { lat: 1, lng: 1 } },
+        viewportPolygon: null,
+        camera: null,
+      },
+    });
+    expect(next.filterVariant).toEqual(prev.filterVariant);
+    expect(deriveToggleKindFromDesiredDelta(prev, next)).toBe('search_this_area');
+  });
+
+  it('an actual price-levels delta still derives filter_price (the explicit arm, not the old default)', () => {
+    const prev = shortcut();
+    const next = shortcut({ filterVariant: { ...prev.filterVariant, priceLevels: [1, 2] } });
+    expect(deriveToggleKindFromDesiredDelta(prev, next)).toBe('filter_price');
+  });
+
+  it('an openNow delta still derives filter_open_now (unaffected by the rederive)', () => {
+    const prev = shortcut();
+    const next = shortcut({ filterVariant: { ...prev.filterVariant, openNow: true } });
+    expect(deriveToggleKindFromDesiredDelta(prev, next)).toBe('filter_open_now');
   });
 });
 
