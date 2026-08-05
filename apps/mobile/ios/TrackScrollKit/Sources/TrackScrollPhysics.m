@@ -1,4 +1,5 @@
 #import "TrackScrollPhysics.h"
+#import "TrackDomainRange.h"
 #import "TrackShellSlot.h"
 
 #import <QuartzCore/QuartzCore.h>
@@ -108,6 +109,18 @@
 /// so a missed prevention path becomes a logged non-event instead of a jerk.
 @property (nonatomic, assign) CGFloat lastLegitimateTau;
 @property (nonatomic, assign) NSInteger engineWriteDepth;
+/// ── THE DOMAIN AUTHORITY's two pieces of proxy state ─────────────────────────
+/// The bottom inset an owner OUTSIDE the engine needs (keyboard avoidance, a
+/// reachability baseline). REGISTERED through setExternalBottomInset, never
+/// inferred from the current inset — an inferred baseline would read the
+/// engine's own last write back as an external need and ratchet forever. The
+/// authority composes it with max(); it is the only way anything other than the
+/// authority influences contentInset.bottom.
+@property (nonatomic, assign) CGFloat externalBottomInset;
+/// Applying insets can re-enter didScroll synchronously (that is the whole
+/// reason the clamp class exists); the authority is not re-entrant and does not
+/// need to be — the inputs it reads are already committed when it runs.
+@property (nonatomic, assign) BOOL applyingDomain;
 /// THE HEADER-GATED RELEASE (ported from the old resolveHeaderGatedSnapValue):
 /// a drag resolves against where it STARTED, not against where it ended, so a
 /// release is one deliberate step and never a nearest-detent lottery.
@@ -160,7 +173,10 @@
             velocityY:(double)v0;
 - (void)stopSpring;
 - (void)closeHiddenExcursionOn:(UIScrollView *)scrollView;
-- (void)applyRangeLawTo:(UIScrollView *)scrollView;
+- (void)applyDomainTo:(UIScrollView *)scrollView;
+- (void)applyDomainTo:(UIScrollView *)scrollView
+                phase:(TrackDomainPhase)phase
+                  tau:(CGFloat)tau;
 - (void)engineWrite:(UIScrollView *)scrollView offsetY:(CGFloat)offsetY;
 @end
 
@@ -229,43 +245,24 @@ static void *kTrackClampGuardCtx = &kTrackClampGuardCtx;
                        context:(void *)context
 {
   if (context == kTrackClampGuardCtx) {
-    // THE PRIOR-GROW (attributed live 2026-07-29: [SWITCH] target=648 →
-    // tau=311). UIKit clamps contentOffset WHILE processing the new
-    // contentSize — before any after-the-fact observer runs — so a guard that
-    // reads τ afterwards preserves the already-clamped value. The PRIOR
-    // notification fires BEFORE the change: grow the inset to cover the
-    // current τ against ANY new content height (τ + viewport), so the clamp
-    // never occurs; the after-notification then tightens to the exact
-    // formula. Growing an inset never moves content; only shrinking can.
+    // CONTENTSIZE IS AN INPUT TO THE DOMAIN AUTHORITY, in both KVO phases.
+    // PRIOR (attributed live 2026-07-29: [SWITCH] target=648 → tau=311): UIKit
+    // clamps contentOffset WHILE processing the new contentSize, before any
+    // after-the-fact observer runs, so prevention must happen here — the
+    // authority's prior phase grows the bottom inset to cover τ against ANY new
+    // content height. It runs under a posture drag too: no touch is delivered
+    // between the paired notifications, so a momentarily-high maxOffset cannot
+    // be scrolled into, whereas a momentarily-low one clamps τ for real.
+    // SETTLED then tightens to the exact domain — including the drag ceiling,
+    // which the authority recomputes from the NEW contentH.
     if ([change[NSKeyValueChangeNotificationIsPriorKey] boolValue]) {
-      // ...EXCEPT under a live posture drag, whose ceiling outranks it (see
-      // applyRangeLawTo): growing here would lift maxOffset above H+sigma and
-      // let the drag escape into list scrolling mid-gesture.
-      if (self.postureDragActive) {
-        return;
-      }
       UIScrollView *prior = (UIScrollView *)object;
-      const CGFloat viewport = CGRectGetHeight(prior.bounds);
-      const CGFloat needed = ceil(prior.contentOffset.y + viewport);
-      if (prior.contentInset.bottom < needed) {
-        UIEdgeInsets insets = prior.contentInset;
-        insets.bottom = needed;
-        prior.contentInset = insets;
-      }
+      [self applyDomainTo:prior
+                    phase:TrackDomainPhasePrior
+                      tau:prior.contentOffset.y];
       return;
     }
-    // THE RANGE LAW (transition derivation VI): the ENGINE owns τ's legal
-    // range, and this is its ONE writer — synchronous with every contentSize
-    // change, so UIKit can never clamp τ through an async JS gap. The range
-    // must always cover [0, trackH] (every posture legal ⇒ every seat
-    // reachable by construction ⇒ no reachability re-assert machinery) AND
-    // the current τ (a content swap must never move the sheet).
-    //   reach = max(0, viewport − (contentH − trackH))
-    //   keep  = max(0, τ − (contentH − viewport))
-    //   insetBottom = max(reach, keep)
-    if (!self.postureDragActive) {
-      [self applyRangeLawTo:(UIScrollView *)object];
-    }
+    [self applyDomainTo:(UIScrollView *)object];
     // THE SHELL REFRESH: with the prior-grow, a content swap no longer clamps
     // — which also means no didScroll fires, so tail/mask/chrome would hold
     // positions computed against the OLD contentSize (seen live: tail parked
@@ -337,16 +334,11 @@ static void *kTrackClampGuardCtx = &kTrackClampGuardCtx;
           self.onSigmaChanged(self.stashSigma);
         }
       }
-      // THE POSTURE CEILING: cap maxOffset at the boundary for this drag —
-      // header drags may move the SHEET only, in both directions. Signed
-      // inset: maxOffset = contentH + inset − viewport == boundary exactly.
+      // THE POSTURE CEILING is now a STATE, not a write: declaring the drag
+      // is the whole act, and the authority expresses the ceiling as an inset
+      // on this call and on every input change for the drag's whole life.
       self.postureDragActive = YES;
       self.postureDragFromBoundary = (tau >= effEdge - 0.5);
-      const CGFloat boundary = self.ballisticEdge + self.stashSigma;
-      const CGFloat viewport = CGRectGetHeight(scrollView.bounds);
-      UIEdgeInsets capInsets = scrollView.contentInset;
-      capInsets.bottom = boundary + viewport - scrollView.contentSize.height;
-      scrollView.contentInset = capInsets;
     }
   }
   // G-HIDDEN: a finger capturing an ON-SCREEN sheet resolves the excursion —
@@ -357,11 +349,12 @@ static void *kTrackClampGuardCtx = &kTrackClampGuardCtx;
   if (self.hiddenEngaged && scrollView.contentOffset.y >= -0.5) {
     [self closeHiddenExcursionOn:scrollView];
   }
-  if (self.ballisticEdge >= 0 && scrollView.contentInset.top != 0 && !self.hiddenEngaged) {
-    UIEdgeInsets inset = scrollView.contentInset;
-    inset.top = 0;
-    scrollView.contentInset = inset;
-  }
+  // DRAG BEGIN IS AN INPUT CHANGE (posture-drag state, σ, excursion state all
+  // just moved): state the domain once, here. The old floor-collapse write
+  // that lived at this point is subsumed — the authority already returns
+  // insetTop 0 for an on-screen τ with no excursion engaged, and unlike that
+  // write it refuses to collapse a floor still holding τ below 0.
+  [self applyDomainTo:scrollView];
   if ([self.original respondsToSelector:@selector(scrollViewWillBeginDragging:)]) {
     [self.original scrollViewWillBeginDragging:scrollView];
   }
@@ -375,8 +368,9 @@ static void *kTrackClampGuardCtx = &kTrackClampGuardCtx;
     // closes in didScroll when tau is actually home, so the spring back is one
     // cohesive sheet rather than a jump plus a lagging list.
     self.postureDragFromBoundary = NO;
-    // Restore the range law's inset (the ceiling was drag-scoped).
-    [self applyRangeLawTo:scrollView];
+    // Drag end is an input change: the ceiling was drag-scoped, so the same
+    // authority now states the resting domain (range law + external baseline).
+    [self applyDomainTo:scrollView];
   }
   if ([self.original respondsToSelector:@selector(scrollViewDidEndDragging:willDecelerate:)]) {
     [self.original scrollViewDidEndDragging:scrollView willDecelerate:decelerate];
@@ -468,34 +462,62 @@ static void *kTrackClampGuardCtx = &kTrackClampGuardCtx;
   }
 }
 
-- (void)applyRangeLawTo:(UIScrollView *)scrollView
+// THE DOMAIN AUTHORITY, applied. The pure function states the domain; this is
+// the ONE hand that writes it onto the scroll view. Every former partial writer
+// calls here instead of computing an inset of its own.
+- (void)applyDomainTo:(UIScrollView *)scrollView
 {
-  // THE CEILING IS DRAG-SCOPED AND OUTRANKS THE RANGE LAW (header-drag red
-  // team): while a posture drag is live, maxOffset must stay H+sigma. The
-  // recycler changes contentSize DURING the drag (that is what dragging
-  // causes), and this method plus the KVO prior-grow were rewriting the inset
-  // with no knowledge of the drag — silently destroying the ceiling mid-
-  // gesture and handing the rest of the drag to free list scrolling.
-  if (self.postureDragActive) {
-    return;
-  }
-  if (!self.shellEnabled) {
+  [self applyDomainTo:scrollView
+                phase:TrackDomainPhaseSettled
+                  tau:scrollView.contentOffset.y];
+}
+
+// tau is a PARAMETER because the clamp backstops repair toward the last
+// legitimate τ, not the clamped one they are looking at.
+- (void)applyDomainTo:(UIScrollView *)scrollView
+                phase:(TrackDomainPhase)phase
+                  tau:(CGFloat)tau
+{
+  if (self.applyingDomain) {
     return;
   }
   const CGFloat viewport = CGRectGetHeight(scrollView.bounds);
   if (viewport <= 0) {
     return;
   }
-  const CGFloat contentH = scrollView.contentSize.height;
-  const CGFloat tau = scrollView.contentOffset.y;
-  const CGFloat reach = MAX(0.0, viewport - (contentH - self.shellTrackH));
-  const CGFloat keep = MAX(0.0, tau - (contentH - viewport));
-  const CGFloat target = ceil(MAX(reach, keep));
-  UIEdgeInsets insets = scrollView.contentInset;
-  if (fabs(insets.bottom - target) > 0.5) {
-    insets.bottom = target;
-    scrollView.contentInset = insets;
+  const UIEdgeInsets insetsNow = scrollView.contentInset;
+  TrackDomainState state;
+  state.contentH = scrollView.contentSize.height;
+  state.viewport = viewport;
+  state.trackH = self.shellTrackH;
+  state.boundary = (self.ballisticEdge >= 0 ? self.ballisticEdge : self.shellTrackH) +
+      self.stashSigma;
+  state.sigma = self.stashSigma;
+  state.tau = tau;
+  state.insetTopNow = insetsNow.top;
+  state.insetBottomNow = insetsNow.bottom;
+  state.externalBottomBaseline = self.externalBottomInset;
+  state.hiddenTargetTau = self.hiddenTargetTau;
+  state.postureDragActive = self.postureDragActive ? 1 : 0;
+  state.hiddenEngaged = self.hiddenEngaged ? 1 : 0;
+  state.shellEnabled = self.shellEnabled ? 1 : 0;
+  state.phase = phase;
+  const TrackDomainInsets next = TrackDomainLegalRange(state);
+  if (fabs(insetsNow.top - next.insetTop) <= 0.5 &&
+      fabs(insetsNow.bottom - next.insetBottom) <= 0.5) {
+    return;
   }
+  UIEdgeInsets insets = insetsNow;
+  insets.top = next.insetTop;
+  insets.bottom = next.insetBottom;
+  // An inset write is an ENGINE write: it can re-enter didScroll in the same
+  // transaction, and the clamp backstop must not read its own authority's work
+  // as somebody else's clamp.
+  self.applyingDomain = YES;
+  self.engineWriteDepth += 1;
+  scrollView.contentInset = insets;
+  self.engineWriteDepth -= 1;
+  self.applyingDomain = NO;
 }
 
 - (void)engineWrite:(UIScrollView *)scrollView offsetY:(CGFloat)offsetY
@@ -533,16 +555,15 @@ static void *kTrackClampGuardCtx = &kTrackClampGuardCtx;
       (self.lastLegitimateTau - tauIn) > 8.0 && self.engineWriteDepth == 0 &&
       !scrollView.isTracking && !scrollView.isDragging;
   if (clampShaped) {
-    // Grant reachability first, then put the sheet back — before paint — and
-    // bark so the missing PREVENTION path gets named. (Prevention is the
-    // prior-grow KVO; this is the backstop that makes the class closed.)
-    const CGFloat viewport = CGRectGetHeight(scrollView.bounds);
-    const CGFloat needed = ceil(self.lastLegitimateTau - scrollView.contentSize.height + viewport);
-    if (scrollView.contentInset.bottom < needed) {
-      UIEdgeInsets insets = scrollView.contentInset;
-      insets.bottom = needed;
-      scrollView.contentInset = insets;
-    }
+    // Re-state the domain AT the last legitimate τ — the authority's keep term
+    // is exactly "τ stays legal", so asking it for the domain that τ belongs to
+    // IS the repair — then put the sheet back before paint, and bark so the
+    // missing PREVENTION path gets named. (Prevention is the authority invoked
+    // at the contentSize prior phase; this is the backstop that closes the
+    // class, and it no longer carries a second copy of the domain arithmetic.)
+    [self applyDomainTo:scrollView
+                  phase:TrackDomainPhaseSettled
+                    tau:self.lastLegitimateTau];
     NSLog(@"[TRACKFILTER] reverted CLAMP tau %.1f -> %.1f (contentH=%.1f inset=%.1f)",
           tauIn, self.lastLegitimateTau, scrollView.contentSize.height,
           scrollView.contentInset.bottom);
@@ -559,12 +580,11 @@ static void *kTrackClampGuardCtx = &kTrackClampGuardCtx;
       (tauIn - self.lastLegitimateTau) > 8.0 && self.engineWriteDepth == 0 &&
       !scrollView.isTracking && !scrollView.isDragging;
   if (minClampShaped) {
-    const CGFloat neededTop = ceil(-self.lastLegitimateTau);
-    if (scrollView.contentInset.top < neededTop) {
-      UIEdgeInsets insets = scrollView.contentInset;
-      insets.top = neededTop;
-      scrollView.contentInset = insets;
-    }
+    // Same backstop, same authority: the floor term IS "a τ below 0 keeps its
+    // own floor", so the domain at the last legitimate τ is the repair.
+    [self applyDomainTo:scrollView
+                  phase:TrackDomainPhaseSettled
+                    tau:self.lastLegitimateTau];
     NSLog(@"[TRACKFILTER] reverted MIN-edge CLAMP tau %.1f -> %.1f (insetTop=%.1f)",
           tauIn, self.lastLegitimateTau, scrollView.contentInset.top);
     [self engineWrite:scrollView offsetY:self.lastLegitimateTau];
@@ -604,6 +624,11 @@ static void *kTrackClampGuardCtx = &kTrackClampGuardCtx;
     if (self.onSigmaChanged) {
       self.onSigmaChanged(0);
     }
+    // σ is a domain input (it moves the boundary): the dissolve is an input
+    // change like any other. At rest with no drag this is a no-op in practice
+    // — which is the point: the authority proves it rather than the dissolve
+    // assuming it.
+    [self applyDomainTo:scrollView];
   }
   const CGFloat edge = self.ballisticEdge >= 0 ? self.ballisticEdge + self.stashSigma : self.ballisticEdge;
   // NO PER-FRAME CLAMP (jerk fix, 2026-07-27): forcing contentOffset back to
@@ -861,11 +886,11 @@ static const double kTrackSpringOmega = 13.038404810405298; // sqrt(170)
 {
   self.hiddenEngaged = NO;
   self.hiddenEdgeFired = NO;
-  if (scrollView.contentInset.top != 0) {
-    UIEdgeInsets insets = scrollView.contentInset;
-    insets.top = 0;
-    scrollView.contentInset = insets;
-  }
+  // The floor collapses because the excursion state changed, not because this
+  // method knows how to write insets: the authority derives insetTop 0 from
+  // "no excursion engaged, τ on screen". A caller that violates the τ ≥ 0
+  // precondition now gets a floor that HOLDS instead of a clamp.
+  [self applyDomainTo:scrollView];
 }
 
 - (void)springTick:(CADisplayLink *)link
@@ -1048,16 +1073,12 @@ RCT_EXPORT_METHOD(snapTo:(nonnull NSNumber *)reactTag
     // capture / superseding command). The glide itself is the SAME critically
     // damped spring as every detent settle (OA5: every sheet glides).
     if (proxy != nil && target < -0.5) {
-      const CGFloat neededTop = ceil(-target);
-      if (scrollView.contentInset.top < neededTop) {
-        UIEdgeInsets insets = scrollView.contentInset;
-        insets.top = neededTop;
-        scrollView.contentInset = insets;
-      }
       proxy.hiddenGeneration += 1;
       proxy.hiddenEngaged = YES;
       proxy.hiddenEdgeFired = NO;
       proxy.hiddenTargetTau = target;
+      // Arming the excursion IS the domain input; the floor falls out of it.
+      [proxy applyDomainTo:scrollView];
     } else if (proxy != nil && proxy.hiddenEngaged) {
       // A positive snap SUPERSEDES a live excursion: consume the one-shot so
       // the stale hiddenTargetTau can never fire an edge for a hide that is
@@ -1152,6 +1173,13 @@ RCT_EXPORT_METHOD(refuse:(nonnull NSNumber *)reactTag
     // collapse at τ < 0 would clamp ahead of the write).
     if (proxy.hiddenEngaged) {
       [proxy closeHiddenExcursionOn:scrollView];
+    } else {
+      // σ went to 0 and τ moved: two domain inputs changed, so the domain is
+      // re-stated — by the authority, not by a switch-time inset floor of its
+      // own. (The floor this call used to be tempted into is the one the
+      // A/B above proved unnecessary; the authority makes "one writer, one
+      // place" structural instead of a comment.)
+      [proxy applyDomainTo:scrollView];
     }
   }];
 }
@@ -1168,6 +1196,34 @@ RCT_EXPORT_METHOD(refuse:(nonnull NSNumber *)reactTag
 // (THE SWITCH TRANSACTION machinery deleted 2026-08-02 — the collapse made
 // switches a data swap on ONE track; refuse() is the only switch-time write.)
 
+
+// ── THE EXTERNAL BOTTOM BASELINE (the F7 arbitration) ───────────────────────
+// contentInset.bottom is ONE scalar with two legitimate claimants: the engine's
+// τ-domain need, and whoever must keep content clear of something drawn over
+// the bottom of the sheet (keyboard avoidance on an input-bearing page, a
+// reachability baseline). Before the authority, the range law simply SET the
+// scalar — two writers, no arbitration, and the external claim silently lost
+// whenever a contentSize change happened to fire.
+// The claim is REGISTERED here and composed by max() inside the authority. It
+// is never inferred from the current inset: inferring would read the engine's
+// own last write back as an external need and ratchet the domain open forever.
+RCT_EXPORT_METHOD(setExternalBottomInset:(nonnull NSNumber *)reactTag
+                  inset:(nonnull NSNumber *)inset)
+{
+  [self.bridge.uiManager addUIBlock:^(RCTUIManager *uiManager, NSDictionary<NSNumber *, UIView *> *viewRegistry) {
+    UIView *root = viewRegistry[reactTag] ?: [uiManager viewForReactTag:reactTag];
+    UIScrollView *scrollView = root ? TrackFindScrollView(root) : nil;
+    if (scrollView == nil) {
+      return;
+    }
+    TrackScrollDelegateProxy *proxy = objc_getAssociatedObject(scrollView, kTrackProxyKey);
+    if (proxy == nil) {
+      return;
+    }
+    proxy.externalBottomInset = MAX(0.0, inset.doubleValue);
+    [proxy applyDomainTo:scrollView];
+  }];
+}
 
 // Register the chrome view to pin (pass chromeTag = nil to clear).
 RCT_EXPORT_METHOD(pinChrome:(nonnull NSNumber *)reactTag
@@ -1198,10 +1254,11 @@ RCT_EXPORT_METHOD(pinChrome:(nonnull NSNumber *)reactTag
 // the content height bounds τ's legal range (maxOffset = contentH + insetBottom
 // − viewport), so the instant a swap mounts a shorter body UIKit clamps τ down
 // — the owner's "snaps to a weird mid-high", the jerk, the non-persistent feel.
-// JS cannot fix this (it reacts a frame after the clamp). The guard runs
-// SYNCHRONOUSLY with the contentSize change: grow contentInset.bottom so the
-// current τ stays legal. Grow-only — the JS reachability inset owns the
-// baseline; the guard only ever adds headroom, and only when needed.
+// JS cannot fix this (it reacts a frame after the clamp). The law is discharged
+// by the DOMAIN AUTHORITY, invoked synchronously with the contentSize change:
+// its keep term is "τ stays legal", and its prior phase prevents the clamp
+// before the new height is even known. An external bottom baseline is composed,
+// never assumed — see setExternalBottomInset.
 // ── bindShell: the one configuration call for the native shell ──────────────
 // Tags are RN views (RN owns their pixels); native takes over their transforms.
 // Idempotent and re-assertable (refs fire child-first; Fabric remounts) — every
@@ -1266,6 +1323,11 @@ RCT_EXPORT_METHOD(bindShell:(nonnull NSNumber *)reactTag
                       options:NSKeyValueObservingOptionNew | NSKeyValueObservingOptionPrior
                       context:kTrackClampGuardCtx];
     }
+    // SHELL CONFIGURATION IS A DOMAIN INPUT (trackH and the shell gate both
+    // feed the reach term): state the domain before the first frame is drawn,
+    // so "every posture legal" is true from configuration onward rather than
+    // from the first contentSize change onward.
+    [proxy applyDomainTo:scrollView];
     // Apply the current frame immediately — don't wait for the next scroll.
     if ([proxy respondsToSelector:@selector(scrollViewDidScroll:)]) {
       [proxy scrollViewDidScroll:scrollView];
