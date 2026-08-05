@@ -165,3 +165,37 @@ describe('classifySearchWorldTransition', () => {
     expect(t.class).toBe('session_exit');
   });
 });
+
+describe('dietary walls ride the chip lane with their OWN identity', () => {
+  const withDietary = (dietary: string[]): SearchDesiredTuple =>
+    shortcut({ filterVariant: { ...idle.filterVariant, dietary } });
+
+  it('a dietary flip is a LENS_FLIP — same world, new slice (never a new session)', () => {
+    const t = classifySearchWorldTransition({
+      prev: shortcut(),
+      next: withDietary(['vegan']),
+      presentedCardsKey: null,
+    });
+    expect(t.class).toBe('lens_flip');
+  });
+
+  it('the slice key separates dietary sets, so a flip can never serve the cached slice', () => {
+    expect(buildSearchWorldSliceKey(withDietary(['vegan']))).not.toEqual(
+      buildSearchWorldSliceKey(withDietary(['vegetarian']))
+    );
+    // …and order does not (a SET, not a list)
+    expect(buildSearchWorldSliceKey(withDietary(['vegan', 'halal']))).toEqual(
+      buildSearchWorldSliceKey(withDietary(['halal', 'vegan']))
+    );
+  });
+
+  it('a dietary flip is NOT a reversal onto the presented world', () => {
+    const presented = buildSearchWorldSliceKey(shortcut());
+    const t = classifySearchWorldTransition({
+      prev: shortcut(),
+      next: withDietary(['vegan']),
+      presentedCardsKey: presented,
+    });
+    expect(t.class).toBe('lens_flip');
+  });
+});

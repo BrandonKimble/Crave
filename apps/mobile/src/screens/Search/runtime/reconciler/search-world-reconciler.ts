@@ -211,12 +211,27 @@ export type SearchWorldReconciler = {
   start: () => () => void;
 };
 
+/** Dietary walls are a SET — order never means a different lens. */
+const areDietarySetsEqual = (a: readonly string[], b: readonly string[]): boolean =>
+  a.length === b.length && a.every((name) => b.includes(name));
+
 const deriveToggleKindFromFilterDelta = (
   prev: SearchDesiredTuple['filterVariant'],
   next: SearchDesiredTuple['filterVariant']
-): 'filter_open_now' | 'filter_rising' | 'filter_price' | 'filter_include_similar' => {
+):
+  | 'filter_open_now'
+  | 'filter_rising'
+  | 'filter_price'
+  | 'filter_dietary'
+  | 'filter_include_similar' => {
   if (prev.openNow !== next.openNow) {
     return 'filter_open_now';
+  }
+  // Dietary before the price FALLTHROUGH: 'filter_price' is the default arm,
+  // so a new chip that forgets its branch silently wears the price toggle's
+  // interaction identity (rig attribution + its settleMs override seam).
+  if (!areDietarySetsEqual(prev.dietary, next.dietary)) {
+    return 'filter_dietary';
   }
   if (prev.rising !== next.rising) {
     return 'filter_rising';
@@ -240,6 +255,7 @@ export const createSearchWorldReconciler = (
       | 'filter_open_now'
       | 'filter_rising'
       | 'filter_price'
+      | 'filter_dietary'
       | 'filter_include_similar'
       | 'retry'
       | 'search_this_area';

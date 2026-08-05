@@ -4,6 +4,11 @@ export type ToggleInteractionKind =
   | 'filter_include_similar'
   | 'filter_rising'
   | 'filter_price'
+  /** Dietary walls (owner semantics 2026-08-04). Its OWN kind, not the
+   *  price fallthrough: kind is the interaction identity the rig reads and
+   *  the settleMs override seam keys on, and dietary is a press-up chip
+   *  (price commits from its sheet). */
+  | 'filter_dietary'
   /** Failure retry with a presented world: rides the SAME interaction cover +
    *  debounce + reveal choreography as a chip rerun. */
   | 'retry'
