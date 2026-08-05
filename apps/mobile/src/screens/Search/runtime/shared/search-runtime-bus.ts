@@ -357,9 +357,13 @@ export class SearchRuntimeBus {
     notifiedListenerCount?: number,
     notifiedListenerLabels?: string[]
   ): void {
-    if (durationMs < 0.25 && changedKeys.size <= 1) {
-      return;
-    }
+    // F1003: the ring's noise filter and stack attribution are two DIFFERENT questions ("is
+    // this publish worth keeping in the ring" vs "does this publish need stack attribution")
+    // and must not share one gate. logPerfScenarioStackAttribution is cheap when unwanted — it
+    // returns immediately unless a perf scenario is active (perf-scenario-attribution.ts) — so
+    // the stack-capture decision is hoisted above the ring's duration/key-count noise filter;
+    // a fast single-key `results`/`resultsRequestKey` publish (the common case) still gets
+    // attributed even though it won't be pushed to the ring.
     const changedKeysArray = Array.from(changedKeys);
     const shouldCaptureStack = changedKeys.has('results') || changedKeys.has('resultsRequestKey');
     if (shouldCaptureStack) {
@@ -377,6 +381,9 @@ export class SearchRuntimeBus {
           presentingPhase: this.state.presentingPhase,
         },
       });
+    }
+    if (durationMs < 0.25 && changedKeys.size <= 1) {
+      return;
     }
     this.diagnosticsRing.push({
       kind,

@@ -99,6 +99,9 @@ const arePinInteractionSourcesComplete = ({
 
 const SHORTCUT_COVERAGE_BOUNDS_BUCKET_DEGREES = 0.01;
 const SEARCH_MAP_VISUAL_PROJECTOR_VERSION = 'single-writer-stable-label-source-v4';
+// F1051a: the reveal seed is provably always empty (the engine owns every promotion); a single
+// shared, read-only empty Set replaces a per-frame filter+sort+slice(0,0) that always produced one.
+const EMPTY_MARKER_KEY_SET: ReadonlySet<string> = new Set<string>();
 
 const buildLodPinnedVisualKey = (
   meta: ReadonlyArray<{ markerKey: string; lodZ: number }>
@@ -852,13 +855,9 @@ export const buildStableCollisionFeature = (
 const buildDirectLabelStores = ({
   pinSourceStore,
   previousLabelCollisionSourceStore,
-  onScreenMarkerKeys,
 }: {
   pinSourceStore: SearchMapSourceStore;
   previousLabelCollisionSourceStore: SearchMapSourceStore;
-  // Native's on-screen marker set (getNativeVisibleMarkerKeys), or null when native has not
-  // reported yet. Obstacles are built only for these keys (the set native promotes its top-N from).
-  onScreenMarkerKeys: ReadonlySet<string> | null;
 }): {
   labelCollisionSourceStore: SearchMapSourceStore;
 } => {
@@ -876,8 +875,8 @@ const buildDirectLabelStores = ({
     // the on-screen gate was a bridge-payload optimization the fan-out makes free, and
     // it diverged JS store membership from native's synthesized collection (the
     // alternation reject seam). Off-screen obstacles are tile-culled (placement-inert);
-    // obstacle gating (0↔1) stays native via the reseed.
-    void onScreenMarkerKeys;
+    // obstacle gating (0↔1) stays native via the reseed. (No onScreenMarkerKeys parameter here
+    // any more — the caller used to build one every frame solely to be discarded; deleted, F1051c.)
     // COLLISION obstacle: PROMOTION-INDEPENDENT: obstacle gating (0↔1 on the promoted set) is fully
     // NATIVE — applyV5ObstacleReseed reseeds from the catalog coordinate on decide deltas AND
     // re-asserts after every JS collision-source apply — so JS collision residency does NOT need to
@@ -1877,34 +1876,16 @@ export const useDirectSearchMapSourceController = ({
     // frame. The seed is applied in BOTH passes below: a ranked key is usually first seen (and deduped)
     // in the dot pass, since dots carry every candidate resident at opacity 0.
     //
-    // CONTRACT GATE: a promoted marker MUST carry a full pin+interaction+label+collision bundle, and
-    // labels are on-screen-gated (built for the native-visible set, or ALL when null pre-projection —
-    // see buildDirectLabelStores). So we may ONLY seed-promote markers that also get a label this
-    // frame; promoting an off-screen ranked marker post-projection would leave it label-less and the
-    // native frame-sync rejects it ("Promoted marker … missing … role payload"). Promote the top-N by
-    // rank AMONG that same label-built set (== native's on-screen top-N), so every seeded pin has a
-    // label. nativeVisibleSeed mirrors onScreenMarkerKeysForLabels (the getter is stable this frame).
-    const nativeVisibleSeed = sourceFramePort.getNativeVisibleMarkerKeys();
-    const nativeVisibleSeedSet =
-      nativeVisibleSeed != null ? new Set(nativeVisibleSeed.markerKeys) : null;
-    const promotedSeedKeys = new Set<string>(
-      [...rerankedVisualCandidates]
-        .filter(
-          (feature) =>
-            nativeVisibleSeedSet == null || nativeVisibleSeedSet.has(buildMarkerKey(feature))
-        )
-        .sort(
-          (a, b) =>
-            (typeof a.properties.rank === 'number' ? a.properties.rank : Number.POSITIVE_INFINITY) -
-            (typeof b.properties.rank === 'number' ? b.properties.rank : Number.POSITIVE_INFINITY)
-        )
-        // The engine owns reveal + EVERY promotion ("reveal = first decide; no special reveal seed"). Empty
-        // seed → every brand-new marker bakes as a plain dot (pin 0 / dot 1) and the engine's first decide
-        // fades the top-N in from 0 per-pin, in lockstep with their dots. This closes the residual group-snap:
-        // an empty seed makes isPromoted false everywhere → both the pin bake (0) and the dot bake correct.
-        .slice(0, 0)
-        .map((feature) => buildMarkerKey(feature))
-    );
+    // The engine owns reveal + EVERY promotion ("reveal = first decide; no special reveal seed").
+    // This seed is PROVABLY always empty: the previous implementation filtered
+    // rerankedVisualCandidates by native on-screen membership, sorted by rank, then unconditionally
+    // .slice(0, 0)'d the result — so the filter+sort (over the full candidate set, every frame) ran
+    // purely to produce nothing. Empty seed → every brand-new marker bakes as a plain dot (pin 0 /
+    // dot 1) and the engine's first decide fades the top-N in from 0 per-pin, in lockstep with their
+    // dots. This closes the residual group-snap: an empty seed makes isPromoted false everywhere →
+    // both the pin bake (0) and the dot bake correct. (F1051a: if the owner ever wants a JS reveal
+    // seed back, the deleted filter+sort+slice pipeline is six lines to rewrite — see git history.)
+    const promotedSeedKeys = EMPTY_MARKER_KEY_SET;
     visibleDotRestaurantMarkerFeatures.forEach((feature) => {
       const key = buildMarkerKey(feature);
       if (seenRenderedLodKeys.has(key)) {
@@ -2173,15 +2154,13 @@ export const useDirectSearchMapSourceController = ({
     });
     const pinInteractionSourceStore = pinInteractionBuilder.finish();
 
-    // On-screen set for label gating: native owns promotion, so it owns "which markers are
-    // on-screen." getNativeVisibleMarkerKeys returns that set (or null pre-projection).
-    const nativeVisibleForLabels = sourceFramePort.getNativeVisibleMarkerKeys();
-    const onScreenMarkerKeysForLabels =
-      nativeVisibleForLabels != null ? new Set(nativeVisibleForLabels.markerKeys) : null;
+    // (F1051c: this used to also build an on-screen marker Set every frame from
+    // getNativeVisibleMarkerKeys solely to hand it to buildDirectLabelStores, which discarded it
+    // with `void` — obstacle membership is UNGATED and mirrors pins exactly (see that function's
+    // comment). Deleted; buildDirectLabelStores no longer takes the parameter.)
     const { labelCollisionSourceStore } = buildDirectLabelStores({
       pinSourceStore,
       previousLabelCollisionSourceStore: previousLabelCollisionSourceStoreRef.current,
-      onScreenMarkerKeys: onScreenMarkerKeysForLabels,
     });
     assertProjectedVisualFrameInvariants({
       pinSourceStore,

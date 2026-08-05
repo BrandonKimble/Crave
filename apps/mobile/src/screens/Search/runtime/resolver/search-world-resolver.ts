@@ -405,8 +405,15 @@ export const createSearchWorldResolver = (env: SearchWorldResolverEnv): SearchWo
         value: fetched.value,
         resolvedAt: env.now(),
       });
-      core.land({ generation: state.desiredTupleGeneration, worldKey: appendKey }, () => true);
-      if (isTupleStillDesired(tuple)) {
+      // F1006: one currency question, asked once — core.land() unconditionally releases the
+      // in-flight append key regardless of what the predicate returns (see resolver-core.ts),
+      // so passing a real predicate here costs nothing and removes the doubly-stated check
+      // this used to have (a vacuous `() => true` here, plus a real isTupleStillDesired(tuple)
+      // check immediately below). Matches the page-one path's shape at L315-318.
+      const disposition = core.land({ generation: state.desiredTupleGeneration, worldKey: appendKey }, () =>
+        isTupleStillDesired(tuple)
+      );
+      if (disposition === 'present') {
         env.seam.commitWorldToMountedState({
           worldId: nextEntry.worldId,
           generation: state.desiredTupleGeneration,

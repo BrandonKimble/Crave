@@ -46,6 +46,7 @@ final class SearchChromeNativeHitTargetSurfaceRegistry {
       return
     }
     surfacesByKey.removeValue(forKey: hostKey)
+    pendingRegionsByKey.removeValue(forKey: hostKey)
   }
 
   func syncRegions(hostKey: String, regions: [SearchChromeNativeHitTargetRegion]) {
