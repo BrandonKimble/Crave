@@ -314,10 +314,6 @@ export interface SearchResponseMetadata {
   queryExecutionTimeMs: number;
   boundsApplied: boolean;
   openNowApplied: boolean;
-  openNowSupportedRestaurants: number;
-  openNowUnsupportedRestaurants: number;
-  openNowUnsupportedRestaurantIds?: string[];
-  openNowFilteredOut: number;
   priceFilterApplied?: boolean;
   minimumVotesApplied?: boolean;
   page: number;

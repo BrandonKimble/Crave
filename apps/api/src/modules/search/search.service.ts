@@ -332,9 +332,6 @@ export class SearchService {
         searchRequestId,
         boundsApplied: false,
         openNowApplied: false,
-        openNowSupportedRestaurants: 0,
-        openNowUnsupportedRestaurants: 0,
-        openNowFilteredOut: 0,
         priceFilterApplied: Boolean(request.priceLevels?.length),
         minimumVotesApplied:
           typeof request.minimumVotes === 'number' && request.minimumVotes > 0,
@@ -824,13 +821,6 @@ export class SearchService {
         searchRequestId,
         boundsApplied: pooledResult.exec.metadata.boundsApplied,
         openNowApplied: pooledResult.exec.metadata.openNowApplied,
-        openNowSupportedRestaurants:
-          pooledResult.exec.metadata.openNowSupportedRestaurants,
-        openNowUnsupportedRestaurants:
-          pooledResult.exec.metadata.openNowUnsupportedRestaurants,
-        openNowUnsupportedRestaurantIds:
-          pooledResult.exec.metadata.openNowUnsupportedRestaurantIds,
-        openNowFilteredOut: pooledResult.exec.metadata.openNowFilteredOut,
         priceFilterApplied: pooledResult.exec.metadata.priceFilterApplied,
         minimumVotesApplied: pooledResult.exec.metadata.minimumVotesApplied,
         page: pagination.page,
@@ -877,10 +867,6 @@ export class SearchService {
       if (request.openNow && !pooledResult.exec.metadata.openNowApplied) {
         this.logger.warn(
           'Open-now filter requested but insufficient metadata to evaluate',
-          {
-            unsupportedCount:
-              pooledResult.exec.metadata.openNowUnsupportedRestaurants,
-          },
         );
       }
 
@@ -2262,9 +2248,6 @@ export class SearchService {
         queryExecutionTimeMs,
         boundsApplied: bounds != null,
         openNowApplied: false,
-        openNowSupportedRestaurants: 0,
-        openNowUnsupportedRestaurants: 0,
-        openNowFilteredOut: 0,
         page: 1,
         pageSize: restaurants.length,
         resultCoverageStatus: 'full',

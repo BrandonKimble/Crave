@@ -74,10 +74,6 @@ function createExecutor() {
       metadata: {
         boundsApplied: true,
         openNowApplied: false,
-        openNowSupportedRestaurants: 0,
-        openNowUnsupportedRestaurants: 0,
-        openNowUnsupportedRestaurantIds: [],
-        openNowFilteredOut: 0,
         priceFilterApplied: false,
         minimumVotesApplied: false,
       },

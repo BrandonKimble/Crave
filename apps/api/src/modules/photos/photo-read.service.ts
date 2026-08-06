@@ -235,7 +235,8 @@ export class PhotoReadService {
         SELECT *, ROW_NUMBER() OVER (
           PARTITION BY ${column}
           ORDER BY (focus_score IS NULL OR focus_score >= ${FOCUS_FLOOR}) DESC,
-                   ticketed_at DESC
+                   ticketed_at DESC,
+                   photo_id DESC
         ) AS rn
         FROM photos
         WHERE ${column} = ANY(${ids}::uuid[])
@@ -290,7 +291,7 @@ export class PhotoReadService {
     const [all, totalCount, dishRows] = await Promise.all([
       this.prisma.photo.findMany({
         where: visibleWhere,
-        orderBy: { ticketedAt: 'desc' },
+        orderBy: [{ ticketedAt: 'desc' }, { photoId: 'desc' }],
         skip: offset,
         take: limit,
         select: PHOTO_STRIP_SELECT,
@@ -333,7 +334,8 @@ export class PhotoReadService {
         SELECT *, ROW_NUMBER() OVER (
           PARTITION BY connection_id
           ORDER BY (focus_score IS NULL OR focus_score >= ${FOCUS_FLOOR}) DESC,
-                   ticketed_at DESC
+                   ticketed_at DESC,
+                   photo_id DESC
         ) AS rn
         FROM photos
         WHERE restaurant_id = ${restaurantId}::uuid
@@ -369,7 +371,7 @@ export class PhotoReadService {
             status: PhotoStatus.live,
             visibility: PhotoVisibility.public,
           },
-      orderBy: { ticketedAt: 'desc' },
+      orderBy: [{ ticketedAt: 'desc' }, { photoId: 'desc' }],
       take: Math.min(params.limit ?? 200, 500),
       select: {
         ...PHOTO_STRIP_SELECT,

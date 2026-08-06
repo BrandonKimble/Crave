@@ -161,8 +161,24 @@ export class SearchQueryInterpretationService {
           request.bounds,
         );
         scanEngineId = coverage.engines[0]?.engineId ?? null;
-      } catch {
+      } catch (error) {
+        // Fail-open BY POLICY (F3104, D73: instrumentation only): a coverage
+        // outage must not kill search, so the search continues with the
+        // gazetteer's restaurant arm UNSCOPED — exactly the multi-city
+        // mis-grounding territory scoping (red team ⑧) exists to prevent,
+        // now countable instead of silent. Whether this should instead fail
+        // the search is escalated with F2601.
         scanEngineId = null;
+        this.logger.warn(
+          'Viewport coverage resolve failed; territory scoping disabled — gazetteer restaurant arm scanning unscoped (failing open)',
+          {
+            policy: 'territory-scoping-fail-open',
+            error:
+              error instanceof Error
+                ? { message: error.message }
+                : { message: String(error) },
+          },
+        );
       }
     }
     // THE ANALYZER RUNS ONCE PER QUERY (A5). Everything language-shaped

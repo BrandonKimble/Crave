@@ -130,10 +130,6 @@ function makeHarness(list: ListRow, collaboratorIds: string[] = []) {
       totalDishCount: 0,
       metadata: {
         openNowApplied: false,
-        openNowSupportedRestaurants: 0,
-        openNowUnsupportedRestaurants: 0,
-        openNowUnsupportedRestaurantIds: [],
-        openNowFilteredOut: 0,
         priceFilterApplied: false,
         minimumVotesApplied: false,
       },

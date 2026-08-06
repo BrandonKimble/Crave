@@ -72,6 +72,10 @@ export default tseslint.config(
       'src/modules/photos/photo-reads.ts',
       'src/modules/photos/photos.module.ts',
       'src/modules/photos/photo-read.service.spec.ts',
+      // F3103's ordering-determinism spec exercises the raw service's SQL
+      // ORDER BY directly — no viewer is involved, same standing as the
+      // unit spec above.
+      'src/modules/photos/restaurant-gallery-pagination-tiebreak.integration.spec.ts',
       // Two operator PROBE SCRIPTS read the raw photo service directly —
       // doors the old src-only Jest scanner never saw either. They are
       // diagnostics with NO VIEWER, and the seam's guarantee is about what a

@@ -412,12 +412,6 @@ export class ListResultsAssembler {
       searchRequestId,
       boundsApplied: false,
       openNowApplied: exec.metadata.openNowApplied,
-      openNowSupportedRestaurants: exec.metadata.openNowSupportedRestaurants,
-      openNowUnsupportedRestaurants:
-        exec.metadata.openNowUnsupportedRestaurants,
-      openNowUnsupportedRestaurantIds:
-        exec.metadata.openNowUnsupportedRestaurantIds,
-      openNowFilteredOut: exec.metadata.openNowFilteredOut,
       priceFilterApplied: exec.metadata.priceFilterApplied,
       minimumVotesApplied: exec.metadata.minimumVotesApplied,
       page,
@@ -588,9 +582,6 @@ export class ListResultsAssembler {
         searchRequestId: `favorites:${source.labelId}:${source.updatedAtMs}`,
         boundsApplied: false,
         openNowApplied: false,
-        openNowSupportedRestaurants: 0,
-        openNowUnsupportedRestaurants: 0,
-        openNowFilteredOut: 0,
         priceFilterApplied: false,
         minimumVotesApplied: false,
         page: 1,
