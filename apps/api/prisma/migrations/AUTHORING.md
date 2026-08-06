@@ -98,8 +98,9 @@ signals**, not an error anyone sees. Two couplings the migration cannot express:
   has NO partition for "now" until the first 03:10 pass fires.
 
 If you create a fresh database or turn crons off, run the maintenance pass
-explicitly. (Compounds F205: the maintenance cron currently fails log-only, with
-no `ops_alert`.)
+explicitly. (F205 is closed: the maintenance cron now emits a critical
+`ops_alert` on failure AND asserts the lead-partition invariant independently
+of the pass succeeding — see `SignalPartitionMaintenanceService`.)
 
 ## 4. Same-timestamp directory prefixes are resolved alphabetically (F306)
 
