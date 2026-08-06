@@ -243,11 +243,26 @@ for foods, ingredients and attributes alike (verified). Edges never cross type.
 8. **Extend `satisfies` to attributes** — but have `placeAttribute` EMIT the edge
    rather than running a second pass; it already makes that judgment and discards it.
 
-**Deletions:** spine-seed script, label sweep, `NoopLabelGenerator`,
-`AliasManagementService` (orphaned; hardcoded blocklist self-described as "in real
-implementation, this could be enhanced"), the query-time geometric mutual-rank cut,
-and the gold gate once trusted. **Smell to fix:** rejected-tombstone adoption banks
-aliases onto archived junk entities.
+**Deletions — verified before removing, and two of the four were WRONG:**
+
+- `scripts/seed-spine-labels.ts` + `scripts/seed-spine-aliases.ts` — DELETED.
+  Unreferenced anywhere, and the vocabulary pass covers the spine as an ordinary
+  subset of the corpus (L12's "no spine special case").
+- `AliasManagementService` — **KEPT. It is NOT orphaned.** The red-team note that
+  suggested otherwise was explicitly scoped to three files; a repo-wide check finds
+  three live consumers (`restaurant-cuisine-extraction`, `restaurant-location-
+enrichment`, `entity-resolution` — the creation path's `addOriginalTextAsAlias`
+  and `validateScopeConstraints`). Deleting it would have broken entity creation.
+  Its hardcoded scope-keyword blocklist is still a real smell, but that is a
+  rederivation, not a deletion.
+- `NoopLabelGenerator` — **KEPT.** It is the default generator, and that is what
+  makes `sweep-entity-labels.ts` without `--apply` measure the backlog while
+  spending nothing. Deleting it would delete the honest dry run.
+- The query-time geometric mutual-rank cut and the gold gate — still to go, once
+  typed coverage is broad enough to retire the floor.
+
+**Smell recorded, not yet fixed:** rejected-tombstone adoption banks aliases onto
+archived junk entities.
 
 ---
 

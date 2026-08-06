@@ -11,6 +11,7 @@ import { PublicCraveScoreModule } from '../content-processing/public-crave-score
 import { SignalsModule } from '../signals/signals.module';
 import { PlacesModule } from '../places/places.module';
 import { SearchController } from './search.controller';
+import { DemandVocabularyService } from './demand-vocabulary.service';
 import { SearchService } from './search.service';
 import { SearchCoverageService } from './search-coverage.service';
 import { SearchQueryExecutor } from './search-query.executor';
@@ -49,6 +50,7 @@ import { OpenIntervalsBuilderService } from './open-intervals-builder.service';
   ],
   controllers: [SearchController],
   providers: [
+    DemandVocabularyService,
     SearchService,
     SearchCoverageService,
     SearchQueryExecutor,
@@ -70,6 +72,7 @@ import { OpenIntervalsBuilderService } from './open-intervals-builder.service';
     OpenIntervalsBuilderService,
   ],
   exports: [
+    DemandVocabularyService,
     SearchService,
     SearchOrchestrationService,
     OnDemandRequestService,
