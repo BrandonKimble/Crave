@@ -439,9 +439,6 @@ const PollCreationPersistentHeaderTitle = React.memo(() => {
   // fallback, so the title names where the map actually IS, not where the
   // feed last fetched.
   const subjectVerdict = useViewportSubjectVerdict();
-  console.log(
-    `[F1471PROBE] render t=${Date.now()} subjectVerdict=${subjectVerdict == null ? 'null' : JSON.stringify(subjectVerdict)} fallbackPlaceName=${JSON.stringify(placeName)}`
-  );
   const headerTitle = subjectVerdict
     ? subjectVerdict.kind === 'place'
       ? `Add a poll in ${subjectVerdict.placeName}`
