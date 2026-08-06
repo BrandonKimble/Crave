@@ -5,7 +5,7 @@ import { useSearchRuntimeBusSelector } from './use-search-runtime-bus-selector';
 import type {
   SearchRootResultsArrivalState,
   SearchRootSessionCoreLane,
-} from './use-search-root-session-runtime-contract';
+} from './search-root-session-runtime-contract';
 
 type UseSearchRootResultsArrivalRuntimeArgs = {
   rootSessionCoreLane: Pick<SearchRootSessionCoreLane, 'searchRuntimeBus'>;

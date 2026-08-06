@@ -12,7 +12,7 @@ import { useSearchRootRuntimeOverlayFoundationAssemblyRuntime } from './use-sear
 import { useSearchRootRouteAncillaryPublicationRuntime } from './use-search-root-route-ancillary-publication-runtime';
 import { useSearchRootRouteControlRuntime } from './use-search-root-route-control-runtime';
 import { useSearchRootRouteOverlayHostPublicationLanesRuntime } from './use-search-root-route-overlay-host-publication-lanes-runtime';
-import { useSearchRootRouteSurfaceHostRuntime } from './use-search-root-route-surface-host-runtime';
+import { selectSearchRootRouteSurfaceHostRuntime } from './select-search-root-route-surface-host-runtime';
 import { useSearchRootRuntimeVisualStageRuntime } from './use-search-root-runtime-visual-stage-runtime';
 import { useSearchRouteResultsPolicyDomainRuntime } from './use-search-route-results-policy-domain-runtime';
 import type { useSearchScreenAppEntryPlaneRuntime } from './use-search-screen-app-entry-plane-runtime';
@@ -45,7 +45,7 @@ export const useSearchRootRuntimeStageRuntime = ({
     useSearchRootRouteControlRuntime({
       routeSceneRuntime,
     });
-  const routeSurfaceHostRuntime = useSearchRootRouteSurfaceHostRuntime({
+  const routeSurfaceHostRuntime = selectSearchRootRouteSurfaceHostRuntime({
     routeSceneRuntime,
     routeRestaurantOverlayRuntime,
   });

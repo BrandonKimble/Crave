@@ -1,13 +1,13 @@
 import {
   type SearchForegroundVisualRuntime,
   type UseSearchForegroundVisualRuntimeArgs,
-} from './use-search-foreground-visual-runtime-contract';
+} from './search-foreground-visual-runtime-contract';
 import { useSearchForegroundBottomNavVisualRuntime } from './use-search-foreground-bottom-nav-visual-runtime';
 import { useSearchForegroundChromeSurfaceVisualRuntime } from './use-search-foreground-chrome-surface-visual-runtime';
 import { useSearchForegroundSearchThisAreaVisualRuntime } from './use-search-foreground-search-this-area-visual-runtime';
 import { useSearchForegroundShortcutsVisualRuntime } from './use-search-foreground-shortcuts-visual-runtime';
 
-export type { SearchForegroundVisualRuntime } from './use-search-foreground-visual-runtime-contract';
+export type { SearchForegroundVisualRuntime } from './search-foreground-visual-runtime-contract';
 
 export const useSearchForegroundVisualRuntime = ({
   shouldDimResultsSheet,

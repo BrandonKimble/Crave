@@ -1,7 +1,7 @@
 import React from 'react';
 import { Easing } from 'react-native-reanimated';
 
-import type { SearchSuggestionTransitionTimingRuntime } from './use-search-suggestion-surface-runtime-contract';
+import type { SearchSuggestionTransitionTimingRuntime } from './search-suggestion-surface-runtime-contract';
 
 const SUGGESTION_PANEL_SHOW_MS = 160;
 const SUGGESTION_PANEL_HIDE_MS = 160;

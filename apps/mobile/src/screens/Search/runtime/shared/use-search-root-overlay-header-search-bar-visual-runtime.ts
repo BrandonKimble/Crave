@@ -4,8 +4,8 @@ import type { SearchForegroundHeaderSearchBarVisualInputs } from './search-foreg
 import type {
   SearchRootResultsPresentationControlLane,
   SearchRootSuggestionInteractionControlLane,
-} from './use-search-root-control-plane-runtime-contract';
-import type { SearchRootStateFoundationLane } from './use-search-root-foundation-runtime';
+} from './search-root-control-plane-runtime-contract';
+import type { SearchRootStateFoundationLane } from './search-root-foundation-runtime';
 import type { SearchRootOverlayHeaderSearchBarVisualRuntime } from './search-root-visual-runtime-contract';
 
 export const useSearchRootOverlayHeaderSearchBarVisualRuntime = ({

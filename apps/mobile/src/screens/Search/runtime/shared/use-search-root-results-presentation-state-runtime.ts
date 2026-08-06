@@ -2,8 +2,8 @@ import React from 'react';
 
 import type { ProfileOwner } from '../profile/profile-owner-runtime-contract';
 import type { SearchRootOverlayFoundationRuntime } from './search-root-overlay-foundation-runtime-contract';
-import type { SearchRootPresentationStateRuntime } from './use-search-root-control-plane-runtime-contract';
-import type { SearchRootStateFoundationLane } from './use-search-root-foundation-runtime';
+import type { SearchRootPresentationStateRuntime } from './search-root-control-plane-runtime-contract';
+import type { SearchRootStateFoundationLane } from './search-root-foundation-runtime';
 
 type UseSearchRootResultsPresentationStateRuntimeArgs = {
   stateFoundationLane: SearchRootStateFoundationLane;

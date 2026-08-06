@@ -10,14 +10,11 @@ import type { SearchForegroundPolicyPublicationAuthority } from './search-foregr
 import type {
   SearchRootDataPlaneRuntime,
   SearchRootSessionCoreLane,
-  } from './use-search-root-session-runtime-contract';
+} from './search-root-session-runtime-contract';
 
 type UseSearchRootDataPlaneRuntimeArgs = {
   isSignedIn: boolean;
-  rootSessionCoreLane: Pick<
-    SearchRootSessionCoreLane,
-    'searchRuntimeBus'
-  >;
+  rootSessionCoreLane: Pick<SearchRootSessionCoreLane, 'searchRuntimeBus'>;
   foregroundPolicyPublicationAuthority: SearchForegroundPolicyPublicationAuthority;
 };
 
@@ -45,13 +42,13 @@ export const useSearchRootDataPlaneRuntime = ({
 
   return React.useMemo<SearchRootDataPlaneRuntime>(
     () => ({
-        resultsArrivalState,
-        runtimeFlags,
-        freezeGate,
-        historyRuntime,
-        filterStateRuntime,
-        requestStatusRuntime,
-      }),
+      resultsArrivalState,
+      runtimeFlags,
+      freezeGate,
+      historyRuntime,
+      filterStateRuntime,
+      requestStatusRuntime,
+    }),
     [
       filterStateRuntime,
       freezeGate,

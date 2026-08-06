@@ -1,10 +1,10 @@
 import React from 'react';
 
-import type { SearchRootDataPlaneRuntime } from './use-search-root-session-runtime-contract';
+import type { SearchRootDataPlaneRuntime } from './search-root-session-runtime-contract';
 import type { SearchOverlayStoreRuntime } from './search-root-scaffold-runtime-contract';
 import type { SearchRootPrimitivesRuntime } from './search-root-primitives-runtime-contract';
 import type { SearchRootForegroundInputRuntime } from './search-root-control-ports-runtime-contract';
-import type { SearchRootResultsPresentationControlPort } from './use-search-root-control-plane-runtime-contract';
+import type { SearchRootResultsPresentationControlPort } from './search-root-control-plane-runtime-contract';
 import { useSearchRootForegroundInputFocusRuntime } from './use-search-root-foreground-input-focus-runtime';
 import { useSearchRootForegroundInputSessionRuntime } from './use-search-root-foreground-input-session-runtime';
 import { useSearchRootForegroundInputShortcutSyncRuntime } from './use-search-root-foreground-input-shortcut-sync-runtime';
@@ -50,10 +50,10 @@ export const useSearchRootForegroundInputRuntime = ({
 
   return React.useMemo<SearchRootForegroundInputRuntime>(
     () => ({
-        captureSearchSessionQuery: foregroundInputSessionRuntime.captureSearchSessionQuery,
-        focusSearchInput: foregroundInputFocusRuntime.focusSearchInput,
-        handleQueryChange: foregroundInputSessionRuntime.handleQueryChange,
-      }),
+      captureSearchSessionQuery: foregroundInputSessionRuntime.captureSearchSessionQuery,
+      focusSearchInput: foregroundInputFocusRuntime.focusSearchInput,
+      handleQueryChange: foregroundInputSessionRuntime.handleQueryChange,
+    }),
     [
       foregroundInputFocusRuntime.focusSearchInput,
       foregroundInputSessionRuntime.captureSearchSessionQuery,

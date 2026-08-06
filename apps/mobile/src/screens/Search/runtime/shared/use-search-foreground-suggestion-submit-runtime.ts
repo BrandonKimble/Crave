@@ -4,7 +4,7 @@ import type { AutocompleteMatch } from '../../../../services/autocomplete';
 import type {
   SearchForegroundInteractionSubmitHandlers,
   SearchForegroundSubmitRuntimeArgs,
-} from './use-search-foreground-interaction-runtime-contract';
+} from './search-foreground-interaction-runtime-contract';
 
 type UseSearchForegroundSuggestionSubmitRuntimeArgs = Pick<
   SearchForegroundSubmitRuntimeArgs,

@@ -4,7 +4,7 @@ import type {
   SearchForegroundInteractionSubmitHandlers,
   SearchForegroundInteractionTransientHandlersRuntime,
   UseSearchForegroundTransientHandlersRuntimeArgs,
-} from './use-search-foreground-interaction-runtime-contract';
+} from './search-foreground-interaction-runtime-contract';
 import { useSearchForegroundEditingHandlersRuntime } from './use-search-foreground-editing-handlers-runtime';
 import { useSearchForegroundExternalSubmitRuntime } from './use-search-foreground-external-submit-runtime';
 import { useSearchForegroundOverlayNavigationRuntime } from './use-search-foreground-overlay-navigation-runtime';

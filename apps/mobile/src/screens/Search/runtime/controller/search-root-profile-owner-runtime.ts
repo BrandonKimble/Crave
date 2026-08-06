@@ -2,7 +2,7 @@ import type { ProfileOwner } from '../profile/profile-owner-runtime-contract';
 import type {
   SearchRootRestaurantSelectionModel,
   SuggestionInteractionRuntime,
-} from '../shared/use-search-root-control-plane-runtime-contract';
+} from '../shared/search-root-control-plane-runtime-contract';
 
 export type SearchRootProfileOwnerRuntimeValue = {
   profileOwner: ProfileOwner;

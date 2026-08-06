@@ -1,7 +1,7 @@
 import React from 'react';
 
 import type { useSearchScreenAppEntryPlaneRuntime } from './use-search-screen-app-entry-plane-runtime';
-import type { SearchRootStateFoundationLane } from './use-search-root-foundation-runtime';
+import type { SearchRootStateFoundationLane } from './search-root-foundation-runtime';
 import type { SearchRootMapViewportIntentRuntime } from './search-root-map-viewport-intent-runtime-contract';
 import { useSearchRootMapSurfaceStateRuntime } from './use-search-root-map-surface-state-runtime';
 import { useSearchRootMapSurfaceViewRuntime } from './use-search-root-map-surface-view-runtime';

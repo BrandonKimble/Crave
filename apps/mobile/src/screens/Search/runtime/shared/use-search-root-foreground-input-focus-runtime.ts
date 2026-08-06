@@ -3,8 +3,8 @@ import React from 'react';
 import { AUTOCOMPLETE_MIN_CHARS } from '../../constants/search';
 import type { SearchRootPrimitivesRuntime } from './search-root-primitives-runtime-contract';
 import type { SearchOverlayStoreRuntime } from './search-root-scaffold-runtime-contract';
-import type { SearchRootResultsPresentationControlPort } from './use-search-root-control-plane-runtime-contract';
-import type { SearchRootDataPlaneRuntime } from './use-search-root-session-runtime-contract';
+import type { SearchRootResultsPresentationControlPort } from './search-root-control-plane-runtime-contract';
+import type { SearchRootDataPlaneRuntime } from './search-root-session-runtime-contract';
 import { useSearchAutocompleteRuntime } from './use-search-autocomplete-runtime';
 
 type UseSearchRootForegroundInputFocusRuntimeArgs = {

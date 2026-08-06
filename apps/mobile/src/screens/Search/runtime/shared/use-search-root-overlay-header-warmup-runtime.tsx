@@ -2,7 +2,7 @@ import React from 'react';
 
 import { ACTIVE_TAB_COLOR, CONTENT_HORIZONTAL_PADDING } from '../../constants/search';
 import type { SearchOverlayChromeHiddenSearchFiltersWarmupProps } from './search-foreground-chrome-contract';
-import type { SearchRootFilterModalControlLane } from './use-search-root-control-plane-runtime-contract';
+import type { SearchRootFilterModalControlLane } from './search-root-control-plane-runtime-contract';
 import type { SearchRootSearchStateRuntime } from './search-root-primitives-runtime-contract';
 import { createSearchRuntimeBus } from './search-runtime-bus';
 

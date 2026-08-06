@@ -2,8 +2,8 @@ import React from 'react';
 
 import type { ProfileOwner } from '../profile/profile-owner-runtime-contract';
 import type { SearchRootOverlayFoundationRuntime } from './search-root-overlay-foundation-runtime-contract';
-import type { SearchRootStateFoundationLane } from './use-search-root-foundation-runtime';
-import type { SearchForegroundOverlayRuntimeArgs } from './use-search-foreground-interaction-runtime-contract';
+import type { SearchRootStateFoundationLane } from './search-root-foundation-runtime';
+import type { SearchForegroundOverlayRuntimeArgs } from './search-foreground-interaction-runtime-contract';
 
 type SearchRootForegroundOverlayActionArgs = Pick<
   SearchForegroundOverlayRuntimeArgs,

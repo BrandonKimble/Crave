@@ -1,7 +1,7 @@
 import React from 'react';
 
 import useSearchSubmitOwnerValue from '../../hooks/use-search-submit-owner';
-import type { SearchRootStateFoundationLane } from './use-search-root-foundation-runtime';
+import type { SearchRootStateFoundationLane } from './search-root-foundation-runtime';
 import type { ResultsPresentationOwner } from './use-results-presentation-runtime-owner';
 
 type SearchRootSubmitUiPresentationIntentPorts = Pick<

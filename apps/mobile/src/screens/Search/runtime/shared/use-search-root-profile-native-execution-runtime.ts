@@ -4,8 +4,8 @@ import type { SearchRootOverlayFoundationRuntime } from './search-root-overlay-f
 import type {
   SearchRootSessionCoreLane,
   SearchRootSessionPrimitivesLane,
-} from './use-search-root-session-runtime-contract';
-import type { SearchRootStateFoundationLane } from './use-search-root-foundation-runtime';
+} from './search-root-session-runtime-contract';
+import type { SearchRootStateFoundationLane } from './search-root-foundation-runtime';
 import type { ProfileOwnerNativeExecutionArgs } from '../profile/profile-owner-runtime-contract';
 import { PROFILE_CAMERA_ANIMATION_MS } from '../profile/profile-camera-motion-constants';
 

@@ -27,7 +27,7 @@ import {
   markTrackNavPress,
   requestTrackScenePrewarm,
 } from '../../../tracksheet/track-entry-prewarm';
-import type { SearchBottomNavMotionRuntime } from '../runtime/shared/use-search-foreground-visual-runtime-contract';
+import type { SearchBottomNavMotionRuntime } from '../runtime/shared/search-foreground-visual-runtime-contract';
 import styles from '../styles';
 
 type NavItem = {

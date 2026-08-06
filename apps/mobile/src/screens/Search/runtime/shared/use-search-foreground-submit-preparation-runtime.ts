@@ -1,6 +1,6 @@
 import React from 'react';
 
-import type { SearchForegroundSubmitRuntimeArgs } from './use-search-foreground-interaction-runtime-contract';
+import type { SearchForegroundSubmitRuntimeArgs } from './search-foreground-interaction-runtime-contract';
 
 type SearchForegroundSubmitPreparationRuntime = {
   prepareSubmitChrome: () => void;

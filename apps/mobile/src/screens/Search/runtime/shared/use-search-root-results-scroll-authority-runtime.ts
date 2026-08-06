@@ -2,7 +2,7 @@ import React from 'react';
 
 import type { SearchRootResultsScrollAuthorityRuntime } from './search-root-control-ports-runtime-contract';
 import type { SearchRootOverlayFoundationRuntime } from './search-root-overlay-foundation-runtime-contract';
-import type { SearchRootStateFoundationLane } from './use-search-root-foundation-runtime';
+import type { SearchRootStateFoundationLane } from './search-root-foundation-runtime';
 import { registerPerfScenarioCommands } from '../../../../perf/perf-scenario-command-registry';
 
 type UseSearchRootResultsScrollAuthorityRuntimeArgs = {

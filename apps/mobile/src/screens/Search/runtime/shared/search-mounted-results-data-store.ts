@@ -40,7 +40,7 @@ type SearchSurfaceRedrawPhase = 'idle' | 'redraw_committed';
 import { RESULTS_BOTTOM_PADDING } from '../../constants/search';
 import { getResultsPresentationSurfaceAuthority } from './results-presentation-surface-authority';
 import { logRevealSyncDebug, logSrinullDebug } from './search-mounted-results-debug-flag';
-import type { SearchRuntimeInteractionState } from './use-search-root-session-runtime-contract';
+import type { SearchRuntimeInteractionState } from './search-root-session-runtime-contract';
 import { getSearchSurfaceRuntime } from '../surface/search-surface-runtime';
 
 // S1 (plans/search-desired-state-architecture.md §7): coverage is a FIELD of the world

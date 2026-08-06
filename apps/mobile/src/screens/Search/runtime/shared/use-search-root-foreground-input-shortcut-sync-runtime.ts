@@ -1,7 +1,7 @@
 import React from 'react';
 
-import type { SearchRootResultsPresentationControlPort } from './use-search-root-control-plane-runtime-contract';
-import type { SearchRootDataPlaneRuntime } from './use-search-root-session-runtime-contract';
+import type { SearchRootResultsPresentationControlPort } from './search-root-control-plane-runtime-contract';
+import type { SearchRootDataPlaneRuntime } from './search-root-session-runtime-contract';
 import type { SearchRootPrimitivesRuntime } from './search-root-primitives-runtime-contract';
 
 type UseSearchRootForegroundInputShortcutSyncRuntimeArgs = {

@@ -5,7 +5,7 @@ import { SEARCH_BAR_SHADOW } from '../../shadows';
 import type {
   SearchForegroundChromeSurfaceVisualRuntime,
   UseSearchForegroundVisualRuntimeArgs,
-} from './use-search-foreground-visual-runtime-contract';
+} from './search-foreground-visual-runtime-contract';
 
 type UseSearchForegroundChromeSurfaceVisualRuntimeArgs = Pick<
   UseSearchForegroundVisualRuntimeArgs,

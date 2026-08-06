@@ -3,7 +3,7 @@ import React from 'react';
 import type {
   SearchForegroundEditingRuntimeArgs,
   SearchForegroundInteractionEditingHandlers,
-} from './use-search-foreground-interaction-runtime-contract';
+} from './search-foreground-interaction-runtime-contract';
 import { useSearchForegroundClearRuntime } from './use-search-foreground-clear-runtime';
 import { useSearchForegroundExitEditingRuntime } from './use-search-foreground-exit-editing-runtime';
 import { useSearchForegroundFocusRuntime } from './use-search-foreground-focus-runtime';

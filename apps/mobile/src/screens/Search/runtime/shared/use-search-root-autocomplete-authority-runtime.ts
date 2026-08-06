@@ -1,8 +1,8 @@
 import React from 'react';
 
 import type { SearchRootAutocompleteAuthorityRuntime } from './search-root-control-ports-runtime-contract';
-import type { SearchRootStateFoundationLane } from './use-search-root-foundation-runtime';
-import type { SearchRootSessionCoreLane } from './use-search-root-session-runtime-contract';
+import type { SearchRootStateFoundationLane } from './search-root-foundation-runtime';
+import type { SearchRootSessionCoreLane } from './search-root-session-runtime-contract';
 import { useSearchAutocompleteRuntime } from './use-search-autocomplete-runtime';
 import type { MapBounds } from '../../../../types';
 

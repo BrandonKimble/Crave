@@ -1,8 +1,8 @@
 import React from 'react';
 
 import type { SearchForegroundSuggestionScrollInputs } from './search-foreground-chrome-contract';
-import type { SearchRootStateFoundationLane } from './use-search-root-foundation-runtime';
-import type { SearchRootSuggestionInteractionControlLane } from './use-search-root-control-plane-runtime-contract';
+import type { SearchRootStateFoundationLane } from './search-root-foundation-runtime';
+import type { SearchRootSuggestionInteractionControlLane } from './search-root-control-plane-runtime-contract';
 
 export const useSearchRootOverlaySuggestionScrollInputsRuntime = ({
   stateFoundationLane,

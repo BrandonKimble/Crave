@@ -3,7 +3,7 @@ import React from 'react';
 import type {
   SearchForegroundEditingRuntimeArgs,
   SearchForegroundInteractionEditingHandlers,
-} from './use-search-foreground-interaction-runtime-contract';
+} from './search-foreground-interaction-runtime-contract';
 import { useSearchForegroundBackExitRuntime } from './use-search-foreground-back-exit-runtime';
 import { useSearchForegroundBlurExitRuntime } from './use-search-foreground-blur-exit-runtime';
 import { useSearchForegroundExitPresentationRuntime } from './use-search-foreground-exit-presentation-runtime';

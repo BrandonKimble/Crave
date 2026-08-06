@@ -6,7 +6,7 @@ import type {
   SearchForegroundHeaderShortcutsInputs,
 } from './search-foreground-chrome-contract';
 import type { SearchChromeTouchSurfaceRuntime } from './search-chrome-touch-surface-contract';
-import type { SearchRootStateFoundationLane } from './use-search-root-foundation-runtime';
+import type { SearchRootStateFoundationLane } from './search-root-foundation-runtime';
 
 const areLayoutRectanglesEqual = (
   left: LayoutRectangle | null,

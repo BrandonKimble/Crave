@@ -3,7 +3,7 @@ import type {
   SearchSuggestionHeaderHolesRuntime,
   SearchSuggestionHeaderHolesRuntimeArgs,
   SearchSuggestionMaskedHole,
-} from './use-search-suggestion-surface-runtime-contract';
+} from './search-suggestion-surface-runtime-contract';
 import { cloneSuggestionMaskedHoleArray } from './search-suggestion-header-hole-runtime';
 import { useSearchSuggestionHeaderSearchHoleRuntime } from './use-search-suggestion-header-search-hole-runtime';
 import { useSearchSuggestionHeaderShortcutHolesRuntime } from './use-search-suggestion-header-shortcut-holes-runtime';

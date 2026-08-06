@@ -11,7 +11,7 @@ import { usePerfScenarioRuntimeStore } from '../../../../perf/perf-scenario-runt
 import type {
   SearchForegroundShortcutsVisualRuntime,
   UseSearchForegroundVisualRuntimeArgs,
-} from './use-search-foreground-visual-runtime-contract';
+} from './search-foreground-visual-runtime-contract';
 
 const SEARCH_SHORTCUT_BASE_SHADOW_OPACITY = Number(SEARCH_SHORTCUT_SHADOW.shadowOpacity ?? 0);
 const SEARCH_SHORTCUT_BASE_ELEVATION = Number(SEARCH_SHORTCUT_SHADOW.elevation ?? 0);

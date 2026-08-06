@@ -10,7 +10,7 @@ import type {
   SearchRootSessionControlServicesRuntime,
   SearchRootSessionCoreLane,
   SearchRootSessionPrimitivesLane,
-} from './use-search-root-session-runtime-contract';
+} from './search-root-session-runtime-contract';
 
 type UseSearchRootSessionCoreLaneRuntimeArgs = {
   accessToken: SearchRootEnvironment['accessToken'];

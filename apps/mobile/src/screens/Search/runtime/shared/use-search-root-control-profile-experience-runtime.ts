@@ -1,13 +1,13 @@
 import type { SearchRootEnvironment } from './search-root-environment-contract';
 import { useSearchRootProfileControlRuntime } from './use-search-root-profile-control-runtime';
 import type { SearchRootOverlayFoundationRuntime } from './search-root-overlay-foundation-runtime-contract';
-import type { SearchRootStateFoundationLane } from './use-search-root-foundation-runtime';
+import type { SearchRootStateFoundationLane } from './search-root-foundation-runtime';
 import type {
   SearchRootClearRestoreAuthorityRuntime,
   SearchRootProfileBridgeAuthorityRuntime,
   SearchRootRecentActivityAuthorityRuntime,
 } from './search-root-control-ports-runtime-contract';
-import type { SearchRootSessionCoreLane } from './use-search-root-session-runtime-contract';
+import type { SearchRootSessionCoreLane } from './search-root-session-runtime-contract';
 
 type UseSearchRootControlProfileExperienceRuntimeArgs = {
   sessionCoreLane: SearchRootSessionCoreLane;

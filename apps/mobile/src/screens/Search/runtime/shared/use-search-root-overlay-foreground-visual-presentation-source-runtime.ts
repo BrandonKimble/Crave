@@ -1,7 +1,7 @@
 import React from 'react';
 
 import type { SearchResultsPanelEnvironment } from './search-results-panel-environment-contract';
-import type { SearchRootResultsPresentationStateControlLane } from './use-search-root-control-plane-runtime-contract';
+import type { SearchRootResultsPresentationStateControlLane } from './search-root-control-plane-runtime-contract';
 
 export const useSearchRootOverlayForegroundVisualPresentationSourceRuntime = ({
   resultsPresentationStateControlLane,

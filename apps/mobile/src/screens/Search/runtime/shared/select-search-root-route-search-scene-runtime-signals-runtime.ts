@@ -3,7 +3,7 @@ import type {
   SearchRootRuntimeRouteSearchSceneRuntimeSignalsRuntime,
 } from './route-search-scene-runtime-contract';
 
-export const useSearchRootRouteSearchSceneRuntimeSignalsRuntime = ({
+export const selectSearchRootRouteSearchSceneRuntimeSignalsRuntime = ({
   sessionAssemblyRuntime,
   stateAssemblyRuntime,
   overlayFoundationAssemblyRuntime,

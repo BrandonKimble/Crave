@@ -8,13 +8,13 @@ import type {
   SearchRootAutocompleteAuthorityRuntime,
   SearchRootRecentActivityAuthorityRuntime,
 } from './search-root-control-ports-runtime-contract';
-import type { SearchRootStateFoundationLane } from './use-search-root-foundation-runtime';
+import type { SearchRootStateFoundationLane } from './search-root-foundation-runtime';
 import type {
   SuggestionInteractionRuntime,
   SubmitRuntimeResult,
-} from './use-search-root-control-plane-runtime-contract';
+} from './search-root-control-plane-runtime-contract';
 import { useSearchForegroundCommandRuntime } from './use-search-foreground-command-runtime';
-import type { SearchForegroundCommandRuntimeArgs } from './use-search-foreground-interaction-runtime-contract';
+import type { SearchForegroundCommandRuntimeArgs } from './search-foreground-interaction-runtime-contract';
 
 type UseSearchRootForegroundCommandRuntimeArgs = {
   stateFoundationLane: SearchRootStateFoundationLane;

@@ -3,8 +3,8 @@ import React from 'react';
 import type { SearchRootMapViewportIntentRuntime } from './search-root-map-viewport-intent-runtime-contract';
 import type { SearchRootOverlayFoundationRuntime } from './search-root-overlay-foundation-runtime-contract';
 import type { SearchRootRequestExecutionAuthorityRuntime } from './search-root-control-ports-runtime-contract';
-import type { SearchRootStateFoundationLane } from './use-search-root-foundation-runtime';
-import type { SearchRootSessionCoreLane } from './use-search-root-session-runtime-contract';
+import type { SearchRootStateFoundationLane } from './search-root-foundation-runtime';
+import type { SearchRootSessionCoreLane } from './search-root-session-runtime-contract';
 
 type UseSearchRootRequestExecutionAuthorityRuntimeArgs = {
   sessionCoreLane: SearchRootSessionCoreLane;

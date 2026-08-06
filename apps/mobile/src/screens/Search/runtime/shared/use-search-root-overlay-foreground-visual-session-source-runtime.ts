@@ -7,7 +7,7 @@ import type {
   SearchRootResultsSheetRuntimeLane,
 } from './search-root-scaffold-runtime-contract';
 import type { SearchRootSuggestionRuntime } from './search-root-core-runtime-contract';
-import type { SearchRootDataPlaneRuntime } from './use-search-root-session-runtime-contract';
+import type { SearchRootDataPlaneRuntime } from './search-root-session-runtime-contract';
 
 export const useSearchRootOverlayForegroundVisualSessionSourceRuntime = ({
   insetsTop,
@@ -36,9 +36,7 @@ export const useSearchRootOverlayForegroundVisualSessionSourceRuntime = ({
   shouldDisableSearchShortcuts: boolean;
   appRouteSceneChromeMotionRuntime: Pick<
     AppRouteSceneChromeMotionRuntime,
-    | 'overlayChromeTransitionProgress'
-    | 'searchChromeOpacity'
-    | 'searchChromeScale'
+    'overlayChromeTransitionProgress' | 'searchChromeOpacity' | 'searchChromeScale'
   >;
 }) =>
   React.useMemo(

@@ -4,7 +4,7 @@ import { Keyboard } from 'react-native';
 import type {
   SearchForegroundInteractionSubmitHandlers,
   SearchForegroundOverlayRuntimeArgs,
-} from './use-search-foreground-interaction-runtime-contract';
+} from './search-foreground-interaction-runtime-contract';
 
 type UseSearchForegroundExternalSubmitRuntimeArgs = SearchForegroundOverlayRuntimeArgs & {
   submitHandlers: Pick<

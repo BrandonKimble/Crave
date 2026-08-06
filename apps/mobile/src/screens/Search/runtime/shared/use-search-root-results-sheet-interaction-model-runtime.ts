@@ -1,9 +1,9 @@
 import React from 'react';
 
 import type { ResultsSheetInteractionModel } from './results-sheet-interaction-contract';
-import type { SubmitRuntimeResult } from './use-search-root-control-plane-runtime-contract';
+import type { SubmitRuntimeResult } from './search-root-control-plane-runtime-contract';
 import type { SearchRootOverlayFoundationRuntime } from './search-root-overlay-foundation-runtime-contract';
-import type { SearchRootStateFoundationLane } from './use-search-root-foundation-runtime';
+import type { SearchRootStateFoundationLane } from './search-root-foundation-runtime';
 import { useSearchRootResultsSheetInteractionStateRuntime } from './use-search-root-results-sheet-interaction-state-runtime';
 import { useSearchRootResultsSheetLoadMoreRuntime } from './use-search-root-results-sheet-load-more-runtime';
 import { useSearchRootResultsSheetSnapRuntime } from './use-search-root-results-sheet-snap-runtime';

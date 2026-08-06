@@ -5,7 +5,7 @@ import type {
   SearchRootForegroundInputControlLane,
   SearchRootForegroundInteractionControlLane,
   SearchRootSuggestionInteractionControlLane,
-} from './use-search-root-control-plane-runtime-contract';
+} from './search-root-control-plane-runtime-contract';
 
 export const useSearchRootOverlayHeaderSearchBarInteractionRuntime = ({
   foregroundInteractionControlLane,

@@ -13,7 +13,7 @@ import { useSearchRootRuntimeVisualAssemblyRuntime } from './use-search-root-run
 import type { useSearchRootControlAuthorityRuntime } from './use-search-root-control-authority-runtime';
 import type { useSearchRootControlResultsExperienceRuntime } from './use-search-root-control-results-experience-runtime';
 import type { useSearchScreenAppEntryPlaneRuntime } from './use-search-screen-app-entry-plane-runtime';
-import type { SearchRootViewportShortcutControlLane } from './use-search-root-control-plane-runtime-contract';
+import type { SearchRootViewportShortcutControlLane } from './search-root-control-plane-runtime-contract';
 import type { useSearchRootRuntimeFoundationStageRuntime } from './use-search-root-runtime-foundation-stage-runtime';
 import type { useSearchRootRuntimeOverlayFoundationAssemblyRuntime } from './use-search-root-runtime-overlay-foundation-assembly-runtime';
 import type { SearchRouteSheetMotionStateSnapshot } from './search-route-sheet-motion-state-snapshot-contract';

@@ -14,14 +14,14 @@ import type {
   SearchRootRequestExecutionAuthorityRuntime,
   SearchRootResultsScrollAuthorityRuntime,
 } from './search-root-control-ports-runtime-contract';
-import type { SearchRootStateFoundationLane } from './use-search-root-foundation-runtime';
-import type { SubmitRuntimeResult } from './use-search-root-control-plane-runtime-contract';
+import type { SearchRootStateFoundationLane } from './search-root-foundation-runtime';
+import type { SubmitRuntimeResult } from './search-root-control-plane-runtime-contract';
 import type { ResultsPresentationOwner } from './use-results-presentation-runtime-owner';
 import { useSearchRootSubmitReadModel } from './use-search-root-submit-read-model';
 import { useSearchRootSubmitRuntimeViewportPorts } from './use-search-root-submit-runtime-viewport-ports';
 import { useSearchRootSubmitUiPresentationIntentPorts } from './use-search-root-submit-ui-presentation-intent-ports';
 import { useSearchRootSubmitUiResultsPresentationPorts } from './use-search-root-submit-ui-results-presentation-ports';
-import type { SearchRootSessionCoreLane } from './use-search-root-session-runtime-contract';
+import type { SearchRootSessionCoreLane } from './search-root-session-runtime-contract';
 
 // F1012 *-ports collapse (F1720 triage executed): the ten one-useMemo repacker hooks of the
 // submit ports family are inlined below as per-port `React.useMemo` literals — explicit field

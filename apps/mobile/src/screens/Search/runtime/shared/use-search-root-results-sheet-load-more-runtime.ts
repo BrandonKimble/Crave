@@ -2,7 +2,7 @@ import React from 'react';
 
 import { logger } from '../../../../utils';
 import type { SearchMode } from '../../hooks/use-search-submit-entry-owner';
-import type { SubmitRuntimeResult } from './use-search-root-control-plane-runtime-contract';
+import type { SubmitRuntimeResult } from './search-root-control-plane-runtime-contract';
 
 // Pagination fix (ledger #6): the gesture-handoff scroll container produces NO native drag
 // events (finger on the sheet's GestureDetector, worklet-driven scroll), so the old

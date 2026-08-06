@@ -2,9 +2,9 @@ import { AUTOCOMPLETE_MIN_CHARS } from '../../constants/search';
 import type {
   SearchSuggestionDisplayRuntime,
   SearchSuggestionDisplayRuntimeArgs,
-} from './use-search-suggestion-surface-runtime-contract';
+} from './search-suggestion-surface-runtime-contract';
 
-export const useSearchSuggestionDisplayRuntime = ({
+export const deriveSearchSuggestionDisplayRuntime = ({
   query,
   suggestions,
   recentSearches,

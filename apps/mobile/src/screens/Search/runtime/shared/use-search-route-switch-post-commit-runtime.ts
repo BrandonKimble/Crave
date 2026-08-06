@@ -3,7 +3,7 @@ import React from 'react';
 import { useAppRouteSceneRuntime } from '../../../../navigation/runtime/AppRouteSceneRuntimeProvider';
 import type { OverlayKey } from '../../../../overlays/types';
 import type { RouteSceneSwitchTransitionState } from '../../../../navigation/runtime/app-route-scene-switch-controller';
-import type { SearchForegroundOverlayRuntimeArgs } from './use-search-foreground-interaction-runtime-contract';
+import type { SearchForegroundOverlayRuntimeArgs } from './search-foreground-interaction-runtime-contract';
 import {
   beginSearchNavSwitchPerfProbe,
   getActiveSearchNavSwitchPerfProbe,

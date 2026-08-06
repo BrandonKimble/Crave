@@ -1,7 +1,7 @@
 import React from 'react';
 
 import type { useSearchScreenAppEntryPlaneRuntime } from './use-search-screen-app-entry-plane-runtime';
-import type { SearchRootStateFoundationLane } from './use-search-root-foundation-runtime';
+import type { SearchRootStateFoundationLane } from './search-root-foundation-runtime';
 import type { SearchRootOverlaySuggestionShellVisualRuntime } from './search-root-visual-runtime-contract';
 
 export type SearchRootOverlaySuggestionShellContainerRuntime = {

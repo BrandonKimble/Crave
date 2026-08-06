@@ -3,7 +3,7 @@ import type {
   SearchRootResultsPresentationStateControlLane,
   SearchRootResultsSheetControlLane,
   SearchRootResultsTransitionControlLane,
-} from '../shared/use-search-root-control-plane-runtime-contract';
+} from '../shared/search-root-control-plane-runtime-contract';
 
 export type SearchRootResultsControlRuntimeValue = {
   resultsSheetControlLane: SearchRootResultsSheetControlLane;

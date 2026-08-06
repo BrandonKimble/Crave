@@ -4,7 +4,7 @@ import type {
 } from './route-search-scene-runtime-contract';
 import { useSearchRootRouteSearchSceneDataStateRuntime } from './use-search-root-route-search-scene-data-state-runtime';
 import { useSearchRootRouteSearchSceneHeaderPolicyRuntime } from './use-search-root-route-search-scene-header-policy-runtime';
-import { useSearchRootRouteSearchSceneRuntimeSignalsRuntime } from './use-search-root-route-search-scene-runtime-signals-runtime';
+import { selectSearchRootRouteSearchSceneRuntimeSignalsRuntime } from './select-search-root-route-search-scene-runtime-signals-runtime';
 
 export const useSearchRootRouteSearchSceneDataRuntime = ({
   sessionAssemblyRuntime,
@@ -36,11 +36,12 @@ export const useSearchRootRouteSearchSceneDataRuntime = ({
     filterModalControlLane,
     routeSearchSceneDataStateRuntime,
   });
-  const routeSearchSceneRuntimeSignalsRuntime = useSearchRootRouteSearchSceneRuntimeSignalsRuntime({
-    sessionAssemblyRuntime,
-    stateAssemblyRuntime,
-    overlayFoundationAssemblyRuntime,
-  });
+  const routeSearchSceneRuntimeSignalsRuntime =
+    selectSearchRootRouteSearchSceneRuntimeSignalsRuntime({
+      sessionAssemblyRuntime,
+      stateAssemblyRuntime,
+      overlayFoundationAssemblyRuntime,
+    });
 
   return {
     ...routeSearchSceneDataStateRuntime,

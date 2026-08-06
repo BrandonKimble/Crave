@@ -1,7 +1,7 @@
 import React from 'react';
 
 import type { SearchForegroundSuggestionMotionInputs } from './search-foreground-chrome-contract';
-import type { SearchRootStateFoundationLane } from './use-search-root-foundation-runtime';
+import type { SearchRootStateFoundationLane } from './search-root-foundation-runtime';
 import type { SearchRootOverlaySuggestionShellVisualRuntime } from './search-root-visual-runtime-contract';
 
 export const useSearchRootOverlaySuggestionShellMotionRuntime = ({

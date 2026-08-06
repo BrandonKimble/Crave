@@ -4,7 +4,7 @@ import { useSearchSuggestionHeldDisplayPresentationRuntime } from './use-search-
 import type {
   SearchSuggestionHeldDisplayRuntime,
   SearchSuggestionHeldDisplayRuntimeArgs,
-} from './use-search-suggestion-surface-runtime-contract';
+} from './search-suggestion-surface-runtime-contract';
 
 export const useSearchSuggestionHeldDisplayRuntime = ({
   query,

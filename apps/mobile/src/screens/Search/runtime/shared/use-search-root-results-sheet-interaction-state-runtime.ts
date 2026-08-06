@@ -2,7 +2,7 @@ import React from 'react';
 
 import { getSearchSurfaceRuntime } from '../surface/search-surface-runtime';
 import type { SearchRootOverlayFoundationRuntime } from './search-root-overlay-foundation-runtime-contract';
-import type { SearchRootStateFoundationLane } from './use-search-root-foundation-runtime';
+import type { SearchRootStateFoundationLane } from './search-root-foundation-runtime';
 
 type UseSearchRootResultsSheetInteractionStateRuntimeArgs = {
   stateFoundationLane: SearchRootStateFoundationLane;

@@ -5,8 +5,8 @@ import type { SearchRootMapViewportIntentRuntime } from './search-root-map-viewp
 import type { SearchRootOverlayFoundationRuntime } from './search-root-overlay-foundation-runtime-contract';
 import { useSearchRootControlFoundationAuthorityRuntime } from './use-search-root-control-foundation-authority-runtime';
 import { useSearchRootControlPresentationAuthorityRuntime } from './use-search-root-control-presentation-authority-runtime';
-import type { SearchRootStateFoundationLane } from './use-search-root-foundation-runtime';
-import type { SearchRootSessionCoreLane } from './use-search-root-session-runtime-contract';
+import type { SearchRootStateFoundationLane } from './search-root-foundation-runtime';
+import type { SearchRootSessionCoreLane } from './search-root-session-runtime-contract';
 import type { SearchForegroundPolicyPublicationAuthority } from './search-foreground-policy-publication-authority';
 
 type UseSearchRootControlAuthorityRuntimeArgs = {
@@ -48,10 +48,10 @@ export const useSearchRootControlAuthorityRuntime = ({
 
   return React.useMemo<SearchRootControlAuthorityRuntimeValue>(
     () => ({
-        foundationAuthorityRuntime,
-        presentationAuthorityRuntime,
-        autocompleteControlLane,
-      }),
+      foundationAuthorityRuntime,
+      presentationAuthorityRuntime,
+      autocompleteControlLane,
+    }),
     [autocompleteControlLane, foundationAuthorityRuntime, presentationAuthorityRuntime]
   );
 };

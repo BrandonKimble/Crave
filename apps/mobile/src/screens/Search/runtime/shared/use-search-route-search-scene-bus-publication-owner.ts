@@ -1,7 +1,7 @@
 import type {
   SearchRootFilterModalControlLane,
   SearchRootForegroundInteractionControlLane,
-} from './use-search-root-control-plane-runtime-contract';
+} from './search-root-control-plane-runtime-contract';
 import type { useSearchRootRuntimeFoundationStageRuntime } from './use-search-root-runtime-foundation-stage-runtime';
 import { useSearchRootSearchSceneBusPublicationRuntime } from './use-search-root-search-scene-bus-publication-runtime';
 import { useSearchRootSearchSceneListHydrationPublicationRuntime } from './use-search-root-search-scene-list-hydration-publication-runtime';

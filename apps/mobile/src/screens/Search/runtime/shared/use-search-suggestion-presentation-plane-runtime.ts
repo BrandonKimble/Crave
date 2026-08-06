@@ -1,4 +1,4 @@
-import { useSearchSuggestionDisplayRuntime } from './use-search-suggestion-display-runtime';
+import { deriveSearchSuggestionDisplayRuntime } from './derive-search-suggestion-display-runtime';
 import { useSearchSuggestionHeldDisplayRuntime } from './use-search-suggestion-held-display-runtime';
 import { useSearchSuggestionHoldEffectsRuntime } from './use-search-suggestion-hold-effects-runtime';
 import { useSearchSuggestionHoldStateRuntime } from './use-search-suggestion-hold-state-runtime';
@@ -11,7 +11,7 @@ import type {
   SearchSuggestionTransitionRuntime,
   SearchSuggestionVisibilityRuntime,
   UseSearchSuggestionSurfaceRuntimeArgs,
-} from './use-search-suggestion-surface-runtime-contract';
+} from './search-suggestion-surface-runtime-contract';
 
 type UseSearchSuggestionPresentationPlaneRuntimeArgs = UseSearchSuggestionSurfaceRuntimeArgs & {
   shouldFreezeSuggestionDisplayForSearchSurfaceRedraw: boolean;
@@ -25,7 +25,7 @@ export const useSearchSuggestionPresentationPlaneRuntime = ({
       isSuggestionPanelActive: args.isSuggestionPanelActive,
     }
   );
-  const displayRuntime: SearchSuggestionDisplayRuntime = useSearchSuggestionDisplayRuntime({
+  const displayRuntime: SearchSuggestionDisplayRuntime = deriveSearchSuggestionDisplayRuntime({
     query: args.query,
     suggestions: args.suggestions,
     recentSearches: args.recentSearches,

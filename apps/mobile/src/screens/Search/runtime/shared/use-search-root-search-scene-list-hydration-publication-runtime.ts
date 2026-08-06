@@ -4,7 +4,7 @@ import type { useSearchResultsReadModelSelectors } from '../read-models/read-mod
 import type { ResultsPresentationSurfaceAuthority } from './results-presentation-surface-authority';
 import { useResultsPresentationSurfaceAuthoritySelector } from './results-presentation-surface-authority';
 import type { RouteSceneSwitchAuthority } from './route-authority-contract';
-import type { SearchRuntimeInteractionState } from './use-search-root-session-runtime-contract';
+import type { SearchRuntimeInteractionState } from './search-root-session-runtime-contract';
 import type { useSearchResultsPanelHydrationKeyRuntime } from './use-search-results-panel-hydration-key-runtime';
 import {
   useResultsPresentationSurfaceHydrationPublicationRuntime,

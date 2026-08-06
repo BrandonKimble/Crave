@@ -4,7 +4,7 @@ import type {
   SearchRootRouteRestaurantOverlayPolicyPublication,
   SearchRootRouteRestaurantOverlayPolicyPublicationLane,
 } from './search-root-route-publication-contract';
-import type { SearchRootResultsPresentationStateControlLane } from './use-search-root-control-plane-runtime-contract';
+import type { SearchRootResultsPresentationStateControlLane } from './search-root-control-plane-runtime-contract';
 
 type UseSearchRootRouteRestaurantOverlayPolicyPublicationRuntimeArgs = {
   routeRestaurantOverlayPolicyPublicationLane: SearchRootRouteRestaurantOverlayPolicyPublicationLane;

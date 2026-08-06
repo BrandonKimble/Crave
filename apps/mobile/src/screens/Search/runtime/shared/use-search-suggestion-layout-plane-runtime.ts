@@ -6,9 +6,9 @@ import { useSearchSuggestionLayoutVisualRuntime } from './use-search-suggestion-
 import type {
   SearchSuggestionLayoutRuntime,
   SearchSuggestionVisibilityRuntime,
-} from './use-search-suggestion-surface-runtime-contract';
+} from './search-suggestion-surface-runtime-contract';
 import type { SearchRootPrimitivesRuntime } from './search-root-primitives-runtime-contract';
-import type { SearchRootSessionPrimitivesLane } from './use-search-root-session-runtime-contract';
+import type { SearchRootSessionPrimitivesLane } from './search-root-session-runtime-contract';
 import { getSearchStartupGeometrySeed } from './search-startup-geometry';
 import { useShouldDisableSearchShortcuts } from './use-should-disable-search-shortcuts';
 

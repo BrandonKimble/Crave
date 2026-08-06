@@ -3,7 +3,7 @@ import React from 'react';
 import type {
   SearchSuggestionLayoutVisualRuntime,
   SearchSuggestionLayoutVisualRuntimeArgs,
-} from './use-search-suggestion-surface-runtime-contract';
+} from './search-suggestion-surface-runtime-contract';
 import { useSearchSuggestionLayoutAnimationRuntime } from './use-search-suggestion-layout-animation-runtime';
 import { useSearchSuggestionLayoutGeometryRuntime } from './use-search-suggestion-layout-geometry-runtime';
 
@@ -44,22 +44,22 @@ export const useSearchSuggestionLayoutVisualRuntime = ({
 
   return React.useMemo<SearchSuggestionLayoutVisualRuntime>(
     () => ({
-        resetSearchHeaderFocusProgress:
-          suggestionLayoutAnimationRuntime.resetSearchHeaderFocusProgress,
-        searchHeaderFocusProgress: suggestionLayoutAnimationRuntime.searchHeaderFocusProgress,
-        suggestionHeaderHeightAnimatedStyle:
-          suggestionLayoutAnimationRuntime.suggestionHeaderHeightAnimatedStyle,
-        suggestionScrollTopAnimatedStyle:
-          suggestionLayoutAnimationRuntime.suggestionScrollTopAnimatedStyle,
-        suggestionScrollMaxHeightAnimatedStyle:
-          suggestionLayoutAnimationRuntime.suggestionScrollMaxHeightAnimatedStyle,
-        suggestionHeaderDividerAnimatedStyle:
-          suggestionLayoutAnimationRuntime.suggestionHeaderDividerAnimatedStyle,
-        suggestionScrollHandler: suggestionLayoutAnimationRuntime.suggestionScrollHandler,
-        suggestionTopFillHeight: suggestionLayoutGeometryRuntime.suggestionTopFillHeight,
-        suggestionScrollMaxHeightTarget:
-          suggestionLayoutGeometryRuntime.suggestionScrollMaxHeightTarget,
-      }),
+      resetSearchHeaderFocusProgress:
+        suggestionLayoutAnimationRuntime.resetSearchHeaderFocusProgress,
+      searchHeaderFocusProgress: suggestionLayoutAnimationRuntime.searchHeaderFocusProgress,
+      suggestionHeaderHeightAnimatedStyle:
+        suggestionLayoutAnimationRuntime.suggestionHeaderHeightAnimatedStyle,
+      suggestionScrollTopAnimatedStyle:
+        suggestionLayoutAnimationRuntime.suggestionScrollTopAnimatedStyle,
+      suggestionScrollMaxHeightAnimatedStyle:
+        suggestionLayoutAnimationRuntime.suggestionScrollMaxHeightAnimatedStyle,
+      suggestionHeaderDividerAnimatedStyle:
+        suggestionLayoutAnimationRuntime.suggestionHeaderDividerAnimatedStyle,
+      suggestionScrollHandler: suggestionLayoutAnimationRuntime.suggestionScrollHandler,
+      suggestionTopFillHeight: suggestionLayoutGeometryRuntime.suggestionTopFillHeight,
+      suggestionScrollMaxHeightTarget:
+        suggestionLayoutGeometryRuntime.suggestionScrollMaxHeightTarget,
+    }),
     [
       suggestionLayoutAnimationRuntime.resetSearchHeaderFocusProgress,
       suggestionLayoutAnimationRuntime.searchHeaderFocusProgress,

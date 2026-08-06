@@ -2,7 +2,7 @@ import React from 'react';
 
 import { useSearchRecentActivityRuntime } from './use-search-recent-activity-runtime';
 import type { SearchRootRecentActivityAuthorityRuntime } from './search-root-control-ports-runtime-contract';
-import type { SearchRootStateFoundationLane } from './use-search-root-foundation-runtime';
+import type { SearchRootStateFoundationLane } from './search-root-foundation-runtime';
 
 type UseSearchRootRecentActivityAuthorityRuntimeArgs = {
   stateFoundationLane: SearchRootStateFoundationLane;

@@ -1,6 +1,6 @@
 import React from 'react';
 
-import type { SearchRootStateFoundationLane } from './use-search-root-foundation-runtime';
+import type { SearchRootStateFoundationLane } from './search-root-foundation-runtime';
 
 export const useSearchRootOverlayShortcutsLayoutRuntime = ({
   stateFoundationLane,

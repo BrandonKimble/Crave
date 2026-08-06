@@ -18,7 +18,7 @@ import {
   type SubmitShortcutScenarioCommandInput,
   type UseSearchRuntimeInstrumentationRuntimeArgs,
   type UseSearchRuntimeInstrumentationRuntimeResult,
-} from './use-search-runtime-instrumentation-runtime-contract';
+} from './search-runtime-instrumentation-runtime-contract';
 import type { MapBounds } from '../../../../types';
 import { useSearchRuntimeProfilerInstrumentationRuntime } from './use-search-runtime-profiler-instrumentation-runtime';
 import { useSearchRuntimeProfilerStageHintRuntime } from './use-search-runtime-profiler-stage-hint-runtime';

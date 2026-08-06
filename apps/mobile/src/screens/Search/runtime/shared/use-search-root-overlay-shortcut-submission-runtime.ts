@@ -1,7 +1,7 @@
 import React from 'react';
 
 import type { SearchRootInstrumentationRuntime } from './search-root-scaffold-runtime-contract';
-import type { SearchRootViewportShortcutControlLane } from './use-search-root-control-plane-runtime-contract';
+import type { SearchRootViewportShortcutControlLane } from './search-root-control-plane-runtime-contract';
 
 type SearchRootShortcutVisualSearchState = {
   setQuery: React.Dispatch<React.SetStateAction<string>>;

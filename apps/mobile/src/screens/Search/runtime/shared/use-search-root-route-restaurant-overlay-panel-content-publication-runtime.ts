@@ -4,8 +4,8 @@ import type {
   SearchRootRouteRestaurantOverlayPanelContentPublication,
   SearchRootRouteRestaurantOverlayPanelContentPublicationLane,
 } from './search-root-route-publication-contract';
-import type { SearchRootProfilePresentationControlLane } from './use-search-root-control-plane-runtime-contract';
-import type { SearchRootStateFoundationLane } from './use-search-root-foundation-runtime';
+import type { SearchRootProfilePresentationControlLane } from './search-root-control-plane-runtime-contract';
+import type { SearchRootStateFoundationLane } from './search-root-foundation-runtime';
 
 type UseSearchRootRouteRestaurantOverlayPanelContentPublicationRuntimeArgs = {
   routeRestaurantOverlayPanelContentPublicationLane: SearchRootRouteRestaurantOverlayPanelContentPublicationLane;

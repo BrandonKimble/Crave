@@ -8,7 +8,7 @@ import type { useSearchRootControlResultsExperienceRuntime } from './use-search-
 import type {
   SearchRootFilterModalControlLane,
   SearchRootForegroundInteractionControlLane,
-} from './use-search-root-control-plane-runtime-contract';
+} from './search-root-control-plane-runtime-contract';
 import type { RouteSceneSwitchAuthority } from './search-root-route-runtime-contract';
 import { useSearchRouteSearchSceneBodyInputOwner } from './use-search-route-search-scene-body-input-owner';
 import { useSearchRouteSearchSceneBusPublicationOwner } from './use-search-route-search-scene-bus-publication-owner';

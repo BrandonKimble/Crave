@@ -9,7 +9,7 @@ import {
   SHORTCUT_CHIP_HOLE_PADDING,
   SHORTCUT_CHIP_HOLE_RADIUS,
 } from '../../constants/search';
-import type { SearchSuggestionMaskedHole } from './use-search-suggestion-surface-runtime-contract';
+import type { SearchSuggestionMaskedHole } from './search-suggestion-surface-runtime-contract';
 
 const SEARCH_SUGGESTION_HOLE_PIXEL_SCALE = PixelRatio.get();
 const SEARCH_SUGGESTION_HOLE_CUTOUT_EDGE_SLOP = 1 / SEARCH_SUGGESTION_HOLE_PIXEL_SCALE;

@@ -5,7 +5,7 @@ import type { CameraSnapshot } from '../../../../navigation/runtime/app-route-pr
 import { logCameraOriginDebug } from '../../../../navigation/runtime/pageswitch-debug-flag';
 import { registerRouteEntryOriginCameraPort } from '../../../../navigation/runtime/route-entry-origin-camera-delegate';
 import { resolveRouteEntryOriginCamera } from './route-entry-origin-camera-source';
-import type { SearchRootCameraViewportRuntime } from './use-search-root-session-runtime-contract';
+import type { SearchRootCameraViewportRuntime } from './search-root-session-runtime-contract';
 import type { SearchRuntimeBus } from './search-runtime-bus';
 
 /**

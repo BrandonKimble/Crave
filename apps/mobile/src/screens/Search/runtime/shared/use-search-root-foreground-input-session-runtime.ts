@@ -1,6 +1,6 @@
 import React from 'react';
 
-import type { SearchRootDataPlaneRuntime } from './use-search-root-session-runtime-contract';
+import type { SearchRootDataPlaneRuntime } from './search-root-session-runtime-contract';
 import type { SearchRootPrimitivesRuntime } from './search-root-primitives-runtime-contract';
 
 type UseSearchRootForegroundInputSessionRuntimeArgs = {

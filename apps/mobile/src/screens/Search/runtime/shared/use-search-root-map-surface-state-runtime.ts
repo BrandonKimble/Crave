@@ -6,7 +6,7 @@ import type { SearchRootMapViewportIntentRuntime } from './search-root-map-viewp
 import { useSearchRootMapPresentationLifecycleRuntime } from './use-search-root-map-presentation-lifecycle-runtime';
 import type { useSearchRootMapPresentationRuntime } from './use-search-root-map-presentation-runtime';
 import type { useSearchScreenAppEntryPlaneRuntime } from './use-search-screen-app-entry-plane-runtime';
-import type { SearchRootStateFoundationLane } from './use-search-root-foundation-runtime';
+import type { SearchRootStateFoundationLane } from './search-root-foundation-runtime';
 
 type UseSearchRootMapSurfaceStateRuntimeArgs = {
   appEntryPlaneRuntime: Pick<ReturnType<typeof useSearchScreenAppEntryPlaneRuntime>, 'accessToken'>;

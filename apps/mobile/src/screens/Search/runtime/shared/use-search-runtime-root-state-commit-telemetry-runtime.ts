@@ -3,7 +3,7 @@ import React from 'react';
 import type { ResultsPresentationAuthority } from './results-presentation-authority';
 import type { ResultsPresentationSurfaceAuthority } from './results-presentation-surface-authority';
 import type { SearchRuntimeBus } from './search-runtime-bus';
-import type { SearchRootStateCommitSnapshot } from './use-search-runtime-instrumentation-runtime-contract';
+import type { SearchRootStateCommitSnapshot } from './search-runtime-instrumentation-runtime-contract';
 
 export const useSearchRuntimeRootStateCommitTelemetryRuntime = ({
   searchRuntimeBus,
@@ -109,11 +109,7 @@ export const useSearchRuntimeRootStateCommitTelemetryRuntime = ({
       changedKeys,
       snapshot,
     });
-  }, [
-    emitRuntimeMechanismEvent,
-    getActiveScenarioRunNumber,
-    resultsPresentationAuthority,
-  ]);
+  }, [emitRuntimeMechanismEvent, getActiveScenarioRunNumber, resultsPresentationAuthority]);
 
   React.useEffect(() => {
     emitRootStateCommitSnapshot();

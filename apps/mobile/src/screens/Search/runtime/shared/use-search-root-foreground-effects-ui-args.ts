@@ -1,7 +1,7 @@
 import React from 'react';
 
 import type { SearchRootOverlayFoundationRuntime } from './search-root-overlay-foundation-runtime-contract';
-import type { SearchRootStateFoundationLane } from './use-search-root-foundation-runtime';
+import type { SearchRootStateFoundationLane } from './search-root-foundation-runtime';
 import type { SearchForegroundInteractionRouteEffectsRuntimeArgs } from './use-search-foreground-interaction-effects-runtime';
 
 type SearchRootForegroundEffectsUiArgs = SearchForegroundInteractionRouteEffectsRuntimeArgs;

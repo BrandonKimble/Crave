@@ -4,7 +4,7 @@ import { searchService } from '../../../../services/search';
 import { SHORTCUT_QUERY_LABEL_BY_TAB } from './shortcut-toggle-display-query';
 import { logger } from '../../../../utils';
 
-import type { SearchForegroundLaunchIntentRuntimeArgs } from './use-search-foreground-interaction-runtime-contract';
+import type { SearchForegroundLaunchIntentRuntimeArgs } from './search-foreground-interaction-runtime-contract';
 import { useAppOverlayRouteController } from '../../../../overlays/useAppOverlayRouteController';
 import { useAppRouteSceneRuntime } from '../../../../navigation/runtime/AppRouteSceneRuntimeProvider';
 import { resolveResidentWorldEntry } from '../../../../navigation/runtime/app-overlay-route-stack-algebra';

@@ -6,7 +6,7 @@ import type {
   SearchRootResultsPresentationAuthorityRuntime,
 } from './search-root-control-ports-runtime-contract';
 import type { SearchOverlayStoreRuntime } from './search-root-scaffold-runtime-contract';
-import type { SearchRootDataPlaneRuntime } from './use-search-root-session-runtime-contract';
+import type { SearchRootDataPlaneRuntime } from './search-root-session-runtime-contract';
 import type { SearchRootPrimitivesRuntime } from './search-root-primitives-runtime-contract';
 import { useSearchRootForegroundInputRuntime } from './use-search-root-foreground-input-runtime';
 

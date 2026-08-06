@@ -11,7 +11,7 @@ import { usePerfScenarioRuntimeStore } from '../../../../perf/perf-scenario-runt
 import type {
   SearchForegroundSearchThisAreaVisualRuntime,
   UseSearchForegroundVisualRuntimeArgs,
-} from './use-search-foreground-visual-runtime-contract';
+} from './search-foreground-visual-runtime-contract';
 
 type UseSearchForegroundSearchThisAreaVisualRuntimeArgs = Pick<
   UseSearchForegroundVisualRuntimeArgs,

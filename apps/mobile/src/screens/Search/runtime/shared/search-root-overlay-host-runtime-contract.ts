@@ -2,7 +2,7 @@ import type {
   SearchRootFilterModalControlLane,
   SearchRootForegroundInputControlLane,
   SearchRootForegroundInteractionControlLane,
-} from './use-search-root-control-plane-runtime-contract';
+} from './search-root-control-plane-runtime-contract';
 import type { SearchOverlayChromeHostSnapshot } from './search-foreground-chrome-contract';
 import type { SearchOverlayHostGateSnapshot } from './search-overlay-host-gate-snapshot-contract';
 import type { SearchOverlayShellHostSnapshot } from './search-overlay-shell-host-snapshot-contract';
@@ -19,7 +19,7 @@ import type {
   RouteSharedSheetVisualAuthority,
 } from './search-root-route-runtime-contract';
 import type { useSearchScreenAppEntryPlaneRuntime } from './use-search-screen-app-entry-plane-runtime';
-import type { SearchRootStateFoundationLane } from './use-search-root-foundation-runtime';
+import type { SearchRootStateFoundationLane } from './search-root-foundation-runtime';
 import type { SearchRootOverlayFoundationRuntime } from './search-root-overlay-foundation-runtime-contract';
 import type {
   SearchRootOverlayHostVisualRuntime,

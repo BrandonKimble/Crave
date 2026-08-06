@@ -4,7 +4,7 @@ import type { AutocompleteMatch } from '../../../../services/autocomplete';
 import type {
   SearchForegroundInteractionSubmitHandlers,
   SearchForegroundSubmitRuntimeArgs,
-} from './use-search-foreground-interaction-runtime-contract';
+} from './search-foreground-interaction-runtime-contract';
 import { resolveTypedReturnRestaurantPromotion } from './resolve-typed-return-restaurant-promotion';
 import type { useSearchForegroundSubmitPreparationRuntime } from './use-search-foreground-submit-preparation-runtime';
 

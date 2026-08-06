@@ -9,7 +9,7 @@ import type { useSearchResultsPanelPresentationRuntimeState } from './use-search
 import type { useSearchResultsPanelResultsRuntimeState } from './use-search-results-panel-results-runtime-state';
 import type { useSearchResultsPanelRetainedResultsRuntime } from './use-search-results-panel-retained-results-runtime';
 import type { useSearchResultsReadModelSelectors } from '../read-models/read-model-selectors';
-import type { SearchRootFilterModalControlLane } from './use-search-root-control-plane-runtime-contract';
+import type { SearchRootFilterModalControlLane } from './search-root-control-plane-runtime-contract';
 import type { useSearchRootControlAuthorityRuntime } from './use-search-root-control-authority-runtime';
 import type { useSearchRootControlProfileExperienceRuntime } from './use-search-root-control-profile-experience-runtime';
 import type { useSearchRootControlResultsExperienceRuntime } from './use-search-root-control-results-experience-runtime';

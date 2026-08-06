@@ -12,11 +12,11 @@ import type {
   SearchRootMapProfileControlLane,
   SearchRootProfilePresentationControlLane,
   SearchRootSuggestionInteractionControlLane,
-} from './use-search-root-control-plane-runtime-contract';
+} from './search-root-control-plane-runtime-contract';
 import { useSearchRootProfileMapCommandRuntime } from './use-search-root-profile-map-command-runtime';
 import { useSearchRootProfileOwnerRuntime } from './use-search-root-profile-owner-runtime';
-import type { SearchRootStateFoundationLane } from './use-search-root-foundation-runtime';
-import type { SearchRootSessionCoreLane } from './use-search-root-session-runtime-contract';
+import type { SearchRootStateFoundationLane } from './search-root-foundation-runtime';
+import type { SearchRootSessionCoreLane } from './search-root-session-runtime-contract';
 
 type UseSearchRootProfileControlRuntimeArgs = {
   sessionCoreLane: SearchRootSessionCoreLane;
@@ -89,11 +89,11 @@ export const useSearchRootProfileControlRuntime = ({
 
   return React.useMemo<SearchRootProfileControlRuntimeValue>(
     () => ({
-        profileOwner: profileOwnerRuntime.profileOwner,
-        suggestionInteractionControlLane,
-        profilePresentationControlLane,
-        mapProfileControlLane,
-      }),
+      profileOwner: profileOwnerRuntime.profileOwner,
+      suggestionInteractionControlLane,
+      profilePresentationControlLane,
+      mapProfileControlLane,
+    }),
     [
       mapProfileControlLane,
       profileOwnerRuntime.profileOwner,

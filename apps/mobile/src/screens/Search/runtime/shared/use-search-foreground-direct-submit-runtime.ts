@@ -3,7 +3,7 @@ import React from 'react';
 import type {
   SearchForegroundInteractionSubmitHandlers,
   SearchForegroundSubmitRuntimeArgs,
-} from './use-search-foreground-interaction-runtime-contract';
+} from './search-foreground-interaction-runtime-contract';
 import { useSearchForegroundQuerySubmitRuntime } from './use-search-foreground-query-submit-runtime';
 import { useSearchForegroundSearchAreaSubmitRuntime } from './use-search-foreground-search-area-submit-runtime';
 import { useSearchForegroundSuggestionSubmitRuntime } from './use-search-foreground-suggestion-submit-runtime';

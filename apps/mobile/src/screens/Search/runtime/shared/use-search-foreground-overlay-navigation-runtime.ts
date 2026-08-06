@@ -4,7 +4,7 @@ import { Keyboard } from 'react-native';
 import type {
   SearchForegroundInteractionOverlayHandlers,
   SearchForegroundOverlayRuntimeArgs,
-} from './use-search-foreground-interaction-runtime-contract';
+} from './search-foreground-interaction-runtime-contract';
 
 export const useSearchForegroundOverlayNavigationRuntime = ({
   navigation,

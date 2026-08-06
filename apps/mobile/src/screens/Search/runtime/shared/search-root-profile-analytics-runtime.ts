@@ -4,7 +4,7 @@ import { searchService } from '../../../../services/search';
 import { logger } from '../../../../utils';
 import type { ProfileAnalyticsModel } from '../profile/profile-owner-runtime-contract';
 import type { SearchRootRecentActivityAuthorityRuntime } from './search-root-control-ports-runtime-contract';
-import type { SearchRootStateFoundationLane } from './use-search-root-foundation-runtime';
+import type { SearchRootStateFoundationLane } from './search-root-foundation-runtime';
 
 export const useSearchRootProfileAnalyticsRuntime = ({
   stateFoundationLane,

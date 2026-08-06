@@ -4,7 +4,7 @@ import type {
   SearchSuggestionHoldActionRuntime,
   SearchSuggestionHoldActionRuntimeArgs,
   SearchSuggestionTransitionHoldCapture,
-} from './use-search-suggestion-surface-runtime-contract';
+} from './search-suggestion-surface-runtime-contract';
 
 export const useSearchSuggestionHoldActionsRuntime = ({
   shouldDriveSuggestionLayout,

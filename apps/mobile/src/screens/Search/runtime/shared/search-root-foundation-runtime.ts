@@ -3,7 +3,7 @@ import type { SearchRootPrimitivesRuntime } from './search-root-primitives-runti
 import type {
   SearchRootDataPlaneRuntime,
   SearchRootSessionPrimitivesLane,
-} from './use-search-root-session-runtime-contract';
+} from './search-root-session-runtime-contract';
 
 export type SearchRootStateFoundationLane = {
   rootPrimitivesRuntime: SearchRootPrimitivesRuntime;

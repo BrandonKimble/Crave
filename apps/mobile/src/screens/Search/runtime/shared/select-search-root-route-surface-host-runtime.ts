@@ -10,7 +10,7 @@ import type {
 } from './search-root-route-runtime-contract';
 import type { useSearchRootRouteControlRuntime } from './use-search-root-route-control-runtime';
 
-export const useSearchRootRouteSurfaceHostRuntime = ({
+export const selectSearchRootRouteSurfaceHostRuntime = ({
   routeSceneRuntime,
   routeRestaurantOverlayRuntime,
 }: Pick<

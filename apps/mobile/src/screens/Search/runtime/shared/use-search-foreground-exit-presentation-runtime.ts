@@ -1,6 +1,6 @@
 import React from 'react';
 
-import type { SearchForegroundEditingRuntimeArgs } from './use-search-foreground-interaction-runtime-contract';
+import type { SearchForegroundEditingRuntimeArgs } from './search-foreground-interaction-runtime-contract';
 
 type UseSearchForegroundExitPresentationRuntimeArgs = Pick<
   SearchForegroundEditingRuntimeArgs,

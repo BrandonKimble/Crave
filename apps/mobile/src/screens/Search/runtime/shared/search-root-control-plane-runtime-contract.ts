@@ -12,7 +12,7 @@ import type { ProfileOwner } from '../profile/profile-owner-runtime';
 import type { SearchMapProfileCommandPort } from './search-map-protocol-contract';
 import type { ResultsCloseTransitionActions } from './results-presentation-shell-runtime-contract';
 import type { ResultsSheetInteractionModel } from './results-sheet-interaction-contract';
-import type { SearchForegroundInteractionRuntime } from './use-search-foreground-interaction-runtime-contract';
+import type { SearchForegroundInteractionRuntime } from './search-foreground-interaction-runtime-contract';
 import type {
   SearchRootAutocompletePort,
   SearchRootForegroundInputRuntime,

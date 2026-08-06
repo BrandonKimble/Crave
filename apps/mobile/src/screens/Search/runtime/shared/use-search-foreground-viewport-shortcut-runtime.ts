@@ -3,7 +3,7 @@ import React from 'react';
 import type {
   SearchForegroundInteractionSubmitHandlers,
   SearchForegroundSubmitRuntimeArgs,
-} from './use-search-foreground-interaction-runtime-contract';
+} from './search-foreground-interaction-runtime-contract';
 import type { useSearchForegroundSubmitPreparationRuntime } from './use-search-foreground-submit-preparation-runtime';
 import { SHORTCUT_QUERY_LABEL_BY_TAB } from './shortcut-toggle-display-query';
 

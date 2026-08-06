@@ -1,6 +1,6 @@
 import React from 'react';
 
-import type { SearchSuggestionHeldDisplayRuntime } from './use-search-suggestion-surface-runtime-contract';
+import type { SearchSuggestionHeldDisplayRuntime } from './search-suggestion-surface-runtime-contract';
 
 type UseSearchSuggestionHeldDisplayPresentationRuntimeArgs = {
   shouldFreezeSuggestionDisplayForSearchSurfaceRedraw: boolean;

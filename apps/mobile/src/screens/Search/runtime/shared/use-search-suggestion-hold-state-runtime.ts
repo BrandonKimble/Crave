@@ -5,7 +5,7 @@ import type {
   SearchSuggestionHoldStateRuntimeArgs,
   SearchSuggestionTransitionHold,
   SearchSuggestionTransitionHoldCapture,
-} from './use-search-suggestion-surface-runtime-contract';
+} from './search-suggestion-surface-runtime-contract';
 
 export const useSearchSuggestionHoldStateRuntime = ({
   query,

@@ -5,7 +5,7 @@ import type { SearchRootSessionServicesFoundationRuntime } from './search-root-s
 import type {
   SearchRootSessionControlServicesRuntime,
   UseSearchRootSessionRuntimeArgs,
-} from './use-search-root-session-runtime-contract';
+} from './search-root-session-runtime-contract';
 import { useSearchRootSessionInteractionPrimitivesRuntime } from './use-search-root-session-interaction-primitives-runtime';
 import { useSearchRuntimeCameraIntentRuntime } from '../../hooks/use-search-runtime-camera-intent-runtime';
 import { useSearchRuntimeMapServicesRuntime } from '../../hooks/use-search-runtime-map-services-runtime';

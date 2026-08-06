@@ -1,11 +1,11 @@
 import React from 'react';
 
 import type { CameraIntentArbiter } from '../map/camera-intent-arbiter';
-import type { SearchRootCameraViewportRuntime } from './use-search-root-session-runtime-contract';
+import type { SearchRootCameraViewportRuntime } from './search-root-session-runtime-contract';
 import type {
   SearchRootSessionPrimitivesLane,
   SearchRuntimePrimitivesRuntime,
-} from './use-search-root-session-runtime-contract';
+} from './search-root-session-runtime-contract';
 
 type UseSearchRootSessionPrimitivesLaneRuntimeArgs = {
   interactionPrimitivesRuntime: SearchRuntimePrimitivesRuntime;

@@ -3,7 +3,7 @@ import React from 'react';
 import { SCREEN_HEIGHT, USA_FALLBACK_CENTER, USA_FALLBACK_ZOOM } from '../../constants/search';
 import type { SearchRootEnvironment } from './search-root-environment-contract';
 import type { SearchRootOverlayFoundationRuntime } from './search-root-overlay-foundation-runtime-contract';
-import type { SearchRootStateFoundationLane } from './use-search-root-foundation-runtime';
+import type { SearchRootStateFoundationLane } from './search-root-foundation-runtime';
 import type { ProfilePresentationCameraLayoutModel } from '../profile/profile-presentation-model-runtime';
 
 const PROFILE_PIN_TARGET_CENTER_RATIO = 0.25;

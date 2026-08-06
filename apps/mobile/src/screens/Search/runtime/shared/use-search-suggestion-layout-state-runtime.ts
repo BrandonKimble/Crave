@@ -3,7 +3,7 @@ import React from 'react';
 import type {
   SearchSuggestionLayoutStateRuntime,
   SearchSuggestionLayoutStateRuntimeArgs,
-} from './use-search-suggestion-surface-runtime-contract';
+} from './search-suggestion-surface-runtime-contract';
 import { useSearchSuggestionContentHeightRuntime } from './use-search-suggestion-content-height-runtime';
 import { useSearchSuggestionLayoutResolutionRuntime } from './use-search-suggestion-layout-resolution-runtime';
 import { useSearchSuggestionSearchLayoutRuntime } from './use-search-suggestion-search-layout-runtime';

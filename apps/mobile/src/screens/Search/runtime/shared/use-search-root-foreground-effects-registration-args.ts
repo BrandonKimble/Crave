@@ -2,7 +2,7 @@ import React from 'react';
 
 import type { SearchRootMutationCancelAuthorityRuntime } from './search-root-control-ports-runtime-contract';
 import type { ResultsPresentationOwner } from './use-results-presentation-runtime-owner';
-import type { SearchForegroundEffectsRuntimeArgs } from './use-search-foreground-interaction-runtime-contract';
+import type { SearchForegroundEffectsRuntimeArgs } from './search-foreground-interaction-runtime-contract';
 
 type SearchRootForegroundEffectsRegistrationArgs = Pick<
   SearchForegroundEffectsRuntimeArgs,

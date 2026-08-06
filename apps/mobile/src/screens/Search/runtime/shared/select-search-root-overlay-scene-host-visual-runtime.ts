@@ -2,7 +2,7 @@ import type { AppRouteSceneChromeMotionRuntime } from '../../../../navigation/ru
 import type { SearchRootOverlaySceneHostVisualRuntime } from './search-root-visual-runtime-contract';
 import type { SearchForegroundVisualRuntime } from './use-search-foreground-visual-runtime';
 
-export const useSearchRootOverlaySceneHostVisualRuntime = ({
+export const selectSearchRootOverlaySceneHostVisualRuntime = ({
   foregroundVisualRuntime,
   appRouteSceneChromeMotionRuntime,
 }: {

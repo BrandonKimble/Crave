@@ -7,10 +7,10 @@ import type {
   SearchRootAutocompleteControlLane,
   SearchRootProfilePresentationControlLane,
   SearchRootSuggestionInteractionControlLane,
-} from './use-search-root-control-plane-runtime-contract';
+} from './search-root-control-plane-runtime-contract';
 import type { SearchRootOverlayFoundationRuntime } from './search-root-overlay-foundation-runtime-contract';
-import type { SearchRootStateFoundationLane } from './use-search-root-foundation-runtime';
-import type { SearchRootSessionCoreLane } from './use-search-root-session-runtime-contract';
+import type { SearchRootStateFoundationLane } from './search-root-foundation-runtime';
+import type { SearchRootSessionCoreLane } from './search-root-session-runtime-contract';
 
 type UseSearchRootMapInteractionRuntimeArgs = {
   sessionCoreLane: SearchRootSessionCoreLane;

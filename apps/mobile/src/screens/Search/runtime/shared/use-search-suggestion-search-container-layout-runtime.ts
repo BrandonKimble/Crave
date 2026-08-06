@@ -10,7 +10,7 @@ import {
 import type {
   SearchInteractionRef,
   SearchLayout,
-} from './use-search-suggestion-surface-runtime-contract';
+} from './search-suggestion-surface-runtime-contract';
 
 type UseSearchSuggestionSearchContainerLayoutRuntimeArgs = {
   startupGeometrySeed: import('./search-startup-geometry').SearchStartupGeometrySeed;

@@ -6,8 +6,8 @@ import type {
   SearchRootResultsPresentationAuthorityRuntime,
 } from './search-root-control-ports-runtime-contract';
 import type { SearchRootOverlayFoundationRuntime } from './search-root-overlay-foundation-runtime-contract';
-import type { SearchRootStateFoundationLane } from './use-search-root-foundation-runtime';
-import type { SearchRootSessionCoreLane } from './use-search-root-session-runtime-contract';
+import type { SearchRootStateFoundationLane } from './search-root-foundation-runtime';
+import type { SearchRootSessionCoreLane } from './search-root-session-runtime-contract';
 import type { SearchForegroundPolicyPublicationAuthority } from './search-foreground-policy-publication-authority';
 import { deferMountedResultsCleanupUntilAfterDismiss } from './search-mounted-results-data-store';
 import { useResultsPresentationOwner } from './use-results-presentation-runtime-owner';

@@ -2,10 +2,10 @@ import type {
   SearchRootAutocompleteControlLane,
   SearchRootProfilePresentationControlLane,
   SearchRootSuggestionInteractionControlLane,
-} from '../shared/use-search-root-control-plane-runtime-contract';
+} from '../shared/search-root-control-plane-runtime-contract';
 import type { SearchRootOverlayFoundationRuntime } from '../shared/search-root-overlay-foundation-runtime-contract';
-import type { SearchRootStateFoundationLane } from '../shared/use-search-root-foundation-runtime';
-import type { SearchRootSessionCoreLane } from '../shared/use-search-root-session-runtime-contract';
+import type { SearchRootStateFoundationLane } from '../shared/search-root-foundation-runtime';
+import type { SearchRootSessionCoreLane } from '../shared/search-root-session-runtime-contract';
 
 export const createSearchRootMapInteractionControllerArgs = ({
   sessionCoreLane,

@@ -2,15 +2,15 @@ import type React from 'react';
 
 import type { ResultsCloseTransitionActions } from './results-presentation-shell-runtime-contract';
 
-type UseResultsPresentationCloseTransitionBridgeRuntimeArgs = {
+type PublishResultsPresentationCloseTransitionBridgeRuntimeArgs = {
   markSearchSheetCloseMapExitSettledRef: React.MutableRefObject<(requestKey: string) => void>;
   closeTransitionActions: Pick<ResultsCloseTransitionActions, 'markSearchSheetCloseMapExitSettled'>;
 };
 
-export const useResultsPresentationCloseTransitionBridgeRuntime = ({
+export const publishResultsPresentationCloseTransitionBridgeRuntime = ({
   markSearchSheetCloseMapExitSettledRef,
   closeTransitionActions,
-}: UseResultsPresentationCloseTransitionBridgeRuntimeArgs): void => {
+}: PublishResultsPresentationCloseTransitionBridgeRuntimeArgs): void => {
   markSearchSheetCloseMapExitSettledRef.current =
     closeTransitionActions.markSearchSheetCloseMapExitSettled;
 };

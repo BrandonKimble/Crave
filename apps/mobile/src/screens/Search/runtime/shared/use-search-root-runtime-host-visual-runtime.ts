@@ -5,7 +5,7 @@ import type {
 } from './search-root-visual-runtime-contract';
 import type { SearchForegroundVisualRuntime } from './use-search-foreground-visual-runtime';
 import { useSearchRootOverlayHostRouteVisualRuntime } from './use-search-root-overlay-host-route-visual-runtime';
-import { useSearchRootOverlaySceneHostVisualRuntime } from './use-search-root-overlay-scene-host-visual-runtime';
+import { selectSearchRootOverlaySceneHostVisualRuntime } from './select-search-root-overlay-scene-host-visual-runtime';
 
 export const useSearchRootRuntimeHostVisualRuntime = ({
   foregroundVisualRuntime,
@@ -33,7 +33,7 @@ export const useSearchRootRuntimeHostVisualRuntime = ({
     searchShortcutChipAnimatedStyle: foregroundVisualRuntime.searchShortcutChipAnimatedStyle,
     searchShortcutContentAnimatedStyle: foregroundVisualRuntime.searchShortcutContentAnimatedStyle,
   },
-  overlaySceneHostVisualRuntime: useSearchRootOverlaySceneHostVisualRuntime({
+  overlaySceneHostVisualRuntime: selectSearchRootOverlaySceneHostVisualRuntime({
     foregroundVisualRuntime,
     appRouteSceneChromeMotionRuntime,
   }),

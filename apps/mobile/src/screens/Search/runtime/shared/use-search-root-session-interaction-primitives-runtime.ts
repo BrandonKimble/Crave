@@ -1,8 +1,8 @@
 import React from 'react';
 
 import type { SearchRootPrimitivesRuntime } from './search-root-primitives-runtime-contract';
-import type { SearchRuntimePrimitivesRuntime } from './use-search-root-session-runtime-contract';
-import type { RuntimeMemoryDiagnostics } from './use-search-root-session-runtime-contract';
+import type { SearchRuntimePrimitivesRuntime } from './search-root-session-runtime-contract';
+import type { RuntimeMemoryDiagnostics } from './search-root-session-runtime-contract';
 
 type UseSearchRootSessionInteractionPrimitivesRuntimeArgs = {
   rootPrimitivesRuntime: SearchRootPrimitivesRuntime;

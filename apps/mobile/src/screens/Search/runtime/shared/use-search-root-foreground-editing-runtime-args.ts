@@ -7,9 +7,9 @@ import type {
   SearchRootClearRestoreAuthorityRuntime,
   SearchRootForegroundInputRuntime,
 } from './search-root-control-ports-runtime-contract';
-import type { SearchRootStateFoundationLane } from './use-search-root-foundation-runtime';
+import type { SearchRootStateFoundationLane } from './search-root-foundation-runtime';
 import type { ResultsPresentationOwner } from './use-results-presentation-runtime-owner';
-import type { SearchForegroundEditingRuntimeArgs } from './use-search-foreground-interaction-runtime-contract';
+import type { SearchForegroundEditingRuntimeArgs } from './search-foreground-interaction-runtime-contract';
 
 type UseSearchRootForegroundEditingRuntimeArgsArgs = {
   stateFoundationLane: SearchRootStateFoundationLane;

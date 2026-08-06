@@ -1,6 +1,6 @@
 import React from 'react';
 
-import type { SearchSuggestionHoldSyncRuntimeArgs } from './use-search-suggestion-surface-runtime-contract';
+import type { SearchSuggestionHoldSyncRuntimeArgs } from './search-suggestion-surface-runtime-contract';
 
 export const useSearchSuggestionHoldSyncRuntime = ({
   query,

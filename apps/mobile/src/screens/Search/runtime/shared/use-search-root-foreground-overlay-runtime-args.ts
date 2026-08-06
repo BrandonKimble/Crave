@@ -3,11 +3,11 @@ import React from 'react';
 import type { ProfileOwner } from '../profile/profile-owner-runtime-contract';
 import type { SearchRootEnvironment } from './search-root-environment-contract';
 import type { SearchRootOverlayFoundationRuntime } from './search-root-overlay-foundation-runtime-contract';
-import type { SearchRootStateFoundationLane } from './use-search-root-foundation-runtime';
+import type { SearchRootStateFoundationLane } from './search-root-foundation-runtime';
 import type {
   SearchForegroundOverlayRuntimeArgs,
   SearchForegroundTransientCleanupActions,
-} from './use-search-foreground-interaction-runtime-contract';
+} from './search-foreground-interaction-runtime-contract';
 import { useSearchRootForegroundOverlayActionArgs } from './use-search-root-foreground-overlay-action-args';
 import { useSearchRootForegroundOverlayStateArgs } from './use-search-root-foreground-overlay-state-args';
 

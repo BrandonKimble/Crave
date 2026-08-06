@@ -7,13 +7,10 @@ import type {
   SearchRootResultsArrivalState,
   SearchRootRuntimeFlagsRuntime,
   SearchRootSessionCoreLane,
-} from './use-search-root-session-runtime-contract';
+} from './search-root-session-runtime-contract';
 
 type UseSearchRootRuntimeFlagsRuntimeArgs = {
-  rootSessionCoreLane: Pick<
-    SearchRootSessionCoreLane,
-    'searchRuntimeBus'
-  >;
+  rootSessionCoreLane: Pick<SearchRootSessionCoreLane, 'searchRuntimeBus'>;
   resultsArrivalState: Pick<SearchRootResultsArrivalState, 'resultsRequestKey'>;
   foregroundPolicyPublicationAuthority: SearchForegroundPolicyPublicationAuthority;
 };
@@ -61,16 +58,16 @@ export const useSearchRootRuntimeFlagsRuntime = ({
 
   return React.useMemo<SearchRootRuntimeFlagsRuntime>(
     () => ({
-        searchMode,
-        isSearchSessionActive,
-        isSearchLoading: isSearchRequestLoadingRef.current,
-        isSearchRequestLoadingRef,
-        setSearchRequestLoading,
-        // F1735/F1032(b): the redraw-coordinator operationId could never be non-null, so
-        // the old redraw-operation-id-or-request-key fallback always resolved
-        // to the results request key — now stated directly.
-        hydrationOperationId: resultsArrivalState.resultsRequestKey,
-      }),
+      searchMode,
+      isSearchSessionActive,
+      isSearchLoading: isSearchRequestLoadingRef.current,
+      isSearchRequestLoadingRef,
+      setSearchRequestLoading,
+      // F1735/F1032(b): the redraw-coordinator operationId could never be non-null, so
+      // the old redraw-operation-id-or-request-key fallback always resolved
+      // to the results request key — now stated directly.
+      hydrationOperationId: resultsArrivalState.resultsRequestKey,
+    }),
     [
       isSearchSessionActive,
       resultsArrivalState.resultsRequestKey,

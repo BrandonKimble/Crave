@@ -1,6 +1,6 @@
 import type React from 'react';
 
-import type { SearchForegroundTransientCleanupActions } from './use-search-foreground-interaction-runtime-contract';
+import type { SearchForegroundTransientCleanupActions } from './search-foreground-interaction-runtime-contract';
 import type { SearchPrimitiveUiCleanupActions } from './search-primitive-ui-state-controller';
 import type { SearchSuggestionPanelStateController } from './search-suggestion-panel-state-controller';
 import type { SearchRootProfileBridgeRuntime } from './search-root-control-ports-runtime-contract';

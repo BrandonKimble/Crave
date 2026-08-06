@@ -1,4 +1,4 @@
-import type { SearchRootAutocompleteControlLane } from '../shared/use-search-root-control-plane-runtime-contract';
+import type { SearchRootAutocompleteControlLane } from '../shared/search-root-control-plane-runtime-contract';
 import type { SearchRootControlFoundationAuthorityRuntime } from '../shared/use-search-root-control-foundation-authority-runtime';
 import type { SearchRootControlPresentationAuthorityRuntime } from '../shared/use-search-root-control-presentation-authority-runtime';
 

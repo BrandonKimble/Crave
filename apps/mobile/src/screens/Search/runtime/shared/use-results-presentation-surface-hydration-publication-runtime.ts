@@ -6,7 +6,7 @@ import {
   registerSearchMountedResultsMotionInteractionRef,
 } from './search-mounted-results-data-store';
 import type { RouteSceneSwitchAuthority } from './route-authority-contract';
-import type { SearchRuntimeInteractionState } from './use-search-root-session-runtime-contract';
+import type { SearchRuntimeInteractionState } from './search-root-session-runtime-contract';
 
 // F1012 *-patch-runtime collapse: this type lived in
 // use-search-root-search-scene-list-hydration-patch-runtime.ts, the root of a ten-file

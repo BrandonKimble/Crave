@@ -6,8 +6,8 @@ import type {
   SearchRootClearRestoreAuthorityRuntime,
   SearchRootForegroundInputRuntime,
 } from './search-root-control-ports-runtime-contract';
-import type { SearchRootStateFoundationLane } from './use-search-root-foundation-runtime';
-import type { FilterModalRuntime } from './use-search-root-control-plane-runtime-contract';
+import type { SearchRootStateFoundationLane } from './search-root-foundation-runtime';
+import type { FilterModalRuntime } from './search-root-control-plane-runtime-contract';
 import type { ResultsPresentationOwner } from './use-results-presentation-runtime-owner';
 import { useSearchForegroundTransientController } from './use-search-foreground-transient-controller';
 import { useSearchRootForegroundEditingRuntimeArgs } from './use-search-root-foreground-editing-runtime-args';
@@ -15,7 +15,7 @@ import { useSearchRootForegroundOverlayRuntimeArgs } from './use-search-root-for
 import type {
   SearchForegroundInteractionSubmitHandlers,
   SearchForegroundTransientCleanupActions,
-} from './use-search-foreground-interaction-runtime-contract';
+} from './search-foreground-interaction-runtime-contract';
 
 type UseSearchRootForegroundTransientRuntimeArgs = {
   stateFoundationLane: SearchRootStateFoundationLane;

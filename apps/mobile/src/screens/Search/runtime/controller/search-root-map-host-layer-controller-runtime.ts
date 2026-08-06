@@ -4,8 +4,8 @@ import type {
   SearchMapRenderPresentationProps,
 } from '../../components/SearchMapWithMarkerEngine';
 import type { SearchMapRenderHostLayerRuntime } from '../shared/search-map-render-host-layer-runtime-contract';
-import type { SearchRootStateFoundationLane } from '../shared/use-search-root-foundation-runtime';
-import type { SearchRootSessionCoreLane } from '../shared/use-search-root-session-runtime-contract';
+import type { SearchRootStateFoundationLane } from '../shared/search-root-foundation-runtime';
+import type { SearchRootSessionCoreLane } from '../shared/search-root-session-runtime-contract';
 
 // F1618: `onProfilerRender` used to be threaded here AND into `hostConfig` — the same
 // callback plumbed twice into the same composite for zero benefit (SearchMapWithMarkerEngine

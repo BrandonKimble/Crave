@@ -3,7 +3,7 @@ import React from 'react';
 import type { useSearchRootControlAuthorityRuntime } from './use-search-root-control-authority-runtime';
 import type { useSearchRootControlProfileExperienceRuntime } from './use-search-root-control-profile-experience-runtime';
 import type { useSearchRootControlResultsExperienceRuntime } from './use-search-root-control-results-experience-runtime';
-import type { SearchRootFilterModalControlLane } from './use-search-root-control-plane-runtime-contract';
+import type { SearchRootFilterModalControlLane } from './search-root-control-plane-runtime-contract';
 import type { useSearchRootRuntimeFoundationStageRuntime } from './use-search-root-runtime-foundation-stage-runtime';
 import type { useSearchRootRuntimeOverlayFoundationAssemblyRuntime } from './use-search-root-runtime-overlay-foundation-assembly-runtime';
 import type { useSearchRootRuntimeVisualAssemblyRuntime } from './use-search-root-runtime-visual-assembly-runtime';

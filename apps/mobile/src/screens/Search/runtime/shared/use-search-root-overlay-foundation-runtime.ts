@@ -5,8 +5,8 @@ import type { SearchRootOverlayFoundationRuntime } from './search-root-overlay-f
 import { useAppRouteSharedSheetRuntimeOwner } from '../../../../navigation/runtime/AppRouteSharedSheetRuntimeProvider';
 import type { AppRouteOverlaySessionSnapshot } from '../../../../navigation/runtime/app-route-overlay-session-contract';
 import type { AppRouteOverlayCommandSnapshot } from '../../../../navigation/runtime/app-route-overlay-command-controller';
-import type { SearchRootStateFoundationLane } from './use-search-root-foundation-runtime';
-import type { SearchRootSessionCoreLane } from './use-search-root-session-runtime-contract';
+import type { SearchRootStateFoundationLane } from './search-root-foundation-runtime';
+import type { SearchRootSessionCoreLane } from './search-root-session-runtime-contract';
 import { useSearchRootMapRuntimeLane } from './use-search-root-map-runtime-lane';
 import { useSearchRootOverlaySessionSurfaceRuntime } from './use-search-root-overlay-session-surface-runtime';
 import { useSearchRootOverlayStoreRuntime } from './use-search-root-overlay-store-runtime';

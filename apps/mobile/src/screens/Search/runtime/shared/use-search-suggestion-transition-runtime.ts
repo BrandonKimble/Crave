@@ -8,7 +8,7 @@ import type {
   SearchSuggestionTransitionRuntime,
   SearchSuggestionTransitionRuntimeArgs,
   SearchSuggestionTransitionTimingRuntime,
-} from './use-search-suggestion-surface-runtime-contract';
+} from './search-suggestion-surface-runtime-contract';
 
 export const useSearchSuggestionTransitionRuntime = ({
   isSuggestionPanelActive,

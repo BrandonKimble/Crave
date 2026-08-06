@@ -9,7 +9,7 @@ import {
   SEARCH_SUGGESTION_PANEL_PADDING_BOTTOM,
 } from '../../constants/search';
 import { useSearchSuggestionHeaderLayoutPresentationRuntime } from './use-search-suggestion-header-layout-presentation-runtime';
-import type { SearchSuggestionLayoutVisualRuntimeArgs } from './use-search-suggestion-surface-runtime-contract';
+import type { SearchSuggestionLayoutVisualRuntimeArgs } from './search-suggestion-surface-runtime-contract';
 
 type SearchSuggestionLayoutGeometryRuntime = {
   suggestionHeaderHeightTarget: number;

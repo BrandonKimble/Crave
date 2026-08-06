@@ -11,7 +11,7 @@ import type {
 } from './search-root-control-ports-runtime-contract';
 import type { SearchRootMapViewportIntentRuntime } from './search-root-map-viewport-intent-runtime-contract';
 import type { SearchRootOverlayFoundationRuntime } from './search-root-overlay-foundation-runtime-contract';
-import type { SearchRootStateFoundationLane } from './use-search-root-foundation-runtime';
+import type { SearchRootStateFoundationLane } from './search-root-foundation-runtime';
 import { useSearchRootAutocompleteAuthorityRuntime } from './use-search-root-autocomplete-authority-runtime';
 import { useSearchRootClearRestoreAuthorityRuntime } from './use-search-root-clear-restore-authority-runtime';
 import { useSearchRootMutationCancelAuthorityRuntime } from './use-search-root-mutation-cancel-authority-runtime';
@@ -19,7 +19,7 @@ import { useSearchRootProfileBridgeAuthorityRuntime } from './use-search-root-pr
 import { useSearchRootRecentActivityAuthorityRuntime } from './use-search-root-recent-activity-authority-runtime';
 import { useSearchRootResultsScrollAuthorityRuntime } from './use-search-root-results-scroll-authority-runtime';
 import { useSearchRootRequestExecutionAuthorityRuntime } from './use-search-root-request-execution-authority-runtime';
-import type { SearchRootSessionCoreLane } from './use-search-root-session-runtime-contract';
+import type { SearchRootSessionCoreLane } from './search-root-session-runtime-contract';
 
 type UseSearchRootControlFoundationAuthorityRuntimeArgs = {
   sessionCoreLane: SearchRootSessionCoreLane;

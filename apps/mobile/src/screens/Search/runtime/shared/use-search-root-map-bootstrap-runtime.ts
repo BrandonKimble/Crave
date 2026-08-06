@@ -7,7 +7,7 @@ import type { SearchRootPrimitivesRuntime } from './search-root-primitives-runti
 import type {
   SearchRootMapBootstrapRuntime,
   SearchRootSessionPrimitivesLane,
-} from './use-search-root-session-runtime-contract';
+} from './search-root-session-runtime-contract';
 
 type UseSearchRootMapBootstrapRuntimeArgs = {
   accessToken: SearchRootEnvironment['accessToken'];

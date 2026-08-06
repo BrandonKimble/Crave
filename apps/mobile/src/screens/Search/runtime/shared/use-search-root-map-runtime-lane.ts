@@ -9,7 +9,7 @@ import type { SearchRootResultsSheetRuntimeLane } from './search-root-scaffold-r
 import type {
   SearchRootSessionCoreLane,
   SearchRootSessionPrimitivesLane,
-} from './use-search-root-session-runtime-contract';
+} from './search-root-session-runtime-contract';
 
 type RootPrimitivesRuntime = {
   mapState: {

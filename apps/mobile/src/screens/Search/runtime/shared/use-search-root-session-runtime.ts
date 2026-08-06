@@ -12,7 +12,7 @@ import { useRouteEntryOriginCameraPortRuntime } from './use-route-entry-origin-c
 import type {
   SearchRootSessionRuntimeLanes,
   UseSearchRootSessionRuntimeArgs,
-} from './use-search-root-session-runtime-contract';
+} from './search-root-session-runtime-contract';
 
 type UseSearchRootSessionRuntimeHookArgs = Pick<
   UseSearchRootSessionRuntimeArgs,

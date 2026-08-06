@@ -1,8 +1,8 @@
 import type {
   SearchRootFilterModalControlLane,
   SearchRootForegroundInteractionControlLane,
-} from './use-search-root-control-plane-runtime-contract';
-import type { SearchRootSessionCoreLane } from './use-search-root-session-runtime-contract';
+} from './search-root-control-plane-runtime-contract';
+import type { SearchRootSessionCoreLane } from './search-root-session-runtime-contract';
 import {
   useSearchRootSearchSceneBusPublishEffectRuntime,
   type SearchRootSearchSceneBusPatch,

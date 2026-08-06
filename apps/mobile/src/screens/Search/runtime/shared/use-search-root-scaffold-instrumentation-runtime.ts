@@ -6,7 +6,7 @@ import type {
   SearchRootDataPlaneRuntime,
   SearchRootSessionCoreLane,
   SearchRootSessionPrimitivesLane,
-} from './use-search-root-session-runtime-contract';
+} from './search-root-session-runtime-contract';
 import { useSearchRuntimeInstrumentationRuntime } from './use-search-runtime-instrumentation-runtime';
 import type { SearchOverlayStoreRuntime } from './search-root-scaffold-runtime-contract';
 

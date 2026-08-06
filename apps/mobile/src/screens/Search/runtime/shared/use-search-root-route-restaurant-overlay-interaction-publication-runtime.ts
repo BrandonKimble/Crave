@@ -5,7 +5,7 @@ import type {
   SearchRootRouteRestaurantOverlayInteractionPublicationLane,
 } from './search-root-route-publication-contract';
 import type { SearchRootOverlayFoundationRuntime } from './search-root-overlay-foundation-runtime-contract';
-import type { SearchRootProfilePresentationControlLane } from './use-search-root-control-plane-runtime-contract';
+import type { SearchRootProfilePresentationControlLane } from './search-root-control-plane-runtime-contract';
 
 type UseSearchRootRouteRestaurantOverlayInteractionPublicationRuntimeArgs = {
   routeRestaurantOverlayInteractionPublicationLane: SearchRootRouteRestaurantOverlayInteractionPublicationLane;

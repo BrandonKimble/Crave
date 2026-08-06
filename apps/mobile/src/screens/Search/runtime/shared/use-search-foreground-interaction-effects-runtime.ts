@@ -1,6 +1,6 @@
 import React from 'react';
 
-import type { SearchForegroundEffectsRuntimeArgs } from './use-search-foreground-interaction-runtime-contract';
+import type { SearchForegroundEffectsRuntimeArgs } from './search-foreground-interaction-runtime-contract';
 
 export type SearchForegroundInteractionRouteEffectsRuntimeArgs = Pick<
   SearchForegroundEffectsRuntimeArgs,

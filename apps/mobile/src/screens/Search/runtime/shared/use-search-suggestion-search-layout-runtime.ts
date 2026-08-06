@@ -3,7 +3,7 @@ import type { LayoutChangeEvent, LayoutRectangle } from 'react-native';
 import type {
   SearchInteractionRef,
   SearchLayout,
-} from './use-search-suggestion-surface-runtime-contract';
+} from './search-suggestion-surface-runtime-contract';
 import { useSearchSuggestionSearchContainerLayoutRuntime } from './use-search-suggestion-search-container-layout-runtime';
 import { useSearchSuggestionSearchHeaderLayoutRuntime } from './use-search-suggestion-search-header-layout-runtime';
 

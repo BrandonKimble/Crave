@@ -9,8 +9,8 @@ import type {
   SearchRootResultsSheetControlLane,
   SearchRootResultsTransitionControlLane,
   SubmitRuntimeResult,
-} from './use-search-root-control-plane-runtime-contract';
-import type { SearchRootStateFoundationLane } from './use-search-root-foundation-runtime';
+} from './search-root-control-plane-runtime-contract';
+import type { SearchRootStateFoundationLane } from './search-root-foundation-runtime';
 import type { SearchRootResultsControlRuntimeValue } from '../controller/search-root-results-control-runtime';
 import { useSearchRootResultsInteractionPortPublicationRuntime } from './use-search-root-results-interaction-port-publication-runtime';
 import { useSearchRootResultsPresentationStateRuntime } from './use-search-root-results-presentation-state-runtime';
@@ -77,11 +77,11 @@ export const useSearchRootResultsControlRuntime = ({
 
   return React.useMemo<SearchRootResultsControlRuntimeValue>(
     () => ({
-        resultsSheetControlLane,
-        resultsPresentationStateControlLane,
-        resultsTransitionControlLane,
-        searchSurfaceResultsTransactionControlLane,
-      }),
+      resultsSheetControlLane,
+      resultsPresentationStateControlLane,
+      resultsTransitionControlLane,
+      searchSurfaceResultsTransactionControlLane,
+    }),
     [
       searchSurfaceResultsTransactionControlLane,
       resultsPresentationStateControlLane,

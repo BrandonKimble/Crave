@@ -1,7 +1,7 @@
 import React from 'react';
 
 import type { SearchForegroundSuggestionPanelInputs } from './search-foreground-chrome-contract';
-import type { SearchRootStateFoundationLane } from './use-search-root-foundation-runtime';
+import type { SearchRootStateFoundationLane } from './search-root-foundation-runtime';
 
 export const useSearchRootOverlaySuggestionPanelInputsRuntime = ({
   stateFoundationLane,

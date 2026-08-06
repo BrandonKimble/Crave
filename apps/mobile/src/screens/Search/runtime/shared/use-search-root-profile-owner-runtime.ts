@@ -13,8 +13,8 @@ import { useRestaurantEntryPopTeardownWriterRuntime } from '../profile/use-resta
 import { useProfileOwner } from '../profile/profile-owner-runtime';
 import { useSearchRootProfilePresentationRuntime } from './use-search-root-profile-presentation-runtime';
 import { useSearchRootProfileSelectionRuntime } from './use-search-root-profile-selection-runtime';
-import type { SearchRootStateFoundationLane } from './use-search-root-foundation-runtime';
-import type { SearchRootSessionCoreLane } from './use-search-root-session-runtime-contract';
+import type { SearchRootStateFoundationLane } from './search-root-foundation-runtime';
+import type { SearchRootSessionCoreLane } from './search-root-session-runtime-contract';
 
 type UseSearchRootProfileOwnerRuntimeArgs = {
   sessionCoreLane: SearchRootSessionCoreLane;
@@ -108,11 +108,11 @@ export const useSearchRootProfileOwnerRuntime = ({
 
   return React.useMemo<SearchRootProfileOwnerRuntimeValue>(
     () => ({
-        profileOwner,
-        restaurantSelectionModel,
-        pendingMarkerOpenAnimationFrameRef,
-        suggestionInteractionRuntime,
-      }),
+      profileOwner,
+      restaurantSelectionModel,
+      pendingMarkerOpenAnimationFrameRef,
+      suggestionInteractionRuntime,
+    }),
     [
       pendingMarkerOpenAnimationFrameRef,
       profileOwner,

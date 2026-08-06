@@ -3,8 +3,8 @@ import type useSearchSubmitOwner from '../../hooks/use-search-submit-owner';
 import type {
   SearchForegroundLaunchIntentRuntimeArgs,
   SearchForegroundOverlayRuntimeArgs,
-} from './use-search-foreground-interaction-runtime-contract';
-import type { UseSearchRootSessionRuntimeArgs } from './use-search-root-session-runtime-contract';
+} from './search-foreground-interaction-runtime-contract';
+import type { UseSearchRootSessionRuntimeArgs } from './search-root-session-runtime-contract';
 
 export type SearchRootInsets = {
   top: number;

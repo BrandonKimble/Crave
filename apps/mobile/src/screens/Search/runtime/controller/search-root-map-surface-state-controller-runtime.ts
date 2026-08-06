@@ -1,4 +1,4 @@
-import type { SearchRootStateFoundationLane } from '../shared/use-search-root-foundation-runtime';
+import type { SearchRootStateFoundationLane } from '../shared/search-root-foundation-runtime';
 import type { SearchRootMapViewportIntentRuntime } from '../shared/search-root-map-viewport-intent-runtime-contract';
 
 export type SearchRootMapSurfaceState = {

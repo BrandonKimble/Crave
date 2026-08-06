@@ -1,7 +1,7 @@
 import React from 'react';
 
 import type { SearchRootMapViewportIntentRuntime } from './search-root-map-viewport-intent-runtime-contract';
-import type { SearchRootStateFoundationLane } from './use-search-root-foundation-runtime';
+import type { SearchRootStateFoundationLane } from './search-root-foundation-runtime';
 
 export const useSearchRootMapViewportIntentRuntime = (
   stateFoundationLane: SearchRootStateFoundationLane

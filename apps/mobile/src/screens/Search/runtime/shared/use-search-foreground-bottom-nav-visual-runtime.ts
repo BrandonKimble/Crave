@@ -22,7 +22,7 @@ import {
 import type {
   SearchForegroundBottomNavVisualRuntime,
   UseSearchForegroundVisualRuntimeArgs,
-} from './use-search-foreground-visual-runtime-contract';
+} from './search-foreground-visual-runtime-contract';
 import {
   isPerfScenarioAttributionActive,
   logPerfScenarioAttributionEvent,
@@ -46,7 +46,7 @@ import {
 import {
   SEARCH_BOTTOM_NAV_MOTION_DURATION_MS,
   type SearchBottomNavMotionTarget,
-} from './use-search-foreground-visual-runtime-contract';
+} from './search-foreground-visual-runtime-contract';
 
 const commandBottomNavMotionOnUI = (
   bottomNavHideProgress: ReturnType<typeof useSharedValue<number>>,

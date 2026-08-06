@@ -3,12 +3,12 @@ import type { StyleProp, ViewStyle } from 'react-native';
 
 import styles from '../../styles';
 import type { SearchRootOverlayFoundationRuntime } from './search-root-overlay-foundation-runtime-contract';
-import type { SearchRootStateFoundationLane } from './use-search-root-foundation-runtime';
+import type { SearchRootStateFoundationLane } from './search-root-foundation-runtime';
 import type { SearchRootSearchSceneVisualRuntime } from './search-root-visual-runtime-contract';
 import type {
   SearchRootResultsPresentationStateControlLane,
   SearchRootResultsSheetControlLane,
-} from './use-search-root-control-plane-runtime-contract';
+} from './search-root-control-plane-runtime-contract';
 
 type UseSearchRootSearchSceneSheetPlaneRuntimeArgs = {
   stateFoundationLane: SearchRootStateFoundationLane;

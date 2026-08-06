@@ -10,7 +10,7 @@ import { usePerfScenarioRuntimeStore } from '../../../../perf/perf-scenario-runt
 import type {
   SearchForegroundInteractionSubmitHandlers,
   SearchForegroundSubmitRuntimeArgs,
-} from './use-search-foreground-interaction-runtime-contract';
+} from './search-foreground-interaction-runtime-contract';
 
 type UseSearchForegroundSearchAreaSubmitRuntimeArgs = Pick<
   SearchForegroundSubmitRuntimeArgs,

@@ -7,13 +7,13 @@ import type {
   SearchRootResultsInteractionPorts,
 } from './search-root-control-ports-runtime-contract';
 import type { SearchRootOverlayFoundationRuntime } from './search-root-overlay-foundation-runtime-contract';
-import type { SearchRootResultsPresentationControlLane } from './use-search-root-control-plane-runtime-contract';
-import type { SearchRootStateFoundationLane } from './use-search-root-foundation-runtime';
+import type { SearchRootResultsPresentationControlLane } from './search-root-control-plane-runtime-contract';
+import type { SearchRootStateFoundationLane } from './search-root-foundation-runtime';
 import { useSearchRootForegroundInputAuthorityRuntime } from './use-search-root-foreground-input-authority-runtime';
 import { useSearchRootResultsInteractionAuthorityRuntime } from './use-search-root-results-interaction-authority-runtime';
 import { useSearchRootResultsPresentationAuthorityRuntime } from './use-search-root-results-presentation-authority-runtime';
 import type { SearchRootClearRestoreAuthorityRuntime } from './search-root-control-ports-runtime-contract';
-import type { SearchRootSessionCoreLane } from './use-search-root-session-runtime-contract';
+import type { SearchRootSessionCoreLane } from './search-root-session-runtime-contract';
 import type { SearchForegroundPolicyPublicationAuthority } from './search-foreground-policy-publication-authority';
 
 type UseSearchRootControlPresentationAuthorityRuntimeArgs = {

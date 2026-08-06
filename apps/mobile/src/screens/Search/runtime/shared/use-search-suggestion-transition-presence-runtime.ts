@@ -2,7 +2,7 @@ import useTransitionDriver from '../../../../hooks/use-transition-driver';
 import type {
   SearchSuggestionTransitionPresenceRuntime,
   SearchSuggestionTransitionPresenceRuntimeArgs,
-} from './use-search-suggestion-surface-runtime-contract';
+} from './search-suggestion-surface-runtime-contract';
 
 export const useSearchSuggestionTransitionPresenceRuntime = ({
   isSuggestionPanelActive,

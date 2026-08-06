@@ -6,9 +6,9 @@ import type {
   ProfileSelectionModel,
 } from '../profile/profile-owner-runtime-contract';
 import type { SearchRootRecentActivityAuthorityRuntime } from './search-root-control-ports-runtime-contract';
-import type { SearchRootStateFoundationLane } from './use-search-root-foundation-runtime';
-import type { SearchRootRestaurantSelectionModel } from './use-search-root-control-plane-runtime-contract';
-import type { SearchRootSessionCoreLane } from './use-search-root-session-runtime-contract';
+import type { SearchRootStateFoundationLane } from './search-root-foundation-runtime';
+import type { SearchRootRestaurantSelectionModel } from './search-root-control-plane-runtime-contract';
+import type { SearchRootSessionCoreLane } from './search-root-session-runtime-contract';
 import { useSearchRootProfileAnalyticsRuntime } from './search-root-profile-analytics-runtime';
 import { useSearchRootProfileSelectionModelRuntime } from './search-root-profile-selection-model-runtime';
 

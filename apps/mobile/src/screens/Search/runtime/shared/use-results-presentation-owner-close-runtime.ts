@@ -1,7 +1,7 @@
 import type React from 'react';
 
 import type { RouteSceneVisibilityPolicyRuntime } from '../../../../navigation/runtime/app-route-scene-visibility-policy-contract';
-import { useResultsPresentationCloseTransitionBridgeRuntime } from './use-results-presentation-close-transition-bridge-runtime';
+import { publishResultsPresentationCloseTransitionBridgeRuntime } from './publish-results-presentation-close-transition-bridge-runtime';
 import { useResultsPresentationCloseTransitionRuntime } from './use-results-presentation-close-transition-runtime';
 
 type UseResultsPresentationOwnerCloseRuntimeArgs = {
@@ -19,7 +19,7 @@ export const useResultsPresentationOwnerCloseRuntime = ({
 }: UseResultsPresentationOwnerCloseRuntimeArgs) => {
   const closeTransitionRuntime = useResultsPresentationCloseTransitionRuntime(args);
 
-  useResultsPresentationCloseTransitionBridgeRuntime({
+  publishResultsPresentationCloseTransitionBridgeRuntime({
     markSearchSheetCloseMapExitSettledRef,
     closeTransitionActions: closeTransitionRuntime.closeTransitionActions,
   });

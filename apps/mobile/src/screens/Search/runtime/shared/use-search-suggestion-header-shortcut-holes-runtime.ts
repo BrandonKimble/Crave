@@ -5,7 +5,7 @@ import {
   cloneSuggestionMaskedHole,
   createSuggestionHeaderShortcutHole,
 } from './search-suggestion-header-hole-runtime';
-import type { SearchSuggestionMaskedHole } from './use-search-suggestion-surface-runtime-contract';
+import type { SearchSuggestionMaskedHole } from './search-suggestion-surface-runtime-contract';
 
 type SearchSuggestionShortcutHoleState = {
   restaurants: SearchSuggestionMaskedHole | null;

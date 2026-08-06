@@ -8,8 +8,8 @@ import {
 } from '../map/restaurant-location-selection';
 import type { SearchRootEnvironment } from './search-root-environment-contract';
 import type { ProfileSelectionModel } from '../profile/profile-owner-runtime-contract';
-import type { SearchRootRestaurantSelectionModel } from './use-search-root-control-plane-runtime-contract';
-import type { SearchRootSessionCoreLane } from './use-search-root-session-runtime-contract';
+import type { SearchRootRestaurantSelectionModel } from './search-root-control-plane-runtime-contract';
+import type { SearchRootSessionCoreLane } from './search-root-session-runtime-contract';
 
 const PROFILE_MULTI_LOCATION_MIN_ZOOM = 3.5;
 const RESTAURANT_FOCUS_CENTER_EPSILON = 1e-5;

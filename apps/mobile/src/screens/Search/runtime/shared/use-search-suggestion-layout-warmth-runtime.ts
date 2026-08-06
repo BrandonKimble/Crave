@@ -3,7 +3,7 @@ import React from 'react';
 import type {
   SearchSuggestionLayoutWarmthRuntime,
   SearchSuggestionLayoutWarmthRuntimeArgs,
-} from './use-search-suggestion-surface-runtime-contract';
+} from './search-suggestion-surface-runtime-contract';
 
 const SUGGESTION_PANEL_LAYOUT_HOLD_MS = 200;
 
