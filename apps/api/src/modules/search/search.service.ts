@@ -188,6 +188,15 @@ function mergeRelevanceMax(
   return merged;
 }
 
+/**
+ * A judged `cousin` is a DIFFERENT craving, so it must sort below every
+ * measured dense sibling. Siblings carry a ceiling-normalized cosine (their
+ * cosine divided by the anchor's closest sibling), which is ≤ 1 and in
+ * practice well above this; a cousin handed 1 would outrank all of them.
+ * Deliberately low rather than tuned — this is a floor, not a calibration.
+ */
+const COUSIN_RELEVANCE = 0.1;
+
 @Injectable()
 export class SearchService {
   private readonly logger: LoggerService;
@@ -475,7 +484,14 @@ export class SearchService {
           new Set([
             ...siblingMatches.map((s) => s.siblingId),
             ...nameVariantFoodIds.mentionsIt,
-            ...judgedRelations.cousin,
+            // COUSINS RIDE THE SAME GATE AS DENSE SIBLINGS. A cousin is by
+            // definition a DIFFERENT craving, which is exactly the class
+            // `siblingsWanted` exists to suppress — admitting them
+            // unconditionally would route around the one control the user has
+            // over "show me adjacent things".
+            ...(this.siblingsWanted(request, 'preProbe')
+              ? judgedRelations.cousin
+              : []),
           ]),
         );
         if (
@@ -489,10 +505,15 @@ export class SearchService {
             relevanceByFoodId[s.siblingId] = s.relevance;
           for (const id of nameVariantFoodIds.mentionsIt)
             relevanceByFoodId[id] = relevanceByFoodId[id] ?? 1;
+          // A `satisfies` IS the thing asked for, so it carries the same 1
+          // as a verified category member. A cousin is NOT, and must not be
+          // handed the same value as an exact match — measured siblings carry
+          // a ceiling-normalized cosine below 1, so a cousin at 1 would
+          // outrank every real sibling.
           for (const id of judgedRelations.satisfies)
             relevanceByFoodId[id] = relevanceByFoodId[id] ?? 1;
           for (const id of judgedRelations.cousin)
-            relevanceByFoodId[id] = relevanceByFoodId[id] ?? 1;
+            relevanceByFoodId[id] = relevanceByFoodId[id] ?? COUSIN_RELEVANCE;
           planExpansion = {
             foodIds: [],
             foodAttributeIds: [],

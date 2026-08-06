@@ -229,11 +229,16 @@ export class LabelSweepService {
       // these are what they can MATCH — and the surfaces are the half that
       // moved the launch gate (77.3% -> 96.7%). Locale-TAGGED, so P0-a keeps
       // them out of the unlocalized aliases[] projection and only the
-      // locale-aware gazetteer sees them; source 'knowledge_synthesis' marks
-      // them INFERRED, so P0-b's collision guard refuses any that already name
-      // a different concept (the soup->caldo class).
+      // locale-aware gazetteer sees them; source 'vocabulary' marks them
+      // INFERRED, so P0-b's collision guard refuses any that already name a
+      // different concept (the soup->caldo class).
+      // EXACTLY what the generator declared — the label form is NOT added
+      // implicitly. A generator that returns no surfaces means "bank none"
+      // (a proper noun: `Royale with Cheese` is its own label in every
+      // language, but claiming it is a SPANISH search word would be a
+      // fabrication, and the name arm already matches it in any locale).
       const surfaces = Array.from(
-        new Set([form, ...(label.aliases ?? [])].map((s) => s.trim())),
+        new Set((label.aliases ?? []).map((s) => s.trim())),
       ).filter(Boolean);
       if (surfaces.length) {
         try {
@@ -244,7 +249,12 @@ export class LabelSweepService {
               surfaces.map((surface) => ({
                 form: surface,
                 locale,
-                source: 'knowledge_synthesis' as const,
+                // Its OWN provenance, not the dish pass's. Borrowing
+                // 'knowledge_synthesis' to get under the collision guard would
+                // make a bad alias untraceable to the pass that wrote it and
+                // impossible to roll back independently. 'vocabulary' is in
+                // INFERRED_ALIAS_SOURCES, so the guard still applies.
+                source: 'vocabulary' as const,
               })),
             );
           });

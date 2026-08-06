@@ -95,6 +95,8 @@ model Entity {
   curatedListItems                    CuratedListItem[]             @relation("CuratedListItemEntity")
   curatedListItemRestaurants          CuratedListItem[]             @relation("CuratedListItemRestaurant")
   entityAliases                       EntityAlias[]                 @relation("EntityAliasEntity")
+  satisfiesFrom                       EntitySatisfies[]             @relation("SatisfiesFrom")
+  satisfiesTo                         EntitySatisfies[]             @relation("SatisfiesTo")
   entityLabels                        EntityLabel[]                 @relation("EntityLabelEntity")
 
   @@index([type], map: "idx_entities_type")
@@ -123,6 +125,35 @@ model Entity {
 /// active forms, written by exactly one app function (addAliases in
 /// entity-alias.service.ts). Never a display surface — display is
 /// EntityLabel. Recall only.
+/// THE SUBSTITUTABILITY EDGE (concept-graph plan, rung 4): "if a user asked
+/// for FROM and we showed them TO, would they be satisfied?"
+///
+/// DIRECTED, deliberately — `cheese -> cheese pizza` is a fine substitution and
+/// the reverse is catastrophic, and under the ranking invariant a wrong
+/// eligibility claim with a high Crave Score ranks FIRST. Never read backwards.
+///
+/// REJECTS ARE STORED so the pass is idempotent: a re-run skips everything
+/// already judged at the current prompt_version, and a version bump becomes a
+/// DIFF instead of a full re-judge.
+///
+/// NOT a merge — two entities linked here remain two entities with their own
+/// evidence. Written ONLY by ConceptSatisfiesService.
+model EntitySatisfies {
+  fromEntityId  String   @map("from_entity_id") @db.Uuid
+  toEntityId    String   @map("to_entity_id") @db.Uuid
+  /// satisfies | cousin | reject
+  relation      String   @db.VarChar(16)
+  promptVersion Int      @default(1) @map("prompt_version")
+  decidedAt     DateTime @default(now()) @map("decided_at") @db.Timestamptz(3)
+
+  fromEntity Entity @relation("SatisfiesFrom", fields: [fromEntityId], references: [entityId], onDelete: Cascade)
+  toEntity   Entity @relation("SatisfiesTo", fields: [toEntityId], references: [entityId], onDelete: Cascade)
+
+  @@id([fromEntityId, toEntityId])
+  @@index([fromEntityId, relation], map: "idx_entity_satisfies_from_relation")
+  @@map("entity_satisfies")
+}
+
 model EntityAlias {
   aliasId    String   @id @default(dbgenerated("gen_random_uuid()")) @map("alias_id") @db.Uuid
   entityId   String   @map("entity_id") @db.Uuid

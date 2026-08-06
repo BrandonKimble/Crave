@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import { EntityType } from '@prisma/client';
+import { EntityType, Prisma } from '@prisma/client';
 import { PrismaService } from '../../../prisma/prisma.service';
 import { LoggerService } from '../../../shared';
 import { LLMService } from '../../external-integrations/llm/llm.service';
@@ -65,6 +65,9 @@ export interface SatisfiesRunSummary {
   candidatesSeen: number;
   decidedByLadder: number;
   residualJudged: number;
+  /** Pairs the model did not return a verdict for — left unjudged, never
+   *  recorded as a reject. */
+  unreturned: number;
   satisfies: number;
   cousin: number;
   reject: number;
@@ -117,6 +120,7 @@ export class ConceptSatisfiesService {
       candidatesSeen: 0,
       decidedByLadder: 0,
       residualJudged: 0,
+      unreturned: 0,
       satisfies: 0,
       cousin: 0,
       reject: 0,
@@ -125,10 +129,21 @@ export class ConceptSatisfiesService {
     const concepts = await this.prisma.$queryRawUnsafe<
       Array<{ entity_id: string; name: string }>
     >(
-      `SELECT entity_id::text, name
-         FROM core_entities
-        WHERE type = $1::entity_type AND status = 'active'
-        ORDER BY created_at ASC
+      // THE WATERMARK. Without this the pass re-scans the same oldest N
+      // concepts on every run and can never reach concept N+1 — measured:
+      // a second `--limit 25` run scanned 25, judged 0, and spent 25 recall
+      // round trips to discover it had nothing to do. `NOT EXISTS a verdict
+      // at the current prompt version` is the same shape the label sweep uses
+      // and makes the pass resumable AND re-derivable on a version bump.
+      `SELECT e.entity_id::text, e.name
+         FROM core_entities e
+        WHERE e.type = $1::entity_type AND e.status = 'active'
+          AND NOT EXISTS (
+                SELECT 1 FROM entity_satisfies s
+                 WHERE s.from_entity_id = e.entity_id
+                   AND s.prompt_version = ${SATISFIES_PROMPT_VERSION}
+              )
+        ORDER BY e.created_at ASC
         LIMIT $2`,
       type,
       limit,
@@ -157,27 +172,39 @@ export class ConceptSatisfiesService {
           });
           continue;
         }
+        const decided: Array<{ toId: string; relation: string }> = [];
         for (const [index, candidate] of batch.entries()) {
-          const raw = (verdicts.get(index + 1) ?? '').toLowerCase();
+          const raw = verdicts.get(index + 1)?.toLowerCase();
+          if (raw === undefined) {
+            // A MISSING verdict is not a reject. Stored rejects are
+            // load-bearing — they are what stops a pair being judged twice —
+            // so writing one the model never returned would permanently
+            // record a decision nobody made. Leave it unjudged; the
+            // watermark re-offers it.
+            summary.unreturned += 1;
+            continue;
+          }
           const relation =
             raw === 'satisfies' || raw === 'cousin' ? raw : 'reject';
           summary.residualJudged += 1;
           summary[relation] += 1;
-          if (!dryRun) {
-            await this.prisma.$executeRawUnsafe(
-              `INSERT INTO entity_satisfies
-                 (from_entity_id, to_entity_id, relation, prompt_version)
-               VALUES ($1::uuid, $2::uuid, $3, $4)
-               ON CONFLICT (from_entity_id, to_entity_id)
-               DO UPDATE SET relation = EXCLUDED.relation,
-                             prompt_version = EXCLUDED.prompt_version,
-                             decided_at = CURRENT_TIMESTAMP`,
-              concept.entity_id,
-              candidate.entityId,
-              relation,
-              SATISFIES_PROMPT_VERSION,
-            );
-          }
+          decided.push({ toId: candidate.entityId, relation });
+        }
+        if (!dryRun && decided.length) {
+          // ONE round trip per batch, not one per verdict.
+          await this.prisma.$executeRaw`
+            INSERT INTO entity_satisfies
+              (from_entity_id, to_entity_id, relation, prompt_version)
+            VALUES ${Prisma.join(
+              decided.map(
+                (d) =>
+                  Prisma.sql`(${concept.entity_id}::uuid, ${d.toId}::uuid, ${d.relation}, ${SATISFIES_PROMPT_VERSION})`,
+              ),
+            )}
+            ON CONFLICT (from_entity_id, to_entity_id)
+            DO UPDATE SET relation = EXCLUDED.relation,
+                          prompt_version = EXCLUDED.prompt_version,
+                          decided_at = CURRENT_TIMESTAMP`;
         }
       }
     }
@@ -195,12 +222,45 @@ export class ConceptSatisfiesService {
     type: EntityType,
     summary: SatisfiesRunSummary,
   ): Promise<Candidate[]> {
-    const recalled = await this.entityTextSearch.retrieveCandidates(
-      concept.name,
-      [type],
-      CANDIDATE_POOL,
-      { denseMode: 'always' },
-    );
+    // THE FEEDER: the nightly sibling table, NOT a live embedding call.
+    //
+    // `derived_entity_sibling_edges` already persists every active food's top
+    // dense neighbours (cosine >= 0.7, rebuilt nightly). Calling
+    // retrieveCandidates here instead spends ONE EMBEDDING CALL PER CONCEPT to
+    // recompute a table we already maintain — 5,815 vendor round trips to
+    // re-derive nightly work.
+    //
+    // The recall cost is 2 points (plain cosine 93% vs RRF hybrid 95%,
+    // measured), and it is even smaller in practice than that: the missing
+    // 2 points are LEXICAL matches, and rung 2's name containment already
+    // removes lexically-related pairs from the residual before the judge sees
+    // it. What is left for the judge is precisely the semantically-close /
+    // lexically-distant pairs, which is what dense is good at.
+    //
+    // `forward_rank` only — mutual_rank is a PRECISION filter and would drop a
+    // third of true matches (66% recall, 10% on `pho`).
+    const edges = await this.prisma.$queryRaw<
+      Array<{ entityId: string; name: string }>
+    >(Prisma.sql`
+        SELECT b.entity_id::text AS "entityId", b.name
+          FROM derived_entity_sibling_edges e
+          JOIN core_entities b ON b.entity_id = e.sibling_entity_id
+         WHERE e.anchor_entity_id = ${concept.entity_id}::uuid
+           AND e.forward_rank <= ${CANDIDATE_POOL}
+           AND b.status = 'active'::entity_status
+           AND b.type = ${type}::entity_type
+      `);
+    // FALLBACK for concepts the nightly builder has not reached (minted since
+    // the last rebuild, or a type it does not cover). Rare by construction, so
+    // the embedding call is paid only where the free path has nothing.
+    const recalled = edges.length
+      ? edges
+      : await this.entityTextSearch.retrieveCandidates(
+          concept.name,
+          [type],
+          CANDIDATE_POOL,
+          { denseMode: 'always' },
+        );
     const candidates: Candidate[] = recalled
       .filter((row) => row.entityId !== concept.entity_id)
       .map((row) => ({ entityId: row.entityId, name: row.name }));
@@ -257,7 +317,12 @@ export class ConceptSatisfiesService {
       generationConfig: {
         temperature: 0.1,
         responseMimeType: 'application/json',
-        responseSchema: RESPONSE_SCHEMA,
+        // responseJsonSchema (NOT responseSchema): the latter is Gemini's
+        // TYPED Schema field and expects OBJECT/STRING, so a raw JSON Schema
+        // handed to it is ignored — the enforcement this comment claims would
+        // not have existed. Every other caller in the repo uses this field or
+        // converts explicitly.
+        responseJsonSchema: RESPONSE_SCHEMA,
       },
     });
     const start = text.indexOf('{');

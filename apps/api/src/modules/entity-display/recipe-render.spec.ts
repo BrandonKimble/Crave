@@ -1,6 +1,5 @@
 import { conceptCase, recipeConceptId, renderRecipe } from './recipe-render';
 import { MESSAGE_CATALOGUES_FOR_TEST, renderMessage } from './recipe-messages';
-import { consensusOf } from './label-generator';
 
 describe('N6 render-from-recipe', () => {
   const ctx = {
@@ -73,32 +72,5 @@ describe('N6 render-from-recipe', () => {
         keys: en,
       });
     }
-  });
-});
-
-describe('R5-10 multi-sample consensus', () => {
-  const s = (form: string) => ({ form, description: null });
-
-  it('a 2-of-3 majority AGREES', () => {
-    const result = consensusOf([
-      s('vegetariano'),
-      s('vegetariano'),
-      s('vegano'),
-    ]);
-    expect(result).toMatchObject({
-      form: 'vegetariano',
-      votes: 2,
-      agreed: true,
-    });
-  });
-
-  it('three different answers DISAGREE (→ candidate, not published)', () => {
-    expect(consensusOf([s('a'), s('b'), s('c')]).agreed).toBe(false);
-  });
-
-  it('case and whitespace do not fake a disagreement', () => {
-    expect(consensusOf([s(' Tacos '), s('tacos'), s('taco')]).agreed).toBe(
-      true,
-    );
   });
 });

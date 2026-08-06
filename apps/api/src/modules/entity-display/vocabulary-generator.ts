@@ -37,7 +37,7 @@ import {
  * but it is not used here: 3 runs x 6 anchors at this temperature produced
  * 100% agreement with zero unstable verdicts, including non-food types.
  * Sampling three times would triple the cost to re-measure a stable answer.
- * `consensusVotes/Samples = 1/1` states honestly that this is a single draw.
+ * What DID move results was prompt WORDING — hence the version-pinned prompt.
  */
 @Injectable()
 export class VocabularyGenerator implements LabelGenerator {
@@ -89,7 +89,10 @@ export class VocabularyGenerator implements LabelGenerator {
       generationConfig: {
         temperature: 0.2,
         responseMimeType: 'application/json',
-        responseSchema: VOCABULARY_RESPONSE_SCHEMA,
+        // responseJsonSchema, NOT responseSchema: the latter is Gemini's TYPED
+        // Schema field (OBJECT/STRING) and silently ignores a raw JSON Schema,
+        // so the "enforced" shape would not have been enforced at all.
+        responseJsonSchema: VOCABULARY_RESPONSE_SCHEMA,
       },
     });
 
@@ -100,17 +103,34 @@ export class VocabularyGenerator implements LabelGenerator {
       if (!item || item.abstain || !item.canonical_label) {
         return;
       }
+
       const label = item.canonical_label.trim();
       if (!label) {
         return;
       }
-      const aliases = Array.from(
-        new Set(
-          (item.aliases ?? [])
-            .map((alias) => (alias ?? '').trim())
-            .filter(Boolean),
-        ),
-      );
+      // A PROPER NOUN IS ITS OWN LABEL IN EVERY LANGUAGE. `Royale with
+      // Cheese` renders identically in Spanish, so writing the label is the
+      // TRUTH, not a fabricated translation — and writing it is what stops the
+      // `NOT EXISTS a label row` watermark re-offering (and re-paying for)
+      // every branded dish on every future run, forever.
+      //
+      // But it gets NO locale-tagged surfaces: claiming the English name is
+      // also a Spanish *search word* would be the fabrication. The name is
+      // already reachable through the identity/name arms in any locale.
+      // The canonical label is itself a search surface for a real
+      // translation — someone who reads "camarones" on a chip will also type
+      // it — so it is declared EXPLICITLY here rather than bolted on by the
+      // writer. A proper noun declares none: it is its own label in every
+      // language, but it is not a Spanish word.
+      const aliases = item.proper_noun
+        ? []
+        : Array.from(
+            new Set(
+              [label, ...(item.aliases ?? [])]
+                .map((alias) => (alias ?? '').trim())
+                .filter(Boolean),
+            ),
+          );
       results.push({
         entityId: request.entityId,
         locale,
@@ -125,8 +145,6 @@ export class VocabularyGenerator implements LabelGenerator {
           autoApprove: true,
         },
         status: 'active',
-        consensusVotes: 1,
-        consensusSamples: 1,
         aliases,
       });
     });

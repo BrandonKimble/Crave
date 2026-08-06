@@ -1,17 +1,27 @@
 /**
  * M2 — THE LABEL GENERATOR SEAM (+ R5-10's judge shape).
  *
- * The sweep FINDS unlabeled concepts; a generator PRODUCES labels. They are
- * separate because the finding is stable forever and the producing is not:
- * today the only real generator is the spine seeder's batched Gemini call
- * (scripts/seed-spine-labels.ts); tomorrow the tail sweep gets its own.
+ * The sweep FINDS unlabeled concepts; a generator PRODUCES them. They are
+ * separate because the finding is stable forever and the producing is not.
+ * The real generator is `VocabularyGenerator` (labels AND search surfaces,
+ * per locale); `NoopLabelGenerator` below is the honest dry run.
  *
  * R5-10: judgement is MQM-SHAPED, not boolean. A 0-100 score with error spans
- * lets a near-miss be reviewed instead of silently dropped, and MULTI-SAMPLE
- * CONSENSUS is required for short context-free strings (single-word terms are
- * exactly where single-judgment noise is worst — this is measured practice,
- * not caution). Consensus disagreement lands `status='candidate'`; that is
- * what the entity_labels status column is for.
+ * lets a near-miss be reviewed instead of silently dropped, and a generator
+ * that is unsure lands `status='candidate'`; that is what the entity_labels
+ * status column is for.
+ *
+ * MULTI-SAMPLE CONSENSUS WAS REMOVED, and the removal is a MEASUREMENT, not a
+ * simplification. R5-10 asserted consensus was "required for short
+ * context-free strings ... measured practice, not caution". Re-measured
+ * 2026-08-05: 3 runs x 6 anchors (foods, a restaurant_attribute, a
+ * food_attribute, an ingredient) produced 100% agreement and ZERO unstable
+ * verdicts. Sampling three times tripled cost to re-derive a stable answer.
+ * What DID move results was prompt WORDING, which is why the prompts are
+ * version-pinned and re-measured against the launch gate on every change.
+ * The helper had no production caller after the spine seeder was superseded,
+ * so it is gone rather than left as tested-but-unused machinery implying a
+ * design that is not real.
  */
 
 /** One concept handed to a generator. */
@@ -52,11 +62,8 @@ export interface GeneratedLabel {
   /** R5-6(a): the Wikidata-learned per-locale disambiguator. */
   description: string | null;
   judgement: LabelJudgement;
-  /** 'active' when consensus agreed AND autoApprove; 'candidate' otherwise. */
+  /** 'active' publishes; 'candidate' queues for review. */
   status: 'active' | 'candidate';
-  /** How many of the N samples produced this exact form. */
-  consensusVotes: number;
-  consensusSamples: number;
   /**
    * SEARCH SURFACES for this concept in this locale — every way a native
    * speaker would TYPE it (gender/number variants, regional variants). The
@@ -77,9 +84,6 @@ export interface GeneratedLabel {
  * ratified number.
  */
 export const AUTO_APPROVE_SCORE = 80;
-
-/** The number of independent samples a consensus generator must draw. */
-export const CONSENSUS_SAMPLES = 3;
 
 export interface LabelGenerator {
   readonly name: string;
@@ -106,48 +110,4 @@ export class NoopLabelGenerator implements LabelGenerator {
     void requests;
     return Promise.resolve([]);
   }
-}
-
-/**
- * Fold N independent samples of the same (entity, locale) into one verdict.
- * Shared by every consensus generator, including the spine seeder's script —
- * the consensus rule is a property of the DESIGN, not of one call site.
- */
-export function consensusOf(
-  samples: ReadonlyArray<{
-    form: string;
-    description: string | null;
-  }>,
-): {
-  form: string;
-  description: string | null;
-  votes: number;
-  samples: number;
-  agreed: boolean;
-} {
-  const tally = new Map<string, number>();
-  for (const sample of samples) {
-    const key = sample.form.trim().toLocaleLowerCase();
-    tally.set(key, (tally.get(key) ?? 0) + 1);
-  }
-  let winnerKey = '';
-  let winnerVotes = 0;
-  for (const [key, votes] of tally) {
-    if (votes > winnerVotes) {
-      winnerKey = key;
-      winnerVotes = votes;
-    }
-  }
-  const winner =
-    samples.find(
-      (sample) => sample.form.trim().toLocaleLowerCase() === winnerKey,
-    ) ?? samples[0];
-  return {
-    form: winner?.form.trim() ?? '',
-    description: winner?.description ?? null,
-    votes: winnerVotes,
-    samples: samples.length,
-    // MAJORITY, not unanimity: 2 of 3 is agreement. 1/1/1 is not.
-    agreed: samples.length > 0 && winnerVotes * 2 > samples.length,
-  };
 }

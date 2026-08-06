@@ -5,6 +5,7 @@ import { LoggerService } from '../../shared';
 import { LLMService } from '../external-integrations/llm/llm.service';
 import { EntityTextSearchService } from '../entity-text-search/entity-text-search.service';
 import { addAliases } from '../content-processing/entity-resolver/entity-alias.service';
+import { canonicalFold } from '../content-processing/entity-resolver/entity-identity';
 
 /**
  * DEMAND → VOCABULARY (concept-graph plan, build step 6).
@@ -87,15 +88,26 @@ export class DemandVocabularyService {
     >(
       `SELECT s.subject_text AS term, count(*)::bigint AS asks
          FROM signals s
+         -- K-ANONYMITY (signals/subject-text-floor). This lane emits a
+         -- person's typed words ACROSS people and then OUTBOUND to an LLM,
+         -- and an unmet ask is by construction the most unusual thing anyone
+         -- typed — nothing matched it. count(*) >= MIN_ASKS counts ROWS, so
+         -- one person asking the same thing MIN_ASKS times clears it on their
+         -- own; it is a signal-strength gate, not a privacy floor. The view
+         -- is the floor, and joining it is the whole reason the floor is a
+         -- database object rather than a convention each reader re-derives.
+         JOIN signal_emittable_terms _emit ON _emit.term = s.subject_text
         WHERE s.kind = 'on_demand_ask'
           AND s.subject_text IS NOT NULL
           AND btrim(s.subject_text) <> ''
-          -- Already known? Then it was learned (or collected) since the ask.
-          AND NOT EXISTS (
-                SELECT 1 FROM entity_alias ea
-                 WHERE ea.form_folded = lower(btrim(s.subject_text))
-                   AND ea.status = 'active'
-              )
+          -- NOTE: the "do we already know this term?" test is NOT here. It
+          -- cannot be: form_folded is written by canonicalFold (NFKD, strip
+          -- diacritics, drop apostrophes), and SQL lower() does none of that,
+          -- so lower('Crème Brûlée') would never equal the stored
+          -- 'creme brulee' and every accented term -- exactly the foreign
+          -- words this feature exists for -- would be re-judged forever. The
+          -- fold is an APP function, so the filter is applied in TypeScript
+          -- below, against the same canonicalFold that wrote the column.
         GROUP BY s.subject_text
        HAVING count(*) >= ${MIN_ASKS}
         ORDER BY count(*) DESC
@@ -103,9 +115,19 @@ export class DemandVocabularyService {
       limit,
     );
 
+    // Known surfaces, folded by the SAME function that wrote form_folded.
+    const knownRows = await this.prisma.$queryRawUnsafe<
+      Array<{ form_folded: string }>
+    >(`SELECT DISTINCT form_folded FROM entity_alias WHERE status = 'active'`);
+    const known = new Set(knownRows.map((row) => row.form_folded));
+
     for (const row of terms) {
-      summary.termsConsidered += 1;
       const term = row.term.trim();
+      // THE FOLD LAW: compare folded-to-folded, never lower()-to-folded.
+      if (known.has(canonicalFold(term))) {
+        continue;
+      }
+      summary.termsConsidered += 1;
 
       const candidates = await this.entityTextSearch.retrieveCandidates(
         term,
