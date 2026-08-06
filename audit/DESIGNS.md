@@ -1648,3 +1648,59 @@ was dirty under a concurrent session) and CHECKED each against `git ls-files -s`
 pasting them: one was mis-transcribed — `ebd2b9925351` for deploy.sh where git says
 `ebd2b992535b`. Corrected. 10 rows to REDERIVED; the 18 rows that went stale from concurrent
 lane edits reverted to UNREVIEWED. `--check` exits 0; ledger gate passes at 966 rows.
+
+---
+
+## D68 — P3 outcome, `mobile-nav-overlays` (2026-08-06). BOTH blocked designs were MINE.
+
+Six items landed (F2401, F2402, F2404, F2405, F2407, F2408), jest 125 suites / 1308 tests,
+tsc clean. The two that did not land are the two I am responsible for, and both were refuted
+by execution after I approved them from a grep.
+
+**F2403 — MY SEND-BACK WAS WRONG, and I could have known in thirty seconds.** In D62 I
+rejected the agent's remedy and substituted "point the assertion at `recordSceneChromeAck`,
+the composite." I verified the vacuity claim carefully and then proposed the replacement
+having only grepped for the SYMBOL. Reading the file: `let chromeAckSceneKey: OverlayKey |
+null = null` — a SINGLE SLOT with two writers, and a TRANSITION-time offer, not a residency
+set. There is no ack set to assert over. An ack-keyed coverage assertion at idle would bark
+for every prewarmed-but-never-visited scene: a permanent FALSE RED, which is worse than the
+tautological green it replaced. The agent measured that and BLOCKED rather than building it.
+The rule I broke is the one I keep enforcing on others: *a better abstraction I have not
+verified is just a different guess.* A send-back must carry the same evidence standard as a
+finding. F2403 returns to P2 needing a per-shell commit signal that does not exist yet.
+
+**F2400 — I APPROVED A DESIGN CITING A PRECEDENT THAT HAD BEEN DELETED.** My D62 verdict
+said the fix "reuses the exact shape `bodySurface: 'white'` already proves works here."
+`rg bodySurface apps/mobile/src` returns nothing but an unrelated `bodySurfaceKind` local —
+F1389 deleted that field from the very file where the new one would go, and left a comment
+eight lines above the insertion point saying so. **I credited a guarantee to an enforcer that
+no longer exists, in a verdict on findings about exactly that defect.** Two further measured
+blockers I never checked: `maintainVisibleContentPosition` is an OPTIONAL FlashList prop, so
+no declaration change can make deleting it inside a component body a tsc error — the mutation
+I demanded as the acceptance test is unachievable; and 4 of the 8 literals are not
+hand-copies at all, since F983 already hoisted them as the house default at the two transport
+merge sites. The agent's re-derivation — build on `bottomSheetWithFlashListContract.ts`, which
+is bedrock for every sheet-hosted list INCLUDING search (`SheetSceneKey` excludes `'search'`,
+so a foundation-row field could never have reached the search surface) — is better than mine
+and is the design that should come back to P2.
+It also caught a stale line in CLAUDE.md: "append/chat lists (poll detail thread) should KEEP
+MVCP" is false — that thread disables it deliberately today. I repeated that claim in the
+brief without checking it.
+
+**F2402 — the agent corrected the finding's BEDROCK, which is the best kind of pushback.**
+Capture is total for PUSHED entries only; the root entry's null origin is legitimate. So the
+nullable arm was SPLIT rather than deleted, and the three call sites tsc named now each state
+why they decline to stage. Deleting the arm — which "make the two halves agree" could easily
+have been read to mean — would have broken the root entry.
+
+**F2408 — the no-fake-estimates outcome I wanted.** Both populations now ride ONE
+Release-capable sink and both timestamps moved from `Date.now()` to monotonic
+`performance.now()`; `PREMOUNT_COMMIT_GRACE_MS` STAYS 48 and undated, with the close procedure
+written down. Making the number measurable without inventing a new one is the correct answer.
+
+**Concurrency note, mine to own.** My D67 commit `9c4fbbf3c` used an explicit pathspec on
+`audit/COVERAGE.md`, which takes the WORKING-TREE version — so it swept this lane's staged
+edits to that file into my commit. Nothing was lost (all 8 markers verified present on main),
+but pathspec-on-commit protects against staging the wrong files, NOT against absorbing
+another lane's working-tree changes to a file I am legitimately committing. That is a
+different hazard and I had not distinguished them.
