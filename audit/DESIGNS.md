@@ -1595,3 +1595,56 @@ dot-access, no dynamic reads); a duplicate highlight matcher and its orphaned ty
 identity-valued pin constants; three symbols whose declaration was their only repo
 occurrence. `searchPerfDebug.disableSearchShortcuts` is now `TS2339` — before, it compiled
 and did nothing, which is what made the panel actively misleading.
+
+---
+
+## D67 — P3 outcome, `docs`/`repo-tooling` (2026-08-06). The dependency gate audited NOTHING.
+
+**F2501/F2060 — the finding UNDERSTATED the defect, and I verified the correction myself.**
+The approved design said knip was blind to the ROOT workspace. It was blind to
+*everything*: `npx knip --workspace 'apps/*' --workspace 'packages/*'` exits 0 with ZERO
+output, because knip does not glob `--workspace`. Run on the identical tree,
+`--workspace apps/mobile` prints pages of real findings. So the repo's only dependency gate
+had been green-because-empty on every `package.json`/`yarn.lock` commit for months. This is
+the session's theme at its widest: not a guard that is too weak, a guard that examined
+nothing while reporting success. Proof accepted as given and re-run by me: a dead `left-pad`
+root devDep makes the new command exit 1 naming it, and the OLD command exit 0 on the same
+tree.
+Deletions accepted with their reasoning: `pixelmatch` (referenced nowhere), and
+`@commitlint/*` DELETED rather than wired — there is no config and no `commit-msg` hook, so
+wiring it would newly block commits on a convention nothing has ever enforced. `pngjs` was
+surviving only on pixelmatch's transitive edge, so the latent break was one `yarn remove`
+away. Turning the gate on immediately exposed four unseen mobile defects, which is what a
+gate that works looks like.
+
+**F2504 scope widening — APPROVED, having re-measured it myself rather than accepting the
+number.** The agent widened the exclusion list from `plans/` to 8 corpora and FLAGGED it
+instead of burying it. I re-ran the D63-approved narrow scope: it reports **36** failures on
+today's tree, not the 47 reported — a real discrepancy, most likely because the lane fixed
+three genuine dead references in between. The conclusion is unchanged and the widening is
+right: a large share of those failures live in `.claude/projects/.../memory/`, which is AGENT
+MEMORY, not a repo recipe, and `business/`/`product/`/`PRD`/`BRD` are intent documents rather
+than instructions to execute. The gate still covers 48 files, 104 yarn commands and 97 paths,
+and it PRINTS its skip count on success so the exclusion cannot go silent. That last property
+is what makes the widening safe rather than a quiet retreat — without it I would have sent
+this back.
+
+**F2503 deploy.sh — APPROVED, and the proof is the model.** Allowlist derived from
+`git ls-files 'railway*.json'`; per-service smoke, with worker/site declared unsmokeable IN
+CODE with the reason rather than silently curling the API's `/health`. The mutation proof
+used a stub `railway` binary first on PATH that RECORDS ANY CONTACT: `--env staging sitte`
+exits 1 with the stub never invoked, and against a copy with the allowlist excised
+(grep-confirmed absent) it walks past validation and reaches Railway. That proves the guard
+fires BEFORE the dangerous action, which a simple exit-code check would not. Nothing was
+deployed.
+
+**F2505 — accepted, including what it did NOT do.** The dead `root-lint` block is deleted and
+its false premise recorded. The tsconfig `references` question and apps/site's missing `lint`
+script were outside D63's approved scope and were deliberately left alone with a note. That
+is the correct P3 behaviour; unrequested scope is how a rederivation turns into a rewrite.
+
+**Bookkeeping, verified not trusted.** I applied the 12 blob shas the lane could not (COVERAGE
+was dirty under a concurrent session) and CHECKED each against `git ls-files -s` rather than
+pasting them: one was mis-transcribed — `ebd2b9925351` for deploy.sh where git says
+`ebd2b992535b`. Corrected. 10 rows to REDERIVED; the 18 rows that went stale from concurrent
+lane edits reverted to UNREVIEWED. `--check` exits 0; ledger gate passes at 966 rows.
