@@ -49,14 +49,35 @@ export const useSnapshotAuthority = <TSnapshot>(
     >()
   );
   const snapshotRef = React.useRef(snapshot);
-  const didChangeRef = React.useRef(false);
+  // F1327(b). TWO MARKERS, BECAUSE THERE ARE TWO QUESTIONS, and one marker
+  // answering both is what made this primitive drop notifications.
+  //   snapshotRef        — "what is the current value?" (read by getSnapshot,
+  //                        which consumers call DURING render, so it must be
+  //                        advanced during render).
+  //   deliveryRef.notified — "what have subscribers already been told?" advanced
+  //                        ONLY inside the effect below.
+  // The old code derived "did it change" during render and stored the answer in
+  // a ref. Render is not run-once: React double-invokes it (StrictMode, dev),
+  // the first pass advanced snapshotRef, the second pass then compared the new
+  // snapshot against the already-advanced ref, computed `didChange === false`,
+  // and the effect skipped the notify — every edge silently lost. Proven in
+  // use-snapshot-authority.spec.ts, which goes RED on the old shape.
+  // An edge can no longer be consumed by a render that does not deliver it,
+  // because only the delivering effect advances the marker.
+  // One ref, taking over the slot `didChangeRef` vacated, so this repair costs
+  // the composition ZERO net hooks (a hook-count census asserts on it —
+  // use-search-root-overlay-local-restaurant-sheet-host-runtime.spec.ts).
+  // `isEqual` rides along because it can be a fresh closure each render and the
+  // effect must use the latest WITHOUT taking it as a dependency, which would
+  // re-notify on identity alone.
+  const deliveryRef = React.useRef({ notified: snapshot, isEqual });
+  deliveryRef.current.isEqual = isEqual;
 
-  const previousSnapshot = snapshotRef.current;
-  const didChange = !isEqual(previousSnapshot, snapshot);
-  if (didChange) {
+  // Idempotent by construction: re-running this with the same `snapshot` is a
+  // no-op, so a double-invoked render leaves the same state a single one would.
+  if (!isEqual(snapshotRef.current, snapshot)) {
     snapshotRef.current = snapshot;
   }
-  didChangeRef.current = didChange;
 
   const authority = React.useMemo<SnapshotAuthority<TSnapshot>>(
     () => ({
@@ -83,9 +104,11 @@ export const useSnapshotAuthority = <TSnapshot>(
   );
 
   React.useLayoutEffect(() => {
-    if (!didChangeRef.current) {
+    const deliveredSnapshot = snapshotRef.current;
+    if (deliveryRef.current.isEqual(deliveryRef.current.notified, deliveredSnapshot)) {
       return;
     }
+    deliveryRef.current.notified = deliveredSnapshot;
     const operation = attributionOperation ?? 'notify';
     withSearchNavSwitchRuntimeAttribution(
       attributionOwner ?? 'snapshotAuthority',

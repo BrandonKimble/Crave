@@ -1,6 +1,10 @@
 #!/usr/bin/env bash
 # @script-class: gate
-# @run-by: NOT YET WIRED — pending manual addition to .github/workflows/ci.yml
+# @run-by: .github/workflows/ci.yml (job no-bypass-search-runtime, step "Findings
+#     ledger status gate", line 227: `bash scripts/findings-ledger-gate.sh`).
+#     WIRED — corrected 2026-08-06 (F2141); this header used to read "NOT YET
+#     WIRED", which was false and told readers the trailer discipline below was
+#     unenforced.
 #
 # audit/FINDINGS.md STATUS IS A NORMALIZED, MACHINE-CHECKABLE TRAILER.
 #

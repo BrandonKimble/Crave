@@ -87,6 +87,22 @@ packages/*/src/**/*.js
 # file's header), so it must be tracked or the honest gate exists on one machine.
 !apps/mobile/scripts/jest-honest.js
 
+# F2142: …and the SAME lesson, unlearned one line up. `*.d.ts` above is aimed at
+# tsc OUTPUT, which in this repo only ever lands in dist/ or build/. But it also
+# swallowed every HAND-WRITTEN ambient declaration under a src/ tree, and three
+# of them exist: apps/mobile/src/types/assets.d.ts (the `*.png` module shim),
+# apps/mobile/src/tracksheet/__render__/test-globals.d.ts, and
+# apps/mobile/src/types/react-test-renderer.d.ts. Zero .d.ts files were tracked.
+# MEASURED, not reasoned: move those three aside and `tsc --noEmit -p
+# apps/mobile/tsconfig.json` goes from 0 errors to 1,227 — i.e. a fresh clone of
+# this repo has never been able to type-check the mobile app, and the green tsc
+# on a developer's machine was green because of files git could not see. Exactly
+# the "the honest gate exists on one machine" failure the negation above was
+# written for. Hand-written declarations under src/ are SOURCE; build output
+# still is not (nothing writes .d.ts into src/).
+!apps/*/src/**/*.d.ts
+!packages/*/src/**/*.d.ts
+
 # Scratch harnesses. `railway up` uploads the working TREE, so an untracked
 # throwaway would otherwise ship to a real environment — and it blocks the
 # deploy script's clean-tree guard until someone deletes it. Ignored = it can
