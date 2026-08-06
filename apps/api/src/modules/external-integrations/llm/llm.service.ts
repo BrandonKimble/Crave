@@ -852,7 +852,19 @@ export class LLMService implements OnModuleInit, OnModuleDestroy {
    * Process Reddit content through Gemini LLM for entity extraction
    * Implements PRD Section 6.3 LLM Data Collection Input/Output Structures
    */
-  async processContent(input: LLMModelInput): Promise<LLMOutputStructure> {
+  /**
+   * @param systemPromptOverride PROMPT A/B ONLY (scripts/prompt-ab.ts): run
+   *  this exact system instruction instead of the active collection prompt,
+   *  so a candidate can be graded against the live one through THIS gateway
+   *  rather than a second Gemini client. Supplying it deliberately bypasses
+   *  the collection context cache (see callLLMApi's `collectionPath`), which
+   *  is what an A/B wants — neither variant may inherit the other's cache.
+   *  Production callers never pass it.
+   */
+  async processContent(
+    input: LLMModelInput,
+    systemPromptOverride?: string,
+  ): Promise<LLMOutputStructure> {
     this.logger.debug('Processing content through Gemini', {
       correlationId: CorrelationUtils.getCorrelationId(),
       operation: 'process_content',
@@ -870,6 +882,7 @@ export class LLMService implements OnModuleInit, OnModuleDestroy {
       const shouldLogThoughts = this.shouldLogThoughts('content');
       const response = await this.callLLMApi(prompt, {
         usageCaller: 'content.extract',
+        systemInstruction: systemPromptOverride ?? undefined,
         thinkingOverride: shouldLogThoughts
           ? { includeThoughts: true }
           : undefined,

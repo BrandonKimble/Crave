@@ -1,0 +1,363 @@
+[
+  {
+    "id": "D1-itinerary-plan",
+    "why": "Phase-1 root cause: a plan is licensed as endorsement by the bare-list rule. Real body, verbatim.",
+    "posts": [
+      {
+        "id": "SRC001",
+        "title": "Judge my austin food itinerary",
+        "body": "Headed to Austin at the end of the month for a long weekend. Here's our short list for food and beverages.  Better Half  Suerte  Easy Tiger Cuantos Tacos Micklethwait Fukumoto Live Oak Brewery Fast Friends live oak",
+        "extract_from_post": true,
+        "comments": []
+      }
+    ],
+    "expect": {
+      "emitsNothing": true
+    }
+  },
+  {
+    "id": "C1-CONTROL-list-reply",
+    "why": "NEGATIVE CONTROL. A bare-list REPLY to a rec ask is real testimony and must survive. Praise expectation REMOVED after round 1: item-specific ask means the dish connection carries the endorsement (Step E), and live's extra praise mentions are the double-carrier one-claim-once forbids.",
+    "posts": [
+      {
+        "id": "SRC002",
+        "title": "Best pho in Austin?",
+        "body": "Looking for good pho, preferably central.",
+        "extract_from_post": false,
+        "comments": [
+          {
+            "id": "SRC003",
+            "body": "Pho phong luu, Tan My, Fresh Bowl, Sip Pho if central."
+          }
+        ]
+      }
+    ],
+    "expect": {
+      "restaurants": ["pho phong luu", "tan my"],
+      "foods": ["pho"]
+    }
+  },
+  {
+    "id": "C2-CONTROL-trip-report-post",
+    "why": "NEGATIVE CONTROL. A POST BODY can be excellent testimony \u2014 the post-body rule I refuted would kill this.",
+    "posts": [
+      {
+        "id": "SRC004",
+        "title": "2026 NYC Food Trip Review how did I do overall?",
+        "body": "**The Hits** **Radio Bakery:** Salmon lox focaccia. Best bite of the trip, hands down. Still thinking about it. **Danny and Coops:** Best cheesesteak I've ever had. You definitely need the hot peppers.",
+        "extract_from_post": true,
+        "comments": []
+      }
+    ],
+    "expect": {
+      "restaurants": ["radio bakery", "danny and coops"],
+      "foods": ["cheesesteak"]
+    }
+  },
+  {
+    "id": "D2-grocery-packaged",
+    "why": "H-E-B: genuine testimony about PACKAGED goods. Verbatim source text.",
+    "posts": [
+      {
+        "id": "SRC005",
+        "title": "HEB Mi Tienda al pastor - worth it?",
+        "body": "Has anyone tried it?",
+        "extract_from_post": false,
+        "comments": [
+          {
+            "id": "SRC006",
+            "body": "I like it (I actually like all of the Mi tienda meats from H-E-B). The only issue is that it gets kind of watery when you cook it on the stove and the pieces are a little small for a grill, so it's difficult to crisp up (I could not do it). Maybe an air fryer would do the trick?"
+          }
+        ]
+      }
+    ],
+    "expect": {
+      "emitsNothing": true
+    }
+  },
+  {
+    "id": "C3-CONTROL-grocery-with-counter",
+    "why": "NEGATIVE CONTROL. JD's Supermarket really does serve tacos \u2014 a venue-class rule would wrongly kill this.",
+    "posts": [
+      {
+        "id": "SRC007",
+        "title": "Best tacos on east riverside?",
+        "body": "",
+        "extract_from_post": false,
+        "comments": [
+          {
+            "id": "SRC008",
+            "body": "JD's on east riverside near ani's day & night has some tacos that have no business being as good as they are. try the carnitas and beef fajita for sure. they also have rotating daily specials"
+          }
+        ]
+      }
+    ],
+    "expect": {
+      "restaurants": ["jds"],
+      "foods": ["taco"]
+    }
+  },
+  {
+    "id": "D3-intensity-comparison",
+    "why": "The dislocation class, verbatim: 'lighter than Jets or 313' became attribute `light`.",
+    "posts": [
+      {
+        "id": "SRC009",
+        "title": "Roman style pizza rec",
+        "body": "",
+        "extract_from_post": false,
+        "comments": [
+          {
+            "id": "SRC010",
+            "body": "Try Baldinucci pizza in Westlake. Family owned and really great focaccia type Roman style pizza. Lighter than Jets or 313 but very high quality."
+          }
+        ]
+      }
+    ],
+    "expect": {
+      "restaurants": ["baldinucci"],
+      "notAttributes": ["light", "lighter", "high quality", "very high quality"]
+    }
+  },
+  {
+    "id": "D4-menu-format",
+    "why": "A format is not a dish. Real endorsement, wrong slot.",
+    "posts": [
+      {
+        "id": "SRC011",
+        "title": "Favorite tasting menus?",
+        "body": "",
+        "extract_from_post": false,
+        "comments": [
+          {
+            "id": "SRC012",
+            "body": "APT 115. It is our newest favorite tasting menu, 100% recommend!!"
+          }
+        ]
+      }
+    ],
+    "expect": {
+      "restaurants": ["apt 115"],
+      "notFoods": ["tasting menu"],
+      "somePraise": true
+    }
+  },
+  {
+    "id": "D5-availability-only",
+    "why": "Availability is not endorsement \u2014 the rule exists in Step 6 today but never gates eligibility.",
+    "posts": [
+      {
+        "id": "SRC013",
+        "title": "Where can I find kouign amann?",
+        "body": "",
+        "extract_from_post": false,
+        "comments": [
+          {
+            "id": "SRC014",
+            "body": "Quack's on 43rd has them. Also Epoch sells them sometimes."
+          }
+        ]
+      }
+    ],
+    "expect": {
+      "emitsNothing": true
+    }
+  },
+  {
+    "id": "D6-lukewarm",
+    "why": "A hedged/middling verdict is not an endorsement.",
+    "posts": [
+      {
+        "id": "SRC015",
+        "title": "Anyone been to Nixta lately?",
+        "body": "",
+        "extract_from_post": false,
+        "comments": [
+          {
+            "id": "SRC016",
+            "body": "Went last week. The duck carnitas taco was fine, 6/10, a bit rich for me. Service was ok."
+          }
+        ]
+      }
+    ],
+    "expect": {
+      "emitsNothing": true
+    }
+  },
+  {
+    "id": "D7-negative-dish",
+    "why": "Negative testimony must never project as a positive dish claim.",
+    "posts": [
+      {
+        "id": "SRC017",
+        "title": "Thai food thoughts",
+        "body": "",
+        "extract_from_post": false,
+        "comments": [
+          {
+            "id": "SRC018",
+            "body": "The Sripraphai pad Thai from Wonder was so disgusting and they should all be ashamed"
+          }
+        ]
+      }
+    ],
+    "expect": {
+      "emitsNothing": true
+    }
+  },
+  {
+    "id": "D8-directory-roster",
+    "why": "A participant roster names many restaurants neutrally \u2014 not endorsement.",
+    "posts": [
+      {
+        "id": "SRC019",
+        "title": "Maui Relief Fundraiser - participating restaurants",
+        "body": "These spots are donating 20% of proceeds this Saturday: Nixta Taqueria (11am-9pm, Mexican), Suerte (5pm-10pm, Mexican), Uchi (5pm-11pm, Japanese), Franklin BBQ (11am-2pm, Barbecue). Please come out and support.",
+        "extract_from_post": true,
+        "comments": []
+      }
+    ],
+    "expect": {
+      "emitsNothing": true
+    }
+  },
+  {
+    "id": "D9-occasion-as-food",
+    "why": "breakfast PREDICTS food (stays), dinner does not. Preserves the 346c97dc6 ruling.",
+    "posts": [
+      {
+        "id": "SRC020",
+        "title": "Best breakfast tacos?",
+        "body": "",
+        "extract_from_post": false,
+        "comments": [
+          {
+            "id": "SRC021",
+            "body": "Veracruz all day. Their migas breakfast taco is the best in town. Also great for a late dinner."
+          }
+        ]
+      }
+    ],
+    "expect": {
+      "restaurants": ["veracruz"],
+      "foods": ["breakfast taco"],
+      "notFoods": ["dinner"],
+      "notAttributes": ["best"]
+    }
+  },
+  {
+    "id": "D10-dish-as-restaurant",
+    "why": "A capitalized dish phrase must not mint a restaurant.",
+    "posts": [
+      {
+        "id": "SRC022",
+        "title": "Pakistani food in Austin",
+        "body": "",
+        "extract_from_post": false,
+        "comments": [
+          {
+            "id": "SRC023",
+            "body": "Go to Shahi Foods and get the Bihari Kabab, it's incredible. Best Pakistani in town."
+          }
+        ]
+      }
+    ],
+    "expect": {
+      "restaurants": ["shahi foods"],
+      "notRestaurants": ["bihari kabab"],
+      "foods": ["bihari kabab"]
+    }
+  },
+  {
+    "id": "D11-cuisine-as-dish",
+    "why": "A cuisine is an attribute on both sides, never a dish.",
+    "posts": [
+      {
+        "id": "SRC024",
+        "title": "Good Japanese?",
+        "body": "",
+        "extract_from_post": false,
+        "comments": [
+          {
+            "id": "SRC025",
+            "body": "Otoko is phenomenal Japanese. Worth every penny."
+          }
+        ]
+      }
+    ],
+    "expect": {
+      "restaurants": ["otoko"],
+      "notFoods": ["japanese"],
+      "attributes": ["japanese"],
+      "somePraise": true
+    }
+  },
+  {
+    "id": "D12-closed-place",
+    "why": "Nostalgia for a closed venue is not actionable.",
+    "posts": [
+      {
+        "id": "SRC026",
+        "title": "Miss any old Austin spots?",
+        "body": "",
+        "extract_from_post": false,
+        "comments": [
+          {
+            "id": "SRC027",
+            "body": "RIP Threadgill's. Their chicken fried steak was the best in town, back in the day."
+          }
+        ]
+      }
+    ],
+    "expect": {
+      "emitsNothing": true
+    }
+  },
+  {
+    "id": "C4-CONTROL-praise-carrier",
+    "why": "NEGATIVE CONTROL. Dish claims + holistic praise = one praise carrier, dishes at false.",
+    "posts": [
+      {
+        "id": "SRC028",
+        "title": "Nixta report",
+        "body": "",
+        "extract_from_post": false,
+        "comments": [
+          {
+            "id": "SRC029",
+            "body": "Nixta's duck carnitas taco is crispy and the patio is gorgeous. This place is a gem."
+          }
+        ]
+      }
+    ],
+    "expect": {
+      "restaurants": ["nixta"],
+      "foods": ["taco"],
+      "attributes": ["patio", "crispy"],
+      "somePraise": true,
+      "notAttributes": ["gem", "gorgeous"]
+    }
+  },
+  {
+    "id": "C5-CONTROL-dietary",
+    "why": "NEGATIVE CONTROL. Dietary claims are NEVER dropped \u2014 hard search toggles depend on them.",
+    "posts": [
+      {
+        "id": "SRC030",
+        "title": "Gluten free options?",
+        "body": "",
+        "extract_from_post": false,
+        "comments": [
+          {
+            "id": "SRC031",
+            "body": "Rebel Cheese is fantastic, everything is vegan and they have great GF options too."
+          }
+        ]
+      }
+    ],
+    "expect": {
+      "restaurants": ["rebel cheese"],
+      "attributes": ["vegan", "gluten free"]
+    }
+  }
+]

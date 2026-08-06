@@ -31,15 +31,15 @@ process.env.PROCESS_ROLE ||= 'api';
 
 import { readFileSync, writeFileSync } from 'fs';
 import { join, isAbsolute } from 'path';
-import { GoogleGenAI } from '@google/genai';
-import { COLLECTION_RESPONSE_JSON_SCHEMA } from '../src/modules/external-integrations/llm/prompts/llm-response-schemas';
+import { NestFactory } from '@nestjs/core';
+import { AppModule } from '../src/app.module';
+import { LLMService } from '../src/modules/external-integrations/llm/llm.service';
+import { stopCronsForScript } from '../src/shared/utils/stop-crons';
 
 const PROMPT_DIR = join(
   __dirname,
   '../src/modules/external-integrations/llm/prompts',
 );
-const MODEL = process.env.LLM_MODEL || 'gemini-3-flash-preview';
-const TEMPERATURE = 0.1;
 
 /** One graded scenario: real source text plus what must and must not appear. */
 type Case = {
@@ -78,20 +78,35 @@ type Case = {
 
 type Mention = Record<string, unknown>;
 
-function norm(value: unknown): string {
-  return String(value ?? '')
+function norm(value: string): string {
+  return value
     .toLowerCase()
     .replace(/[^a-z0-9 ]+/g, ' ')
     .replace(/\s+/g, ' ')
     .trim();
 }
 
-/** Singular-insensitive containment, so "taco" matches "tacos". */
+/**
+ * Singular-insensitive containment, so "taco" matches "tacos".
+ *
+ * ALSO token-subset tolerant, and that is not laxness — it is the difference
+ * between grading the prompt and grading canonicalization. Round 1 marked the
+ * candidate FAIL on `missing restaurant "baldinucci"` when it had emitted
+ * "baldinucci pizza": a correct canonical form that legitimately keeps its
+ * brand token. The bug was mine, and it hid a real win (the candidate had
+ * dropped the `light` attribute the live prompt emitted). An expectation is
+ * met when every word of the expected name appears in the emitted one.
+ */
 function has(haystack: string[], needle: string): boolean {
   const n = norm(needle);
+  const wanted = n.split(' ').filter(Boolean);
   return haystack.some((value) => {
     const v = norm(value);
-    return v === n || v === `${n}s` || `${v}s` === n;
+    if (v === n || v === `${n}s` || `${v}s` === n) return true;
+    const present = v.split(' ').filter(Boolean);
+    return wanted.every((w) =>
+      present.some((t) => t === w || t === `${w}s` || `${t}s` === w),
+    );
   });
 }
 
@@ -102,7 +117,9 @@ function grade(
   const failures: string[] = [];
   const expect = testCase.expect;
 
-  const restaurants = mentions.map((m) => String(m.restaurant ?? ''));
+  const restaurants = mentions.map((m) =>
+    typeof m.restaurant === 'string' ? m.restaurant : '',
+  );
   const foods = mentions
     .map((m) => m.food)
     .filter((f): f is string => typeof f === 'string' && f.length > 0);
@@ -152,12 +169,20 @@ function grade(
   return { pass: failures.length === 0, failures };
 }
 
+/**
+ * ONE GATEWAY (gemini-gateway-lockdown): this probe must NOT construct its own
+ * Gemini client. The first draft imported @google/genai directly and the lint
+ * rule caught it — correctly, because a second client is a second spend gate to
+ * forget, and this probe spends real money. It goes through LlmService like
+ * every other caller; the only special thing it does is hand processContent the
+ * system prompt to run, which is exactly what an A/B needs and nothing more.
+ */
 async function runOnce(
-  ai: GoogleGenAI,
+  llm: LLMService,
   systemPrompt: string,
   testCase: Case,
 ): Promise<Mention[]> {
-  const payload = {
+  const input = {
     posts: testCase.posts.map((post) => ({
       id: post.id,
       title: post.title ?? '',
@@ -171,25 +196,10 @@ async function runOnce(
     })),
   };
 
-  const response = await ai.models.generateContent({
-    model: MODEL,
-    contents: JSON.stringify(payload),
-    config: {
-      systemInstruction: systemPrompt,
-      temperature: TEMPERATURE,
-      responseMimeType: 'application/json',
-      responseSchema: COLLECTION_RESPONSE_JSON_SCHEMA as never,
-      maxOutputTokens: 32768,
-    },
-  });
-
-  const text = response.text ?? '';
-  try {
-    const parsed = JSON.parse(text) as { mentions?: Mention[] };
-    return Array.isArray(parsed.mentions) ? parsed.mentions : [];
-  } catch {
-    throw new Error(`unparseable response: ${text.slice(0, 300)}`);
-  }
+  const parsed = await llm.processContent(input as never, systemPrompt);
+  return Array.isArray(parsed?.mentions)
+    ? (parsed.mentions as unknown as Mention[])
+    : [];
 }
 
 function resolvePrompt(value: string): string {
@@ -215,9 +225,6 @@ async function main(): Promise<void> {
     arg('candidate', 'collection-prompt.candidate.md') as string,
   );
 
-  const apiKey = process.env.GEMINI_API_KEY || process.env.LLM_API_KEY;
-  if (!apiKey) throw new Error('GEMINI_API_KEY (or LLM_API_KEY) is required');
-
   const prompts = {
     live: readFileSync(livePath, 'utf-8'),
     candidate: readFileSync(candidatePath, 'utf-8'),
@@ -225,15 +232,17 @@ async function main(): Promise<void> {
   let cases = JSON.parse(readFileSync(caseFile, 'utf-8')) as Case[];
   if (only) cases = cases.filter((c) => c.id === only);
 
-  const ai = new GoogleGenAI({ apiKey });
+  const app = await NestFactory.createApplicationContext(AppModule, {
+    logger: ['error'],
+  });
+  stopCronsForScript(app);
+  const llm = app.get(LLMService);
   const results: Array<Record<string, unknown>> = [];
 
   console.log(
     `\nPROMPT A/B — ${cases.length} cases x ${repeat} runs x 2 prompts = ${cases.length * repeat * 2} calls`,
   );
-  console.log(
-    `model=${MODEL}  live=${livePath}\n           candidate=${candidatePath}\n`,
-  );
+  console.log(`live=${livePath}\ncandidate=${candidatePath}\n`);
 
   // One unit of work per (case, variant, run). Sequential execution made a
   // 96-call round exceed ten minutes; the vendor happily takes these in
@@ -266,17 +275,15 @@ async function main(): Promise<void> {
         const k = key(unit.testCase.id, unit.variant);
         try {
           const mentions = await runOnce(
-            ai,
+            llm,
             prompts[unit.variant],
             unit.testCase,
           );
           outcomes.get(k)!.push({ mentions });
         } catch (error) {
-          outcomes
-            .get(k)!
-            .push({
-              error: error instanceof Error ? error.message : String(error),
-            });
+          outcomes.get(k)!.push({
+            error: error instanceof Error ? error.message : String(error),
+          });
         }
       }
     }),
@@ -351,6 +358,8 @@ async function main(): Promise<void> {
     writeFileSync(outFile, JSON.stringify(results, null, 2));
     console.log(`\nwrote ${outFile}`);
   }
+
+  await app.close();
 }
 
 main()

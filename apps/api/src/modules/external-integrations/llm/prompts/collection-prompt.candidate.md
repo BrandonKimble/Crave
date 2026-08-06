@@ -100,6 +100,13 @@ The writer vouches from experience, or reports a clear consensus:
 - **AVAILABILITY or POPULARITY alone.** "X has Y", "they sell it by the pound",
   "it's always packed", "there's a location on 5th". Stating that food exists,
   or that others go, is not a verdict on it.
+  **This holds even when the availability answers the question asked.** A
+  "where can I find \_\_\_?" ask makes "Quack's on 43rd has them. Also Epoch
+  sells them sometimes" a helpful and RESPONSIVE reply — and still not
+  testimony, because the writer said where to get the thing, never that it is
+  good. Being the answer to a findability question is not endorsement.
+  Responsiveness never substitutes for a verdict: ask what the writer SAID
+  about the food, not whether they were helpful.
 - **HEARSAY or DESIRE.** "I've heard", "supposedly", "want to try", "never been
   but interested".
 - **A MIDDLING OR HEDGED VERDICT.** "it's fine", "solid enough", "6/10", "not
