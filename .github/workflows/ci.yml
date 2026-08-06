@@ -76,6 +76,16 @@ jobs:
       - name: 'Static guard: no backtick inside an embedded SQL comment'
         run: node scripts/check-sql-comment-backticks.mjs
 
+      # Two Railway manifest keys break production SILENTLY, both burned into
+      # CLAUDE.md after real incidents and neither previously enforced:
+      # `deploy.startCommand` overrides the Dockerfile CMD and is exec'd with
+      # no shell (the container migrates, exits 0, never serves), and
+      # `build.watchPatterns` makes Railway skip a deploy while reporting
+      # success. Covers the repo half only — the dashboard setting merges with
+      # the file, which deploy.sh's unconditional SKIPPED check owns.
+      - name: 'Static guard: railway manifests carry no startCommand/watchPatterns'
+        run: node scripts/check-railway-manifests.mjs
+
       - name: Type check
         run: yarn type-check
 
