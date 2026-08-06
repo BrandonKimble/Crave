@@ -170,7 +170,13 @@ work: `scrollToOffset(0)` (no-op, already at 0; also races ahead of the anchor s
 `flashListProps: { maintainVisibleContentPosition: { disabled: true } }`. In the scene-stack
 sheets, pass it via the body transport's `flashListProps` (reaches the FlashList in both
 `SearchMountedSceneBody` + `BottomSheetSceneStackListBodySurface`); it's per-scene, so other
-sheets keep the default. Append/chat lists (poll detail thread) should KEEP MVCP on.
+sheets keep the default. CORRECTED 2026-08-06 (D68): this line used to say the poll
+detail thread should KEEP MVCP on. It does NOT — `PollDetailPanel.tsx:1311` disables it
+deliberately, because the thread takes a programmatic `scrollToIndex` after async data
+arrives and MVCP FIGHTS the restore, anchoring a placeholder row and landing the scroll
+on the wrong one. Its own comment ends: "the poll-detail thread is not an append/chat
+feed, so nothing else wants MVCP." No list in this repo currently opts back in. A design
+verdict repeated the stale claim from here before anyone checked the code.
 
 ## Memory: Effects DON'T fire in the scene body-spec hooks (e.g. usePollsPanelListSceneParts)
 

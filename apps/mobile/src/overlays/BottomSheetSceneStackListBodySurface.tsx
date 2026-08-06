@@ -251,7 +251,11 @@ const ActiveBottomSheetSceneStackListBodySurface = React.memo(
         // F983: the TRANSPORT owns the MVCP default (disabled) — a re-sortable feed silently
         // broke this law before (CLAUDE.md) because MVCP was opt-OUT per scene, threaded through
         // spread order at four merge sites with no structural guard. Inverted: a scene must
-        // explicitly opt IN (spread after this, e.g. PollDetailPanel's append/chat thread).
+        // explicitly opt IN (spread after this). NOTE (D68): this used to cite
+        // PollDetailPanel's thread as the example opt-in. It is not one —
+        // PollDetailPanel.tsx:1311 disables MVCP deliberately, because a programmatic
+        // scrollToIndex after async data fights the anchor. There is no opt-in caller
+        // today; the escape hatch is real but currently unused.
         maintainVisibleContentPosition: { disabled: true },
         ...sceneFlashListProps,
         overrideProps: {
