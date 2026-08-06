@@ -1,0 +1,18 @@
+# WHY THIS FILE EXISTS (F2160).
+#
+# audit/FINDINGS.md is a DATA LEDGER — one finding per line, pipe-delimited,
+# parsed by scripts/findings-ledger-gate.sh. Prettier treated it as prose and
+# silently rewrote its contents: a row naming two snake_case identifiers reads
+# as markdown emphasis, so `created_utc … entity_redirects` came back out as
+# `created*utc … entity*redirects`. Ten identifiers were corrupted this way
+# before anyone noticed, including `node_modules`.
+#
+# That is a formatter editing the evidence. It also made prettier
+# NON-IDEMPOTENT on this file — two `--write` passes were needed before
+# `--check` would agree, which is the tell that the rewrite was lossy rather
+# than cosmetic. And a reflow that wrapped a long row would break the gate's
+# line-oriented parse outright.
+#
+# A ledger has no formatting to enforce. Leave it alone.
+audit/FINDINGS.md
+audit/COVERAGE.md
