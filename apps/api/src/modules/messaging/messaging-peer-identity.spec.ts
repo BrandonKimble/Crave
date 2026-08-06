@@ -1,4 +1,3 @@
-/* eslint-disable @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-unsafe-return, @typescript-eslint/require-await -- prisma is mocked with plain literals here; the `async` on each mock matches the async client method it stands in for. */
 import { publicAuthorIdentity } from '../identity/public-author-identity';
 
 /**
