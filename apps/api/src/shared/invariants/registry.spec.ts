@@ -83,6 +83,7 @@ describe('the invariant registry', () => {
       ['may only be INCREMENTED', 'enrichment-failure'],
       ['Hand-rolled subject-identity fold-back', 'subject-identity'],
       ['Hand-rolled redirect join', 'subject-identity'],
+      ['A one-answer entityRedirect mock', 'redirect-double'],
       ['activation pointer has one owner', 'extraction-scope'],
       ['run-excluding delete on the event ledgers', 'extraction-scope'],
       ['A dynamic import is an import', 'gemini-sdk'],

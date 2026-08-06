@@ -4,6 +4,7 @@ import {
   DEMAND_HALF_LIFE_DAYS,
   RECENCY_FLAT_DAYS,
 } from '../polls/supply/poll-supply.constants';
+import { entityRedirectDouble } from '../../shared/testing/prisma-doubles';
 
 /**
  * §22 item 7 demand-input parity specs: the collector's demand read moved
@@ -59,9 +60,7 @@ function createHarness(rows: unknown[] = []) {
         return Promise.resolve(rows);
       },
     ),
-    entityRedirect: {
-      findMany: jest.fn().mockResolvedValue([]),
-    },
+    entityRedirect: entityRedirectDouble([]),
   };
   const logger = {
     setContext: jest.fn().mockReturnThis(),

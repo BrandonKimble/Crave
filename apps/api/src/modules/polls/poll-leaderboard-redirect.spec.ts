@@ -1,5 +1,6 @@
 import 'reflect-metadata';
 import { PollsService } from './polls.service';
+import { entityRedirectDouble } from '../../shared/testing/prisma-doubles';
 
 /**
  * F541 — rebuildPollLeaderboard did NOT redirect-resolve subject keys, so a
@@ -30,17 +31,6 @@ type ServicePrivate = {
  * composite subject) and every spec here stayed green while, in prod, no
  * merged subject ever folded onto its survivor.
  */
-function redirectTable(
-  rows: Array<{ fromEntityId: string; toEntityId: string }>,
-) {
-  const findMany = jest.fn(
-    (args: { where: { fromEntityId: { in: string[] } } }) => {
-      const asked = new Set(args.where.fromEntityId.in);
-      return Promise.resolve(rows.filter((row) => asked.has(row.fromEntityId)));
-    },
-  );
-  return { findMany };
-}
 
 function createService(prisma: Record<string, unknown>): ServicePrivate {
   const logger = { setContext: () => logger };
@@ -69,7 +59,7 @@ function createService(prisma: Record<string, unknown>): ServicePrivate {
 describe('rebuildPollLeaderboard redirect resolution (F541)', () => {
   it('merges a merged-after-tap restaurant subject onto the survivor, unioning endorsers', async () => {
     const prisma = {
-      entityRedirect: redirectTable([
+      entityRedirect: entityRedirectDouble([
         { fromEntityId: A, toEntityId: SURVIVOR },
       ]),
     };
@@ -87,14 +77,12 @@ describe('rebuildPollLeaderboard redirect resolution (F541)', () => {
     expect([...resolved.keys()]).toEqual([SURVIVOR]);
     expect(resolved.get(SURVIVOR)).toEqual(new Set(['u1', 'u2']));
     // The lookup asked about EXACTLY the subjects on the board.
-    const asked =
-      prisma.entityRedirect.findMany.mock.calls[0][0].where.fromEntityId.in;
-    expect([...asked].sort()).toEqual([A, SURVIVOR].sort());
+    expect(prisma.entityRedirect.askedFor()).toEqual([A, SURVIVOR].sort());
   });
 
   it('resolves BOTH halves of a connection (restaurant::dish) composite subject', async () => {
     const prisma = {
-      entityRedirect: redirectTable([
+      entityRedirect: entityRedirectDouble([
         { fromEntityId: A, toEntityId: SURVIVOR },
       ]),
     };
@@ -109,14 +97,12 @@ describe('rebuildPollLeaderboard redirect resolution (F541)', () => {
     expect([...resolved.keys()]).toEqual([`${SURVIVOR}::${FOOD}`]);
     // BOTH halves of the composite are asked about — a resolver that
     // collected only one half would silently stop resolving that axis.
-    const asked =
-      prisma.entityRedirect.findMany.mock.calls[0][0].where.fromEntityId.in;
-    expect([...asked].sort()).toEqual([A, FOOD].sort());
+    expect(prisma.entityRedirect.askedFor()).toEqual([A, FOOD].sort());
   });
 
   it('no redirects → the map is returned unchanged (single lookup, no drift)', async () => {
     const prisma = {
-      entityRedirect: { findMany: jest.fn().mockResolvedValue([]) },
+      entityRedirect: entityRedirectDouble([]),
     };
     const service = createService(prisma);
     const endorsers = new Map<string, Set<string>>([

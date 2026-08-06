@@ -1,5 +1,6 @@
 import 'reflect-metadata';
 import { RestaurantStatusService } from './restaurant-status.service';
+import { entityRedirectDouble } from '../../shared/testing/prisma-doubles';
 
 /**
  * F510 (restaurant-status.service) — getStatusPreviews read entities by id with
@@ -69,7 +70,7 @@ describe('RestaurantStatusService leak closure (F510)', () => {
 
   it('drops an archived restaurant (not returned by the status-filtered read)', async () => {
     const prisma = {
-      entityRedirect: { findMany: jest.fn().mockResolvedValue([]) },
+      entityRedirect: entityRedirectDouble([]),
       entity: { findMany: jest.fn().mockResolvedValue([]) },
     };
     const service = createService(prisma);

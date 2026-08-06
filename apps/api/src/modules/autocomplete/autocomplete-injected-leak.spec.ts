@@ -1,6 +1,7 @@
 import 'reflect-metadata';
 import { EntityType } from '@prisma/client';
 import { AutocompleteService } from './autocomplete.service';
+import { entityRedirectDouble } from '../../shared/testing/prisma-doubles';
 
 /**
  * F570 / F571 / F572 — the injected personal lanes (favorites, viewed) and the
@@ -76,21 +77,11 @@ const match = (entityId: string, name: string): Record<string, unknown> => ({
  * `mockResolvedValue([...])` the lookup key was unpinned, so a resolver that
  * asked about nothing (exactly the F570/F571 leak) kept this suite green.
  */
-function redirectTable(
-  rows: Array<{ fromEntityId: string; toEntityId: string }>,
-) {
-  return {
-    findMany: jest.fn((args: { where: { fromEntityId: { in: string[] } } }) => {
-      const asked = new Set(args.where.fromEntityId.in);
-      return Promise.resolve(rows.filter((row) => asked.has(row.fromEntityId)));
-    }),
-  };
-}
 
 describe('autocomplete injected-lane leak closure (F570/F571)', () => {
   it('follows a one-hop redirect: serves the SURVIVOR id AND name, not the stale ones', async () => {
     const prisma = {
-      entityRedirect: redirectTable([
+      entityRedirect: entityRedirectDouble([
         { fromEntityId: REQUESTED, toEntityId: SURVIVOR },
       ]),
       entity: {
@@ -110,7 +101,7 @@ describe('autocomplete injected-lane leak closure (F570/F571)', () => {
 
   it('drops an archived survivor entirely (never in the findMany result set)', async () => {
     const prisma = {
-      entityRedirect: { findMany: jest.fn().mockResolvedValue([]) },
+      entityRedirect: entityRedirectDouble([]),
       // The status filter means an archived entity simply is not returned.
       entity: { findMany: jest.fn().mockResolvedValue([]) },
     };
@@ -129,7 +120,7 @@ describe('autocomplete injected-lane leak closure (F570/F571)', () => {
   it('dedupes two saved rows that collapse onto one survivor', async () => {
     const other = '44444444-4444-4444-4444-444444444444';
     const prisma = {
-      entityRedirect: redirectTable([
+      entityRedirect: entityRedirectDouble([
         { fromEntityId: other, toEntityId: SURVIVOR },
       ]),
       entity: {

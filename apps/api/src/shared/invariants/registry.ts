@@ -493,6 +493,32 @@ export const INVARIANTS: readonly Invariant[] = [
     ],
   },
   {
+    id: 'testing.redirect-double-answers-the-question-asked',
+    statement:
+      'A spec standing in for prisma.entityRedirect.findMany uses entityRedirectDouble, which keys on the id set it was asked about — never a mock that answers every argument identically.',
+    incident:
+      'Four specs written to prove the merged-entity leak was CLOSED stubbed the redirect read with an unconditional mockResolvedValue. Mutating the production call to `fromEntityId: { in: [] }` — a resolver asking about nothing, so every merged-away entity keeps serving under its stale identity — left all four green. The redirect read is a pure lookup whose only input is an id set, so a one-answer mock erases the only thing worth asserting; and within a day of the fixes there were already two byte-identical private redirectTable helpers plus two inline variants.',
+    level: 'lint',
+    mechanism:
+      'eslint.config.mjs — a no-restricted-syntax selector on `entityRedirect > findMany > mockResolvedValue/mockReturnValue`, scoped to findMany so the differently-shaped findUnique read is not a false positive. src/shared/testing/prisma-doubles.ts is the one honest double (both directions: forward "what did this become", reverse "what points at this"), and it THROWS on a query shape it does not model rather than inventing an answer.',
+    check: {
+      command: `npx eslint ${SCRATCH}`,
+      reads: 'the entityRedirect selector',
+    },
+    mutations: [
+      {
+        file: SCRATCH,
+        content:
+          'export const prisma = { entityRedirect: { findMany: jest.fn().mockResolvedValue([]) } };\n',
+      },
+      {
+        file: SCRATCH,
+        content:
+          'export const prisma = { entityRedirect: { findMany: jest.fn().mockReturnValue([]) } };\n',
+      },
+    ],
+  },
+  {
     id: 'ledger.subject-identity-resolves-in-one-place',
     statement:
       'The redirect join and the fold-back are built by signals/subject-identity, never hand-rolled.',

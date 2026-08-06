@@ -290,6 +290,31 @@ export default tseslint.config(
             'Hand-rolled redirect join. Use redirectJoinSql() from signals/subject-identity.',
         },
         {
+          // A DOUBLE THAT ANSWERS EVERY ARGUMENT THE SAME WAY (F2200-F2206).
+          //
+          // Four specs stubbed `prisma.entityRedirect.findMany` with an
+          // unconditional mockResolvedValue. All four existed to prove the
+          // merged-entity leak was CLOSED, and none could show it open: mutate
+          // the production call to `fromEntityId: { in: [] }` and every one
+          // stayed green. The redirect read is a pure lookup whose only input
+          // is an id set, so a one-answer mock erases the only thing worth
+          // asserting.
+          //
+          // Within a day of fixing them there were already two byte-identical
+          // private `redirectTable` helpers and two more inline variants — the
+          // hand-rolled-resolver pattern restarting. entityRedirectDouble()
+          // keys on its input; this makes the blind form unavailable rather
+          // than merely fixed.
+          // Scoped to `findMany` specifically. A broader selector also caught
+          // `entityRedirect.findUnique` — a different query shape this double
+          // does not model, so flagging it would be a false positive, and a
+          // rule with false positives gets disabled rather than obeyed.
+          selector:
+            "Property[key.name='entityRedirect'] > ObjectExpression > Property[key.name='findMany'] CallExpression[callee.property.name=/^mock(Resolved|Return)Value$/]",
+          message:
+            'A one-answer entityRedirect mock cannot tell a resolver asking about the right ids from one asking about none — which is the exact leak these specs exist to catch. Use entityRedirectDouble() from shared/testing/prisma-doubles.',
+        },
+        {
           // A COUNTER THAT CAN ONLY COUNT. Its predecessor was ASSIGNED the
           // number of Google candidates, so the restaurants with the MOST
           // evidence got archived, and the error path wrote nothing at all and
