@@ -964,3 +964,48 @@ only what Google structurally cannot see — is this span a PLACE at all
 rather than a dish phrase, and is the claim about food served here versus
 goods sold to take home (the H-E-B text test, which also covers ungrounded
 venues Google never classified).
+
+## GATE 2 SETTLED (2026-08-05): full primaryType census — Google owns the clean core, the CLAIM owns the boundary
+
+Censused all 168 distinct primaryTypes on the active corpus. Owner ruling
+accepted: MUSEUM OF ICE CREAM (tourist_attraction) and Alamo Drafthouse
+(movie_theater) STAY — they serve prepared food; the venue's business
+category is not the question.
+
+THE CLEAN CORE — retail is the whole business, and the data shows ZERO
+prepared-food claims. Safe to deny at grounding-time admission on
+primaryType alone:
+grocery_store 22/1228, asian_grocery_store 8/190, supermarket 7/117,
+hypermarket 1/2 (Japan Village), department_store 1/13 (Walmart),
+wholesaler 1/42 (Lammes Candies HQ), manufacturer 2/9 (distilleries),
+gas_station 1/11 (QuikTrip), clothing_store 1/1, florist 1/3,
+health_food_store 2/2. ~= 1,620 events, high precision.
+
+THE BOUNDARY IS NOT A VENUE PROPERTY — PROVEN. Retail-typed venues host
+REAL prepared-food testimony, so a type-only rule would delete true claims:
+Quality Seafood Market (primaryType `market`, 169 events) carries BOTH
+"I like their FISH TACOS and I had my first whole lobster for my bday"
+(prepared, served, eat now) AND
+"in the chest freezer between the meat and fish counters", "Quality
+Seafood has a nice market", "buy a 40 lb bag" (retail).
+ONE VENUE, BOTH KINDS OF CLAIM.
+Spec's (liquor_store): "Second Specs Deli. TURKEY WITH PEPPER BACON is my
+go to." Buc-ee's (convenience_store): fudge, brisket.
+La Michoacana Meat Market (butcher_shop): Texas chain WITH a taqueria.
+Hotels (The Mark, Hotel Chelsea, South Congress) host notable restaurants.
+So convenience_store, market, butcher_shop, liquor_store, hotel, food,
+store, tea_store are NOT deniable by type — they need the claim test.
+
+THEREFORE BOTH, and this is the ideal split rather than a compromise:
+GOOGLE (grounding-time admission, free, authoritative) kills the clean
+retail core — the 76% of the corpus it can see, where the venue does
+nothing but sell packaged goods.
+THE PROMPT keeps Gate 2 as a CLAIM-LEVEL test — "is this claim about food
+PREPARED AND SERVED HERE to eat now, or goods SOLD TO TAKE HOME?" —
+because (a) 1,626 active restaurants (23.5%) have no Google data at all,
+(b) dish-phrases minted as restaurants never reach Google, and (c) the
+Quality Seafood case proves the same venue emits both kinds, which no
+venue-level rule can ever separate.
+The claim test also handles H-E-B correctly WITHOUT the type rule (every
+H-E-B claim is packaged), so the two layers are independent confirmations,
+not a single point of failure.
