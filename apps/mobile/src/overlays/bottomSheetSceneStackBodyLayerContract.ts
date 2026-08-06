@@ -15,6 +15,7 @@ import type {
 } from './bottomSheetSceneStackHostContract';
 import type { AppRouteSceneStackSceneActivitySnapshot } from '../navigation/runtime/app-route-scene-stack-surface-contract';
 import type { SceneEntryMountUnit } from '../navigation/runtime/app-route-scene-entry-mounts';
+import type { OverlayKey } from './types';
 
 export type ScrollEvent = NativeSyntheticEvent<NativeScrollEvent>;
 
@@ -25,7 +26,7 @@ export type StaticContentSurfaceProps = {
 };
 
 export type SceneStackBodyContentProps = {
-  sceneKey: string;
+  sceneKey: OverlayKey;
   isActive: boolean;
   shouldRenderListBody: boolean;
   shouldAttachMountedContent: boolean;
@@ -51,7 +52,7 @@ export type SceneStackBodyContentActivity = Pick<
 >;
 
 export type SceneStackBodyFrameProps = {
-  sceneKey: string;
+  sceneKey: OverlayKey;
   visibilityStyle: StyleProp<ViewStyle>;
   // Touch routing is UI-THREAD driven (the swap-lane, BottomSheetSceneStackHost): pointerEvents
   // rides `useAnimatedProps` off the SAME live-role SharedValue as the leg's opacity, so 'auto'

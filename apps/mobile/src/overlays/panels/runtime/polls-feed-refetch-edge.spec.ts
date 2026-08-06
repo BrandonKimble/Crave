@@ -1,5 +1,5 @@
 import type { MapBounds } from '../../../types';
-import { shouldRefetchPollsFeedForSettledBounds } from './polls-feed-refetch-edge';
+import { shouldRefetchFeedForSettledBounds } from './polls-feed-refetch-edge';
 
 const bounds = (neLat: number, neLng: number, swLat: number, swLng: number): MapBounds => ({
   northEast: { lat: neLat, lng: neLng },
@@ -15,16 +15,16 @@ const AUSTIN = bounds(30.4, -97.6, 30.1, -97.9);
  * and no significance gate exists to eat small pans (the attributed stale-feed
  * bug was exactly the old 0.1mi/8% gate + shouldShowPollsSheet gating).
  */
-describe('shouldRefetchPollsFeedForSettledBounds', () => {
+describe('shouldRefetchFeedForSettledBounds', () => {
   it('never fetches before the first settle (no settled bounds yet)', () => {
     expect(
-      shouldRefetchPollsFeedForSettledBounds({
+      shouldRefetchFeedForSettledBounds({
         settledBounds: null,
         lastRequestedBounds: null,
       })
     ).toBe(false);
     expect(
-      shouldRefetchPollsFeedForSettledBounds({
+      shouldRefetchFeedForSettledBounds({
         settledBounds: null,
         lastRequestedBounds: AUSTIN,
       })
@@ -33,7 +33,7 @@ describe('shouldRefetchPollsFeedForSettledBounds', () => {
 
   it('fetches the first settled viewport (nothing requested yet)', () => {
     expect(
-      shouldRefetchPollsFeedForSettledBounds({
+      shouldRefetchFeedForSettledBounds({
         settledBounds: AUSTIN,
         lastRequestedBounds: null,
       })
@@ -42,7 +42,7 @@ describe('shouldRefetchPollsFeedForSettledBounds', () => {
 
   it('does NOT refetch a settle at byte-identical bounds (different object, same values)', () => {
     expect(
-      shouldRefetchPollsFeedForSettledBounds({
+      shouldRefetchFeedForSettledBounds({
         settledBounds: bounds(30.4, -97.6, 30.1, -97.9),
         lastRequestedBounds: AUSTIN,
       })
@@ -52,7 +52,7 @@ describe('shouldRefetchPollsFeedForSettledBounds', () => {
   it('refetches on ANY exact bounds change — a small pan is a real edge (no significance gate)', () => {
     // A pan far below the dead 0.1mi/8% gate: one corner nudged in the 4th decimal.
     expect(
-      shouldRefetchPollsFeedForSettledBounds({
+      shouldRefetchFeedForSettledBounds({
         settledBounds: bounds(30.4001, -97.6, 30.1001, -97.9),
         lastRequestedBounds: AUSTIN,
       })
@@ -61,7 +61,7 @@ describe('shouldRefetchPollsFeedForSettledBounds', () => {
 
   it('refetches when every corner moved (the sheet-closed Austin→San Antonio repro)', () => {
     expect(
-      shouldRefetchPollsFeedForSettledBounds({
+      shouldRefetchFeedForSettledBounds({
         settledBounds: bounds(29.6, -98.3, 29.3, -98.7),
         lastRequestedBounds: AUSTIN,
       })
@@ -77,7 +77,7 @@ describe('shouldRefetchPollsFeedForSettledBounds', () => {
     ];
     for (const settledBounds of cases) {
       expect(
-        shouldRefetchPollsFeedForSettledBounds({
+        shouldRefetchFeedForSettledBounds({
           settledBounds,
           lastRequestedBounds: AUSTIN,
         })

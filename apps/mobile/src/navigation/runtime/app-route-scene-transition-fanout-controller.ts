@@ -33,21 +33,18 @@ const resolveAppRouteSceneSwitchSnapshot = (
   routeState: state.routeState,
 });
 
+// F1391: field-for-field identical to resolveAppRouteSceneSwitchSnapshot apart from
+// `activeSceneKey` vs `routeActiveSceneKey` — both filled from the SAME state.activeSceneKey.
+// Delegates instead of hand-copying, so the two can no longer drift on the fields they share;
+// only the field-name difference is spelled out here. (The third restatement in
+// app-route-scene-switch-authority.ts:10-36 is a separate module boundary, left untouched —
+// merging it too is the design-scale rederive this row still asks for.)
 const resolveAppRouteSceneTransitionSnapshot = (
   state: RouteSceneSwitchTransitionState
-): AppRouteSceneTransitionSnapshot => ({
-  activeSceneKey: state.activeSceneKey,
-  interactiveSceneKey: state.interactiveSceneKey,
-  pendingSceneKey: state.isOverlaySwitchInFlight ? state.pendingTargetSceneKey : null,
-  handoffSceneKey: state.isOverlaySwitchInFlight ? state.handoffSceneKey : null,
-  transitionPhase: state.transitionPhase,
-  transitionToken: state.transitionToken,
-  transitionContract: state.transitionContract,
-  activePollsParams: state.activePollsParams,
-  activeDockedSceneRestoreIntent: state.activeDockedSceneRestoreIntent,
-  isInteractive: state.isInteractive,
-  routeState: state.routeState,
-});
+): AppRouteSceneTransitionSnapshot => {
+  const { routeActiveSceneKey, ...sharedFields } = resolveAppRouteSceneSwitchSnapshot(state);
+  return { ...sharedFields, activeSceneKey: routeActiveSceneKey };
+};
 
 const resolveAppRouteSceneActivitySnapshot = (
   state: RouteSceneSwitchTransitionState
@@ -93,21 +90,16 @@ const areAppRouteSceneSwitchSnapshotsEqual = (
   left.isInteractive === right.isInteractive &&
   left.routeState === right.routeState;
 
+// F1391: delegates to areAppRouteSceneSwitchSnapshotsEqual (see resolver above) instead of
+// hand-copying the same field-by-field comparison a second time.
 const areAppRouteSceneTransitionSnapshotsEqual = (
   left: AppRouteSceneTransitionSnapshot,
   right: AppRouteSceneTransitionSnapshot
 ): boolean =>
-  left.activeSceneKey === right.activeSceneKey &&
-  left.interactiveSceneKey === right.interactiveSceneKey &&
-  left.pendingSceneKey === right.pendingSceneKey &&
-  left.handoffSceneKey === right.handoffSceneKey &&
-  left.transitionPhase === right.transitionPhase &&
-  left.transitionToken === right.transitionToken &&
-  left.transitionContract === right.transitionContract &&
-  left.activePollsParams === right.activePollsParams &&
-  left.activeDockedSceneRestoreIntent === right.activeDockedSceneRestoreIntent &&
-  left.isInteractive === right.isInteractive &&
-  left.routeState === right.routeState;
+  areAppRouteSceneSwitchSnapshotsEqual(
+    { ...left, routeActiveSceneKey: left.activeSceneKey },
+    { ...right, routeActiveSceneKey: right.activeSceneKey }
+  );
 
 const areAppRouteSceneActivitySnapshotsEqual = (
   left: AppRouteSceneActivitySnapshot,

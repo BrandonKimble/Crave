@@ -40,7 +40,7 @@ const SCENE_BODY_DATA_ACTIVITY_KEYS = new Set<AppRouteSceneInputKey>([
 ]);
 
 export const isSceneBodyDataActivityKey = (
-  sceneKey: OverlayKey | string | null | undefined
+  sceneKey: OverlayKey | null | undefined
 ): boolean =>
   sceneKey != null && SCENE_BODY_DATA_ACTIVITY_KEYS.has(sceneKey as AppRouteSceneInputKey);
 

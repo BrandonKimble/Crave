@@ -137,7 +137,13 @@ export const useRestaurantPanelSpec = ({
   // one supported language switch (i18n's setLocale) is a profile action that
   // reloads — so nothing is lost by that effect never firing.
   const { t } = useTranslation();
+  // Per-location expander state, reset render-time on restaurant change (F922: the useEffect
+  // reset below did NOT fire in this scene body-spec hook — CLAUDE.md: "Effects DON'T fire in
+  // the scene body-spec hooks" — so per-location expansion state leaked across restaurants
+  // until an actual repro proved it dead; same render-time pattern as viewState/locationsTailState
+  // below, which already worked for exactly this reason).
   const [expandedLocations, setExpandedLocations] = React.useState<Record<string, boolean>>({});
+  const expandedLocationsRestaurantIdRef = React.useRef<string | null>(null);
   // Collapsed-tail expander state (render-time keyed by restaurantId — the useEffect reset
   // pattern is dead code in these spec hooks, CLAUDE.md).
   const [locationsTailState, setLocationsTailState] = React.useState<{
@@ -151,6 +157,13 @@ export const useRestaurantPanelSpec = ({
   const isLoading = data?.isLoading ?? false;
   const restaurantName = restaurant?.restaurantName ?? '';
   const restaurantId = restaurant?.restaurantId ?? '';
+
+  if (expandedLocationsRestaurantIdRef.current !== restaurantId) {
+    expandedLocationsRestaurantIdRef.current = restaurantId;
+    if (Object.keys(expandedLocations).length > 0) {
+      setExpandedLocations({});
+    }
+  }
 
   // W3 (§8.4): the FOUR segmented views. Panel-local state, default Overview.
   // Reset on restaurant change is RENDER-TIME derived state (the useEffect
@@ -169,10 +182,6 @@ export const useRestaurantPanelSpec = ({
     },
     [restaurantId]
   );
-
-  React.useEffect(() => {
-    setExpandedLocations({});
-  }, [restaurantId]);
 
   const emptyAreaMinHeight = Math.max(0, SCREEN_HEIGHT - snapPoints.middle - headerHeight);
   const priceLabel = restaurant

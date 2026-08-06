@@ -839,6 +839,10 @@ const SearchMountedResultsListTarget = React.memo(
           drawDistance: DEFAULT_DRAW_DISTANCE,
           removeClippedSubviews: false,
           estimatedItemSize: sceneBodyContent.estimatedItemSize,
+          // F983: transport-owned MVCP default (disabled) — CLAUDE.md's MVCP law had no
+          // structural enforcement at this merge site; a scene now opts IN explicitly instead
+          // of every re-sortable scene having to opt OUT.
+          maintainVisibleContentPosition: { disabled: true },
           ...primaryFlashListProps,
           overrideProps: {
             ...(primaryFlashListProps.overrideProps ?? {}),
@@ -868,6 +872,8 @@ const SearchMountedResultsListTarget = React.memo(
           removeClippedSubviews: false,
           estimatedItemSize:
             secondaryListContent?.estimatedItemSize ?? sceneBodyContent.estimatedItemSize,
+          // F983: transport-owned MVCP default (disabled) — see primaryFlashListPropsForRender.
+          maintainVisibleContentPosition: { disabled: true },
           ...secondaryFlashListProps,
           overrideProps: {
             ...(secondaryFlashListProps.overrideProps ?? {}),

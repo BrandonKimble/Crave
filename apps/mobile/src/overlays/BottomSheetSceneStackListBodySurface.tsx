@@ -248,6 +248,11 @@ const ActiveBottomSheetSceneStackListBodySurface = React.memo(
         drawDistance: DEFAULT_DRAW_DISTANCE,
         removeClippedSubviews: false,
         estimatedItemSize: sceneBodyContentSpec.estimatedItemSize,
+        // F983: the TRANSPORT owns the MVCP default (disabled) — a re-sortable feed silently
+        // broke this law before (CLAUDE.md) because MVCP was opt-OUT per scene, threaded through
+        // spread order at four merge sites with no structural guard. Inverted: a scene must
+        // explicitly opt IN (spread after this, e.g. PollDetailPanel's append/chat thread).
+        maintainVisibleContentPosition: { disabled: true },
         ...sceneFlashListProps,
         overrideProps: {
           initialDrawBatchSize: DEFAULT_INITIAL_DRAW_BATCH_SIZE,
@@ -268,6 +273,8 @@ const ActiveBottomSheetSceneStackListBodySurface = React.memo(
         removeClippedSubviews: false,
         estimatedItemSize:
           sceneSecondaryList?.estimatedItemSize ?? sceneBodyContentSpec.estimatedItemSize,
+        // F983: transport-owned MVCP default (disabled) — see sceneResolvedFlashListProps above.
+        maintainVisibleContentPosition: { disabled: true },
         ...sceneSecondaryInputFlashListProps,
         drawDistance: secondaryOwnsScroll
           ? (sceneSecondaryInputFlashListProps.drawDistance ?? DEFAULT_DRAW_DISTANCE)

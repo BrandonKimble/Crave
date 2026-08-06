@@ -22,7 +22,7 @@ import {
   usePollsFeedControlsStore,
   type PollFeedPlaceOption,
 } from './polls-feed-controls-store';
-import { shouldRefetchPollsFeedForSettledBounds } from './polls-feed-refetch-edge';
+import { shouldRefetchFeedForSettledBounds } from './polls-feed-refetch-edge';
 import { subscribeToReconnect } from '../../../store/systemStatusStore';
 import {
   getViewportSubjectState,
@@ -507,7 +507,7 @@ export const usePollsFeedRuntimeController = ({
   // settle tick is the fetch trigger — the store subscribes to the viewport
   // stream globally (sheet open or closed) and its settledBounds reference
   // turns over exactly at settle. Two causes fire a refetch, both through the
-  // same exact-inequality edge (shouldRefetchPollsFeedForSettledBounds):
+  // same exact-inequality edge (shouldRefetchFeedForSettledBounds):
   //   - 'settle-edge'      — the camera settled on different bounds while the
   //                          feed is active.
   //   - 'activation-diff'  — the feed just became active (sheet open / scene
@@ -526,7 +526,7 @@ export const usePollsFeedRuntimeController = ({
     }
     const refetchIfSettledBoundsDiffer = (cause: 'settle-edge' | 'activation-diff') => {
       const settledBounds = getViewportSubjectState().settledBounds;
-      const shouldRefetch = shouldRefetchPollsFeedForSettledBounds({
+      const shouldRefetch = shouldRefetchFeedForSettledBounds({
         settledBounds,
         lastRequestedBounds: lastRequestedBoundsRef.current,
       });

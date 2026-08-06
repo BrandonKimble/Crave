@@ -32,7 +32,7 @@ import { OVERLAY_HORIZONTAL_PADDING } from '../overlaySheetStyles';
 import { useEntityRefActionExecutor } from '../../navigation/runtime/use-entity-ref-action-executor';
 import { resolveCuratedListType } from '../../services/curated-list-adapter';
 import { useHomeFeedStore, useHomeSceneStateStore } from './runtime/home-feed-store';
-import { shouldRefetchPollsFeedForSettledBounds } from './runtime/polls-feed-refetch-edge';
+import { shouldRefetchFeedForSettledBounds } from './runtime/polls-feed-refetch-edge';
 import {
   buildHomeShelfRows,
   composeHomeShelfCardSubline,
@@ -344,6 +344,24 @@ const useHomeFeedRuntime = (): void => {
     async (retryAttempt = 0) => {
       const bounds = getViewportSubjectState().settledBounds;
       if (!bounds) {
+        // F926: a call that CANNOT fetch must never silently kill a live retry ladder — the
+        // polls controller documents this exact failure (a rung arriving while bounds are
+        // momentarily null returning without rescheduling silently ends the ladder). If THIS
+        // call is itself a scheduled retry rung (retryAttempt > 0), keep the ladder alive by
+        // scheduling the next rung instead of dropping it.
+        if (
+          retryAttempt > 0 &&
+          useHomeSceneStateStore.getState().visible &&
+          retryAttempt < NETWORK_RETRY_MAX_ATTEMPTS
+        ) {
+          retryTimeoutRef.current = setTimeout(
+            () => {
+              retryTimeoutRef.current = null;
+              void refreshRef.current?.(retryAttempt + 1);
+            },
+            nextRetryDelayMs(retryAttempt) ?? 0
+          );
+        }
         return;
       }
       // A fresh call (any trigger) owns recovery now — drop any pending retry.
@@ -425,7 +443,7 @@ const useHomeFeedRuntime = (): void => {
     const refetchIfSettledBoundsDiffer = () => {
       const settledBounds = getViewportSubjectState().settledBounds;
       if (
-        !shouldRefetchPollsFeedForSettledBounds({
+        !shouldRefetchFeedForSettledBounds({
           settledBounds,
           lastRequestedBounds: lastRequestedBoundsRef.current,
         })

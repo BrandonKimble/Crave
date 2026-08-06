@@ -12,7 +12,7 @@ import type { MapBounds } from '../../../types';
  * Pure and separately housed so the spec proves the edge red/green without
  * dragging in the controller's react-native/socket surface.
  */
-export const shouldRefetchPollsFeedForSettledBounds = ({
+export const shouldRefetchFeedForSettledBounds = ({
   settledBounds,
   lastRequestedBounds,
 }: {

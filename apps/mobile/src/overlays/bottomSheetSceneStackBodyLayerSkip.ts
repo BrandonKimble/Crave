@@ -3,6 +3,7 @@ import type {
   SceneStackBodyContentLayerProps,
 } from './bottomSheetSceneStackBodyLayerContract';
 import { isSceneBodyDataActivityKey } from '../navigation/runtime/app-route-scene-input-registry';
+import type { OverlayKey } from './types';
 import { areSceneEntryMountUnitArraysEqual } from '../navigation/runtime/app-route-scene-entry-mounts';
 import { createShapeEquality, sameFieldRef, type FieldComparators } from './shape-equality';
 
@@ -21,7 +22,7 @@ const ignoreField = (): boolean => true;
 
 /** Does this scene publish the body DATA-activity context? (Also the conditional arm of the
  *  skip fn below — one home for the predicate and its comparison.) */
-export const shouldPublishSceneBodyDataActivity = (sceneKey: string): boolean =>
+export const shouldPublishSceneBodyDataActivity = (sceneKey: OverlayKey): boolean =>
   isSceneBodyDataActivityKey(sceneKey);
 
 // The activity lanes a scene RENDERS from. 'search' reads fewer of them (its body is the
