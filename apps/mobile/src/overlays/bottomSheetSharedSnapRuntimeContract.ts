@@ -34,7 +34,7 @@ export type BottomSheetSharedSnapExecutionResult = {
 
 // F974(a): this used to declare THIRTEEN more fields — visible, listScrollEnabled,
 // interactionEnabled, shouldEnableScroll, gestureEnabled, activeList, testID, listKey,
-// dataCount, secondaryDataCount, scrollHeaderHeight, touchBlockingEnabled and
+// secondaryDataCount, scrollHeaderHeight, touchBlockingEnabled and
 // isSearchResultsSheet — none of which the implementation ever destructured, while the one
 // caller computed and passed all thirteen on EVERY render. They are the fossil of a deleted
 // `SheetDiagSnapshot`. Same class F982 landed in the neighbouring publication runtime.

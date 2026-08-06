@@ -10,6 +10,7 @@ import { createAppRouteSceneSheetMotionTargetRegistry } from './app-route-scene-
 import {
   registerRouteEntryOriginCapturer,
   registerRouteEntryOriginRestorer,
+  stageRouteEntryOriginRestore,
 } from './route-entry-origin-capture-delegate';
 import type { OriginSnapshot } from '../../overlays/searchRouteSessionTypes';
 import type { OverlayKey } from './app-overlay-route-types';
@@ -98,5 +99,51 @@ describe('F1715 — one pop stages the origin restore exactly once', () => {
 
     expect(stagedOrigins).toHaveLength(1);
     expect(stagedOrigins[0].sceneKey).toBe('search');
+  });
+});
+
+// ─── F2402 — THE TWO HALVES OF THE ORIGIN SEAM FAIL THE SAME WAY ─────────────────────────────
+//
+// The capture half declares capture TOTAL and backs it with an `[ORIGIN-CONTRACT]`
+// console.error. The restore half used to be `if (origin != null) currentOriginRestorer?.(origin)`
+// — two silent no-ops under that same comment. The unregistered-restorer window (boot, before
+// the session controller mounts) is the one this file's own header calls rig-proven: the pop
+// settles at the WRONG DETENT. It barks now.
+describe('F2402 — an unregistered origin restorer barks', () => {
+  const origin: OriginSnapshot = {
+    sceneKey: 'search',
+    sceneParams: null,
+    detent: 'collapsed',
+    segment: null,
+    scroll: [],
+    anchor: null,
+  };
+
+  it('staging with no restorer registered reports the wiring defect', () => {
+    const spy = jest.spyOn(console, 'error').mockImplementation(() => undefined);
+    try {
+      stageRouteEntryOriginRestore(origin);
+      expect(spy).toHaveBeenCalledTimes(1);
+      expect(String(spy.mock.calls[0][0])).toContain('[ORIGIN-CONTRACT]');
+      expect(String(spy.mock.calls[0][0])).toContain("'search'");
+    } finally {
+      spy.mockRestore();
+    }
+  });
+
+  it('staging with a restorer registered delivers the origin and says nothing', () => {
+    const spy = jest.spyOn(console, 'error').mockImplementation(() => undefined);
+    const received: OriginSnapshot[] = [];
+    const unregister = registerRouteEntryOriginRestorer((staged) => {
+      received.push(staged);
+    });
+    try {
+      stageRouteEntryOriginRestore(origin);
+      expect(received).toEqual([origin]);
+      expect(spy).not.toHaveBeenCalled();
+    } finally {
+      unregister();
+      spy.mockRestore();
+    }
   });
 });

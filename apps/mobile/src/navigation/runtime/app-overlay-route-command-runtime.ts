@@ -106,7 +106,13 @@ export const createAppOverlayRouteCommandRuntime = ({
       hasOrigin: activeOverlayRoute.origin != null,
       hasCamera: activeOverlayRoute.origin?.camera != null,
     });
-    stageRouteEntryOriginRestore(activeOverlayRoute.origin);
+    // F2402: the ROOT entry departed nothing, so it carries no return address BY
+    // CONSTRUCTION — that is a state, not the wiring defect the seam barks about. Every
+    // PUSHED entry's origin is non-null (pushRouteState barks otherwise), so this guard
+    // skips exactly the root and nothing else.
+    if (activeOverlayRoute.origin != null) {
+      stageRouteEntryOriginRestore(activeOverlayRoute.origin);
+    }
     if (previousOverlayRoute != null && isAppOverlayRouteSceneSwitchKey(activeOverlayRoute.key)) {
       // Ledger item 6 VERDICT (one mechanism per POP CLASS, not one flag-free mechanism):
       // applyOriginDetent selects the WORLD-SESSION pop shape — explicit snapTo of the popped
@@ -320,7 +326,12 @@ export const createAppOverlayRouteCommandRuntime = ({
         hasOrigin: entryAboveTarget?.origin != null,
         hasCamera: entryAboveTarget?.origin?.camera != null,
       });
-      stageRouteEntryOriginRestore(entryAboveTarget?.origin);
+      // F2402: `entryAboveTarget` is a PUSHED entry (targetIndex is never the top), so its
+      // origin is non-null by the capture contract; the guard states that rather than
+      // handing a maybe-null across the seam.
+      if (entryAboveTarget?.origin != null) {
+        stageRouteEntryOriginRestore(entryAboveTarget.origin);
+      }
       if (isAppOverlayRouteSceneSwitchKey(targetEntry.key)) {
         const originDetent =
           options?.applyOriginDetent === true ? entryAboveTarget?.origin?.detent : undefined;
@@ -355,7 +366,11 @@ export const createAppOverlayRouteCommandRuntime = ({
         hasOrigin: deepestPushedOrigin != null,
         hasCamera: deepestPushedOrigin?.camera != null,
       });
-      stageRouteEntryOriginRestore(deepestPushedOrigin);
+      // F2402: `stack[1]` is absent when the stack is already at root — nothing was pushed,
+      // so there is no departure to return to. A state, not a defect.
+      if (deepestPushedOrigin != null) {
+        stageRouteEntryOriginRestore(deepestPushedOrigin);
+      }
       if (rootOverlayRouteKey != null && isAppOverlayRouteSceneSwitchKey(activeOverlayRoute.key)) {
         const originDetent =
           options?.applyOriginDetent === true ? deepestPushedOrigin?.detent : undefined;

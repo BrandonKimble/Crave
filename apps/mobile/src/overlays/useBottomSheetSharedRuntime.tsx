@@ -190,7 +190,6 @@ export const useBottomSheetSharedRuntime = ({
   onMomentumBeginJS,
   onMomentumEndJS,
   showsVerticalScrollIndicator,
-  testID,
   activeList = 'primary',
   onDragStateChange,
   onSettleStateChange,
@@ -204,8 +203,6 @@ export const useBottomSheetSharedRuntime = ({
   sheetYObserver,
   scrollOffsetValue,
   momentumFlag,
-  listKey,
-  dataCount,
   secondaryDataCount,
   runtimeConfigAuthority,
 }: BottomSheetSharedRuntimeProps): BottomSheetSharedRuntimeResult => {

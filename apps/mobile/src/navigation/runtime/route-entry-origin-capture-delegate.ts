@@ -71,8 +71,35 @@ export const registerRouteEntryOriginRestorer = (
   };
 };
 
-export const stageRouteEntryOriginRestore = (origin: OriginSnapshot | null | undefined): void => {
-  if (origin != null) {
-    currentOriginRestorer?.(origin);
+/**
+ * Stage a POPPED entry's origin for restore.
+ *
+ * F2402 — ONE SEAM, ONE FAILURE POLICY. This used to read
+ * `if (origin != null) { currentOriginRestorer?.(origin) }`: two silent no-ops on one line,
+ * sitting thirty lines beneath a comment declaring capture TOTAL and backing that with an
+ * `[ORIGIN-CONTRACT]` bark. The two halves of one seam disagreed about whether a missing
+ * piece is a defect or a state — and the failure that exited silently is the one this file
+ * calls RIG-PROVEN ("staging after commit is a stale read … a wrong-detent pop").
+ *
+ * They agree now, and each null gets the treatment its own truth deserves:
+ *   • THE ORIGIN is non-nullable. A pushed entry is born with its return address, so
+ *     "there is no origin" is never a fact about a pushed entry. It IS a fact about the
+ *     ROOT entry (it departed nothing) and about a pop with no entry above the target —
+ *     so those callers now DECIDE not to stage, in one named line each, rather than
+ *     handing a null in here and hoping.
+ *   • AN UNREGISTERED RESTORER is the boot-window wiring defect the capture half already
+ *     names, and it barks through the same `[ORIGIN-CONTRACT]` sink.
+ */
+export const stageRouteEntryOriginRestore = (origin: OriginSnapshot): void => {
+  const restorer = currentOriginRestorer;
+  if (restorer == null) {
+    if (__DEV__) {
+      // eslint-disable-next-line no-console
+      console.error(
+        `[ORIGIN-CONTRACT] origin restore staged for '${origin.sceneKey}' with no restorer registered — the pop will settle at the WRONG DETENT (rig-proven failure)`
+      );
+    }
+    return;
   }
+  restorer(origin);
 };

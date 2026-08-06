@@ -49,7 +49,14 @@ export type BottomSheetSharedRuntimeProps = {
   scrollOffsetValue?: SharedValue<number>;
   momentumFlag?: SharedValue<boolean>;
   listKey?: string;
-  dataCount: number;
+  // F2407: `dataCount: number` used to sit here, REQUIRED, beside these optional siblings —
+  // and nothing read it. Its sole construction site passed the literal `0`, which is the
+  // tell: the value was not computed because it did not matter, yet the type insisted every
+  // caller supply one. A required field that decides nothing does worse than waste a line —
+  // it tells the next caller the runtime observes their list length, which it never did.
+  // The only question this pair ever answered is "is there a secondary list to activate",
+  // and `secondaryDataCount` answers that alone (useBottomSheetSharedRuntime.tsx:
+  // `secondaryDataCount > 0 ? activeList : 'primary'`).
   secondaryDataCount: number;
   runtimeConfigAuthority?: BottomSheetSharedRuntimeConfigAuthority;
 };

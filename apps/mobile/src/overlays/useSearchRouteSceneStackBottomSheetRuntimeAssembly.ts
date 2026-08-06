@@ -170,7 +170,6 @@ export const useSearchRouteSceneStackBottomSheetRuntimeAssembly = ({
     sheetYValue: motionStateEntry.sheetYValue,
     scrollOffsetValue: motionStateEntry.scrollOffsetValue,
     momentumFlag: motionStateEntry.momentumFlag,
-    dataCount: 0,
     secondaryDataCount: 0,
     runtimeConfigAuthority: routeSheetRuntimeConfigAuthority,
   });

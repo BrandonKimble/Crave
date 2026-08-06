@@ -47,10 +47,19 @@ export const appRouteSceneUsesSharedSheetTarget = ({
 }: {
   sceneKey: OverlayKey;
   sheetTargetGroup: OverlayKey;
-}): boolean => SCENE_DECLARATIONS[sceneKey]?.policy.sheetTargetGroup === sheetTargetGroup;
+}): boolean => SCENE_DECLARATIONS[sceneKey].policy.sheetTargetGroup === sheetTargetGroup;
 
+// F2405: these two lookups used to read `SCENE_DECLARATIONS[sceneKey]?.policy…`, while the two
+// lookups above and below them index the SAME table with the SAME `OverlayKey` parameter BARE.
+// Both beliefs cannot be right. `SCENE_DECLARATIONS` is `Record<OverlayKey, SceneDeclaration>`
+// (scene-foundation-spec.ts:237) — a missing row is a tsc error that NAMES the key, which is
+// ADDING_A_SCENE.md §1's promise and is mutation-proven. So the optional chains were not
+// defence, they were noise with a cost: `resolveAppRouteSceneSheetHostSceneKey` returning null
+// is a REAL product fact ("this scene shares no sheet target"), and `?.` made an impossible
+// lookup indistinguishable from a legitimate one. Worse, the `?.` was the artifact that let a
+// reader believe the table might be partial — the belief that justifies adding the NEXT `?.`.
 export const resolveAppRouteSceneSheetHostSceneKey = (sceneKey: OverlayKey): OverlayKey | null =>
-  SCENE_DECLARATIONS[sceneKey]?.policy.sheetTargetGroup ?? null;
+  SCENE_DECLARATIONS[sceneKey].policy.sheetTargetGroup;
 
 export const resolveAppRouteSceneChromeVisibilityTarget = ({
   targetSceneKey,

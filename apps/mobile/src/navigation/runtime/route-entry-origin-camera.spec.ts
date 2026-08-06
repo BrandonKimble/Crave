@@ -26,6 +26,16 @@ import {
 import { CameraIntentArbiter } from '../../screens/Search/runtime/map/camera-intent-arbiter';
 import { resolveRouteEntryOriginCamera } from '../../screens/Search/runtime/shared/route-entry-origin-camera-source';
 
+/** F2402: `stageRouteEntryOriginRestore` takes a NON-NULLABLE origin now — the seam no
+ *  longer has a silent null arm. Every entry these cases pop is a PUSHED entry, so its
+ *  origin is non-null by the capture contract; a null here is a defect in the case, and
+ *  this helper fails loudly instead of silently staging nothing. */
+const stagePoppedOrigin = (origin: OriginSnapshot | null | undefined): void => {
+  expect(origin).not.toBeNull();
+  expect(origin).not.toBeUndefined();
+  stageRouteEntryOriginRestore(origin as OriginSnapshot);
+};
+
 /**
  * D56 — RETURN-TO-ORIGIN CAMERA (findings F1500-F1516).
  *
@@ -185,7 +195,7 @@ describe('D56 return-to-origin camera', () => {
       expect(routeState.activeOverlayRoute.origin?.camera).toEqual(PROFILE_CAMERA);
 
       // …and dismissing the list returns to the PROFILE camera, not home.
-      stageRouteEntryOriginRestore(routeState.activeOverlayRoute.origin);
+      stagePoppedOrigin(routeState.activeOverlayRoute.origin);
       expect(harness.committedCameras).toEqual([PROFILE_CAMERA]);
     });
 
@@ -216,7 +226,7 @@ describe('D56 return-to-origin camera', () => {
       );
       // the user drags the map around inside the revealed world
       harness.setLiveCamera(camera(-1, -1, 3));
-      stageRouteEntryOriginRestore(next.activeOverlayRoute.origin);
+      stagePoppedOrigin(next.activeOverlayRoute.origin);
       expect(harness.committedCameras).toEqual([HOME_CAMERA]);
     });
 
@@ -231,7 +241,7 @@ describe('D56 return-to-origin camera', () => {
         'restaurant'
       );
       expect(next.activeOverlayRoute.origin?.camera).toBeNull();
-      stageRouteEntryOriginRestore(next.activeOverlayRoute.origin);
+      stagePoppedOrigin(next.activeOverlayRoute.origin);
       expect(harness.committedCameras).toEqual([]);
     });
   });
@@ -254,7 +264,7 @@ describe('D56 return-to-origin camera', () => {
       routeState = pushFrom(routeState, 'profile', 'listDetail');
 
       const popOnce = () => {
-        stageRouteEntryOriginRestore(routeState.activeOverlayRoute.origin);
+        stagePoppedOrigin(routeState.activeOverlayRoute.origin);
         routeState = popToEntryRouteState(
           routeState,
           routeState.overlayRouteStack[routeState.overlayRouteStack.length - 2]!.entryId
@@ -298,7 +308,7 @@ describe('D56 return-to-origin camera', () => {
       const targetIndex = routeState.overlayRouteStack.findIndex(
         (entry) => entry.entryId === (plan as { entryId: string }).entryId
       );
-      stageRouteEntryOriginRestore(routeState.overlayRouteStack[targetIndex + 1]?.origin);
+      stagePoppedOrigin(routeState.overlayRouteStack[targetIndex + 1]?.origin);
       expect(harness.committedCameras).toEqual([PROFILE_CAMERA]);
     });
 
@@ -313,7 +323,7 @@ describe('D56 return-to-origin camera', () => {
       routeState = pushFrom(routeState, 'search', 'restaurant');
 
       // production (popToRootRoute): stack[1]'s origin, not the top entry's.
-      stageRouteEntryOriginRestore(routeState.overlayRouteStack[1]?.origin ?? null);
+      stagePoppedOrigin(routeState.overlayRouteStack[1]?.origin);
       routeState = popToRootRouteState(routeState);
       expect(harness.committedCameras).toEqual([HOME_CAMERA]);
     });

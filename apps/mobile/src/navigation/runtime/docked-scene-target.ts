@@ -92,7 +92,32 @@ export const resolveOwnerSceneKeyAndOpener = ({
 } => {
   const routeOwnerSceneKey = getRouteOwnerSceneKey(activeRoute);
   const rootOwnerSceneKey = isTopLevelProductSceneKey(rootOverlayKey) ? rootOverlayKey : null;
-  const ownerSceneKey = routeOwnerSceneKey ?? rootOwnerSceneKey ?? 'search';
+  // ─── F2404: INSTRUMENTATION, NOT A FIX ──────────────────────────────────────────────
+  // One line below the paragraph condemning owner resolution "BY FALLBACK RATHER THAN BY
+  // FACT", this `?? 'search'` does exactly that. Whether the arm is ever TAKEN was never
+  // proven — and that ambiguity IS the finding: either it is unreachable (dead code
+  // masquerading as a safety net, which is why nobody notices it) or it is reachable (a
+  // route silently attributes itself to the wrong parent page and pops back to the wrong
+  // screen). Nothing in the code or any test distinguishes the two.
+  //
+  // CLAUDE.md's law is ATTRIBUTE → PROVE → THEN FIX, so the fallback STAYS and it now
+  // says when it fires. Deleting it on reasoning alone would be guessing with a straight
+  // face. TO CLOSE THIS: drive restaurant/saveList opens from every root
+  // (search/home/lists/profile/polls) and `grep '\[OWNER-FALLBACK\]' /tmp/crave-metro.log`
+  // (dev console goes to Metro's stdout, never to os_log). If it never fires, delete the
+  // arm and narrow the return type. If it fires, the owner belongs in the pushed entry's
+  // params — `getRouteOwnerSceneKey` already reads `ownerSceneKey`/`parentSceneKey`, so
+  // making it REQUIRED at push makes the fallback unnecessary rather than defaulted.
+  const resolvedOwnerSceneKey = routeOwnerSceneKey ?? rootOwnerSceneKey;
+  if (__DEV__ && resolvedOwnerSceneKey == null) {
+    // eslint-disable-next-line no-console
+    console.error(
+      `[OWNER-FALLBACK] owner resolved to 'search' BY FALLBACK, not by fact: route='${activeRoute.key}' ` +
+        `routeOwner=${routeOwnerSceneKey ?? 'null'} rootOverlayKey='${rootOverlayKey}' ` +
+        '— this route will attribute itself to search and pop back there'
+    );
+  }
+  const ownerSceneKey = resolvedOwnerSceneKey ?? 'search';
   return {
     ownerSceneKey,
     parentSceneKey: ownerSceneKey,

@@ -51,22 +51,34 @@ export const useSceneLoadFailurePolicy = (
   const what = failure?.what;
   const retryRef = React.useRef(failure?.retry);
   retryRef.current = failure?.retry;
-  // One announcement per error EDGE (not per render, not per re-mount of the same error).
-  const announcedRef = React.useRef(false);
+  // One announcement per error EPISODE — and an EPISODE is a fact about the
+  // (sceneKey, error) pair, NOT about an effect invocation.
+  //
+  // F2401: this used to be a bare boolean `announcedRef` plus an `if (announcedRef.current)
+  // return undefined` early return INSIDE the effect. Because the ref outlives effect
+  // cleanup while the presentation-frame subscription below is created inside the effect,
+  // ANY re-run of the effect while `isError` stayed true (deps include the ordinary render
+  // values `sceneKey` and `what`) first tore the subscription down and then early-returned
+  // without re-establishing it — leaving a live error state with NO live subscription, i.e.
+  // exactly the "skeleton forever, no modal" dead end the F914 comment below claims to have
+  // killed. The latch is now keyed by the episode: a re-run for the SAME episode re-subscribes
+  // WITHOUT re-announcing, a DIFFERENT episode announces. Only the announce is latched; the
+  // subscription is unconditional.
+  const announcedEpisodeRef = React.useRef<OverlayKey | null>(null);
 
   React.useEffect(() => {
     if (!isError || sceneKey == null) {
-      announcedRef.current = false;
+      announcedEpisodeRef.current = null;
       return undefined;
     }
-    if (announcedRef.current) {
-      return undefined;
-    }
-    announcedRef.current = true;
+    const isNewEpisode = announcedEpisodeRef.current !== sceneKey;
+    announcedEpisodeRef.current = sceneKey;
     const commandRuntime = routeSceneRuntime.routeOverlayRouteCommandRuntime;
     const message = `We couldn't load ${what ?? 'this'}. Please try again.`;
     if (isRootNavScene(sceneKey)) {
-      announceFailureIfOnline({ message });
+      if (isNewEpisode) {
+        announceFailureIfOnline({ message });
+      }
       // The retry moment is the scene's next PRESENTATION (frame-derived — the same
       // presented-key clock the chrome rides): returning to the page re-runs the load.
       //
@@ -93,12 +105,14 @@ export const useSceneLoadFailurePolicy = (
     }
     // Child: modal first; ANY dismissal pops to the trigger screen (spec: the failed
     // transition unwinds via onDismissed).
-    announceFailureIfOnline({
-      message,
-      onDismissed: () => {
-        commandRuntime.closeActiveRoute();
-      },
-    });
+    if (isNewEpisode) {
+      announceFailureIfOnline({
+        message,
+        onDismissed: () => {
+          commandRuntime.closeActiveRoute();
+        },
+      });
+    }
     return undefined;
   }, [isError, routeSceneRuntime, sceneKey, what]);
 };
