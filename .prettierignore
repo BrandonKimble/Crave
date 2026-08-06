@@ -18,7 +18,12 @@ audit/FINDINGS.md
 audit/COVERAGE.md
 audit/DESIGNS.md
 
-# plans/** is ARCHAEOLOGY (F2504). Same corruption class as the ledger above:
+# # CRAVE.md is the canonical MAP — dense with identifiers (APP_GUARD became
+# APP*GUARD under an emphasis-span rewrite) and env-var globs (REEXTRACT_*
+# grew backslashes). Same class as the ledgers: a record, not prose.
+CRAVE.md
+
+plans/** is ARCHAEOLOGY (F2504). Same corruption class as the ledger above:
 # 04-CONSENSUS-ROADMAP.md:91 was written as a `page-switch-*.md` GLOB and
 # prettier rewrote the `*` into `_` as markdown emphasis — `page-switch-_.md`,
 # a path that matches nothing. A formatter must not edit a record of the past,

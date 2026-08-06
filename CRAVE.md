@@ -552,9 +552,9 @@ re-attribute against the true polygon.
   on the wrong side of a tier costs a vendor a 429; being on the wrong side of a list cost us
   the entire ceiling.
 - **The throttler tracks per-VERIFIED-user, falling back to IP.** It used to read `req.user`,
-  set by a ROUTE guard that runs _after_ this APP*GUARD — always undefined, so the per-user
+  set by a ROUTE guard that runs AFTER this APP_GUARD — always undefined, so the per-user
   branch was dead and everyone behind one carrier NAT shared a bucket. The identity must be
-  \_verified* here (local JWKS signature check, memoized per token), because keying on an
+  VERIFIED here (local JWKS signature check, memoized per token), because keying on an
   unverified token would let an attacker mint a fresh bucket per request.
 
 ### Deliberate absences (do not "fix" these)
@@ -1124,7 +1124,7 @@ once; eligibility derives from measured harvest share.
 
 **Entry points.** Pacer tick → job scheduler / keyword orchestrator →
 Bull → batch workers → ExtractionPipelineService.processPosts. Replay:
-scripts/replay-extraction-run.ts. Re-extract: REEXTRACT\_\* env →
+scripts/replay-extraction-run.ts. Re-extract: REEXTRACT_* env →
 CityReextractRunner (refuses without an approved campaign; pinned
 prompt version REQUIRES shadow mode).
 
