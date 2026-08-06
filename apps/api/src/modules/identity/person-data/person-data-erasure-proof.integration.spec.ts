@@ -295,143 +295,157 @@ describe('erasure proof — each rule provably acts on a row it owns', () => {
     '%s — a seeded row the person owns does not survive erasure',
     async (key, rule: PersonDataRule) => {
       const outcome = await prisma
-        .$transaction(async (tx) => {
-          const client = tx as unknown as PrismaClient;
-          const where = ruleWhere(rule)!;
-          const userId = await makeUser(client, 'subject');
-          // The OTHER side of any two-person row: a follow needs someone to
-          // follow, a block needs someone to block.
-          const counterpartyId = await makeUser(client, 'counterparty');
+        .$transaction(
+          async (tx) => {
+            const client = tx as unknown as PrismaClient;
+            const where = ruleWhere(rule)!;
+            const userId = await makeUser(client, 'subject');
+            // The OTHER side of any two-person row: a follow needs someone to
+            // follow, a block needs someone to block.
+            const counterpartyId = await makeUser(client, 'counterparty');
 
-          // ── plant ────────────────────────────────────────────────────────
-          // The person key gets the real user id; everything else NOT NULL
-          // gets a filler. `personScopeSql` rules reach the person through
-          // another table, so their own key column is filled from that table's
-          // real value — proving the JOIN, which is the whole point for
-          // user_taste_profile.
-          const required = await requiredColumns(client, rule.table);
-          const cols: string[] = [];
-          const vals: string[] = [];
+            // ── plant ────────────────────────────────────────────────────────
+            // The person key gets the real user id; everything else NOT NULL
+            // gets a filler. `personScopeSql` rules reach the person through
+            // another table, so their own key column is filled from that table's
+            // real value — proving the JOIN, which is the whole point for
+            // user_taste_profile.
+            const required = await requiredColumns(client, rule.table);
+            const cols: string[] = [];
+            const vals: string[] = [];
 
-          // PLANT PER GROUND TRUTH, NOT PER RULE. The link column and its
-          // value come from PERSON_LINK — an independent statement of how the
-          // application really associates this row with a person. The rule is
-          // then judged on whether its predicate can FIND that row.
-          const link = PERSON_LINK[rule.table];
-          if (link) {
-            cols.push(link.column);
-            vals.push(`'${await link.resolve(client, userId)}'`);
-          } else {
-            cols.push(rule.column);
-            vals.push(`'${userId}'`);
-          }
-
-          // THE ROW PREDICATE DEFINES WHAT IS THEIRS, so it wins over the
-          // generic filler. `curated_lists` is the case: a list is the
-          // person's only when `scope = 'personal'`, but `scope` is a NOT NULL
-          // enum, so the filler set it to the first label ('global') and the
-          // rule then correctly refused to select the seed. The proof was
-          // testing a row that was never in scope — a fixture bug that reads
-          // exactly like an erasure bug.
-          const forced = new Map<string, string>(
-            Object.entries(SEED_SHAPE[rule.table] ?? {}),
-          );
-          if (rule.rowPredicate) {
-            for (const m of rule.rowPredicate.matchAll(
-              /(\w+)\s*=\s*'([^']+)'/g,
-            )) {
-              forced.set(m[1], `'${m[2]}'`);
+            // PLANT PER GROUND TRUTH, NOT PER RULE. The link column and its
+            // value come from PERSON_LINK — an independent statement of how the
+            // application really associates this row with a person. The rule is
+            // then judged on whether its predicate can FIND that row.
+            const link = PERSON_LINK[rule.table];
+            if (link) {
+              cols.push(link.column);
+              vals.push(`'${await link.resolve(client, userId)}'`);
+            } else {
+              cols.push(rule.column);
+              vals.push(`'${userId}'`);
             }
-          }
 
-          let unseedable: string | null = null;
-          for (const [i, col] of required.entries()) {
-            if (cols.includes(col.name)) continue;
-            const value =
-              forced.get(col.name) ??
-              (await valueFor(client, col, i + 1, { userId, counterpartyId }));
-            if (value === null) {
-              unseedable = `${col.name} -> ${col.refTable ?? col.udt}`;
-              break;
+            // THE ROW PREDICATE DEFINES WHAT IS THEIRS, so it wins over the
+            // generic filler. `curated_lists` is the case: a list is the
+            // person's only when `scope = 'personal'`, but `scope` is a NOT NULL
+            // enum, so the filler set it to the first label ('global') and the
+            // rule then correctly refused to select the seed. The proof was
+            // testing a row that was never in scope — a fixture bug that reads
+            // exactly like an erasure bug.
+            const forced = new Map<string, string>(
+              Object.entries(SEED_SHAPE[rule.table] ?? {}),
+            );
+            if (rule.rowPredicate) {
+              for (const m of rule.rowPredicate.matchAll(
+                /(\w+)\s*=\s*'([^']+)'/g,
+              )) {
+                forced.set(m[1], `'${m[2]}'`);
+              }
             }
-            cols.push(col.name);
-            vals.push(value);
-          }
-          if (unseedable) {
-            throw Object.assign(new Error('rollback'), {
-              [ROLLBACK]: { before: 0, after: 0, unseedable },
-            });
-          }
 
-          // Forced values for NULLABLE columns: `required` only covers NOT
-          // NULL columns, so a CHECK that demands a nullable column be set
-          // (user_list_items needs exactly ONE target, and both target columns
-          // are nullable) is only satisfiable here.
-          for (const [name, value] of forced) {
-            if (!cols.includes(name)) {
-              cols.push(name);
+            let unseedable: string | null = null;
+            for (const [i, col] of required.entries()) {
+              if (cols.includes(col.name)) continue;
+              const value =
+                forced.get(col.name) ??
+                (await valueFor(client, col, i + 1, {
+                  userId,
+                  counterpartyId,
+                }));
+              if (value === null) {
+                unseedable = `${col.name} -> ${col.refTable ?? col.udt}`;
+                break;
+              }
+              cols.push(col.name);
               vals.push(value);
             }
-          }
+            if (unseedable) {
+              throw Object.assign(new Error('rollback'), {
+                [ROLLBACK]: { before: 0, after: 0, unseedable },
+              });
+            }
 
-          // AN INSERT FAILURE IS A DIFFERENT VERDICT FROM AN ERASURE FAILURE.
-          // This assertion is about whether erasure ACTS; being unable to
-          // build the fixture (a composite constraint, a unique index, a check
-          // that two user columns differ) says nothing about that. Conflating
-          // them would either hide real erasure bugs among fixture noise or
-          // train the reader to ignore red. So it is reported as its own
-          // outcome, and the set of them is pinned below so it cannot grow
-          // silently.
-          try {
-            await client.$executeRawUnsafe(
-              `INSERT INTO "${rule.table}" (${cols
-                .map((c) => `"${c}"`)
-                .join(', ')}) VALUES (${vals.join(', ')})`,
+            // Forced values for NULLABLE columns: `required` only covers NOT
+            // NULL columns, so a CHECK that demands a nullable column be set
+            // (user_list_items needs exactly ONE target, and both target columns
+            // are nullable) is only satisfiable here.
+            for (const [name, value] of forced) {
+              if (!cols.includes(name)) {
+                cols.push(name);
+                vals.push(value);
+              }
+            }
+
+            // AN INSERT FAILURE IS A DIFFERENT VERDICT FROM AN ERASURE FAILURE.
+            // This assertion is about whether erasure ACTS; being unable to
+            // build the fixture (a composite constraint, a unique index, a check
+            // that two user columns differ) says nothing about that. Conflating
+            // them would either hide real erasure bugs among fixture noise or
+            // train the reader to ignore red. So it is reported as its own
+            // outcome, and the set of them is pinned below so it cannot grow
+            // silently.
+            try {
+              await client.$executeRawUnsafe(
+                `INSERT INTO "${rule.table}" (${cols
+                  .map((c) => `"${c}"`)
+                  .join(', ')}) VALUES (${vals.join(', ')})`,
+              );
+            } catch (error) {
+              throw Object.assign(new Error('rollback'), {
+                [ROLLBACK]: {
+                  before: 0,
+                  after: 0,
+                  // The WHOLE cause, compacted. A parser that silently reports
+                  // "insert failed" when its pattern misses turns a diagnosable
+                  // failure into a shrug — the same missing-tooling-reads-as-
+                  // clean shape as everything else here.
+                  unseedable: (error instanceof Error
+                    ? error.message
+                    : String(error)
+                  )
+                    .replace(/\s+/g, ' ')
+                    .slice(0, 220),
+                },
+              });
+            }
+
+            // The seed must actually be selected by the rule's own predicate —
+            // otherwise the assertion below would pass on a row that was never
+            // in scope, which is exactly the vacuous green this file exists to
+            // eliminate.
+            const [before] = await client.$queryRawUnsafe<Array<{ n: number }>>(
+              `SELECT count(*)::int AS n FROM "${rule.table}" WHERE ${where}`,
+              userId,
             );
-          } catch (error) {
+
+            // ── erase ────────────────────────────────────────────────────────
+            const statement =
+              rule.disposition === 'delete_row'
+                ? `DELETE FROM "${rule.table}" WHERE ${where}`
+                : `UPDATE "${rule.table}" SET "${rule.column}" = NULL WHERE ${where}`;
+            await client.$executeRawUnsafe(statement, userId);
+
+            const [after] = await client.$queryRawUnsafe<Array<{ n: number }>>(
+              `SELECT count(*)::int AS n FROM "${rule.table}" WHERE ${where}`,
+              userId,
+            );
+
             throw Object.assign(new Error('rollback'), {
-              [ROLLBACK]: {
-                before: 0,
-                after: 0,
-                // The WHOLE cause, compacted. A parser that silently reports
-                // "insert failed" when its pattern misses turns a diagnosable
-                // failure into a shrug — the same missing-tooling-reads-as-
-                // clean shape as everything else here.
-                unseedable: (error instanceof Error
-                  ? error.message
-                  : String(error)
-                )
-                  .replace(/\s+/g, ' ')
-                  .slice(0, 220),
-              },
+              [ROLLBACK]: { before: before.n, after: after.n },
             });
-          }
-
-          // The seed must actually be selected by the rule's own predicate —
-          // otherwise the assertion below would pass on a row that was never
-          // in scope, which is exactly the vacuous green this file exists to
-          // eliminate.
-          const [before] = await client.$queryRawUnsafe<Array<{ n: number }>>(
-            `SELECT count(*)::int AS n FROM "${rule.table}" WHERE ${where}`,
-            userId,
-          );
-
-          // ── erase ────────────────────────────────────────────────────────
-          const statement =
-            rule.disposition === 'delete_row'
-              ? `DELETE FROM "${rule.table}" WHERE ${where}`
-              : `UPDATE "${rule.table}" SET "${rule.column}" = NULL WHERE ${where}`;
-          await client.$executeRawUnsafe(statement, userId);
-
-          const [after] = await client.$queryRawUnsafe<Array<{ n: number }>>(
-            `SELECT count(*)::int AS n FROM "${rule.table}" WHERE ${where}`,
-            userId,
-          );
-
-          throw Object.assign(new Error('rollback'), {
-            [ROLLBACK]: { before: before.n, after: after.n },
-          });
-        })
+          },
+          {
+            // 30s, not Prisma's 5s default. This proof introspects the catalog
+            // for every rule before it can insert, which is far more work than
+            // an app transaction — and it only ever timed out in the COMBINED
+            // run, where the database is already warm with other specs' load.
+            // A fixture that fails under load and passes alone reads exactly
+            // like a real defect; it was the timeout.
+            timeout: 30_000,
+          },
+        )
         .catch(
           (error: {
             [ROLLBACK]?: {

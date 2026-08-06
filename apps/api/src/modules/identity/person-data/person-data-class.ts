@@ -81,8 +81,23 @@ export interface PersonDataRule {
   personScopeSql?: string;
   /** Why. Required for `retain` and `not_person` — the two that keep data. */
   basis?: string;
-  /** Retention horizon in days, for `retain`. */
-  horizonDays?: number;
+  /**
+   * HOW LONG, for `retain`. Not optional, and `'indefinite'` is a WORD you
+   * have to type.
+   *
+   * This was `horizonDays?: number`, and the optionality was the bug. Nine
+   * rules retained data; two stated a horizon; the other seven were kept
+   * FOREVER because nobody was ever asked. "Forever" was the silent default
+   * of an omitted field rather than a decision anybody made — and that is the
+   * same failure as a promise with no mechanism, one level earlier: the
+   * promise was never even written down.
+   *
+   * An optional field is an invitation to declare something incomplete that
+   * nothing notices. Making the choice mandatory means a new retained column
+   * cannot be added without someone answering "until when?", and
+   * `'indefinite'` records that the answer was considered rather than skipped.
+   */
+  horizon?: number | 'indefinite';
 }
 
 /**
@@ -98,6 +113,7 @@ export const PERSON_DATA_RULES: readonly PersonDataRule[] = [
     table: 'users',
     column: 'user_id',
     disposition: 'retain',
+    horizon: 'indefinite',
     // IDENTIFYING AND RETAINED ARE DIFFERENT AXES. Retention says the VALUE
     // survives; personKey says the column NAMES the person. Conflating them
     // left `users` with no discoverable key once retained columns were
@@ -263,6 +279,7 @@ export const PERSON_DATA_RULES: readonly PersonDataRule[] = [
     table: 'signals',
     column: 'actor_id',
     disposition: 'retain',
+    horizon: 'indefinite',
     basis:
       'Points at an already-severed anonymous actor. Raw text/viewport retention is governed separately by the signals redesign.',
   },
@@ -270,6 +287,7 @@ export const PERSON_DATA_RULES: readonly PersonDataRule[] = [
     table: 'signal_demand_daily',
     column: 'actor_id',
     disposition: 'retain',
+    horizon: 'indefinite',
     basis: 'Same: anonymous once signal_actors.user_id is severed.',
   },
   // THE SCOPE IS DECLARED, because the column is NOT a user id. `actor_id`
@@ -302,6 +320,7 @@ export const PERSON_DATA_RULES: readonly PersonDataRule[] = [
     table: 'user_blocks',
     column: 'blocked_user_id',
     disposition: 'retain',
+    horizon: 'indefinite',
     basis:
       'A block placed BY someone else protects THEM; it must outlive the blocked account.',
   },
@@ -315,6 +334,7 @@ export const PERSON_DATA_RULES: readonly PersonDataRule[] = [
     table: 'user_reports',
     column: 'reported_user_id',
     disposition: 'retain',
+    horizon: 2555,
     basis:
       'A safety record ABOUT the departing person — the exact case a name-based rule cannot distinguish from the column above.',
   },
@@ -336,7 +356,7 @@ export const PERSON_DATA_RULES: readonly PersonDataRule[] = [
     disposition: 'retain',
     basis:
       'Tax/AML retention (GDPR 17(3)(b) legal obligation; CCPA 1798.105(d)(8)).',
-    horizonDays: 2555,
+    horizon: 2555,
   },
   {
     table: 'username_history',
@@ -386,6 +406,7 @@ export const PERSON_DATA_RULES: readonly PersonDataRule[] = [
     table: 'signal_actors',
     column: 'actor_id',
     disposition: 'retain',
+    horizon: 'indefinite',
     basis:
       'The pseudonym itself. Anonymous once user_id is severed and device_key nulled; the ledger points at it.',
   },
@@ -405,6 +426,7 @@ export const PERSON_DATA_RULES: readonly PersonDataRule[] = [
     table: 'conversations',
     column: 'pair_key',
     disposition: 'retain',
+    horizon: 'indefinite',
     basis:
       'Concatenated participant ids keying a conversation the OTHER party keeps. Severing it would orphan their thread; the departing side is removed via conversation_participants.',
   },
@@ -418,7 +440,7 @@ export const PERSON_DATA_RULES: readonly PersonDataRule[] = [
     table: 'billing_checkout_sessions',
     column: 'user_id',
     disposition: 'retain',
+    horizon: 2555,
     basis: 'Financial record (GDPR 17(3)(b); CCPA 1798.105(d)(1)).',
-    horizonDays: 2555,
   },
 ];

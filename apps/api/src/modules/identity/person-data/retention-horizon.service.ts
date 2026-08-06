@@ -49,7 +49,8 @@ export class RetentionHorizonService {
   /** Rules that keep data under a stated, bounded promise. */
   private horizonRules() {
     return PERSON_DATA_RULES.filter(
-      (rule) => rule.disposition === 'retain' && rule.horizonDays != null,
+      (rule) =>
+        rule.disposition === 'retain' && typeof rule.horizon === 'number',
     );
   }
 
@@ -75,7 +76,7 @@ export class RetentionHorizonService {
           WHERE u.deleted_at IS NOT NULL
             AND u.purge_due_at IS NULL
             AND u.deleted_at < now() - ($1::int * INTERVAL '1 day')`,
-        rule.horizonDays,
+        rule.horizon,
       );
       if (row.n > 0) {
         report.push({ rule: `${rule.table}.${rule.column}`, rows: row.n });
@@ -109,14 +110,14 @@ export class RetentionHorizonService {
                AND u.purge_due_at IS NULL
                AND u.deleted_at < now() - ($1::int * INTERVAL '1 day')
           )`,
-        rule.horizonDays,
+        rule.horizon,
       );
       if (count > 0) {
         deleted += count;
         this.logger.info('Retention horizon reached — rows deleted', {
           rule: `${rule.table}.${rule.column}`,
           rows: count,
-          horizonDays: rule.horizonDays,
+          horizon: rule.horizon,
         });
       }
     }
@@ -126,7 +127,8 @@ export class RetentionHorizonService {
   /** Exposed so a guard can assert the sweep and the eraser stay aligned. */
   static horizonRuleKeys(): string[] {
     return PERSON_DATA_RULES.filter(
-      (rule) => rule.disposition === 'retain' && rule.horizonDays != null,
+      (rule) =>
+        rule.disposition === 'retain' && typeof rule.horizon === 'number',
     ).map((rule) => `${rule.table}.${rule.column}`);
   }
 
@@ -136,7 +138,7 @@ export class RetentionHorizonService {
     return PERSON_DATA_RULES.filter(
       (rule) =>
         rule.disposition === 'retain' &&
-        rule.horizonDays != null &&
+        typeof rule.horizon === 'number' &&
         ruleWhere(rule) !== null,
     ).map((rule) => `${rule.table}.${rule.column}`);
   }

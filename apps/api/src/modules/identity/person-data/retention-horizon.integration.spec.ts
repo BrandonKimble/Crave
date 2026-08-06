@@ -37,13 +37,44 @@ describe('retention horizon — the promise has a mechanism', () => {
     const unreachable = PERSON_DATA_RULES.filter(
       (rule) =>
         rule.disposition === 'retain' &&
-        rule.horizonDays != null &&
+        typeof rule.horizon === 'number' &&
         subjectRows(rule.table, { includeRetained: true }) === null,
     ).map((rule) => `${rule.table}.${rule.column}`);
     expect(unreachable).toEqual([]);
     // And the net must be non-empty, or this test is reading an empty list
     // back to itself.
     expect(RetentionHorizonService.horizonRuleKeys().length).toBeGreaterThan(0);
+  });
+
+  it('every retained column has DECIDED how long — none defaults to forever', () => {
+    // THE ROOT CAUSE, not another instance of it.
+    //
+    // `horizonDays` used to be optional. Nine rules retained data, two stated a
+    // horizon, and the other seven were kept FOREVER — not by decision, but
+    // because an omitted optional field silently means "no limit". Building a
+    // sweep for the two that happened to be filled in would have left the
+    // other seven exactly as unbounded as before, and the next retained column
+    // would have joined them without anyone noticing.
+    //
+    // An optional field is an invitation to declare something incomplete that
+    // nothing reads. The field is mandatory now and `'indefinite'` is a word
+    // you have to type, so the answer is always somebody's decision. This
+    // asserts the property the type is meant to guarantee, because a type can
+    // be widened back by anyone in a hurry.
+    const undecided = PERSON_DATA_RULES.filter(
+      (rule) => rule.disposition === 'retain' && rule.horizon == null,
+    ).map((rule) => `${rule.table}.${rule.column}`);
+    expect(undecided).toEqual([]);
+
+    // And 'indefinite' must be a REASON, not a shrug: it keeps a person's data
+    // forever, so it needs the same stated basis a bounded retention does.
+    const unexplained = PERSON_DATA_RULES.filter(
+      (rule) =>
+        rule.disposition === 'retain' &&
+        rule.horizon === 'indefinite' &&
+        !rule.basis,
+    ).map((rule) => `${rule.table}.${rule.column}`);
+    expect(unexplained).toEqual([]);
   });
 
   it('no rule both retains-with-a-horizon and is erased at the deadline', () => {
