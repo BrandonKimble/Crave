@@ -122,6 +122,10 @@ const ALLOWLIST: Readonly<Record<string, { verdict: Verdict; why: string }>> = {
     verdict: 'not-user-facing',
     why: 'the ontology worker — canonical identity work, and the one place renames happen',
   },
+  'modules/search/demand-vocabulary.service.ts': {
+    verdict: 'not-user-facing',
+    why: 'offline demand->vocabulary sweep — candidate names go INTO the identity-judge prompt and never reach a user; its output is an alias row',
+  },
   'modules/content-processing/entity-resolver/concept-satisfies.service.ts': {
     verdict: 'not-user-facing',
     why: 'offline substitutability pass — canonical names go INTO an LLM prompt and never reach a user; the verdict it stores is a pair of entity ids, not a name',

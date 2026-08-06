@@ -135,14 +135,6 @@ export const GEMINI_CALLER_PROFILES: Record<string, GeminiCallerProfile> = {
     maxOutputTokens: MODEL_MAX_OUTPUT,
   },
   // ---- multilingual: the SPINE label seeder (M2, scripts/seed-spine-labels)
-  // Flash-Lite tier on purpose: ~75 single-word terms, three samples, five
-  // calls total. The expensive part of label quality is the CONSENSUS rule,
-  // not the model size.
-  'labels.seed_spine': {
-    model: FLASH_LITE,
-    context: 'query',
-    maxOutputTokens: MODEL_MAX_OUTPUT,
-  },
   // THE VOCABULARY PASS (concept-graph plan). Flash-Lite, single draw, 20
   // concepts per call: measured 217 in / 182 out tokens per call, and 3 runs
   // x 6 anchors produced 100% agreement, so a bigger model or a consensus
