@@ -906,3 +906,61 @@ Examples must be rebuilt against the enforced schema — the only full output
 example is currently invalid (missing required temp_id, wrong property
 order, teaches plurals against the singular rule) and both flagship examples
 teach `rich`, which Gate 4 forbids.
+
+## GATE 2 RE-DERIVED (2026-08-05): Google types CAN carry most of the venue gate — but the current filter is the wrong abstraction
+
+THE FILTER THAT EXISTS: `PREFERRED_PLACE_TYPES` in
+restaurant-location-enrichment.service.ts:54 — 64 entries, DERIVED from
+GOOGLE_PLACE_TYPE_ATTRIBUTE_MAP + 'restaurant'. Applied by
+isRestaurantishPlaceTypes() as `types.some(t => PREFERRED.has(t))` —
+ANY match against the venue's FULL type array.
+
+WHY THE JUNK GOT IN (measured, per venue):
+H-E-B types include `bakery` (also cake_shop, butcher_shop)
+Whole Foods `bakery`, `deli`
+Randalls `deli`, `bakery`
+H Mart `food_court`
+MUSEUM OF ICE CREAM `ice_cream_shop`, `dessert_shop`, `confectionery`
+Alamo Drafthouse literally `restaurant`
+Every one of them ALSO carries a primaryType that is NOT food-service:
+grocery_store, grocery_store, grocery_store, asian_grocery_store,
+tourist_attraction, movie_theater. Google already knows what these places
+are; we throw that away by matching ANY type instead of the PRIMARY one.
+
+THE DEEPER PROBLEM: the list is a CUISINE-ATTRIBUTE NAMING MAP being reused
+as a VENUE-CLASS GATE — one list doing two jobs, and wrong at both edges.
+TOO WIDE, because any-match admits a supermarket through its bakery counter.
+TOO NARROW on primaryType: the map has no taco_restaurant,
+tex_mex_restaurant, chicken_restaurant, cajun_restaurant, halal_restaurant,
+korean_barbecue_restaurant, dim_sum_restaurant, brewery, brewpub, bistro,
+pastry_shop, hot_dog_stand... 890 REAL restaurants (11.4k events) sit on
+primaryTypes absent from the map. A naive switch to
+`PREFERRED.has(primaryType)` would delete them.
+
+THE MEASURED IDEAL: gate on primaryType with an explicit NON-FOOD-SERVICE
+deny list (grocery/supermarket/market/food_store/wholesaler/convenience/
+liquor/butcher/department/gas_station, movie_theater/tourist_attraction/
+museum/stadium/event_venue, hotel/lodging, night_club, catering_service).
+Yield on today's corpus: 81 entities / 2,088 events removed — which is
+essentially the entire measured venue-class defect (97 ent / 2,051 ev),
+at zero LLM cost and using Google's own authoritative classification.
+This belongs at GROUNDING-TIME ADMISSION, not in the prompt: the extractor
+cannot know a Google type, and by the time we have one the entity exists.
+
+WHY IT CANNOT BE THE ONLY GATE (and this is a CORRECTION to the phase's
+measurement pass, which reported "0 of 6,922 active restaurants are
+ungrounded — the 31%/850 figure is stale"): THAT IS WRONG. 1,626 active
+restaurants (23.5%) have NO googlePlaces.placeId AND no
+core_restaurant_locations.google_place_id — truly ungrounded, ~9,543
+events. They include real venues (Otoko, Garbos, Easy Tiger, Olamaie) AND
+two of the catalogued offenders, Yankee Stadium and Plaza Hotel, both of
+which carry NO Google types at all. Google can decide 76% of the corpus;
+the remaining 24% has nothing to decide with. Dish-phrases minted as
+restaurants ("Bihari Kabab") never reach Google either.
+
+CONSEQUENCE FOR THE PROMPT: Gate 2 SHRINKS but does not vanish. Google owns
+the retail/lodging/entertainment kill at grounding time; the prompt keeps
+only what Google structurally cannot see — is this span a PLACE at all
+rather than a dish phrase, and is the claim about food served here versus
+goods sold to take home (the H-E-B text test, which also covers ungrounded
+venues Google never classified).
