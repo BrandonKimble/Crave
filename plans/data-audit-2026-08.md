@@ -1166,3 +1166,60 @@ STILL OPEN before activation: the ~22 residual omakase rows are now expected
 (they are legitimate). Remaining work is the owner's campaign hash for the
 Austin shadow re-extract, and the two schema decisions (surface fields;
 asserted-vs-inferred marker).
+
+## PHASE 5 (2026-08-06): the grounding hole — 1,626 restaurants with no Google place
+
+FACTS FIRST. 1,626 active restaurants (23.5%) hold no google place id, in
+metadata or on any location. They are EXACTLY the null-city rows; every
+restaurant WITH a city is 100% grounded. They are not out-of-city
+restaurants waiting for onboarding — the failed lookups searched Austin TX
+(1,103) and New York NY (433), our two onboarded cities. Created 07-08..07-31,
+avg 5.9 events, 9,543 events total. Each carries a `lastEnrichmentAttempt`,
+so enrichment RAN and FAILED:
+no prediction matched preferred place types 1,341 (6,502 events)
+place permanently closed 195 (1,450 events)
+
+FALSE TRAILS I FOLLOWED, RECORDED SO THEY ARE NOT RE-WALKED:
+
+- "The reason string is a lie." The string IS hardcoded for every
+  no-selection case (enrichment service, `const reason =` before
+  recordNoMatchCandidates), so it cannot be trusted as attribution — but it
+  turned out to be SUBSTANTIVELY CORRECT anyway. Do not dismiss it.
+- "The `&` -> `and` canonicalization breaks the query." Real but small:
+  3.9% of ungrounded names contain " and " vs 1.7% of grounded — 2.3x
+  enriched, ~64 restaurants. Not the mass cause.
+- "The chooser rejects correct matches." Inflated. 462 ungrounded had an
+  exact-name candidate, but most were correctly refused as WRONG CITY
+  (Uptown Sports' exact match is in Malaysia; Thai Kun's in Houston;
+  Wegmans in NJ/CT). Restricting to exact name AND matching city gives
+  67 restaurants / 509 events. Real, but a minority.
+
+THE ROOT CAUSE, PROVEN BY CALLING THE API BOTH WAYS
+(scripts/grounding-name-probe.ts + an ad-hoc types probe):
+Google FINDS these businesses. We throw the answer away.
+"Local Pastures Austin" -> Local Pastures [grocery_store, food_store]
+"Asahi Imports Austin" -> Asahi Imports [food_store, grocery_store]
+"Rebel Cheese Austin" -> Rebel Cheese Factory [establishment, point_of_interest]
+`filterViableRankedCandidates` drops every candidate failing
+`isRestaurantishPlaceTypes`, which tests against PREFERRED_PLACE_TYPES — the
+64-key CUISINE-ATTRIBUTE map. grocery_store, food_store, establishment and
+point_of_interest are not in it, so all three correct matches are discarded
+and the entity is left ungrounded. THIS IS THE SAME LIST, DOING THE SAME
+DAMAGE, that the venue-class investigation found: a cuisine-naming map
+pressed into service as a classifier. It costs us real venues in TWO places.
+
+THE NAIVE FIX IS WRONG — MEASURED, NOT ASSUMED. Passing
+`types: 'restaurant'` (includedPrimaryTypes) to autocomplete DELETES the
+correct answer for Local Pastures, Asahi Imports, Rebel Cheese and Trudy's
+(all return zero suggestions with it). Do not add it.
+Secondary, real: with NO type restriction some queries surface streets —
+"Salt & Time Austin" returns Salt Block Circle / Old Salt Trail / Salt Mill
+Hollow, all [route, geocode]. So the call needs to exclude geocode/route
+noise WITHOUT narrowing to a cuisine list.
+
+DIRECTION (not yet implemented): stop filtering grounding candidates by the
+cuisine map. A candidate should be admitted on NAME + LOCATION agreement,
+with only structural non-places (route, geocode, locality, political)
+excluded; venue kind is not the question at grounding time any more than it
+was at extraction time. The Gemini chooser already adjudicates same-business,
+which is the right place for that judgment.
