@@ -164,8 +164,8 @@ export const useSearchFilterModalOwner = ({
   const [isSortSelectorVisible, setIsSortSelectorVisible] = React.useState(false);
   const [isPriceSheetContentReady, setIsPriceSheetContentReady] = React.useState(false);
   const priceSheetRef = React.useRef<OverlayModalSheetHandle | null>(null);
-  const [pendingPriceRange, setPendingPriceRange] = React.useState<PriceSliderRange>(
-    () => priceSliderRange(Math.min(...priceLevels), Math.max(...priceLevels))
+  const [pendingPriceRange, setPendingPriceRange] = React.useState<PriceSliderRange>(() =>
+    priceSliderRange(Math.min(...priceLevels), Math.max(...priceLevels))
   );
   const [scoreInfo, setScoreInfo] = React.useState<ScoreInfoPayload | null>(null);
   const [isScoreInfoVisible, setScoreInfoVisible] = React.useState(false);

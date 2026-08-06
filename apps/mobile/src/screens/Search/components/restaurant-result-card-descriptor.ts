@@ -29,11 +29,7 @@ export const buildRestaurantCardHighlightedTextSegments = (
   if (highlight == null) {
     return [{ text: foodName, isMatch: false }];
   }
-  return splitMatchSegmentsWithPolicy(
-    highlight.term,
-    foodName,
-    RESTAURANT_CARD_HIGHLIGHT_POLICY
-  );
+  return splitMatchSegmentsWithPolicy(highlight.term, foodName, RESTAURANT_CARD_HIGHLIGHT_POLICY);
 };
 
 export type RestaurantResultCardMatchedTagDescriptor = {

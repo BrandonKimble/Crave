@@ -131,5 +131,4 @@ export const SEGMENT_OPTIONS = [
   { label: 'Dishes', value: 'dishes' as const },
 ] as const;
 
-
 export type SegmentValue = (typeof SEGMENT_OPTIONS)[number]['value'];
