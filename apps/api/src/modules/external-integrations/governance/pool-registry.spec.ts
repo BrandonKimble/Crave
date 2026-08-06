@@ -225,6 +225,93 @@ describe('PoolRegistry (master plan §14 v2)', () => {
     expect(later.admitted).toBe(true);
   });
 
+  describe('a 429 throttles the CREDENTIAL, not the pool that received it', () => {
+    // TomTom publishes QPS "for an API key and the products it is using", so
+    // the throttle is a fact about the key. Before this, tomtom.geocode and
+    // tomtom.scarcePolygons kept drawing against a key the vendor had just
+    // 429'd because only tomtom.reverseGeocode was poisoned.
+    const tomtom = (resource: string, credential = 'default'): PoolConfig => ({
+      name: `tomtom.${resource}`,
+      credential,
+      window: { kind: 'perMinute', limit: 300, denomination: 'quantity' },
+      reservationTtlMs: 60_000,
+    });
+
+    it('poisons every SIBLING pool on the same key', () => {
+      const registry = new PoolRegistry();
+      registry.register(tomtom('reverseGeocode'));
+      registry.register(tomtom('geocode'));
+      registry.register(tomtom('scarcePolygons'));
+
+      registry.poisonWindow('tomtom.reverseGeocode', 30_000, t0);
+
+      for (const pool of [
+        'tomtom.reverseGeocode',
+        'tomtom.geocode',
+        'tomtom.scarcePolygons',
+      ]) {
+        const denied = registry.reserve(pool, 1, 'probe', t0);
+        expect(denied.admitted).toBe(false);
+        if (!denied.admitted) {
+          expect(denied.reason).toBe('upstreamRateLimited');
+          expect(denied.retryAfterMs).toBe(30_000);
+        }
+      }
+    });
+
+    it('does NOT poison another VENDOR — every pool shares credential "default"', () => {
+      const registry = new PoolRegistry();
+      registry.register(tomtom('reverseGeocode'));
+      registry.register({
+        name: 'gemini.tokens',
+        credential: 'default',
+        window: { kind: 'perMinute', limit: 100, denomination: 'quantity' },
+        reservationTtlMs: 60_000,
+      });
+
+      registry.poisonWindow('tomtom.reverseGeocode', 30_000, t0);
+
+      // Keying on credential ALONE would have taken Gemini down with TomTom:
+      // 'default' is the credential string for every vendor in this codebase.
+      expect(registry.reserve('gemini.tokens', 1, 'x', t0).admitted).toBe(true);
+    });
+
+    it('does NOT poison a second KEY for the same vendor (§14.1 sharding)', () => {
+      const registry = new PoolRegistry();
+      registry.register(tomtom('geocode', 'app-1'));
+      registry.register(tomtom('scarcePolygons', 'app-2'));
+
+      registry.poisonWindow('tomtom.geocode', 30_000, t0);
+
+      // Two keys are two rate budgets; the vendor throttled one of them.
+      expect(
+        registry.reserve('tomtom.scarcePolygons', 1, 'x', t0).admitted,
+      ).toBe(true);
+    });
+
+    it('poolStatus reports the credential cooldown on a sibling pool', () => {
+      const registry = new PoolRegistry();
+      registry.register(tomtom('reverseGeocode'));
+      registry.register(tomtom('geocode'));
+      registry.poisonWindow('tomtom.reverseGeocode', 30_000, t0);
+      expect(registry.poolStatus('tomtom.geocode', t0).poisonedForMs).toBe(
+        30_000,
+      );
+    });
+
+    it('refuses a pool name with no vendor prefix — the key would be empty', () => {
+      const registry = new PoolRegistry();
+      expect(() =>
+        registry.register({
+          name: 'malformed',
+          credential: 'default',
+          window: { kind: 'perMinute', limit: 1, denomination: 'quantity' },
+          reservationTtlMs: 1_000,
+        }),
+      ).toThrow(PoolRegistrationError);
+    });
+  });
+
   it('poolStatus is a read-only snapshot (never admission)', () => {
     const registry = new PoolRegistry();
     registry.register(minutePool());

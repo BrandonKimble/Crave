@@ -474,9 +474,14 @@ export class TomtomChainProbeAdapter implements TomtomChainProbe {
   }
 
   /**
-   * §14.5: an upstream 429 on a governed TomTom act poisons the pool's ONE
-   * window — retry-after honored GLOBALLY through the governor, never per
-   * caller (mirrors reddit.service.ts makeRequest). Returns true when the
+   * §14.5: an upstream 429 on a governed TomTom act poisons the CREDENTIAL
+   * the pool draws on — so the retry-after reaches all three TomTom pools,
+   * not just the one whose request received it. That matters here more than
+   * anywhere else in the codebase: TomTom publishes QPS per API KEY, and
+   * this adapter spends one key across reverseGeocode, geocode and
+   * scarcePolygons. This comment used to say "the pool's ONE window", which
+   * stopped being true when those three pools were split apart on
+   * 2026-07-30; see PoolRegistry.poisonedUntil. Returns true when the
    * error was a 429 (poison applied; caller surfaces its typed 'denied' /
    * pool-denial path so NO attempt is recorded on a transient), false for
    * every other error (genuine vendor fault — caller keeps throwing).

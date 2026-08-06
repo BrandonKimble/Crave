@@ -87,8 +87,9 @@ export type PoolDenial = {
   admitted: false;
   /** Typed 'not now' (§14.7/§12.3): requeue; NEVER an error outcome, never a
    *  term cooldown, never a fail-open pass-through. 'upstreamRateLimited' =
-   *  the window is POISONED by a vendor 429 (§14.5 upstream-429 window
-   *  poisoning kept) — retryAfter is honored globally through the pool. */
+   *  a vendor 429 has POISONED the CREDENTIAL this pool draws on (§14.5), so
+   *  the retry-after is honored across every pool sharing that key — not
+   *  just the pool whose request happened to receive the 429. */
   reason: 'exhausted' | 'storeFailure' | 'upstreamRateLimited';
   retryAfterMs: number | null;
 };
@@ -164,7 +165,30 @@ export class PoolRegistry {
   private readonly reservations = new Map<string, ActiveReservation>();
   private readonly drawLedger: DrawRecord[] = [];
   private reservationCounter = 0;
-  /** §14.5 upstream-429 window poisoning: pool → poisoned-until instant. */
+  /**
+   * §14.5 upstream-429 cooldown: (vendor, credential) → poisoned-until.
+   *
+   * KEYED BY CREDENTIAL, NOT BY POOL, and that is the whole point. A 429 is
+   * the vendor throttling an API KEY — TomTom's published QPS is scoped "for
+   * an API key and the products it is using", so every pool drawing on that
+   * key is throttled by one 429, not just the pool that happened to receive
+   * it.
+   *
+   * This used to be keyed by pool, and the old comment on poisonWindow
+   * explained why that was safe: the retry-after was "honored GLOBALLY
+   * through the one pool". That was TRUE when a vendor had one pool. The
+   * 2026-07-30 split into tomtom.reverseGeocode / tomtom.geocode /
+   * tomtom.scarcePolygons was correct for the reason it was made — TomTom's
+   * FREE ALLOWANCES are per API family (20,000/month EACH), so one bucket
+   * self-blocked while the vendor still had capacity — but it silently broke
+   * this invariant, and the word "one" survived as a fossil.
+   *
+   * The lesson is the modeling one: a POOL models a vendor ALLOWANCE, a
+   * CREDENTIAL models a vendor KEY. Those are different resources. Budget is
+   * per-allowance; rate is per-key. Splitting on the first without moving
+   * what belongs to the second left two of TomTom's three pools drawing
+   * against a key the vendor had just told us to back off from.
+   */
   private readonly poisonedUntil = new Map<string, number>();
   private readonly durable = new Map<string, DurableWindowState>();
   /** Grant pools: capacity registered at boot; store `granted` adds on top. */
@@ -189,6 +213,25 @@ export class PoolRegistry {
     if (this.pools.has(config.name)) {
       throw new PoolRegistrationError(
         `Pool '${config.name}' already registered`,
+      );
+    }
+    // THE NAME SHAPE DECIDES ADMISSION, SO IT IS CHECKED.
+    //
+    // PoolConfig has always documented '<vendor>.<resource>', and until the
+    // 429 cooldown moved onto the credential that was purely cosmetic — a
+    // malformed name cost nothing. It is now load-bearing: credentialKeyOf
+    // derives the vendor from the prefix, and a name with no '.' would yield
+    // an EMPTY vendor, silently sharing one cooldown with every other
+    // malformed pool across unrelated vendors. A convention that decides
+    // whether a vendor's back-off reaches the right pools cannot stay a
+    // comment.
+    const dot = config.name.indexOf('.');
+    if (dot <= 0 || dot === config.name.length - 1) {
+      throw new PoolRegistrationError(
+        `Pool name '${config.name}' is not '<vendor>.<resource>'. The vendor ` +
+          `prefix keys the upstream-429 cooldown, which is shared by every ` +
+          `pool drawing on the same credential — a name without a non-empty ` +
+          `vendor and resource cannot be keyed correctly.`,
       );
     }
     this.pools.set(config.name, config);
@@ -509,7 +552,8 @@ export class PoolRegistry {
   ): PoolReservation | PoolDenial {
     const pool = this.requirePool(poolName);
     this.expireLeaks(at);
-    const poisoned = this.poisonedUntil.get(poolName);
+    const credentialKey = this.credentialKeyOf(pool);
+    const poisoned = this.poisonedUntil.get(credentialKey);
     if (poisoned !== undefined) {
       if (poisoned > at.getTime()) {
         return {
@@ -518,7 +562,7 @@ export class PoolRegistry {
           retryAfterMs: poisoned - at.getTime(),
         };
       }
-      this.poisonedUntil.delete(poolName);
+      this.poisonedUntil.delete(credentialKey);
     }
     // §14.5 store-failure law (single semantic — every pool fails HARD): a
     // durable pool whose current window the store has not CONFIRMED fails
@@ -573,22 +617,40 @@ export class PoolRegistry {
   }
 
   /**
-   * §14.5 (kept): an upstream 429 poisons the pool's window — every reserve
-   * is denied ('upstreamRateLimited') until now + retryAfter, so a vendor
-   * retry-after is honored GLOBALLY through the one pool (§12.5), never per
-   * caller. Extends, never shortens, an existing poison.
+   * §14.5: an upstream 429 poisons the CREDENTIAL the pool draws on — every
+   * reserve against any pool sharing that (vendor, credential) is denied
+   * ('upstreamRateLimited') until now + retryAfter. Extends, never shortens.
+   *
+   * The caller still names a POOL, because a 429 arrives on a request and a
+   * request is made against a pool. Resolving pool → credential here is what
+   * keeps that convenience from becoming the scope error; see poisonedUntil.
    */
   poisonWindow(
     poolName: string,
     retryAfterMs: number,
     at: Date = new Date(),
   ): void {
-    this.requirePool(poolName);
+    const key = this.credentialKeyOf(this.requirePool(poolName));
     const until = at.getTime() + Math.max(0, retryAfterMs);
-    const existing = this.poisonedUntil.get(poolName);
+    const existing = this.poisonedUntil.get(key);
     if (existing === undefined || until > existing) {
-      this.poisonedUntil.set(poolName, until);
+      this.poisonedUntil.set(key, until);
     }
+  }
+
+  /**
+   * The vendor key a pool draws against.
+   *
+   * Vendor comes from the pool NAME, whose '<vendor>.<resource>' shape
+   * PoolConfig has always documented and register() now refuses to accept a
+   * violation of — a convention that decides admission has to be checked,
+   * not merely described. The credential dimension keeps multi-app sharding
+   * composing (§14.1): two keys for the same vendor are two rate budgets and
+   * must not poison each other. NUL-joined because neither part may contain
+   * it, so the key cannot be forged by a name that embeds the separator.
+   */
+  private credentialKeyOf(pool: PoolConfig): string {
+    return `${pool.name.slice(0, pool.name.indexOf('.'))}\u0000${pool.credential}`;
   }
 
   /** Read-only window snapshot (ops/status readers — never admission). */
@@ -607,7 +669,7 @@ export class PoolRegistry {
   } {
     const pool = this.requirePool(poolName);
     this.expireLeaks(at);
-    const poisoned = this.poisonedUntil.get(poolName);
+    const poisoned = this.poisonedUntil.get(this.credentialKeyOf(pool));
     const durableState = this.isDurable(pool)
       ? this.durable.get(pool.name)
       : undefined;
