@@ -15,6 +15,27 @@ export const flushAsync = async (): Promise<void> => {
   });
 };
 
+/** ONE PAINT BOUNDARY. The setup file maps requestAnimationFrame onto
+ *  setTimeout(0), which no amount of promise-flushing will advance — so a lane
+ *  that must observe "the frame AFTER the commit" (the press-up handoff's
+ *  release, the [PERF] probe's rAF pair) yields to the macrotask queue here.
+ *  Deliberately explicit: a test that does NOT call this is asserting on the
+ *  flip frame itself, which is the whole point of the handoff. */
+export const flushFrame = async (): Promise<void> => {
+  await act(async () => {
+    const painted = new Promise<void>((resolve) => {
+      setTimeout(resolve, 0);
+    });
+    try {
+      // Fake-timer specs: advance the clock the rAF shim rides.
+      jest.advanceTimersByTime(1);
+    } catch {
+      // Real timers: the setTimeout above resolves on its own.
+    }
+    await painted;
+  });
+};
+
 export const renderHost = async (): Promise<ReactTestRenderer> => {
   let renderer: ReactTestRenderer | null = null;
   await act(async () => {

@@ -52,8 +52,7 @@ import {
   type TrackSheetPhysicsOptions,
 } from './useTrackSheetPhysics';
 import { TrackSheetDockedStrip } from './TrackSheetStrip';
-import { trackEntrySceneKey, type TrackEntryKey } from './track-entry-identity';
-import { consumeTrackNavPressLatency } from './track-entry-prewarm';
+import { type TrackEntryKey } from './track-entry-identity';
 import { computeOutgoingScroll, TrackEntryScrollMemory } from './track-entry-scroll-memory';
 import { executeEntrySwitch, planEntrySwitch, TrackRestoreCoordinator } from './track-entry-switch';
 
@@ -1146,14 +1145,14 @@ export function TrackSheetPage({
         const t1 = Date.now();
         requestAnimationFrame(() => {
           const t2 = Date.now();
-          // THE SPAN THE FINGER FEELS. commit->paint starts at the commit, i.e.
-          // after everything the press already waited through; press->paint is
-          // the only number that can show a slow tab.
-          const pressToPaint = consumeTrackNavPressLatency(trackEntrySceneKey(entryKey), t1);
+          // THE COMMIT-ANCHORED DIAGNOSTIC, and only that. The press-anchored
+          // span moved out (track-entry-prewarm.ts, read by the leg resolver's
+          // probe): two probes reporting off two different anchors, never
+          // summed, is how "press->paint" could improve while the span the user
+          // feels went unmeasured. One anchor, one line, one owner.
           // eslint-disable-next-line no-console
           console.log(
             `[PERF] switch ${prev}->${entryKey}` +
-              (pressToPaint == null ? '' : ` press->paint=${pressToPaint}ms`) +
               ` commit->paint=${t1 - t0}ms paint->next=${t2 - t1}ms`
           );
         });

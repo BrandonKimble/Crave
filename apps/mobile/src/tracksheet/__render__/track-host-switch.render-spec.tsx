@@ -16,6 +16,7 @@ import {
   clearRecords,
   emitNative,
   endDrag,
+  flushFrame,
   sendMotionCommand,
   harness,
   nativeCallsNamed,
@@ -113,6 +114,10 @@ describe('the entry switch + restore + hidden family — host wiring', () => {
     const world = harness.world;
     world.routeState.overlayRouteStack = [{ entryId: 'u1' }];
     await setFrame({ presentedSceneKey: 'userProfile', presentedEntryId: 'u1' });
+    // THE PRESS-UP HANDOFF: a first-ever paint lands its real body in the NEXT
+    // commit (track-entry-handoff.ts) — this spec is about the hidden family,
+    // so it steps past the handoff frame to reach the painted body.
+    await flushFrame();
     expect(
       renderer.root.findAll(
         (node) => node.type === 'mounted-body' && node.props.scene === 'userProfile'

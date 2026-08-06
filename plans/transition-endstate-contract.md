@@ -595,3 +595,137 @@ teeth is gone (native bounds, d9df23bd4). BUT supportsTablet:true, device family
 rotates, and TrackSheetPage's module-scope Dimensions snapshot would be stale.
 OWNER QUESTION: is iPad a shipping target? No = one config edit and the row dies.
 Yes = the snapshot is a real bug. Nothing deleted on the strength of the ruling.
+
+## THE PRESS-UP HANDOFF — RE-DERIVATION CHECKPOINT (2026-08-05, touch latency)
+
+Owner complaint: "pages respond slowly to touch; they should respond immediately on press
+up, and if they're not ready we use the skeleton flow." Measured on device (warm polls tab
+switch): press->paint=280ms, commit->paint=119ms, and the ~160ms between the route txn
+COMMITTING and the ack bridge ARMING is React rendering the destination's tree before the
+layout effect runs. The probe said polls "presented real rows in the switch commit" — the
+skeleton path never engaged and the finger paid the full first-screenful render.
+
+THE RE-DERIVATION found a CONFLATION, not a missing optimization. The readiness axis asks
+"does a concrete body RESOLUTION exist" — a DATA question, and the right one for OA6.1's
+frozen world. The owner's question is "can this paint THIS frame?" On the one-track page
+(ONE FlashList, fed by the PRESENTED leg only — the reason posture is unambiguous at all)
+PAINT RESIDENCY belongs to exactly one entry at a time: the outgoing one. So the
+destination of ANY switch has, by construction, zero mounted rows, and "the switch commit
+renders the destination's rows" is a promise the page cannot keep in one frame. R2's own
+honesty note already recorded the structural half of this ("only the presented leg's rows
+mount"); what was missing was the consequence for the FLIP.
+
+CONTRACT SHARPENING (Part 1, the readiness row): readiness is TWO facts, not one. The lane
+fact (a body resolution exists) latches for every leg, presented or not — a resident's
+parts hook latches it at BOOT, before the scene is ever shown, which is exactly why a
+data-warm entry was allowed to cost 119ms of finger time. The PAINT fact (this entry's real
+body has been rendered AS THE PRESENTED LEG) is what separates "first paint of this entry"
+from "re-presenting an entry that already has painted content", and it is the fact OA6.1
+actually needs on the track. It lives in TrackEntryPaintLedger (track-entry-handoff.ts),
+written at exactly one place — the commit that builds an entry's real body for
+presentation — so it cannot drift back into meaning "data arrived".
+
+THE MECHANISM (option b of the four offered: commit the flip, let the body arrive async):
+planTrackEntryHandoff is a total pure function over four facts, and every 'direct' is a
+STATED reason rather than a fallthrough — no outgoing paint (boot: no finger waiting), no
+real rows (readiness already owns the skeleton/frozen decision; a second mechanism deciding
+the same thing is the class this system deletes), a world-join scene (OA1 owns its reveal,
+and a handoff would be a rival phase inside the join), or the entry has painted before
+(OA6.1: a warm revisit never flashes). Otherwise DEFER: the press-up commit paints the
+destination's chrome — already-mounted layers, an opacity flip — over the ONE body the page
+can always paint in a frame, THE SKELETON with its per-scene variant (OA2); the real body
+is the next commit, released at the paint boundary (rAF, the same after-paint reading the
+[PERF] probe runs on). No new "wait" state: every commit still paints. No second
+announcement: G-A11Y keys on the PAINTED ENTRY, and the entry does not change on release.
+
+REJECTED, with reasons. (a) a render-readiness signal feeding the ledger — render cost is
+not knowable before rendering, and the only honest proxy (a measured per-entry paint cost)
+CONFLICTS with OA6.1: a genuinely slow scene would exceed any frame budget forever and
+would therefore flash a skeleton on every revisit. (c) arming the ack bridge without
+waiting on the destination render — the arming is 2ms and moving it earlier does not make
+pixels appear earlier; the join was never the cost. (d) prewarm rendering the destination's
+first screenful during finger-down — it needs a SECOND mounted list lane, which reintroduces
+N rival scroll views, the ancestor of every hard bug of this arc.
+
+WHAT IS NOT CLOSED, and needs the owner's device. The handoff makes the FIRST paint of any
+entry unblockable. A REVISIT still renders its rows in the flip commit by OA6.1's demand —
+cheaper (recycler pools, module and component caches are warm) but not bounded. Making a
+revisit's first frame IMPOSSIBLE to be slow requires PAINT RESIDENCY for more than one
+entry, i.e. the second lane rejected above; that is a real rung, not a patch, and it should
+be cut only if the measured revisit is still slow. MEASURE: (1) press->paint on a FIRST
+switch to polls (expect chrome+skeleton, tens of ms, with the probe reporting "presented
+cold (skeleton commit)" then "switch-commit->real-rows"), (2) press->paint on a REVISIT to
+polls (this is the open number), (3) that no skeleton is visible on any revisit.
+
+KILL-LIST: none created and none revealed. The [PERF] cold-flip probe was CORRECTED rather
+than deleted — it read the resolution, which would have reported "presented real rows in
+the switch commit" for the exact frame whose purpose is that it has none (an always-green
+metric, and the precise lie that hid this defect); it reports what was PAINTED now, one log
+pair per switch. FALSIFIERS (same change): 9 pure checks (track-entry-handoff.spec.ts,
+including totality) + 6 render-lane checks against the real host chain
+(**render**/track-host-handoff.render-spec.tsx), with the expensive-body simulation counting
+renderItem invocations so "the flip did not wait on the body" is measured, not inferred.
+RED-proven by six mutations (1/1/1/6/1/1); one candidate mutation (hasOutgoingPaint) is
+claimed only in the pure lane because its render-lane RED was intermittent.
+
+### CORRECTION (2026-08-05, independent audit — three blocking defects)
+
+**D1 — the rung did not fix the measured defect.** The section above states the physics
+correctly ("paint residency belongs to exactly one entry at a time: the outgoing one") and
+then contradicts it in the mechanism: `entryHasPaintedContent` exempted any entry that had
+EVER painted, which is precisely the repeat tab switch the 280ms measurement came from. A
+first visit deferred; every revisit blocked the flip frame on the destination's first
+screenful all over again. The rung fixed the case nobody complained about.
+
+RE-DERIVED: the exemption's true fact is not history but RESIDENCY — cheap-to-paint is a
+claim about the CURRENT view tree, and a tree that unmounted two switches ago costs exactly
+what one that never existed costs. `TrackEntryPaintLedger` is replaced by
+`TrackEntryResidencyLedger`, a SINGLE-SLOT fact (the page has one body, so at most one
+entry's rows are mounted) written when the presented leg builds its real body and CLEARED at
+the flip, where the outgoing rows leave the tree. Consequence, and the intent: the
+destination of every switch is non-resident, so EVERY switch defers.
+
+**OA6.1 is preserved without an exemption.** The deferred frame is not obliged to paint a
+skeleton — only to paint something producible without the destination's live resolution. For
+an entry that has shown content that is its FROZEN last-good body (`lastGoodListRef`, the
+readiness ledger's existing 'frozen' phase). Skeleton stays what it always was: the body of
+an entry that has never had one. So a revisit defers AND never flashes. The "WHAT IS NOT
+CLOSED" paragraph above is superseded in part: the revisit no longer renders its CURRENT
+rows in the flip commit. THE HONEST RESIDUAL: when an entry's frozen body and its current
+resolution are the same list, the flip frame pays the same render it would have paid without
+the rung. What the rung provably removes is the destination's LIVE first screenful, and the
+falsifier is written against exactly that and nothing more. The second-lane rung is still the
+only thing that makes a revisit's first frame impossible to be slow.
+
+**D2 — the metric would have gone green by definition.** With the handoff armed, the press
+stamp was consumed by the commit that painted the SKELETON, so the number the rung exists to
+move improved trivially while the span the user feels (press -> real rows) went unmeasured;
+worse, the two probes anchored differently (one at the press, one at the commit) and were
+never summed. RE-DERIVED as ONE span with ONE anchor and TWO marks, reported as ONE line:
+`[PERF] press <entry> press->first-paint=<a>ms press->real-rows=<b>ms
+first-paint-real-rows=<bool> deferred=<bool>`. The skeleton is a PHASE of the span, not its
+result — `press->real-rows` can only be stamped by a commit that painted real rows. The
+commit-anchored `[PERF] switch … commit->paint=…` line stays as a diagnostic and no longer
+carries a press number: one anchor, one owner. Two further holes closed: an unconsumed stamp
+now EXPIRES (`TRACK_PRESS_SPAN_TTL_MS`, lazily evaluated — a press that landed nowhere used
+to let a later unrelated paint report a fabricated multi-second latency), and CHILD PUSHES
+are stamped at `revealRoute`, the one chokepoint every reveal already flows through, so
+listDetail / pollDetail / restaurant / userProfile / settings / saveList / pollCreation have
+an honest span for the first time.
+
+**D3 — the render lane.** `track-host-switch` (deferred-swap) and `track-host-readiness`
+(activation bridge) both assert on the mounted body, which the rung deliberately moves to
+the commit AFTER the flip (R2's two-phase law, applied). Verdict for both: (ii) stale
+expectation, re-pointed at the release commit with an explicit `flushFrame()` — not a
+regression, and neither spec is about WHICH frame the body lands in (the handoff spec owns
+that). RED-ABILITY RE-PROVEN after re-pointing: unregistering `userProfile` from
+`MOUNTED_BODY_COMPONENTS` reddens the deferred-swap spec; forcing
+`deriveTrackEntryBodyActivity` back to the pre-R2 all-false reddens the activation-bridge
+spec. Also corrected: the revisit falsifier asserted row PRESENCE, which is green whether or
+not the finger paid for the render; it now asserts on `cost.renders` (the destination's
+current resolution is not rendered in the flip frame), and OA6.1 keeps a separate check.
+
+KILL-LIST (this correction): `TrackEntryPaintLedger` and `TrackEntryHandoffFacts.entryHasPaintedContent`
+(deleted — the wrong fact); `consumeTrackNavPressLatency` (deleted — a consuming, single-mark
+probe); the `press->paint=` fragment of TrackSheetPage's commit-anchored line (deleted —
+second anchor). Nothing else revealed.

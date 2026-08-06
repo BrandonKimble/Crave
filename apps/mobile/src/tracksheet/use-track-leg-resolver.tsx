@@ -24,6 +24,7 @@ import {
   sceneDeclaresSharedRowSurface,
   sceneIsResidentTrackScene,
   sceneMountedBodyIsEdgeToEdge,
+  sceneParticipatesInWorldJoin,
   sceneReportsUserScrollActivity,
   sceneUsesMountedTrackBody,
 } from '../navigation/runtime/scene-foundation-spec';
@@ -59,16 +60,21 @@ import { ChromeProbeBoundary, renderListLeader } from './track-sheet-chrome-part
 import {
   makeTrackEntryKey,
   publicationMatchesEntry,
+  trackEntrySceneKey,
   type TrackEntryKey,
 } from './track-entry-identity';
 import {
   consumeTrackScenePrewarmRequests,
+  formatTrackPressSpan,
+  noteTrackPressFirstPaint,
+  noteTrackPressRealRows,
   planScenePrewarm,
   subscribeTrackScenePrewarm,
 } from './track-entry-prewarm';
 import { auditTrackEntryLiveness, type TrackEntryLivenessSample } from './track-entry-liveness';
 import { TrackEntryRetention, TRACK_CHILD_RETENTION_DEPTH } from './track-entry-retention';
 import { deriveTrackEntryBodyActivity } from './track-entry-activity';
+import { planTrackEntryHandoff, TrackEntryResidencyLedger } from './track-entry-handoff';
 import {
   isResolutionReady,
   resolutionHasRealRows,
@@ -401,6 +407,17 @@ export const useTrackLegResolver = ({
   // nothing, its previous body renders, never a skeleton.
   const readinessLedgerRef = React.useRef(new TrackEntryReadinessLedger());
   const lastGoodListRef = React.useRef(new Map<TrackEntryKey, ResolvedLegList>());
+  // ── THE PRESS-UP HANDOFF STATE (touch-latency rung) ──
+  // residencyLedger: WHOSE ROWS ARE MOUNTED right now — one slot, because the
+  // page has one body (the eye's fact, distinct from readiness' lane latch and
+  // from the has-ever-painted fact this replaced).
+  // deferredEntry: the entry whose real body is being withheld from THIS
+  // commit so the flip can land in the frame after press-up.
+  const residencyLedgerRef = React.useRef(new TrackEntryResidencyLedger());
+  const deferredEntryRef = React.useRef<TrackEntryKey | null>(null);
+  const handoffScheduledForRef = React.useRef<TrackEntryKey | null>(null);
+  const handoffPrevEntryRef = React.useRef<TrackEntryKey | null>(null);
+  const [handoffSeq, bumpHandoffSeq] = React.useReducer((n: number) => n + 1, 0);
   presentedEntryKeyLiveRef.current = presentedEntryKey;
   if (!isResidentScene) {
     // Refresh the stored entry value each render (params can update in place —
@@ -418,6 +435,7 @@ export const useTrackLegResolver = ({
       stripElementCacheRef.current.delete(evictedKey);
       mountedRendererCacheRef.current.delete(evictedKey);
       readinessLedgerRef.current.forget(evictedKey);
+      residencyLedgerRef.current.forget(evictedKey);
       lastGoodListRef.current.delete(evictedKey);
       livenessSamplesRef.current.delete(evictedKey);
       // Scroll memory deliberately survives eviction (TrackEntryScrollMemory).
@@ -467,12 +485,89 @@ export const useTrackLegResolver = ({
       }),
     };
   };
+  // ── THE HANDOFF ARMS AT THE FLIP, IN RENDER (touch-latency rung) ───────────
+  // The decision must be made in the SAME render pass that first sees the new
+  // presented entry — an effect runs after the commit, which is exactly the
+  // frame the finger is waiting for. The facts are read here; the decision is
+  // pure (track-entry-handoff.ts).
+  //
+  // hasOutgoingPaint gates the boot pass: the very first presentation has no
+  // outgoing page to hand off from, so it paints its body directly (a handoff
+  // there would put a skeleton frame in front of app launch for no finger).
+  if (handoffPrevEntryRef.current !== presentedEntryKey) {
+    const hasOutgoingPaint = handoffPrevEntryRef.current != null;
+    handoffPrevEntryRef.current = presentedEntryKey;
+    const decision = planTrackEntryHandoff({
+      destinationHasRealRows: resolutionHasRealRows(
+        resolveLegBodyPlan(presentedEntryKey, scene).resolution
+      ),
+      // Read BEFORE the clear below: at this instant residency still names the
+      // OUTGOING entry, which is exactly the fact — the destination's rows are
+      // not mounted, so this frame cannot paint them for free.
+      destinationRowsAreResident: residencyLedgerRef.current.isResident(presentedEntryKey),
+      participatesInWorldJoin: sceneParticipatesInWorldJoin(scene),
+      hasOutgoingPaint,
+    });
+    // THE FLIP IS WHERE THE OUTGOING BODY LEAVES THE TREE. Residency is a claim
+    // about the current view tree; carrying the outgoing entry's slot past this
+    // commit would let a later switch back to it take the 'direct' exemption on
+    // rows that unmounted long ago — the has-ever-painted bug, reintroduced.
+    residencyLedgerRef.current.clear();
+    deferredEntryRef.current = decision === 'defer' ? presentedEntryKey : null;
+  }
+  /** True while this leg's real body is withheld for the flip frame. */
+  const legIsHandingOff = (legEntryKey: TrackEntryKey) => deferredEntryRef.current === legEntryKey;
+  // THE RELEASE, at the paint boundary. rAF (not a bare effect) is the honest
+  // schedule: a passive effect can still run inside the frame the commit is
+  // being mounted in, and the whole point is that the skeleton frame reaches
+  // the screen BEFORE the expensive body renders. Same rAF-is-after-paint
+  // reading the [PERF] switch probe already runs on. Guarded per armed key so
+  // an unrelated re-render cannot re-arm or starve the release.
+  React.useEffect(() => {
+    const armed = deferredEntryRef.current;
+    if (armed == null || handoffScheduledForRef.current === armed) {
+      return;
+    }
+    handoffScheduledForRef.current = armed;
+    requestAnimationFrame(() => {
+      if (deferredEntryRef.current !== armed) {
+        return;
+      }
+      deferredEntryRef.current = null;
+      bumpHandoffSeq();
+    });
+  });
+
   const resolveLegList = (
     legEntryKey: TrackEntryKey,
     legScene: OverlayKey,
     legEntry: OverlayRouteEntry | null
   ): ResolvedLegList => {
     const { source, resolution, published, parts } = resolveLegBodyPlan(legEntryKey, legScene);
+    if (legIsHandingOff(legEntryKey)) {
+      // THE HANDOFF FRAME: the flip has committed — chrome, presented entry,
+      // a11y, the txn's paint ack — over a body the page can produce WITHOUT
+      // the destination's live resolution. The real body is the NEXT commit
+      // (released at the paint boundary above).
+      //
+      // OA6.1 LIVES HERE, not in an exemption from the deferral: an entry that
+      // has shown content has a FROZEN last-good body, and that is what the
+      // flip frame paints — never a skeleton. The skeleton is only ever the
+      // body of an entry that has never had one. This is why a revisit can
+      // defer (paying none of the destination's CURRENT first screenful) and
+      // still never flash.
+      //
+      // The readiness ledger is deliberately NOT consulted: this is not a
+      // readiness verdict, and latching an entry as "content" on a frame that
+      // is not showing its current content would corrupt the frozen-world fact.
+      // Residency is likewise NOT written — nothing of the destination's real
+      // body is mounted by this frame, which is the entire claim.
+      const frozen = lastGoodListRef.current.get(legEntryKey);
+      if (frozen != null) {
+        return frozen;
+      }
+      return { data: ['skeleton'], renderItem: rendererForSkeleton(legScene) };
+    }
     const phase = readinessLedgerRef.current.present(legEntryKey, isResolutionReady(resolution));
     if (phase !== 'content') {
       if (phase === 'frozen') {
@@ -528,6 +623,14 @@ export const useTrackLegResolver = ({
       };
     }
     lastGoodListRef.current.set(legEntryKey, list);
+    // THE RESIDENCY FACT, written where it happens and nowhere else: this
+    // entry's real rows are the ones mounted in the page's single FlashList.
+    // Only the presented leg qualifies — a hidden leg's list props are built
+    // every commit and never reach a pixel, and treating that as residency
+    // would hand an unmounted body the free-frame exemption it cannot honour.
+    if (legEntryKey === presentedEntryKey && resolutionHasRealRows(resolution)) {
+      residencyLedgerRef.current.markResident(legEntryKey);
+    }
     return list;
   };
 
@@ -624,6 +727,9 @@ export const useTrackLegResolver = ({
     // A prewarm mounts a resident leg between presentation frames — the legs
     // list must rebuild for it (visitedResidentsRef is read inside).
     prewarmSeq,
+    // The handoff release is a SECOND COMMIT by design: the legs must rebuild
+    // for it, or the real body would wait on an unrelated data tick.
+    handoffSeq,
     zeroScrollOffset,
   ]);
 
@@ -633,16 +739,48 @@ export const useTrackLegResolver = ({
   // the second phase. This probe measures phase two — the time from the switch
   // commit to the first commit whose presented body has real rows — so the
   // on-device claim is a number, not an impression. Dev-only.
-  const presentedHasRealRows = resolutionHasRealRows(
-    resolveLegBodyPlan(presentedEntryKey, scene).resolution
-  );
+  // The press-anchored span (press->first-paint AND press->real-rows, ONE line)
+  // is taken here too \u2014 see the marks below.
+  // PAINTED, NOT RESOLVED (touch-latency rung): during a handoff frame the
+  // destination's rows RESOLVE but are deliberately not rendered. A probe that
+  // read the resolution would report "presented real rows in the switch commit"
+  // for the exact frame whose whole purpose is that it did not — an
+  // always-green metric, and the precise lie that hid this defect. It reports
+  // the cold (skeleton) commit instead, and the release commit closes it: ONE
+  // log pair per switch, never two.
+  const presentedHasRealRows =
+    !legIsHandingOff(presentedEntryKey) &&
+    resolutionHasRealRows(resolveLegBodyPlan(presentedEntryKey, scene).resolution);
   const coldFlipProbeRef = React.useRef<{ entryKey: TrackEntryKey; t0: number } | null>(null);
   const probePrevEntryRef = React.useRef<TrackEntryKey | null>(null);
   React.useEffect(() => {
     if (!__DEV__) {
       return;
     }
-    if (probePrevEntryRef.current !== presentedEntryKey) {
+    const isFlipCommit = probePrevEntryRef.current !== presentedEntryKey;
+    // ── THE PRESS SPAN's TWO MARKS, both taken at a PAINT BOUNDARY off the ONE
+    // anchor the finger set (track-entry-prewarm.ts). rAF, not effect time: the
+    // effect runs inside the commit, and the claim is about what reached the
+    // screen. The deferred frame marks FIRST-PAINT; the release commit marks
+    // REAL-ROWS and closes the span — one line carrying both, so a fast
+    // skeleton cannot make the number the rung exists to move go green.
+    const spanScene = trackEntrySceneKey(presentedEntryKey);
+    const spanEntry = presentedEntryKey;
+    const spanHadRealRows = presentedHasRealRows;
+    requestAnimationFrame(() => {
+      const paintedAt = Date.now();
+      if (isFlipCommit) {
+        noteTrackPressFirstPaint(spanScene, spanEntry, paintedAt, spanHadRealRows);
+      }
+      if (spanHadRealRows) {
+        const report = noteTrackPressRealRows(spanScene, spanEntry, paintedAt);
+        if (report != null) {
+          // eslint-disable-next-line no-console
+          console.log(formatTrackPressSpan(report));
+        }
+      }
+    });
+    if (isFlipCommit) {
       probePrevEntryRef.current = presentedEntryKey;
       if (presentedHasRealRows) {
         coldFlipProbeRef.current = null;
@@ -650,8 +788,12 @@ export const useTrackLegResolver = ({
         console.log(`[PERF] switch ${presentedEntryKey} presented real rows in the switch commit`);
       } else {
         coldFlipProbeRef.current = { entryKey: presentedEntryKey, t0: Date.now() };
+        // DEFERRED, not necessarily COLD: the handoff frame paints the frozen
+        // last-good body when the entry has one and the skeleton only when it
+        // has never had one. Naming it "skeleton commit" would have been the
+        // probe asserting a body it did not look at.
         // eslint-disable-next-line no-console
-        console.log(`[PERF] switch ${presentedEntryKey} presented cold (skeleton commit)`);
+        console.log(`[PERF] switch ${presentedEntryKey} presented deferred (handoff frame)`);
       }
       return;
     }

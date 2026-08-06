@@ -11,6 +11,7 @@ import type {
   RouteSceneSwitchRouteParams,
 } from './app-overlay-route-transition-contract';
 import type { OverlaySheetSnap } from '../../overlays/types';
+import { markTrackNavPress } from '../../tracksheet/track-entry-prewarm';
 import { logCameraOriginDebug } from './pageswitch-debug-flag';
 import { stageRouteEntryOriginRestore } from './route-entry-origin-capture-delegate';
 import type {
@@ -154,6 +155,18 @@ export const createAppOverlayRouteCommandRuntime = ({
     overlay: K,
     params?: OverlayRouteParamsMap[K]
   ): void => {
+    // THE PRESS STAMP FOR CHILD PUSHES (touch-latency instrument, 2026-08-05).
+    // The nav tabs stamped their press; the HEAVIEST transitions in the app —
+    // listDetail, pollDetail, restaurant, userProfile, settings, saveList — had
+    // no stamp at all, so their honest press->real-rows span was not merely
+    // ungreen, it was unmeasurable. This is the ONE chokepoint every child
+    // reveal already flows through (revealRoute; `pushRoute` aliases it), so the
+    // stamp is one line here rather than N call sites that could each drift.
+    // Dev-only bookkeeping; the stamp expires unreported if the push lands
+    // nowhere (TRACK_PRESS_SPAN_TTL_MS).
+    if (__DEV__) {
+      markTrackNavPress(overlay, Date.now());
+    }
     if (overlay === 'pollCreation') {
       requestRouteSceneSwitch({
         targetSceneKey: overlay,

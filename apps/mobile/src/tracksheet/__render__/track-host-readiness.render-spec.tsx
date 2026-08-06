@@ -12,6 +12,7 @@ import { act } from 'react-test-renderer';
 import { requestTrackScenePrewarm } from '../track-entry-prewarm';
 import {
   findAllByType,
+  flushFrame,
   harness,
   listPublication,
   renderHost,
@@ -120,6 +121,10 @@ describe('readiness / skeleton / prewarm / entry-stamp / liveness — host wirin
   it('the activation bridge delivers presentation-derived activity to the presented mounted body, and the liveness audit stays quiet', async () => {
     harness.world.routeState.overlayRouteStack = [{ entryId: 'u1' }];
     await setFrame({ presentedSceneKey: 'userProfile', presentedEntryId: 'u1' });
+    // Step past THE PRESS-UP HANDOFF frame (track-entry-handoff.ts): a
+    // first-ever paint hands the flip a skeleton and renders the real body in
+    // the next commit — the activation bridge is a fact about THAT commit.
+    await flushFrame();
     const delivered = harness.world.deliveredActivity.get('userProfile#u1') as Record<
       string,
       unknown
