@@ -215,6 +215,19 @@ export const formatTrackPressSpan = (report: TrackPressSpanReport): string =>
   `first-paint-real-rows=${report.firstPaintHadRealRows} ` +
   `deferred=${!report.firstPaintHadRealRows}`;
 
+/**
+ * THE PRESS ANCHOR, readable by the phase probe (track-press-phase-probe.ts) so
+ * the phase split measures from the SAME zero as the press span — two
+ * instruments, one anchor, never two different definitions of "the press".
+ */
+export const getTrackPressAnchorMs = (sceneKey: string, nowMs: number): number | null => {
+  dropIfStale(nowMs);
+  if (pendingPress == null || pendingPress.sceneKey !== sceneKey) {
+    return null;
+  }
+  return pendingPress.pressAtMs;
+};
+
 /** Test seam only: the pending span (or null), without touching expiry. */
 export const peekTrackPressSpan = (): Readonly<TrackPressSpan> | null => pendingPress;
 

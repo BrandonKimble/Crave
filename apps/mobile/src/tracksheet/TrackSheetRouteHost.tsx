@@ -32,6 +32,14 @@ import { resolveHiddenPresentation } from './track-entry-hidden';
 import { getTrackMotionAuthority } from './track-motion-authority';
 import { ChromeProbeBoundary, renderListLeader } from './track-sheet-chrome-parts';
 import { runTrackCommitTxnBridge } from './track-txn-bridge';
+import { getTrackPressAnchorMs } from './track-entry-prewarm';
+import {
+  beginTrackPressPhaseSpan,
+  beginTrackPressRowWindow,
+  noteTrackPressCommit,
+  noteTrackPressPhase,
+  trackPerfToEpochMs,
+} from './track-press-phase-probe';
 import { useNativeHiddenEdgeSource, useTrackMotionController } from './use-track-motion-controller';
 import { assertMountedBodyAgreement, useTrackLegResolver } from './use-track-leg-resolver';
 import { useTrackA11yAnnouncer } from './use-track-a11y-announcer';
@@ -187,13 +195,66 @@ const TrackSheetRouteSurface: React.FC<{ scene: OverlayKey }> = ({ scene: sceneO
   // family's routing rule are a pure function with a falsifier there, instead of
   // thirty lines of prose here.
   const switchId = frame.switchId;
+
+  // ── THE PHASE SPLIT (touch-latency attribution) — dev only ─────────────────
+  // OPENED IN RENDER, at the first render of the host that sees this switch:
+  // 'host-render' must be a reading taken HERE, not in an effect, because the
+  // span it opens (route-committed -> host-render) is precisely the React work
+  // that happens before this component is reached. The route txn's own
+  // committedAt mark is READ rather than re-derived — the engine already stamps
+  // it, and a second definition of "committed" would be a second truth.
+  const phaseSwitchRef = React.useRef<string | null>(null);
+  const phaseSwitchToken = `${switchId ?? 'none'}#${scene}`;
+  if (__DEV__ && phaseSwitchRef.current !== phaseSwitchToken) {
+    phaseSwitchRef.current = phaseSwitchToken;
+    const nowEpochMs = Date.now();
+    const nowPerfMs =
+      typeof performance !== 'undefined' && typeof performance.now === 'function'
+        ? performance.now()
+        : nowEpochMs;
+    beginTrackPressPhaseSpan(scene, getTrackPressAnchorMs(scene, nowEpochMs));
+    // The row window opens with the switch and closes at press->real-rows —
+    // LONGER-LIVED than the phase span on purpose. The flip's span closes at
+    // the flip's paint, so rows FlashList mounts in a later commit fall outside
+    // it by construction (the blind spot that made an early row probe read 0).
+    beginTrackPressRowWindow(scene);
+    const committedAtPerfMs = getLiveTransitionTxn()?.marks.committedAt;
+    if (committedAtPerfMs != null) {
+      noteTrackPressPhase(
+        scene,
+        'route-committed',
+        trackPerfToEpochMs(committedAtPerfMs, nowEpochMs, nowPerfMs)
+      );
+    }
+    noteTrackPressPhase(scene, 'host-render', nowEpochMs);
+  }
+
   React.useLayoutEffect(() => {
+    if (__DEV__) {
+      // The ack bridge IS the txn's 'amended' edge — the mark the trace measured
+      // the ~160ms gap to. Taken before the bridge runs, so the span ends where
+      // the render pass ended, not after the bridge's own work.
+      noteTrackPressPhase(scene, 'layout-effect', Date.now());
+    }
     runTrackCommitTxnBridge({
       scene,
       commitPaintAck: () =>
         sceneRuntime.routeSceneSwitchRuntime.commitPresentationPaintAck(switchId),
     });
   }, [switchId, scene, sceneRuntime]);
+
+  // NO DEP ARRAY, deliberately: this runs on EVERY commit of the host, which is
+  // the point — 'passive-effect' is the last moment JS owns the frame (all
+  // layout and passive effects have run), so layout-effect->passive is the JS
+  // tail and passive->paint is the native remainder. The commit count says
+  // whether the window held ONE commit or a second render pass; without it
+  // "native mount" would be an assumption wearing a timing's clothes.
+  React.useEffect(() => {
+    if (__DEV__) {
+      noteTrackPressCommit(scene);
+      noteTrackPressPhase(scene, 'passive-effect', Date.now());
+    }
+  });
 
   // THE ENTRY: child bodies receive their route entry (params — listId etc.)
   // exactly like the registry mount unit passes it (W1 slice 1). ENTRY IDENTITY

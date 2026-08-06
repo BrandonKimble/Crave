@@ -71,6 +71,15 @@ import {
   planScenePrewarm,
   subscribeTrackScenePrewarm,
 } from './track-entry-prewarm';
+import {
+  finishTrackPressPhaseSpan,
+  finishTrackPressRowWindow,
+  formatTrackPressPhases,
+  formatTrackPressRowWindow,
+  noteTrackPressBodyFact,
+  noteTrackPressPartsCost,
+  noteTrackPressPhase,
+} from './track-press-phase-probe';
 import { auditTrackEntryLiveness, type TrackEntryLivenessSample } from './track-entry-liveness';
 import { TrackEntryRetention, TRACK_CHILD_RETENTION_DEPTH } from './track-entry-retention';
 import { deriveTrackEntryBodyActivity } from './track-entry-activity';
@@ -165,8 +174,18 @@ export const useTrackLegResolver = ({
   entryId: string | null;
   entry?: OverlayRouteEntry | null;
 }) => {
+  // THE PARTS LANE, MEASURED. These two hooks run on EVERY host render whichever
+  // scene is presented — so a switch cost that lives here is NOT explained by
+  // "the destination's hook woke up", and a cost that does not live here rules
+  // the parts lane out. No pair of phase marks brackets them (they run inside
+  // the host render), so the cost is read straight off the clock.
+  const partsStartedAtMs = __DEV__ ? Date.now() : 0;
   const pollsParts = usePollsPanelListSceneParts();
   const homeParts = useHomePanelListSceneParts();
+  if (__DEV__) {
+    noteTrackPressPartsCost(scene, Date.now() - partsStartedAtMs);
+    noteTrackPressPhase(scene, 'parts', Date.now());
+  }
 
   // THE LANE PATH (pollDetail conversion, generalized): scenes that PUBLISH a
   // 'list' body spec through the scene input lane (pollDetail, pollCreation,
@@ -417,6 +436,12 @@ export const useTrackLegResolver = ({
   const deferredEntryRef = React.useRef<TrackEntryKey | null>(null);
   const handoffScheduledForRef = React.useRef<TrackEntryKey | null>(null);
   const handoffPrevEntryRef = React.useRef<TrackEntryKey | null>(null);
+  /** Which body the LAST handoff frame painted — 'frozen' (the destination's own
+   * rows, a full screenful to mount) or 'skeleton' (one cell). Written where the
+   * choice is made, read by the [PERF] line. */
+  const handoffBodyRef = React.useRef<'frozen' | 'skeleton' | null>(null);
+  /** The data array each entry presented last time (identity only, dev probe). */
+  const lastPresentedDataRef = React.useRef(new Map<TrackEntryKey, readonly unknown[]>());
   const [handoffSeq, bumpHandoffSeq] = React.useReducer((n: number) => n + 1, 0);
   presentedEntryKeyLiveRef.current = presentedEntryKey;
   if (!isResidentScene) {
@@ -563,6 +588,12 @@ export const useTrackLegResolver = ({
       // Residency is likewise NOT written — nothing of the destination's real
       // body is mounted by this frame, which is the entire claim.
       const frozen = lastGoodListRef.current.get(legEntryKey);
+      // WHICH BODY the handoff frame painted, RECORDED (not asserted) where the
+      // choice is made. The probe used to refuse to name it on the grounds that
+      // naming a body it had not looked at would be a lie — but looking is free
+      // right here, and the distinction is load-bearing: a frozen body IS the
+      // destination's own rows.
+      handoffBodyRef.current = frozen != null ? 'frozen' : 'skeleton';
       if (frozen != null) {
         return frozen;
       }
@@ -732,6 +763,35 @@ export const useTrackLegResolver = ({
     handoffSeq,
     zeroScrollOffset,
   ]);
+  if (__DEV__) {
+    // WHAT THIS FRAME ASKED THE PAGE TO MOUNT, read off the leg actually built.
+    // DATA IDENTITY is compared by object identity against this entry's previous
+    // presentation, and CONTENT element-wise — because "a new array for the same
+    // rows" (an upstream identity bug) and "genuinely new rows" produce the same
+    // identity verdict, and assuming which one it is has been wrong repeatedly
+    // in this attribution.
+    const presentedLeg = legs.find((leg) => leg.entryKey === presentedEntryKey);
+    const presentedList = presentedLeg?.list as ResolvedLegList | undefined;
+    if (presentedList != null) {
+      const previousData = lastPresentedDataRef.current.get(presentedEntryKey);
+      lastPresentedDataRef.current.set(presentedEntryKey, presentedList.data);
+      const contentSame =
+        previousData != null &&
+        previousData.length === presentedList.data.length &&
+        previousData.every((row, index) => row === presentedList.data[index]);
+      noteTrackPressBodyFact(
+        scene,
+        presentedList.data.length,
+        legIsHandingOff(presentedEntryKey) ? (handoffBodyRef.current ?? 'deferred') : 'live',
+        previousData == null ? 'first' : previousData === presentedList.data ? 'same' : 'new',
+        previousData == null ? 'first' : contentSame ? 'same' : 'changed'
+      );
+    }
+    // Legs are available here. What remains between this point and
+    // 'layout-effect' is TrackSheetPage's own render — the span that separates
+    // "the resolver was slow" from "the page was slow".
+    noteTrackPressPhase(scene, 'legs-built', Date.now());
+  }
 
   // ── THE TWO-PHASE COLD-FLIP PROBE ([PERF], R2) ──────────────────────────────
   // The owner's original complaint was a multi-second polls switch. The law: the
@@ -771,10 +831,25 @@ export const useTrackLegResolver = ({
       const paintedAt = Date.now();
       if (isFlipCommit) {
         noteTrackPressFirstPaint(spanScene, spanEntry, paintedAt, spanHadRealRows);
+        // THE PHASE LINE, closed at the SAME paint boundary as first-paint — the
+        // two instruments must not disagree about when the flip hit the screen.
+        const phases = finishTrackPressPhaseSpan(spanScene, paintedAt);
+        if (phases != null) {
+          // eslint-disable-next-line no-console
+          console.log(formatTrackPressPhases(phases));
+        }
       }
       if (spanHadRealRows) {
         const report = noteTrackPressRealRows(spanScene, spanEntry, paintedAt);
         if (report != null) {
+          // THE ROW WINDOW, closed where real rows actually landed — the count
+          // that says what drawDistance=SCREEN.height over a full-screen list
+          // decides to mount, which the flip frame could never have answered.
+          const rowTally = finishTrackPressRowWindow(spanScene);
+          if (rowTally != null) {
+            // eslint-disable-next-line no-console
+            console.log(formatTrackPressRowWindow(spanScene, rowTally));
+          }
           // eslint-disable-next-line no-console
           console.log(formatTrackPressSpan(report));
         }
@@ -793,7 +868,10 @@ export const useTrackLegResolver = ({
         // has never had one. Naming it "skeleton commit" would have been the
         // probe asserting a body it did not look at.
         // eslint-disable-next-line no-console
-        console.log(`[PERF] switch ${presentedEntryKey} presented deferred (handoff frame)`);
+        console.log(
+          `[PERF] switch ${presentedEntryKey} presented deferred (handoff frame) ` +
+            `body=${handoffBodyRef.current ?? 'unknown'}`
+        );
       }
       return;
     }

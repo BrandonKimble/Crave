@@ -52,7 +52,12 @@ import {
   type TrackSheetPhysicsOptions,
 } from './useTrackSheetPhysics';
 import { TrackSheetDockedStrip } from './TrackSheetStrip';
-import { type TrackEntryKey } from './track-entry-identity';
+import { trackEntrySceneKey, type TrackEntryKey } from './track-entry-identity';
+import {
+  noteTrackPressChromeBuild,
+  noteTrackPressRowInvoke,
+  noteTrackPressSubtreeRender,
+} from './track-press-phase-probe';
 import { computeOutgoingScroll, TrackEntryScrollMemory } from './track-entry-scroll-memory';
 import { executeEntrySwitch, planEntrySwitch, TrackRestoreCoordinator } from './track-entry-switch';
 
@@ -115,6 +120,32 @@ function TrackTouchCarve(props: ViewProps & { children?: React.ReactNode }): Rea
   const Native = TrackTouchCarveNative as unknown as React.ComponentClass<Record<string, unknown>>;
   return <Native {...(props as unknown as Record<string, unknown>)} />;
 }
+
+/** ONE PLACE that turns a React.Profiler into a phase-probe subtree tally.
+ *  Dev-only by construction: in production it is the identity wrapper, so no
+ *  Profiler node exists in the tree at all.
+ *  NESTING IS DELIBERATE and stated rather than corrected for — React's
+ *  actualDuration INCLUDES descendants, so an inner id's number is contained in
+ *  its outer id's, and the interesting quantity is the DIFFERENCE. */
+const TrackSubtreeProbe: React.FC<{
+  id: string;
+  sceneKey: string;
+  children: React.ReactNode;
+}> = ({ id, sceneKey, children }) => {
+  if (!__DEV__) {
+    return <>{children}</>;
+  }
+  return (
+    <React.Profiler
+      id={id}
+      onRender={(_id, phase, actualDuration) =>
+        noteTrackPressSubtreeRender(sceneKey, id, phase, actualDuration)
+      }
+    >
+      {children}
+    </React.Profiler>
+  );
+};
 
 const AnimatedFlashList = Reanimated.createAnimatedComponent(
   FlashList as unknown as React.ComponentClass<Record<string, unknown>>
@@ -915,6 +946,13 @@ export function TrackSheetPage({
             </TrackSheetDockedStrip>
           </View>
         ) : null;
+      if (__DEV__) {
+        // THE RESIDENT CHROME STACK's cost, COUNTED at the miss. The signature
+        // above deliberately excludes per-switch identities so the cache hits
+        // across switches — its own comment says the red team found it never
+        // did. A count is the only way to know which is true on the device.
+        noteTrackPressChromeBuild(trackEntrySceneKey(presentedEntryKey));
+      }
       const element = renderChrome(null, leg.title ?? title, band, legChromeHeight(leg));
       chromeElementCacheRef.current.set(leg.entryKey, { signature, element });
       return { entryKey: leg.entryKey, element };
@@ -962,25 +1000,30 @@ export function TrackSheetPage({
       <View style={{ height: trackH }} pointerEvents="none" />
       <TrackShellSlot slotRole="chromeContent" ref={chromeContentRef as never}>
         <View style={{ height: legChromeHeight(leg) }}>
-          {visualChromeLegs.map((entry) => {
-            const isPresented = entry.entryKey === presentedEntryKey;
-            return (
-              <View
-                key={entry.entryKey}
-                // G-A11Y: the PRESENTED layer is the destination header the
-                // screen-reader cursor is moved to. Only one layer holds the
-                // ref at a time — React detaches the outgoing layer's ref and
-                // attaches the incoming one in the same commit as the flip.
-                ref={isPresented ? (headerFocusRef as never) : undefined}
-                accessibilityRole="header"
-                testID={`track-chrome-layer:${entry.entryKey}`}
-                style={isPresented ? styles.chromeStackLayer : styles.chromeStackLayerHidden}
-                pointerEvents={isPresented ? 'box-none' : 'none'}
-              >
-                {entry.element}
-              </View>
-            );
-          })}
+          {/* The chrome stack renders INSIDE the list (it is the
+              ListHeaderComponent), so without its own id its cost hides inside
+              'list' and reads as row work. */}
+          <TrackSubtreeProbe id="chromeStack" sceneKey={trackEntrySceneKey(presentedEntryKey)}>
+            {visualChromeLegs.map((entry) => {
+              const isPresented = entry.entryKey === presentedEntryKey;
+              return (
+                <View
+                  key={entry.entryKey}
+                  // G-A11Y: the PRESENTED layer is the destination header the
+                  // screen-reader cursor is moved to. Only one layer holds the
+                  // ref at a time — React detaches the outgoing layer's ref and
+                  // attaches the incoming one in the same commit as the flip.
+                  ref={isPresented ? (headerFocusRef as never) : undefined}
+                  accessibilityRole="header"
+                  testID={`track-chrome-layer:${entry.entryKey}`}
+                  style={isPresented ? styles.chromeStackLayer : styles.chromeStackLayerHidden}
+                  pointerEvents={isPresented ? 'box-none' : 'none'}
+                >
+                  {entry.element}
+                </View>
+              );
+            })}
+          </TrackSubtreeProbe>
         </View>
       </TrackShellSlot>
       {leg?.listLeader != null ? (
@@ -1015,11 +1058,40 @@ export function TrackSheetPage({
       return cached.render;
     }
     const legRenderItem = leg.list.renderItem;
-    const render = (info: never) => (
-      <View style={[{ backgroundColor: surfaceColor }, leg.rowSurfaceStyle]}>
-        {legRenderItem?.(info) ?? null}
-      </View>
-    );
+    const legSceneKey = trackEntrySceneKey(leg.entryKey);
+    const render = (info: never) => {
+      const cell = (
+        <View style={[{ backgroundColor: surfaceColor }, leg.rowSurfaceStyle]}>
+          {legRenderItem?.(info) ?? null}
+        </View>
+      );
+      if (!__DEV__) {
+        return cell;
+      }
+      // THE FUNNEL. Every lane's cells come through here — published, parts and
+      // mounted alike — which is why BOTH the count and the row Profiler live
+      // here. An earlier cut put the Profiler in the parts lane's row wrapper
+      // and it reported zero for 23 real invocations: polls resolves through
+      // the PUBLISHED lane (planTrackLegBody prefers it, track-leg-plan.ts:45)
+      // and that branch passes spec.renderItem straight through without the
+      // wrapper. A probe on one lane's path cannot measure a list that takes
+      // another — and an always-zero field is worse than no field.
+      // The INDEX is what makes the count interpretable: N invocations can be N
+      // distinct rows (an over-wide window) or far fewer rows re-invoked across
+      // the progressive-render loop's passes, and those have different fixes.
+      const rowIndex = (info as unknown as { index?: number }).index ?? -1;
+      noteTrackPressRowInvoke(legSceneKey, rowIndex);
+      return (
+        <React.Profiler
+          id="row"
+          onRender={(_id, phase, actualDuration) =>
+            noteTrackPressSubtreeRender(legSceneKey, 'row', phase, actualDuration)
+          }
+        >
+          {cell}
+        </React.Profiler>
+      );
+    };
     rowRendererCacheRef.current.set(leg.entryKey, { source: leg, render });
     return render;
   };
@@ -1186,40 +1258,43 @@ export function TrackSheetPage({
   }, [debugHud, tau, trackH]);
 
   return (
-    <View style={styles.root} pointerEvents="box-none">
-      {/* THE SCROLL VIEW IS THE SHEET: content = [transparent spacer = sheet
+    <TrackSubtreeProbe id="page" sceneKey={trackEntrySceneKey(presentedEntryKey)}>
+      <View style={styles.root} pointerEvents="box-none">
+        {/* THE SCROLL VIEW IS THE SHEET: content = [transparent spacer = sheet
           travel][chrome][body]; inset at expandedTop; transparent background so
           the map shows through the spacer region. No counter-translate, no
           mask, no surface overlay, no chrome overlay, no chromeGrab — the
           engine owns motion, bounds, pinning and tap-vs-drag. */}
-      {/* THE FROST: RN pixels, native position (translateY = sheetTop each
+        {/* THE FROST: RN pixels, native position (translateY = sheetTop each
           frame, written by the shell in scrollViewDidScroll). Carries the
           silhouette: r22 corners + the production shadow on the non-clipping
           wrapper. */}
-      {/* THE SHADOW STAYS (owner correction 2026-07-29): the deleted thing is
+        {/* THE SHADOW STAYS (owner correction 2026-07-29): the deleted thing is
           the 12% scrim, not the sheet's own top-edge shadow — shadowShell on
           the non-clipping wrapper so the corners don't eat it. */}
-      {/* THE SLOT CARRIES NO PAINT (interop wrapper law, 2026-07-31): under
+        {/* THE SLOT CARRIES NO PAINT (interop wrapper law, 2026-07-31): under
           Fabric interop, style paint lands on a WRAPPER view the engine does
           not transform — a background on the slot itself stays parked at y=0
           (the white blanket, named by the coverage walk). Geometry on the
           slot; every painted pixel on inner children. */}
-      <TrackShellSlot slotRole="frost" style={styles.founding} pointerEvents="none">
-        <View style={[StyleSheet.absoluteFill, overlaySheetStyles.shadowShell, styles.silhouette]}>
-          <View style={[StyleSheet.absoluteFill, styles.silhouetteClip]}>
-            <FrostedGlassBackground />
+        <TrackShellSlot slotRole="frost" style={styles.founding} pointerEvents="none">
+          <View
+            style={[StyleSheet.absoluteFill, overlaySheetStyles.shadowShell, styles.silhouette]}
+          >
+            <View style={[StyleSheet.absoluteFill, styles.silhouetteClip]}>
+              <FrostedGlassBackground />
+            </View>
           </View>
-        </View>
-      </TrackShellSlot>
-      {/* THE RESIDENT LEGS (residents-cutover F): per-scene lists, mounted on
+        </TrackShellSlot>
+        {/* THE RESIDENT LEGS (residents-cutover F): per-scene lists, mounted on
           first visit, display-flipped. The presented leg is the live track;
           hidden legs emit no events, keep their cells warm, and cost no
           layout (display none). One chrome, one shell, one engine. */}
-      {/* box-none is LOAD-BEARING (P12's sibling): under Fabric the legacy
+        {/* box-none is LOAD-BEARING (P12's sibling): under Fabric the legacy
           interop WRAPPER hit-tests, not our subclass — box-none makes the
           wrapper defer to the carve view, whose hitTest override rules. */}
-      <TrackTouchCarve style={StyleSheet.absoluteFill} pointerEvents="box-none">
-        {/* THE ONE TRACK — literally one. Resident LEGS (a scroll view per
+        <TrackTouchCarve style={StyleSheet.absoluteFill} pointerEvents="box-none">
+          {/* THE ONE TRACK — literally one. Resident LEGS (a scroll view per
             scene) made posture a property of whichever view happened to be
             attached: N scroll views, N rival claims on where the sheet is, and
             every hard bug of this arc descended from reconciling them (the
@@ -1229,52 +1304,55 @@ export function TrackSheetPage({
             and stay warm regardless of what is presented, and per-scene scroll
             is a remembered number restored by the switch formula. Only the
             row VIEWS re-render, which is what FlashList's recycler is for. */}
-        <AnimatedFlashList
-          ref={trackListRef as unknown as React.Ref<React.Component>}
-          style={StyleSheet.absoluteFill}
-          contentContainerStyle={{ paddingTop: geometry.expandedTop }}
-          data={presentedLeg?.list.data ?? EMPTY_DATA}
-          renderItem={presentedRenderer as never}
-          keyExtractor={presentedLeg?.list.keyExtractor}
-          getItemType={presentedLeg?.list.getItemType}
-          ItemSeparatorComponent={presentedLeg?.list.ItemSeparatorComponent}
-          ListEmptyComponent={presentedLeg?.list.ListEmptyComponent}
-          onEndReached={presentedLeg?.list.onEndReached}
-          onEndReachedThreshold={presentedLeg?.list.onEndReachedThreshold}
-          extraData={presentedLeg?.list.extraData}
-          drawDistance={SCREEN.height}
-          maintainVisibleContentPosition={{ disabled: true }}
-          renderScrollComponent={TrackScrollComponent}
-          ListHeaderComponent={headerForLeg(presentedLeg)}
-          ListFooterComponent={legFooter}
-          showsVerticalScrollIndicator={false}
-          bounces
-          alwaysBounceVertical
-          scrollEventThrottle={16}
-          automaticallyAdjustContentInsets={false}
-          // status-bar scroll-to-top targets contentOffset 0 = COLLAPSED sheet
-          // in tau-space, not top-of-list; explicitly off (red team #5).
-          scrollsToTop={false}
-          onScroll={onScroll}
-          onContentSizeChange={(_w: number, h: number) =>
-            handleContentSizeChange(presentedEntryKey, h)
-          }
-        />
-      </TrackTouchCarve>
+          <TrackSubtreeProbe id="list" sceneKey={trackEntrySceneKey(presentedEntryKey)}>
+            <AnimatedFlashList
+              ref={trackListRef as unknown as React.Ref<React.Component>}
+              style={StyleSheet.absoluteFill}
+              contentContainerStyle={{ paddingTop: geometry.expandedTop }}
+              data={presentedLeg?.list.data ?? EMPTY_DATA}
+              renderItem={presentedRenderer as never}
+              keyExtractor={presentedLeg?.list.keyExtractor}
+              getItemType={presentedLeg?.list.getItemType}
+              ItemSeparatorComponent={presentedLeg?.list.ItemSeparatorComponent}
+              ListEmptyComponent={presentedLeg?.list.ListEmptyComponent}
+              onEndReached={presentedLeg?.list.onEndReached}
+              onEndReachedThreshold={presentedLeg?.list.onEndReachedThreshold}
+              extraData={presentedLeg?.list.extraData}
+              drawDistance={SCREEN.height}
+              maintainVisibleContentPosition={{ disabled: true }}
+              renderScrollComponent={TrackScrollComponent}
+              ListHeaderComponent={headerForLeg(presentedLeg)}
+              ListFooterComponent={legFooter}
+              showsVerticalScrollIndicator={false}
+              bounces
+              alwaysBounceVertical
+              scrollEventThrottle={16}
+              automaticallyAdjustContentInsets={false}
+              // status-bar scroll-to-top targets contentOffset 0 = COLLAPSED sheet
+              // in tau-space, not top-of-list; explicitly off (red team #5).
+              scrollsToTop={false}
+              onScroll={onScroll}
+              onContentSizeChange={(_w: number, h: number) =>
+                handleContentSizeChange(presentedEntryKey, h)
+              }
+            />
+          </TrackSubtreeProbe>
+        </TrackTouchCarve>
 
-      {/* THE TAIL: white below the content's end (translateY = max(sheetTop,
+        {/* THE TAIL: white below the content's end (translateY = max(sheetTop,
           contentEnd − τ), native) — the sheet is solid past any content end,
           through any bounce, with zero fabricated scroll length. */}
-      <TrackShellSlot slotRole="tail" style={styles.founding} pointerEvents="none">
-        <View style={[StyleSheet.absoluteFill, { backgroundColor: surfaceColor }]} />
-      </TrackShellSlot>
+        <TrackShellSlot slotRole="tail" style={styles.founding} pointerEvents="none">
+          <View style={[StyleSheet.absoluteFill, { backgroundColor: surfaceColor }]} />
+        </TrackShellSlot>
 
-      {debugHud ? (
-        <View style={styles.hud} pointerEvents="none">
-          <Reanimated.Text style={styles.hudText}>{hud}</Reanimated.Text>
-        </View>
-      ) : null}
-    </View>
+        {debugHud ? (
+          <View style={styles.hud} pointerEvents="none">
+            <Reanimated.Text style={styles.hudText}>{hud}</Reanimated.Text>
+          </View>
+        ) : null}
+      </View>
+    </TrackSubtreeProbe>
   );
 }
 
