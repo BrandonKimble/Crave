@@ -23,13 +23,25 @@ Territory sections follow as they are mapped.
 scripts are thin `turbo run` / `yarn workspace` delegations plus rig
 shims), turbo task graph, single root tsconfig, lefthook (live hook
 manager — its generated hooks live in `.git/hooks`; `LEFTHOOK=0`
-bypasses), gitleaks, knip (runs in the pre-commit `deps-check` lane,
-gated on package-file changes), prettier/eslint/editor configs, Railway
-deploy manifests (`railway.json` api / `railway.worker.json` worker —
-NEVER add a startCommand: it replaces the Dockerfile CMD, exec'd without
-a shell), Expo root shims (`App.tsx` re-export + `app.config.js` — Expo
-resolves the entry at workspace root; deliberate, minimal, ideal),
-`patches/` (patch-package, rnmapbox 10.3.1 — applied via postinstall).
+bypasses), gitleaks, knip (pre-commit `deps-check` lane, gated on
+package-file changes — REBUILT 2026-08-06, F2501/D67: the old
+`--workspace 'apps/*'` invocation exited 0 with zero output because knip
+does not glob --workspace, so the gate audited NOTHING for months;
+workspaces are now derived from git ls-files with zero-resolved a hard
+failure), prettier/eslint/editor configs, Railway
+deploy manifests (THREE: `railway.json` api / `railway.worker.json`
+worker / `railway.site.json` site — NEVER add a startCommand (replaces
+the Dockerfile CMD, exec'd without a shell) or watchPatterns (Railway
+skips deploys while reporting success); both are now CI-enforced by
+`scripts/check-railway-manifests.mjs`, manifests discovered via git
+ls-files so a fourth is covered the day it lands), `patches/`
+(patch-package, rnmapbox 10.3.1 — applied via postinstall).
+CORRECTED 2026-08-06 (F1994): this map used to bless root Expo shims
+(`App.tsx`, `app.config.js`, `babel.config.js`) as "deliberate, minimal,
+ideal". They were DEAD — `npx expo config` resolved everything from
+apps/mobile alone, root app.config.js was never read (and carried a
+plugins array the native-authority gate forbids) — and are deleted.
+A prior pass had IDEAL-VERIFIED them without executing the resolution.
 
 **Gotchas.** `.node-version`+`.nvmrc` pin Node 22; `.lefthook/
 with-node-22.sh` re-execs hooks under Node 22 because GUI git clients
@@ -2465,3 +2477,38 @@ The map above is stamped with these where they contradict it; recorded here as o
 - **F1735/F1736** — the redraw-coordinator subsystem deleted at its honest boundary (−1,036 lines): its phase machine could never leave idle.
 
 **Still open, deliberately:** F1708 (a pending-regions prune inside the KEPT hit-target registry), F1717 (the native ack ledger latches the JS snapshot while native's own revision echo is empty — self-heals in the same enter; reserved for a real map change per the map lock), and the F1112 omnibus bridge split.
+
+## Cross-cutting: the guard-integrity layer (2026-08-06, D62–D69)
+
+**What it is.** This session's discovery, mapped because the next
+engineer will otherwise re-learn it expensively: the repo's dominant
+defect class is VERIFICATION THAT CANNOT FAIL — guards that report
+success on work they never did. Confirmed instances, all fixed with
+mutation proofs: the author-identity scanner satisfied by an unused
+import, then by a comment (F2040/F2080/F2081 → `scripts/scanner-source.ts`
+strips comments for every source-scanning guard); turbo resolving
+mobile/shared `type-check` to `<NONEXISTENT>` and counting it success
+(F2143 — CI had never compiled the app); the slice-ownership gate
+returning green for a slice id that no longer existed (F2510); knip
+auditing nothing (F2501); the coverage-staleness guard exempting 112
+rows whose review point was prose (F2600); prettier silently rewriting
+identifiers inside the audit ledgers (F2160 → ledgers + plans/ are in
+`.prettierignore`).
+
+**The enforcement pattern that survives.** An invariant is a
+(mechanism, mutation) pair in
+`apps/api/src/shared/invariants/registry.ts`; `yarn invariants` (CI)
+re-applies every mutation and requires the mechanism to reject it.
+`registry.spec.ts` refuses any lint selector not registered there. CI
+carries five static guards ahead of type-check (backtick-in-SQL-comment,
+railway manifests, migration parallel-worker, coverage staleness,
+lint-ban inheritance) — each exists because tsc or the underlying tool
+DETECTS the failure but cannot NAME it, or cannot see it at all.
+
+**Rules burned in this session:** no backticks in `git commit -m`
+(shell substitution eats them — use `-F -` with a quoted heredoc);
+never `--amend` with concurrent lanes; a pathspec on `git commit` takes
+the WORKING-TREE version and will absorb another lane's edits to that
+file; `git ls-files` from a drifted cwd silently scopes to the subtree
+(one near-false-finding); agent briefs name territories, never counts —
+COVERAGE.md decays under concurrent writers.
