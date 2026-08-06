@@ -3,6 +3,7 @@ import React from 'react';
 import { STRIP_BAND_BOTTOM_SPACER_HEIGHT } from '../../toggles/toggle-strip-metrics';
 import { Pressable, StyleSheet, View } from 'react-native';
 import { setClipboardString } from '../../utils/clipboard';
+import { resolveUserHandleLabel } from '../../utils/user-display-name';
 import {
   Bookmark,
   Eye,
@@ -755,9 +756,9 @@ const ListDetailReadyContent = React.memo(({ data }: { data: ListDetailReadyData
     data.listType === 'restaurant'
       ? `${rowCount} ${rowCount === 1 ? 'restaurant' : 'restaurants'}`
       : `${rowCount} ${rowCount === 1 ? 'dish' : 'dishes'}`;
-  const ownerHandle = data.roster?.owner
-    ? data.roster.owner.username?.trim() || data.roster.owner.displayName?.trim() || null
-    : null;
+  // F2051: the hand-rolled chain that lived here skipped `isDeleted`, so a list owned by a
+  // deleted account still rendered that account's stale @handle in the meta line.
+  const ownerHandle = resolveUserHandleLabel(data.roster?.owner);
 
   return (
     <View style={styles.body} testID="list-detail-body">

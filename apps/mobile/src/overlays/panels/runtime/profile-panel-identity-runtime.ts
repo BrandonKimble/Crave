@@ -1,6 +1,8 @@
 import React from 'react';
 
 import type { UserProfile } from '../../../services/users';
+import { resolveUserDisplayName } from '../../../utils/user-display-name';
+
 import type { ProfileSceneHeaderProps } from './profile-panel-runtime-contract';
 
 export const useProfilePanelIdentityRuntime = ({
@@ -14,7 +16,9 @@ export const useProfilePanelIdentityRuntime = ({
   onOpenFollowList: (mode: 'followers' | 'following') => void;
   profile: UserProfile | undefined;
 }): ProfileSceneHeaderProps => {
-  const displayName = profile?.displayName?.trim() || profile?.username || 'Crave Explorer';
+  // F2051: the eighth hand-rolled chain. Beyond skipping the isDeleted branch, it did not
+  // trim the username — a whitespace-only username rendered as a blank header.
+  const displayName = resolveUserDisplayName(profile, 'Crave Explorer');
   const usernameLabel = profile?.username ? `@${profile.username}` : 'Pick a username';
   const initials = React.useMemo(() => {
     const base = profile?.displayName || profile?.username || profile?.email || 'You';

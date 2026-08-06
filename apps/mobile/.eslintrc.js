@@ -152,21 +152,28 @@ module.exports = {
       // error that names the file.
       files: ['src/overlays/panels/**/*.tsx', 'src/components/ui/Button.tsx'],
       rules: {
-        'no-restricted-syntax': [
+        // F2050: this ban USED TO be written as `no-restricted-syntax`, and it was DEAD —
+        // ESLint REPLACES a rule's options when a later `overrides` entry configures the
+        // same rule, and the F1960 override below matches `src/**/*.tsx`, i.e. every file
+        // this entry covers. `--print-config` on a panel proved it: the only selector left
+        // was F1960's. A raw ActivityIndicator in a panel was a lint error in the comments
+        // and nowhere else. The ban lives on `no-restricted-imports` now — a DIFFERENT rule
+        // from the one F1960 owns — so the collision is not merely fixed, it is unavailable:
+        // no future selector added to `no-restricted-syntax` can silently erase it.
+        'no-restricted-imports': [
           'error',
           {
-            selector:
-              "ImportDeclaration[source.value='react-native'] ImportSpecifier[imported.name='Modal']",
-            message:
-              'Use OverlayModalSheet (the standard modal surface) instead of the native Modal.',
-          },
-          {
-            selector:
-              "ImportDeclaration[source.value='react-native'] ImportSpecifier[imported.name='ActivityIndicator']",
-            message:
-              'No spinners in sheet-scene bodies: pending content renders the declared ' +
-              'foundation skeleton (SceneBodyReadyGate); button loading is the SquircleSpinner ' +
-              'via the shared Button primitive.',
+            paths: [
+              {
+                name: 'react-native',
+                importNames: ['Modal', 'ActivityIndicator'],
+                message:
+                  'Use OverlayModalSheet (the standard modal surface) instead of the native Modal; ' +
+                  'and no spinners in sheet-scene bodies — pending content renders the declared ' +
+                  'foundation skeleton (SceneBodyReadyGate), button loading is the SquircleSpinner ' +
+                  'via the shared Button primitive.',
+              },
+            ],
           },
         ],
       },
@@ -189,7 +196,7 @@ module.exports = {
             selector:
               "LogicalExpression[operator='||'] CallExpression[callee.property.name='trim'][callee.object.property.name=/^(displayName|username)$/]",
             message:
-              "Hand-rolled display-name fallback chain. Use resolveUserDisplayName(user, fallback) from utils/user-display-name.ts — it checks isDeleted first, which a `displayName?.trim() || username?.trim() || ...` chain silently skips.",
+              'Hand-rolled display-name fallback chain. Use resolveUserDisplayName(user, fallback) from utils/user-display-name.ts — it checks isDeleted first, which a `displayName?.trim() || username?.trim() || ...` chain silently skips.',
           },
         ],
       },
@@ -225,12 +232,27 @@ module.exports = {
           'Use showAppModal with the `prompt` field (the standard modal surface) instead of Alert.prompt.',
       },
     ],
-    'no-restricted-syntax': [
+    // F2050: this was a top-level `no-restricted-syntax` selector, and the F1960 override
+    // (files: `src/**/*.ts(x)`) replaced it for the ENTIRE app — the native-Modal ban was
+    // dead everywhere it mattered. Same rederivation as the panels entry above: an IMPORT
+    // ban belongs on `no-restricted-imports`, which nothing else in this file configures
+    // for src, so the two bans can no longer overwrite each other.
+    //
+    // KNOWN, DELIBERATE GAP: the decision-layer override sets its own
+    // `no-restricted-imports` for four Node-pure modules, which replaces this one there.
+    // Harmless — that override bans `react-native` outright, which strictly subsumes
+    // banning one of its named exports.
+    'no-restricted-imports': [
       'error',
       {
-        selector:
-          "ImportDeclaration[source.value='react-native'] ImportSpecifier[imported.name='Modal']",
-        message: 'Use OverlayModalSheet (the standard modal surface) instead of the native Modal.',
+        paths: [
+          {
+            name: 'react-native',
+            importNames: ['Modal'],
+            message:
+              'Use OverlayModalSheet (the standard modal surface) instead of the native Modal.',
+          },
+        ],
       },
     ],
   },
