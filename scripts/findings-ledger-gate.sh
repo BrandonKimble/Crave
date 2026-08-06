@@ -90,7 +90,20 @@ for entry in "${mapfile_lines[@]}"; do
   fi
 
   if [[ " $ALL_STATUSES " != *" $status_token "* ]]; then
-    bogus_status+=("line ${line_no} (${fid}): STATUS: ${status_token} — not in vocabulary {${ALL_STATUSES}}")
+    # NAME THE LIKELY INTENT, don't just reject. CLOSED/DONE/RESOLVED kept
+    # recurring from concurrent agents who reached for the natural word and
+    # turned this CI-wired gate red for everyone. A guard that says only
+    # "wrong" makes the next writer guess; one that says "you meant FIXED"
+    # is self-correcting.
+    hint=""
+    case "$status_token" in
+      CLOSED|DONE|RESOLVED|COMPLETE|EXECUTED|VERIFIED) hint=" — did you mean FIXED?" ;;
+      PARTIALLY|IN-PROGRESS) hint=" — did you mean PARTIAL?" ;;
+      WONTFIX|SKIPPED|DEFERRED|N/A) hint=" — did you mean MOOT (gone/not applicable) or OWNER-DECISION?" ;;
+      FALSE-CLAIM|INVALID|STALE) hint=" — did you mean MOOT?" ;;
+      ESCALATION|OWNER|BLOCKED) hint=" — did you mean ESCALATED?" ;;
+    esac
+    bogus_status+=("line ${line_no} (${fid}): STATUS: ${status_token} — not in vocabulary {${ALL_STATUSES}}${hint}")
     continue
   fi
 
