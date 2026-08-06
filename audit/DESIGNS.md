@@ -1704,3 +1704,48 @@ edits to that file into my commit. Nothing was lost (all 8 markers verified pres
 but pathspec-on-commit protects against staging the wrong files, NOT against absorbing
 another lane's working-tree changes to a file I am legitimately committing. That is a
 different hazard and I had not distinguished them.
+
+---
+
+## D69 — F2400 final disposal (2026-08-06): the design was already implemented, by a pass nobody in the D62/D68 debate had read
+
+**Ruling: F2400 is MOOT as proposed — F983's Phase-3 fix (2026-08-05) already implemented
+the structural inversion it asked for.** Verified in the live tree, not from the ledger:
+`{ maintainVisibleContentPosition: { disabled: true } }` is the BASE literal at all four
+transport merge sites (BottomSheetSceneStackListBodySurface.tsx:259,281 and
+SearchMountedSceneBody.tsx:845,876), spread BEFORE scene props, so the transport owns the
+default and a scene must explicitly opt IN. The failure mode F2400 targeted — a re-sortable
+feed forgetting to opt out — is already unrepresentable at the transport layer. Neither my
+D62 approval nor the D68 refutation debate cited F983's implementation; we argued about a
+design whose core had shipped the day before. The ledger records everything and protects
+nobody who does not re-read it.
+
+**A false phantom of my own, caught before it became a finding.** Ruling on this, I ran
+`git ls-files | grep bottomSheetWithFlashListContract` and got nothing — from a cwd that had
+drifted to `apps/api`, where `git ls-files` only lists that subtree. For several minutes the
+P3 agent's proposed bedrock looked like a cited-but-deleted file, i.e. the exact defect I
+confessed to in D68. It exists (`apps/mobile/src/overlays/bottomSheetWithFlashListContract.ts`,
+185 lines, read in full: the live shared prop vocabulary, kept when F968 deleted the dead
+component that once carried it). The CLAUDE.md cwd-drift law has now personally cost me a
+near-false-finding; every git query in a verdict gets an absolute path or an explicit
+`cd` in the same command.
+
+**Residual work, sequenced not dropped:**
+1. **The default has no proof.** F983's fix landed with tsc green and nothing that goes RED
+   if someone deletes the base literal or moves it AFTER the scene spread. The merge lives in
+   component-body `useMemo`s, so the right shape is the territory's own layer-3 pattern:
+   extract `resolveSceneFlashListProps(base, sceneProps)` as a pure function, spec it
+   hermetically (mutation: remove the base MVCP literal → RED; reorder the spread → RED),
+   call it from all four sites. QUEUED as P3 until the nav-overlays P1 lane lands — two of
+   the four sites are files it may be reading, and editing under an active reviewing lane
+   invalidates its shas mid-pass.
+2. **Redundant opt-outs:** PollsPanel.tsx:114 and
+   use-search-root-search-scene-panel-list-transport-runtime.tsx:43 restate the default with
+   no added information — delete with the same P3. PollDetailPanel.tsx:1318 stays: same
+   value, but its P4 comment carries the scene-specific reason (programmatic scrollToIndex
+   fights MVCP) and is load-bearing documentation. TrackSheetPage.tsx:1365 is NOT redundant
+   (a direct FlashList JSX prop on a surface that never passes through the sheet transport)
+   and is in a dirty tree — untouched.
+3. The contract's `flashListProps` Omit list deliberately does NOT omit
+   `maintainVisibleContentPosition`: the opt-in door for a future append/chat list is the
+   design, not an oversight. Recorded so nobody "hardens" it shut.
