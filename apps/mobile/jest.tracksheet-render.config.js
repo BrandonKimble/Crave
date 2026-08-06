@@ -16,6 +16,15 @@
  */
 module.exports = {
   testEnvironment: 'node',
+  // THE PAINT BOUNDARY IS TEST-CONTROLLED, NOT EVENT-LOOP LUCK. The setup file
+  // maps requestAnimationFrame onto setTimeout(0); under REAL timers that 0ms
+  // macrotask can fire inside any `await act(async …)` that yields — so the
+  // press-up handoff's rAF release could land inside the flip frame itself and
+  // turn the handoff falsifier RED for timing reasons (observed 3/8 runs,
+  // 2026-08-05). With fake timers installed globally the rAF shim only advances
+  // where flushFrame() explicitly advances the clock, so "the flip frame" and
+  // "the release frame" are separated by an explicit step, always.
+  fakeTimers: { enableGlobally: true },
   setupFiles: ['<rootDir>/jest.tracksheet-render.setup.js'],
   roots: ['<rootDir>/src/tracksheet'],
   testMatch: ['**/*.render-spec.tsx'],

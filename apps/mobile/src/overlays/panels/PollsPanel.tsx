@@ -46,6 +46,7 @@ import { PollCandidateBars } from './PollCandidateBars';
 import { usePollsFeedControlsStore } from './runtime/polls-feed-controls-store';
 import { executePollsPlaceJump } from './runtime/polls-place-jump';
 import { usePollsPanelFeedRuntime } from './runtime/polls-panel-feed-runtime';
+import { usePollViewerIdentityPublication } from './runtime/use-poll-viewer-identity';
 import { usePollsPanelHeaderModelPublication } from './runtime/polls-panel-header-model-runtime';
 import { PollsHeaderTitleText } from './pollsHeaderVisuals';
 import { useSearchNavSwitchCommitAttribution } from '../../screens/Search/runtime/shared/use-search-nav-switch-commit-attribution';
@@ -594,6 +595,11 @@ export const usePollsPanelListSceneParts = (): {
   sceneBodyTransport: AppRouteSceneBodyTransportSpec;
 } => {
   useSearchNavSwitchCommitAttribution('PollsSceneInputWriter');
+  // THE VIEWER IDENTITY, RESOLVED ONCE FOR THE WHOLE LEG. This hook runs once
+  // per host render; the rows read the projected two-field store. Lifting it
+  // here (rather than publishing it on the list spec) keeps the profile OUT of
+  // the inputs that decide what the rows are — see the store's own note.
+  usePollViewerIdentityPublication();
   const routeSceneRuntime = useAppRouteSceneRuntime();
   const { pushRoute } = useAppOverlayRouteController();
   const pollsSceneActions = routeSceneRuntime.routePollsSceneRuntime.sceneActions;

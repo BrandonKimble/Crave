@@ -1,7 +1,6 @@
 import { FrostCutout, useIsInsideSceneFoundationSurface } from '../SceneBodyFoundationSurface';
 import React from 'react';
 import { Image, StyleSheet, TouchableOpacity, View } from 'react-native';
-import { useQuery } from '@tanstack/react-query';
 import { announceFailureIfOnline, showAppModal, Text } from '../../components';
 import { colors as themeColors, primaryRgb } from '../../constants/theme';
 import { togglePollEndorsement } from '../../services/polls';
@@ -10,9 +9,8 @@ import {
   settlePollStandings,
   type PollStanding,
 } from './poll-standings-model';
-import { useAuthController } from '../../hooks/use-auth-controller';
 import { requestPushPermissionIfEligible } from '../../services/push-permission';
-import { createProfileQueryOptions } from './profileSceneQueryOptions';
+import { usePollViewerIdentity } from './runtime/use-poll-viewer-identity';
 
 /**
  * "See the poll" on the feed card / detail page: the leaderboard candidates as
@@ -148,12 +146,12 @@ export const PollCandidateBars = React.memo(
     onCandidatesChange,
     previewRows,
   }: PollCandidateBarsProps) => {
-    const { isSignedIn } = useAuthController();
-    const { data: viewerProfile } = useQuery({
-      ...createProfileQueryOptions(),
-      enabled: isSignedIn,
-    });
-    const viewerAvatarUrl = viewerProfile?.avatarUrl ?? null;
+    // ONE SUBSCRIPTION PER LEG, not per card (runtime/use-poll-viewer-identity.ts).
+    // This used to be a react-query subscription to the profile cache PLUS an
+    // auth-controller subscription, opened by every visible card, for a boolean
+    // and one avatar url. Eleven cards on a switch meant eleven of each, and any
+    // write to the profile cache re-rendered all of them whatever field changed.
+    const { isSignedIn, avatarUrl: viewerAvatarUrl } = usePollViewerIdentity();
 
     // Optimistic overlay, cleared whenever fresh props arrive from the feed.
     const [optimistic, setOptimistic] = React.useState<Candidate[] | null>(null);
