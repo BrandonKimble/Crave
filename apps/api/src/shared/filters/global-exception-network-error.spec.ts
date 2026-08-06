@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-member-access */
 import { ConfigService } from '@nestjs/config';
 import { Prisma } from '@prisma/client';
 import { GlobalExceptionFilter } from './global-exception.filter';
@@ -29,11 +30,14 @@ describe('GlobalExceptionFilter error classification (F423)', () => {
 
   it('does NOT classify a network error (code+message, not a Prisma instance) as DATABASE_ERROR', () => {
     const filter = buildFilter();
-    const networkError: unknown = Object.assign(new Error('connect ECONNREFUSED 127.0.0.1:6379'), {
-      code: 'ECONNREFUSED',
-      errno: -61,
-      syscall: 'connect',
-    });
+    const networkError: unknown = Object.assign(
+      new Error('connect ECONNREFUSED 127.0.0.1:6379'),
+      {
+        code: 'ECONNREFUSED',
+        errno: -61,
+        syscall: 'connect',
+      },
+    );
 
     const details = (filter as any).extractErrorDetails(networkError);
 

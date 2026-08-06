@@ -233,7 +233,12 @@ export class ClerkAuthService {
       throw new Error('Clerk is not configured — cannot revoke sessions');
     }
     const sessions = await client.sessions.getSessionList({ userId: authId });
-    const list = Array.isArray(sessions) ? sessions : (sessions?.data ?? []);
+    // Clerk has returned both a bare array and a `{ data }` envelope across SDK
+    // majors; accept either, and name the one field we use so a session id is
+    // not an `any` flowing into a revoke call.
+    const list: { id: string }[] = Array.isArray(sessions)
+      ? sessions
+      : (sessions?.data ?? []);
     let revoked = 0;
     for (const session of list) {
       try {

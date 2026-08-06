@@ -1,3 +1,8 @@
+/* eslint-disable @typescript-eslint/require-await -- the `async` on these jest.fn mocks is
+   not decoration: each stands in for a genuinely async method, so the mock must return a
+   promise to match the interface it replaces. The rule targets a function that only
+   PRETENDS to be async; that is not this. */
+/* eslint-disable @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-member-access */
 /**
  * F604: `toPublicScoreValue` used to THROW (InternalServerErrorException) on
  * an unscored SAVED item, 500-ing the entire list detail — while the sibling
@@ -7,10 +12,7 @@
  */
 import 'reflect-metadata';
 import { CraveScoreSubjectType } from '@prisma/client';
-import {
-  UserListMapper,
-  type UserListItemDetail,
-} from './user-list.mappers';
+import { UserListMapper, type UserListItemDetail } from './user-list.mappers';
 
 function createLogger() {
   const logger = {

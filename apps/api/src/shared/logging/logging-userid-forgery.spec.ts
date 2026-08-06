@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-member-access */
 import 'reflect-metadata';
 import { of, firstValueFrom } from 'rxjs';
 import { CallHandler, ExecutionContext } from '@nestjs/common';
@@ -37,7 +38,9 @@ describe('LoggingInterceptor userId provenance (F408)', () => {
     return `x.${payload}.x`;
   };
 
-  const context = (requestExtra: Record<string, unknown> = {}): ExecutionContext =>
+  const context = (
+    requestExtra: Record<string, unknown> = {},
+  ): ExecutionContext =>
     ({
       getType: () => 'http',
       switchToHttp: () => ({

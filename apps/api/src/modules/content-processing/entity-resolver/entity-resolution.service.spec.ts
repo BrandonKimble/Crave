@@ -1,3 +1,8 @@
+/* eslint-disable @typescript-eslint/require-await -- the `async` on these jest.fn mocks is
+   not decoration: each stands in for a genuinely async method, so the mock must return a
+   promise to match the interface it replaces. The rule targets a function that only
+   PRETENDS to be async; that is not this. */
+/* eslint-disable @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-unsafe-return */
 import 'reflect-metadata';
 import { EntityType } from '@prisma/client';
 import { EntityResolutionService } from './entity-resolution.service';
@@ -160,7 +165,13 @@ describe('EntityResolutionService — exact-tier number-variant boundary (food v
       entities: [{ entityId: 'food-1', name: 'taco', aliases: [] }],
     });
     const { resolutionResults } = await service.resolveBatch(
-      [baseInput({ tempId: 't1', normalizedName: 'tacos', entityType: EntityType.food })],
+      [
+        baseInput({
+          tempId: 't1',
+          normalizedName: 'tacos',
+          entityType: EntityType.food,
+        }),
+      ],
       CONFIG_NO_LLM,
     );
     expect(resolutionResults[0].resolutionTier).toBe('exact');
@@ -169,9 +180,7 @@ describe('EntityResolutionService — exact-tier number-variant boundary (food v
 
   it('RESTAURANT: "Torchy\'s Taco" does NOT exact-match "Torchy\'s Tacos" — number variance is branding for restaurants, not decided in code', async () => {
     const { service } = buildService({
-      entities: [
-        { entityId: 'rest-1', name: "Torchy's Tacos", aliases: [] },
-      ],
+      entities: [{ entityId: 'rest-1', name: "Torchy's Tacos", aliases: [] }],
     });
     const { resolutionResults } = await service.resolveBatch(
       [
@@ -199,7 +208,13 @@ describe('EntityResolutionService — alias tier only fires when the exact tier 
       ],
     });
     const { resolutionResults } = await service.resolveBatch(
-      [baseInput({ tempId: 't1', normalizedName: 'bec', entityType: EntityType.food })],
+      [
+        baseInput({
+          tempId: 't1',
+          normalizedName: 'bec',
+          entityType: EntityType.food,
+        }),
+      ],
       CONFIG_NO_LLM,
     );
     expect(resolutionResults[0].resolutionTier).toBe('alias');
@@ -211,11 +226,21 @@ describe('EntityResolutionService — alias tier only fires when the exact tier 
     const { service } = buildService({
       entities: [
         { entityId: 'food-exact', name: 'bec', aliases: [] },
-        { entityId: 'food-alias', name: 'bacon egg and cheese', aliases: ['bec'] },
+        {
+          entityId: 'food-alias',
+          name: 'bacon egg and cheese',
+          aliases: ['bec'],
+        },
       ],
     });
     const { resolutionResults } = await service.resolveBatch(
-      [baseInput({ tempId: 't1', normalizedName: 'bec', entityType: EntityType.food })],
+      [
+        baseInput({
+          tempId: 't1',
+          normalizedName: 'bec',
+          entityType: EntityType.food,
+        }),
+      ],
       CONFIG_NO_LLM,
     );
     expect(resolutionResults[0].resolutionTier).toBe('exact');
@@ -229,7 +254,11 @@ describe('EntityResolutionService — metro adoption gate (the "Rudy\'s" class)'
   it('demotes a REMOTE ALIAS match to unmatched (nickname reaching a bar 1500mi away)', async () => {
     const { service, metroAdoption } = buildService({
       entities: [
-        { entityId: 'nyc-bar', name: "Rudy's Bar & Grill", aliases: ["rudy's"] },
+        {
+          entityId: 'nyc-bar',
+          name: "Rudy's Bar & Grill",
+          aliases: ["rudy's"],
+        },
       ],
       metroAdoption: {
         anchorForEngine: jest.fn(async () => ({ lat: 30.27, lng: -97.74 })),
@@ -309,7 +338,9 @@ describe('EntityResolutionService — metro adoption gate (the "Rudy\'s" class)'
       entities: [{ entityId: 'ungrounded-id', name: "rudy's", aliases: [] }],
       metroAdoption: {
         anchorForEngine: jest.fn(async () => ({ lat: 30.27, lng: -97.74 })),
-        geoVerdicts: jest.fn(async () => new Map([['ungrounded-id', 'unknown']])),
+        geoVerdicts: jest.fn(
+          async () => new Map([['ungrounded-id', 'unknown']]),
+        ),
       },
     });
     const { resolutionResults } = await service.resolveBatch(
@@ -329,13 +360,24 @@ describe('EntityResolutionService — metro adoption gate (the "Rudy\'s" class)'
 
 describe('EntityResolutionService — intra-batch near-duplicate dedupe (markEntitiesForCreation)', () => {
   it('collapses a within-batch near-duplicate pair when the judge says match ("beef bulgogi" / "bulgogi beef" — a word-order twin, NOT a number variant)', async () => {
-    const llmMatch = jest.fn(async () => ({ decision: 'match', candidateId: 0 }));
+    const llmMatch = jest.fn(async () => ({
+      decision: 'match',
+      candidateId: 0,
+    }));
     const { service } = buildService({ entities: [], llmMatch });
 
     const { resolutionResults } = await service.resolveBatch(
       [
-        baseInput({ tempId: 't1', normalizedName: 'beef bulgogi', entityType: EntityType.food }),
-        baseInput({ tempId: 't2', normalizedName: 'bulgogi beef', entityType: EntityType.food }),
+        baseInput({
+          tempId: 't1',
+          normalizedName: 'beef bulgogi',
+          entityType: EntityType.food,
+        }),
+        baseInput({
+          tempId: 't2',
+          normalizedName: 'bulgogi beef',
+          entityType: EntityType.food,
+        }),
       ],
       CONFIG_NO_LLM,
     );
@@ -349,13 +391,24 @@ describe('EntityResolutionService — intra-batch near-duplicate dedupe (markEnt
   });
 
   it('does NOT collapse when the judge says new — fail-closed, two separate mints ("chicken sandwich" is nominated as a candidate for "chicken parm sandwich" by containment, but the judge correctly refuses to fuse the specific dish into the general one)', async () => {
-    const llmMatch = jest.fn(async () => ({ decision: 'new', candidateId: null }));
+    const llmMatch = jest.fn(async () => ({
+      decision: 'new',
+      candidateId: null,
+    }));
     const { service } = buildService({ entities: [], llmMatch });
 
     const { resolutionResults } = await service.resolveBatch(
       [
-        baseInput({ tempId: 't1', normalizedName: 'chicken sandwich', entityType: EntityType.food }),
-        baseInput({ tempId: 't2', normalizedName: 'chicken parm sandwich', entityType: EntityType.food }),
+        baseInput({
+          tempId: 't1',
+          normalizedName: 'chicken sandwich',
+          entityType: EntityType.food,
+        }),
+        baseInput({
+          tempId: 't2',
+          normalizedName: 'chicken parm sandwich',
+          entityType: EntityType.food,
+        }),
       ],
       CONFIG_NO_LLM,
     );
@@ -376,7 +429,10 @@ describe('EntityResolutionService — intra-batch near-duplicate dedupe (markEnt
     // OTHER metro's candidate list — this is a lane-prefix guarantee, not a
     // judge call. Proven two ways: cross-scope never asks the judge; the
     // identical pair WITHIN one scope does (and a permissive judge collapses it).
-    const llmMatch = jest.fn(async () => ({ decision: 'match', candidateId: 0 }));
+    const llmMatch = jest.fn(async () => ({
+      decision: 'match',
+      candidateId: 0,
+    }));
     const { service } = buildService({ entities: [], llmMatch });
 
     const { resolutionResults } = await service.resolveBatch(
@@ -408,7 +464,10 @@ describe('EntityResolutionService — intra-batch near-duplicate dedupe (markEnt
   });
 
   it('CONTROL for the adversarial case above: the SAME near-duplicate pair in the SAME engine scope IS nominated and judged', async () => {
-    const llmMatch = jest.fn(async () => ({ decision: 'match', candidateId: 0 }));
+    const llmMatch = jest.fn(async () => ({
+      decision: 'match',
+      candidateId: 0,
+    }));
     const { service } = buildService({ entities: [], llmMatch });
 
     const { resolutionResults } = await service.resolveBatch(

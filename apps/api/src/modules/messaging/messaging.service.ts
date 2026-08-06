@@ -697,7 +697,11 @@ export class MessagingService {
     return {
       targets: ranked
         .map((id) => byId.get(id))
-        .filter((u): u is NonNullable<typeof u> => u != null),
+        .filter((u): u is NonNullable<typeof u> => u != null)
+        // The `deletedAt: null` filter above means no ghost reaches here, but the
+        // raw row still carries `deletedAt` — an internal column the client has no
+        // business seeing. One resolver on every peer path, no exceptions.
+        .map((u) => publicAuthorIdentity(u)),
     };
   }
 
@@ -900,7 +904,7 @@ export class MessagingService {
           : null;
         return {
           conversationId: row.conversationId,
-          otherUser: otherParticipant.user,
+          otherUser: publicAuthorIdentity(otherParticipant.user),
           lastMessage: lastMessageRow
             ? (await this.toMessageDtos(viewerUserId, [lastMessageRow]))[0]
             : null,

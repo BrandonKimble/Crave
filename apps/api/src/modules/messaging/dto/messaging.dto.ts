@@ -1,4 +1,5 @@
 import { MessageKind, SharedEntityKind } from '@prisma/client';
+import type { PublicAuthorIdentity } from '../../identity/public-author-identity';
 import { Type } from 'class-transformer';
 import {
   ArrayMaxSize,
@@ -179,12 +180,15 @@ export type MessageDto = {
   clientDedupeId: string | null;
 };
 
-export type ConversationPeerDto = {
-  userId: string;
-  username: string | null;
-  displayName: string | null;
-  avatarUrl: string | null;
-};
+/**
+ * The peer IS an author identity — same question ("who is this person, and do
+ * they still exist?"), so the same answer. This used to be a structural
+ * look-alike missing `isDeleted`, which let the service assign a raw user row
+ * straight through: `deletedAt` leaked to the client and a deleted peer
+ * arrived as two nulls with no label. Aliasing the canonical type means a raw
+ * row no longer type-checks here.
+ */
+export type ConversationPeerDto = PublicAuthorIdentity;
 
 export type ConversationDto = {
   conversationId: string;

@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-return */
 /**
  * THE FOR-UPDATE LOCK ACTUALLY SERIALIZES CONCURRENT ALIAS WRITERS — against
  * a real Postgres.

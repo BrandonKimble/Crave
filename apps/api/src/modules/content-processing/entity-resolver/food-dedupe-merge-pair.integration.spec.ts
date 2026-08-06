@@ -1,3 +1,8 @@
+/* eslint-disable @typescript-eslint/require-await -- the `async` on these jest.fn mocks is
+   not decoration: each stands in for a genuinely async method, so the mock must return a
+   promise to match the interface it replaces. The rule targets a function that only
+   PRETENDS to be async; that is not this. */
+/* eslint-disable @typescript-eslint/no-unsafe-member-access */
 /**
  * FoodDedupeMergeService.mergeFoodPair — MERGE ORCHESTRATION, against a real
  * Postgres (F1870, the one gap this finding's prior pass left open).
@@ -107,10 +112,7 @@ afterAll(async () => {
   });
   await prisma.connection.deleteMany({
     where: {
-      OR: [
-        { foodId: { in: entityIds } },
-        { restaurantId: { in: entityIds } },
-      ],
+      OR: [{ foodId: { in: entityIds } }, { restaurantId: { in: entityIds } }],
     },
   });
   await prisma.entity.deleteMany({ where: { entityId: { in: entityIds } } });
@@ -120,7 +122,10 @@ afterAll(async () => {
 describe('FoodDedupeMergeService.mergeFoodPair — connection fold, mention-collision dedupe, counter rebase (F1870)', () => {
   it('folds colliding connections, drops duplicate mentions, rebases counters, and archives the loser', async () => {
     const restaurantShared = await seedEntity('r-shared', 'restaurant');
-    const restaurantWinnerOnly = await seedEntity('r-winner-only', 'restaurant');
+    const restaurantWinnerOnly = await seedEntity(
+      'r-winner-only',
+      'restaurant',
+    );
 
     // Winner has TWO connections (more evidence) — the evidence rule
     // (`connectionsA > connectionsB`) must pick it regardless of name

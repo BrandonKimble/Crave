@@ -1,3 +1,11 @@
+/* eslint-disable @typescript-eslint/no-require-imports -- jest.isolateModules needs a
+   fresh require() per case: configuration resolves APP_ENV at module load, so a static
+   import would freeze the first case's env for every later one. */
+/* eslint-disable no-restricted-syntax -- the no-raw-APP_ENV rule guards PRODUCTION code
+   from a second spelling of the env var. This spec is the test OF that resolution, so it
+   must write the raw variable to drive the subject; calling the resolver here would test
+   the resolver against itself. */
+/* eslint-disable @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-unsafe-return */
 /**
  * F404 lockdown: boot-time decisions must key on AppEnv (APP_ENV), not
  * NODE_ENV — staging deploys with NODE_ENV=production, so a NODE_ENV check
@@ -15,13 +23,12 @@ describe('configuration() boot decisions key on AppEnv (F404)', () => {
   function loadConfig() {
     let configuration: () => any;
     jest.isolateModules(() => {
-      // eslint-disable-next-line @typescript-eslint/no-var-requires
       configuration = require('./configuration').default;
     });
     return configuration!();
   }
 
-  it('staging (APP_ENV=staging, NODE_ENV=production) gets the staging pool size, not prod\'s', () => {
+  it("staging (APP_ENV=staging, NODE_ENV=production) gets the staging pool size, not prod's", () => {
     process.env.NODE_ENV = 'production';
     process.env.APP_ENV = 'staging';
     delete process.env.DATABASE_CONNECTION_POOL_MAX;

@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-unsafe-assignment */
 /**
  * F646: `RegisterDeviceDto` used to carry a client-supplied `userId`, inert
  * only because the controller spread-then-overwrote it
@@ -41,6 +42,8 @@ describe('RegisterDeviceDto (F646)', () => {
     };
 
     const result = await pipe.transform({ token: 'tok-1' }, metadata);
-    expect((result as unknown as Record<string, unknown>).userId).toBeUndefined();
+    expect(
+      (result as unknown as Record<string, unknown>).userId,
+    ).toBeUndefined();
   });
 });
