@@ -86,6 +86,14 @@ jobs:
       - name: 'Static guard: railway manifests carry no startCommand/watchPatterns'
         run: node scripts/check-railway-manifests.mjs
 
+      # Migrations run in the container's BOOT command, so a heavy one that
+      # exhausts prod's small /dev/shm does not fail a migration — it
+      # P3009-crash-loops the deploy. AUTHORING.md §1 has required the two
+      # parallel-worker SETs since F303 and nothing enforced it; the heaviest
+      # rewrite in the corpus (160 columns) carries the guard zero times.
+      - name: 'Static guard: a heavy migration disables parallel workers'
+        run: node scripts/check-migration-parallel-guard.mjs
+
       - name: Type check
         run: yarn type-check
 

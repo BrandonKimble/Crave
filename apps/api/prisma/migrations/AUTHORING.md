@@ -27,7 +27,23 @@ Five migrations do this correctly (`20260801230000_attribute_identity_unique`,
 `20260801240000_edge_hygiene`, `20260802010000_unicode_fold`,
 `20260802030000_empty_fold_guard`, `20260802050000_identity_key_app_written`).
 
-**Two in the corpus do NOT, and cannot be fixed** (applied history):
+**ENFORCED SINCE F2163** by `scripts/check-migration-parallel-guard.mjs` (CI).
+A NEW migration containing an unambiguously heavy statement — `ALTER COLUMN ...
+TYPE`/`SET DATA TYPE`, or an `UPDATE` with no `WHERE` — fails CI unless it
+carries both `SET` lines. Applied migrations are immutable (Prisma has recorded
+their checksums), so the pre-existing offenders are grandfathered by name in a
+FROZEN list; adding a new name to that list does not make a migration safe, it
+makes the next deploy crash-loop.
+
+`CREATE INDEX` and narrowed `UPDATE`s are deliberately NOT flagged: whether they
+are heavy depends on the target table's size, which no static scan can know, and
+a gate firing on ~16 false positives would be allowlisted into uselessness
+within a week.
+
+**SIX in the corpus do NOT, and cannot be fixed** (applied history). This
+section said TWO until F2163; the gate found four more, one of which
+(`20260621184323_poll_subject_id_text`) had also escaped a hand-scan because it
+spells the rewrite `SET DATA TYPE` rather than `TYPE`:
 
 - `20260802060000_timestamptz_everywhere` — 189 lines, 162 columns converted
   from `timestamp` to `timestamptz` across most tables. The heaviest rewrite in
