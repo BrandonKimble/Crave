@@ -50,6 +50,9 @@ export interface DemandVocabularySummary {
   termsConsidered: number;
   judged: number;
   learned: number;
+  /** Judged a match but REFUSED by the collision guard — it already names a
+   *  different concept. Reported so the guard's blast radius is visible. */
+  refused: number;
   leftAsDemand: number;
 }
 
@@ -76,6 +79,7 @@ export class DemandVocabularyService {
       termsConsidered: 0,
       judged: 0,
       learned: 0,
+      refused: 0,
       leftAsDemand: 0,
     };
 
@@ -179,17 +183,24 @@ export class DemandVocabularyService {
         continue;
       }
 
-      summary.learned += 1;
       if (!dryRun) {
-        await this.prisma.$transaction(async (tx) => {
-          await addAliases(
+        // Counted from what the WRITER did, not from the verdict: the guard
+        // may refuse a learned term that already names another concept, and
+        // counting the verdict would report a refusal as a success.
+        const result = await this.prisma.$transaction(async (tx) =>
+          addAliases(
             tx,
             matched.entityId,
             [{ form: term, locale, source: 'query_banking' as const }],
             { touchLastUpdated: true },
-          );
-        });
+          ),
+        );
+        if (result.blocked.length) {
+          summary.refused += 1;
+          continue;
+        }
       }
+      summary.learned += 1;
       this.logger.info('Demand term learned as vocabulary', {
         term,
         entity: matched.name,

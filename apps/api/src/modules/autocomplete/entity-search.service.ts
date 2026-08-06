@@ -52,6 +52,7 @@ export class EntitySearchService {
     term: string,
     entityTypes: EntityType[],
     limit: number,
+    locale?: string | null,
   ): Promise<EntitySearchResult[]> {
     // Dense on ONLY after a committed word: ≥1 completed token AND the current
     // tail is empty (trailing space) or itself long enough to embed (≥3 chars).
@@ -73,6 +74,13 @@ export class EntitySearchService {
       limit,
       {
         denseMode,
+        // THE LOCALIZED-SURFACE LANE. Without this a Spanish speaker typing
+        // "cam…" matches nothing: the sparse lane reads the und-only
+        // aliases[] projection, so every localized surface is invisible here.
+        // Also feeds the dense lane the R5-7 locale prefix, so a fragment
+        // that does reach dense embeds as `[es] pan` rather than bare "pan".
+        requestLocale: locale ?? null,
+        denseLocale: locale ?? null,
       },
     );
     return candidates.flatMap((c) => {

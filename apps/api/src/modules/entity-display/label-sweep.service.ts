@@ -4,6 +4,7 @@ import { PrismaService } from '../../prisma/prisma.service';
 import {
   SUPPORTED_LOCALES,
   DEFAULT_LOCALE,
+  localeLookupChain,
   normalizeLocaleTag,
 } from '../../shared/locale';
 import {
@@ -50,6 +51,14 @@ export interface SweepResult {
   written: number;
   /** Written with status 'active' — i.e. live for users. */
   autoApproved: number;
+  /** Search surfaces the generator proposed. */
+  surfacesOffered: number;
+  /** …that were actually banked. */
+  surfacesBanked: number;
+  /** …that P0-b's collision guard REFUSED. Reported because a locale-tagged
+   *  write never changes the und-only projection, so without this a run where
+   *  the guard blocked everything looked identical to a perfect run. */
+  surfacesBlocked: number;
 }
 
 @Injectable()
@@ -79,7 +88,7 @@ export class LabelSweepService {
           AND NOT EXISTS (
             SELECT 1 FROM entity_labels l
             WHERE l.entity_id = e.entity_id
-              AND l.locale LIKE ${`${locale.split('-')[0]}%`}
+              AND LOWER(l.locale) = ANY(${localeLookupChain(locale)}::text[])
               AND l.status IN ('active', 'candidate')
           )
       `,
@@ -109,10 +118,20 @@ export class LabelSweepService {
           AND NOT EXISTS (
             SELECT 1 FROM entity_labels l
             WHERE l.entity_id = e.entity_id
-              AND l.locale LIKE ${`${locale.split('-')[0]}%`}
+              AND LOWER(l.locale) = ANY(${localeLookupChain(locale)}::text[])
               AND l.status IN ('active', 'candidate')
           )
-        ORDER BY e.created_at ASC
+        -- MOST-REFERENCED FIRST. A sweep is always budget-bounded, so the
+        -- concepts users actually encounter must be labelled first. This
+        -- comment previously described this ordering while the SQL sorted by
+        -- created_at — which is why a 3,000-concept run reached 90.0% on the
+        -- gate instead of the 96.7% a gold-targeted run reached: it was
+        -- labelling the oldest concepts, not the most-used ones. Measured
+        -- difference in the top 5: dessert/taco/pizza/burger/coffee versus
+        -- tasting menu/fish/sushi/turkey/sandwich.
+        ORDER BY (
+          SELECT count(*) FROM core_restaurant_items c WHERE c.food_id = e.entity_id
+        ) DESC, e.created_at ASC
         LIMIT ${limit}
       `,
     );
@@ -143,7 +162,8 @@ export class LabelSweepService {
     const generated = batch.requests.length
       ? await generator.generate(batch.requests)
       : [];
-    const written = await this.writeLabels(generated);
+    const surfaceTally = { offered: 0, banked: 0, blocked: 0 };
+    const written = await this.writeLabels(generated, 'sweep', surfaceTally);
     const result: SweepResult = {
       locale,
       due,
@@ -151,6 +171,9 @@ export class LabelSweepService {
       generated: generated.length,
       written,
       autoApproved: generated.filter((row) => row.status === 'active').length,
+      surfacesOffered: surfaceTally.offered,
+      surfacesBanked: surfaceTally.banked,
+      surfacesBlocked: surfaceTally.blocked,
     };
     this.logger.log(
       `label sweep locale=${locale} generator=${generator.name} due=${result.due} requested=${result.requested} written=${result.written}`,
@@ -166,6 +189,7 @@ export class LabelSweepService {
   async writeLabels(
     labels: readonly GeneratedLabel[],
     source: 'seed' | 'sweep' | 'manual' | 'synthesis' = 'sweep',
+    surfaceTally?: { offered: number; banked: number; blocked: number },
   ): Promise<number> {
     let written = 0;
     for (const label of labels) {
@@ -235,9 +259,10 @@ export class LabelSweepService {
         new Set((label.aliases ?? []).map((s) => s.trim())),
       ).filter(Boolean);
       if (surfaces.length) {
+        if (surfaceTally) surfaceTally.offered += surfaces.length;
         try {
           await this.prisma.$transaction(async (tx) => {
-            await addAliases(
+            const result = await addAliases(
               tx,
               label.entityId,
               surfaces.map((surface) => ({
@@ -251,6 +276,10 @@ export class LabelSweepService {
                 source: 'vocabulary' as const,
               })),
             );
+            if (surfaceTally) {
+              surfaceTally.blocked += result.blocked.length;
+              surfaceTally.banked += surfaces.length - result.blocked.length;
+            }
           });
         } catch (error) {
           // A surface that fails to bank must never cost the label that did

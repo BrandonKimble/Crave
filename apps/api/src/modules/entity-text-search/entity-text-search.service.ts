@@ -4,6 +4,7 @@ import { PrismaService } from '../../prisma/prisma.service';
 import { descendantPlaceIds } from '../places/place-dag-read';
 import { LoggerService } from '../../shared';
 import { localeLookupChain } from '../../shared/locale';
+import { canonicalFold } from '../content-processing/entity-resolver/entity-identity';
 import { EmbeddingService } from '../external-integrations/llm/embedding.service';
 
 interface EntitySearchRow {
@@ -217,6 +218,65 @@ export class EntityTextSearchService {
   }
 
   /**
+   * LOCALIZED-SURFACE LANE — the ONLY way a locale-tagged surface reaches the
+   * recall core, and therefore the only way autocomplete can match a foreign
+   * word at all.
+   *
+   * The sparse lane reads `core_entities.aliases[]`, which by law holds only
+   * UNTAGGED ('und') forms — that is what stops a Spanish surface grounding an
+   * English request. Correct, but it left every localized surface invisible to
+   * autocomplete: a Spanish speaker typing "cam…" got nothing, on the first
+   * interactive surface in the product. The gazetteer had already been given a
+   * locale-chained arm; this is the same arm for the recall core.
+   *
+   * OPT-IN: it runs only when a caller passes a request locale. Ingestion and
+   * poll seeding pass none and are unaffected — no behaviour changes for a
+   * consumer that never had a locale.
+   */
+  async searchLocalizedSurfaces(
+    term: string,
+    entityTypes: EntityType[],
+    limit: number,
+    requestLocale: string,
+  ): Promise<TextSearchMatch[]> {
+    const folded = canonicalFold(term ?? '');
+    if (!folded || entityTypes.length === 0) return [];
+    const chain = localeLookupChain(requestLocale);
+    // 'und' alone means "no locale was asked for" — the sparse lane already
+    // covers untagged forms, so there is nothing for this lane to add.
+    if (chain.length <= 1) return [];
+    const typeArray = Prisma.sql`ARRAY[${Prisma.join(
+      entityTypes.map((t) => Prisma.sql`${t}::entity_type`),
+    )}]`;
+    const rows = await this.prisma.$queryRaw<
+      { entityId: string; name: string; type: EntityType; exact: boolean }[]
+    >(Prisma.sql`
+      SELECT DISTINCT ON (e.entity_id)
+             e.entity_id AS "entityId", e.name, e.type,
+             (ea.form_folded = ${folded}) AS "exact"
+        FROM entity_alias ea
+        JOIN core_entities e ON e.entity_id = ea.entity_id
+       WHERE ea.status = 'active'
+         AND LOWER(ea.locale) = ANY(${chain}::text[])
+         AND (ea.form_folded = ${folded}
+              OR ea.form_folded LIKE ${folded + '%'})
+         AND e.status = 'active'::entity_status
+         AND e.type = ANY(${typeArray})
+       ORDER BY e.entity_id, (ea.form_folded = ${folded}) DESC
+       LIMIT ${Math.max(1, Math.min(limit, this.maxLimit))}
+    `);
+    // Tiered exactly like the sparse lane so downstream confidence bands and
+    // the link decider treat a localized hit as the same KIND of evidence.
+    return rows.map((row) => ({
+      entityId: row.entityId,
+      name: row.name,
+      type: row.type,
+      similarity: row.exact ? 1 : 0.94,
+      evidence: row.exact ? ('exact' as const) : ('prefix' as const),
+    }));
+  }
+
+  /**
    * Shared recall core (Stage 1). Runs the sparse (lexical) and dense (embedding)
    * lanes in parallel and fuses them by Reciprocal Rank Fusion — `Σ 1/(k+rank)`,
    * k=60. RRF is rank-based, so it is immune to the lexical-score vs cosine scale
@@ -262,6 +322,13 @@ export class EntityTextSearchService {
        * bracketed tag would be nonsense.
        */
       denseLocale?: string | null;
+      /**
+       * BCP 47. OPT-IN: when present, the LOCALIZED-SURFACE lane runs — the
+       * only way a locale-tagged `entity_alias` row reaches this core, and
+       * therefore the only way autocomplete can match a foreign word. Callers
+       * with no locale (ingestion, poll seeding) behave exactly as before.
+       */
+      requestLocale?: string | null;
     } = {},
   ): Promise<RecallCandidate[]> {
     if (
@@ -278,6 +345,15 @@ export class EntityTextSearchService {
     const denseOpts = { engineId: options.engineId };
 
     const denseMode = options.denseMode ?? 'always';
+    // The localized-surface lane runs whenever a caller supplies a locale.
+    const localizedPromise = options.requestLocale
+      ? this.searchLocalizedSurfaces(
+          normalizedTerm,
+          entityTypes,
+          pool,
+          options.requestLocale,
+        )
+      : Promise.resolve([] as TextSearchMatch[]);
     let sparse: TextSearchMatch[];
     let dense: TextSearchMatch[];
     if (denseMode === 'none') {
@@ -330,6 +406,20 @@ export class EntityTextSearchService {
       const c = ensure(m);
       c.denseRank = rank;
       c.denseCosine = m.similarity;
+      c.rrf += 1 / (K + rank);
+    });
+    // A localized hit is sparse-grade evidence: it matched a real stored
+    // surface, in the requester's language. It only ever RAISES a candidate's
+    // evidence (a lane cannot demote what another lane matched better).
+    (await localizedPromise).forEach((m, rank) => {
+      const c = ensure(m);
+      if (
+        c.sparseSimilarity === null ||
+        (m.similarity ?? 0) > c.sparseSimilarity
+      ) {
+        c.sparseSimilarity = m.similarity;
+        c.sparseEvidence = m.evidence;
+      }
       c.rrf += 1 / (K + rank);
     });
 

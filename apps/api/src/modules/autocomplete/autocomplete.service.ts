@@ -324,6 +324,7 @@ export class AutocompleteService {
             normalizedQuery,
             entityTypes,
             Math.min(limit * entityTypes.length, limit * 3),
+            locale,
           )
         : Promise.resolve([]),
       attributeEntityTypes.length
