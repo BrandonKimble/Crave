@@ -1103,3 +1103,66 @@ COVERAGE: 21/21 catalogued defect classes have an explicit clause.
 Machine-checked against the schema; NOT yet checked against real documents —
 that is Phase 4 (replay the Phase 1 sources, including the negative controls,
 and confirm the defects do not reproduce and the true claims survive).
+
+## PHASE 4 (2026-08-05): the candidate PROVEN on real data, and three of my own errors caught
+
+Two harnesses, both through LlmService (the gateway lockdown lint caught my
+first draft importing @google/genai directly — a probe that spends money must
+not own a second spend gate):
+scripts/prompt-ab.ts graded gold set, N repeats, PASS/FLAKY/FAIL
+scripts/prompt-corpus-ab.ts random real posts, volume + defect rates
+
+GOLD SET (18 cases, 5 repeats, real source text verbatim):
+CANDIDATE 18 PASS / 0 FLAKY / 0 FAIL LIVE 12 / 1 / 5 0 regressions
+
+CORPUS (150 random real posts-with-comments, both prompts):
+live candidate
+cuisine-as-food 35 -> 17 (-51%)
+format-as-food 129 -> 27 (-79%)
+bad-attribute 43 -> 1 (-98%)
+praise mentions 1586 -> 1102 (-30%, the double-carrier dying)
+attribute slots 2224 -> 2797 (+26% REAL attributes)
+distinct dishes 523 -> 481 (-8%)
+docs emitting 96.7% -> 94.0%
+SUBSTANTIVE (non-praise) mentions: 505 -> 758, i.e. +50%.
+The headline -11% mention volume is almost entirely the one-carrier rule
+removing duplicate praise mentions; actual dish/attribute content went UP.
+
+IS THE DROP RECALL LOSS? NO — verified by reading source text, not by
+assuming. Per-doc restaurant retention is 86% with 70 candidate-only finds.
+Every sampled drop was CORRECT:
+t3_15gckti "Did anyone used to work at the Spanish restaurant Bullfight?" —
+a nostalgia thread about a CLOSED place; live emitted parkside, el naranjo
+and olive and junes with general_praise TRUE. "El Naranjo is there now,
+right?" is a LOCATION FACT, not an endorsement.
+t3_1ty7l18 "looking for Central Asian airag/kumis/fermented horse milk" —
+live emitted tashkent market / tashkent supermarket / garden gourmet with
+praise. Pure availability, and grocery-packaged besides.
+All 4 one-sided docs were correct suppressions: a recipe question, a
+reservation giveaway, a "can anyone identify this halal cart" ID request.
+Precision gain, not recall loss.
+
+THREE ERRORS OF MINE, CAUGHT BY THE HARNESSES:
+
+1. The grader demanded restaurant "baldinucci" while the model emitted the
+   correct canonical "baldinucci pizza" — a false FAIL that HID a real win
+   (live emitted the `light` attribute; the candidate dropped it).
+2. A control demanded general_praise on a bare-list reply to an ITEM-SPECIFIC
+   ask, where Step E prescribes the dish carrying it. Live's extra praise
+   mentions are the double-carrier one-claim-once forbids — grading them
+   correct would have enshrined the defect.
+3. THE PROMPT WAS WRONG ABOUT OMAKASE. I listed it with the failing formats;
+   the model emitted it 22x anyway AND THE MODEL WAS RIGHT. The rule is now
+   principled rather than a list: a format fails only when WHAT ARRIVES IS
+   UNCONSTRAINED (tasting menu, prix fixe, buffet, combo plate). "omakase"
+   predicts sushi chef-selected and "dim sum" predicts small Cantonese
+   plates — they pass exactly like breakfast passes and dinner does not.
+   C6-CONTROL-omakase-is-a-dish now guards it, and D4 (tasting menu is NOT a
+   dish) still passes, so the rule discriminates instead of blanket-banning.
+   Round-1 "cuisine-as-food went UP" was sampling noise at n=120; at n=150 it is
+   a 51% REDUCTION. One corpus run is not a measurement.
+
+STILL OPEN before activation: the ~22 residual omakase rows are now expected
+(they are legitimate). Remaining work is the owner's campaign hash for the
+Austin shadow re-extract, and the two schema decisions (surface fields;
+asserted-vs-inferred marker).

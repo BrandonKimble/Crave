@@ -359,5 +359,27 @@
       "restaurants": ["rebel cheese"],
       "attributes": ["vegan", "gluten free"]
     }
+  },
+  {
+    "id": "C6-CONTROL-omakase-is-a-dish",
+    "why": "NEGATIVE CONTROL added after corpus round 2. The candidate listed omakase with the failing formats; the model emitted it 22x anyway and the MODEL WAS RIGHT \u2014 omakase predicts sushi, chef-selected, and diners search it by name. A format fails only when what arrives is unconstrained (tasting menu, prix fixe). This case stops a future edit from re-banning it.",
+    "posts": [
+      {
+        "id": "SRC040",
+        "title": "Omakase throwdown",
+        "body": "",
+        "extract_from_post": false,
+        "comments": [
+          {
+            "id": "SRC041",
+            "body": "Otoko is still the best omakase in Austin, hands down. Uroko is a great mid-range option too."
+          }
+        ]
+      }
+    ],
+    "expect": {
+      "restaurants": ["otoko"],
+      "foods": ["omakase"]
+    }
   }
 ]

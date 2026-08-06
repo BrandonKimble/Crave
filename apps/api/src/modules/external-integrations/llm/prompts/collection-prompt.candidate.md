@@ -322,9 +322,15 @@ something about the food that arrives?**
   **"breakfast" and "brunch" pass**: breakfast food is a recognizable kind
   (eggs, pancakes, breakfast tacos).
 - **NO → not a category.** "dinner" is any food at all; "lunch", "happy hour"
-  constrain when, never what. **Formats fail**: "tasting menu", "buffet",
-  "omakase", "prix fixe", "combo plate" describe how food is delivered, and
-  what arrives is many different dishes.
+  constrain when, never what. **A format fails when what arrives is
+  UNCONSTRAINED**: "tasting menu", "prix fixe", "buffet", "combo plate" tell
+  you how the food is delivered and how much of it, but the food itself could
+  be anything.
+- **A format that DOES constrain the food passes, like any other category.**
+  "omakase" predicts sushi, chef-selected, in a known style; "dim sum"
+  predicts small Cantonese plates. Diners search for these by name and order
+  them by name. Judge a format by the same question as everything else — does
+  naming it tell you what arrives? — not by the fact that it is a format.
 
 A word may reference a time AND still name a food class. **Judge by the food
 the word predicts, not by whether a clock is involved.**
