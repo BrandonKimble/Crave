@@ -11,11 +11,23 @@
  * bare null, a blank byline — and NONE of them said "deleted". Nothing was
  * broken enough to fail a test; the thread just rendered a nameless comment.
  *
- * THE CHECK is on the Prisma SELECT, not on the mapping, because the select is
- * where the information is lost: a query that does not select `deletedAt`
- * CANNOT decide the question downstream, however careful the mapping is. So
- * any user-shaped select that takes `username` must also take `deletedAt` —
- * which `AUTHOR_SELECT` does by construction.
+ * THE CHECK. A query that does not select `deletedAt` CANNOT decide the
+ * question downstream however careful the mapping is, so the select must be
+ * `AUTHOR_SELECT`-based — but selecting is not answering, so the file must
+ * also CALL `publicAuthorIdentity`.
+ *
+ * WHAT THIS CANNOT DO, stated plainly so nobody mistakes a green run for a
+ * proof. This is a text scan: it establishes that a file calls the resolver at
+ * least once, NOT that every author-bearing path in that file does. A service
+ * with three peer reads and one resolver call passes here while two paths ship
+ * raw rows.
+ *
+ * The real enforcement is the TYPE. Where a DTO's author slot is declared as
+ * `PublicAuthorIdentity` (see `ConversationPeerDto`), assigning a raw Prisma
+ * row fails to compile — `isDeleted` is missing — and the caller cannot
+ * forget. Prefer that everywhere an author crosses the wire; this scanner is
+ * the backstop for the paths that are not yet typed that way, not a substitute
+ * for typing them.
  */
 import { execSync } from 'child_process';
 import { readFileSync } from 'fs';
@@ -24,6 +36,8 @@ import { readFileSync } from 'fs';
 const ALLOWED: Record<string, string> = {
   'src/modules/identity/public-author-identity.ts':
     'Defines AUTHOR_SELECT itself.',
+  'src/shared/invariants/registry.ts':
+    'Not a query: its `username: true` lives inside a mutation FIXTURE string — the deliberately-broken file this very invariant is proven against. It passed the old identifier-presence check only because it names `publicAuthorIdentity` in prose, which is the same false pass F2050 fixed.',
   'src/modules/identity/user.service.ts':
     'Two own-or-filtered reads: the public profile already filters deletedAt: null (a ghost has no profile page), and updateMe returns the caller their own row.',
   'src/modules/identity/username.service.ts':
@@ -60,7 +74,14 @@ for (const file of files) {
   // Selecting `deletedAt` is not enough — a file can select it and still ship
   // the raw row. The builder is the thing that decides what the world sees, so
   // the builder is what must be present.
-  if (!/publicAuthorIdentity/.test(src)) {
+  //
+  // F2050: this used to test for the bare identifier, which an UNUSED IMPORT
+  // satisfies. That is not a hypothetical — messaging.service.ts imported
+  // `publicAuthorIdentity`, never called it, shipped the raw user row (leaking
+  // `deletedAt` and rendering a deleted peer as two nulls), and this scanner
+  // reported OK. A scanner an import can satisfy is not a scanner. Require the
+  // CALL.
+  if (!/publicAuthorIdentity\s*\(/.test(src)) {
     failures.push(
       `${file}: exposes a username without going through publicAuthorIdentity, ` +
         `so a deleted author renders as whatever this file does with a null. ` +

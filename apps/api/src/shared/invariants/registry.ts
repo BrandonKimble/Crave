@@ -435,7 +435,7 @@ export const INVARIANTS: readonly Invariant[] = [
       "Deletion nulls username and displayName. Five surfaces each invented their own fallback — '?', 'user', a seeded pseudo-name, a bare null, a blank byline — and NONE said \"deleted\". Nothing failed; the thread just rendered a nameless comment.",
     level: 'lint',
     mechanism:
-      'scripts/check-author-identity.ts — every user-shaped select is either AUTHOR_SELECT-based (which carries deletedAt) and mapped through publicAuthorIdentity, or classified with a reason.',
+      'scripts/check-author-identity.ts — every user-shaped select is either AUTHOR_SELECT-based (which carries deletedAt) and CALLS publicAuthorIdentity, or is classified with a reason. The call, not the identifier: until F2050 this sentence claimed the mapping while the check tested for the bare name, which an unused import satisfied. Text scanning proves at-least-one call, never per-path coverage — the actual enforcement is typing the DTO slot as PublicAuthorIdentity (see ConversationPeerDto), which makes a raw row fail to compile.',
     check: {
       command: 'npx ts-node -T scripts/check-author-identity.ts',
       reads: 'every select in src/ that exposes a username',
@@ -445,6 +445,19 @@ export const INVARIANTS: readonly Invariant[] = [
         file: 'src/modules/identity/probe-author.service.ts',
         content:
           'export const sel = { userId: true, username: true, displayName: true, deletedAt: true };\n',
+      },
+      {
+        // F2050: the mutation above was too weak — it never exercised the way
+        // the invariant ACTUALLY failed in production. messaging.service.ts
+        // imported `publicAuthorIdentity`, never called it, and shipped the raw
+        // user row; the scanner tested for the bare identifier, which the
+        // import satisfied, and reported OK. This mutation reproduces that
+        // exact shape, so a scanner an import can satisfy fails here.
+        file: 'src/modules/identity/probe-author.service.ts',
+        content:
+          "import { publicAuthorIdentity } from './public-author-identity';\n" +
+          'export const sel = { userId: true, username: true, displayName: true, deletedAt: true };\n' +
+          'export function shipRaw(row: unknown) { return row; }\n',
       },
     ],
   },
