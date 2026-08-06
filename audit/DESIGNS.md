@@ -1788,3 +1788,41 @@ and consuming it stale would inline a file someone just made genuine.
 **F2901 — APPROVED.** Eleven literal constants emitted as if observed, in a file whose
 same scope computes the true values: the instrument-that-cannot-fail shape, again. Fix is
 to log the computed values or delete the log; no third option.
+
+---
+
+## D71 — P2 verdicts on F3000–F3003 (api-external-integrations/places, 2026-08-06)
+
+**F3001 — VERIFIED BY EXECUTION, APPROVED, highest priority of the four.** I ran the
+parser's arithmetic myself: tl.lon=170 / br.lon=-170 normalizes to `{minLng:-170,
+maxLng:170}` — the 340° COMPLEMENT arc. The shared lib's `bboxContainsPoint` honors the
+crossing representation (`minLng > maxLng` via `bboxLngArcs`) — the 2026-07-26 antimeridian
+fix — and both TomTom parsers destroy that representation one function upstream with
+`Math.min/max` on longitude. lng=179, inside the true arc, tests false; nearly everything
+else on the planet tests true. Fix: preserve the provider's edge order for longitude
+(TomTom's topLeft/btmRight and northEast/southWest already encode the arc direction);
+min/max stays correct for LATITUDE only. The proposed mutation (parse the crossing box,
+assert containment of lng=179) is the acceptance test.
+
+**F3000 — APPROVED.** A throttled reservation that never books the minute it releases into,
+plus a caller that sleeps-then-fires without re-reserving, admits limit+k held requests on
+a minute boundary — up to 2× the vendor ceiling in one synchronized burst. The fix must be
+the RESERVATION owning its landing slot (re-reserve after the sleep, or book the next
+minute at throttle time), not a wider limit. Acceptance mutation as proposed: drive limit+k
+held calls, assert next-minute releases ≤ limit — fails today.
+
+**F3002 — APPROVED, refuse-don't-widen exactly as the file's own F114 doctrine states.**
+The fail-closed env parse silently discards unknown tokens, so `google_places` (underscore
+— the LEDGER'S OWN spelling of the service) quietly loses its Redis-outage guard. An
+unrecognized token in a fail-CLOSED list must refuse boot loudly, not narrow the guard
+silently. This is an adjacent instance honoring the F2701 escalation, not a dial change:
+which services are listed stays the owner's; whether a typo silently unlists one does not.
+
+**F3003 — APPROVED.** The outage-guard spec's wiring scanner is the F2702 shape again:
+`/(sleep|setTimeout|delay)/i` matched anywhere in an 880-line file, and a catch-block scan
+anchored to the file's FIRST catch. Severing the outage-path sleep stays green. Replace with
+the proposed behavioral stub-and-spy; the scanner dies with it.
+
+All four to one P3 lane; the territory's other clean bills (spend-currency's branded
+currency law, decision-ledger's pending-set drain, the tomtom observation-type doctrine)
+are accepted as argued.
