@@ -850,3 +850,59 @@ shape-errors (truncated tokens, slash-splits, plural/word-order twins) were
 all measured at noise level AND belong in code — identity keys and a
 denylist — not in the prompt. So the prompt rewrite is exclusively a
 kind-question problem.
+
+## PHASE 2 (2026-08-05): the derived abstraction — four kind-gates, and one reordering
+
+THE ATOMIC UNIT the prompt should be built around, which it currently never
+names: A CLAIM IS SOMEONE WHO HAS EATEN X AT Y SAYING SOMETHING ABOUT IT.
+Four things must each be of the right KIND for a claim to exist, and the
+current prompt tests the SHAPE of all four and the kind of none:
+
+GATE 1 - STANCE. Has the author eaten it? Testimony is a report of
+experience. A plan ("headed to Austin, here's our short list"), an ask, an
+announcement (a fundraiser roster), an availability note ("X has Y"), and
+hearsay ("I hear it's good") are all NOT reports of experience. Asking for
+feedback on an experience HAD is still testimony ("Trip Review — how did I
+do?"). Kills: itinerary, directory, availability, lukewarm, hearsay.
+GATE 2 - VENUE KIND. Is Y a place that prepares and serves food for
+immediate eating? Not: a shop selling packaged goods to take home (H-E-B,
+proven 100% packaged), lodging, a stadium/museum whose business is not
+food, a caterer with no premises, or a DISH PHRASE mistaken for a name
+("Bihari Kabab"). Landmark-plus-vendor -> extract the vendor.
+GATE 3 - DISH KIND. Is X a thing a diner can be handed? Two tests that
+already exist in the prompt and are GOOD, kept and named:
+ORDER TEST (could you say this to a server) and PREDICTION TEST (if a
+diner names only this, do you know what arrives). Menu formats fail
+prediction (a tasting menu is many dishes); cuisines fail it; `dinner`
+fails it; `breakfast`/`dessert` PASS it (this is the 346c97dc6 ruling,
+preserved intact and now stated as one of the four gates rather than a
+rule buried in Step 4).
+GATE 4 - PROPERTY KIND. Does this word mean ONE thing standing alone,
+severed from the noun it modified? `gluten-free`, `spicy`, `smoky` do.
+`light` does NOT — light roast, light marinara, and light portions are
+three unrelated senses, and "LIGHTER THAN Jets or 313" is not even a
+property, it is a comparison to two other pizzerias. This replaces every
+prior banned-word list, which is the right shape because the word lists
+kept banning true cases along with false ones (`light roast` is real).
+
+THE REORDERING (structural root cause of the intensity class): the current
+prompt PEELS PROPERTIES IN STEP 3 AND COMPOSES THE DISH IN STEP 4 — it
+strips modifiers off spans BEFORE it knows what the dish is. That ordering
+is why "lighter than Jets" became attribute `light` and why "breakfast" was
+peeled out of "breakfast taco" (82e731058 fixed that ONE case by hand; the
+ordering that generates the whole class was never touched). Compose the dish
+FIRST, then ask what is left over and whether it survives Gate 4, and the
+dislocation class cannot form — no ban list required.
+
+CONSEQUENCE FOR THE REWRITE: gates are cheap-to-expensive and each one that
+fails ends the work, so the order is STANCE -> VENUE -> DISH -> PROPERTY,
+with composition inside Gate 3 and property extraction after it. Rules that
+survive as-is: predicts-the-food, order test, dietary NEVER-dropped, one
+carrier for praise, per-mention source_id. Rules that DIE as unnecessary
+once the gates exist: the bare-list endorsement clause (Gate 1 subsumes it),
+the meal-period ban lists (Gate 3), the intensity carve-outs (Gate 4), the
+duplicated ask-handling statements (x4) and general_praise restatements (x7).
+Examples must be rebuilt against the enforced schema — the only full output
+example is currently invalid (missing required temp_id, wrong property
+order, teaches plurals against the singular rule) and both flagship examples
+teach `rich`, which Gate 4 forbids.
