@@ -7,12 +7,10 @@ import {
 } from '../runtime/shared/search-desired-tuple-selectors';
 import { InteractionManager } from 'react-native';
 import type { Feature, Point } from 'geojson';
-import MapboxGL from '@rnmapbox/maps';
 
 import { logger } from '../../../utils';
 import type { Coordinate, FoodResult, MapBounds, RestaurantResult } from '../../../types';
 import { type RestaurantFeatureProperties } from '../components/search-map';
-import { ACTIVE_TAB_COLOR_DARK } from '../constants/search';
 import {
   buildSearchMapVisualIdentityKey,
   normalizeSearchMapVisualFeatureIdentity,
