@@ -11,7 +11,6 @@ import { Text } from '../..';
 import { showShareModal } from '../../share-modal-store';
 import { CardPhotoStrip } from '../../photos/CardPhotoStrip';
 import { colors as themeColors } from '../../../constants/theme';
-import { getPriceRangeLabel } from '../../../constants/pricing';
 import { FONT_SIZES } from '../../../constants/typography';
 import type { FoodResult, RestaurantResult } from '../../../types';
 import styles from '../../../screens/Search/styles';
@@ -98,7 +97,9 @@ const DishResultCard: React.FC<DishResultCardProps> = ({
   // mutation marks) — the plus/saved pill design's single source of truth.
   const isSavedAnywhere = useSavedMembership('connection', item.connectionId);
   const trackRecentlyViewedFood = useSearchHistoryStore((state) => state.trackRecentlyViewedFood);
-  const dishPriceLabel = getPriceRangeLabel(item.restaurantPriceLevel);
+  // F1019: dish items carry no priceRangeText, only the real server-computed
+  // restaurantPriceSymbol — use it directly, never a client-invented level-derived range.
+  const dishPriceLabel = item.restaurantPriceSymbol ?? undefined;
   const hasStatus = Boolean(item.restaurantOperatingStatus);
   const dishMetaPrimaryLine = renderMetaDetailLine(
     null,

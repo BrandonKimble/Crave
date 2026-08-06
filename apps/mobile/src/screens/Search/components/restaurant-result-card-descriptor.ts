@@ -1,5 +1,5 @@
 import { FONT_SIZES } from '../../../constants/typography';
-import { getPriceRangeLabel } from '../../../constants/pricing';
+import { getPriceSymbolLabel } from '../../../constants/pricing';
 import type { RestaurantFoodSnippet, RestaurantMatchedTag, RestaurantResult } from '../../../types';
 import { TOP_FOOD_RENDER_LIMIT } from '../constants/search';
 import type { CachedTopFoodLayout } from '../hooks/use-top-food-measurement';
@@ -199,10 +199,13 @@ export const buildRestaurantResultCardDescriptor = ({
     distanceLabel,
     hasStatus,
     matchedTags,
-    // Prefer the REAL Google price range from the server (RestaurantPanel does the same)
-    // over the client-derived level bucket — no-fake-estimates law: an observed range
-    // beats an invented one.
-    priceRangeLabel: restaurant.priceRangeText ?? getPriceRangeLabel(restaurant.priceLevel) ?? null,
+    // F1019: prefer the REAL Google price range from the server (RestaurantPanel does the
+    // same); fall back to the real priceSymbol ('$$'), NEVER to a client-invented dollar
+    // band (the old PRICE_LEVEL_RANGE_LABELS-shaped table) — no-fake-estimates law: an
+    // observed value beats a fabricated one, and a symbol is observed while a level-derived
+    // range is not.
+    priceRangeLabel:
+      restaurant.priceRangeText ?? getPriceSymbolLabel(restaurant.priceLevel) ?? null,
     primaryFoodHighlight,
     primaryFoodTerm: primaryFoodHighlight?.term ?? null,
     qualityColor,

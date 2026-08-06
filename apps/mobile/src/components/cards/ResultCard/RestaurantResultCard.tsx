@@ -19,7 +19,7 @@ import { showShareModal } from '../../share-modal-store';
 import { CardPhotoStrip } from '../../photos/CardPhotoStrip';
 import { colors as themeColors } from '../../../constants/theme';
 import { FONT_SIZES } from '../../../constants/typography';
-import { getPriceRangeLabel } from '../../../constants/pricing';
+import { getPriceSymbolLabel } from '../../../constants/pricing';
 import type { RestaurantResult } from '../../../types';
 import { useSearchInteraction } from '../../../screens/Search/context/SearchInteractionContext';
 import { useTopFoodMeasurement } from '../../../screens/Search/hooks/use-top-food-measurement';
@@ -135,8 +135,9 @@ const RestaurantResultCard: React.FC<RestaurantResultCardProps> = ({
     [preparedDescriptor, _primaryFoodTerm]
   );
 
+  // F1019: fall back to the real priceSymbol, never a client-invented dollar band.
   const priceRangeLabel =
-    preparedDescriptor?.priceRangeLabel ?? getPriceRangeLabel(restaurant.priceLevel);
+    preparedDescriptor?.priceRangeLabel ?? getPriceSymbolLabel(restaurant.priceLevel);
   const hasStatus =
     preparedDescriptor?.hasStatus ??
     (restaurant.operatingStatus?.isOpen === true || restaurant.operatingStatus?.isOpen === false);

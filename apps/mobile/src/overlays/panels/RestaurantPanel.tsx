@@ -30,7 +30,6 @@ import {
 } from '../overlaySheetStyles';
 import { resolveChinlessContentBottomPadding } from '../overlay-sheet-chin-geometry';
 import { CutoutSkeletonShape, SceneLoadingSurface } from '../../components/skeletons';
-import { getPriceRangeLabel } from '../../constants/pricing';
 import { calculateSnapPoints } from '../sheetUtils';
 import type { OverlayContentSpec } from '../types';
 import {
@@ -185,13 +184,9 @@ export const useRestaurantPanelSpec = ({
 
   const emptyAreaMinHeight = Math.max(0, SCREEN_HEIGHT - snapPoints.middle - headerHeight);
   const priceLabel = restaurant
-    ? // Prefer the REAL Google price range ("$10–20", revamp) over the fabricated
-      // priceLevel bucket, then the level bucket, then the word/symbol.
-      (restaurant.priceRangeText ??
-      getPriceRangeLabel(restaurant.priceLevel) ??
-      restaurant.priceText ??
-      restaurant.priceSymbol ??
-      null)
+    ? // F1019: prefer the REAL Google price range ("$10–20", revamp); fall back to the
+      // real priceText/priceSymbol, NEVER to a client-invented priceLevel-derived band.
+      (restaurant.priceRangeText ?? restaurant.priceText ?? restaurant.priceSymbol ?? null)
     : null;
   const categoryLabel = restaurant?.categoryLabel ?? null;
   // Score evidence / receipts (product doc §"Score evidence"): the rating is auditable, not
