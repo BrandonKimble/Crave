@@ -20,6 +20,8 @@
 import { execSync } from 'child_process';
 import { readFileSync } from 'fs';
 
+import { codeMatches } from './scanner-source';
+
 type Classification =
   /** Reads only the caller's own acts (actor_id = the requesting user). */
   | 'own-scoped'
@@ -31,6 +33,10 @@ type Classification =
   | 'declaration';
 
 const ALLOWED: Record<string, { class: Classification; why: string }> = {
+  'scripts/scanner-source.spec.ts': {
+    class: 'declaration',
+    why: 'Names the column inside a fixture STRING that proves the comment-stripper keeps SQL in a template literal — precisely so this guard is not blinded by the strip. No query, no read.',
+  },
   'src/modules/signals/subject-text-floor.ts': {
     class: 'declaration',
     why: 'The floor itself — the doorway to the view and the statement of this rule.',
@@ -167,7 +173,9 @@ for (const file of hits) {
   }
   if (
     entry.class === 'floored' &&
-    !FLOOR_JOIN.test(readFileSync(file, 'utf8'))
+    // CODE, not prose: `-- we deliberately do NOT join signal_emittable_terms`
+    // would otherwise be a passing grade.
+    !codeMatches(FLOOR_JOIN, readFileSync(file, 'utf8'), file)
   ) {
     failures.push(
       `${file}: classified 'floored' but does not join signal_emittable_terms.`,

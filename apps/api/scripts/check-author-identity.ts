@@ -32,6 +32,8 @@
 import { execSync } from 'child_process';
 import { readFileSync } from 'fs';
 
+import { codeMatches } from './scanner-source';
+
 /** Selects that legitimately take `username` WITHOUT `deletedAt`. */
 const ALLOWED: Record<string, string> = {
   'src/modules/identity/public-author-identity.ts':
@@ -81,7 +83,9 @@ for (const file of files) {
   // `deletedAt` and rendering a deleted peer as two nulls), and this scanner
   // reported OK. A scanner an import can satisfy is not a scanner. Require the
   // CALL.
-  if (!/publicAuthorIdentity\s*\(/.test(src)) {
+  // ...and against CODE, not prose: a comment explaining how carefully this
+  // file handles deleted authors would otherwise satisfy the guard.
+  if (!codeMatches(/publicAuthorIdentity\s*\(/, src, file)) {
     failures.push(
       `${file}: exposes a username without going through publicAuthorIdentity, ` +
         `so a deleted author renders as whatever this file does with a null. ` +

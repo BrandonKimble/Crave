@@ -459,6 +459,16 @@ export const INVARIANTS: readonly Invariant[] = [
           'export const sel = { userId: true, username: true, displayName: true, deletedAt: true };\n' +
           'export function shipRaw(row: unknown) { return row; }\n',
       },
+      {
+        // F2051: and the guard must not be satisfied by PROSE. The file that
+        // ships a raw row is exactly the file whose comment explains how
+        // carefully it doesn't — so the comment shape gets its own proof.
+        file: 'src/modules/identity/probe-author.service.ts',
+        content:
+          '// maps every row through publicAuthorIdentity(row) before it leaves.\n' +
+          'export const sel = { userId: true, username: true, displayName: true, deletedAt: true };\n' +
+          'export function shipRaw(row: unknown) { return row; }\n',
+      },
     ],
   },
   {
