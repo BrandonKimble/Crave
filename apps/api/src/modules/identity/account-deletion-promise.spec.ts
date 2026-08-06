@@ -73,16 +73,39 @@ describe('account deletion — the promise matches the mechanism', () => {
     expect(unpaired).toEqual([]);
   });
 
-  it('the app and the privacy policy state the SAME window as the code', () => {
-    const policy = read('apps/site/src/pages/privacy.html');
+  it('EVERY user-facing deletion string agrees with the mechanism', () => {
+    // ENUMERATED, not named. Three strings in the delete flow describe what
+    // deletion does; two were corrected when it became recoverable and the
+    // third — the SUCCESS modal, the last thing a person reads — still said
+    // "your account and personal data are gone". Naming the strings to check
+    // is how the one nobody thought of stays wrong, so this reads them all.
     const dialog = read(
       'apps/mobile/src/overlays/panels/runtime/use-account-actions-runtime.ts',
     );
+    const deletionFlow = dialog.slice(dialog.indexOf('handleDeleteAccount'));
+    // Strip comments: they DISCUSS the old wording on purpose.
+    const copyOnly = deletionFlow
+      .split('\n')
+      .filter((line) => !line.trim().startsWith('//'))
+      .join('\n');
+
+    // No string may claim permanence or finality — the window is real.
+    const claimsPermanence = [
+      /cannot be undone/i,
+      /are gone\b/i,
+      /permanently deletes/i,
+      /this is permanent\./i,
+    ].filter((pattern) => pattern.test(copyOnly));
+    expect(claimsPermanence.map(String)).toEqual([]);
+
+    // And the window must be stated in the person's own units, matching code.
     expect(GRACE_PERIOD_DAYS).toBe(30);
+    expect(copyOnly).toContain(`${GRACE_PERIOD_DAYS} days`);
+  });
+
+  it('the privacy policy states the same window as the code', () => {
+    const policy = read('apps/site/src/pages/privacy.html');
     expect(policy).toContain(`${GRACE_PERIOD_DAYS}-day`);
-    // The dialog must describe a recoverable window, not an irreversible act.
-    expect(dialog).toContain(`${GRACE_PERIOD_DAYS} days`);
-    expect(dialog).not.toMatch(/cannot be undone/i);
   });
 
   it('the ToS content licence survives termination', () => {

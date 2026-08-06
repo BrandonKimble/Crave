@@ -43,13 +43,6 @@ import { PERSON_DATA_RULES, type PersonDataRule } from './person-data-class';
  * answering both questions would have to be wrong about one of them.
  */
 
-/** A predicate over one table. `$1` is the user id, always bound positionally. */
-export interface PersonScope {
-  sql: string;
-  /** How the scope was derived — carried so failures name their own cause. */
-  origin: 'declared' | 'person-key' | 'sole-scoping-column';
-}
-
 /** Dispositions that act on rows, and therefore need a scope. */
 const SCOPING = new Set(['delete_row', 'sever']);
 
@@ -82,14 +75,14 @@ const eq = (column: string) => `"${column}"::text = $1::text`;
  * key is declared elsewhere — the caller must treat null as "nothing to do",
  * never as "no filter".
  */
-export function ruleScope(rule: PersonDataRule): PersonScope | null {
+export function ruleScope(rule: PersonDataRule): string | null {
   if (!SCOPING.has(rule.disposition)) return null;
 
   if (rule.personScopeSql) {
-    return { sql: rule.personScopeSql, origin: 'declared' };
+    return rule.personScopeSql;
   }
   if (rule.personKey) {
-    return { sql: eq(rule.column), origin: 'person-key' };
+    return eq(rule.column);
   }
 
   const siblings = PERSON_DATA_RULES.filter(
@@ -105,7 +98,7 @@ export function ruleScope(rule: PersonDataRule): PersonScope | null {
   // Sole scoping rule of its disposition on this table — its column is the key
   // by elimination.
   if (siblings.length === 0) {
-    return { sql: eq(rule.column), origin: 'sole-scoping-column' };
+    return eq(rule.column);
   }
   // Ambiguous: several columns, none declared. Refuse rather than pick one —
   // picking by authoring order is exactly the exporter's old bug.
@@ -120,9 +113,7 @@ export function ruleScope(rule: PersonDataRule): PersonScope | null {
 export function ruleWhere(rule: PersonDataRule): string | null {
   const scope = ruleScope(rule);
   if (!scope) return null;
-  return rule.rowPredicate
-    ? `(${scope.sql}) AND (${rule.rowPredicate})`
-    : scope.sql;
+  return rule.rowPredicate ? `(${scope}) AND (${rule.rowPredicate})` : scope;
 }
 
 /**

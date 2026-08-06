@@ -71,10 +71,17 @@ export const useAccountActionsRuntime = () => {
         await usersService.deleteMe();
         await unregisterPushToken();
         await signOut();
+        // THE LAST THING THEY READ, and it was the stalest. This said "your
+        // account and personal data are gone" — false the moment deletion
+        // became recoverable, and the more dangerous kind of false: someone
+        // who mis-tapped reads it and believes there is nothing to come back
+        // to. Two other strings in this same file were corrected and this one
+        // was missed, which is why the promise spec now enumerates EVERY
+        // user-facing deletion string rather than the ones anyone remembered.
         showAppModal({
-          title: 'Account deleted',
+          title: 'Account closed',
           message:
-            'Your account and personal data are gone. If you had an App Store subscription, cancel it in iOS Settings → Apple ID → Subscriptions.',
+            'You have been signed out. You have 30 days to change your mind — just sign back in and your account is restored. After that it is permanent.\n\nIf you had an App Store subscription, cancel it in iOS Settings → Apple ID → Subscriptions.',
         });
       } catch (error) {
         logger.error('Account deletion failed', error);
