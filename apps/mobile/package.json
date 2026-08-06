@@ -14,7 +14,8 @@
     "test:track-domain": "ios/TrackScrollKit/Tests/run.sh",
     "test:watch": "jest --watch",
     "tsc:specs": "tsc --noEmit -p tsconfig.spec.json",
-    "lint": "eslint . --fix"
+    "lint": "eslint . --fix",
+    "type-check": "tsc --noEmit -p tsconfig.json"
   },
   "dependencies": {
     "@babel/runtime": "^7.28.0",

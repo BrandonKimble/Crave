@@ -7,13 +7,15 @@
   "module": "./dist/index.mjs",
   "types": "./dist/index.d.ts",
   "scripts": {
-    "build": "yarn clean && yarn build:js && yarn build:types",
+    "build": "yarn clean:incremental && yarn build:js && yarn build:types",
     "build:js": "tsup src/index.ts --format cjs,esm",
     "build:types": "tsc --emitDeclarationOnly -p tsconfig.json",
     "dev": "tsup src/index.ts --format cjs,esm --watch",
     "clean": "rm -rf dist tsconfig.tsbuildinfo",
     "lint": "eslint src --fix",
-    "test": "node --experimental-strip-types --test --disable-warning=MODULE_TYPELESS_PACKAGE_JSON 'src/**/*.test.ts'"
+    "test": "node --experimental-strip-types --test --disable-warning=MODULE_TYPELESS_PACKAGE_JSON 'src/**/*.test.ts'",
+    "type-check": "tsc --noEmit -p tsconfig.json",
+    "clean:incremental": "rm -f tsconfig.tsbuildinfo"
   },
   "devDependencies": {
     "@eslint/js": "^9.18.0",
