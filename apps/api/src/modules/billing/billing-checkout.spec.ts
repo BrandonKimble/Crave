@@ -321,8 +321,43 @@ describe('checkout.session.completed -> the access-grant ledger', () => {
   };
 
   beforeEach(() => {
-    stripeMock.webhooks.constructEvent.mockReturnValue(completedEvent);
-    stripeMock.subscriptions.retrieve.mockResolvedValue(subscription);
+    // THE ARGUMENTS ARE THE THING UNDER TEST (F2183). Doubles that answered
+    // any argument left 53/53 billing specs green while the service verified
+    // the signature against the WRONG SECRET and retrieved the WRONG
+    // SUBSCRIPTION (the session id) — a grant written from someone else's
+    // subscription. These fakes key on their input, exactly as Stripe does.
+    stripeMock.webhooks.constructEvent.mockImplementation(
+      (_payload: unknown, _sig: unknown, secret: string) => {
+        if (secret !== 'whsec_x') {
+          throw new Error(
+            'No signatures found matching the expected signature',
+          );
+        }
+        return completedEvent;
+      },
+    );
+    stripeMock.subscriptions.retrieve.mockImplementation((id: string) => {
+      if (id !== 'sub_web_1') {
+        return Promise.reject(new Error(`No such subscription: ${id}`));
+      }
+      return Promise.resolve(subscription);
+    });
+  });
+
+  it('verifies the signature against the CONFIGURED webhook secret', async () => {
+    const { service } = makeService();
+    await service.handleStripeWebhook('sig', Buffer.from('{}'));
+    expect(stripeMock.webhooks.constructEvent).toHaveBeenCalledWith(
+      expect.anything(),
+      'sig',
+      'whsec_x',
+    );
+  });
+
+  it("retrieves THE SESSION'S subscription, not some other object id", async () => {
+    const { service } = makeService();
+    await service.handleStripeWebhook('sig', Buffer.from('{}'));
+    expect(stripeMock.subscriptions.retrieve).toHaveBeenCalledWith('sub_web_1');
   });
 
   it('grants premium through the ledger and settles the attempt row', async () => {

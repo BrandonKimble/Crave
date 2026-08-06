@@ -25,24 +25,41 @@ const makeService = (opts: {
   lists?: number;
   favorites?: number;
   contributed?: number;
+  softDeleted?: boolean;
 }) => {
+  const row = {
+    userId: USER,
+    username: 'them',
+    displayName: 'Them',
+    avatarUrl: null,
+    // user_stats is a pure provisioning seam now — the profile read only
+    // checks row PRESENCE. statsCounter simulates a stale extra field to
+    // prove nothing reads it; pollsContributed is a live $queryRaw count.
+    stats: { pollsCreatedCount: opts.statsCounter },
+  };
   const prisma = {
     $queryRaw: jest
       .fn()
       .mockResolvedValue([{ count: BigInt(opts.contributed ?? 0) }]),
     user: {
-      findUnique: jest.fn().mockResolvedValue({
-        userId: USER,
-        username: 'them',
-        displayName: 'Them',
-        avatarUrl: null,
-        // user_stats is a pure provisioning seam now — the profile read only
-        // checks row PRESENCE. statsCounter simulates a stale extra field to
-        // prove nothing reads it; pollsContributed is a live $queryRaw count.
-        stats: {
-          pollsCreatedCount: opts.statsCounter,
+      // KEYED ON THE WHERE (F2184). A findUnique that answers ANY where
+      // identically cannot see the difference between "the live user asked
+      // for" and "any row at all": with one, dropping `deletedAt: null` from
+      // getPublicProfile — serving a DELETED account's profile — left all 68
+      // identity specs green. This double models the soft-delete predicate
+      // the way Postgres does: a query that omits it sees the deleted row.
+      findUnique: jest.fn(
+        ({
+          where,
+        }: {
+          where: { userId?: string; deletedAt?: Date | null };
+        }) => {
+          if (where.userId !== USER) return Promise.resolve(null);
+          const filtersDeleted = where.deletedAt === null;
+          if (opts.softDeleted && filtersDeleted) return Promise.resolve(null);
+          return Promise.resolve(row);
         },
-      }),
+      ),
     },
     poll: {
       count: jest.fn().mockResolvedValue(opts.pollCount),
@@ -134,6 +151,15 @@ describe('UserService profile stats == live counts (W4 pattern, all stats)', () 
     expect(prisma.userListItem.count).toHaveBeenCalledWith({
       where: { list: { ownerUserId: USER } },
     });
+  });
+
+  it('a SOFT-DELETED account has no public profile', async () => {
+    const { service } = makeService({
+      pollCount: 0,
+      statsCounter: 0,
+      softDeleted: true,
+    });
+    await expect(service.getPublicProfile(USER)).rejects.toThrow(/not found/i);
   });
 
   it('pollsContributedCount is a live endorsed-or-commented distinct count', async () => {

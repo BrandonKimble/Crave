@@ -26,8 +26,25 @@ function contextFor(user: { userId?: string } | undefined): ExecutionContext {
   } as unknown as ExecutionContext;
 }
 
-function build(options: { exempt: boolean; entitled: boolean }) {
+function build(options: {
+  exempt: boolean;
+  entitled: boolean;
+  entitledUserId?: string;
+}) {
   const handled = { called: false };
+  // THE VIEWER IS THE ARGUMENT UNDER TEST (F2182). A verdict double that
+  // answers ANY user id identically cannot tell "asked about the caller" from
+  // "asked about somebody else": with one, hardcoding a foreign id at the call
+  // site left all seven specs green — a cross-user entitlement read. This fake
+  // grants exactly one subject.
+  const subject = options.entitledUserId ?? 'u1';
+  const accessVerdict = jest.fn((userId: string) =>
+    Promise.resolve(
+      options.entitled && userId === subject
+        ? { kind: 'granted', entitlementCode: 'crave_plus' }
+        : { kind: 'denied', reason: 'no_grant' },
+    ),
+  );
   const next = {
     handle: () => {
       handled.called = true;
@@ -39,13 +56,7 @@ function build(options: { exempt: boolean; entitled: boolean }) {
       getAllAndOverride: () => options.exempt,
     } as never,
     {
-      accessVerdict: jest
-        .fn()
-        .mockResolvedValue(
-          options.entitled
-            ? { kind: 'granted', entitlementCode: 'crave_plus' }
-            : { kind: 'denied', reason: 'no_grant' },
-        ),
+      accessVerdict,
       defaultCode: 'crave_plus',
     } as never,
     {
@@ -56,7 +67,7 @@ function build(options: { exempt: boolean; entitled: boolean }) {
       }),
     } as never,
   );
-  return { interceptor, next, handled };
+  return { interceptor, next, handled, accessVerdict };
 }
 
 describe('paywall: enforce mode', () => {
@@ -120,12 +131,29 @@ describe('paywall: enforce mode', () => {
   });
 
   it('allows an entitled user', async () => {
-    const { interceptor, next } = build({ exempt: false, entitled: true });
+    const { interceptor, next, accessVerdict } = build({
+      exempt: false,
+      entitled: true,
+    });
     const result = await interceptor.intercept(
       contextFor({ userId: 'u1' }),
       next as never,
     );
     await expect(firstValueFrom(result)).resolves.toBe('body');
+    // Asked about THE CALLER, not about whoever the call site happened to name.
+    expect(accessVerdict).toHaveBeenCalledWith('u1');
+  });
+
+  it("never spends ANOTHER user's grant — the verdict is scoped to the caller", async () => {
+    const { interceptor, next, accessVerdict } = build({
+      exempt: false,
+      entitled: true,
+      entitledUserId: 'u1',
+    });
+    await expect(
+      interceptor.intercept(contextFor({ userId: 'u2' }), next as never),
+    ).rejects.toBeInstanceOf(ForbiddenException);
+    expect(accessVerdict).toHaveBeenCalledWith('u2');
   });
 });
 

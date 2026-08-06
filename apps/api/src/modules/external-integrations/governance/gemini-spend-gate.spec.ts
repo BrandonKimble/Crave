@@ -46,6 +46,31 @@ describe('GovernanceService.assertGeminiSpendOpen', () => {
     expect(emit).not.toHaveBeenCalled();
   });
 
+  /**
+   * WHICH POOL — the argument IS the thing under test (F2180).
+   * The verdict mock above answers ANY pool name identically, so every branch
+   * spec here stays green if the gate is repointed at a pool that is not the
+   * LLM budget (or at one that is not registered at all). Naming the pool is
+   * the only assertion that can go red on that mutation.
+   */
+  it('admits against gemini.monthlySpend — not some other budget', async () => {
+    const { run, self } = build({ admitted: true });
+    await run();
+    expect(self.pools.admit).toHaveBeenCalledWith('gemini.monthlySpend');
+  });
+
+  it.each([
+    ['assertPlacesSpendOpen', 'googlePlaces.monthlySpend'],
+    ['assertTomtomSpendOpen', 'tomtom.monthlySpend'],
+  ] as const)('%s admits against %s', async (method, poolName) => {
+    const admit = jest.fn().mockResolvedValue({ admitted: true });
+    const self = { pools: { admit }, opsAlerts: { emit: jest.fn() } };
+    await GovernanceService.prototype[method].call(
+      self as unknown as GovernanceService,
+    );
+    expect(admit).toHaveBeenCalledWith(poolName);
+  });
+
   it('FAILS CLOSED on an unconfirmed store — a budget that cannot prove its balance must not admit', async () => {
     const { run, emit } = build({
       admitted: false,

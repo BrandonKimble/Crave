@@ -41,10 +41,28 @@ describe('GeminiContextCacheRegistry', () => {
           fn(prismaProxy),
       ),
     };
-    prisma.geminiContextCache.findFirst = jest
-      .fn()
-      .mockResolvedValueOnce(rows[0] ?? null)
-      .mockResolvedValue(null);
+    // THE FAKE KEYS ON ITS INPUT (F2181). A findFirst that answers ANY
+    // `where` identically cannot tell "found the cache for THIS prompt" from
+    // "found some other prompt's cache": with it, dropping systemInstruction
+    // from promptHash — serving one prompt's cache to another — left all 12
+    // specs green. This double serves the fixture row only to a lookup whose
+    // where-clause is the exact (model, promptHash) of `params`.
+    let servedOnce = false;
+    prisma.geminiContextCache.findFirst = jest.fn(
+      (args: {
+        where: { model: string; promptHash: string; retiredAt: null };
+      }) => {
+        const wanted = GeminiContextCacheRegistry.promptHash(
+          params.model,
+          params.systemInstruction,
+        );
+        const keyed =
+          args.where.model === params.model && args.where.promptHash === wanted;
+        if (!keyed || servedOnce) return Promise.resolve(null);
+        servedOnce = true;
+        return Promise.resolve(rows[0] ?? null);
+      },
+    );
     const prismaProxy = prisma;
     const usageLedger = { record: jest.fn() };
     const ops: jest.Mocked<CacheVendorOps> = {
@@ -83,6 +101,21 @@ describe('GeminiContextCacheRegistry', () => {
     expect(ops.create).not.toHaveBeenCalled();
     // Reuse is free: no creation row, no new storage row.
     expect(usageLedger.record).not.toHaveBeenCalled();
+  });
+
+  it('a DIFFERENT prompt never reuses another prompt cache (the key is the thing under test)', async () => {
+    const { registry, ops } = build([
+      {
+        name: 'cachedContents/live',
+        tokenCount: 18_862,
+        expiresAt: new Date(Date.now() + 29 * HOUR),
+      },
+    ]);
+    const got = await registry.acquire(
+      { ...params, systemInstruction: 'a DIFFERENT prompt' },
+      ops,
+    );
+    expect(got).toMatchObject({ name: 'cachedContents/new', reused: false });
   });
 
   it('EXTENDS an expiring cache instead of minting a twin, and ledgers only the added hours', async () => {
