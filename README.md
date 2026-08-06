@@ -8,6 +8,7 @@ This is a Turborepo monorepo containing:
 
 - `apps/api`: NestJS backend with PostgreSQL and Prisma
 - `apps/mobile`: React Native mobile app with Expo
+- `apps/site`: Small HTTP service (Railway-deployed) serving the web rail — see `apps/site/README.md`
 - `packages/shared`: Shared TypeScript types and utilities
 
 ## Quick Start
@@ -22,7 +23,6 @@ make docker-up
 
 # 3. Setup databases and run migrations
 make db-migrate
-yarn workspace api db:seed
 
 # 4. Start development servers
 yarn dev
@@ -30,7 +30,9 @@ yarn dev
 
 ## Prerequisites
 
-- **Node.js 18+**
+- **Node.js 22** — the exact major is pinned in `.nvmrc` / `.node-version` and
+  enforced: `.lefthook/with-node-22.sh` exits 1 on any other major, so every
+  pre-commit hook refuses to run on the wrong Node.
 - **Yarn 1.22+** (package manager)
 - **Docker and Docker Compose** (for PostgreSQL and Redis)
 
@@ -39,15 +41,15 @@ yarn dev
 ```bash
 # Install Node.js (if not already installed)
 # Via nvm (recommended):
-nvm install 18
-nvm use 18
+nvm install   # reads .nvmrc
+nvm use       # reads .nvmrc
 
 # Enable Yarn (via Corepack)
 corepack enable
 corepack prepare yarn@1.22.22 --activate
 
 # Verify versions
-node --version  # Should be v18+
+node --version  # Must match .nvmrc (22.x)
 yarn --version  # Should be v1.22+
 docker --version # Should be v20+
 ```
@@ -143,9 +145,6 @@ docker ps  # Should show postgres and redis containers
 # Run database migrations
 make db-migrate
 
-# Seed with sample data
-yarn workspace api db:seed
-
 # Open database browser (optional)
 make db-studio
 ```
@@ -165,7 +164,6 @@ yarn workspace @crave-search/mobile dev     # Mobile only
 # Database operations
 make db-migrate                # Run migrations
 make db-studio                 # Open Prisma Studio
-yarn workspace api db:seed     # Seed sample data
 
 # Services
 make docker-up                 # Start PostgreSQL + Redis
@@ -202,9 +200,12 @@ yarn build                     # Build all apps
 
 Core tables:
 
-- `entities`: Unified storage for restaurants, food, categories, attributes
-- `connections`: Relationships between restaurants and food with quality scores
-- `mentions`: Reddit community evidence with attribution
+(names below are the `@@map` values in `apps/api/prisma/schema.prisma` — the
+actual Postgres table names, not the Prisma model names)
+
+- `core_entities`: Unified storage for restaurants, food, categories, attributes
+- `core_restaurant_items`: Relationships between restaurants and food with quality scores
+- `core_restaurant_item_mentions`: Reddit community evidence with attribution
 
 ### Mobile (apps/mobile)
 
@@ -271,8 +272,8 @@ corepack prepare yarn@1.22.22 --activate
 
 ```bash
 # Use nvm to manage Node versions
-nvm install 18
-nvm use 18
+nvm install   # reads .nvmrc
+nvm use       # reads .nvmrc
 ```
 
 ### Build/Runtime Issues
@@ -309,10 +310,11 @@ yarn workspace api db:migrate:reset --force
 
 ## Production Deployment
 
-**Note**: Production deployment is planned for later milestones (M02+). Current setup is optimized for local development.
+Production runs on Railway (live since 2026-07-24). Deploys go **staging first,
+then production**, via `./scripts/rig/deploy.sh` — never by hand.
 
-For production considerations, see:
-
+- `RAILWAY.md` - topology, environments, health URLs, and the deploy law
+- `scripts/rig/deploy.sh` - the only supported deploy path
 - `apps/api/README.md` - API deployment notes
 - `CLAUDE.md` - Architecture documentation
 

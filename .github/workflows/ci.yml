@@ -83,6 +83,16 @@ jobs:
       - name: 'Static guard: railway manifests carry no startCommand/watchPatterns'
         run: node scripts/check-railway-manifests.mjs
 
+      # A README's commands are the only part of a repo that can be wrong
+      # SILENTLY, because nothing runs them: README.md documented
+      # `yarn workspace api db:seed` three times and that script has never
+      # existed (F2500). Scoped to docs that read as CURRENT RECIPES — the
+      # history corpora (plans/, audit/, product/, business/, the stale root
+      # specs) are excluded in the script, each with its reason, because a
+      # permanently-red gate gets disabled and that is worse than nothing.
+      - name: 'Static guard: doc commands and paths resolve'
+        run: node scripts/check-doc-claims.mjs
+
       # Migrations run in the container's BOOT command, so a heavy one that
       # exhausts prod's small /dev/shm does not fail a migration — it
       # P3009-crash-loops the deploy. AUTHORING.md §1 has required the two

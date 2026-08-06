@@ -8,7 +8,7 @@ This document outlines the production storage strategy for migrating Pushshift a
 
 ### Storage Details
 
-- **Location**: `apps/api/data/pushshift/archives/`
+- **Location**: `apps/api/data/pushshift/archives/` (gitignored — the archives are local-only and are not in the repo)
 - **Total Size**: ~118 MB (4 archive files)
 - **Access Pattern**: Direct file system access via Node.js
 - **Backup**: Local development machine only

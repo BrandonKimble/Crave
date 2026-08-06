@@ -62,11 +62,24 @@ drop, the signals-partition/cron coupling).
 
 ## Topology
 
-Two services from the same image, distinguished by `PROCESS_ROLE`:
+THREE deployable services — one manifest each. The deployable set is derived,
+not typed: `scripts/rig/deploy.sh` reads `git ls-files 'railway*.json'` and
+REFUSES any name outside it (`railway.json` = api, `railway.<name>.json` =
+<name>), so a fourth service is covered the day its manifest lands.
 
-- `api` — `PROCESS_ROLE=api`, public domain enabled.
+`api` and `worker` are the SAME image, distinguished by `PROCESS_ROLE`:
+
+- `api` — `PROCESS_ROLE=api`, public domain enabled. The only service whose
+  `/health` reports the running commit, so the only one the deploy smoke can
+  assert an identity against.
 - `worker` — `PROCESS_ROLE=worker`, private (no public domain), usually 1
-  replica (bounded by Reddit/Gemini quotas).
+  replica (bounded by Reddit/Gemini quotas). Serves no HTTP; its smoke is
+  "newest Railway deployment is SUCCESS".
+- `site` — separate image (`apps/site/Dockerfile`, `railway.site.json`), the
+  web rail. Answers `/healthz`, but that reports liveness only and carries no
+  commit, so it gets the same deployment-status smoke as the worker.
+  `deploy.sh` defaults to `(api worker)`; deploy it explicitly:
+  `./scripts/rig/deploy.sh --env staging site`.
 
 Both must share `DATABASE_URL`, `REDIS_*`, `APP_ENV`, and `BULL_PREFIX` (an
 identical `BULL_PREFIX` is what makes API enqueues reach the worker).

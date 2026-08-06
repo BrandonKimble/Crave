@@ -39,7 +39,7 @@ The read-only majority:
 > under the retired hand-set threshold; the margin + per-tier-floor decision has
 > since shipped, and the harnesses now IMPORT it rather than replicate it. The
 > baselines are kept as history — re-run a harness before quoting it as current.
-> The corpus-integrity counts published in `scripts/data-fixes/README.md` were
+> The corpus-integrity counts published in `apps/api/scripts/data-fixes/README.md` were
 > re-measured 2026-08-03 and had ALL moved (F1253).
 
 ## Scripts

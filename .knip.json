@@ -1,6 +1,14 @@
 {
+  // knip reads this file as JSONC — comments are load-bearing here. Every
+  // ignore below is a CLAIM about why a declared dependency has no import in
+  // its own workspace. An unexplained ignore is indistinguishable from dead
+  // weight, which is how `lint-staged` (F1992), `pixelmatch` and the two
+  // `@commitlint/*` packages survived for months (F2060/F2501).
   "workspaces": {
     "apps/mobile": {
+      // Not an npm binary: a repo-relative shell script invoked directly as the
+      // `test:track-domain` script (apps/mobile/package.json:14).
+      "ignoreBinaries": ["ios/TrackScrollKit/Tests/run.sh"],
       "ignoreDependencies": [
         "expo-system-ui",
         "@expo/metro-config",
@@ -14,6 +22,57 @@
     "apps/api": {
       "ignoreBinaries": ["docker-compose"],
       "ignoreDependencies": ["@typescript-eslint/eslint-plugin", "@typescript-eslint/parser"]
+    },
+
+    // THE ROOT WORKSPACE (F2060/F2501). It was outside the gate entirely: the
+    // globs were `apps/*` + `packages/*` and the root is neither, so its
+    // dependencies, its devDependencies and all ~57 files in `scripts/` were
+    // audited by nothing. scripts/deps-check.sh now derives the workspace list
+    // from `git ls-files '*package.json'`, so the root is in.
+    ".": {
+      // The root owns no `src/`; its source IS `scripts/`. Without this the
+      // root's real consumers (dotenv, ioredis, sharp, pngjs) are invisible and
+      // every one of them reads as unused.
+      "entry": ["scripts/**/*.{js,mjs,cjs}"],
+      "project": ["scripts/**/*.{js,mjs,cjs}"],
+      "ignoreDependencies": [
+        // Hoist-serving: declared at the root so yarn v1 hoists ONE copy for
+        // Metro/Expo. apps/mobile declares and imports them; the root does not
+        // import them and must not.
+        "@babel/runtime",
+        "@babel/core",
+        "expo-splash-screen",
+        "expo-status-bar",
+        // Pinned at exact versions at the root to force a single resolution of
+        // a transitive Expo/Metro dependency. Never imported by us.
+        "baseline-browser-mapping",
+        "browserslist",
+        // Consumed through ESLint config resolution, not through an import:
+        // apps/mobile/.eslintrc.js:24 declares `plugins: ['react-hooks']` and
+        // :2 extends ../../.eslintrc.js, so the plugin resolves from the root.
+        "eslint-plugin-react-hooks",
+        // NOT hoist-serving and NOT used by any root script — the only axios
+        // consumer is apps/mobile, which declares its own. Kept (rather than
+        // deleted alongside pixelmatch) because yarn v1 hoisting for the RN app
+        // was not re-verified in this pass; delete it the next time someone does.
+        "axios",
+        // Required by scripts/seed-market-demand-maestro-fixtures.js. Declared
+        // by apps/api (which generates the client); the root script uses that
+        // generated client deliberately rather than declaring a second copy
+        // that could drift from the schema.
+        "@prisma/client"
+      ],
+      "ignoreBinaries": [
+        // `swift test --package-path apps/mobile/ios/MapLodKit` (test:native) —
+        // a toolchain binary, not an npm one.
+        "swift",
+        // False attribution: knip credits .github/workflows/ci.yml to the root,
+        // but both steps run with `working-directory: apps/api` (ci.yml:59,63
+        // and :173-175), where `prisma` is a real bin and `invariants` a real
+        // api script.
+        "prisma",
+        "invariants"
+      ]
     }
   }
 }

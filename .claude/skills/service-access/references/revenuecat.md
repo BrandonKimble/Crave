@@ -50,7 +50,9 @@ settings. Once authed it is strictly better than curl for v2 work.
 `REVENUECAT_ENTITLEMENT_MAP`, `REVENUECAT_WEBHOOK_SECRET`,
 `BILLING_DEFAULT_ENTITLEMENT`, `BILLING_TRIAL_DAYS`, `ENTITLEMENT_GATING`.
 Mobile key: `EXPO_PUBLIC_REVENUECAT_IOS_KEY`. The free-vs-paid split is
-specified in `business/monetization-and-gating.md`. RevenueCat handles IAP;
+specified in `business/signal/blueprint.md` §2 ("The wall — price, staging,
+spec"); the old `monetization-and-gating.md` was deleted 2026-07-12 and
+superseded wholesale. RevenueCat handles IAP;
 Stripe handles the web rail — they coexist by decision.
 
 ## Confirm first

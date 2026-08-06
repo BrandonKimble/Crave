@@ -50,15 +50,72 @@ while [[ $# -gt 0 ]]; do
 done
 [[ ${#SERVICES[@]} -eq 0 ]] && SERVICES=(api worker)
 
+# VALIDATE THE SERVICE NAMES (F2503). `--env` was red-teamed into the `case`
+# allowlist below after a real incident — and the argument RIGHT NEXT TO IT
+# accepted any bare word. `deploy.sh sitte` collected "sitte" as a service,
+# `railway up --service sitte` failed, and the lesson learned about one
+# argument had never been applied to the other.
+#
+# The deployable set is a FACT about the repo, not a bash default: one
+# `railway*.json` manifest per service — `railway.json` is the api,
+# `railway.<name>.json` is <name>. Same discovery shape as
+# scripts/check-railway-manifests.mjs. A fourth service is covered the day its
+# manifest is committed, with no edit here.
+KNOWN_SERVICES=()
+while IFS= read -r manifest; do
+  [[ -z "$manifest" ]] && continue
+  if [[ "$manifest" == "railway.json" ]]; then
+    KNOWN_SERVICES+=(api)
+  else
+    svc_name="${manifest#railway.}"
+    KNOWN_SERVICES+=("${svc_name%.json}")
+  fi
+done < <(git ls-files 'railway*.json')
+
+# ZERO DISCOVERED MANIFESTS IS A REFUSAL, NEVER A PASS — an empty allowlist
+# that accepts everything is the bug this block exists to remove.
+if [[ ${#KNOWN_SERVICES[@]} -eq 0 ]]; then
+  echo "REFUSED: no railway*.json manifests found, so no service name can be validated." >&2
+  exit 1
+fi
+for svc in "${SERVICES[@]}"; do
+  if [[ " ${KNOWN_SERVICES[*]} " != *" $svc "* ]]; then
+    echo "REFUSED: unknown service '$svc'. Deployable services (from git ls-files 'railway*.json'): ${KNOWN_SERVICES[*]}" >&2
+    exit 1
+  fi
+done
+
 # VALIDATE THE ENV (final red team): `--env prod` (a plausible typo) is
 # neither "production" nor "staging", so every prod guard was skipped —
 # no dirty-tree check, no origin check, NO SNAPSHOT — while the smoke
 # curled STAGING's /health. Green output, unguarded prod deploy.
 case "$ENVIRONMENT" in
-  production) HEALTH_URL="https://api-production-a56f.up.railway.app/health" ;;
-  staging)    HEALTH_URL="https://api-staging-25ca.up.railway.app/health" ;;
+  production) API_HEALTH_URL="https://api-production-a56f.up.railway.app/health" ;;
+  staging)    API_HEALTH_URL="https://api-staging-25ca.up.railway.app/health" ;;
   *) echo "REFUSED: unknown --env '$ENVIRONMENT' (expected production|staging)." >&2; exit 1 ;;
 esac
+
+# WHICH SERVICE CAN BE SMOKED OVER HTTP, AND WHICH CANNOT (F2503). The smoke
+# used to curl the api's /health no matter what shipped: deploy only `site`, or
+# only `worker` on a commit where api was already current, and the run went
+# green having proven nothing about what you deployed.
+#
+# `api` is the only service that answers with its own identity — /health echoes
+# the baked DEPLOYED_GIT_SHA, so "is the RUNNING commit the one I shipped" is
+# answerable. The other two are UNSMOKEABLE FROM HERE, and this says so in code
+# rather than by silently reusing the api's URL:
+#   worker — serves no HTTP at all (a queue consumer).
+#   site   — answers /healthz, but that endpoint reports liveness only and
+#            carries no commit, so a 200 cannot distinguish the new build from
+#            the old one. Its Railway host is also not recorded in this repo.
+# Both fall back to asserting their newest Railway deployment is SUCCESS, which
+# is the check the worker already had bolted on ad hoc below.
+service_health_url() {
+  case "$1" in
+    api) printf '%s' "$API_HEALTH_URL" ;;
+    *)   printf '' ;;
+  esac
+}
 
 if [[ "$ENVIRONMENT" == "production" && "$FORCE" -ne 1 ]]; then
   # Untracked (non-ignored) files ship too — `railway up` uploads the tree,
@@ -293,58 +350,72 @@ for svc in "${SERVICES[@]}"; do
   deploy_one "$svc"
 done
 
-echo "==> Smoke: /health (asserting the RUNNING commit == HEAD) ..."
-# EXACT, NOT FUZZY (red-team P1, 2026-08-02): the old check used uptime>900 as
-# a proxy for "new container". A skipped or crash-looped deploy within 15 min
-# of the last one passed it green — which is exactly how a SKIPPED prod deploy
-# smoked clean today. /health echoes DEPLOYED_GIT_SHA, so we can demand the
-# exact answer: the process must report HEAD. Poll a bit — the new container
-# boots + runs migrations after `railway up` returns. ONE curl gets code+body
-# (two separate curls can hit different containers).
-# Compare against the STAMP we wrote, not bare HEAD — a dirty STAGING deploy
-# stamps HEAD-dirty (by design), and asserting bare HEAD would fail every
-# dirty staging smoke. $STAMP_SHA is exactly what the new container must echo.
+# ── SMOKE EVERY SERVICE THAT ACTUALLY SHIPPED (F2503) ─────────────────────
+#
+# This used to be one unconditional curl of the api's /health plus a bolted-on
+# worker-status block. Deploying only `site` therefore smoked the api and
+# reported success about a service that had not moved. The rule is now
+# per-service and applies to exactly the services in $SERVICES.
 EXPECT_SHA="$STAMP_SHA"
-running=""; code=""
-for _ in $(seq 1 20); do
-  resp="$(curl -s -m 20 -w $'\n%{http_code}' "$HEALTH_URL" 2>/dev/null || true)"
-  code="$(printf '%s' "$resp" | tail -1)"
-  body="$(printf '%s' "$resp" | sed '$d')"
-  running="$(printf '%s' "$body" | python3 -c 'import json,sys; print((json.load(sys.stdin) or {}).get("commit",""))' 2>/dev/null || true)"
-  [[ "$code" == "200" && "$running" == "$EXPECT_SHA" ]] && break
-  sleep 6
+for svc in "${SERVICES[@]}"; do
+  url="$(service_health_url "$svc")"
+
+  if [[ -z "$url" ]]; then
+    # UNSMOKEABLE OVER HTTP — stated in service_health_url() with the reason.
+    # Assert Railway's own verdict instead: the newest deployment must be
+    # SUCCESS (a silently-skipped worker was invisible before — red-team P1).
+    echo "==> Smoke: $svc (no commit-reporting health endpoint — asserting Railway deployment status) ..."
+    set +e
+    dstat="$(railway deployment list --service "$svc" --environment "$ENVIRONMENT" 2>&1 | sed -n 2p)"
+    dstat_status=$?
+    set -e
+    if [[ "$dstat_status" -ne 0 ]]; then
+      echo "FAILED: could not read $svc deployment status ($dstat)." >&2
+      exit 1
+    fi
+    if ! grep -q "SUCCESS" <<<"$dstat"; then
+      echo "FAILED: $svc's newest deployment is not SUCCESS ($dstat)." >&2
+      exit 1
+    fi
+    echo "==> $svc: newest deployment SUCCESS."
+    continue
+  fi
+
+  echo "==> Smoke: $svc /health (asserting the RUNNING commit == the stamp) ..."
+  # EXACT, NOT FUZZY (red-team P1, 2026-08-02): the old check used uptime>900 as
+  # a proxy for "new container". A skipped or crash-looped deploy within 15 min
+  # of the last one passed it green — which is exactly how a SKIPPED prod deploy
+  # smoked clean that day. /health echoes DEPLOYED_GIT_SHA, so we can demand the
+  # exact answer. Poll a bit — the new container boots + runs migrations after
+  # `railway up` returns. ONE curl gets code+body (two separate curls can hit
+  # different containers).
+  # Compare against the STAMP we wrote, not bare HEAD — a dirty STAGING deploy
+  # stamps HEAD-dirty (by design), and asserting bare HEAD would fail every
+  # dirty staging smoke.
+  running=""; code=""
+  for _ in $(seq 1 20); do
+    resp="$(curl -s -m 20 -w $'\n%{http_code}' "$url" 2>/dev/null || true)"
+    code="$(printf '%s' "$resp" | tail -1)"
+    body="$(printf '%s' "$resp" | sed '$d')"
+    running="$(printf '%s' "$body" | python3 -c 'import json,sys; print((json.load(sys.stdin) or {}).get("commit",""))' 2>/dev/null || true)"
+    [[ "$code" == "200" && "$running" == "$EXPECT_SHA" ]] && break
+    sleep 6
+  done
+  if [[ "$code" != "200" ]]; then
+    echo "FAILED: $svc /health returned $code after deploy." >&2
+    exit 1
+  fi
+  if [[ "$running" != "$EXPECT_SHA" ]]; then
+    echo "FAILED: $svc /health is 200 but the RUNNING commit is not the one deployed." >&2
+    echo "  running: ${running:0:9}" >&2
+    echo "  expected: ${EXPECT_SHA:0:9}" >&2
+    echo "  The deploy did not ship (SKIPPED, crash-looped, or slow)." >&2
+    # NO CORRECTIVE RE-STAMP NEEDED (foundation audit 2026-08-02): the sha is
+    # BAKED INTO THE IMAGE (apps/api/Dockerfile), so /health reports what the
+    # running image actually is. It cannot be forged by a failed deploy.
+    echo "  railway logs --service $svc --environment $ENVIRONMENT   # investigate" >&2
+    exit 1
+  fi
+  echo "==> $svc: /health 200, running commit == ${EXPECT_SHA:0:9}."
 done
-if [[ "$code" != "200" ]]; then
-  echo "FAILED: /health returned $code after deploy." >&2
-  exit 1
-fi
-if [[ "$running" != "$EXPECT_SHA" ]]; then
-  echo "FAILED: /health is 200 but the RUNNING commit is not HEAD." >&2
-  echo "  running: ${running:0:9}" >&2
-  echo "  expected: ${EXPECT_SHA:0:9}" >&2
-  echo "  The deploy did not ship (SKIPPED, crash-looped, or slow)." >&2
-  # NO CORRECTIVE RE-STAMP NEEDED ANYMORE (foundation audit 2026-08-02): the
-  # sha is BAKED INTO THE IMAGE (apps/api/Dockerfile), so /health reports what
-  # the running image actually is. It cannot be forged by a failed deploy, and
-  # there is nothing to go back and fix. The env var below is now only the
-  # BUILD ARG source, not the runtime truth.
-  echo "  railway logs --service api --environment $ENVIRONMENT   # investigate" >&2
-  exit 1
-fi
-# WORKER shipped? It serves no HTTP /health, so assert its newest deployment
-# is SUCCESS (a silently-skipped worker was invisible before — red-team P1).
-if [[ " ${SERVICES[*]} " == *" worker "* ]]; then
-  set +e
-  wstat="$(railway deployment list --service worker --environment "$ENVIRONMENT" 2>&1 | sed -n 2p)"
-  wstat_status=$?
-  set -e
-  if [[ "$wstat_status" -ne 0 ]]; then
-    echo "FAILED: could not read worker deployment status ($wstat)." >&2
-    exit 1
-  fi
-  if ! grep -q "SUCCESS" <<<"$wstat"; then
-    echo "FAILED: worker's newest deployment is not SUCCESS ($wstat)." >&2
-    exit 1
-  fi
-fi
-echo "==> Deployed ${EXPECT_SHA:0:9} to $ENVIRONMENT — /health 200, running commit matches the stamp."
+echo "==> Deployed ${EXPECT_SHA:0:9} to $ENVIRONMENT — every service in [${SERVICES[*]}] verified."

@@ -21,10 +21,13 @@ pre-commit:
       glob: '*.{js,jsx,ts,tsx,json,md,yml,yaml}'
       run: bash ./.lefthook/with-node-22.sh yarn prettier --check {staged_files}
 
-    # Root-level linting for config files (skip for now - no root ESLint config)
-    # root-lint:
-    #   glob: '{*.js,*.ts,.eslintrc.*,lefthook.yml}'
-    #   run: yarn eslint --fix {staged_files}
+    # (F2505) A dead `root-lint` block used to sit here, disabled with the
+    # comment "no root ESLint config". That premise was FALSE: `.eslintrc.js`
+    # exists at the repo root and is load-bearing — apps/mobile/.eslintrc.js:2
+    # is `extends: ['../../.eslintrc.js']`, and `eslint --print-config` resolves
+    # it. Deleted rather than enabled: it had been commented out long enough
+    # that nobody intends to turn it on, and a false reason is worse than no
+    # block at all.
 
     secrets:
       run: gitleaks protect --staged --verbose --redact
