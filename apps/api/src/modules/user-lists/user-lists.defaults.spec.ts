@@ -142,7 +142,11 @@ describe('system-default guards + home ordering (UserListsService)', () => {
     const service = new UserListsService(
       prisma as never,
       new UserListAccessPolicy(prisma as never, blocks as never),
-      new ListResultsAssembler({} as never, {} as never),
+      new ListResultsAssembler(
+        {} as never,
+        {} as never,
+        { getDietaryPairs: () => Promise.resolve(new Map()) } as never,
+      ),
       new UserListMapper(prisma as never, logger as never),
       { loadTileImages: () => Promise.resolve(new Map()) } as never,
       {

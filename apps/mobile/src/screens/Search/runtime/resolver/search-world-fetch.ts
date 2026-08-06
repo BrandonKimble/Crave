@@ -15,6 +15,7 @@ import type {
 } from '../../../../services/search';
 import { DEFAULT_PAGE_SIZE } from '../../constants/search';
 import type { SearchDesiredTuple } from '../shared/search-desired-state-contract';
+import { selectLensRequestFields, selectSearchLens } from '../shared/search-desired-state-contract';
 import { constructSearchWorldValue } from './search-world-value-constructor';
 import type { SearchWorldNetworkFetchResult } from './search-world-resolver';
 import {
@@ -73,23 +74,24 @@ const attachTupleScopeToPayload = (
   tuple: SearchDesiredTuple,
   userLocation: Coordinate | null
 ): void => {
-  const filters = tuple.filterVariant;
-  if (filters.openNow) {
+  // ONE lens → request projection (see selectLensRequestFields): the cards,
+  // map and list lanes all read it, so a lens dimension can never reach one
+  // lane and silently miss another.
+  const lensFields = selectLensRequestFields(selectSearchLens(tuple));
+  if (lensFields.openNow) {
     payload.openNow = true;
   }
-  // DIETARY WALLS: canonical names ride as their own field — the server
-  // resolves each to its per-projection attribute pair (dish requires the
-  // dish-side attribute; restaurant passes on venue-side OR any dish).
-  if (filters.dietary.length > 0) {
-    payload.dietary = [...filters.dietary];
+  if (lensFields.dietary) {
+    payload.dietary = lensFields.dietary;
   }
-  if (filters.priceLevels.length > 0) {
-    payload.priceLevels = [...filters.priceLevels];
+  if (lensFields.priceLevels) {
+    payload.priceLevels = lensFields.priceLevels;
   }
   // Always sent explicitly — false suppresses the server's env-default silent
   // dense widening (include-similar contract, packages/shared search types).
-  payload.includeSimilar = filters.includeSimilar;
-  if (filters.rising) {
+  // includeSimilar is IDENTITY, not lens — it rides the tuple directly.
+  payload.includeSimilar = tuple.filterVariant.includeSimilar;
+  if (lensFields.rising) {
     payload.risingActive = true;
   }
   const committed = tuple.committedBounds;
@@ -173,9 +175,7 @@ export const createSearchWorldFetcher =
       response = await env.getCuratedListResults(identity.listId);
     } else if (identity.kind === 'list') {
       response = await env.getFavoritesListResults(identity.listId, {
-        openNow: tuple.filterVariant.openNow || undefined,
-        dietary:
-          tuple.filterVariant.dietary.length > 0 ? [...tuple.filterVariant.dietary] : undefined,
+        ...selectLensRequestFields(selectSearchLens(tuple)),
         userLocation: userLocation ?? undefined,
         // Virtual-All from ANOTHER user's surface: scope the union to the owner.
         targetUserId: identity.targetUserId ?? undefined,
@@ -184,10 +184,6 @@ export const createSearchWorldFetcher =
         // Strip 'world' flip: the list-strip slice rides the tuple's filterVariant, so a
         // sort/price/city chip re-resolves the WORLD (map pins + cards re-slice together).
         sort: tuple.filterVariant.listSort,
-        priceLevels:
-          tuple.filterVariant.priceLevels.length > 0
-            ? [...tuple.filterVariant.priceLevels]
-            : undefined,
         cityPlaceId: tuple.filterVariant.cityPlaceId ?? undefined,
       });
       if (__DEV__) {

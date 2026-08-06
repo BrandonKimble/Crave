@@ -24,7 +24,11 @@ function makeService(items: any[]) {
   const service = new UserListsService(
     prisma,
     new UserListAccessPolicy(prisma, blocks as never),
-    new ListResultsAssembler({} as never, {} as never),
+    new ListResultsAssembler(
+      {} as never,
+      {} as never,
+      { getDietaryPairs: () => Promise.resolve(new Map()) } as never,
+    ),
     new UserListMapper(prisma, logger),
     { loadTileImages: () => Promise.resolve(new Map()) } as never,
     {

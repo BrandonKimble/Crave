@@ -303,6 +303,31 @@ export const areSearchLensesEqual = (a: SearchLens, b: SearchLens): boolean =>
   (a.cityPlaceId ?? null) === (b.cityPlaceId ?? null) &&
   areNumberArraysEqual(a.priceLevels, b.priceLevels);
 
+/** THE LENS → REQUEST PROJECTION (one seam, every lane).
+ *
+ *  A lens is only honest if EVERY lane that fetches under it applies it:
+ *  the cards request, the map/coverage request, and the list request. Those
+ *  three built their payloads independently, so adding a lens dimension
+ *  meant remembering three places — and `dietary` (2026-08-04) reached only
+ *  the cards lane: the map kept every pin while the cards were walled, and
+ *  list worlds cached an UNFILTERED response under a `diet:` slice key.
+ *  Both lanes now project from HERE, so a new dimension lands everywhere at
+ *  once (and `buildSearchLensKey` above stays the one key over the same
+ *  fields). */
+export type SearchLensRequestFields = {
+  openNow?: boolean;
+  dietary?: string[];
+  priceLevels?: number[];
+  rising?: boolean;
+};
+
+export const selectLensRequestFields = (lens: SearchLens): SearchLensRequestFields => ({
+  ...(lens.openNow ? { openNow: true } : {}),
+  ...(lens.dietary.length ? { dietary: [...lens.dietary] } : {}),
+  ...(lens.priceLevels.length ? { priceLevels: [...lens.priceLevels] } : {}),
+  ...(lens.rising ? { rising: true } : {}),
+});
+
 /** The slice key (S2: `worldCache[worldKey].slices[lensKey]`). Stable serialization —
  *  the DEFAULT lens serializes to the same token everywhere so the unlensed slice is
  *  the canonical page-1 world. */

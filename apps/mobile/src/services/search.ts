@@ -706,6 +706,7 @@ export const searchService = {
       includeTopDish?: boolean;
       // TR5-N: the coverage layer applies the ACTIVE filter variant (map follows the cards).
       openNow?: boolean;
+      dietary?: string[];
       priceLevels?: number[];
       rising?: boolean;
     },

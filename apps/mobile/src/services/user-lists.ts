@@ -134,6 +134,7 @@ export const userListsService = {
     listId: string,
     opts?: {
       openNow?: boolean;
+      dietary?: string[];
       /** Leg 10 (defect #4): Google price_level values 0–4 — the strip's Price chip. */
       priceLevels?: number[];
       /** The strip's City chip (§8.16, All lists) — a catalog place id. */
@@ -150,6 +151,7 @@ export const userListsService = {
   ): Promise<SearchResponse> {
     const response = await api.post<SearchResponse>(`/lists/${listId}/results`, {
       openNow: opts?.openNow,
+      dietary: opts?.dietary?.length ? opts.dietary : undefined,
       priceLevels: opts?.priceLevels?.length ? opts.priceLevels : undefined,
       cityPlaceId: opts?.cityPlaceId ?? undefined,
       userLocation: opts?.userLocation

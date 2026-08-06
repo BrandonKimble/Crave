@@ -58,6 +58,14 @@ export class UserListResultsDto {
   @IsBoolean()
   openNow?: boolean;
 
+  /** DIETARY WALLS (owner semantics 2026-08-04): the list strip's dietary
+   *  chips ride the SAME per-projection rule as search — without this a
+   *  list world cached an UNFILTERED response under a `diet:` lens key. */
+  @IsOptional()
+  @IsArray()
+  @IsString({ each: true })
+  dietary?: string[];
+
   /**
    * Leg 10 (primitive defect #4): the ListDetail strip's Price chip — the same
    * vocabulary as the search DTO (Google price_level 0–4); rides the executor's

@@ -24,7 +24,13 @@ const listIdentity = (source?: 'curated' | null): SearchQueryIdentity => ({
 const tupleOf = (identity: SearchQueryIdentity): SearchDesiredTuple => ({
   queryIdentity: identity,
   tab: 'restaurants',
-  filterVariant: { openNow: false, priceLevels: [], rising: false, includeSimilar: false },
+  filterVariant: {
+    openNow: false,
+    dietary: [],
+    priceLevels: [],
+    rising: false,
+    includeSimilar: false,
+  },
   committedBounds: null,
 });
 

@@ -40,7 +40,7 @@ describe('the lens axis (S1 vocabulary)', () => {
     expect(buildSearchLensKey(selectSearchLens(makeTuple()))).toBe(
       buildSearchLensKey(selectSearchLens(makeTuple()))
     );
-    expect(buildSearchLensKey(selectSearchLens(makeTuple()))).toBe('open:0|price:|rising:0');
+    expect(buildSearchLensKey(selectSearchLens(makeTuple()))).toBe('open:0|diet:|price:|rising:0');
   });
 
   it('S2 DECOMPOSITION IS LOSSLESS: sliceKey = worldKey ## lensKey carries every axis the flat key carried', () => {
@@ -49,6 +49,7 @@ describe('the lens axis (S1 vocabulary)', () => {
     const tuple = makeTuple({
       filterVariant: {
         openNow: true,
+        dietary: ['vegan'],
         priceLevels: [2],
         rising: false,
         includeSimilar: true,
@@ -66,7 +67,7 @@ describe('the lens axis (S1 vocabulary)', () => {
     expect(worldKey).not.toContain('sort:');
     expect(worldKey).not.toContain('city:');
     // Lens side carries the rest, and the slice key is the exact composition.
-    expect(lensKey).toBe('open:1|price:2|rising:0|sort:best|city:place-austin');
+    expect(lensKey).toBe('open:1|diet:vegan|price:2|rising:0|sort:best|city:place-austin');
     expect(sliceKey).toBe(`${worldKey}##${lensKey}`);
     expect(searchWorldGroupOfSliceKey(sliceKey)).toBe(worldKey);
   });

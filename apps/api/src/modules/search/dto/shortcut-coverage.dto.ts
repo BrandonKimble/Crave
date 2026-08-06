@@ -1,6 +1,7 @@
 import { Type } from 'class-transformer';
 import {
   IsArray,
+  IsString,
   IsBoolean,
   IsInt,
   IsOptional,
@@ -37,6 +38,15 @@ export class ShortcutCoverageRequestDto {
   @IsOptional()
   @IsBoolean()
   openNow?: boolean;
+
+  /** DIETARY WALLS: canonical names, same per-projection semantics the ranked
+   *  lane applies (venue attribute OR any qualifying dish). Without this the
+   *  map keeps every pin while the cards are walled — the exact "map follows
+   *  the cards" break found 2026-08-04. */
+  @IsOptional()
+  @IsArray()
+  @IsString({ each: true })
+  dietary?: string[];
 
   @IsOptional()
   @IsArray()

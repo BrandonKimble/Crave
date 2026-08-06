@@ -14,6 +14,11 @@ import type { StructuredSearchRequest } from '../../../../services/search';
 import { getCraveScoreColorFromScore } from '../../../../utils/quality-color';
 import type { RestaurantFeatureProperties } from '../../components/search-map';
 import type { SearchDesiredTuple } from '../shared/search-desired-state-contract';
+import {
+  buildSearchLensKey,
+  selectLensRequestFields,
+  selectSearchLens,
+} from '../shared/search-desired-state-contract';
 import type { SearchMountedResultsCoverageEntry } from '../shared/search-mounted-results-data-store';
 
 // F1063: this segment WAS `buildEntitiesKey({})` — an FNV-1a hash of a normalized,
@@ -48,20 +53,13 @@ const buildBoundsKey = (bounds: MapBounds): string =>
     bucketCoordinate(bounds.southWest.lng),
   ].join(',');
 
-const buildFiltersKey = (tuple: SearchDesiredTuple): string => {
-  const filters = tuple.filterVariant;
-  const parts: string[] = [];
-  if (filters.openNow) {
-    parts.push('open');
-  }
-  if (filters.priceLevels.length) {
-    parts.push(`price=${[...filters.priceLevels].sort((a, b) => a - b).join(',')}`);
-  }
-  if (filters.rising) {
-    parts.push('rising');
-  }
-  return parts.length ? parts.join('+') : 'none';
-};
+/** The coverage key is the LENS key — the map slices by exactly the lens the
+ *  cards slice by ("map follows the cards", TR5-N). Hand-listing the fields
+ *  here is how `dietary` (2026-08-04) became invisible to the map: three
+ *  lenses collapsed onto one coverage entry and the pins kept every
+ *  restaurant while the cards were walled. */
+const buildFiltersKey = (tuple: SearchDesiredTuple): string =>
+  buildSearchLensKey(selectSearchLens(tuple));
 
 export const buildShortcutCoverageWorldRequestKey = (args: {
   tuple: SearchDesiredTuple;
@@ -158,6 +156,7 @@ export type ShortcutCoverageService = (
     viewportPolygon?: Array<[number, number]>;
     includeTopDish: boolean;
     openNow?: boolean;
+    dietary?: string[];
     priceLevels?: number[];
     rising?: boolean;
   },
@@ -195,9 +194,7 @@ export const fetchShortcutCoverageWorldEntry = async (args: {
           ([lng, lat]) => [lng, lat] as [number, number]
         ),
         includeTopDish,
-        openNow: filters.openNow || undefined,
-        priceLevels: filters.priceLevels.length ? [...filters.priceLevels] : undefined,
-        rising: filters.rising || undefined,
+        ...selectLensRequestFields(selectSearchLens(tuple)),
       },
       {}
     );

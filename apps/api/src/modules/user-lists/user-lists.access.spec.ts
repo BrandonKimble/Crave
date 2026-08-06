@@ -144,7 +144,11 @@ function makeHarness(list: ListRow, collaboratorIds: string[] = []) {
   const service = new UserListsService(
     prisma as never,
     new UserListAccessPolicy(prisma as never, blocks as never),
-    new ListResultsAssembler(executor as never, {} as never),
+    new ListResultsAssembler(
+      executor as never,
+      {} as never,
+      { getDietaryPairs: () => Promise.resolve(new Map()) } as never,
+    ),
     new UserListMapper(prisma as never, logger as never),
     { loadTileImages: () => Promise.resolve(new Map()) } as never,
     {

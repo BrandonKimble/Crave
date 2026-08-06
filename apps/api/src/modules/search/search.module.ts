@@ -80,6 +80,7 @@ import { OpenIntervalsBuilderService } from './open-intervals-builder.service';
     SearchPopularityService,
     RestaurantStatusService,
     SearchQueryExecutor,
+    DietaryConstraintRegistry,
   ],
 })
 export class SearchModule {}

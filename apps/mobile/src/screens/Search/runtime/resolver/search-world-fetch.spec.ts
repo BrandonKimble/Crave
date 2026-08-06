@@ -72,7 +72,13 @@ const listTuple = (source: 'curated' | null): SearchDesiredTuple => ({
     source,
   },
   tab: 'restaurants',
-  filterVariant: { openNow: false, priceLevels: [], rising: false, includeSimilar: false },
+  filterVariant: {
+    openNow: false,
+    dietary: [],
+    priceLevels: [],
+    rising: false,
+    includeSimilar: false,
+  },
   committedBounds: null,
 });
 
