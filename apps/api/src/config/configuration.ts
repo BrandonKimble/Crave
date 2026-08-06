@@ -10,6 +10,7 @@ import { placesOperationLimits } from '../modules/external-integrations/shared/v
 // hand-rolled exactly this; the config assembly was the sixth.
 import {
   isProdEnv,
+  isDeployedEnv,
   resolveAppEnv,
   bullPrefixFor,
   type AppEnv,
@@ -38,24 +39,65 @@ function getDatabasePoolSize(appEnv: AppEnv): string {
 }
 
 /**
- * Gets the appropriate database URL based on environment
- * Uses TEST_DATABASE_URL for test environment to ensure isolation
+ * Gets the appropriate database URL based on environment.
+ * Uses TEST_DATABASE_URL for test environment to ensure isolation.
+ *
+ * THE LOCALHOST FALLBACK IS A DEV AFFORDANCE, AND ONLY A DEV AFFORDANCE
+ * (F2075, 2026-08-05). It used to apply unconditionally, which quietly
+ * disarmed the one guard named for this exact failure: DatabaseValidationService
+ * opens with `if (!url) throw 'DATABASE_URL is required'`, but this function
+ * never returned a falsy url — it returned
+ * `postgresql://postgres:postgres@localhost:5432/crave_search`, which then
+ * satisfied every remaining check (postgresql:// prefix, hostname, database
+ * name). Verified by execution, not by reading: with DATABASE_URL unset and
+ * NODE_ENV=production, `configuration().database.url` was the localhost
+ * string. So a deployed container whose DATABASE_URL was typo'd or dropped
+ * did not refuse to boot — it came up "healthy" and tried localhost.
+ *
+ * The distinction the old code was missing is not "is the url well-formed"
+ * but "may this environment invent one at all". On a laptop, defaulting is
+ * the whole point. On deployed infrastructure, a defaulted DATABASE_URL is
+ * never a thing anyone wanted, and booting is strictly worse than crashing:
+ * a crash is one loud, attributable event, while a silent localhost boot
+ * fails later, further away, and looks like something else.
+ *
+ * The check lives HERE rather than in the validator because this is the only
+ * producer of `database.url` (single call site, :178 below). Downstream
+ * nothing can distinguish "operator explicitly chose localhost" from "we made
+ * it up" — that information exists only at the moment the default is applied,
+ * so this is the only place the question is answerable. A caller cannot
+ * forget it, because there is no other path to a database url.
+ *
+ * SCOPE: absence only. An explicitly-SET url is honoured verbatim in every
+ * environment — this changes whether a MISSING value may pass silently, never
+ * what anything connects to.
  */
-function getDatabaseUrl(): string {
-  const env = process.env.NODE_ENV || 'development';
-
-  if (env === 'test') {
+function getDatabaseUrl(env: NodeJS.ProcessEnv = process.env): string {
+  // NODE_ENV=test is a toolchain fact (is this a jest run), not an AppEnv;
+  // an isolated local test database is exactly where defaulting belongs.
+  if ((env.NODE_ENV || 'development') === 'test') {
     return (
-      process.env.TEST_DATABASE_URL ||
-      process.env.DATABASE_URL ||
+      env.TEST_DATABASE_URL ||
+      env.DATABASE_URL ||
       'postgresql://postgres:postgres@localhost:5432/crave_search_test'
     );
   }
 
-  return (
-    process.env.DATABASE_URL ||
-    'postgresql://postgres:postgres@localhost:5432/crave_search'
-  );
+  if (env.DATABASE_URL && env.DATABASE_URL.trim()) {
+    return env.DATABASE_URL;
+  }
+
+  const appEnv = resolveAppEnv(env);
+  if (isDeployedEnv(appEnv)) {
+    throw new Error(
+      `DATABASE_URL is required in a deployed environment (APP_ENV=${appEnv}) ` +
+        'and was not set. Refusing to boot rather than silently defaulting to ' +
+        'localhost — a deployed process pointed at localhost is not a database ' +
+        'outage, it is a config error wearing one as a disguise.',
+    );
+  }
+
+  return 'postgresql://postgres:postgres@localhost:5432/crave_search';
 }
 
 function resolveScopedEnv(

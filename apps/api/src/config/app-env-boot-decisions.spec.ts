@@ -31,6 +31,7 @@ describe('configuration() boot decisions key on AppEnv (F404)', () => {
   it("staging (APP_ENV=staging, NODE_ENV=production) gets the staging pool size, not prod's", () => {
     process.env.NODE_ENV = 'production';
     process.env.APP_ENV = 'staging';
+    process.env.DATABASE_URL = 'postgresql://u:p@db.internal:5432/crave';
     delete process.env.DATABASE_CONNECTION_POOL_MAX;
 
     const config = loadConfig();
@@ -42,6 +43,7 @@ describe('configuration() boot decisions key on AppEnv (F404)', () => {
   it('real production (APP_ENV=prod, NODE_ENV=production) still gets the 50-connection pool', () => {
     process.env.NODE_ENV = 'production';
     process.env.APP_ENV = 'prod';
+    process.env.DATABASE_URL = 'postgresql://u:p@db.internal:5432/crave';
     delete process.env.DATABASE_CONNECTION_POOL_MAX;
 
     const config = loadConfig();
@@ -52,11 +54,89 @@ describe('configuration() boot decisions key on AppEnv (F404)', () => {
   it('staging Cloudinary assets default to the staging namespace, not "dev"', () => {
     process.env.NODE_ENV = 'production';
     process.env.APP_ENV = 'staging';
+    process.env.DATABASE_URL = 'postgresql://u:p@db.internal:5432/crave';
     delete process.env.CLOUDINARY_ENV_PREFIX;
 
     const config = loadConfig();
 
     expect(config.cloudinary.envPrefix).toBe('staging');
     expect(config.cloudinary.envPrefix).not.toBe('dev');
+  });
+});
+
+/**
+ * F2075: a MISSING DATABASE_URL must not be survivable on deployed
+ * infrastructure.
+ *
+ * `DatabaseValidationService` opens with `if (!url) throw 'DATABASE_URL is
+ * required but not provided'` — a guard named for exactly this failure that
+ * could never fire, because `getDatabaseUrl()` returned
+ * `postgresql://postgres:postgres@localhost:5432/crave_search` instead of
+ * undefined, and that string then passed every remaining check (prefix,
+ * hostname, database name). The result was a deployed container with a
+ * dropped or typo'd DATABASE_URL booting green and quietly dialling
+ * localhost.
+ *
+ * These cases assert the COMPOSITE — what `configuration()` actually hands
+ * the app — rather than that some branch was taken. The dev case is here so
+ * this can show RED in both directions: an over-eager fix that removed the
+ * fallback everywhere would break every laptop, and would fail here.
+ */
+describe('configuration() refuses an invented DATABASE_URL on deployed envs (F2075)', () => {
+  const ORIGINAL_ENV = { ...process.env };
+
+  afterEach(() => {
+    process.env = { ...ORIGINAL_ENV };
+    jest.resetModules();
+  });
+
+  function loadConfig() {
+    let configuration: () => any;
+    jest.isolateModules(() => {
+      configuration = require('./configuration').default;
+    });
+    return configuration!();
+  }
+
+  const LOCALHOST_FALLBACK =
+    'postgresql://postgres:postgres@localhost:5432/crave_search';
+
+  for (const appEnv of ['prod', 'staging'] as const) {
+    it(`APP_ENV=${appEnv} with DATABASE_URL unset throws instead of defaulting to localhost`, () => {
+      process.env.NODE_ENV = 'production';
+      process.env.APP_ENV = appEnv;
+      delete process.env.DATABASE_URL;
+      delete process.env.TEST_DATABASE_URL;
+
+      expect(() => loadConfig()).toThrow(/DATABASE_URL is required/);
+      // The specific regression: not merely "it threw", but that it did not
+      // hand back the invented localhost url.
+      try {
+        loadConfig();
+        throw new Error('expected configuration() to throw');
+      } catch (error) {
+        expect((error as Error).message).not.toContain(LOCALHOST_FALLBACK);
+        expect((error as Error).message).toContain(appEnv);
+      }
+    });
+
+    it(`APP_ENV=${appEnv} with DATABASE_URL SET is honoured verbatim`, () => {
+      process.env.NODE_ENV = 'production';
+      process.env.APP_ENV = appEnv;
+      process.env.DATABASE_URL = 'postgresql://u:p@db.internal:5432/crave';
+
+      expect(loadConfig().database.url).toBe(
+        'postgresql://u:p@db.internal:5432/crave',
+      );
+    });
+  }
+
+  it('dev (a laptop) still gets the localhost fallback when DATABASE_URL is unset', () => {
+    process.env.NODE_ENV = 'development';
+    process.env.APP_ENV = 'dev';
+    delete process.env.DATABASE_URL;
+    delete process.env.TEST_DATABASE_URL;
+
+    expect(loadConfig().database.url).toBe(LOCALHOST_FALLBACK);
   });
 });
