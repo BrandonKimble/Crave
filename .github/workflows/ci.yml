@@ -94,6 +94,14 @@ jobs:
       - name: 'Static guard: a heavy migration disables parallel workers'
         run: node scripts/check-migration-parallel-guard.mjs
 
+      # IDEAL-VERIFIED means someone read the file AND argued its shape is
+      # right. When the file then changes, that claim is no longer about the
+      # file that exists — and a stale IDEAL-VERIFIED is worse than an
+      # unreviewed one, because it is never re-examined. The revert rule was
+      # applied from memory until F2220; 759 rows had gone stale unnoticed.
+      - name: 'Static guard: no COVERAGE row claims review of a file that changed'
+        run: node scripts/coverage-staleness.mjs --check
+
       - name: Type check
         run: yarn type-check
 
