@@ -195,9 +195,11 @@ describe('PollWeeklyRitualService — the §4 weekly ritual', () => {
     ];
     expect(tickData.placeId).toBe(PLACE_ID);
     expect(tickData.weekOf).toBe(WEEK_OF);
-    // Birth certificate: written AT publish, ALREADY archived (no ready pool).
+    // Birth certificate: written AT publish. It used to also assert
+    // `status === 'archived'`, but that column is gone: the enum had one
+    // label, every one of 18,284 rows held it, and nothing ever read it. A
+    // topic row existing IS the archived birth certificate.
     const [topicData] = topicCreateManyRows(tx);
-    expect(topicData.status).toBe('archived');
     expect(topicData.placeId).toBe(PLACE_ID);
     expect(
       (topicData.metadata as { birthCertificate: unknown }).birthCertificate,

@@ -13,7 +13,6 @@ import {
   PollCommentExtractionStatus,
   PollLeaderboardSubjectType,
   EntityType,
-  PollTopicStatus,
   PollTopicType,
   Prisma,
   type Place,
@@ -995,7 +994,6 @@ export class PollsService {
           targetRestaurantId,
           targetFoodAttributeId,
           targetRestaurantAttributeId,
-          status: PollTopicStatus.archived,
           categoryEntityIds: [
             targetDishId,
             targetFoodAttributeId,
@@ -1251,6 +1249,12 @@ export class PollsService {
             targetFoodAttributeId: true,
             targetRestaurantAttributeId: true,
             title: true,
+            // titleSource is the D1/N10 marker localizePollQuestions filters
+            // on. Omitting it made every poll look like USER prose here, so
+            // the detail screen rendered templated questions untranslated
+            // while the feed — which selects it — translated the same poll.
+            titleSource: true,
+            titleLocale: true,
             description: true,
             metadata: true,
           },
@@ -1262,8 +1266,16 @@ export class PollsService {
       throw new NotFoundException('Poll not found');
     }
 
+    // Place labels FIRST: 'best_restaurants' renders its place name. Same
+    // order as hydrateFeedPolls, which is the other half of this contract —
+    // the controller has always passed `locale` here, and this method
+    // silently dropped it (it was an unused parameter until 2026-08-05).
     const [enriched] = await this.attachPlaceLabels([poll]);
-    return enriched;
+    const [localized] = await this.localizePollQuestions(
+      [enriched],
+      locale ?? DEFAULT_LOCALE,
+    );
+    return localized;
   }
 
   // ─── Comments (Phase 4) ──────────────────────────────────────────────────

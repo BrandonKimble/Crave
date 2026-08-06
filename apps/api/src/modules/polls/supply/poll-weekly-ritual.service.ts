@@ -48,7 +48,6 @@ import {
   PollMode,
   PollOrigin,
   PollState,
-  PollTopicStatus,
   PollTopicType,
   Prisma,
 } from '@prisma/client';
@@ -814,7 +813,6 @@ export class PollWeeklyRitualService {
               targetRestaurantId: plan.targetRestaurantId,
               categoryEntityIds: plan.categoryEntityIds,
               seedEntityIds: plan.seedEntityIds,
-              status: PollTopicStatus.archived,
               metadata: {
                 source: 'poll_supply_weekly_ritual',
                 weekOf,

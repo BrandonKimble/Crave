@@ -1018,42 +1018,40 @@ model RestaurantEntitySignal {
 }
 
 model PollTopic {
-  topicId                     String          @id @default(dbgenerated("gen_random_uuid()")) @map("topic_id") @db.Uuid
-  title                       String          @db.VarChar(255)
-  description                 String?         @db.VarChar(500)
-  region                      String?         @db.VarChar(255)
-  country                     String?         @db.VarChar(2)
+  topicId                     String        @id @default(dbgenerated("gen_random_uuid()")) @map("topic_id") @db.Uuid
+  title                       String        @db.VarChar(255)
+  description                 String?       @db.VarChar(500)
+  region                      String?       @db.VarChar(255)
+  country                     String?       @db.VarChar(2)
   /// §22 item 4 re-key: supply attaches topics to the place catalog.
-  placeId                     String?         @map("place_id") @db.Uuid
-  categoryEntityIds           String[]        @default([]) @map("category_entity_ids") @db.Uuid
-  seedEntityIds               String[]        @default([]) @map("seed_entity_ids") @db.Uuid
-  status                      PollTopicStatus
-  metadata                    Json?           @default("{}")
-  createdByUserId             String?         @map("created_by_user_id") @db.Uuid
-  createdAt                   DateTime        @default(now()) @map("created_at") @db.Timestamptz(3)
-  updatedAt                   DateTime        @updatedAt @map("updated_at") @db.Timestamptz(3)
-  targetDishId                String?         @map("target_dish_id") @db.Uuid
-  targetRestaurantId          String?         @map("target_restaurant_id") @db.Uuid
-  targetFoodAttributeId       String?         @map("target_food_attribute_id") @db.Uuid
-  targetRestaurantAttributeId String?         @map("target_restaurant_attribute_id") @db.Uuid
-  topicType                   PollTopicType   @default(best_dish) @map("topic_type")
+  placeId                     String?       @map("place_id") @db.Uuid
+  categoryEntityIds           String[]      @default([]) @map("category_entity_ids") @db.Uuid
+  seedEntityIds               String[]      @default([]) @map("seed_entity_ids") @db.Uuid
+  metadata                    Json?         @default("{}")
+  createdByUserId             String?       @map("created_by_user_id") @db.Uuid
+  createdAt                   DateTime      @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt                   DateTime      @updatedAt @map("updated_at") @db.Timestamptz(3)
+  targetDishId                String?       @map("target_dish_id") @db.Uuid
+  targetRestaurantId          String?       @map("target_restaurant_id") @db.Uuid
+  targetFoodAttributeId       String?       @map("target_food_attribute_id") @db.Uuid
+  targetRestaurantAttributeId String?       @map("target_restaurant_attribute_id") @db.Uuid
+  topicType                   PollTopicType @default(best_dish) @map("topic_type")
   /// RATIFIED D1 — 'template' | 'user'. Templated titles (the weekly ritual's
   /// three shapes) are RENDERABLE from a recipe per locale; user-authored
   /// titles stay literal + a source-language tag and are translate-on-read
   /// only. Without this marker the two are indistinguishable after the fact.
-  titleSource                 String          @default("user") @map("title_source")
+  titleSource                 String        @default("user") @map("title_source")
   /// BCP 47. For user prose: the language it was WRITTEN in. For templates:
   /// the locale it was rendered in at write time.
-  titleLocale                 String?         @map("title_locale")
-  targetDish                  Entity?         @relation("PollTopicTargetDish", fields: [targetDishId], references: [entityId])
-  targetRestaurant            Entity?         @relation("PollTopicTargetRestaurant", fields: [targetRestaurantId], references: [entityId])
-  targetFoodAttribute         Entity?         @relation("PollTopicTargetFoodAttribute", fields: [targetFoodAttributeId], references: [entityId])
-  targetRestaurantAttribute   Entity?         @relation("PollTopicTargetRestaurantAttribute", fields: [targetRestaurantAttributeId], references: [entityId])
+  titleLocale                 String?       @map("title_locale")
+  targetDish                  Entity?       @relation("PollTopicTargetDish", fields: [targetDishId], references: [entityId])
+  targetRestaurant            Entity?       @relation("PollTopicTargetRestaurant", fields: [targetRestaurantId], references: [entityId])
+  targetFoodAttribute         Entity?       @relation("PollTopicTargetFoodAttribute", fields: [targetFoodAttributeId], references: [entityId])
+  targetRestaurantAttribute   Entity?       @relation("PollTopicTargetRestaurantAttribute", fields: [targetRestaurantAttributeId], references: [entityId])
   polls                       Poll[]
 
   @@index([placeId], map: "idx_poll_topics_place_id")
   @@index([createdByUserId], map: "idx_poll_topics_created_by_user")
-  @@index([status], map: "idx_poll_topics_status")
   @@map("poll_topics")
 }
 
@@ -2081,12 +2079,6 @@ enum OnboardingStatus {
   completed
 
   @@map("onboarding_status")
-}
-
-enum PollTopicStatus {
-  archived
-
-  @@map("poll_topic_status")
 }
 
 enum PollTopicType {

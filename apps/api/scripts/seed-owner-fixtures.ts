@@ -17,7 +17,6 @@ import {
   PollMode,
   PollOrigin,
   PollTopicType,
-  PollTopicStatus,
   PollCommentModerationStatus,
   PollCommentExtractionStatus,
   EntityType,
@@ -508,7 +507,6 @@ async function main(): Promise<void> {
         data: {
           topicType: seed.topicType,
           title: seed.question,
-          status: PollTopicStatus.archived,
           targetDishId,
           targetRestaurantId,
           metadata: { ownerFixture: true },
