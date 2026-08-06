@@ -1749,3 +1749,42 @@ near-false-finding; every git query in a verdict gets an absolute path or an exp
 3. The contract's `flashListProps` Omit list deliberately does NOT omit
    `maintainVisibleContentPosition`: the opt-in door for a future append/chat list is the
    design, not an oversight. Recorded so nobody "hardens" it shut.
+
+---
+
+## D70 — spot-check #3 + P2 verdict on the F2310/F2900 census (2026-08-06)
+
+**Spot-check #3 — `apps/api/src/modules/identity/closeness.service.ts` (138 lines, read in
+full): IDEAL-VERIFIED HOLDS, with the argument.** The weights (1000/500/100/10·cap20) are
+not tuning constants but a DERIVATION of the documented ordering contract: max non-mutual
+score = 500 + 100 + 200 = 800 < 1000, so tiers cannot cross by arithmetic — the contract
+the spec tests (6 passing) is enforced by the numbers, not beside them. Four parallel
+queries, no N+1; interaction gaming is bounded (cap 20 → max 200 < 500, so spam-liking
+cannot beat a follow); stable sort makes the caller's pre-order the final tiebreak, which
+is the right seam — closeness reorders only where it has signal. ONE WART, recorded not
+filed: the `length <= 1` early return skips the self-filter, so `rankByCloseness(v, [v])`
+returns `[v]` while `rankByCloseness(v, [v, x])` returns `[x]`. Unreachable today — the
+sole caller (messaging shareTargets) filters the viewer before calling — but it is a
+contract inconsistency a second caller could trip. Worth one line in a future touch, not
+a finding.
+
+**F2900 census — ACCEPTED as evidence; collapse APPROVED IN TWO STAGES, not one.**
+The census is what D63 demanded: all 462 files, a classifier VALIDATED by hand-reading 13
+files across buckets, and — the part that earns trust — two classifier defects found and
+fixed before the final run (zustand `useShallow` subscriptions invisible to the subscribe
+detector; bare `&&`/`||` inflating GENUINE from 262 to 156). A classifier whose validation
+found nothing would have been suspect. Final: GENUINE 156, MEMO-ONLY 101, PASS-THROUGH 23,
+ASSEMBLY 28, NAME-LIE 14, TYPE-ONLY 45, PLAIN 74, SPEC 20, DOC 1.
+
+Stage 1 (approve now): the REGROWTH GUARD plus the 14 renames. The lint rule — a `use-*.ts`
+in runtime/shared must call a React hook — is the abstraction; the renames are its initial
+red set turning green. Without the guard first, the inline pass fights new growth.
+Stage 2 (approve, sequenced after stage 1 lands): the 51-file PASS-THROUGH+ASSEMBLY inline,
+F958/D45 mechanical style, in batches with tsc + the territory suite green per batch.
+CONDITION: the P3 must RE-DERIVE the candidate list at execution time by re-running the
+classifier — the census.tsv is a scratchpad snapshot of a tree that four lanes are editing,
+and consuming it stale would inline a file someone just made genuine.
+
+**F2901 — APPROVED.** Eleven literal constants emitted as if observed, in a file whose
+same scope computes the true values: the instrument-that-cannot-fail shape, again. Fix is
+to log the computed values or delete the log; no third option.
