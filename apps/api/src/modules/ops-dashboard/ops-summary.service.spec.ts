@@ -15,11 +15,22 @@ import { PoolRegistry } from '../external-integrations/governance/pool-registry'
  * month-position color thresholds.
  */
 
-const TOMTOM_MICROS_PER_DRAW = 3_240; // vendor-pricing tomtomBlendedCostMicrosPerDraw
+// vendor-pricing tomtomCostMicrosPerDraw('additionalData') — the SCARCE rate.
+// Cheap draws (geocode/reverseGeocode) are 1,080; the fixture below uses the
+// scarce operation, so the arithmetic is unchanged from the blended era.
+const TOMTOM_MICROS_PER_DRAW = 3_240;
 
 interface PrismaOverrides {
-  tomtomDailyRows?: Array<{ requestCount: number; createdAt: Date }>;
+  tomtomDailyRows?: Array<{
+    requestCount: number;
+    createdAt: Date;
+    operation?: string;
+  }>;
   tomtomAggregateRequestCount?: number;
+  tomtomOperationGroups?: Array<{
+    operation: string;
+    _sum: { requestCount: number };
+  }>;
   unitCostRows?: Array<{
     workClass: string;
     unit: string;
@@ -64,6 +75,21 @@ function buildPrisma(overrides: PrismaOverrides = {}) {
             requestCount: overrides.tomtomAggregateRequestCount ?? 0,
           },
         }),
+      ),
+      // TomTom cost is grouped BY OPERATION now — one blended rate charged the
+      // scarce polygon price for a mix that is ~96% cheap geocodes, which
+      // over-stated every TomTom figure on the dashboard ~2.8x.
+      groupBy: jest.fn(() =>
+        Promise.resolve(
+          overrides.tomtomOperationGroups ?? [
+            {
+              operation: 'additionalData',
+              _sum: {
+                requestCount: overrides.tomtomAggregateRequestCount ?? 0,
+              },
+            },
+          ],
+        ),
       ),
     },
     sourceDocument: { count: jest.fn(() => Promise.resolve(3)) },
@@ -262,6 +288,31 @@ describe('OpsSummaryService.summary (V2 shape test)', () => {
     );
     const summary = await service.summary(NOW);
     expect(summary.vendors.gemini.backstopLimitMicros).toBe(42_000_000);
+  });
+
+  it('prices TomTom BY OPERATION — a cheap geocode is not charged the scarce polygon rate', async () => {
+    // Every TomTom figure on this dashboard was ~2.8x over-stated because one
+    // blended rate charged the scarce price for a mix that is ~96% cheap
+    // (red team 2026-08-04). The justification — "the ledger cannot split
+    // cheap from scarce" — was disproved by the ledger's own operation column.
+    const make = (operation: string) =>
+      new OpsSummaryService(
+        buildPrisma({
+          tomtomOperationGroups: [{ operation, _sum: { requestCount: 1_000 } }],
+        }) as never,
+        buildOpsAlerts() as never,
+        buildRegistry() as never,
+        buildLogger(),
+      );
+    const [cheapSummary, scarceSummary] = await Promise.all([
+      make('reverseGeocode').summary(NOW),
+      make('additionalData').summary(NOW),
+    ]);
+    const cheapMicros = cheapSummary.spend.monthToDateByService.tomtom;
+    const scarceMicros = scarceSummary.spend.monthToDateByService.tomtom;
+    expect(cheapMicros).toBe(1_000 * 1_080);
+    expect(scarceMicros).toBe(1_000 * 3_240);
+    expect(scarceMicros).toBe(cheapMicros * 3);
   });
 
   it('TomTom credit math: declared credit minus measured burn, days-left from trailing-7-day pace (RED-provable)', async () => {

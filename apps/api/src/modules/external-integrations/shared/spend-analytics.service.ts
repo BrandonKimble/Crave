@@ -12,7 +12,7 @@ import { LoggerService } from '../../../shared';
 import { pricedGeminiRow } from './gemini-pricing';
 import {
   placesCostMicrosPerCall,
-  tomtomBlendedCostMicrosPerDraw,
+  tomtomCostMicrosPerDraw,
 } from './vendor-pricing';
 import { CollectorSourceRegistryService } from '../../content-processing/reddit-collector/collector-source-registry.service';
 import { GovernanceService } from '../governance/governance.service';
@@ -376,7 +376,7 @@ export class SpendAnalyticsService {
 
   /**
    * §24.2(b) tomtom-per-draw, now PRICED (vendor-pricing.ts's
-   * tomtomBlendedCostMicrosPerDraw, K1-sourced $2.50/1,000 requests — "VERIFY
+   * tomtomCostMicrosPerDraw, vendor-verified rates — "VERIFY
    * AGAINST FIRST TOMTOM INVOICE"). The ledger does not yet distinguish
    * which pool (geocode/reverseGeocode vs scarcePolygons) a tomtom draw belongs to —
    * no recording site threads a pool-specific operation/caller today — so
@@ -391,7 +391,13 @@ export class SpendAnalyticsService {
     windowStart: Date,
     windowEnd: Date,
   ): Promise<UnitCostRow[]> {
-    const agg = await this.prisma.apiUsageEvent.aggregate({
+    // ONE WORK CLASS PER PRICED OPERATION (red team 2026-08-04). This used to
+    // fold every draw into 'tomtom.searchFamily' at the scarce rate because
+    // "the ledger does not yet distinguish which pool a draw belongs to" — it
+    // does, in the `operation` column, since F350. A single blended class also
+    // meant the estimate table could never show that ~96% of draws are cheap.
+    const groups = await this.prisma.apiUsageEvent.groupBy({
+      by: ['operation'],
       where: {
         service: 'tomtom',
         createdAt: { gte: windowStart, lt: windowEnd },
@@ -399,20 +405,22 @@ export class SpendAnalyticsService {
       _sum: { requestCount: true },
       _count: { _all: true },
     });
-    const sampleUnits = agg._sum.requestCount ?? 0;
-    if (sampleUnits === 0 && agg._count._all === 0) {
+    if (groups.length === 0) {
       return [];
     }
-    return [
-      {
-        workClass: 'tomtom.searchFamily',
-        unit: 'draw',
-        microUsdPerUnit: tomtomBlendedCostMicrosPerDraw,
-        sampleUnits,
-        windowStart,
-        windowEnd,
-      },
-    ];
+    return groups.map((group) => ({
+      // `tomtomDraw.` NOT `tomtom.` — the config namespace is `tomtom.*`, and
+      // a TEMPLATE literal beginning `tomtom.` reads to the config-orphan
+      // scanner as a dynamic reader of every tomtom config key, which
+      // suppressed the real orphan `tomtom.apiVersion` (caught 2026-08-04).
+      // Two namespaces that mean different things should not share a prefix.
+      workClass: `tomtomDraw.${group.operation}`,
+      unit: 'draw',
+      microUsdPerUnit: tomtomCostMicrosPerDraw(group.operation),
+      sampleUnits: group._sum.requestCount ?? 0,
+      windowStart,
+      windowEnd,
+    }));
   }
 
   /**
@@ -732,9 +740,12 @@ export class SpendAnalyticsService {
   ): UnitCostRow[] {
     return [
       {
-        workClass: 'tomtom.searchFamily',
+        // Zero-sample placeholder row: the cheapest priced operation, since
+        // the mix is ~96% cheap and an empty window should not imply the
+        // dearest rate.
+        workClass: 'tomtomDraw.reverseGeocode',
         unit: 'draw',
-        microUsdPerUnit: tomtomBlendedCostMicrosPerDraw,
+        microUsdPerUnit: tomtomCostMicrosPerDraw('reverseGeocode'),
         sampleUnits: 0,
         windowStart,
         windowEnd,

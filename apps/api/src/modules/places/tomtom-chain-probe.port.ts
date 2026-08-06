@@ -54,8 +54,17 @@ export type TomtomChainProbeResult =
   | { kind: 'named'; chain: PlaceSketchNode[]; probedRegion: ProbedRegion }
   /** The vendor OBSERVED nothing here — a first-class §2 negative. */
   | { kind: 'empty'; probedRegion: ProbedRegion }
-  /** WE failed to observe. Never a memory; never ground truth. */
-  | { kind: 'failed'; reason: string }
+  /**
+   * WE failed to observe. Never a memory; never ground truth.
+   *
+   * CARRIES `scope` for the same reason PolygonFetchResult does (see its
+   * doc): a 'row' failure is one unusable row, a 'systemic' failure is the
+   * vendor being down. Collapsing them made a single bad row burn a scarce
+   * draw every hour forever AND head-of-line block the queue. The adapter
+   * already reported the distinction on both paths; only this half of the
+   * contract had been updated to receive it.
+   */
+  | { kind: 'failed'; reason: string; scope: 'systemic' | 'row' }
   /**
    * Rate admission refused (pool denial or a poisoned window) — try again
    * next settle. Split from 'failed' because the two say different things
@@ -154,7 +163,9 @@ export type LevelEntityLookup =
       address: Readonly<Record<string, string | undefined>>;
     }
   | { kind: 'empty' }
-  | { kind: 'failed'; reason: string }
+  /** Same `scope` contract as the two results above — one unusable row must
+   *  not read as the vendor being down. */
+  | { kind: 'failed'; reason: string; scope: 'systemic' | 'row' }
   | { kind: 'denied' };
 
 export interface TomtomChainProbe {

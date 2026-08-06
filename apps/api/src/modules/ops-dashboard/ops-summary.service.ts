@@ -16,7 +16,7 @@ import {
 } from '../external-integrations/shared/spend-analytics.service';
 import {
   placesCostMicrosPerCall,
-  tomtomBlendedCostMicrosPerDraw,
+  tomtomCostMicrosPerDraw,
 } from '../external-integrations/shared/vendor-pricing';
 
 const MS_PER_DAY = 24 * 60 * 60 * 1000;
@@ -559,12 +559,15 @@ export class OpsSummaryService {
   ): Promise<number[]> {
     const rows = await this.prisma.apiUsageEvent.findMany({
       where: { service: 'tomtom', createdAt: { gte: windowStart, lt: now } },
-      select: { requestCount: true, createdAt: true },
+      // PRICED BY OPERATION (red team 2026-08-04). Every TomTom figure on
+      // this dashboard was ~2.8x over-stated because one blended rate charged
+      // the scarce polygon price for a mix that is ~96% cheap geocodes.
+      select: { requestCount: true, createdAt: true, operation: true },
     });
     const buckets = new Array<number>(DAILY_WINDOW_DAYS).fill(0);
     for (const row of rows) {
       buckets[this.dayBucket(row.createdAt, windowStart)] +=
-        (row.requestCount ?? 0) * tomtomBlendedCostMicrosPerDraw;
+        (row.requestCount ?? 0) * tomtomCostMicrosPerDraw(row.operation);
     }
     return buckets;
   }
@@ -602,11 +605,19 @@ export class OpsSummaryService {
   }
 
   private async tomtomMicros(start: Date, end: Date): Promise<number> {
-    const agg = await this.prisma.apiUsageEvent.aggregate({
+    // Grouped by operation, not one blended rate — see dailyTomtomMicros.
+    const groups = await this.prisma.apiUsageEvent.groupBy({
+      by: ['operation'],
       where: { service: 'tomtom', createdAt: { gte: start, lt: end } },
       _sum: { requestCount: true },
     });
-    return (agg._sum.requestCount ?? 0) * tomtomBlendedCostMicrosPerDraw;
+    return groups.reduce(
+      (total, group) =>
+        total +
+        (group._sum.requestCount ?? 0) *
+          tomtomCostMicrosPerDraw(group.operation),
+      0,
+    );
   }
 
   // -------------------------------------------------------------- vendors

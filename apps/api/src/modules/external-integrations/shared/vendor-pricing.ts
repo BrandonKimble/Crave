@@ -33,11 +33,43 @@ export const tomtomScarceCostMicrosPerDraw = Math.round(
   (3.0 * EUR_TO_USD * 1_000_000) / 1_000,
 ); // €3.00/1k → 3,240 micro-USD/draw
 
-/** Honest UNSPLITTABLE-LEDGER blended rate: the usage ledger records TomTom
- *  draws without distinguishing cheap (geocode) from scarce (polygon) kinds,
- *  so ledger-derived cost readers price EVERY draw at the scarce (higher)
- *  rate — over-meter, never vanish. */
-export const tomtomBlendedCostMicrosPerDraw = tomtomScarceCostMicrosPerDraw;
+/** €1.00/1k → the geocode / reverseGeocode family. */
+export const tomtomCheapCostMicrosPerDraw = Math.round(
+  (1.0 * EUR_TO_USD * 1_000_000) / 1_000,
+); // 1,080 micro-USD/draw
+
+/**
+ * THE LEDGER CAN SPLIT CHEAP FROM SCARCE — IT ALWAYS COULD (red team
+ * 2026-08-04).
+ *
+ * This was `= tomtomScarceCostMicrosPerDraw`, justified by "the usage ledger
+ * records TomTom draws without distinguishing cheap from scarce". That stopped
+ * being true when F350 landed `recordDraw(operation)`: the operation rides in
+ * its own column, and the live mix is ~96% CHEAP. Pricing everything at the
+ * scarce rate over-stated TomTom by ~2.8x everywhere it was read — the ops
+ * dashboard's "month to date" card, the burn rate, the days-left estimate, and
+ * (the one that bites) the tomtom.monthlySpend catastrophe backstop, which
+ * therefore tripped ~2.8x early and denied real polygon promotion.
+ *
+ * "Over-meter, never vanish" was the right instinct for an unsplittable
+ * ledger. It is not a licence to keep guessing once the fact is in a column.
+ */
+export function tomtomCostMicrosPerDraw(operation: string | null): number {
+  switch (operation) {
+    // Search family (Additional Data polygon fetches) — the scarce draws.
+    case 'additionalData':
+    case 'boundaryGeometry':
+      return tomtomScarceCostMicrosPerDraw;
+    case 'geocode':
+    case 'reverseGeocode':
+      return tomtomCheapCostMicrosPerDraw;
+    default:
+      // An operation nobody priced is charged at the DEAREST rate, so a new
+      // call site is visible in the bill rather than free — the same
+      // unknown-model rule gemini-pricing uses.
+      return tomtomScarceCostMicrosPerDraw;
+  }
+}
 
 /**
  * Google Places API (New), entry-tier per-1,000-requests pricing (K4,

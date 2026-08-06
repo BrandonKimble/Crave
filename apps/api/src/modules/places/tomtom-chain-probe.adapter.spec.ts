@@ -310,6 +310,7 @@ describe('TomtomChainProbeAdapter', () => {
     await expect(broken.adapter.probe(ANCHOR)).resolves.toEqual({
       kind: 'failed',
       reason: 'tomtom_spend_gate_unavailable',
+      scope: 'systemic',
     });
     expect(broken.drawCalls).toHaveLength(0);
   });

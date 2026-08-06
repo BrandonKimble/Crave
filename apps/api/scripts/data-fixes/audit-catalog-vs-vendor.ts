@@ -110,136 +110,150 @@ async function main(): Promise<void> {
   });
   stopCronsForScript(app);
   const probe = app.get<TomtomChainProbe>(TOMTOM_CHAIN_PROBE);
-
-  const where = territoriesOnly
-    ? `AND subdivision_code IN ('PR','VI','GU','AS','MP')`
-    : '';
-  const order = sample > 0 ? 'ORDER BY random()' : 'ORDER BY name';
-  const limit = sample > 0 ? `LIMIT ${sample}` : '';
-  // Red-team 2026-07-29: probe ST_PointOnSurface(ground), never the stored
-  // centroid — the stored point can drift off-ground again (mergeSketch
-  // gap-fills it from the vendor position), and an off-ground probe returns a
-  // NEIGHBOUR, whose country would then be AUTO-APPLIED under --execute.
-  const rows = await prisma.$queryRawUnsafe<Row[]>(
-    `SELECT p.place_id, p.name, p.provider_level_code, p.country_code,
+  try {
+    const where = territoriesOnly
+      ? `AND subdivision_code IN ('PR','VI','GU','AS','MP')`
+      : '';
+    const order = sample > 0 ? 'ORDER BY random()' : 'ORDER BY name';
+    const limit = sample > 0 ? `LIMIT ${sample}` : '';
+    // Red-team 2026-07-29: probe ST_PointOnSurface(ground), never the stored
+    // centroid — the stored point can drift off-ground again (mergeSketch
+    // gap-fills it from the vendor position), and an off-ground probe returns a
+    // NEIGHBOUR, whose country would then be AUTO-APPLIED under --execute.
+    const rows = await prisma.$queryRawUnsafe<Row[]>(
+      `SELECT p.place_id, p.name, p.provider_level_code, p.country_code,
             ST_Y(ST_PointOnSurface(g.geometry))::text AS centroid_lat,
             ST_X(ST_PointOnSurface(g.geometry))::text AS centroid_lng
      FROM places p JOIN place_geometries g ON g.place_id = p.place_id
      ${where ? 'WHERE ' + where.replace(/^AND /, '') : ''} ${order} ${limit}`,
-  );
-
-  console.log(
-    `[audit] ${rows.length} places | mode=${territoriesOnly ? 'territories' : sample ? `sample ${sample}` : 'all'} | execute=${execute}`,
-  );
-
-  let agree = 0;
-  let levelDiff = 0;
-  let countryDiff = 0;
-  let nameDiff = 0;
-  let noVendor = 0;
-  let faulted = 0;
-  const fixes: Array<{ id: string; level?: string; country?: string }> = [];
-
-  for (const row of rows) {
-    const vendor = interpret(
-      await probe.lookupLevelEntity(
-        { lat: Number(row.centroid_lat), lng: Number(row.centroid_lng) },
-        row.provider_level_code,
-      ),
     );
-    if (vendor.kind === 'denied') {
-      console.log('[audit] STOPPED: pool/budget denied');
-      break;
-    }
-    if (vendor.kind === 'faulted') {
-      // A fault is not an observation — reported apart, never as
-      // NO-ENTITY-AT-LEVEL.
-      faulted += 1;
-      console.log(`  FAULTED ${row.name} (${vendor.reason})`);
-      continue;
-    }
-    if (vendor.kind === 'none') {
-      // The vendor models NOTHING at our level here. That is the real
-      // "our level is wrong" signal (or the vendor simply lacks the place —
-      // the Keansburg class). Reported, never auto-applied.
-      noVendor += 1;
-      console.log(
-        `  NO-ENTITY-AT-LEVEL ${row.name} (${row.provider_level_code}, ${row.country_code})`,
-      );
-      continue;
-    }
-    const levelWrong = vendor.level !== row.provider_level_code;
-    const countryWrong =
-      Boolean(vendor.country) && vendor.country !== row.country_code;
-    const nameWrong =
-      Boolean(vendor.name) && vendor.name !== row.name && !levelWrong;
 
-    if (!levelWrong && !countryWrong && !nameWrong) {
-      agree += 1;
-      continue;
-    }
-    if (levelWrong) {
-      levelDiff += 1;
-      console.log(
-        `  LEVEL       ${row.name}: we=${row.provider_level_code} vendor=${vendor.level} (${vendor.name})`,
-      );
-    }
-    if (countryWrong) {
-      countryDiff += 1;
-      console.log(
-        `  COUNTRY     ${row.name}: we=${row.country_code} vendor=${vendor.country}`,
-      );
-    }
-    if (nameWrong) {
-      nameDiff += 1;
-      console.log(`  NAME(report) we='${row.name}' vendor='${vendor.name}'`);
-    }
-    if (levelWrong || countryWrong) {
-      fixes.push({
-        id: row.place_id,
-        // Only structural facts are auto-applied; see the file header.
-        level: levelWrong ? vendor.level : undefined,
-        country: countryWrong ? vendor.country : undefined,
-      });
-    }
-  }
+    console.log(
+      `[audit] ${rows.length} places | mode=${territoriesOnly ? 'territories' : sample ? `sample ${sample}` : 'all'} | execute=${execute}`,
+    );
 
-  console.log(
-    `[audit] agree=${agree} levelDiff=${levelDiff} countryDiff=${countryDiff} ` +
-      `nameDiff=${nameDiff} noVendor=${noVendor} faulted=${faulted} of ${rows.length}`,
-  );
+    let agree = 0;
+    let levelDiff = 0;
+    let countryDiff = 0;
+    let nameDiff = 0;
+    let noVendor = 0;
+    let faulted = 0;
+    const fixes: Array<{ id: string; level?: string; country?: string }> = [];
 
-  if (!execute) {
-    console.log(`[audit] dry-run — ${fixes.length} structural fixes available`);
-    return;
-  }
-  // Red-team 2026-07-29: parameterized (vendor strings were interpolated raw
-  // next to a correctly-parameterized id) and per-row fault-tolerant — the
-  // level is an input to the identity expression index, so one collision used
-  // to throw and silently abandon every remaining fix after a partial prefix.
-  let applied = 0;
-  for (const fix of fixes) {
-    try {
-      await prisma.$executeRawUnsafe(
-        `UPDATE places
+    for (const row of rows) {
+      const vendor = interpret(
+        await probe.lookupLevelEntity(
+          { lat: Number(row.centroid_lat), lng: Number(row.centroid_lng) },
+          row.provider_level_code,
+        ),
+      );
+      if (vendor.kind === 'denied') {
+        console.log('[audit] STOPPED: pool/budget denied');
+        break;
+      }
+      if (vendor.kind === 'faulted') {
+        // A fault is not an observation — reported apart, never as
+        // NO-ENTITY-AT-LEVEL.
+        faulted += 1;
+        console.log(`  FAULTED ${row.name} (${vendor.reason})`);
+        continue;
+      }
+      if (vendor.kind === 'none') {
+        // The vendor models NOTHING at our level here. That is the real
+        // "our level is wrong" signal (or the vendor simply lacks the place —
+        // the Keansburg class). Reported, never auto-applied.
+        noVendor += 1;
+        console.log(
+          `  NO-ENTITY-AT-LEVEL ${row.name} (${row.provider_level_code}, ${row.country_code})`,
+        );
+        continue;
+      }
+      const levelWrong = vendor.level !== row.provider_level_code;
+      const countryWrong =
+        Boolean(vendor.country) && vendor.country !== row.country_code;
+      const nameWrong =
+        Boolean(vendor.name) && vendor.name !== row.name && !levelWrong;
+
+      if (!levelWrong && !countryWrong && !nameWrong) {
+        agree += 1;
+        continue;
+      }
+      if (levelWrong) {
+        levelDiff += 1;
+        console.log(
+          `  LEVEL       ${row.name}: we=${row.provider_level_code} vendor=${vendor.level} (${vendor.name})`,
+        );
+      }
+      if (countryWrong) {
+        countryDiff += 1;
+        console.log(
+          `  COUNTRY     ${row.name}: we=${row.country_code} vendor=${vendor.country}`,
+        );
+      }
+      if (nameWrong) {
+        nameDiff += 1;
+        console.log(`  NAME(report) we='${row.name}' vendor='${vendor.name}'`);
+      }
+      if (levelWrong || countryWrong) {
+        fixes.push({
+          id: row.place_id,
+          // Only structural facts are auto-applied; see the file header.
+          level: levelWrong ? vendor.level : undefined,
+          country: countryWrong ? vendor.country : undefined,
+        });
+      }
+    }
+
+    console.log(
+      `[audit] agree=${agree} levelDiff=${levelDiff} countryDiff=${countryDiff} ` +
+        `nameDiff=${nameDiff} noVendor=${noVendor} faulted=${faulted} of ${rows.length}`,
+    );
+
+    if (!execute) {
+      console.log(
+        `[audit] dry-run — ${fixes.length} structural fixes available`,
+      );
+      return;
+    }
+    // Red-team 2026-07-29: parameterized (vendor strings were interpolated raw
+    // next to a correctly-parameterized id) and per-row fault-tolerant — the
+    // level is an input to the identity expression index, so one collision used
+    // to throw and silently abandon every remaining fix after a partial prefix.
+    let applied = 0;
+    for (const fix of fixes) {
+      try {
+        await prisma.$executeRawUnsafe(
+          `UPDATE places
             SET provider_level_code = COALESCE($1, provider_level_code),
                 country_code = COALESCE($2, country_code)
           WHERE place_id = $3::uuid`,
-        fix.level ?? null,
-        fix.country ?? null,
-        fix.id,
-      );
-      applied += 1;
-    } catch (e) {
-      console.log(
-        `  FAILED fix for ${fix.id}: ${e instanceof Error ? e.message.replace(/\s+/g, ' ').trim() : String(e)}`,
-      );
+          fix.level ?? null,
+          fix.country ?? null,
+          fix.id,
+        );
+        applied += 1;
+      } catch (e) {
+        console.log(
+          `  FAILED fix for ${fix.id}: ${e instanceof Error ? e.message.replace(/\s+/g, ' ').trim() : String(e)}`,
+        );
+      }
     }
+    console.log(`[audit] applied ${applied}/${fixes.length} structural fixes`);
+  } finally {
+    // Closing the context flushes the usage ledger — see the exit note below.
+    await app.close();
   }
-  console.log(`[audit] applied ${applied}/${fixes.length} structural fixes`);
 }
 
-void main().finally(() => {
-  void prisma.$disconnect();
-  process.exit(0);
-});
+// EXIT CODE IS A FACT (red team 2026-08-04). `process.exit(0)` in a finally
+// made every run — including a Nest boot failure — report success, so no cron,
+// CI step or operator could tell a completed audit from a crash. It also
+// skipped app.close(), and UsageLedgerService.onModuleDestroy is what awaits
+// the fire-and-forget ledger writes: the last draws of every run were lost,
+// which is the unmetered-vendor-call shape this conversion existed to close.
+void main()
+  .catch((error) => {
+    console.error(error);
+    process.exitCode = 1;
+  })
+  .finally(() => prisma.$disconnect());

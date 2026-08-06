@@ -250,7 +250,12 @@ export class TomtomChainProbeAdapter implements TomtomChainProbe {
    * adapter).
    */
   private async spendGateVerdict(): Promise<
-    { kind: 'denied' } | { kind: 'failed'; reason: string } | null
+    | { kind: 'denied' }
+    // The gate already REPORTS scope (a spend-gate outage is systemic); this
+    // return type just had not been widened to carry it, so every caller lost
+    // the distinction the port now requires.
+    | { kind: 'failed'; reason: string; scope: 'systemic' | 'row' }
+    | null
   > {
     try {
       await this.governance.assertTomtomSpendOpen();
@@ -299,7 +304,11 @@ export class TomtomChainProbeAdapter implements TomtomChainProbe {
     if (outcome.kind === 'denied') {
       return { kind: 'denied' };
     }
-    // ANY THROW WHILE INTERPRETING IS A TYPED FAULT (property test, 2026-08-04).
+    // ANY THROW WHILE READING THE VENDOR BODY IS A TYPED FAULT (property
+    // test, 2026-08-04). Scoped to the PARSE: the catalog read and the
+    // forward geocode inside interpretReverse handle their own failures, so
+    // this catch cannot mislabel a DB fault as a vendor-JSON fault or throw
+    // away a chain the reverse geocode already paid for.
     // The parse below reads vendor-controlled JSON, and a field whose TYPE is
     // wrong — `countryCode: 123` — made `?.trim()` throw straight out of
     // probe(), escaping the union entirely: the one shape a caller cannot
@@ -421,7 +430,28 @@ export class TomtomChainProbeAdapter implements TomtomChainProbe {
       if (node.bbox || forwardBudget <= 0) {
         continue;
       }
-      if (await this.catalogKnowsBbox(node)) {
+      // A CATALOG READ IS NOT A VENDOR READ. This is a Prisma query inside
+      // the interpretation, and it used to fall into the parse catch — so a
+      // DB blip returned `tomtom_parse_threw_PrismaClientKnownRequestError`,
+      // pointing the operator at the vendor's JSON while discarding a COMPLETE
+      // chain the reverse geocode had already been paid for (red team
+      // 2026-08-04). The enrichment is optional; a node without a bbox is
+      // sketched without one and the next probe fills it in.
+      let known: boolean;
+      try {
+        known = await this.catalogKnowsBbox(node);
+      } catch (error) {
+        this.logger.warn(
+          'Catalog bbox check failed — node sketched without it',
+          {
+            error: {
+              message: error instanceof Error ? error.message : String(error),
+            },
+          },
+        );
+        continue;
+      }
+      if (known) {
         continue;
       }
       forwardBudget -= 1;
@@ -534,9 +564,41 @@ export class TomtomChainProbeAdapter implements TomtomChainProbe {
     if (!Array.isArray(response.data?.addresses)) {
       return { kind: 'failed', reason: 'tomtom_body_shape', scope: 'systemic' };
     }
-    const entry = response.data.addresses[0];
-    if (!entry) {
+    // THE SAME COLLAPSE, ONE METHOD OVER (red team 2026-08-04, second pass).
+    // This shipped the same day as the fix that removed `addresses[0] ?? null`
+    // from reverseGeocode, and reintroduced it verbatim here: a body whose
+    // single entry is null/0/'' read as 'empty', which BOTH consumers report
+    // to the owner as "the vendor models nothing at our level here". P5 in
+    // reporting, inside the method added to end P5 in reporting.
+    const entries = response.data.addresses;
+    if (entries.length === 0) {
       return { kind: 'empty' };
+    }
+    const first: unknown = entries[0];
+    if (typeof first !== 'object' || first === null) {
+      return {
+        kind: 'failed',
+        reason: 'tomtom_entry_shape',
+        scope: 'systemic',
+      };
+    }
+    const entry = first as TomtomReverseAddressEntry;
+    if (typeof entry.address !== 'object' || entry.address === null) {
+      return {
+        kind: 'failed',
+        reason: 'tomtom_address_missing',
+        scope: 'systemic',
+      };
+    }
+    if (
+      entry.entityType !== undefined &&
+      typeof entry.entityType !== 'string'
+    ) {
+      return {
+        kind: 'failed',
+        reason: 'tomtom_entity_type_shape',
+        scope: 'systemic',
+      };
     }
     return {
       kind: 'named',

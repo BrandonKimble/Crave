@@ -113,6 +113,24 @@ function buildPrisma(params: {
         return Promise.resolve(events);
       }),
       aggregate: jest.fn().mockResolvedValue(params.tomtomAgg),
+      // TomTom unit costs are one row PER PRICED OPERATION now — the single
+      // blended 'tomtom.searchFamily' class charged every draw the scarce
+      // polygon rate against a mix that is ~96% cheap. Derived from the same
+      // fixture so existing cases keep their totals.
+      groupBy: jest.fn().mockImplementation(() =>
+        Promise.resolve(
+          (params.tomtomAgg._sum.requestCount ?? 0) === 0 &&
+            (params.tomtomAgg._count?._all ?? 0) === 0
+            ? []
+            : [
+                {
+                  operation: 'additionalData',
+                  _sum: { requestCount: params.tomtomAgg._sum.requestCount },
+                  _count: { _all: params.tomtomAgg._count?._all ?? 0 },
+                },
+              ],
+        ),
+      ),
     },
     sourceDocument: {
       count: jest.fn().mockResolvedValue(params.docsCollected ?? 0),
@@ -273,10 +291,16 @@ describe('SpendAnalyticsService.refreshUnitCosts (§24.2 Leg A)', () => {
 
     const rows = await service.refreshUnitCosts(WINDOW_END);
 
-    const tomtomRow = rows.find((r) => r.workClass === 'tomtom.searchFamily');
+    // ONE ROW PER PRICED OPERATION (2026-08-04). 'tomtom.searchFamily' folded
+    // every draw into the scarce rate on the premise that the ledger could not
+    // split cheap from scarce — it can, in the `operation` column.
+    const tomtomRow = rows.find(
+      (r) => r.workClass === 'tomtomDraw.additionalData',
+    );
     expect(tomtomRow).toBeDefined();
     expect(tomtomRow!.sampleUnits).toBe(12);
     expect(tomtomRow!.microUsdPerUnit).toBe(3_240);
+    expect(rows.some((r) => r.workClass === 'tomtom.searchFamily')).toBe(false);
 
     const essentialsRow = rows.find(
       (r) => r.workClass === 'google_places.essentials',
@@ -315,7 +339,7 @@ describe('SpendAnalyticsService.refreshUnitCosts (§24.2 Leg A)', () => {
     ).toBeUndefined();
   });
 
-  it('§24 Task 1: publishes a constant-rate floor row for tomtom.searchFamily even with zero ledger sample', async () => {
+  it('§24 Task 1: publishes a constant-rate floor row for tomtom even with zero ledger sample — at the CHEAP rate, since the mix is ~96% cheap', async () => {
     const prisma = buildPrisma({
       joinedRows: [],
       unattributedGeminiEvents: [],
@@ -332,10 +356,12 @@ describe('SpendAnalyticsService.refreshUnitCosts (§24.2 Leg A)', () => {
     );
 
     const rows = await service.refreshUnitCosts(WINDOW_END);
-    const tomtomRow = rows.find((r) => r.workClass === 'tomtom.searchFamily');
+    const tomtomRow = rows.find((r) => r.workClass.startsWith('tomtomDraw.'));
     expect(tomtomRow).toBeDefined();
     expect(tomtomRow!.sampleUnits).toBe(0);
-    expect(tomtomRow!.microUsdPerUnit).toBe(3_240);
+    // An EMPTY window should not imply the dearest rate. A real window is
+    // priced per operation; this placeholder uses the cheap one deliberately.
+    expect(tomtomRow!.microUsdPerUnit).toBe(1_080);
   });
 
   it('§24 Task 2: feeds joined per-source PER-LANE spend into CollectorSourceRegistryService.recordLaneCost, reading the lane off the document (chronological now attributed, not just keyword)', async () => {

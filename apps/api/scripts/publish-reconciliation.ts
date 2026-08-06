@@ -25,7 +25,7 @@ import { PrismaClient } from '@prisma/client';
 import { pricedGeminiRow } from '../src/modules/external-integrations/shared/gemini-pricing';
 import {
   placesCostMicrosPerCall,
-  tomtomBlendedCostMicrosPerDraw,
+  tomtomCostMicrosPerDraw,
 } from '../src/modules/external-integrations/shared/vendor-pricing';
 
 function argValue(flag: string): string | undefined {
@@ -90,7 +90,7 @@ async function main(): Promise<void> {
       // figure the live meter uses, so both sides of the ratio speak the same
       // ledger dialect.
       ledgerTomtomMicros +=
-        tomtomBlendedCostMicrosPerDraw * (row.requestCount ?? 1);
+        tomtomCostMicrosPerDraw(row.operation) * (row.requestCount ?? 0);
     }
   }
 

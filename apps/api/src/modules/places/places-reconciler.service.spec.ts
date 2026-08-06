@@ -497,6 +497,8 @@ describe('PlacesReconcilerService — §2 background naming', () => {
         Promise.resolve({
           kind: 'failed' as const,
           reason: 'tomtom_body_shape',
+          // A malformed body is ONE bad response, not the vendor being down.
+          scope: 'row' as const,
         }),
     });
     service.noteViewport(VIEW);

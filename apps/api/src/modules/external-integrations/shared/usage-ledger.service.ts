@@ -12,7 +12,7 @@ import { GovernanceService } from '../governance/governance.service';
 import { currentCampaignId, currentAttribution } from './work-context';
 import {
   placesCostMicrosPerCall,
-  tomtomBlendedCostMicrosPerDraw,
+  tomtomCostMicrosPerDraw,
 } from './vendor-pricing';
 import { geminiCostMicros } from './gemini-pricing';
 import { ReconciliationMultiplierService } from './reconciliation-multiplier.service';
@@ -258,7 +258,7 @@ export class UsageLedgerService implements OnModuleDestroy {
     try {
       const calls = event.requestCount ?? 1;
       const micros =
-        tomtomBlendedCostMicrosPerDraw *
+        tomtomCostMicrosPerDraw(event.operation) *
         (Number.isFinite(calls) && calls > 0 ? calls : 1);
       if (micros <= 0) {
         return;
