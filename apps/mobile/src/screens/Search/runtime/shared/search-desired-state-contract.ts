@@ -194,9 +194,6 @@ export const areDietarySetsEqual = (a: readonly string[], b: readonly string[]):
   return ca.length === cb.length && ca.every((name, i) => name === cb[i]);
 };
 
-const areStringArraysEqual = (a: readonly string[], b: readonly string[]): boolean =>
-  a.length === b.length && [...a].sort().every((value, index) => value === [...b].sort()[index]);
-
 export const areSearchQueryIdentitiesEqual = (
   a: SearchQueryIdentity,
   b: SearchQueryIdentity
