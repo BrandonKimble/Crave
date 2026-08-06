@@ -1904,3 +1904,23 @@ scoping failure should fail the search is a behavior question adjacent to the F2
 escalation; what is NOT in question is the silence. Fix now: log with a named policy
 (the `getDietaryIds` shape) so occurrences become countable; the behavior decision waits
 for the owner alongside F2601.
+
+---
+
+## D74 — Stage-1 census P3 ratified (2026-08-06)
+
+Landed as designed, with two deviations RATIFIED:
+(1) **13 renames, not 14.** D70's re-derive-at-execution condition caught the census
+overcounting: `use-search-root-overlay-foreground-visual-presentation-source-runtime.ts`
+genuinely calls `React.useMemo` behind a multi-line generic containing semicolons that the
+census classifier could not cross. It is MEMO-ONLY and keeps its honest name. The condition
+existed for exactly this; filed as F3200.
+(2) **A third prefix.** One file writes an action into a ref — both sanctioned prefixes
+(`derive-*`/`select-*`) would lie, so it became `publish-*` under the design's "per what
+they do" clause. Flagged rather than improvised silently; ratified — the clause was the
+design, the prefix list was illustration.
+The guard itself dodged two blind spots while being built (typeof-position references
+would have green-lit the 401-line type file; the generic-crossing call shape), both fixed
+before landing, both now in its header. Mutation proof ran in both orders plus a planted
+probe. 176 importers rewritten via git mv, tsc clean, 40/40 suites, both audit gates pass.
+Stage 2 (51-file inline) remains queued on F2900.
