@@ -803,3 +803,50 @@ absent as first-class gates:
    Both are KIND questions. Every measured defect is a kind-error that passed a
    shape-test. This is why rule-stacking kept failing: the rules were all
    shape-rules, and no quantity of shape-rules answers a kind-question.
+
+## PHASE 1 RED TEAM (self, 2026-08-05): two of my own claims refuted
+
+1. "H-E-B's al pastor / beef fajitas / chicharron are plausibly its real
+   taqueria counter" — REFUTED, and I had asserted it from plausibility, not
+   data. Every one of those events traces to PACKAGED GROCERY text: "all of
+   the Mi Tienda meats from H-E-B... gets watery when you cook it on the
+   stove", "pretty dang solid for store-bought, packaged stuff", "hill
+   country fare chicharrones, packaged in the styrofoam near the deli",
+   "HEB's in-house tortillas". H-E-B carries ZERO prepared-and-served
+   claims. The boundary case I worried about does not exist here — which
+   SIMPLIFIES the rule rather than complicating it.
+
+2. "post body vs comment is the clean discriminator for itineraries" —
+   REFUTED. Genuine-testimony POST bodies are everywhere: "Had an incredible
+   meal from the Bunbelly truck", "2026 NYC Food Trip Review — The Hits:
+   Radio Bakery: Salmon lox focaccia. Best bite of the trip", "Went to Sour
+   Duck last Sat", "Post-trip food ratings". A post-body rule would destroy
+   all of them. The measurement pass saw a correlation in its sample and I
+   repeated it as a rule.
+   THE ACTUAL DISCRIMINATOR IS EXPERIENTIAL STANCE, and it is the thesis
+   itself: "Headed to Austin at the end of the month, here's our short list"
+   (future / intent) vs "Went to Sour Duck last Sat" (past / experience).
+   Not position in the thread — WHETHER THE AUTHOR HAS EATEN THE FOOD.
+   Note "2026 NYC Food Trip Review how did I do overall?" is testimony even
+   though it asks a question: asking for feedback ON AN EXPERIENCE HAD is
+   still vouching. The gate is experience, not the presence of a question.
+
+3. Intensity-dislocation CONFIRMED with a sharper example: "Really great
+   focaccia type Roman style pizza. LIGHTER THAN Jets or 313 but very high
+   quality" -> food_attribute `light`. The word was not merely peeled off
+   its noun, it was peeled off a COMPARISON — its entire meaning was
+   relational to two other pizzerias. Standing alone it asserts nothing.
+
+4. Scare investigated and dismissed: 15,829 exactly-doubled event groups are
+   BY DESIGN — every one differs only in evidence_type (food_category +
+   food_mention 8,364; food_category + menu_item_food 7,465), same run, same
+   input. One claim, two evidence rows. OPEN QUESTION (code, not prompt):
+   whether score inputs dedupe by claim or count both rows, which would give
+   category-bearing foods double the evidence mass of non-category foods.
+
+THESIS AFTER RED TEAM (refined, and stronger): every defect class WITH
+MATERIAL MASS is a kind-error that passed a shape-test. The residual
+shape-errors (truncated tokens, slash-splits, plural/word-order twins) were
+all measured at noise level AND belong in code — identity keys and a
+denylist — not in the prompt. So the prompt rewrite is exclusively a
+kind-question problem.
