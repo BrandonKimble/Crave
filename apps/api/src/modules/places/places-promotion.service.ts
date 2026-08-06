@@ -733,7 +733,18 @@ export class PlacesPromotionService {
     geojson: unknown,
     now: Date,
   ): Promise<boolean> {
-    const rows = await this.prisma.$executeRaw(Prisma.sql`
+    // A GEOMETRY POSTGIS CANNOT PARSE LANDS NOTHING — it does not crash the
+    // pass (integration test, 2026-08-04). ST_GeomFromGeoJSON raises XX000 on
+    // a malformed feature ("Unable to find 'coordinates'"), and this call sits
+    // OUTSIDE the drain's transport catch, so one bad vendor payload threw out
+    // of drainQueue and ended the whole pass — every queued place behind it
+    // waiting on the next tick. A payload we cannot store is the same outcome
+    // for the place as a payload with no rings: it stays sketch and the
+    // attempt is recorded. The distinction that matters is fault vs vendor
+    // truth, and this is a fault either way.
+    let rows: number;
+    try {
+      rows = await this.prisma.$executeRaw(Prisma.sql`
       WITH raw_input AS (
         SELECT ${JSON.stringify(geojson)}::jsonb AS geojson
       ),
@@ -789,6 +800,16 @@ export class PlacesPromotionService {
         fetched_at = EXCLUDED.fetched_at,
         geometry = EXCLUDED.geometry
     `);
+    } catch (error) {
+      this.logger.warn('Polygon persist failed — geometry unusable', {
+        placeId,
+        geometryId,
+        error: {
+          message: error instanceof Error ? error.message : String(error),
+        },
+      });
+      return false;
+    }
     if (rows === 0) {
       return false; // no usable rings — caller treats as a miss
     }

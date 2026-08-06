@@ -348,12 +348,14 @@ describe('PlacesPromotionService — §2 earned-moment queue', () => {
         call.sql.includes('INSERT INTO place_geometries'),
       );
       expect(persist).toBeDefined();
-      // Mirror of the live-proven legacy bootstrap ST_ pipeline (§1: the
-      // geometry column lives outside prisma — raw SQL only).
-      expect(persist!.sql).toContain('ST_GeomFromGeoJSON');
-      expect(persist!.sql).toContain('ST_UnaryUnion');
-      expect(persist!.sql).toContain('ST_Multi');
-      expect(persist!.sql).toContain('ON CONFLICT (place_id) DO UPDATE');
+      // WHAT the pipeline does is proven against real PostGIS in
+      // places-ground-persist.integration.spec (union of ALL features, invalid
+      // rings made valid, upsert, centroid coupling, malformed payload lands
+      // nothing). The token list that used to sit here — ST_GeomFromGeoJSON,
+      // ST_UnaryUnion, ST_Multi, ON CONFLICT — could not tell "unions
+      // everything" from "unions the first", which is a bug this module
+      // actually had. What is worth asserting HERE is that the drain reached
+      // the persist with the polygon it was handed.
       expect(persist!.values).toContain(JSON.stringify(POLYGON_GEOJSON));
 
       // P4 COMPLETE (2026-07-30): there is NO bbox writeback — the columns
@@ -369,11 +371,10 @@ describe('PlacesPromotionService — §2 earned-moment queue', () => {
       const derive = executeRawCalls.find((call) =>
         call.sql.includes('UPDATE places p SET'),
       );
+      // That the point actually MOVES to the new ground is the integration
+      // spec's third case; here we only assert the coupling write happens on
+      // the same path as the ground write.
       expect(derive).toBeDefined();
-      expect(derive!.sql).toContain(
-        'centroid_lat = ST_Y(ST_PointOnSurface(g.geometry))',
-      );
-      expect(derive!.sql).toContain('NOT ST_Covers(g.geometry');
 
       // Promotion stamped on the queue row AND places.promoted_at.
       expect(prisma.placeGeometryPromotion.update).toHaveBeenCalledWith({

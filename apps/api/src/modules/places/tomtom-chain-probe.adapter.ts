@@ -265,18 +265,54 @@ export class TomtomChainProbeAdapter implements TomtomChainProbe {
     if (outcome.kind === 'denied') {
       return { kind: 'denied' };
     }
-    const entry = outcome.entry;
-    if (!entry) {
-      // The vendor answered, well-formed, with no addresses: it OBSERVED
-      // that nothing lives here. The one case that may be remembered.
+    // ANY THROW WHILE INTERPRETING IS A TYPED FAULT (property test, 2026-08-04).
+    // The parse below reads vendor-controlled JSON, and a field whose TYPE is
+    // wrong — `countryCode: 123` — made `?.trim()` throw straight out of
+    // probe(), escaping the union entirely: the one shape a caller cannot
+    // handle, from the one place we do not control. A shape catalogue never
+    // found it because a catalogue only contains shapes someone imagined.
+    // Interpretation is now total: it returns a fault or it returns an
+    // observation, and it cannot do neither.
+    try {
+      return await this.interpretReverse(outcome.entries, anchor, probedRegion);
+    } catch (error) {
+      return {
+        kind: 'failed',
+        reason: `tomtom_parse_threw_${error instanceof Error ? error.name : 'unknown'}`,
+      };
+    }
+  }
+
+  /** The body → observation interpretation. Total by construction: every exit
+   *  is a typed arm, and probe() converts any throw here into a fault. */
+  private async interpretReverse(
+    entries: unknown[],
+    anchor: GeoPoint,
+    probedRegion: ProbedRegion,
+  ): Promise<TomtomChainProbeResult> {
+    if (entries.length === 0) {
+      // The vendor answered, well-formed, with NO addresses: it OBSERVED that
+      // nothing lives here. The one and only case that may be remembered.
       return { kind: 'empty', probedRegion };
     }
-    if (!entry.address) {
+    const first = entries[0];
+    if (typeof first !== 'object' || first === null) {
+      // An entry that is not an object is a contract violation, NOT an
+      // observation of emptiness.
+      return { kind: 'failed', reason: 'tomtom_entry_shape' };
+    }
+    const entry = first as TomtomReverseAddressEntry;
+    if (!entry.address || typeof entry.address !== 'object') {
       return { kind: 'failed', reason: 'tomtom_address_missing' };
     }
 
     const address = entry.address;
-    const countryCode = address.countryCode?.trim().toUpperCase();
+    // Vendor-controlled TYPE, not just value: a non-string here is a contract
+    // violation, read as absent rather than coerced or thrown on.
+    const countryCode =
+      typeof address.countryCode === 'string'
+        ? address.countryCode.trim().toUpperCase()
+        : undefined;
     if (!countryCode) {
       // The vendor DID describe this ground but the response is malformed
       // (rungs named, country slot empty — a contract violation, since
@@ -457,10 +493,14 @@ export class TomtomChainProbeAdapter implements TomtomChainProbe {
   }
 
   /** One governed reverse geocode; a pool denial reads as "no answer now". */
-  private async reverseGeocode(
-    anchor: GeoPoint,
-  ): Promise<
-    | { kind: 'ok'; entry: TomtomReverseAddressEntry | null }
+  private async reverseGeocode(anchor: GeoPoint): Promise<
+    // THE WHOLE ARRAY, not addresses[0] (property test, 2026-08-04). Collapsing
+    // to `addresses[0] ?? null` made "the array is EMPTY" and "the array has a
+    // first element that is null/0/''/false" indistinguishable — so a
+    // malformed single-entry body was remembered as a negative OBSERVATION and
+    // written to probed_regions with a 30-day TTL, suppressing re-probes over
+    // real ground. P5 again: a fault kept as ground truth.
+    | { kind: 'ok'; entries: unknown[] }
     | { kind: 'failed'; reason: string }
     | { kind: 'denied' }
   > {
@@ -506,7 +546,7 @@ export class TomtomChainProbeAdapter implements TomtomChainProbe {
     if (!Array.isArray(response.data?.addresses)) {
       return { kind: 'failed', reason: 'tomtom_body_shape' };
     }
-    return { kind: 'ok', entry: response.data.addresses[0] ?? null };
+    return { kind: 'ok', entries: response.data.addresses };
   }
 
   /**
