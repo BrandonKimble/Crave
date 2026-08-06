@@ -139,6 +139,10 @@ const EXEMPT: Record<string, string> = {
     'the redirect graph — handled structurally by the transitive closure block at the foot of preserved-anchors.sql, not by an arm',
 
   // ---- derived layer: rebuilt by the re-extract runner's ingest ----
+  'entity_satisfies.from_entity_id':
+    "derived vocabulary edge — it carries a promptVersion, is re-decided by re-extraction, and CASCADEs with its entity. Preserving an entity because a derived edge points at it would make the LLM's opinion an anchor.",
+  'entity_satisfies.to_entity_id':
+    'same: derived, prompt-versioned, cascaded. Not user evidence.',
   'core_restaurant_events.restaurant_id':
     'derived evidence ledger — the wipe deletes it BY DESIGN and ingest rebuilds it',
   'core_restaurant_entity_events.restaurant_id':

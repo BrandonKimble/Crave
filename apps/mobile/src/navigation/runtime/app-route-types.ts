@@ -4,7 +4,13 @@ import { isPerfScenarioUrl } from '../../perf/perf-scenario-deep-link';
 import { isLifecycleHarnessUrl } from '../../perf/lifecycle-harness/lifecycle-harness-registry';
 import { parseDesireLink } from './desire-url-codec';
 
-export type AppRouteDestination = 'onboarding' | 'sign_in' | 'paywall' | 'main';
+export type AppRouteDestination =
+  | 'onboarding'
+  | 'sign_in'
+  /** Signed in, but the account is inside its deletion grace window. */
+  | 'account_deleted'
+  | 'paywall'
+  | 'main';
 
 export type LaunchIntent =
   | { type: 'none' }

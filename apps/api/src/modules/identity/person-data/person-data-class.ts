@@ -98,6 +98,12 @@ export const PERSON_DATA_RULES: readonly PersonDataRule[] = [
     table: 'users',
     column: 'user_id',
     disposition: 'retain',
+    // IDENTIFYING AND RETAINED ARE DIFFERENT AXES. Retention says the VALUE
+    // survives; personKey says the column NAMES the person. Conflating them
+    // left `users` with no discoverable key once retained columns were
+    // filtered out, so the eraser could not scope its own two null_column
+    // rules and aborted the entire sweep.
+    personKey: true,
     basis:
       'The surrogate id anchors retained financial records and severed authorship. Carries nothing about the person by itself.',
   },

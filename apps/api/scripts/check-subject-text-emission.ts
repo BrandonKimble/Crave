@@ -51,6 +51,10 @@ const ALLOWED: Record<string, { class: Classification; why: string }> = {
     class: 'floored',
     why: 'Cross-person AND outbound (terms go to the embedding API). Joins the view. This is the read that proved the old guard was a proxy rather than the invariant.',
   },
+  'src/modules/search/demand-vocabulary.service.ts': {
+    class: 'floored',
+    why: "Learns vocabulary from UNMET asks — cross-person and outbound to an LLM. Its own gate was MIN_ASKS = 1 over count(*), i.e. no floor at all: one person's single unmatched search went straight to a third party. Joins the view now.",
+  },
   'src/modules/search/search.service.ts': {
     class: 'own-scoped',
     why: "Cache-reveal replay: re-records the requesting user's own search act, joined to signal_actors on their own user_id.",
@@ -79,6 +83,11 @@ const ALLOWED: Record<string, { class: Classification; why: string }> = {
     class: 'declaration',
     why: 'Names the column in a comment explaining erasure ORDER (null_column must precede sever, because the person-scope predicate needs the signal_actors mapping that sever destroys). Executes the declaration; does not read text.',
   },
+  'src/modules/identity/person-data/person-data-erasure-proof.integration.spec.ts':
+    {
+      class: 'declaration',
+      why: 'Seeds one signal WITH subject_text to prove the erasure ORDER destroys it before sever makes it unreachable. Writes the column; never emits it.',
+    },
   'src/modules/identity/person-data/person-data-coverage.integration.spec.ts': {
     class: 'declaration',
     why: 'The coverage ledger; names subject_text only in its allowlist of reasons.',

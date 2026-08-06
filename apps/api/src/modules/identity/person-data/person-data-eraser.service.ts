@@ -1,5 +1,4 @@
 import { Injectable } from '@nestjs/common';
-import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../../prisma/prisma.service';
 import { LoggerService } from '../../../shared';
 import { PERSON_DATA_RULES, type PersonDataRule } from './person-data-class';
@@ -172,7 +171,9 @@ export class PersonDataEraserService {
               `and the table declares no person key to scope by`,
           );
         }
-        const predicate = rule.rowPredicate ? ` AND (${rule.rowPredicate})` : '';
+        const predicate = rule.rowPredicate
+          ? ` AND (${rule.rowPredicate})`
+          : '';
         return this.prisma.$executeRawUnsafe(
           `UPDATE "${rule.table}" SET "${rule.column}" = NULL WHERE (${scope})${predicate}`,
           userId,

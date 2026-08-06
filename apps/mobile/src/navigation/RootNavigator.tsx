@@ -8,6 +8,7 @@ import { isSplashStudioEnabled } from '../splash-studio/config';
 import type { RootStackParamList } from '../types/navigation';
 import { AppShellMainNavigator } from './runtime/AppShellMainNavigator';
 import { useAppRouteCoordinator } from './runtime/AppRouteCoordinator';
+import { AccountDeletedScreen } from '../screens/AccountDeletedScreen';
 
 const Stack = createStackNavigator<RootStackParamList>();
 
@@ -70,6 +71,14 @@ const RootNavigator: React.FC = () => {
       return (
         <StaticSplashArtShell>
           <AuthNavigator />
+        </StaticSplashArtShell>
+      );
+    case 'account_deleted':
+      // Non-dismissible, like the paywall: the axis leaves when the server
+      // says the account is live again (restore clears the flag).
+      return (
+        <StaticSplashArtShell>
+          <AccountDeletedScreen />
         </StaticSplashArtShell>
       );
     case 'paywall':

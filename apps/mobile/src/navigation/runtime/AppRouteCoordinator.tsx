@@ -17,6 +17,8 @@ import {
   NO_LAUNCH_INTENT,
   parseLaunchIntentFromUrl,
 } from './app-route-types';
+import { useAccountDeletedStore } from '../../store/accountDeletedStore';
+import { useClearOnIdentityChange } from './use-clear-on-identity-change';
 
 type AppRouteCoordinatorContextValue = {
   /** True once a destination has EVER been published — sticky by design (see
@@ -215,6 +217,8 @@ export const AppRouteCoordinator: React.FC<{ children: React.ReactNode }> = ({ c
   // so the SERVER'S verdict wins and the user is routed to sign-in. Without this
   // the app kept every screen mounted and every request anonymous.
   const isSessionLapsed = useSessionLapseStore((state) => state.lapsed);
+  const isAccountDeleted = useAccountDeletedStore((state) => state.deleted);
+  const clearAccountDeleted = useAccountDeletedStore((state) => state.clearDeleted);
   const clearSessionLapse = useSessionLapseStore((state) => state.clearLapse);
 
   const authStatus: AuthStatus = React.useMemo(() => {
@@ -235,22 +239,21 @@ export const AppRouteCoordinator: React.FC<{ children: React.ReactNode }> = ({ c
     }
   }, [isSessionLapsed, queryClient]);
 
-  // The lapse is cleared by a real session change — Clerk signing out (the user
-  // is now honestly anonymous) or a fresh sign-in landing on a NEW user id.
-  const lapsedUserIdRef = React.useRef<string | null | undefined>(undefined);
-  React.useEffect(() => {
-    if (!isSessionLapsed) {
-      lapsedUserIdRef.current = undefined;
-      return;
-    }
-    if (lapsedUserIdRef.current === undefined) {
-      lapsedUserIdRef.current = clerkUserId ?? null;
-      return;
-    }
-    if (!isSignedIn || (clerkUserId ?? null) !== lapsedUserIdRef.current) {
-      clearSessionLapse();
-    }
-  }, [clearSessionLapse, clerkUserId, isSessionLapsed, isSignedIn]);
+  // A takeover belongs to the person it was raised for — see
+  // use-clear-on-identity-change. This guard was written INLINE here, so the
+  // deleted-account takeover added beside it silently did not get it.
+  useClearOnIdentityChange({
+    active: isSessionLapsed,
+    currentUserId: clerkUserId,
+    isSignedIn,
+    clear: clearSessionLapse,
+  });
+  useClearOnIdentityChange({
+    active: isAccountDeleted,
+    currentUserId: clerkUserId,
+    isSignedIn,
+    clear: clearAccountDeleted,
+  });
 
   // ── F810: replay the unconfirmed onboarding completion ────────────────────
   // A completion the server never acknowledged is persisted verbatim. On the
@@ -423,13 +426,19 @@ export const AppRouteCoordinator: React.FC<{ children: React.ReactNode }> = ({ c
     // but ONLY when the server wall is live (access.enforced rides the
     // profile payload; rollout stays a single server-side switch).
     const needsPaywall = access.enforced && !access.active;
+    // ABOVE THE PAYWALL, deliberately: a closed account has nothing to buy
+    // access TO, and every authenticated route refuses it anyway. Showing the
+    // paywall here would sell a subscription for an account being erased.
+    const accountDeleted = isAccountDeleted;
     const destination = isPerfScenarioNavigationBypassActive
       ? 'main'
       : effectiveOnboardingStatus === 'completed'
         ? authStatus === 'signed_in'
-          ? needsPaywall
-            ? 'paywall'
-            : 'main'
+          ? accountDeleted
+            ? 'account_deleted'
+            : needsPaywall
+              ? 'paywall'
+              : 'main'
           : 'sign_in'
         : 'onboarding';
     return {
@@ -442,6 +451,7 @@ export const AppRouteCoordinator: React.FC<{ children: React.ReactNode }> = ({ c
   }, [
     activeMainIntent,
     authStatus,
+    isAccountDeleted,
     deferredIntent,
     effectiveOnboardingStatus,
     isPerfScenarioNavigationBypassActive,
