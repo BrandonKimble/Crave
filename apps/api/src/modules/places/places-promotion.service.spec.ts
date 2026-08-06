@@ -386,6 +386,39 @@ describe('PlacesPromotionService — §2 earned-moment queue', () => {
       expect(prisma.place.update).not.toHaveBeenCalled();
     });
 
+    it('a ROW-SCOPED fault counts toward retirement and does NOT stop the queue', async () => {
+      // THE HEAD-OF-LINE REGRESSION. The first P5 fix routed every fault to
+      // 'stop'; an id the vendor never echoes is permanent, so one such row at
+      // the head of an oldest-first queue burned a scarce draw every hour
+      // forever and blocked every place behind it.
+      const { service, prisma } = makeHarness({
+        queueRows: [makeQueueRow({ providerBoundaryId: 'geo-stale' })],
+        fetchPolygon: jest.fn((_id: string, onDrawConsumed?: () => void) => {
+          onDrawConsumed?.();
+          return Promise.resolve({
+            kind: 'failed' as const,
+            reason: 'tomtom_geometry_id_not_echoed',
+            scope: 'row' as const,
+          });
+        }),
+      });
+      await service.drainQueue(new Date('2026-07-20T00:00:00Z'));
+      // recordMiss increments BOTH counters; recordAttempt (the systemic
+      // path) increments only `attempts`. The presence of missAttempts is
+      // therefore the exact observable that separates the two — the first
+      // version of this assertion used expect.anything() and passed for BOTH
+      // scopes, which is a lying test.
+      const calls = prisma.placeGeometryPromotion.update.mock.calls as Array<
+        [{ data: Record<string, unknown> }]
+      >;
+      const missCalls = calls.filter((c) => 'missAttempts' in c[0].data);
+      expect(missCalls).toHaveLength(1);
+      expect(missCalls[0][0].data).toMatchObject({
+        attempts: { increment: 1 },
+        missAttempts: { increment: 1 },
+      });
+    });
+
     it('a raced pre-existing polygon just stamps promotion — no draws', async () => {
       const fetchPolygon = jest.fn();
       const resolveGeometryId = jest.fn();

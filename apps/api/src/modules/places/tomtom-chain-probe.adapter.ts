@@ -54,6 +54,7 @@ function describeTransportFault(error: unknown): string {
 import { LoggerService } from '../../shared';
 import { PrismaService } from '../../prisma/prisma.service';
 import { UsageLedgerService } from '../external-integrations/shared/usage-ledger.service';
+import { SpendBudgetClosedError } from '../external-integrations/governance/governance.service';
 import { GovernanceService } from '../external-integrations/governance/governance.service';
 import { OpsAlertsService } from '../external-integrations/shared/ops-alerts.service';
 import {
@@ -237,6 +238,40 @@ export class TomtomChainProbeAdapter implements TomtomChainProbe {
       Number(configService.get<number>('tomtom.timeout')) || 10000;
   }
 
+  /**
+   * Ask the money gate. Returns the arm to RETURN when we may not spend, or
+   * null when the budget is open.
+   *
+   * 'denied' means the budget said no — routine, expected, alerted by the gate
+   * itself. 'failed' means the gate could not ANSWER: an unregistered pool
+   * throws from requirePool with no ops alert, so collapsing it into 'denied'
+   * made a systemic fault look like back-pressure and would have stopped
+   * TomTom silently and forever (red team 2026-08-04, proven against the real
+   * adapter).
+   */
+  private async spendGateVerdict(): Promise<
+    { kind: 'denied' } | { kind: 'failed'; reason: string } | null
+  > {
+    try {
+      await this.governance.assertTomtomSpendOpen();
+      return null;
+    } catch (error) {
+      if (error instanceof SpendBudgetClosedError) {
+        return { kind: 'denied' };
+      }
+      this.logger.error('TomTom spend gate could not answer', {
+        error: {
+          message: error instanceof Error ? error.message : String(error),
+        },
+      });
+      return {
+        kind: 'failed',
+        reason: 'tomtom_spend_gate_unavailable',
+        scope: 'systemic',
+      };
+    }
+  }
+
   async probe(anchor: GeoPoint): Promise<TomtomChainProbeResult> {
     const probedRegion = this.probedRegionAround(anchor);
     if (!this.apiKey) {
@@ -251,16 +286,15 @@ export class TomtomChainProbeAdapter implements TomtomChainProbe {
     // ~$1,400/day indefinitely against a PREPAID balance no API can read.
     // Inside the adapter, not at call sites, so no caller can forget it.
     // A closed budget is the same typed not-now as a pool denial.
-    try {
-      await this.governance.assertTomtomSpendOpen();
-    } catch {
-      return { kind: 'denied' };
+    const budget = await this.spendGateVerdict();
+    if (budget) {
+      return budget;
     }
 
     const outcome = await this.reverseGeocode(anchor);
     if (outcome.kind === 'failed') {
       // The body did not match the vendor's contract — WE failed to observe.
-      return { kind: 'failed', reason: outcome.reason };
+      return { kind: 'failed', reason: outcome.reason, scope: outcome.scope };
     }
     if (outcome.kind === 'denied') {
       return { kind: 'denied' };
@@ -279,6 +313,7 @@ export class TomtomChainProbeAdapter implements TomtomChainProbe {
       return {
         kind: 'failed',
         reason: `tomtom_parse_threw_${error instanceof Error ? error.name : 'unknown'}`,
+        scope: 'systemic',
       };
     }
   }
@@ -299,11 +334,19 @@ export class TomtomChainProbeAdapter implements TomtomChainProbe {
     if (typeof first !== 'object' || first === null) {
       // An entry that is not an object is a contract violation, NOT an
       // observation of emptiness.
-      return { kind: 'failed', reason: 'tomtom_entry_shape' };
+      return {
+        kind: 'failed',
+        reason: 'tomtom_entry_shape',
+        scope: 'systemic',
+      };
     }
     const entry = first as TomtomReverseAddressEntry;
     if (!entry.address || typeof entry.address !== 'object') {
-      return { kind: 'failed', reason: 'tomtom_address_missing' };
+      return {
+        kind: 'failed',
+        reason: 'tomtom_address_missing',
+        scope: 'systemic',
+      };
     }
 
     const address = entry.address;
@@ -322,7 +365,11 @@ export class TomtomChainProbeAdapter implements TomtomChainProbe {
       // as an absence of GROUND, suppressing re-probes for the TTL. It is
       // now a typed FAILURE — no throw (which discarded the paid reverse
       // call), no memory, no string sentinel to match on.
-      return { kind: 'failed', reason: 'tomtom_missing_country_code' };
+      return {
+        kind: 'failed',
+        reason: 'tomtom_missing_country_code',
+        scope: 'systemic',
+      };
     }
     const subdivisionCode =
       address.countrySubdivisionCode?.trim() ||
@@ -348,7 +395,11 @@ export class TomtomChainProbeAdapter implements TomtomChainProbe {
     if (chain.length === 0) {
       // Well-formed, carries a country code, yet names NO rung of the
       // ladder: a contract violation, not an observation of emptiness.
-      return { kind: 'failed', reason: 'tomtom_named_no_rungs' };
+      return {
+        kind: 'failed',
+        reason: 'tomtom_named_no_rungs',
+        scope: 'systemic',
+      };
     }
 
     // The returned entity's own bbox + stable geometry id come free.
@@ -448,10 +499,9 @@ export class TomtomChainProbeAdapter implements TomtomChainProbe {
     if (!this.apiKey) {
       throw new Error('tomtom_config_missing');
     }
-    try {
-      await this.governance.assertTomtomSpendOpen();
-    } catch {
-      return { kind: 'denied' };
+    const budget = await this.spendGateVerdict();
+    if (budget) {
+      return budget;
     }
     const url = `${this.reverseBaseUrl}/${anchor.lat},${anchor.lng}.json`;
     let response: AxiosResponse<TomtomReverseResponse> | null;
@@ -472,13 +522,17 @@ export class TomtomChainProbeAdapter implements TomtomChainProbe {
       if (this.poisonPoolOn429(error, 'tomtom.reverseGeocode')) {
         return { kind: 'denied' };
       }
-      return { kind: 'failed', reason: describeTransportFault(error) };
+      return {
+        kind: 'failed',
+        reason: describeTransportFault(error),
+        scope: 'systemic',
+      };
     }
     if (!response) {
       return { kind: 'denied' };
     }
     if (!Array.isArray(response.data?.addresses)) {
-      return { kind: 'failed', reason: 'tomtom_body_shape' };
+      return { kind: 'failed', reason: 'tomtom_body_shape', scope: 'systemic' };
     }
     const entry = response.data.addresses[0];
     if (!entry) {
@@ -501,7 +555,7 @@ export class TomtomChainProbeAdapter implements TomtomChainProbe {
     // written to probed_regions with a 30-day TTL, suppressing re-probes over
     // real ground. P5 again: a fault kept as ground truth.
     | { kind: 'ok'; entries: unknown[] }
-    | { kind: 'failed'; reason: string }
+    | { kind: 'failed'; reason: string; scope: 'systemic' | 'row' }
     | { kind: 'denied' }
   > {
     const url = `${this.reverseBaseUrl}/${anchor.lat},${anchor.lng}.json`;
@@ -533,7 +587,11 @@ export class TomtomChainProbeAdapter implements TomtomChainProbe {
       // means, and the reconciler's had no catch at all — one vendor 500
       // aborted the whole settle pass and discarded rememberAskedRegion work
       // already paid for (red team 2026-08-04).
-      return { kind: 'failed', reason: describeTransportFault(error) };
+      return {
+        kind: 'failed',
+        reason: describeTransportFault(error),
+        scope: 'systemic',
+      };
     }
     if (!response) {
       // Pool denial — the probe simply doesn't happen this cycle; the ground
@@ -544,7 +602,7 @@ export class TomtomChainProbeAdapter implements TomtomChainProbe {
     // else is a contract violation, NOT an observation of emptiness — the
     // distinction the observation type exists to make.
     if (!Array.isArray(response.data?.addresses)) {
-      return { kind: 'failed', reason: 'tomtom_body_shape' };
+      return { kind: 'failed', reason: 'tomtom_body_shape', scope: 'systemic' };
     }
     return { kind: 'ok', entries: response.data.addresses };
   }
@@ -716,10 +774,9 @@ export class TomtomChainProbeAdapter implements TomtomChainProbe {
     }
     // DOLLAR GATE BEFORE THE RATE GATE — see probe(). The scarce draws are
     // the expensive ones, so this path matters most.
-    try {
-      await this.governance.assertTomtomSpendOpen();
-    } catch {
-      return { kind: 'denied' };
+    const budget = await this.spendGateVerdict();
+    if (budget) {
+      return budget;
     }
     const params: Record<string, string | number> = {
       key: this.apiKey,
@@ -760,7 +817,11 @@ export class TomtomChainProbeAdapter implements TomtomChainProbe {
       // (red team 2026-08-04). Throwing here made the caller's catch decide
       // what a fault means — and fetchPolygon's callers counted it with
       // recordAttempt, which was right by luck, not by type.
-      return { kind: 'failed', reason: describeTransportFault(error) };
+      return {
+        kind: 'failed',
+        reason: describeTransportFault(error),
+        scope: 'systemic',
+      };
     }
     if (!response) {
       return { kind: 'denied' };
@@ -769,7 +830,7 @@ export class TomtomChainProbeAdapter implements TomtomChainProbe {
       // 200 with a body that is not the contract (an HTML error page from a
       // proxy, `{}`, null). NOT a miss: the vendor never answered the
       // question.
-      return { kind: 'failed', reason: 'tomtom_body_shape' };
+      return { kind: 'failed', reason: 'tomtom_body_shape', scope: 'systemic' };
     }
     const items = response.data.additionalData;
     const item = items.find(
@@ -778,7 +839,11 @@ export class TomtomChainProbeAdapter implements TomtomChainProbe {
     if (!item) {
       // The vendor did not echo the id we asked about — a wrong-entity
       // answer, not evidence that no polygon exists.
-      return { kind: 'failed', reason: 'tomtom_geometry_id_not_echoed' };
+      return {
+        kind: 'failed',
+        reason: 'tomtom_geometry_id_not_echoed',
+        scope: 'row',
+      };
     }
     if (item.error) {
       this.logger.warn('TomTom additional data geometry error', {
@@ -795,7 +860,11 @@ export class TomtomChainProbeAdapter implements TomtomChainProbe {
     ) {
       // The vendor echoed the id but the payload is not the contract —
       // malformed, not "no polygon exists".
-      return { kind: 'failed', reason: 'tomtom_geometry_payload_shape' };
+      return {
+        kind: 'failed',
+        reason: 'tomtom_geometry_payload_shape',
+        scope: 'row',
+      };
     }
     const polygonFeatures = geometryData.features.filter((feature) => {
       const geometryType = feature.geometry?.type;

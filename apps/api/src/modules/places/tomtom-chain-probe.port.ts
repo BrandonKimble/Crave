@@ -89,8 +89,26 @@ export type PolygonFetchResult =
   | { kind: 'denied' }
   /** The VENDOR's answer: no polygon exists for this id. Remembered. */
   | { kind: 'miss' }
-  /** WE failed to get an answer. Never remembered; never a strike. */
-  | { kind: 'failed'; reason: string };
+  /**
+   * WE failed to get an answer. Never remembered as ground truth.
+   *
+   * `scope` is load-bearing and was missing from the first version of this
+   * arm (red team 2026-08-04, second pass). A fault is one of two things and
+   * the caller must act differently on each:
+   *
+   *   'systemic' — transport, timeout, a gate that cannot answer. Nothing
+   *      behind this row will fare better, so the pass should END.
+   *   'row'      — the vendor answered ABOUT THIS ID and the answer was
+   *      unusable (an id it did not echo, a payload that is not the
+   *      contract). The next row is unaffected, and repeating the ask will
+   *      not help, so it must COUNT toward retirement rather than re-draw
+   *      forever.
+   *
+   * Collapsing the two made a single unusable row burn one scarce draw every
+   * hour forever AND head-of-line block the entire queue, because the drain
+   * reads oldest-first and stopped on it every tick.
+   */
+  | { kind: 'failed'; reason: string; scope: 'systemic' | 'row' };
 
 /** GeoJSON FeatureCollection of Polygon/MultiPolygon features (vendor
  *  Additional Data shape, filtered) — persisted verbatim into PostGIS via

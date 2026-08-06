@@ -45,6 +45,31 @@ interface SpendGateHost {
   opsAlerts: Pick<OpsAlertsService, 'emit'>;
 }
 
+/**
+ * THE BUDGET SAID NO — as distinct from THE GATE IS BROKEN.
+ *
+ * Every spend gate throws, and until 2026-08-04 a caller could not tell which
+ * of two very different things had happened: the month's money is spent
+ * (routine, expected, alerted here, work stays queued) or the gate itself
+ * cannot answer (the pool is unregistered, the store is unreachable —
+ * systemic, and requirePool throws with NO ops alert). The TomTom adapter
+ * caught the throw and returned its typed `denied` arm for BOTH, so a wiring
+ * mistake would have stopped the vendor silently and permanently while the
+ * drain politely ended each pass forever.
+ *
+ * A budget refusal is a named type now. Anything else coming out of a gate is,
+ * by construction, not a budget refusal.
+ */
+export class SpendBudgetClosedError extends Error {
+  constructor(
+    message: string,
+    readonly reason: 'unconfirmed' | 'poisoned' | 'exhausted',
+  ) {
+    super(message);
+    this.name = 'SpendBudgetClosedError';
+  }
+}
+
 async function assertSpendOpen(
   host: SpendGateHost,
   copy: SpendGateCopy,
@@ -62,8 +87,9 @@ async function assertSpendOpen(
       body: copy.unconfirmedBody,
       dedupeKey: `${copy.alertKind}_unconfirmed:${monthKey}`,
     });
-    throw new Error(
+    throw new SpendBudgetClosedError(
       `${copy.budgetNoun} spend budget unconfirmed (durable window failed to load) — refusing to spend against an unknown balance`,
+      'unconfirmed',
     );
   }
   if (verdict.reason === 'poisoned') {
@@ -76,7 +102,7 @@ async function assertSpendOpen(
       body: `${message}.`,
       dedupeKey: `${copy.alertKind}_poisoned:${monthKey}`,
     });
-    throw new Error(message);
+    throw new SpendBudgetClosedError(message, 'poisoned');
   }
   host.opsAlerts.emit({
     severity: 'critical',
@@ -85,7 +111,7 @@ async function assertSpendOpen(
     body: `${copy.exhaustedMessage}.`,
     dedupeKey: `${copy.alertKind}:${monthKey}`,
   });
-  throw new Error(copy.exhaustedMessage);
+  throw new SpendBudgetClosedError(copy.exhaustedMessage, 'exhausted');
 }
 
 const GEMINI_SPEND_GATE: SpendGateCopy = {

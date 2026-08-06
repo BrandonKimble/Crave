@@ -567,6 +567,43 @@ export class PlacesPromotionService {
       });
       return 'stop';
     }
+    if (polygon.kind === 'failed' && polygon.scope === 'row') {
+      // THE VENDOR ANSWERED ABOUT THIS ID AND THE ANSWER IS UNUSABLE — an id
+      // it did not echo, a payload that is not the contract. Repeating the ask
+      // will not help, and the NEXT row is unaffected.
+      //
+      // The first P5 fix routed every fault to `return 'stop'`, which was
+      // right for a transport error and catastrophic here: the drain reads
+      // oldest-first, so one permanently-unusable row at the head burned a
+      // scarce draw every hour FOREVER and head-of-line blocked the entire
+      // queue behind it (red team 2026-08-04, second pass). Counting it toward
+      // retirement is the same bounded treatment a vendor miss gets — the row
+      // is not a strike against the VENDOR's model, but it is a strike against
+      // this id ever working.
+      if (item.missAttempts + 1 >= MISS_ATTEMPTS_BEFORE_RETIRE) {
+        this.logger.warn(
+          'Promotion retired: the vendor keeps answering unusably for this geometry id',
+          {
+            placeId: item.placeId,
+            geometryId,
+            reason: polygon.reason,
+            missAttempts: item.missAttempts + 1,
+          },
+        );
+        await this.recordRefusal(item.placeId, now);
+        return 'attempted';
+      }
+      await this.recordMiss(item.placeId, now);
+      this.logger.warn(
+        'Promotion polygon unusable for this id (row continues)',
+        {
+          placeId: item.placeId,
+          geometryId,
+          reason: polygon.reason,
+        },
+      );
+      return 'attempted';
+    }
     if (polygon.kind === 'failed') {
       // WE failed to observe — a transport fault, a malformed 200, or an id
       // the vendor did not echo. NEVER a strike toward retirement: before

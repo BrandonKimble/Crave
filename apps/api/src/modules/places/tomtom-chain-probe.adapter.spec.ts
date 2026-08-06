@@ -6,6 +6,7 @@ import type { PlaceSketchNode } from './places-catalog.service';
  */
 import { of } from 'rxjs';
 import { TomtomChainProbeAdapter } from './tomtom-chain-probe.adapter';
+import { SpendBudgetClosedError } from '../external-integrations/governance/governance.service';
 
 const UWS_REVERSE_ENTRY = {
   address: {
@@ -280,7 +281,12 @@ describe('TomtomChainProbeAdapter', () => {
     (
       closed.governance as { assertTomtomSpendOpen: () => Promise<void> }
     ).assertTomtomSpendOpen = () =>
-      Promise.reject(new Error('TomTom spend budget exhausted'));
+      Promise.reject(
+        new SpendBudgetClosedError(
+          'TomTom spend budget exhausted',
+          'exhausted',
+        ),
+      );
     await expect(closed.adapter.probe(ANCHOR)).resolves.toEqual({
       kind: 'denied',
     });
@@ -289,6 +295,23 @@ describe('TomtomChainProbeAdapter', () => {
     });
     // No governed draw ⇒ no vendor call and no pool debit.
     expect(closed.drawCalls).toHaveLength(0);
+  });
+
+  it('a BROKEN gate is a FAULT, not back-pressure — the distinction that keeps a systemic failure loud', async () => {
+    // An unregistered pool throws from requirePool with NO ops alert. Catching
+    // it as 'denied' (as this adapter did until 2026-08-04) made TomTom stop
+    // silently and permanently, indistinguishable from a spent budget.
+    const broken = buildAdapter({ reverseAddresses: [UWS_REVERSE_ENTRY] });
+    (
+      broken.governance as { assertTomtomSpendOpen: () => Promise<void> }
+    ).assertTomtomSpendOpen = () =>
+      Promise.reject(new Error("Pool 'tomtom.monthlySpend' is not registered"));
+
+    await expect(broken.adapter.probe(ANCHOR)).resolves.toEqual({
+      kind: 'failed',
+      reason: 'tomtom_spend_gate_unavailable',
+    });
+    expect(broken.drawCalls).toHaveLength(0);
   });
 
   it('a pool denial is the TYPED denied arm — never a "no place here" observation, never a string sentinel', async () => {
