@@ -114,7 +114,6 @@ model Entity {
   @@index([country], map: "idx_entities_country")
   @@index([priceLevel], map: "idx_entities_price_level")
   @@index([lastPolledAt], map: "idx_entities_last_polled_at")
-  @@index([primaryLocationId], map: "idx_entities_primary_location")
   @@index([lastUpdated(sort: Desc)], map: "idx_entities_last_updated")
   @@index([createdAt(sort: Desc)], map: "idx_entities_created_at")
   @@map("core_entities")
@@ -209,7 +208,7 @@ model EntityLabel {
   /// candidate | active | deprecated.
   status      String   @default("active")
   /// Provenance: seeded, swept, manual, or synthesis-produced.
-  source     String   @default("seed")
+  source      String   @default("seed")
   createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt   DateTime @default(now()) @map("updated_at") @db.Timestamptz(6)
   entity      Entity   @relation("EntityLabelEntity", fields: [entityId], references: [entityId], onDelete: Cascade)
@@ -263,7 +262,6 @@ model RestaurantLocation {
   @@index([restaurantId, isPrimary], map: "idx_restaurant_locations_primary")
   @@index([restaurantId, websiteDomain], map: "idx_restaurant_locations_restaurant_domain")
   @@index([longitude, latitude], map: "idx_restaurant_locations_location")
-  @@index([googlePlaceId], map: "idx_restaurant_locations_google_place_id")
   @@index([websiteDomain], map: "idx_restaurant_locations_website_domain")
   @@map("core_restaurant_locations")
 }
@@ -1300,82 +1298,78 @@ model DemandScoringCandidate {
 }
 
 model User {
-  userId                   String                    @id @default(dbgenerated("gen_random_uuid()")) @map("user_id") @db.Uuid
-  email                    String                    @unique @db.VarChar(255)
-  username                 String?                   @unique(map: "users_username_key") @db.Citext
-  displayName              String?                   @map("display_name") @db.VarChar(255)
-  avatarUrl                String?                   @map("avatar_url") @db.VarChar(2048)
-  usernameStatus           UsernameStatus            @default(unset) @map("username_status")
-  usernameUpdatedAt        DateTime?                 @map("username_updated_at") @db.Timestamptz(3)
-  onboardingStatus         OnboardingStatus          @default(not_started) @map("onboarding_status")
-  onboardingCompletedAt    DateTime?                 @map("onboarding_completed_at") @db.Timestamptz(3)
-  onboardingVersion        Int                       @default(1) @map("onboarding_version")
-  onboardingSelectedCity   String?                   @map("onboarding_selected_city") @db.VarChar(255)
-  onboardingPreviewCity    String?                   @map("onboarding_preview_city") @db.VarChar(255)
+  userId                       String                    @id @default(dbgenerated("gen_random_uuid()")) @map("user_id") @db.Uuid
+  email                        String                    @unique @db.VarChar(255)
+  username                     String?                   @unique(map: "users_username_key") @db.Citext
+  displayName                  String?                   @map("display_name") @db.VarChar(255)
+  avatarUrl                    String?                   @map("avatar_url") @db.VarChar(2048)
+  usernameStatus               UsernameStatus            @default(unset) @map("username_status")
+  usernameUpdatedAt            DateTime?                 @map("username_updated_at") @db.Timestamptz(3)
+  onboardingStatus             OnboardingStatus          @default(not_started) @map("onboarding_status")
+  onboardingCompletedAt        DateTime?                 @map("onboarding_completed_at") @db.Timestamptz(3)
+  onboardingVersion            Int                       @default(1) @map("onboarding_version")
+  onboardingSelectedCity       String?                   @map("onboarding_selected_city") @db.VarChar(255)
+  onboardingPreviewCity        String?                   @map("onboarding_preview_city") @db.VarChar(255)
   /// D40: the server's OWN question-set version at write time, beside the
   /// client-declared `onboardingVersion` (what the client RENDERED). Storing
   /// both makes a mismatch a visible fact instead of an assumption.
-  onboardingQuestionSetVersion Int?                  @map("onboarding_question_set_version")
+  onboardingQuestionSetVersion Int?                      @map("onboarding_question_set_version")
   /// D40: the LATEST-ROW PROJECTION of user_onboarding_responses, written in
   /// the SAME transaction as the history row. Never independently mutable.
-  onboardingResponses      Json?                     @map("onboarding_responses")
+  onboardingResponses          Json?                     @map("onboarding_responses")
   /// D40: the city as a KEY. `onboardingSelectedCity` is a display string and
   /// the personal-list builder used to join it by lower(name) — a silent-zero
   /// join (a renamed or re-cased city produced no lists and no error).
-  onboardingCityPlaceId    String?                   @map("onboarding_city_place_id") @db.Uuid
-  createdAt                DateTime                  @default(now()) @map("created_at") @db.Timestamptz(3)
-  stripeCustomerId         String?                   @map("stripe_customer_id") @db.VarChar(255)
-  authProvider             AuthProvider              @default(clerk) @map("auth_provider")
-  authProviderUserId       String?                   @unique @map("auth_provider_user_id") @db.VarChar(255)
-  deletedAt                DateTime?                 @map("deleted_at") @db.Timestamptz(3)
+  onboardingCityPlaceId        String?                   @map("onboarding_city_place_id") @db.Uuid
+  createdAt                    DateTime                  @default(now()) @map("created_at") @db.Timestamptz(3)
+  stripeCustomerId             String?                   @map("stripe_customer_id") @db.VarChar(255)
+  authProvider                 AuthProvider              @default(clerk) @map("auth_provider")
+  authProviderUserId           String?                   @unique @map("auth_provider_user_id") @db.VarChar(255)
+  deletedAt                    DateTime?                 @map("deleted_at") @db.Timestamptz(3)
   /// The 30-day grace deadline. `deletedAt` is LOGICAL erasure (the account is
   /// gone to every reader the moment it is set); this is the ONLY thing the
   /// hard-purge cron reads. Separate columns because "hidden" and "physically
   /// gone" are different facts, and conflating them is how a restore window
   /// silently becomes a retention violation.
-  purgeDueAt               DateTime?                 @map("purge_due_at") @db.Timestamptz(3)
+  purgeDueAt                   DateTime?                 @map("purge_due_at") @db.Timestamptz(3)
   /// M1/D4 — the PROFILE half of locale negotiation. Canonical BCP 47 (R5-5).
   /// NULL means "negotiate from Accept-Language per request", which is the
   /// default for everyone; this column is only ever an EXPLICIT user choice.
   /// Never sourced from the push-device row (a user who declines
   /// notifications has no locale there).
-  locale                   String?                   @db.Text
-  lastSignInAt             DateTime?                 @map("last_sign_in_at") @db.Timestamptz(3)
-  revenueCatAppUserId      String?                   @unique @map("revenuecat_app_user_id") @db.VarChar(255)
-  updatedAt                DateTime                  @updatedAt @map("updated_at") @db.Timestamptz(3)
-  subscriptions            Subscription[]
-  checkoutSessions         CheckoutSession[]
-  accessGrants             AccessGrant[]
-  photos                   Photo[]
-  photoReports             PhotoReport[]
-  userLists                UserList[]
-  userListItems            UserListItem[]
-  listCollaborations       UserListCollaborator[]    @relation("UserListCollaboratorUser")
-  listCollaboratorInvites  UserListCollaborator[]    @relation("UserListCollaboratorInviter")
-  userNotifications        UserNotification[]
-  onDemandRequestUsers     OnDemandRequestUser[]
-  stats                    UserStats?
-  follows                  UserFollow[]              @relation("UserFollows")
-  followers                UserFollow[]              @relation("UserFollowers")
-  blocksAuthored           UserBlock[]               @relation("UserBlocksAuthored")
-  blocksReceived           UserBlock[]               @relation("UserBlocksReceived")
-  userReportsAuthored      UserReport[]              @relation("UserReportsAuthored")
-  userReportsReceived      UserReport[]              @relation("UserReportsReceived")
-  pollCommentReports       PollCommentReport[]       @relation("PollCommentReportsAuthored")
-  usernameHistory          UsernameHistory[]
-  pollComments             PollComment[]
-  pollCommentLikes         PollCommentLike[]
-  pollEndorsements         PollEndorsement[]
-  conversationParticipants ConversationParticipant[]
-  messagesSent             Message[]                 @relation("MessagesSent")
-  curatedLists             CuratedList[]
+  locale                       String?                   @db.Text
+  lastSignInAt                 DateTime?                 @map("last_sign_in_at") @db.Timestamptz(3)
+  revenueCatAppUserId          String?                   @unique @map("revenuecat_app_user_id") @db.VarChar(255)
+  updatedAt                    DateTime                  @updatedAt @map("updated_at") @db.Timestamptz(3)
+  subscriptions                Subscription[]
+  checkoutSessions             CheckoutSession[]
+  accessGrants                 AccessGrant[]
+  photos                       Photo[]
+  photoReports                 PhotoReport[]
+  userLists                    UserList[]
+  userListItems                UserListItem[]
+  listCollaborations           UserListCollaborator[]    @relation("UserListCollaboratorUser")
+  listCollaboratorInvites      UserListCollaborator[]    @relation("UserListCollaboratorInviter")
+  userNotifications            UserNotification[]
+  onDemandRequestUsers         OnDemandRequestUser[]
+  stats                        UserStats?
+  follows                      UserFollow[]              @relation("UserFollows")
+  followers                    UserFollow[]              @relation("UserFollowers")
+  blocksAuthored               UserBlock[]               @relation("UserBlocksAuthored")
+  blocksReceived               UserBlock[]               @relation("UserBlocksReceived")
+  userReportsAuthored          UserReport[]              @relation("UserReportsAuthored")
+  userReportsReceived          UserReport[]              @relation("UserReportsReceived")
+  pollCommentReports           PollCommentReport[]       @relation("PollCommentReportsAuthored")
+  usernameHistory              UsernameHistory[]
+  pollComments                 PollComment[]
+  pollCommentLikes             PollCommentLike[]
+  pollEndorsements             PollEndorsement[]
+  conversationParticipants     ConversationParticipant[]
+  messagesSent                 Message[]                 @relation("MessagesSent")
+  curatedLists                 CuratedList[]
 
-  @@index([email], map: "idx_users_email")
-  @@index([username], map: "idx_users_username")
   @@index([onboardingStatus], map: "idx_users_onboarding_status")
   @@index([authProvider], map: "idx_users_auth_provider")
-  @@index([authProviderUserId], map: "idx_users_auth_provider_user_id")
-  @@index([revenueCatAppUserId], map: "idx_users_revenuecat_app_user_id")
   @@index([createdAt(sort: Desc)], map: "idx_users_created_at")
   @@map("users")
 }
@@ -1682,7 +1676,6 @@ model Subscription {
   @@index([status], map: "idx_subscriptions_status")
   @@index([currentPeriodEnd], map: "idx_subscriptions_period_end")
   @@index([provider], map: "idx_subscriptions_provider")
-  @@index([provider, externalSubscriptionId], map: "idx_subscriptions_provider_external_id")
   @@index([provider, externalCustomerId], map: "idx_subscriptions_provider_customer_id")
   @@index([entitlementCode], map: "idx_subscriptions_entitlement_code")
   @@index([createdAt(sort: Desc)], map: "idx_subscriptions_created_at")
@@ -1851,7 +1844,6 @@ model CollectionCommunity {
   isActive              Boolean   @default(true) @map("is_active")
   updatedAt             DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
 
-  @@index([communityName], map: "collection_communities_community_name_idx")
   @@index([isActive], map: "idx_collection_communities_active")
   @@index([lastProcessed], map: "idx_collection_communities_last_processed")
   @@map("collection_communities")
@@ -2410,43 +2402,43 @@ model PlaceGeometryPromotion {
 /// no findUnique/update/delete ever runs against the composite key. Future
 /// partitions are created ahead by SignalPartitionMaintenanceService.
 model Signal {
-  signalId    String   @id @default(dbgenerated("gen_random_uuid()")) @map("signal_id") @db.Uuid
+  signalId       String   @id @default(dbgenerated("gen_random_uuid()")) @map("signal_id") @db.Uuid
   /// ACT kinds only; qualifiers live in meta (judged at read):
   /// search | autocomplete_selection | entity_view | favorite_added |
   /// poll_vote | poll_comment | poll_created | viewport_dwell
-  kind        String   @db.VarChar(32)
-  subjectType String   @map("subject_type") @db.VarChar(16) // entity | term | none
-  subjectId   String?  @map("subject_id") @db.Uuid
-  subjectText String?  @map("subject_text") @db.VarChar(255)
+  kind           String   @db.VarChar(32)
+  subjectType    String   @map("subject_type") @db.VarChar(16) // entity | term | none
+  subjectId      String?  @map("subject_id") @db.Uuid
+  subjectText    String?  @map("subject_text") @db.VarChar(255)
   /// P5b ANCHOR (one-ground charter): for acts whose WHERE genuinely IS a
   /// place (poll created/voted/commented), the place itself — never its
   /// bounding rectangle. Attribution reads the place's real GROUND through
   /// this id, so the act lands on that place and its ancestors and nothing
   /// else. NULL for the kinds whose shape is honestly a rectangle (a viewport)
   /// or a point (entity_view), which keep the geo columns below.
-  placeId     String?  @map("place_id") @db.Uuid
+  placeId        String?  @map("place_id") @db.Uuid
   /// Docket #3: NULLABLE — an act has three honest shapes (rectangle /
   /// point / place-anchor) and carries geo ONLY when its WHERE is a
   /// geometry. CHECK signals_where_shape_check (raw migration
   /// 20260730110000) enforces anchor-or-geo.
-  geoMinLat   Decimal? @map("geo_min_lat") @db.Decimal(10, 8)
-  geoMinLng   Decimal? @map("geo_min_lng") @db.Decimal(11, 8)
-  geoMaxLat   Decimal? @map("geo_max_lat") @db.Decimal(10, 8)
-  geoMaxLng   Decimal? @map("geo_max_lng") @db.Decimal(11, 8)
-  actorId     String   @map("actor_id") @db.Uuid
-  occurredAt  DateTime @map("occurred_at") @db.Timestamptz(3)
+  geoMinLat      Decimal? @map("geo_min_lat") @db.Decimal(10, 8)
+  geoMinLng      Decimal? @map("geo_min_lng") @db.Decimal(11, 8)
+  geoMaxLat      Decimal? @map("geo_max_lat") @db.Decimal(10, 8)
+  geoMaxLng      Decimal? @map("geo_max_lng") @db.Decimal(11, 8)
+  actorId        String   @map("actor_id") @db.Uuid
+  occurredAt     DateTime @map("occurred_at") @db.Timestamptz(3)
   /// WHEN the ledger learned of the act (occurredAt = when it happened).
   /// Drives the aggregate's watermark rebuild (red-team 1b): late/backfilled
   /// writes are picked up by recorded-at, so every signal eventually lands in
   /// its occurred-at day slice.
-  recordedAt  DateTime @default(now()) @map("recorded_at") @db.Timestamptz(6)
+  recordedAt     DateTime @default(now()) @map("recorded_at") @db.Timestamptz(6)
   /// A10 (multilingual): subjectType='term' keys demand on RAW UNTAGGED
   /// text — "pulpo" and "octopus" are two demand terms forever, on the
   /// surface that DRIVES SPEND. Canonical BCP 47 detected FROM THE QUERY
   /// STRING (script + language detection), request locale as a prior only.
   /// NULL until detection ships (M4b); the append-only key is untouched.
-  detectedLocale String? @map("detected_locale")
-  meta        Json?
+  detectedLocale String?  @map("detected_locale")
+  meta           Json?
 
   @@index([occurredAt])
   @@index([kind, occurredAt])
@@ -2535,19 +2527,19 @@ model SignalDemandRebuildState {
 /// testimony; the decoder (packages/shared parseOnboardingAnswers) is the only
 /// thing allowed to have an opinion about it, and it has that opinion at READ.
 model UserOnboardingResponse {
-  responseId String @id @default(dbgenerated("gen_random_uuid()")) @map("response_id") @db.Uuid
-  userId     String @map("user_id") @db.Uuid
+  responseId          String   @id @default(dbgenerated("gen_random_uuid()")) @map("response_id") @db.Uuid
+  userId              String   @map("user_id") @db.Uuid
   /// What the CLIENT said it rendered.
-  answeredWithVersion Int @map("answered_with_version")
+  answeredWithVersion Int      @map("answered_with_version")
   /// What the SERVER understood at write time (ONBOARDING_QUESTION_SET_VERSION).
-  questionSetVersion  Int @map("question_set_version")
-  answers    Json
+  questionSetVersion  Int      @map("question_set_version")
+  answers             Json
   /// 'completion' = landed at the end of the flow; 'replay' = landed later
   /// from the device outbox (F810/D40 — including the anonymous completer who
   /// only signed in afterwards); 'edit' = a future edit surface; 'backfill' =
   /// minted by the migration from the pre-history column.
-  source     String   @db.VarChar(16)
-  recordedAt DateTime @default(now()) @map("recorded_at") @db.Timestamptz(3)
+  source              String   @db.VarChar(16)
+  recordedAt          DateTime @default(now()) @map("recorded_at") @db.Timestamptz(3)
 
   @@index([userId, recordedAt(sort: Desc)])
   @@map("user_onboarding_responses")
@@ -2575,23 +2567,23 @@ model UserOnboardingResponse {
 /// userId) because the ledger is: an anonymous device actor has a profile
 /// pre-auth and keeps it when the actor gains a userId.
 model UserTasteProfile {
-  rowId   String @id @default(dbgenerated("gen_random_uuid()")) @map("row_id") @db.Uuid
-  actorId String @map("actor_id") @db.Uuid
+  rowId       String   @id @default(dbgenerated("gen_random_uuid()")) @map("row_id") @db.Uuid
+  actorId     String   @map("actor_id") @db.Uuid
   /// 0 = all history. Otherwise a ratified window (see the builder).
-  windowDays Int @map("window_days")
+  windowDays  Int      @map("window_days")
   /// 'entity' | 'term' — the ledger's own subject shape — or 'attribute', the
   /// derived roll-up to the vocabulary the curated recipes speak. The roll-up
   /// is a ROW here rather than a second table so there is one builder, one
   /// rebuild unit, and one place a recipe reads.
-  subjectKind String  @map("subject_kind") @db.VarChar(16)
-  subjectId   String? @map("subject_id") @db.Uuid
-  subjectText String? @map("subject_text") @db.VarChar(255)
+  subjectKind String   @map("subject_kind") @db.VarChar(16)
+  subjectId   String?  @map("subject_id") @db.Uuid
+  subjectText String?  @map("subject_text") @db.VarChar(255)
   /// The signal kind, IN THE GRAIN — two kinds by one actor are two acts
   /// (the §4 law act-identity.ts exists to state once).
-  kind      String   @db.VarChar(32)
-  actCount  Int      @map("act_count")
-  lastActAt DateTime @map("last_act_at") @db.Timestamptz(3)
-  rebuiltAt DateTime @default(now()) @map("rebuilt_at") @db.Timestamptz(3)
+  kind        String   @db.VarChar(32)
+  actCount    Int      @map("act_count")
+  lastActAt   DateTime @map("last_act_at") @db.Timestamptz(3)
+  rebuiltAt   DateTime @default(now()) @map("rebuilt_at") @db.Timestamptz(3)
 
   @@index([actorId, windowDays])
   @@index([subjectId, windowDays])
