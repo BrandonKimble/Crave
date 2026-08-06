@@ -329,28 +329,47 @@ export class UserListMapper {
     items: UserListItemDetail[],
   ): Promise<RestaurantResult[]> {
     const results: RestaurantResult[] = [];
+    const restaurantIds = items
+      .map((item) => item.restaurant?.entityId)
+      .filter((id): id is string => typeof id === 'string');
     const restaurantScores = await this.loadPublicScores(
       CraveScoreSubjectType.restaurant,
-      items
-        .map((item) => item.restaurant?.entityId)
-        .filter((id): id is string => typeof id === 'string'),
+      restaurantIds,
+    );
+    // Batched (F1910): one connection.findMany over the UNION of restaurantIds
+    // instead of one per item, mirroring mapFoodResults' shape. Scoping is
+    // preserved exactly — each item's topFoods below is still filtered to
+    // `restaurantId === restaurant.entityId`, identical to what the per-item
+    // `where: { restaurantId: restaurant.entityId }` query returned; only the
+    // round trip is collapsed, not the per-item grouping.
+    const allTopFoods =
+      restaurantIds.length > 0
+        ? await this.prisma.connection.findMany({
+            where: { restaurantId: { in: restaurantIds } },
+            include: {
+              food: { select: { entityId: true, name: true } },
+            },
+          })
+        : [];
+    const topFoodsByRestaurant = new Map<string, typeof allTopFoods>();
+    for (const food of allTopFoods) {
+      const list = topFoodsByRestaurant.get(food.restaurantId);
+      if (list) {
+        list.push(food);
+      } else {
+        topFoodsByRestaurant.set(food.restaurantId, [food]);
+      }
+    }
+    const topFoodScores = await this.loadPublicScores(
+      CraveScoreSubjectType.connection,
+      allTopFoods.map((food) => food.connectionId),
     );
     for (const item of items) {
       const restaurant = item.restaurant;
       if (!restaurant) {
         continue;
       }
-      const topFoods = await this.prisma.connection.findMany({
-        where: { restaurantId: restaurant.entityId },
-        include: {
-          food: { select: { entityId: true, name: true } },
-        },
-      });
-
-      const topFoodScores = await this.loadPublicScores(
-        CraveScoreSubjectType.connection,
-        topFoods.map((food) => food.connectionId),
-      );
+      const topFoods = topFoodsByRestaurant.get(restaurant.entityId) ?? [];
       // A connection with no PUBLIC score cannot be a "top food" — it is filtered,
       // never fatal (2026-07-13: one unscored connection 500'd every list containing
       // its restaurant). The SAVED item's own score (below) stays a loud invariant.
