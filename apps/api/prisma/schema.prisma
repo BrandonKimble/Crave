@@ -1777,6 +1777,12 @@ model Photo {
 
   reports PhotoReport[]
 
+  // Raw-SQL PARTIAL index (migration 20260710120000_photos_hardening):
+  // idx_photos_pending_dish ON (restaurant_id, pending_dish_name) WHERE
+  // pending_dish_name IS NOT NULL AND connection_id IS NULL — finds photos
+  // awaiting a dish match when the pending name materializes. Not
+  // expressible in Prisma as a plain @@index (the WHERE clause); do not
+  // re-add as a non-partial index (permanent migrate-diff drift).
   @@index([restaurantId, status, ticketedAt(sort: Desc)], map: "idx_photos_restaurant_status")
   @@index([connectionId, status, ticketedAt(sort: Desc)], map: "idx_photos_connection_status")
   @@index([userId, status, ticketedAt(sort: Desc)], map: "idx_photos_user_status")

@@ -56,7 +56,14 @@ read it and delete any drop of the following.**
 - three partial/expression indexes on `core_entities` —
   `(type, status, enrichment_failure_count)`, `(type, identity_key)`,
   `(type, identity_key_sorted)`;
-- the `places` PARTIAL unique on `provider_place_id`;
+- ~~the `places` PARTIAL unique on `provider_place_id`~~ — RETIRED. This was
+  `uq_places_fallback_identity`; the fallback lane it guarded was cut
+  ("TomTom or nothing", owner ruling 2026-08-01) and migration
+  `20260801120000_drop_fallback_identity_index` dropped the index. The
+  composite unique `places_provider_place_id_level_key`
+  (`@@unique([providerPlaceId, providerLevelCode])`) already covers identity
+  and is fully Prisma-modeled, so no Class 1 entry remains for `places`'
+  provider identity — do not re-add this bullet;
 - the `curated_lists` NULLS-NOT-DISTINCT unique;
 - `place_geometries.geometry` — a PostGIS type, plus its GiST index. Prisma has
   no geometry type, so it reports the COLUMN ITSELF as removed;
