@@ -16,6 +16,11 @@
 		8D6A81E0C4F14E1E9A0B2112 /* SearchChromeNativeHitTargetSurface.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8D6A81DFC4F14E1E9A0B2112 /* SearchChromeNativeHitTargetSurface.swift */; };
 		96905EF65AED1B983A6B3ABC /* libPods-cravesearch.a in Frameworks */ = {isa = PBXBuildFile; fileRef = 58EEBF8E8E6FB1BC6CAF49B5 /* libPods-cravesearch.a */; };
 		A1B2C3D4E5F60718293A4B5C /* UIFrameSamplerBridge.m in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60718293A4B5D /* UIFrameSamplerBridge.m */; };
+		BE327FE36A4D4B41837F362F /* SearchMapRenderControllerBridge.m in Sources */ = {isa = PBXBuildFile; fileRef = 56137F7CA34F4231BF2C41AE /* SearchMapRenderControllerBridge.m */; };
+		7CEAD1962EED4387A7A2B5DD /* ProfilePresentationTransactionExecutorBridge.m in Sources */ = {isa = PBXBuildFile; fileRef = 47209018133D48E2B296E487 /* ProfilePresentationTransactionExecutorBridge.m */; };
+		AD78A9082BEB4AA5A02F939A /* CraveBottomSheetHostViewBridge.m in Sources */ = {isa = PBXBuildFile; fileRef = 7B49DCE287904CA78EBF2A2A /* CraveBottomSheetHostViewBridge.m */; };
+		86FD2A6BB076487EA74B10F2 /* SearchRouteSheetNavExclusionMaskViewBridge.m in Sources */ = {isa = PBXBuildFile; fileRef = CBD46319AEFF49CEAE930541 /* SearchRouteSheetNavExclusionMaskViewBridge.m */; };
+		C166FA84FFB84F1981E25D5F /* SearchChromeNativeHitTargetSurfaceBridge.m in Sources */ = {isa = PBXBuildFile; fileRef = 4B0CC103337E4A2BB7CE3709 /* SearchChromeNativeHitTargetSurfaceBridge.m */; };
 		A52DB86C44D54A8A900CF38D /* SearchMapRenderController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1CF57C818A534B2AB7E4A2D5 /* SearchMapRenderController.swift */; };
 		B18059E884C0ABDD17F3DC3D /* ExpoModulesProvider.swift in Sources */ = {isa = PBXBuildFile; fileRef = FAC715A2D49A985799AEE119 /* ExpoModulesProvider.swift */; };
 		B45E1D9037B14A6E8C2F11A7 /* ProfilePresentationTransactionExecutor.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4A61D1BA369448428AAB54D7 /* ProfilePresentationTransactionExecutor.swift */; };
@@ -40,6 +45,11 @@
 		84FAA3D9D0A1E87016273DAB /* CraveBottomSheetHostView.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = cravesearch/CraveBottomSheetHostView.swift; sourceTree = "<group>"; };
 		8D6A81DFC4F14E1E9A0B2112 /* SearchChromeNativeHitTargetSurface.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = cravesearch/SearchChromeNativeHitTargetSurface.swift; sourceTree = "<group>"; };
 		A1B2C3D4E5F60718293A4B5D /* UIFrameSamplerBridge.m */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.objc; path = cravesearch/UIFrameSamplerBridge.m; sourceTree = "<group>"; };
+		56137F7CA34F4231BF2C41AE /* SearchMapRenderControllerBridge.m */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.objc; path = cravesearch/SearchMapRenderControllerBridge.m; sourceTree = "<group>"; };
+		47209018133D48E2B296E487 /* ProfilePresentationTransactionExecutorBridge.m */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.objc; path = cravesearch/ProfilePresentationTransactionExecutorBridge.m; sourceTree = "<group>"; };
+		7B49DCE287904CA78EBF2A2A /* CraveBottomSheetHostViewBridge.m */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.objc; path = cravesearch/CraveBottomSheetHostViewBridge.m; sourceTree = "<group>"; };
+		CBD46319AEFF49CEAE930541 /* SearchRouteSheetNavExclusionMaskViewBridge.m */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.objc; path = cravesearch/SearchRouteSheetNavExclusionMaskViewBridge.m; sourceTree = "<group>"; };
+		4B0CC103337E4A2BB7CE3709 /* SearchChromeNativeHitTargetSurfaceBridge.m */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.objc; path = cravesearch/SearchChromeNativeHitTargetSurfaceBridge.m; sourceTree = "<group>"; };
 		AA286B85B6C04FC6940260E9 /* SplashScreen.storyboard */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = file.storyboard; name = SplashScreen.storyboard; path = cravesearch/SplashScreen.storyboard; sourceTree = "<group>"; };
 		BB2F792C24A3F905000567C9 /* Expo.plist */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text.plist.xml; path = Expo.plist; sourceTree = "<group>"; };
 		C9E31D8C33BA44E4BABA8D1A /* UIFrameSampler.swift */ = {isa = PBXFileReference; explicitFileType = undefined; fileEncoding = 4; includeInIndex = 0; lastKnownFileType = sourcecode.swift; name = UIFrameSampler.swift; path = cravesearch/UIFrameSampler.swift; sourceTree = "<group>"; };
@@ -69,6 +79,11 @@
 				13B07FB61A68108700A75B9A /* Info.plist */,
 				13B07FB71A68108700A75B9A /* main.m */,
 				A1B2C3D4E5F60718293A4B5D /* UIFrameSamplerBridge.m */,
+				56137F7CA34F4231BF2C41AE /* SearchMapRenderControllerBridge.m */,
+				47209018133D48E2B296E487 /* ProfilePresentationTransactionExecutorBridge.m */,
+				7B49DCE287904CA78EBF2A2A /* CraveBottomSheetHostViewBridge.m */,
+				CBD46319AEFF49CEAE930541 /* SearchRouteSheetNavExclusionMaskViewBridge.m */,
+				4B0CC103337E4A2BB7CE3709 /* SearchChromeNativeHitTargetSurfaceBridge.m */,
 				AA286B85B6C04FC6940260E9 /* SplashScreen.storyboard */,
 				C9E31D8C33BA44E4BABA8D1A /* UIFrameSampler.swift */,
 				1CF57C818A534B2AB7E4A2D5 /* SearchMapRenderController.swift */,
@@ -401,6 +416,11 @@
 				13B07FBC1A68108700A75B9A /* AppDelegate.swift in Sources */,
 				13B07FC11A68108700A75B9A /* main.m in Sources */,
 				A1B2C3D4E5F60718293A4B5C /* UIFrameSamplerBridge.m in Sources */,
+				BE327FE36A4D4B41837F362F /* SearchMapRenderControllerBridge.m in Sources */,
+				7CEAD1962EED4387A7A2B5DD /* ProfilePresentationTransactionExecutorBridge.m in Sources */,
+				AD78A9082BEB4AA5A02F939A /* CraveBottomSheetHostViewBridge.m in Sources */,
+				86FD2A6BB076487EA74B10F2 /* SearchRouteSheetNavExclusionMaskViewBridge.m in Sources */,
+				C166FA84FFB84F1981E25D5F /* SearchChromeNativeHitTargetSurfaceBridge.m in Sources */,
 				B18059E884C0ABDD17F3DC3D /* ExpoModulesProvider.swift in Sources */,
 				79D5BFFE536A4B67ADCB2910 /* UIFrameSampler.swift in Sources */,
 				A52DB86C44D54A8A900CF38D /* SearchMapRenderController.swift in Sources */,

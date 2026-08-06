@@ -4753,7 +4753,7 @@ const nativeSheetMaskSource = fs.readFileSync(
   'utf8'
 );
 const nativeBridgeSource = fs.readFileSync(
-  path.join(repoRoot, 'apps/mobile/ios/cravesearch/UIFrameSamplerBridge.m'),
+  path.join(repoRoot, 'apps/mobile/ios/cravesearch/SearchRouteSheetNavExclusionMaskViewBridge.m'),
   'utf8'
 );
 if (scenarioIsMapRuntimeOnly) {
