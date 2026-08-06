@@ -132,8 +132,9 @@ export class PersonDataEraserService {
    * `delete_row` and `sever` by their own column, `null_column` by
    * personScopeSql-or-a-sibling. Three derivations, three chances to drift
    * from the declaration, and every erasure defect found lived in one of them.
-   * The scope is now `ruleScope`'s answer, shared with the exporter and the
-   * proofs, so a disagreement is impossible rather than merely unlikely.
+   * The scope is now `ruleWhere`'s answer — itself a thin reading of the
+   * table's person scope — shared with the exporter and the proofs, so a
+   * disagreement is impossible rather than merely unlikely.
    */
   private async applyRule(
     rule: PersonDataRule,

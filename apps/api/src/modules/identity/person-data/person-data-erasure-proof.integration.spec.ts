@@ -55,6 +55,25 @@ const ROLLBACK = Symbol('rollback');
  *
  * Default (no entry): the person-key column holds the user id directly.
  */
+/** The person's signals pseudonym, created if the corpus has none. */
+const resolveActorId = async (
+  tx: PrismaClient,
+  userId: string,
+): Promise<string> => {
+  const existing = await tx.$queryRawUnsafe<Array<{ actor_id: string }>>(
+    `SELECT actor_id FROM signal_actors WHERE user_id = $1::uuid LIMIT 1`,
+    userId,
+  );
+  if (existing[0]) return existing[0].actor_id;
+  const actorId = '00000000-0000-4000-8000-0000000000ff';
+  await tx.$executeRawUnsafe(
+    `INSERT INTO signal_actors (actor_id, user_id) VALUES ($1::uuid, $2::uuid)`,
+    actorId,
+    userId,
+  );
+  return actorId;
+};
+
 const PERSON_LINK: Record<
   string,
   {
@@ -66,6 +85,22 @@ const PERSON_LINK: Record<
   // user-taste-profile.builder writes actor_id from signal_demand_daily. This
   // is the fact the broken rule got wrong, so it is recorded here, away from
   // the rule.
+  // Both signals tables key by the ACTOR, exactly like the taste profile:
+  // the person is reached through signal_actors, never by a user id in the
+  // row. Stated here, away from the rules, so a rule that gets the join wrong
+  // cannot also define the fixture that would catch it.
+  signals: {
+    column: 'actor_id',
+    resolve: (tx, userId) => resolveActorId(tx, userId),
+  },
+  signal_demand_daily: {
+    column: 'actor_id',
+    resolve: (tx, userId) => resolveActorId(tx, userId),
+  },
+  signal_actors: {
+    column: 'user_id',
+    resolve: (_tx, userId) => Promise.resolve(userId),
+  },
   user_taste_profile: {
     column: 'actor_id',
     resolve: async (tx, userId) => {
@@ -93,6 +128,14 @@ const PERSON_LINK: Record<
  * an honest statement that this particular proof cannot construct a row here,
  * pinned so the set cannot grow without someone noticing.
  */
+/**
+ * Rules whose FIXTURE cannot be built here. EMPTY, and it should stay that
+ * way: every entry that ever sat in this map turned out to be a seeder
+ * limitation wearing an excuse, never a fact about erasure. Eleven were
+ * dissolved by letting the fixture own its people; the last five by teaching
+ * it that some tables key by the signals PSEUDONYM and that `users` is the
+ * subject rather than a row to insert.
+ */
 const UNSEEDABLE: Record<string, string> = {};
 
 /**
@@ -114,6 +157,16 @@ const SEED_SHAPE: Record<string, Record<string, string>> = {
     kind: `'lifetime'`,
     granted_days: 'NULL',
     expires_at: 'NULL',
+  },
+  // A signal must say WHERE it happened: place_id OR a full bbox. Both are
+  // nullable, so the generic filler never touches them and the row lands with
+  // neither — the same shape as user_list_items below, where a CHECK requires
+  // a column the schema does not.
+  signals: {
+    geo_min_lat: '30.2',
+    geo_min_lng: '-97.8',
+    geo_max_lat: '30.3',
+    geo_max_lng: '-97.7',
   },
   // Exactly one target — and the target column is NULLABLE, so the generic
   // filler never touches it and the row lands with ZERO targets, which the
@@ -310,7 +363,14 @@ describe('erasure proof — each rule provably acts on a row it owns', () => {
             // another table, so their own key column is filled from that table's
             // real value — proving the JOIN, which is the whole point for
             // user_taste_profile.
-            const required = await requiredColumns(client, rule.table);
+            // THE SUBJECT'S OWN ROW ALREADY EXISTS. For rules ON `users`, the
+            // fixture created the person — inserting a second row keyed by the
+            // same id collides on the primary key. The row under test is the one
+            // we already made, so the seed step is simply already done.
+            const seedIsTheSubject = rule.table === 'users';
+            const required = seedIsTheSubject
+              ? []
+              : await requiredColumns(client, rule.table);
             const cols: string[] = [];
             const vals: string[] = [];
 
@@ -323,7 +383,16 @@ describe('erasure proof — each rule provably acts on a row it owns', () => {
               cols.push(link.column);
               vals.push(`'${await link.resolve(client, userId)}'`);
             } else {
-              cols.push(rule.column);
+              // THE TABLE'S KEY, not the rule's own column. A `null_column`
+              // rule names the value to DESTROY (users.auth_provider_user_id),
+              // which is not what locates the person — seeding the user id into
+              // that column would prove nothing about whether the rule finds
+              // the right row. Only a declared locating column identifies.
+              const keyColumn =
+                PERSON_DATA_RULES.find(
+                  (r) => r.table === rule.table && r.personKey,
+                )?.column ?? rule.column;
+              cols.push(keyColumn);
               vals.push(`'${userId}'`);
             }
 
@@ -387,11 +456,24 @@ describe('erasure proof — each rule provably acts on a row it owns', () => {
             // outcome, and the set of them is pinned below so it cannot grow
             // silently.
             try {
-              await client.$executeRawUnsafe(
-                `INSERT INTO "${rule.table}" (${cols
-                  .map((c) => `"${c}"`)
-                  .join(', ')}) VALUES (${vals.join(', ')})`,
-              );
+              if (seedIsTheSubject) {
+                // The fixture already created this person, so the row under
+                // test exists — inserting a second one collides on the primary
+                // key. What the seed still has to do is give the column a
+                // VALUE to destroy, so "it was nulled" is a real observation
+                // rather than a column that happened to be null already.
+                await client.$executeRawUnsafe(
+                  `UPDATE users SET "${rule.column}" = $1 WHERE user_id = $2::uuid`,
+                  'erasure-proof-value',
+                  userId,
+                );
+              } else {
+                await client.$executeRawUnsafe(
+                  `INSERT INTO "${rule.table}" (${cols
+                    .map((c) => `"${c}"`)
+                    .join(', ')}) VALUES (${vals.join(', ')})`,
+                );
+              }
             } catch (error) {
               throw Object.assign(new Error('rollback'), {
                 [ROLLBACK]: {
@@ -427,8 +509,20 @@ describe('erasure proof — each rule provably acts on a row it owns', () => {
                 : `UPDATE "${rule.table}" SET "${rule.column}" = NULL WHERE ${where}`;
             await client.$executeRawUnsafe(statement, userId);
 
+            // WHAT "ERASED" MEANS DEPENDS ON THE VERB, and this assertion used
+            // to assume row-removal for all three. `delete_row` removes the
+            // row; `sever` and `null_column` deliberately KEEP it and destroy
+            // one value — a comment survives its author, a users row survives
+            // as the anonymized shell. Counting surviving rows therefore
+            // reported a correct null_column erasure as a failure, which is a
+            // verifier measuring the wrong thing rather than a defect.
+            const survivingValue =
+              rule.disposition === 'delete_row'
+                ? `SELECT count(*)::int AS n FROM "${rule.table}" WHERE ${where}`
+                : `SELECT count(*)::int AS n FROM "${rule.table}"
+                     WHERE (${where}) AND "${rule.column}" IS NOT NULL`;
             const [after] = await client.$queryRawUnsafe<Array<{ n: number }>>(
-              `SELECT count(*)::int AS n FROM "${rule.table}" WHERE ${where}`,
+              survivingValue,
               userId,
             );
 

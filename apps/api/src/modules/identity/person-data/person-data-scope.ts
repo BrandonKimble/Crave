@@ -33,8 +33,12 @@ import { PERSON_DATA_RULES, type PersonDataRule } from './person-data-class';
  * TWO SCOPES, BECAUSE THERE ARE GENUINELY TWO QUESTIONS. Collapsing them would
  * be a different kind of wrong:
  *
- *   ruleScope(rule)  — "which rows does THIS rule act on?"  (erasure)
- *   subjectRows(table) — "which rows NAME this person?"     (access/export)
+ *   ruleWhere(rule)    — "where does THIS rule act?"       (erasure)
+ *   subjectRows(table) — "which rows NAME this person?"    (access/export)
+ *
+ * `ruleWhere` is now a thin reading of `subjectRows` rather than a second
+ * resolution path — see its doc for why having two was the same disease this
+ * file exists to cure, reproduced inside the file.
  *
  * `user_blocks` shows why they differ: erasure deletes rows where the person is
  * the BLOCKER and retains rows where they are the BLOCKED (a block protects
@@ -43,8 +47,8 @@ import { PERSON_DATA_RULES, type PersonDataRule } from './person-data-class';
  * answering both questions would have to be wrong about one of them.
  */
 
-/** Dispositions that act on rows, and therefore need a scope. */
-const SCOPING = new Set(['delete_row', 'sever']);
+/** Every disposition that performs a statement — the three the eraser runs. */
+const ACTING = new Set(['delete_row', 'sever', 'null_column']);
 
 /**
  * `::text` ON BOTH SIDES, always.
@@ -61,59 +65,49 @@ const eq = (column: string, alias?: string) =>
   `${alias ? `${alias}.` : ''}"${column}"::text = $1::text`;
 
 /**
- * WHERE DOES THIS RULE ACT?
+ * WHERE DOES A RULE ACT? The same place every other rule on that table acts.
  *
- * Precedence, and each step is a declaration rather than a guess:
- *  1. `personScopeSql` — the rule states how to reach the person. Always wins,
- *     for every disposition. (Honouring it for only one disposition is what
- *     let the taste-profile rule declare a scope and be ignored.)
- *  2. `personKey` — this column identifies the person in this table.
- *  3. The rule is the table's ONLY scoping rule, so its column is the key by
- *     elimination — not by name-guessing.
+ * `ruleScope` used to be a SECOND resolution path, with its own precedence
+ * (declared -> personKey -> sole-by-elimination), its own classify-only skip,
+ * and its own ambiguity throw — while `null_column` went through
+ * `subjectRows`. Two answers to one question, which is the exact shape this
+ * file was written to end, reproduced inside the file itself.
  *
- * Returns null when the rule does not act on rows (`retain`, `not_person`,
- * `anonymized_by_shell`) or when it is a classify-only column on a table whose
- * key is declared elsewhere — the caller must treat null as "nothing to do",
- * never as "no filter".
+ * There is one question: which rows of this table are this person's. A rule's
+ * own `personScopeSql` overrides it (the taste profile reaches its person
+ * through signal_actors); otherwise the table's scope IS the answer. The
+ * elimination heuristic is gone — every locating column is declared with
+ * `personKey`, so nothing is inferred from how many siblings a rule happens to
+ * have.
+ *
+ * Returns null for rules that do not act on rows, and for a classify-only
+ * column whose table locates the person elsewhere. Null means "nothing to do",
+ * never "no filter".
  */
-export function ruleScope(rule: PersonDataRule): string | null {
-  if (!SCOPING.has(rule.disposition)) return null;
-
-  if (rule.personScopeSql) {
-    return rule.personScopeSql;
-  }
-  if (rule.personKey) {
-    return eq(rule.column);
-  }
-
-  const siblings = PERSON_DATA_RULES.filter(
-    (r) =>
-      r.table === rule.table &&
-      r.disposition === rule.disposition &&
-      r.column !== rule.column,
-  );
-  // A table whose key is declared elsewhere: this column classifies, it does
-  // not scope. Acting on it would emit a predicate over a non-key column
-  // ("delete rows whose residue_text equals this uuid") that matches nothing.
-  if (siblings.some((r) => r.personKey || r.personScopeSql)) return null;
-  // Sole scoping rule of its disposition on this table — its column is the key
-  // by elimination.
-  if (siblings.length === 0) {
-    return eq(rule.column);
-  }
-  // Ambiguous: several columns, none declared. Refuse rather than pick one —
-  // picking by authoring order is exactly the exporter's old bug.
-  throw new Error(
-    `person-data: ${rule.table}.${rule.column} (${rule.disposition}) has ` +
-      `sibling scoping columns and no declared key. Mark the person key with ` +
-      `personKey: true, or declare personScopeSql.`,
-  );
-}
-
-/** The rule's full WHERE, including its row predicate. */
 export function ruleWhere(rule: PersonDataRule): string | null {
-  const scope = ruleScope(rule);
+  if (!ACTING.has(rule.disposition)) return null;
+
+  const scope =
+    rule.personScopeSql ?? subjectRows(rule.table, { includeRetained: false });
   if (!scope) return null;
+
+  // A classify-only column (it names person data but does not locate a person)
+  // defers to its table's key. Acting on it separately would emit a duplicate
+  // statement, and scoping BY it would emit a predicate over a non-key column.
+  // ONLY `delete_row` defers. A non-key `sever`/`null_column` column is not
+  // classify-only: it names a value that must be DESTROYED, located by the
+  // table's key — `user_list_collaborators.invited_by_user_id` is exactly
+  // that (the invite survives, who sent it does not). Skipping them made a
+  // real sever a silent no-op. `delete_row` defers because the row is already
+  // removed by the key's own statement; a second DELETE would be a duplicate.
+  if (
+    rule.disposition === 'delete_row' &&
+    !rule.personScopeSql &&
+    !rule.personKey
+  ) {
+    return null;
+  }
+
   return rule.rowPredicate ? `(${scope}) AND (${rule.rowPredicate})` : scope;
 }
 
@@ -167,11 +161,35 @@ export function subjectRows(
         `reconcile them rather than letting authoring order decide.`,
     );
   }
-  if (declared.length === 1) return declared[0];
+  if (declared.length === 1) {
+    // A DECLARED SCOPE AND A PERSON KEY ARE TWO ANSWERS TO ONE QUESTION.
+    //
+    // If the table reaches its person through a join, no column on it locates
+    // them directly — saying both is a contradiction, and the declared scope
+    // would silently mask the key. That masking is not hypothetical: it made
+    // re-introducing the original taste-profile bug (scope actor_id by user
+    // id) pass every test, because the sibling rule still carried the correct
+    // join and answered for the whole table. A guard the defect can hide
+    // behind is not a guard.
+    const alsoKeyed = rules.filter((r) => r.personKey);
+    if (alsoKeyed.length > 0) {
+      throw new Error(
+        `person-data: ${table} declares a personScopeSql AND marks ` +
+          `${alsoKeyed.map((r) => r.column).join(', ')} as a person key. The ` +
+          `table is reached one way; pick it.`,
+      );
+    }
+    return declared[0];
+  }
 
   const naming = rules.filter((r) => {
+    // ONLY COLUMNS THAT LOCATE A PERSON. This used to accept any scoping
+    // disposition, which swept in the classify-only secondaries — and then
+    // ORed `residue_text = <uuid>` and `device_key = <uuid>` into the
+    // predicate. Those name person data; they do not identify a person, and
+    // comparing one to a user id matches nothing. It was the same incoherence
+    // ruleScope had been fixed for, still living in the other function.
     if (r.personKey) return true;
-    if (SCOPING.has(r.disposition)) return true;
     // `anonymized_by_shell` NAMES the person — the column keeps pointing at
     // their (anonymized) users row, which is exactly how authorship survives.
     // Omitting it silently dropped `photos` from the subject-access export:

@@ -139,11 +139,17 @@ export const PERSON_DATA_RULES: readonly PersonDataRule[] = [
   // ─── Private to the person: their own saved things ───────────────────────
   // RULING: hard delete. These leak TODAY — the soft delete means no FK
   // cascade ever fires, so `onDelete: Cascade` reads as protection and is not.
-  { table: 'user_lists', column: 'owner_user_id', disposition: 'delete_row' },
+  {
+    table: 'user_lists',
+    column: 'owner_user_id',
+    disposition: 'delete_row',
+    personKey: true,
+  },
   {
     table: 'user_list_items',
     column: 'added_by_user_id',
     disposition: 'delete_row',
+    personKey: true,
   },
   {
     table: 'user_list_collaborators',
@@ -151,8 +157,18 @@ export const PERSON_DATA_RULES: readonly PersonDataRule[] = [
     disposition: 'delete_row',
     personKey: true,
   },
-  { table: 'user_stats', column: 'user_id', disposition: 'delete_row' },
-  { table: 'user_notifications', column: 'user_id', disposition: 'delete_row' },
+  {
+    table: 'user_stats',
+    column: 'user_id',
+    disposition: 'delete_row',
+    personKey: true,
+  },
+  {
+    table: 'user_notifications',
+    column: 'user_id',
+    disposition: 'delete_row',
+    personKey: true,
+  },
   // BOTH columns are person keys: a person appears here in two roles and both
   // edges are theirs, so both are deleted (and both are exported). Marking
   // only one would silently leave every follow they RECEIVED in place.
@@ -174,7 +190,12 @@ export const PERSON_DATA_RULES: readonly PersonDataRule[] = [
     disposition: 'delete_row',
     personKey: true,
   },
-  { table: 'poll_comment_likes', column: 'user_id', disposition: 'delete_row' },
+  {
+    table: 'poll_comment_likes',
+    column: 'user_id',
+    disposition: 'delete_row',
+    personKey: true,
+  },
   {
     table: 'photo_events',
     column: 'user_id',
@@ -191,12 +212,19 @@ export const PERSON_DATA_RULES: readonly PersonDataRule[] = [
     table: 'collection_on_demand_request_users',
     column: 'user_id',
     disposition: 'delete_row',
+    personKey: true,
   },
-  { table: 'access_grants', column: 'user_id', disposition: 'delete_row' },
+  {
+    table: 'access_grants',
+    column: 'user_id',
+    disposition: 'delete_row',
+    personKey: true,
+  },
   {
     table: 'conversation_participants',
     column: 'user_id',
     disposition: 'delete_row',
+    personKey: true,
   },
 
   // Raw typed search text tied to a person. LEAKS TODAY.
@@ -236,8 +264,18 @@ export const PERSON_DATA_RULES: readonly PersonDataRule[] = [
     column: 'user_id',
     disposition: 'anonymized_by_shell',
   },
-  { table: 'polls', column: 'created_by_user_id', disposition: 'sever' },
-  { table: 'poll_topics', column: 'created_by_user_id', disposition: 'sever' },
+  {
+    table: 'polls',
+    column: 'created_by_user_id',
+    disposition: 'sever',
+    personKey: true,
+  },
+  {
+    table: 'poll_topics',
+    column: 'created_by_user_id',
+    disposition: 'sever',
+    personKey: true,
+  },
 
   // Curated lists: the case that proved table-grained classification is the
   // wrong unit. Personal ones are the person's; global ones are editorial
@@ -265,6 +303,7 @@ export const PERSON_DATA_RULES: readonly PersonDataRule[] = [
     table: 'signal_actors',
     column: 'user_id',
     disposition: 'sever',
+    personKey: true,
     basis:
       'The actor stays as anonymous demand evidence; the mapping to the person is what must die.',
   },
@@ -434,6 +473,7 @@ export const PERSON_DATA_RULES: readonly PersonDataRule[] = [
     table: 'user_list_collaborators',
     column: 'invited_by_user_id',
     disposition: 'sever',
+    personKey: true,
     basis: "The invite survives on someone else's list; who sent it does not.",
   },
   {
