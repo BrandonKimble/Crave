@@ -67,6 +67,15 @@ jobs:
       # Type check FIRST (rederivation D27): CI used to die at Lint,
       # leaving type errors — including the rotted DB-integration spec —
       # invisible. One second of tsc buys the truth about compilability.
+      # BEFORE type-check, deliberately. A backtick inside a SQL comment ends
+      # the Prisma.sql template, and tsc then reports TS1005/TS1134 about
+      # commas and variable declarations — true errors that name neither the
+      # backtick nor the template. tsc CATCHES this; it cannot NAME it, and a
+      # parser-based rule cannot run at all on a file that no longer parses.
+      # Running first means the readable answer arrives before the cascade.
+      - name: 'Static guard: no backtick inside an embedded SQL comment'
+        run: node scripts/check-sql-comment-backticks.mjs
+
       - name: Type check
         run: yarn type-check
 
