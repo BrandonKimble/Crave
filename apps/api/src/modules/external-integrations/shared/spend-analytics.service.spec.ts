@@ -1220,6 +1220,18 @@ describe('SpendAnalyticsService.refreshPipelineClassRates (§24.2 all-in per-cla
       refreshDetailsCalls: 40,
     });
     const rows = await service.refreshUnitCosts(WINDOW_END);
+    // LIVENESS FIRST. Everything below is an ABSENCE assertion, and on an EMPTY
+    // `rows` every one of them is vacuously true — a refreshUnitCosts that
+    // published NOTHING AT ALL (proven: `return []` at the top keeps this test
+    // green) satisfied the whole "never an invented rate" claim by inventing
+    // nothing because it did nothing. The witness that the pass really ran is
+    // the constant-rate FLOOR rows, which do not depend on sample size.
+    expect(rows.map((r) => r.workClass)).toEqual(
+      expect.arrayContaining([
+        'google_places.essentials',
+        'google_places.enterprise_atmosphere',
+      ]),
+    );
     for (const workClass of [
       'gemini.relevance_gate',
       'gemini.embedding',

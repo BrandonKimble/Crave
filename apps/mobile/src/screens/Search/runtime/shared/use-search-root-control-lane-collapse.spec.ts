@@ -67,12 +67,8 @@ jest.mock('./use-search-root-profile-map-command-runtime', () => ({
 }));
 
 /* eslint-disable @typescript-eslint/no-var-requires */
-const {
-  useSearchRootResultsControlRuntime,
-} = require('./use-search-root-results-control-runtime');
-const {
-  useSearchRootProfileControlRuntime,
-} = require('./use-search-root-profile-control-runtime');
+const { useSearchRootResultsControlRuntime } = require('./use-search-root-results-control-runtime');
+const { useSearchRootProfileControlRuntime } = require('./use-search-root-profile-control-runtime');
 /* eslint-enable @typescript-eslint/no-var-requires */
 
 describe('useSearchRootResultsControlRuntime lane collapse', () => {
@@ -106,9 +102,9 @@ describe('useSearchRootResultsControlRuntime lane collapse', () => {
     expect(first.resultsTransitionControlLane.closeTransitionActions).toBe(
       args.resultsPresentationOwner.closeTransitionActions
     );
-    expect(first.searchSurfaceResultsTransactionControlLane.searchSurfaceResultsTransactionKey).toBe(
-      'txn-1'
-    );
+    expect(
+      first.searchSurfaceResultsTransactionControlLane.searchSurfaceResultsTransactionKey
+    ).toBe('txn-1');
 
     // A no-change re-render holds every lane identity.
     const second = harness.render();
@@ -149,7 +145,11 @@ describe('useSearchRootResultsControlRuntime lane collapse', () => {
     );
 
     // F1013: hook sequence stable across both hit and miss renders.
-    expect(harness.hookSequence().every((kind) => kind === 'useMemo')).toBe(true);
+    const sequence = harness.hookSequence();
+    // NON-EMPTY FIRST: `[].every(...)` is `true`, so a harness that recorded ZERO
+    // hooks (or a consumer that called none) used to satisfy this line outright.
+    expect(sequence.length).toBeGreaterThan(0);
+    expect(sequence.every((kind) => kind === 'useMemo')).toBe(true);
     harness.unmount();
   });
 });
@@ -213,7 +213,11 @@ describe('useSearchRootProfileControlRuntime lane collapse', () => {
 
     // F1013: hook sequence stable across both hit and miss renders (the harness throws
     // on any count/order change, so reaching this line is the proof).
-    expect(harness.hookSequence().every((kind) => kind === 'useMemo')).toBe(true);
+    const sequence = harness.hookSequence();
+    // NON-EMPTY FIRST: `[].every(...)` is `true`, so a harness that recorded ZERO
+    // hooks (or a consumer that called none) used to satisfy this line outright.
+    expect(sequence.length).toBeGreaterThan(0);
+    expect(sequence.every((kind) => kind === 'useMemo')).toBe(true);
     harness.unmount();
   });
 });

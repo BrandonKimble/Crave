@@ -303,9 +303,16 @@ describe('AutocompleteService — user lane (rank-only, K1 slots)', () => {
   });
 
   it('keeps the ratified min-query-length gates (2 for users, 3 for polls)', async () => {
-    const { service, queryRaw } = createHarness({});
+    const { service, queryRaw, entitySearchService } = createHarness({});
     await service.autocompleteEntities({ query: 'm', bounds: BOUNDS });
     const sqlCalls = queryRaw.mock.calls.map(([query]) => sqlText(query));
+    // LIVENESS FIRST. The two lines below are ABSENCE assertions and `sqlCalls`
+    // is EMPTY at one character (the entity lanes go through
+    // entitySearchService, not $queryRaw) — so on their own they are vacuously
+    // true and a service that did NOTHING at all passed this gate. The witness
+    // that the call really ran and really reached the lane fan-out is the
+    // entity lane firing at one character (K1: suggest engages from char 1).
+    expect(entitySearchService.searchEntitiesHybrid).toHaveBeenCalled();
     expect(sqlCalls.some((sql) => sql.includes('FROM users'))).toBe(false);
     expect(sqlCalls.some((sql) => sql.includes('FROM polls'))).toBe(false);
 

@@ -178,6 +178,9 @@ describe('resolveHoursState — weekly rows', () => {
 
   it('labels every day "Open 24 hours" when open24h', () => {
     const rows = resolveHoursState(makeSchedule({}, { open24h: true }), THU_NOON_UTC).weeklyRows;
+    // NON-EMPTY FIRST: `[].every(...)` is `true`, so without this an engine that
+    // built ZERO rows would pass this test.
+    expect(rows).toHaveLength(7);
     expect(rows.every((r) => r.intervalsLabel === 'Open 24 hours')).toBe(true);
   });
 });

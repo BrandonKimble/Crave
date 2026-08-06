@@ -57,9 +57,7 @@ jest.mock('./use-search-root-search-scene-bus-publish-effect-runtime', () => ({
 }));
 
 /* eslint-disable @typescript-eslint/no-var-requires */
-const {
-  ResultsPresentationSurfaceAuthority,
-} = require('./results-presentation-surface-authority');
+const { ResultsPresentationSurfaceAuthority } = require('./results-presentation-surface-authority');
 const {
   useSearchRootSearchSceneListHydrationPublicationRuntime,
 } = require('./use-search-root-search-scene-list-hydration-publication-runtime');
@@ -88,9 +86,7 @@ describe('useSearchRootSearchSceneListHydrationPublicationRuntime patch collapse
         isResultsHydrationSettled: false,
       } as never,
     };
-    const harness = mountHook(() =>
-      useSearchRootSearchSceneListHydrationPublicationRuntime(args)
-    );
+    const harness = mountHook(() => useSearchRootSearchSceneListHydrationPublicationRuntime(args));
     return { authority, args, harness };
   };
 
@@ -163,6 +159,10 @@ describe('useSearchRootSearchSceneListHydrationPublicationRuntime patch collapse
       activeRowCount: 1,
     });
     harness.render();
+    // NON-EMPTY FIRST (F2072 family): `toEqual(sequence)` compares the recorder
+    // against itself — two empty arrays are equal, so a collapse that removed
+    // every hook read green on the very contract meant to catch it.
+    expect(sequence.length).toBeGreaterThan(0);
     expect(harness.hookSequence()).toEqual(sequence);
   });
 });

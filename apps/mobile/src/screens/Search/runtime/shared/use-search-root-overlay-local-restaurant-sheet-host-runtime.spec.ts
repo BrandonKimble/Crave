@@ -58,6 +58,10 @@ describe('useSearchRootOverlayLocalRestaurantSheetHostRuntime — F1013 wiring c
     harness.render();
     harness.render();
 
+    // NON-EMPTY FIRST (F2072 family): `toEqual(first)` compares the recorder
+    // against itself, so a composition that called NO hooks — or a harness that
+    // recorded none — used to satisfy this contract with two empty arrays.
+    expect(first.length).toBeGreaterThan(0);
     expect(harness.hookSequence()).toEqual(first);
     harness.unmount();
   });
@@ -104,6 +108,8 @@ describe('useSearchRootOverlayLocalRestaurantRouteHostRuntime — F1013 wiring c
     const first = harness.hookSequence();
     harness.render();
 
+    // NON-EMPTY FIRST (F2072 family): two empty arrays are equal.
+    expect(first.length).toBeGreaterThan(0);
     expect(harness.hookSequence()).toEqual(first);
     harness.unmount();
   });
