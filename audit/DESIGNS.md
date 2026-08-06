@@ -1826,3 +1826,46 @@ the proposed behavioral stub-and-spy; the scanner dies with it.
 All four to one P3 lane; the territory's other clean bills (spend-currency's branded
 currency law, decision-ledger's pending-set drain, the tomtom observation-type doctrine)
 are accepted as argued.
+
+---
+
+## D72 — P2 verdicts on the nav-overlays large-surface pass (F2950–F2954, 2026-08-06)
+
+**F2953 — APPROVED, highest priority.** The boot launch-prefetch effect has no once-latch
+and depends on `startupLocationSnapshot?.coordinate`, a fresh object per GPS watch tick
+(20s/50m cadence): the "boot" prefetch re-issues its API call every tick for the app's
+foreground life. The fix is a once-latch keyed on the episode (what "boot" means), plus
+deleting the `startupCamera?.source` dep the body never reads. Mutation: drive two
+coordinate ticks through the effect; exactly one prefetch.
+
+**F2950 — APPROVED.** One cache key minted in 5 places with 3 spellings, and an
+invalidation that can never match two of them (stale `shareEnabled` after enableShare on a
+slug-opened list). Rederive: one exported key-builder function; every mint and every
+invalidation goes through it; the mutation is the agent's own (rename the `slug:` prefix →
+every consumer breaks at once instead of none).
+
+**F2951/F2952 — APPROVED, deletions with banking law.** Dead attribution params every
+caller fills and nothing reads; a computed-and-documented flag with zero consumers; a
+`contentMode` riding the display context with zero readers under docs describing a
+function signature that no longer exists. Verify each zero-consumer claim by grep at
+execution time, then delete, and fix the narrating comments in the same commit.
+
+**F2954 — accepted; it REFINES D69's queued P3.** Post-F983, ALL remaining per-scene MVCP
+literals are redundant restatements (including static-scene-descriptor:127, which D69
+missed), zero opt-in callers exist, and PollsPanel:112's comment is now false. Ruling:
+D69's extraction stands but the default VALUE gets one home — an exported constant on the
+types module becomes a values-adjacent module concern; put the constant beside the merge
+extraction, not in the .ts types file. The pure `mergeSceneFlashListProps` spec proves both
+presence AND order (mutation: remove default → RED; move base after scene spread → RED).
+Delete the now-redundant restatements EXCEPT PollDetailPanel's documented one; correct
+PollsPanel:112's false comment.
+
+**F2403 — CANDIDATE ACCEPTED, CONDITIONAL ON RUNTIME ATTRIBUTION.** `hasPaintedSceneKeysRef`
+(painted-evidence Set written by real onLayout, invalidated on body detach) is exactly the
+per-shell commit signal D68 said did not exist. But whether PREWARMED (hidden) shells fire
+onLayout at idle is an empirical fact, not a code-reading fact — if they do not, an
+"every managed scene painted after prewarm" assertion is the same false-RED trap as the
+chrome-ack design I wrongly proposed. Condition (CLAUDE.md attribution law): instrument
+first — log the Set's contents at post-prewarm idle in the sim, observe whether prewarmed
+scenes acquire painted evidence — and only then wire the assertion. No assertion lands
+without that observation.
