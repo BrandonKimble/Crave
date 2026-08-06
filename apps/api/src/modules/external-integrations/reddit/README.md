@@ -21,8 +21,7 @@ reddit/
 ├── reddit.service.ts        # Core Reddit API service
 ├── reddit.exceptions.ts     # Custom exception classes
 ├── reddit.service.spec.ts   # Unit tests
-├── reddit-health.controller.ts # Health check endpoints
-├── index.ts                 # Module exports
+├── reddit-data-filter.ts    # Single-pass Reddit listing filter/transform to LLM format
 └── README.md               # This documentation
 ```
 

@@ -14,7 +14,7 @@ This module provides comprehensive Reddit API integration for the Crave Search a
 
 ### ⚡ Rate Limiting
 
-- **100 requests/minute limit**: Enforced through RateLimitCoordinatorService integration
+- **100 requests/minute limit**: Enforced through the governor's `reddit.requests` pool (GovernanceService) — RateLimitCoordinatorService has zero reddit admission authority (§12.5/§14.8, one pool, one ledger)
 - **Proactive checking**: Rate limit validation before making API calls
 - **Graceful degradation**: Handles rate limit errors with appropriate retry-after delays
 
@@ -241,10 +241,10 @@ try {
 
 ### How It Works
 
-1. **Pre-request Validation**: Before each API call, the service requests permission from the RateLimitCoordinatorService
+1. **Pre-request Admission**: Before each API call, the service draws from the governor's single `reddit.requests` pool (`GovernanceService.drawWithOutcome`), retried through the governor on denial — never a second rate-limit window
 2. **100 requests/minute limit**: Configured as per Reddit API limits and PRD requirements
 3. **Graceful Handling**: If rate limited, the service either throws an error or returns empty results with rate limit metadata
-4. **Coordinator Integration**: Reports rate limit hits back to the coordinator for system-wide tracking
+4. **Vendor Feedback**: An upstream 429 poisons the pool's current window (`poisonWindow`) so the ceiling is honored governor-wide, not just in this process
 
 ### Rate Limit Response Handling
 
@@ -280,7 +280,7 @@ npm test reddit.service.spec.ts
 
 ### Module Dependencies
 
-- **RateLimitCoordinatorService**: For centralized rate limiting
+- **GovernanceService**: For the `reddit.requests` admission pool (rate limiting)
 - **LoggerService**: For structured logging with correlation IDs
 - **ConfigService**: For environment-based configuration
 - **HttpService**: For HTTP requests with Axios
