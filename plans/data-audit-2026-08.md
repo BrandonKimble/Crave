@@ -1280,3 +1280,46 @@ scores -> read path; entities -> locations; foods -> categories -> edges;
 attributes -> vocabulary. Same discipline as round 1: trace to raw source,
 red-team my own conclusions, prove by executed query, and treat one sample as
 noise until repeated.
+
+## ROUND 2 PHASE 1 — first census results (2026-08-05)
+
+HOP 1 documents -> events: 89,901 docs, 87,677 extracted, 18,553 producing
+entity events (21%). Not a defect on its face — most comments are not
+testimony — but the denominator is now recorded so a future change to the
+eligibility gate has a baseline to move against.
+
+HOP 2 events -> connections, decomposed by evidence combination
+(menu_item / food_mention / category), which is the decomposition round 1
+never did:
+category ONLY 10,251 pairs 7,342 with NO connection row
+menu_item present 5,368 pairs ~all connected
+food_mention ONLY 705 pairs 705 with NO connection (known gap)
+everything else ~4,900 pairs ~all connected
+
+FALSE ALARM RULED OUT: the 7,342 category-only pairs are NOT lost. All 7,342
+appear in some connection's `categories` array (and 6,770 are reachable via
+derived_food_category_edges). Representation difference, not a drop — exactly
+the kind of thing a count-the-missing-rows query would have mis-reported as a
+catastrophe.
+
+REAL FINDING — THE TWO CATEGORY REPRESENTATIONS STILL DISAGREE:
+food->category pairs in connection ARRAYS 10,031
+food->category pairs in derived EDGES 7,312
+in ARRAY but NOT edge 2,877 (28.7% of arrays)
+in EDGE but NOT array 158
+Part of that gap is deliberate (class ⑤'s >=2-supporting-connections minting
+threshold prunes weak claims). What is NOT deliberate is that the array
+survives as a second, larger, unpruned answer to the same question. Search
+MATCHING was correctly moved to edges only (490388fab; the `c.categories &&`
+arm is gone, per its own code comments) — but the array is still SELECTED
+(search-query.builder:857, 910) and mapped into the DTO
+(search-query.executor:989, 2358), and NOTHING IN THE MOBILE APP READS IT.
+
+THE PATTERN, now seen three times: a field is computed, projected, selected,
+carried to the DTO — and consumed by nobody. is_category_item (fixed this
+phase), the five \*\_surface fields (deleted this phase), and now the
+connection `categories` array. Each one is a second source of truth that
+cannot be caught by tests because nothing depends on it, and each is exactly
+the "smaller problem that becomes bigger at scale" class. Round 2 should
+sweep the projection/DTO surface for the whole family rather than fixing them
+one at a time.
