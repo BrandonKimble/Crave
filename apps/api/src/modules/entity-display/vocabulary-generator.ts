@@ -2,7 +2,6 @@ import { Injectable } from '@nestjs/common';
 import { LLMService } from '../external-integrations/llm/llm.service';
 import { LoggerService } from '../../shared';
 import {
-  AUTO_APPROVE_SCORE,
   type GeneratedLabel,
   type LabelGenerationRequest,
   type LabelGenerator,
@@ -136,14 +135,6 @@ export class VocabularyGenerator implements LabelGenerator {
         locale,
         form: label,
         description: item.description?.trim() || null,
-        // A single confident draw. The score is NOT a quality measurement we
-        // did not make — it is the auto-approve floor, meaning "this generator
-        // publishes by default"; anything it abstains on simply is not here.
-        judgement: {
-          score: AUTO_APPROVE_SCORE,
-          errorSpans: [],
-          autoApprove: true,
-        },
         status: 'active',
         aliases,
       });

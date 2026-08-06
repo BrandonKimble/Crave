@@ -6,10 +6,14 @@
  * The real generator is `VocabularyGenerator` (labels AND search surfaces,
  * per locale); `NoopLabelGenerator` below is the honest dry run.
  *
- * R5-10: judgement is MQM-SHAPED, not boolean. A 0-100 score with error spans
- * lets a near-miss be reviewed instead of silently dropped, and a generator
- * that is unsure lands `status='candidate'`; that is what the entity_labels
- * status column is for.
+ * R5-10's MQM SCORING WAS REMOVED. It specified a 0-100 score with error spans
+ * so a near-miss could be reviewed rather than dropped. No reviewer was ever
+ * built, and the real generator does not produce near-misses — it ABSTAINS,
+ * writing nothing, which is strictly better than a scored guess. So the score
+ * was always the same constant compared against itself, and the error-span
+ * array was always empty: scaffolding for a design that does not exist.
+ * `status` stays because the entity_labels column is real and a future human
+ * review flow would set it; the generator only ever emits 'active'.
  *
  * MULTI-SAMPLE CONSENSUS WAS REMOVED, and the removal is a MEASUREMENT, not a
  * simplification. R5-10 asserted consensus was "required for short
@@ -37,31 +41,12 @@ export interface LabelGenerationRequest {
   hint?: string | null;
 }
 
-/** MQM-shaped error span (R5-10). */
-export interface LabelErrorSpan {
-  /** accuracy | fluency | terminology | style | locale_convention */
-  category: string;
-  /** minor | major | critical */
-  severity: string;
-  text: string;
-  note?: string;
-}
-
-export interface LabelJudgement {
-  /** 0-100. */
-  score: number;
-  errorSpans: LabelErrorSpan[];
-  /** score >= AUTO_APPROVE_SCORE and no critical span. */
-  autoApprove: boolean;
-}
-
 export interface GeneratedLabel {
   entityId: string;
   locale: string;
   form: string;
   /** R5-6(a): the Wikidata-learned per-locale disambiguator. */
   description: string | null;
-  judgement: LabelJudgement;
   /** 'active' publishes; 'candidate' queues for review. */
   status: 'active' | 'candidate';
   /**
@@ -77,13 +62,6 @@ export interface GeneratedLabel {
    */
   aliases?: string[];
 }
-
-/**
- * R5-10's threshold. An owner knob, stated once: at or above this MQM score a
- * label publishes without review; below it, it queues. 80 is the plan's
- * ratified number.
- */
-export const AUTO_APPROVE_SCORE = 80;
 
 export interface LabelGenerator {
   readonly name: string;

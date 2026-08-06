@@ -12,7 +12,6 @@ import {
 } from '../content-processing/entity-resolver/entity-identity';
 import { addAliases } from '../content-processing/entity-resolver/entity-alias.service';
 import {
-  AUTO_APPROVE_SCORE,
   NoopLabelGenerator,
   type GeneratedLabel,
   type LabelGenerationRequest,
@@ -49,8 +48,8 @@ export interface SweepResult {
   requested: number;
   generated: number;
   written: number;
+  /** Written with status 'active' — i.e. live for users. */
   autoApproved: number;
-  queuedForReview: number;
 }
 
 @Injectable()
@@ -152,11 +151,9 @@ export class LabelSweepService {
       generated: generated.length,
       written,
       autoApproved: generated.filter((row) => row.status === 'active').length,
-      queuedForReview: generated.filter((row) => row.status === 'candidate')
-        .length,
     };
     this.logger.log(
-      `label sweep locale=${locale} generator=${generator.name} due=${result.due} requested=${result.requested} written=${result.written} review=${result.queuedForReview}`,
+      `label sweep locale=${locale} generator=${generator.name} due=${result.due} requested=${result.requested} written=${result.written}`,
     );
     return result;
   }
@@ -195,10 +192,7 @@ export class LabelSweepService {
         },
         select: { form: true },
       });
-      const isDefault =
-        !existingDefault &&
-        label.status === 'active' &&
-        label.judgement.score >= AUTO_APPROVE_SCORE;
+      const isDefault = !existingDefault && label.status === 'active';
       await this.prisma.entityLabel.upsert({
         where: {
           entityId_locale_form: {
