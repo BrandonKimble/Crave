@@ -23,8 +23,10 @@ import { Prisma } from '@prisma/client';
  * So this is a BUILDER, for the same reason `dailyActsCteSql` is one: a
  * half-adoptable helper is exactly what lets dialects diverge. A caller cannot
  * take the join and skip the fold-back, because the join and the fold-back are
- * emitted by the same pair of functions over the same alias, and the lockdown
- * spec (subject-identity-lockdown.spec.ts) fails on any hand-rolled copy.
+ * emitted by the same pair of functions over the same alias, and the
+ * no-restricted-syntax ESLint rule (see eslint.config.mjs) fails the build on
+ * any hand-rolled copy — it replaced the lockdown spec this comment used to
+ * name, which regexed the source tree and has since been deleted.
  *
  * WHY NOT A VIEW: F202's stronger proposal was a `signals_resolved` view with
  * the raw column renamed, which would make the unresolved id unreachable
