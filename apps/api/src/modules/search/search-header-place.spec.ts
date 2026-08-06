@@ -109,10 +109,24 @@ function createHarness(options: {
   placesInViewError?: Error;
   reconciler?: { noteViewport: jest.Mock } | PlacesReconcilerService;
 }) {
+  // F2201: the catalog double KEYS ON THE VIEWPORT it is asked about. An
+  // unconditional `mockResolvedValue(places)` left the header's read scope
+  // unpinned — production could hand the catalog the whole world (naming the
+  // header from a continent, and scanning one) with every spec here green.
   const placesCatalog = {
     placesInView: options.placesInViewError
       ? jest.fn().mockRejectedValue(options.placesInViewError)
-      : jest.fn().mockResolvedValue(options.placesInView ?? []),
+      : jest.fn((asked: GeoBbox) =>
+          Promise.resolve(
+            asked &&
+              asked.minLat === VIEW.minLat &&
+              asked.minLng === VIEW.minLng &&
+              asked.maxLat === VIEW.maxLat &&
+              asked.maxLng === VIEW.maxLng
+              ? (options.placesInView ?? [])
+              : [],
+          ),
+        ),
   };
   const placesReconciler = options.reconciler ?? { noteViewport: jest.fn() };
   const placesPromotions = {
@@ -159,7 +173,7 @@ function buildRequest(overrides: Record<string, unknown> = {}) {
 
 describe('§2 header derivation (the catalog names the header, not the resolver)', () => {
   it('the FINEST dominator (the covering city, not its covering ancestor) names the header', async () => {
-    const { service } = createHarness({
+    const { service, placesCatalog } = createHarness({
       placesInView: [
         placeInView('Austin', VIEW, 1),
         // An over-scale ancestor rides along (placesInView returns ancestors);
@@ -173,6 +187,8 @@ describe('§2 header derivation (the catalog names the header, not the resolver)
     });
     const response = await service.runQuery(buildRequest());
     expect(response.metadata.displayPlaceName).toBe('Austin');
+    // The header names from THE VIEW ON SCREEN — not some other box.
+    expect(placesCatalog.placesInView).toHaveBeenCalledWith(VIEW);
   });
 
   // The header-answer earned-moment test was DELETED with its hook

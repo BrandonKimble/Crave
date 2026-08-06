@@ -70,16 +70,29 @@ const match = (entityId: string, name: string): Record<string, unknown> => ({
   badges: { favorite: true },
 });
 
+/**
+ * F2204: the redirect table double KEYS ON ITS INPUT — a row is served only
+ * when the query actually ASKED for that fromEntityId. With an unconditional
+ * `mockResolvedValue([...])` the lookup key was unpinned, so a resolver that
+ * asked about nothing (exactly the F570/F571 leak) kept this suite green.
+ */
+function redirectTable(
+  rows: Array<{ fromEntityId: string; toEntityId: string }>,
+) {
+  return {
+    findMany: jest.fn((args: { where: { fromEntityId: { in: string[] } } }) => {
+      const asked = new Set(args.where.fromEntityId.in);
+      return Promise.resolve(rows.filter((row) => asked.has(row.fromEntityId)));
+    }),
+  };
+}
+
 describe('autocomplete injected-lane leak closure (F570/F571)', () => {
   it('follows a one-hop redirect: serves the SURVIVOR id AND name, not the stale ones', async () => {
     const prisma = {
-      entityRedirect: {
-        findMany: jest
-          .fn()
-          .mockResolvedValue([
-            { fromEntityId: REQUESTED, toEntityId: SURVIVOR },
-          ]),
-      },
+      entityRedirect: redirectTable([
+        { fromEntityId: REQUESTED, toEntityId: SURVIVOR },
+      ]),
       entity: {
         findMany: jest
           .fn()
@@ -116,11 +129,9 @@ describe('autocomplete injected-lane leak closure (F570/F571)', () => {
   it('dedupes two saved rows that collapse onto one survivor', async () => {
     const other = '44444444-4444-4444-4444-444444444444';
     const prisma = {
-      entityRedirect: {
-        findMany: jest
-          .fn()
-          .mockResolvedValue([{ fromEntityId: other, toEntityId: SURVIVOR }]),
-      },
+      entityRedirect: redirectTable([
+        { fromEntityId: other, toEntityId: SURVIVOR },
+      ]),
       entity: {
         findMany: jest
           .fn()

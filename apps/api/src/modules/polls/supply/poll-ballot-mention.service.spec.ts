@@ -88,8 +88,22 @@ function createHarness(options: {
     pollEndorsement: {
       findMany: jest.fn().mockResolvedValue(options.endorsements ?? []),
     },
+    // F2205: the redirect table KEYS ON ITS INPUT — a row is served only if
+    // the query actually asked for that fromEntityId. Unconditionally
+    // resolving left the lookup key unpinned: a resolver asking about
+    // nothing (no ballot choice ever redirect-resolved in prod) kept the
+    // §3 identity-law spec below green.
     entityRedirect: {
-      findMany: jest.fn().mockResolvedValue(options.redirects ?? []),
+      findMany: jest.fn(
+        (args: { where: { fromEntityId: { in: string[] } } }) => {
+          const asked = new Set(args.where.fromEntityId.in);
+          return Promise.resolve(
+            (options.redirects ?? []).filter((row) =>
+              asked.has(row.fromEntityId),
+            ),
+          );
+        },
+      ),
     },
     sourceDocument: {
       findUnique: jest.fn().mockResolvedValue(options.existingDocument ?? null),

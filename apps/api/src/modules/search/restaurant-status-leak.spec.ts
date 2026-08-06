@@ -24,12 +24,19 @@ function createService(
 describe('RestaurantStatusService leak closure (F510)', () => {
   it('resolves a redirected id to the survivor and answers under the requested id', async () => {
     const prisma = {
+      // F2202: the redirect table keys on its input — a row is served only if
+      // the query ASKED for that fromEntityId. Unconditionally resolving the
+      // redirect left the lookup key unpinned, so a resolver that asked about
+      // nothing (the very F510 leak) kept this spec green.
       entityRedirect: {
-        findMany: jest
-          .fn()
-          .mockResolvedValue([
-            { fromEntityId: REQUESTED, toEntityId: SURVIVOR },
-          ]),
+        findMany: jest.fn(
+          (args: { where: { fromEntityId: { in: string[] } } }) =>
+            Promise.resolve(
+              args.where.fromEntityId.in.includes(REQUESTED)
+                ? [{ fromEntityId: REQUESTED, toEntityId: SURVIVOR }]
+                : [],
+            ),
+        ),
       },
       entity: {
         findMany: jest.fn().mockResolvedValue([

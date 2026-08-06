@@ -159,6 +159,11 @@ describe('viewport subject controller core (§2.5 polygon-native)', () => {
       candidate: 'place:texas',
       reason: 'finest-dominator',
     });
+    // F2203: the slice is fetched FOR THE VIEW ON SCREEN. Nothing else in
+    // this suite looks at fetchSlice's argument (only its call counts), so
+    // without this the controller could ask the server for any box at all —
+    // including the whole globe — with every spec here green.
+    expect(harness.fetchSlice).toHaveBeenCalledWith(VIEW);
     harness.dispose();
   });
 
@@ -309,6 +314,8 @@ describe('viewport subject controller core (§2.5 polygon-native)', () => {
       candidate: 'unknown',
       reason: 'no-slice',
     });
+    // F2203: the margin-escape refetch asks for the NEW view, not the old one.
+    expect(harness.fetchSlice).toHaveBeenLastCalledWith(farView);
     harness.dispose();
   });
 
