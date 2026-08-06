@@ -125,6 +125,16 @@ for (let i = 0; i < lines.length; i += 1) {
   if (!/^[0-9a-f]{7,40}$/.test(token)) {
     unverifiable += 1;
     unverifiableRows.push({ path, status, token: token || '(empty)' });
+    if (apply) {
+      // Same bias as a stale row, for the same reason: a review nobody can
+      // reproduce is not a review. Filling in the CURRENT sha instead would
+      // assert a verification that never happened — it would make the ledger
+      // agree with itself by inventing the evidence, which is the failure this
+      // whole pass exists to end.
+      cols[2] = ` UNREVIEWED${' '.repeat(Math.max(0, cols[2].length - 12))}`;
+      cols[5] = `${cols[5].replace(/\s+$/, '')} (reverted from ${status}: review point unrecorded, sha column read "${token || 'empty'}" — F2600) `;
+      lines[i] = `|${cols.join('|')}`;
+    }
     continue;
   }
   const recordedSha = token;
