@@ -1009,3 +1009,52 @@ venue-level rule can ever separate.
 The claim test also handles H-E-B correctly WITHOUT the type rule (every
 H-E-B claim is packaged), so the two layers are independent confirmations,
 not a single point of failure.
+
+## GATE 2 REVERSED (2026-08-05): there is NO safely deniable Google type — the claim is the only unit that works
+
+I recommended a primaryType deny list one section above. THAT RECOMMENDATION
+WAS WRONG, and it was wrong for the classic reason: I sampled H-E-B and
+Whole Foods, found pure retail, and generalized to their TYPE. Excluding
+those two chains and re-querying the same types destroys the claim:
+
+grocery_store / supermarket — JD'S SUPERMARKET #8: "JD's on east riverside
+has some TACOS THAT HAVE NO BUSINESS BEING AS GOOD AS THEY ARE. try the
+carnitas and beef fajita for sure. they also have rotating daily
+specials." TASHKENT SUPERMARKET: "get some of the MEAT PASTRIES FROM THE
+LADIES IN THE WINDOWS, extremely cheap and VERY tasty." FILIPINO ASIAN
+MART: "the CHICKEN ADOBO and PANCIT slaps man." BUTTERFIELD MARKET:
+"great PREPARED FOOD... wings, chili." EATALY: squash ravioli.
+gas_station — QUIKTRIP: "I enjoy the TORNADOES from QuikTrip."
+convenience_store — BUC-EE'S: "I've been planning all my trips so I can
+pass Buc-ee's DURING BREAKFAST HOURS for several years now" (sausage and
+cheese breakfast taco). SPACE MARKET: "for late night or morning BEC" —
+the bodega staple.
+department_store — WALMART: "potato wedges... Walmart during LUNCH HOURS
+WHEN THEY FRESH."
+wholesaler — LAMMES CANDIES: pralines, fudge, "only place I have
+consistently had good fudge."
+florist — PLANTSHED: espresso (a flower shop with a cafe).
+
+Bodega check (owner's question): NYC bodegas type as `deli`, `restaurant`,
+`mexican_restaurant`, and `grocery_store` (Reyes Deli & Grocery). There is
+no bodega type, so any grocery-family deny would cut them arbitrarily.
+
+CONCLUSION — THE TYPE IS THE WRONG UNIT. primaryType is a fact about THE
+BUSINESS; our unit of evidence is THE CLAIM. PlantShed is a florist AND a
+cafe; Buc-ee's is a gas station AND a breakfast-taco destination; Quality
+Seafood is a fish counter AND a taqueria. No venue-level predicate can
+separate claims that the same venue legitimately produces both of.
+
+FINAL SHAPE: NO Google type gate at all. Gate 2 is a CLAIM-level test in the
+prompt — "is this food PREPARED AND SERVED HERE to eat now, or goods SOLD TO
+TAKE HOME?" — and it is well within LLM reach because the source text states
+the mode of consumption explicitly and unambiguously in both directions
+("gets watery when you COOK IT ON THE STOVE", "in the CHEST FREEZER", "buy a
+40 LB BAG" vs "during BREAKFAST HOURS", "the ladies IN THE WINDOWS", "WHEN
+THEY FRESH"). This is reading comprehension, not world knowledge.
+The elegant consequence: H-E-B needs no blacklist. Every H-E-B claim is
+packaged-mode, so the claim test leaves it with ZERO qualifying evidence and
+it falls out of ranking on its own — absent because it earned nothing, not
+because we banned it.
+Google's type is retained as an AUDIT SIGNAL, never a gate: flag venues
+whose claims are 100% packaged-mode for human review.
