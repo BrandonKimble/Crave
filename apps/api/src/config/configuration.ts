@@ -533,7 +533,6 @@ export default () => {
       geometryZoom: process.env.TOMTOM_GEOMETRY_ZOOM
         ? parseInt(process.env.TOMTOM_GEOMETRY_ZOOM, 10)
         : undefined,
-      apiVersion: process.env.TOMTOM_API_VERSION || undefined,
     },
     entityResolution: {
       cache: {

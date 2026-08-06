@@ -57,6 +57,9 @@ export const tomtomCheapCostMicrosPerDraw = Math.round(
 export function tomtomCostMicrosPerDraw(operation: string | null): number {
   switch (operation) {
     // Search family (Additional Data polygon fetches) — the scarce draws.
+    // 'boundaryGeometry' is HISTORICAL ONLY: the markets bootstrap that wrote
+    // it is deleted, but 20 ledger rows carry the operation and must still
+    // price correctly. Kept for the ledger's past, not for a live caller.
     case 'additionalData':
     case 'boundaryGeometry':
       return tomtomScarceCostMicrosPerDraw;

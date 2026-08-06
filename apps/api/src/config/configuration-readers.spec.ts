@@ -100,7 +100,7 @@ const READ_OUTSIDE_THE_SCAN: Record<string, string> = {
  * next reader sees them, and so a NEW dead key still turns this suite red
  * instead of joining an ever-growing silence.
  */
-const KNOWN_ORPHANS = ['reddit.requestsPerMinute', 'tomtom.apiVersion'];
+const KNOWN_ORPHANS = ['reddit.requestsPerMinute'];
 
 describe('configuration.ts declares nothing it does not read', () => {
   it('every leaf key has a reader (a key nothing reads is a lie)', () => {
