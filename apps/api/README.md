@@ -27,9 +27,11 @@ yarn install
 # Start development services
 docker-compose up -d
 
-# Run migrations and seed data
+# Apply migrations to the local database
 yarn workspace api prisma:migrate
-yarn workspace api db:seed
+
+# Populate it (there is NO seed script — local data comes from a prod copy)
+../../scripts/rig/refresh-local-db-from-prod.sh
 
 # Start development server
 yarn workspace api start:dev
@@ -49,7 +51,7 @@ yarn workspace api start:prod
 
 # Testing
 yarn workspace api test              # All tests
-yarn workspace api test:e2e          # End-to-end tests
+yarn workspace api test:db           # Integration tests (real DB)
 yarn workspace api test:cov          # Coverage report
 yarn workspace api test:watch        # Watch mode
 
@@ -71,7 +73,6 @@ yarn workspace api db:migrate:status    # Check migration status
 # Database management
 yarn workspace api prisma:generate      # Generate Prisma client
 yarn workspace api prisma:studio        # Database browser
-yarn workspace api db:seed              # Seed sample data
 
 # Docker services
 yarn workspace api docker:up            # Start PostgreSQL + Redis
@@ -157,11 +158,7 @@ apps/api/
 │   └── main.ts               # Application bootstrap
 ├── prisma/                   # Database schema and migrations
 │   ├── schema.prisma         # Database schema
-│   ├── migrations/           # Migration files
-│   └── seed.ts              # Sample data
-├── test/                    # Test configuration
-│   ├── jest-e2e.json       # E2E test config
-│   └── jest.setup.ts       # Test setup
+│   └── migrations/           # Migration files
 └── docker-compose.yml      # Local services
 ```
 
@@ -215,7 +212,7 @@ apps/api/
 yarn workspace api test
 
 # Specific test types
-yarn workspace api test:e2e              # End-to-end tests
+yarn workspace api test:db               # Integration tests (real DB)
 yarn workspace api test:cov              # With coverage report
 yarn workspace api test:watch            # Watch mode for development
 
