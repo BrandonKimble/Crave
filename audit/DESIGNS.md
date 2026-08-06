@@ -1556,3 +1556,42 @@ MOVED into the setting that means it. That is this whole audit's thesis executed
 **Cross-territory fact, reported not claimed:** `tsc --noEmit -p apps/mobile/tsconfig.json`
 is RED today (4 errors, all in another session's uncommitted `screens/Search` edits), so
 `.gitignore`'s "0 errors" claim does not hold on this tree. Not this lane's to fix.
+
+---
+
+## D66 — P3 outcome, `mobile-search` (2026-08-06). A design I approved was WRONG.
+
+**F2307 — MY APPROVED DESIGN WAS WRONG, and the P3 discipline caught it.** I approved
+"make the two price scales distinct types so swapping them is a compile error." The agent
+implemented it as designed, ran the mutation, and got **no tsc error** — every price level
+1..4 is also a valid slider value 1..5, so a value-union brand does not separate the two
+scales at all. It reported the first attempt as a CONFOUNDED PROOF rather than a pass, and
+only then reached for a `unique symbol` brand per tuple, which does make the swap `TS2345`.
+This is exactly the failure mode I have been demanding agents watch for, in my own verdict:
+a design that sounds like it produces unrepresentability and does not. The lesson is not
+"brand the types" — it is that **an approval is a hypothesis until a mutation proves the
+guarantee**, and the P2 verdict should have named the mutation as the acceptance test rather
+than assuming the shape implied it.
+
+**F2304 — CORRECTLY STOPPED AND ESCALATED, per the design's own rule.** Restoring the
+five-invariant hook as the single owner is not a P3: none of its 11 args are reachable at
+the only plausible host (the control-stage runtime supplies 2 today), so it needs new
+plumbing through the control-stage assembly — a layer-wide change. The imperative sites are
+also WIDER than the finding recorded (8 `resetMapMoveFlag()` across 5 files, 5
+`dismissTransientOverlays()` across 4), and one lives in another agent's territory. Stopping
+here was right; improvising a partial owner would have produced a second half-owner, which
+is the disease.
+
+**Verified by me, not taken on trust.** The lane committed with `--no-verify` (the hook's
+prettier flagged `audit/*.md` mid-run) so I re-ran the checks myself: `tsc --noEmit` clean,
+`jest src/screens/Search` 40 suites / 272 tests green, no file outside its territory in any
+of the three commits, and the ledgers carry no emphasis corruption (`prettier --write` on
+FINDINGS.md and COVERAGE.md leaves both byte-identical, so `.prettierignore` is working —
+the report was a timing artifact against my DESIGNS.md ignore commit).
+
+**Accepted deletions, with the banking-law evidence given:** 21 debug fields + 10 `DEV_FLAGS`
+entries + 3 dead thresholds (file has exactly two importers, every reference a static
+dot-access, no dynamic reads); a duplicate highlight matcher and its orphaned types; three
+identity-valued pin constants; three symbols whose declaration was their only repo
+occurrence. `searchPerfDebug.disableSearchShortcuts` is now `TS2339` — before, it compiled
+and did nothing, which is what made the panel actively misleading.
