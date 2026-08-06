@@ -212,7 +212,8 @@ function contractAllows(body: unknown): 'named' | 'empty' | null {
     'municipality',
     'countrySecondarySubdivision',
     'countrySubdivisionName',
-    'countrySubdivision',
+    // NOT 'countrySubdivision' — it is the two-letter CODE, not a name, so it
+    // never makes a body 'named'. See LEVEL_LADDER in the adapter.
     'country',
   ];
   const named = RUNGS.some((rung) => {
@@ -242,6 +243,44 @@ describe('a probe result is believed only when the contract is affirmatively met
     const { adapter } = buildAdapter({ addresses: [] });
     const result = await adapter.probe(ANCHOR);
     expect(result.kind).toBe('empty');
+  });
+
+  it('a two-letter CODE is not a name — countrySubdivision alone never names a ground', async () => {
+    // The scar: `countrySubdivisionName ?? countrySubdivision` would have
+    // named this ground "MO" instead of "Missouri". Removed from one of three
+    // ladder copies on 2026-07-29; this pins the production one.
+    const { adapter } = buildAdapter({
+      addresses: [
+        {
+          address: { countryCode: 'US', countrySubdivision: 'MO' },
+          dataSources: { geometry: { id: 'geo-1' } },
+        },
+      ],
+    });
+    const result = await adapter.probe(ANCHOR);
+    expect(result.kind).toBe('failed');
+  });
+
+  it('the NAME field at the same rung still names it', async () => {
+    const { adapter } = buildAdapter({
+      addresses: [
+        {
+          address: {
+            countryCode: 'US',
+            countrySubdivision: 'MO',
+            countrySubdivisionName: 'Missouri',
+          },
+          dataSources: { geometry: { id: 'geo-1' } },
+          position: '38.5,-92.2',
+        },
+      ],
+    });
+    const result = await adapter.probe(ANCHOR);
+    expect(result.kind).toBe('named');
+    if (result.kind === 'named') {
+      expect(result.chain.map((n) => n.name)).toContain('Missouri');
+      expect(result.chain.map((n) => n.name)).not.toContain('MO');
+    }
   });
 
   it('EVERY body outside the contract is failed — never named, never empty', async () => {

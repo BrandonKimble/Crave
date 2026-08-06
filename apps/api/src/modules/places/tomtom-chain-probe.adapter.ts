@@ -94,7 +94,14 @@ const LEVEL_LADDER: ReadonlyArray<{
   },
   {
     levelCode: 'CountrySubdivision',
-    nameOf: (a) => a.countrySubdivisionName ?? a.countrySubdivision,
+    // NAME field only — NO `?? a.countrySubdivision` fallback. That field is
+    // the two-letter CODE ("TX", "MO"), not a name, so the fallback licensed
+    // naming a ground "MO" instead of "Missouri". Both red-team reviewers
+    // flagged it on 2026-07-29 and it was removed from
+    // scripts/data-fixes/resolve-entity-names.ts — but that was one of THREE
+    // copies of this ladder, and this one is the production naming path.
+    // Field absent = this rung names nothing; the ladder falls to Country.
+    nameOf: (a) => a.countrySubdivisionName,
   },
   { levelCode: 'Country', nameOf: (a) => a.country },
 ];

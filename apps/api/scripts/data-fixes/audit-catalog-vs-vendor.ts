@@ -87,7 +87,10 @@ function interpret(lookup: LevelEntityLookup): VendorAnswer {
     MunicipalitySubdivision: a.municipalitySubdivision,
     Municipality: a.municipality,
     CountrySecondarySubdivision: a.countrySecondarySubdivision,
-    CountrySubdivision: a.countrySubdivisionName ?? a.countrySubdivision,
+    // NAME field only — see resolve-entity-names.ts for the scar. The CODE
+    // fallback made this auditor score a code-named row ("MO") as AGREEING
+    // with the vendor, so the tool meant to DETECT divergence hid it.
+    CountrySubdivision: a.countrySubdivisionName,
     Country: a.country,
   };
   return {
