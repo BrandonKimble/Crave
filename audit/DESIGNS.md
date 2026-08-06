@@ -1924,3 +1924,24 @@ would have green-lit the 401-line type file; the generic-crossing call shape), b
 before landing, both now in its header. Mutation proof ran in both orders plus a planted
 probe. 176 importers rewritten via git mv, tsc clean, 40/40 suites, both audit gates pass.
 Stage 2 (51-file inline) remains queued on F2900.
+
+---
+
+## D75 — search/photos P3 ratified (2026-08-06)
+
+Landed as designed, independently verified: executor 2,456 → 1,359 lines with the
+banking re-grep run at execution (the only same-named survivors are genuinely different
+symbols in other modules); exactly ONE hours parser remains in the tree
+(`utils/restaurant-status.ts`); tsc clean; 133 tests green in the affected suites here,
+261 in the lane's fuller run. F3101 resolved by DELETION after the D73 who-consumes test
+came back empty — mobile's adapter was fabricating its own zeros to satisfy a field
+nothing rendered, which is the purest form of work done for nobody. Both determinism
+fixes carry REAL-POSTGRES specs with both-direction mutation proofs, and F3104's spec
+isolates the instrumentation (behavior assertions stayed green under the reverted catch,
+so the spec proves the log, not an accident).
+
+One process note, third instance of the D68 hazard: this lane's uncommitted
+curated-list-adapter edit was swept into the stage-1 lane's commit via the working-tree
+pathspec. Content verified correct on main; the hazard is now recorded in CRAVE.md's
+rules and every brief. Stage 2 of F2900 (51-file inline) stays queued until the MVCP
+lane exits runtime/shared.
