@@ -57,7 +57,8 @@ const SCOPING = new Set(['delete_row', 'sever']);
  * learned this separately, at different times, from live failures — which is
  * itself the argument for one compiler.
  */
-const eq = (column: string) => `"${column}"::text = $1::text`;
+const eq = (column: string, alias?: string) =>
+  `${alias ? `${alias}.` : ''}"${column}"::text = $1::text`;
 
 /**
  * WHERE DOES THIS RULE ACT?
@@ -129,7 +130,20 @@ export function ruleWhere(rule: PersonDataRule): string | null {
  */
 export function subjectRows(
   table: string,
-  options: { includeRetained: boolean },
+  options: {
+    includeRetained: boolean;
+    /**
+     * Qualify the columns with this table alias.
+     *
+     * Without it the predicate names bare columns, which is only unambiguous
+     * in a single-table statement. The retention sweep JOINs the table to
+     * `users` — and both have a `user_id`, so Postgres refused the query
+     * outright ("column reference user_id is ambiguous"). A predicate that
+     * cannot survive a join is not a reusable primitive; it is a
+     * single-caller helper wearing one's clothes.
+     */
+    alias?: string;
+  },
 ): string | null {
   const rules = PERSON_DATA_RULES.filter((r) => r.table === table);
 
@@ -171,7 +185,7 @@ export function subjectRows(
   if (naming.length === 0) return null;
 
   const columns = [...new Set(naming.map((r) => r.column))];
-  const or = columns.map(eq).join(' OR ');
+  const or = columns.map((c) => eq(c, options.alias)).join(' OR ');
 
   // ROW PREDICATES NARROW WHAT IS THEIRS, so they belong here rather than in
   // each caller. `curated_lists` is the case: a list is the person's only when

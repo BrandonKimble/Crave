@@ -9,6 +9,7 @@ import { AccountDeletionService } from './account-deletion.service';
 import { PersonDataEraserService } from './person-data/person-data-eraser.service';
 import { DeletionPurgeService } from './person-data/deletion-purge.service';
 import { PersonDataExportService } from './person-data/person-data-export.service';
+import { RetentionHorizonService } from './person-data/retention-horizon.service';
 import { AccountDeletionController } from './account-deletion.controller';
 
 /**
@@ -33,6 +34,8 @@ import { AccountDeletionController } from './account-deletion.controller';
     PersonDataEraserService,
     DeletionPurgeService,
     PersonDataExportService,
+    // The horizon on a `retain` rule is a promise; this is what keeps it.
+    RetentionHorizonService,
   ],
 })
 export class AccountDeletionModule {}
