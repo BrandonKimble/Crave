@@ -285,7 +285,7 @@ VERDICT: approve all; the six-surface leak fix is one coherent commit, the build
 - F850/F851 samplers: missing native sampler must read as MISSING (never as 60fps); stop discarding worst stalls — the tail is the signal.
 - F880 one singleton-surface store factory; collapse the six drifted copies; the twice-fixed close-races-open race gets fixed once, everywhere, with the race spec attached to the factory.
 - F882 skeleton matches the shipped card (dead heart/share column removed; photo-strip geometry from the same constants as the gallery).
-- F883 Mapbox style cache-buster becomes dev-only (**DEV**-gated).
+- F883 Mapbox style cache-buster becomes dev-only (`__DEV__`-gated).
 - F823/F879/F899 instrument honesty: convert the named always-green probes to mutate-and-observe where a cheap mutation exists; otherwise record the RED recipe next to the probe.
 
 **EXCLUDED from this Phase 3 (not rejected):** the dual-button Stripe paywall (waits on the API rail agent's endpoint shape); the tracksheet files carrying another session's uncommitted edits (src/tracksheet/_, services/teaser.ts, ios/TrackScrollKit/_) — not ours to touch this pass.
@@ -1245,3 +1245,79 @@ keeps that a checked fact. **Defect 3 PROVEN**: the binary installed on the rig 
 F1716 session fails the completion-symbol check — the stranding mechanism is a fact of that
 binary, not an inference (F1722, F1723). Remaining: the rig loop (spec 6 — parked→replayed legs
 on the fresh binary, now installed on the rig sim).
+
+---
+
+## D62 — P2 verdicts on the `mobile-nav-overlays` P1 pass (F2400–F2408, 2026-08-06)
+
+Territory reviewed by a P1 agent: 123 UNREVIEWED rows, 35 read in full (24 IDEAL-VERIFIED,
+11 PARTIAL), 88 not reached — the large surfaces (ListDetailPanel 2014L,
+app-route-sheet-host-authority-controller 1999L, BottomSheetSceneStackHost 1874L) remain.
+Territory map accepted: four genuinely layered tiers (exhaustive declarations →
+token-keyed module registries → pure predicates extracted for the hermetic jest lane →
+React shells). The agent's own check that CHANGED a verdict — expecting the edit-lock
+refcount to be untested and finding `overlaySheetEditLockRuntime.spec.ts` covering the
+double-acquire/first-release case — is the behaviour I want; no finding was filed and
+none should have been.
+
+**F2400 MVCP-as-declaration — APPROVED as proposed.** The ladder is right and the
+red-team answer is the one that matters: 8 hand-copied `{ disabled: true }` literals with
+zero specs, where `ADDING_A_SCENE.md` §7.4 states the rule *to the reader*, is the
+definition of forgettable. Moving it to a required field on the scene declaration makes
+omission a COMPILE error rather than a silent scroll bug, and it reuses the exact shape
+`bodySurface` already proves works here. It deletes more than it adds (8 literals, 2
+comments, a doc paragraph). Implement with the stated mutation: deleting the literal at
+`BottomSheetSceneStackListBodySurface.tsx:255` must become a tsc error naming the scene.
+Blocked on the concurrent mobile-search lane — sequence after it lands.
+
+**F2403 prewarm coverage — SEND BACK. The finding is correct; the remedy is not good
+enough.** I verified the vacuity independently: `isResidencyManagedScene` IS
+`RESIDENCY_MANAGED_SCENES.includes` (shell-residency-registry.ts:55-56), the prewarm loop
+iterates that same array, and `ensureShellResident` has no decline path — so `missing` is
+empty by construction and the instrument cannot show RED today. But the docblock's defence
+is partly fair: a future guard or async mount added to the mount path WOULD make it fire,
+so this is a tripwire, not pure decoration, and deleting it loses that.
+The better abstraction is the one CLAUDE.md already names: **instrument the composite, not
+the intent.** `state.residentScenes` is intent — the loop just wrote it. The composite is
+whether the scene's chrome actually rendered, and that signal already exists as
+`recordSceneChromeAck` (scene-chrome-ack-runtime.ts). Re-point the assertion at the ack
+set: a shell that is "resident" but never acked (threw, suspended, never committed) is
+exactly the warm-before-navigate failure the law cares about, and it is REPRESENTABLE —
+which is the whole test. Returns to P2 with that design, not with a deletion.
+
+**F2401 announce-once latch — APPROVED, and it outranks F2400 for sequencing.** A retry
+subscription that unsubscribes and never resubscribes is a live user-facing dead end, and
+the spec named for the law is a filesystem source scanner (`grep -c 'renderHook'` → 0)
+that pins the ban on retry buttons and nothing about the policy the ban rests on. That is
+the catalogued shape — a spec whose subject is not the thing it is named for. Requires a
+real `renderHook` spec that goes RED on the re-run-while-isError path.
+
+**F2402 one seam, two failure policies — APPROVED.** Capture barks; restore is a silent
+`if (origin != null)` no-op, under a comment declaring capture TOTAL. Either the guarantee
+is total (then the restore branch is unreachable and should say so loudly) or it is not
+(then the comment is false). Make the two halves agree; the swallowed failure is the one
+the file calls rig-proven.
+
+**F2404 `?? 'search'` fallback — APPROVED AS INSTRUMENTATION ONLY, explicitly NOT a fix.**
+The agent did not prove reachability and said so; per CLAUDE.md (ATTRIBUTE before you
+ideate) the correct next step is a bark plus a log on the fallback arm, then a decision
+once real data says whether it is ever taken. Do not "fix" it by deleting the fallback —
+that is guessing with a straight face.
+
+**F2405/F2407/F2408 — APPROVED, low blast radius.** Contradictory `?.` beliefs about one
+table in one 84-line file; a required `dataCount` nothing reads whose sole caller passes
+literal `0` (work done for nobody); and `PREMOUNT_COMMIT_GRACE_MS = 48` whose attributing
+sample is `__DEV__`-only while the violation path is Release-capable — that last one is a
+no-fake-estimates violation and must be measured, never re-guessed.
+
+**F2406 `no-unused-vars` at warning severity — APPROVED IN PRINCIPLE, ESCALATED ON SCOPE.**
+Turning it to error (or adding `--max-warnings 0`) is right in the abstract — this audit
+has now had TWO real defects whose only tell was an unused import. But apps/mobile
+currently reports 223 warnings, and flipping severity turns that into a red build for
+every concurrent lane at once. That is a sequencing decision with a cost, so it is the
+owner's: options are (a) `--max-warnings 223` ratchet, lowered as lanes land; (b) error on
+unused IMPORTS only, warning on other bindings; (c) fix all 223 first. Recommend (b) — it
+targets the family that actually produced defects and is a same-day change.
+
+**Not reached, and not to be mistaken for clean:** 88 rows in this territory, including
+every large surface. They stay UNREVIEWED.

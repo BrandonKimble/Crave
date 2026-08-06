@@ -16,3 +16,4 @@
 # A ledger has no formatting to enforce. Leave it alone.
 audit/FINDINGS.md
 audit/COVERAGE.md
+audit/DESIGNS.md
