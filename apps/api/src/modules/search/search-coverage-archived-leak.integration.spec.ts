@@ -41,7 +41,14 @@ const logger = {
   debug: () => undefined,
 } as never;
 
-const service = new SearchCoverageService(prisma as never, logger);
+// SearchCoverageService gained a DietaryConstraintRegistry dependency; this
+// call site had not been updated. The registry is only consulted for dietary
+// walls, which this leak test does not exercise.
+const service = new SearchCoverageService(
+  prisma as never,
+  { resolve: () => [] } as never,
+  logger,
+);
 
 type Feature = { properties: Record<string, unknown> };
 
