@@ -1594,6 +1594,52 @@ export class UnifiedProcessingService implements OnModuleInit {
                   normalizedName: resolution.normalizedName,
                   originalText: resolution.originalInput?.originalText,
                 });
+
+                // BANK THE SURFACE AN LLM MATCH TAUGHT US (concept-graph plan,
+                // build step 7). Tiers `exact` and `alias` already matched
+                // lexically, so they teach nothing. Tier `fuzzy` is the LLM
+                // JUDGE's verdict — dense recall plus a model call decided this
+                // surface names this entity — and until now that verdict was
+                // thrown away, so the SAME surface re-paid dense retrieval and
+                // the judge on every future occurrence, forever.
+                //
+                // Banking it makes the next occurrence a free lexical hit.
+                // Source 'extraction': a real person wrote this word about this
+                // thing, so it is TESTIMONY and correctly exempt from P0-b's
+                // collision guard. Untagged ('und') because the corpus is
+                // English and a fabricated language tag is worse than none.
+                //
+                // The id is taken from tempIdToEntityIdMap, NEVER from
+                // resolution.entityId: the time-of-use revalidation above
+                // re-points archived ids through their redirect and DROPS ids
+                // with no redirect (the junk sink). Banking on the raw id could
+                // write onto a tombstone.
+                if (resolution.resolutionTier === 'fuzzy') {
+                  const revalidatedId = tempIdToEntityIdMap.get(
+                    resolution.tempId,
+                  );
+                  const surfaces = Array.from(
+                    new Set(
+                      [
+                        resolution.originalInput?.originalText,
+                        resolution.normalizedName,
+                      ]
+                        .map((surface) => (surface ?? '').trim())
+                        .filter(Boolean),
+                    ),
+                  );
+                  if (revalidatedId && surfaces.length) {
+                    await addAliases(
+                      tx,
+                      revalidatedId,
+                      surfaces.map((surface) => ({
+                        form: surface,
+                        source: 'extraction' as const,
+                      })),
+                      { touchLastUpdated: true },
+                    );
+                  }
+                }
               }
               continue;
             }

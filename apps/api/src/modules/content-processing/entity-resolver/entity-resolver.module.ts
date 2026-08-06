@@ -3,6 +3,7 @@ import { EntityResolutionService } from './entity-resolution.service';
 import { FoodDedupeMergeService } from './food-dedupe-merge.service';
 import { MetroAdoptionService } from './metro-adoption.service';
 import { EntityAnchorRehomeService } from './entity-anchor-rehome.service';
+import { ConceptSatisfiesService } from './concept-satisfies.service';
 import { DishKnowledgeSynthesisService } from './dish-knowledge-synthesis.service';
 import { AliasManagementService } from './alias-management.service';
 import { PrismaModule } from '../../../prisma/prisma.module';
@@ -20,6 +21,7 @@ import { EntityTextSearchModule } from '../../entity-text-search/entity-text-sea
 @Module({
   imports: [PrismaModule, SharedModule, LLMModule, EntityTextSearchModule],
   providers: [
+    ConceptSatisfiesService,
     EntityResolutionService,
     FoodDedupeMergeService,
     MetroAdoptionService,
@@ -28,6 +30,7 @@ import { EntityTextSearchModule } from '../../entity-text-search/entity-text-sea
     EntityAnchorRehomeService,
   ],
   exports: [
+    ConceptSatisfiesService,
     EntityResolutionService,
     MetroAdoptionService,
     AliasManagementService,

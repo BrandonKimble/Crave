@@ -153,6 +153,15 @@ export const GEMINI_CALLER_PROFILES: Record<string, GeminiCallerProfile> = {
     context: 'query',
     maxOutputTokens: MODEL_MAX_OUTPUT,
   },
+  // THE SUBSTITUTABILITY PASS. Same tier and reasoning as the vocabulary
+  // pass: a stable, well-bounded classification over a short candidate list.
+  // It only ever sees the RESIDUAL that grammar and the category graph could
+  // not decide, so the volume is a fraction of the corpus.
+  'concepts.satisfies': {
+    model: FLASH_LITE,
+    context: 'query',
+    maxOutputTokens: MODEL_MAX_OUTPUT,
+  },
   'photos.is_food': {
     // gemini-2.5 tier: no thinking control exists (and no HIGH default to
     // guard against); a yes/no on a thumbnail needs no more model than this.
