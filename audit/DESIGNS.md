@@ -1488,3 +1488,71 @@ tree with 578 UNREVIEWED at HEAD against 567 in the tree, four of my own commits
 thirty minutes, and five lanes writing it concurrently. Every count I have put in a brief
 was a snapshot that decayed before the agent read it. **Fix to the practice: briefs state
 the territory, never the count; the agent measures at start and reports what it measured.**
+
+---
+
+## D65 — P2 verdicts on `mobile-app-core` / `mobile-native` (F2800–F2806) + a second IDEAL-VERIFIED spot-check (2026-08-06)
+
+**Spot-check #2 — `apps/api/src/modules/identity/auth/native-apple-auth.service.ts` (135 lines,
+read in full): the IDEAL-VERIFIED verdict HOLDS.** Stated with the argument, because a clean
+bill without one is worth nothing. Every failure path narrows to `UnauthorizedException`
+except a genuinely internal one (`Missing Clerk secret key` → 500, correct: that is our
+misconfiguration, not the user's credential). `handleError` returns an already-thrown
+`Error` unchanged, so the deliberate `status !== 'complete'` rejection is not re-wrapped
+into a different meaning. `buildRequestBody` adds `code`, `identifier` and `user_data` only
+when present, so Clerk is never sent empty strings that would read as a claim. The logs
+carry `status`, `id` and Clerk's message — no token, no `identityToken`, no
+`authorizationCode`. The one thing I would watch is that Clerk's error `message` is echoed
+to the client verbatim; today that is a vendor string, and if it ever carries user input it
+becomes a reflection surface. Not a defect, so not filed — recorded here so the next reader
+does not have to re-derive it.
+
+**F2800 three failure booleans nothing reads — APPROVED, and the proposal is better than a
+fix.** `api.ts:424/434` set `isSessionLapse` and `isAccountDeleted`; nothing reads either,
+while the comments setting them claim callers "stay quiet — not a generic failure modal on
+top of it." The single enforcer at `App.tsx:78` filters `isEntitlementLapse` alone, so a 401
+or `ACCOUNT_DELETED` mutation stacks a generic failure modal AND a Sentry event on top of
+the sign-in takeover. This is the catalogued shape — a comment crediting a guarantee to an
+enforcer that never runs — and the remedy is right: attach the already-computed
+`ApiFailureAction` and export one `failureHasItsOwnStory` predicate, rather than a fourth
+boolean a fifth call site can forget.
+
+**F2804 CI's typecheck never sees specs — APPROVED, high value.** `tsconfig.json` excludes
+`**/*.spec.ts(x)`, and the config that would cover them is reachable only via `yarn
+tsc:specs`, whose only mention outside package.json is A COMMENT. Currently 8 errors hiding
+behind that. Same family as F2143 (turbo resolving mobile's type-check to `<NONEXISTENT>`
+and counting it a success) — the third instance this session of a check that reports on work
+it never did. Wire `tsc:specs` into CI.
+
+**F2803 the .gitignore negation names a file that is untracked AND inert — APPROVED.** Two of
+three named `.d.ts` files are tracked; `test-globals.d.ts` is untracked, and an A/B `tsc`
+run proves it is inert regardless — it augments the global `JSX` namespace while `jsx:
+react-jsx` + React 19 resolve through `React.JSX`. Correct the comment to name what is
+actually load-bearing; the F2142 measurement (0 → 1,227 errors) stands for the OTHER two.
+
+**F2802 release-only guards that are silent in release — APPROVED.** `AuthProvider` states
+F813's law ("a `console.warn` in the auth path is invisible in production") and then applies
+it to 2 of 4 catches; both RELEASE-ONLY misconfiguration guards ("release build has no Clerk
+key — fully UNAUTHENTICATED") are bare `console.error`, invisible in the only build where
+they can fire, with `captureHandledError` imported thirty lines above. A guard that can only
+fire where it cannot be heard.
+
+**F2805 a recovery probe that cannot start against a live issue — APPROVED.**
+`startBannerRecoveryProbe` establishes its timer only inside `useSystemStatusStore.subscribe`,
+and zustand 5.0.8 (version verified, not assumed) does not fire at subscribe time — so it
+cannot arm against an already-live issue, which is precisely the "banner stuck indefinitely"
+state its own comment says it prevents. Arm-without-a-disarm's mirror image.
+
+**F2801 / F2806 — APPROVED, low blast radius.** A `partialize`/`migrate` pair documented as
+"derived from one list so they can never drift apart" where only `migrate` uses the list and
+`partialize` hand-enumerates (and the same sentence miscounts three fields as four); and a
+spec helper commented "the interceptor's dispatch, byte-for-byte in shape" that omits the
+`account_deleted` branch whose store transition is then asserted nowhere.
+
+**Accepted as the model, and I want it repeated:** `jest.config.js`'s F2140 — a guarantee
+credited to `testMatch` while actually held by `moduleFileExtensions`, proven by probe, then
+MOVED into the setting that means it. That is this whole audit's thesis executed in one file.
+
+**Cross-territory fact, reported not claimed:** `tsc --noEmit -p apps/mobile/tsconfig.json`
+is RED today (4 errors, all in another session's uncommitted `screens/Search` edits), so
+`.gitignore`'s "0 errors" claim does not hold on this tree. Not this lane's to fix.
