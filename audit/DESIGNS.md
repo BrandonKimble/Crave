@@ -1321,3 +1321,113 @@ targets the family that actually produced defects and is a same-day change.
 
 **Not reached, and not to be mistaken for clean:** 88 rows in this territory, including
 every large surface. They stay UNREVIEWED.
+
+---
+
+## D63 — P2 verdicts on the `docs`/`repo-root`/`repo-tooling` and `mobile-search` P1 passes (2026-08-06)
+
+### docs / repo-root / repo-tooling (F2500–F2506)
+
+160 rows, 33 read fully and argued, 127 machine-verified for every checkable reference but
+not re-derived line by line and correctly left PARTIAL. That boundary is stated honestly
+and I accept it.
+
+**F2502 ownership gate — APPROVED AND ALREADY IMPLEMENTED (F2510).** Highest severity in
+the pass: `enforcedSliceIds` declared five slices, CI ran one, and an unknown id returned
+`pass: true` exit 0. I verified both halves by execution before acting, and ONE CLAUSE OF
+THE REPORT WAS WRONG — the no-argument invocation exits 1, not 0. The unknown-id half was
+real and is the dangerous one. Fixed at the source of truth: the rules data decides what
+runs; an unenforced id is a misinvocation. Mutation-proven.
+
+**F2500 README false claims — APPROVED.** Five falsehoods in the one file a new machine
+follows verbatim, and the Node one is not cosmetic: `.lefthook/with-node-22.sh:38` exits 1
+on any major other than 22, so following the README's `nvm install 18` breaks every
+pre-commit hook. Fix the file.
+
+**F2501/F2060 knip root blindness — APPROVED with the agent's own red-team.** Derive
+workspaces from `git ls-files '*package.json'` and treat zero resolved as FAILURE — the
+discovery shape `check-railway-manifests.mjs` already uses. `pngjs` required by two root
+scripts and declared in no package.json (working only by hoisting) is a real latent break.
+The `@commitlint/*` finding — installed, no config, no `commit-msg` hook — is dead weight
+pretending to be a guard; delete or wire it, owner's preference.
+
+**F2503 deploy.sh service allowlist — APPROVED.** `--env` got a `case` allowlist after an
+incident and the argument beside it did not; the smoke then curls the API `/health`
+regardless of which service shipped. Derive the allowlist from `git ls-files 'railway*.json'`
+and smoke the service that actually shipped. Proof: `deploy.sh --env staging sitte` must
+exit 1 BEFORE contacting Railway.
+
+**F2504 doc-claim gate — APPROVED WITH THE AGENT'S OWN SCOPE LIMIT, which is the part that
+makes it survivable.** 41 of 127 docs carry a reference that no longer resolves. Scoping
+the gate to non-`plans/` is correct: a completed worklog naming files it deleted is
+accurate HISTORY, not a false claim, and a gate that goes permanently red gets disabled —
+the same reasoning that kept the migration guard narrow (F2163). The extractor is already
+built and already bites, so this is known-buildable, not speculative.
+ALSO: `plans/**` into `.prettierignore` — `page-switch-_.md` is a glob whose `*` prettier
+turned into `_`, the F2160 corruption still live in that tree.
+
+**F2505 lefthook dead block — APPROVED.** "no root ESLint config" is false and the config
+is load-bearing (`apps/mobile/.eslintrc.js:2` extends it).
+
+**F2506 shared export surface — APPROVED.** All 78 exports reach a consumer TODAY, enforced
+by nothing. Fits the existing `node --test` lane with no new CI step. Must refuse to run
+against `export *`, or it silently measures nothing.
+
+### mobile-search (F2300–F2311)
+
+200 rows / 32,658 lines; 19 files read fully, 181 left UNREVIEWED and said so. Correct
+call — a padded pass here would be worse than a partial one.
+
+**F2310 the `runtime/shared` verdict — APPROVED AS ANALYSIS, IMPLEMENTATION BLOCKED ON ITS
+OWN NEXT ACTION, and this is the right instinct.** The bedrock statement is the best thing
+in the pass: *the unit that buys render isolation is a subscription boundary, not a file* —
+463 files where three shapes coexist (genuine boundary / pass-through rename / a "hook"
+that is one type alias). The agent NAMED its unverified assumption: "dozens" is extrapolated
+from a 40-file census. So the next action is to run the classification over all 463, not to
+start deleting. F958/D45 already proved the mechanical collapse works here. Do not skip the
+census; a 463-file refactor justified by a 40-file sample is exactly the fake estimate the
+memory law forbids.
+
+**F2300 debug panel wired to nothing — APPROVED.** 22 of 27 flags have zero readers and the
+file instructs you to flip them; three of the five consumers its own comment credits do not
+exist. This is actively misleading during a perf hunt — you flip a flag, see no change, and
+conclude the wrong thing.
+
+**F2302 two answers to "what did the user type" — APPROVED.** Diacritic-folding index-safe
+highlighting in the suggestion list, plain `toLowerCase` first-occurrence in the result
+card: type "cafe" and *Café con Leche* highlights in one place and not the other. One
+question, one answer; the spec'd implementation is the survivor.
+
+**F2305 comment-asserted numbers disproved by executing the arithmetic — APPROVED.** Three
+wrong constants recorded as facts. No-fake-estimates: replace with the computed values or
+delete the claim.
+
+**F2304 five invariants in a hook nothing calls — APPROVED.** Zero call sites; the
+behaviours now live as scattered imperative calls in 4 files. An invariant that became a
+convention every new submit lane must remember.
+
+**F2301 disableMarkers/disableBlur — ESCALATED, not approved.** Hardcoded `false` at the
+only producer, threaded through 5 files, folded into two memo comparators with unsatisfiable
+branches, and `disableBlur` is compared but never read to disable anything. But the map core
+is owner-locked and precious (CLAUDE.md: do not touch unless changing the map). Owner's
+call; recommendation is delete the dead threading and leave the map internals alone.
+
+**F2306 SCREEN_HEIGHT frozen at module load in 6 places, zero `useWindowDimensions` in the
+whole app — APPROVED as a FINDING, escalated as a FIX.** It is correct that a
+module-load-frozen dimension is wrong on rotation/split-view. Whether this app supports
+either is a product fact I will not assume. Owner: does the app support rotation or iPad
+multitasking? If no, the right change is a comment saying so, not a refactor.
+
+**F2303/F2307/F2308/F2309/F2311 — APPROVED, low blast radius.** Dead `else if` reassigning
+its own initial values; two price scales sharing `[number, number]` so swapping them
+compiles (make them distinct types); a bare `12` returned on degenerate input sharing digits
+with a different-unit constant; a `[FAVDBG]` console.log printing during the test suite; and
+four dead symbols plus a `CARD_GAP → SHARED_SECTION_GAP → SECTION_GAP` alias chain where
+"SHARED" asserts a sharing that does not exist.
+
+**What both passes got right and I want repeated:** each reported what is FINE and why —
+`use-search-root-control-lane-collapse.spec.ts` hardened against this repo's own `[].every([])`
+vacuity with the reason written down; `marker-lod.ts` routing pin and rank-pill through one
+bucket function so they cannot drift; `.gitignore`'s negation carrying a MEASURED (0 → 1,227
+errors) justification rather than a reasoned one. Saying what is right, with the argument, is
+what makes IDEAL-VERIFIED mean anything.
