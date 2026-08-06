@@ -1058,3 +1058,48 @@ it falls out of ranking on its own — absent because it earned nothing, not
 because we banned it.
 Google's type is retained as an AUDIT SIGNAL, never a gate: flag venues
 whose claims are 100% packaged-mode for human review.
+
+## PHASE 3 (2026-08-05): candidate prompt written
+
+`collection-prompt.candidate.md` — 627 lines vs the live 780, built on the
+four kind-gates. NOT yet activated; the live prompt is untouched.
+
+STRUCTURE: the four tests are NAMED once at the top (TESTIMONY, PLACE,
+ORDER + PREDICTION, STANDALONE) and referenced by name thereafter, replacing
+the old document's five restatements of "the order test" at four drifting
+altitudes. Steps are the gates in cheapest-first order: A is-there-testimony
+-> B what-place -> C what-was-ordered -> D what-is-left-over -> E item-or-
+family -> F assemble.
+
+THE REORDERING IS THE CENTERPIECE: composition (C) now runs BEFORE property
+extraction (D), reversing live Step 3 -> Step 4. A modifier can only be
+judged once you know what it modified.
+
+DELETED (unnecessary once the gates exist, or dead): the bare-list
+endorsement clause; the meal-period ban lists; the intensity carve-outs; 4x
+duplicated ask-handling; 7x general_praise restatements; the six pseudo-typed
+inter-step contracts (resolvedRestaurants/canonicalRestaurants/
+classifiedAttributes/attributeLinks/composedFoods/itemDecisions) which no
+consumer ever read; the §3.8 attributeLinks JSON block (a second, non-output
+JSON shape = format-confusion risk); and ALL FIVE \*\_surface fields with their
+§2.7 + six §6.2 bullets — VERIFIED ABSENT from the enforced Gemini schema, so
+they were dead instructions the model could not obey.
+
+FIXED: the sole full output example was invalid against the enforced schema
+(missing required temp_id, missing ingredients, wrong property order, taught
+plurals against the singular rule, and taught `rich` — the exact defect).
+The new example is machine-verified: property order byte-matches
+propertyOrdering, all four required fields present in every mention.
+temp_id is now DOCUMENTED (it was required by schema and mentioned nowhere in
+781 lines).
+
+PRESERVED INTACT: predicts-the-food (breakfast/brunch still side with
+dessert), the order test, describes-vs-judges, cuisine-on-both-sides with
+inference, dietary-never-dropped with its rationale, one-carrier praise,
+per-mention source_id, extract_from_post, sealed post objects, depth-aware
+resolution, canonicalization + scoring, ingredients-from-source-only.
+
+COVERAGE: 21/21 catalogued defect classes have an explicit clause.
+Machine-checked against the schema; NOT yet checked against real documents —
+that is Phase 4 (replay the Phase 1 sources, including the negative controls,
+and confirm the defects do not reproduce and the true claims survive).
