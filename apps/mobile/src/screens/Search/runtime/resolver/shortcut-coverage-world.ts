@@ -184,7 +184,6 @@ export const fetchShortcutCoverageWorldEntry = async (args: {
     };
   }
   const includeTopDish = tab === 'dishes';
-  const filters = tuple.filterVariant;
   try {
     const collection = await shortcutCoverage(
       {
