@@ -73,6 +73,16 @@ jobs:
       - name: Lint
         run: yarn lint
 
+      # A ban is only a ban if it survives the merge. ESLint REPLACES a rule's
+      # options when a later config block sets the same rule, which silently
+      # deleted two door-lock bans (F2050) while their comments still claimed
+      # they were live — `yarn lint` was green throughout, because a rule that
+      # does not exist reports nothing. This gate compares each override's
+      # EFFECTIVE config against the baseline and fails when one has fewer
+      # bans than the file next to it.
+      - name: 'Static guard: no eslint override silently drops a repo-wide ban'
+        run: node scripts/check-lint-ban-inheritance.mjs
+
       - name: Build
         run: yarn build
 

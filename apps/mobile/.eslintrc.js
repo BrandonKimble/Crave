@@ -104,7 +104,10 @@ module.exports = {
       // native import here would force a simulator/build into the loop again.
       // If you need RN/Expo here, the logic is in the wrong layer.
       files: [
-        'src/screens/Search/utils/map-render-model.ts',
+        // `map-render-model.ts` was listed here until F2082 and does not exist
+        // — deleted with the map work. A block scoped to a deleted file reads
+        // as protection and provides none; scripts/check-lint-ban-inheritance.mjs
+        // now fails on a stale target so the next one cannot linger.
         'src/screens/Search/utils/marker-lod.ts',
         'src/screens/Search/utils/quality.ts',
         'src/utils/quality-color.ts',
