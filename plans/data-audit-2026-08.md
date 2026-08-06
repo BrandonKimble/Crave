@@ -743,3 +743,63 @@ alone deliberately: user-lists (renders what a user saved), signal-demand-read
 Guard: search-pooled-gate.spec asserts the predicate in both gate modes.
 Proven on the mirror: LOS TACOS 35 rows → 7 rollups excluded, top list all
 real dishes. 135 search/teaser/home tests green.
+
+## PHASE 1 FORENSICS (2026-08-05): every defect is a KIND-error that passed a SHAPE-test
+
+Traced bad rows back to raw source bodies (event -> source_document_id ->
+collection_source_documents.body). The decisive discovery: in nearly every
+class THE MODEL WAS NOT WRONG ABOUT THE TEXT. The testimony is real, the
+extraction is faithful, and the row is still garbage — because the thing
+extracted was put in a slot it does not belong to.
+
+EVIDENCE (verbatim sources):
+
+- H-E-B (583 ev, 94th pct): "HEB's [pumpkin pie] is perfectly fine",
+  "HEB has some lovely show-cakes", "[HEB Texas Roots Butter Toffee Pecans]",
+  "HEB has a 'buy Daiya pizza + free vegan ice cream' sale". All GENUINE
+  food testimony. Grocery talk is real discourse in a food sub. Nothing in
+  the prompt asks whether the named place is a RESTAURANT — 1.2 only asks
+  whether the span is used as a NAME. NUANCE: H-E-B events include al
+  pastor / beef fajitas / chicharron — plausibly its real taqueria counter.
+  A blanket venue-name reject would lose true signal; the claim-level test
+  (food prepared and served here for immediate eating vs packaged retail
+  goods) survives that boundary.
+- Itinerary: "Judge my austin food itinerary :: Headed to Austin at the end
+  of the month. Here's our short list. Better Half / Suerte / Easy Tiger..."
+  and "Please revise my list - Travelling to NYC". These are EXACTLY
+  1.3(b)'s bare-list endorsement shape, written by authors who have never
+  been. They are ASKS wearing a list's clothing.
+- Intensity words are NOT a banned-word problem — they are DISLOCATION:
+  "For lighter roast try the Colombian supremo" -> attribute `light`
+  (light ROAST is a real filterable property; bare `light` is not);
+  "a very light, fresh marinara"; "thin" from Patsy's thin-crust pizza;
+  "rich" from "a lot of heavy, fatty meat". The word was peeled off the
+  noun that gave it meaning, collapsing three unrelated senses into one
+  entity. A word list would ban the true cases with the false ones.
+- Menu-format: "It is our newest favorite tasting menu, 100% recommend!!"
+  — real endorsement, wrong slot (a format is not a dish). Also
+  "Zama Omakase"/"Sushi Junai Omakase"/"Joji" are restaurant NAMES
+  containing the word.
+- NEGATIVE CONTROLS (must keep working): "Pho phong luu, Tan My, Fresh
+  Bowl, Sip Pho if central." — a bare-list COMMENT reply, genuine
+  testimony. And "The Sripraphai pad Thai from Wonder was so disgusting"
+  — negative testimony that must not project positive. Any rule that kills
+  the itinerary by killing lists destroys the first; any rule that reads
+  dish-mention as endorsement destroys the second.
+
+THE ESSENCE: the prompt reasons about the SHAPE OF LANGUAGE (does this span
+look like a name, does this modifier look peelable, does this reply look
+list-like) and never about the KIND OF THING referred to. Two questions are
+absent as first-class gates:
+
+1. IS THIS TESTIMONY? — is the author VOUCHING, or asking / planning /
+   announcing / informing? (generates itinerary, directory, availability,
+   lukewarm classes — four defects, one missing question)
+2. IS THIS THING OF THE KIND THIS SLOT REQUIRES? — restaurant slot needs a
+   place that serves prepared food; dish slot needs something orderable;
+   attribute slot needs a property that means ONE thing standing alone.
+   (generates venue-class, dish-as-restaurant, menu-format, occasion,
+   cuisine-as-dish, intensity-dislocation classes)
+   Both are KIND questions. Every measured defect is a kind-error that passed a
+   shape-test. This is why rule-stacking kept failing: the rules were all
+   shape-rules, and no quantity of shape-rules answers a kind-question.
