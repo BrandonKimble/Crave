@@ -1869,3 +1869,38 @@ chrome-ack design I wrongly proposed. Condition (CLAUDE.md attribution law): ins
 first — log the Set's contents at post-prewarm idle in the sim, observe whether prewarmed
 scenes acquire painted evidence — and only then wire the assertion. No assertion lands
 without that observation.
+
+---
+
+## D73 — P2 verdicts on the api-search/user-surfaces pass (F3100–F3104, 2026-08-06)
+
+**F3100 — APPROVED.** ~700 lines of dead legacy single-query path inside the 2,456-line
+executor, including an entire second, DIVERGENT copy of the hours parser whose live twin is
+`utils/restaurant-status.ts`. This is the F968 shape (a dead fork is where a fix silently
+fails to propagate) at the heart of the hottest read path. Delete under banking law:
+re-grep every symbol for external call sites AT EXECUTION TIME (the lane's grep is
+evidence, not a substitute — the tree moves), then delete; tsc + the 26 suites green is
+the acceptance.
+
+**F3101 — APPROVED.** `openNowSupported/Unsupported/FilteredOut` hardcoded to zero, typed
+as facts, forwarded by the assembler: a metric that can only show green is lying
+(CLAUDE.md's core law). Compute them where the dual path actually knows them, or delete
+the fields end-to-end including the assembler forwarding — no third option, and keeping
+zeros is not one.
+
+**F3102 — APPROVED.** The lean snippet query forgot the determinism law the ranked builder
+carries (`connection_id ASC`, F1902). One line plus a spec with two equal-score rows.
+
+**F3103 — APPROVED.** Photo orderings key on `ticketed_at DESC` with no unique tiebreak
+and `restaurantGallery` PAGINATES over it — tied timestamps duplicate/drop photos across
+pages. Same law as F1902/F3102, worse consequence (user-visible dup/drop). Unique tiebreak
+in both the ORDER BY and the cursor. NOTE: photos.service.ts is DIRTY (another session);
+photo-read.service.ts was clean at review — re-check at execution and STOP on that item if
+it has gone dirty.
+
+**F3104 — APPROVED AS INSTRUMENTATION, not behavior change.** The bare
+`catch { scanEngineId = null }` silently widens territory scoping on failure. Whether a
+scoping failure should fail the search is a behavior question adjacent to the F2601
+escalation; what is NOT in question is the silence. Fix now: log with a named policy
+(the `getDietaryIds` shape) so occurrences become countable; the behavior decision waits
+for the owner alongside F2601.
