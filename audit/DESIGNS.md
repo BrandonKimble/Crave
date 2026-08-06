@@ -1431,3 +1431,60 @@ vacuity with the reason written down; `marker-lod.ts` routing pin and rank-pill 
 bucket function so they cannot drift; `.gitignore`'s negation carrying a MEASURED (0 → 1,227
 errors) justification rather than a reasoned one. Saying what is right, with the argument, is
 what makes IDEAL-VERIFIED mean anything.
+
+---
+
+## D64 — P2 verdicts on `api-external-integrations` (F2700–F2704, 2026-08-06)
+
+**F2700 spend-meter loss on shutdown — VERIFIED BY ME, ESCALATED TO THE OWNER (money).**
+Independently confirmed: `usage-ledger.service.ts:216` adds the ledger write to the
+`pending` set that `onModuleDestroy` awaits, while the three spend meters at :266/:293/:351
+are bare `void this.governance.pools.meterSpend(...)`, and neither `GovernanceService` nor
+`PoolRegistry` has any shutdown hook. The asymmetry runs the dangerous way: after a script
+exit or container stop the ACCOUNTING row is complete and the ADMISSION counter is short —
+and the spend gates read the pool, not the ledger. Under-counted admission means the next
+run is permitted to spend more than it should. `pool-registry.spec.ts` (731 lines) has no
+shutdown case, so the suite is green in the lossy state.
+The proposed remedy is the right shape and I would approve it on the abstraction test
+alone: a `PoolRegistry`-owned drain over `durableWriteChains` means no call site can
+forget, whereas adding three promises to `pending` is a convention a fourth call site
+breaks. But the defect is money semantics, so the DECISION is the owner's, not mine.
+
+**F2701 an owner choice with no expiry — ESCALATED, correctly framed.** Only Gemini's
+catastrophe cap is re-derived from measurement and only Gemini alerts when the derivation
+dies; Places and TomTom are env-seeded dials with no derivation, no staleness alert, no
+headroom signal — while the repo's own text calls Places the non-converging vendor and
+records it at 55% of a $565.80 month. The agent did not treat "unmeasured" as "wrong",
+which is right: both are legitimate owner choices under no-fake-estimates. The gap it
+names is real and sharper than a missing number — **an owner choice with no expiry**.
+Recommendation stands: staleness + headroom alert now, derivation later.
+
+**F2702 orphan-profile guard matched by a comment — APPROVED.** `includes()` against raw
+source, so a comment mention keeps a dead profile alive: the same false-green the file's
+own header says killed the previous scanner generation. Correctly reported as NOT currently
+firing (all 16 keys have real call sites) — a latent guard defect, not a live one. Fix is
+the same comment-stripping treatment already applied to the author-identity and
+subject-text scanners (`scripts/scanner-source.ts`), so this is a third caller for an
+abstraction that already exists rather than a new mechanism.
+
+**F2703 prose drift — APPROVED, trivial.** A 15-line comment credits the embeddings spend
+gate to `embedVendorOp`, whose body is one delegating call; the gate is real and better
+placed in `GatedGeminiClient.embedContent`. Fix the comment, not the code.
+
+**F2704 clean bill — ACCEPTED, and this is the model.** All four paid Places methods
+enumerated (not counted) and gated; the spend-gate spec pre-empts its own vacuity by
+asserting pool names; a denomination phantom type makes wrong-currency metering
+non-compiling; magic numbers are each a fact, an owner choice, or a derivation. It also
+names two things it checked and deliberately did NOT file, with reasons, including an
+under-metering path that is unreachable today and the unverified vendor-pricing assumption
+behind that judgement. Saying what is fine, with the argument and with the assumptions
+named, is exactly what IDEAL-VERIFIED is supposed to mean.
+
+**A correction I owe this lane.** It reported that its assigned counts did not match the
+file (57 vs 13 for api-external-integrations) and recorded the discrepancy rather than
+picking the flattering number. It was right to distrust the number and I was wrong to
+embed one. Measured now: **45**, total **559** — and `COVERAGE.md` is dirty in the working
+tree with 578 UNREVIEWED at HEAD against 567 in the tree, four of my own commits to it in
+thirty minutes, and five lanes writing it concurrently. Every count I have put in a brief
+was a snapshot that decayed before the agent read it. **Fix to the practice: briefs state
+the territory, never the count; the agent measures at start and reports what it measured.**
