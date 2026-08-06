@@ -66,7 +66,40 @@ const lines = readFileSync(COVERAGE, 'utf8').split('\n');
 let reviewed = 0;
 let stale = 0;
 let missing = 0;
+let unverifiable = 0;
+let rescued = 0;
 const staleRows = [];
+const unverifiableRows = [];
+
+/** Cheap membership test: is this token a commit we can resolve? */
+const commitCache = new Map();
+function isCommitish(sha) {
+  if (commitCache.has(sha)) return commitCache.get(sha);
+  let ok = false;
+  try {
+    execFileSync('git', ['rev-parse', '--verify', `${sha}^{commit}`], {
+      cwd: REPO_ROOT, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'],
+    });
+    ok = true;
+  } catch {
+    ok = false;
+  }
+  commitCache.set(sha, ok);
+  return ok;
+}
+
+/** The blob sha this path had AT that commit, or null if it did not exist. */
+function blobShaAtCommit(commit, path) {
+  try {
+    const out = execFileSync('git', ['ls-tree', commit, '--', path], {
+      cwd: REPO_ROOT, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'],
+    });
+    const m = /^\S+\s+blob\s+(\S+)\t/.exec(out);
+    return m ? m[1] : null;
+  } catch {
+    return null;
+  }
+}
 
 for (let i = 0; i < lines.length; i += 1) {
   const line = lines[i];
@@ -81,8 +114,20 @@ for (let i = 0; i < lines.length; i += 1) {
   reviewed += 1;
 
   const recorded = cols[4].trim();
-  if (!/^[0-9a-f]{7,40}$/.test(recorded.split(/\s/)[0] ?? '')) continue;
-  const recordedSha = recorded.split(/\s/)[0];
+  const token = recorded.split(/\s/)[0] ?? '';
+
+  // F2600 — MY OWN GUARD COULD NOT FAIL HERE. This used to `continue` on any
+  // non-hex token AFTER counting the row as reviewed, so 112 rows carrying
+  // `Read`, `npx`, `Prompt`, `-`, `(uncommitted` were permanently exempt while
+  // the summary printed "3595 reviewed, 2 STALE" — completeness it never
+  // measured. A row whose review point is unrecorded is not fresh; it is
+  // UNVERIFIABLE, and saying so is the whole job.
+  if (!/^[0-9a-f]{7,40}$/.test(token)) {
+    unverifiable += 1;
+    unverifiableRows.push({ path, status, token: token || '(empty)' });
+    continue;
+  }
+  const recordedSha = token;
 
   const now = shas.get(path);
   if (now === undefined) {
@@ -93,6 +138,26 @@ for (let i = 0; i < lines.length; i += 1) {
   }
   if (now.startsWith(recordedSha) || recordedSha.startsWith(now.slice(0, recordedSha.length))) {
     continue;
+  }
+
+  // F2600 — A COMMIT SHA IS A VALID REVIEW POINT, just a differently-shaped
+  // one. 46 of one territory's 110 rows recorded the COMMIT the review landed
+  // in rather than the file's blob sha; comparing those against a blob sha can
+  // never match, so a whole pass (38 files read, 63 tests, two mutation proofs)
+  // was reverted by bookkeeping rather than by any edit. Resolve the file AT
+  // that commit and compare CONTENT: if it is byte-identical, the review still
+  // stands.
+  if (isCommitish(recordedSha)) {
+    const thenSha = blobShaAtCommit(recordedSha, path);
+    if (thenSha && thenSha === now) {
+      rescued += 1;
+      if (apply) {
+        // Normalise to the blob sha so the next run compares directly.
+        cols[4] = ` ${now.slice(0, 12)} (was commit ${recordedSha.slice(0, 9)}) `;
+        lines[i] = `|${cols.join('|')}`;
+      }
+      continue;
+    }
   }
 
   stale += 1;
@@ -110,8 +175,16 @@ if (apply) {
 
 console.log(
   `coverage-staleness — ${reviewed} reviewed rows, ${stale} STALE (file ` +
-    `changed since review), ${missing} whose path is no longer tracked.`,
+    `changed since review), ${rescued} verified via a COMMIT review point, ` +
+    `${unverifiable} UNVERIFIABLE (no usable review point), ${missing} whose ` +
+    `path is no longer tracked.`,
 );
+for (const r of unverifiableRows.slice(0, 15)) {
+  console.log(`  UNVERIFIABLE  ${r.status.padEnd(15)} ${r.path}  (sha column: ${r.token})`);
+}
+if (unverifiableRows.length > 15) {
+  console.log(`  ... and ${unverifiableRows.length - 15} more unverifiable rows.`);
+}
 for (const r of staleRows.slice(0, 40)) {
   console.log(`  ${r.status.padEnd(15)} ${r.path}  (${r.recordedSha} -> ${r.now})`);
 }
@@ -119,4 +192,7 @@ if (staleRows.length > 40) {
   console.log(`  ... and ${staleRows.length - 40} more (nothing truncated in --apply).`);
 }
 if (apply) console.log(`Reverted ${stale} row(s) to UNREVIEWED.`);
-if (check && stale > 0) process.exit(1);
+// An UNVERIFIABLE row fails too. The alternative — counting it and moving on —
+// is precisely the hole F2600 found in this file: a guard reporting coverage it
+// never measured.
+if (check && (stale > 0 || unverifiable > 0)) process.exit(1);
