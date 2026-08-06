@@ -13,11 +13,14 @@ import {
 } from './collaborator-modal-store';
 import { useSingletonSurfaceHost } from './singleton-surface-store';
 import { isInteractableAuthor } from '../services/author-identity';
+import { resolveUserDisplayName } from '../utils/user-display-name';
 
 // ─── Shared person atoms (the collaborator chip on ListDetail uses these too) ────────────────
-// F892 (2026-08-03): module-local — every caller is in this file.
+// F1960: was a local re-implementation that skipped the isDeleted branch — a deleted
+// collaborator (name columns nulled) fell through to the generic fallback instead of
+// 'Deleted user'. Routed through the one shared resolver instead of hand-rolling again.
 const personDisplayName = (person: UserListPerson): string =>
-  person.displayName?.trim() || person.username?.trim() || 'Crave member';
+  resolveUserDisplayName(person, 'Crave member');
 
 export const PersonAvatar = ({ person, size }: { person: UserListPerson; size: number }) => (
   <MonogramAvatar

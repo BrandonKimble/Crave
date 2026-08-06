@@ -171,6 +171,29 @@ module.exports = {
         ],
       },
     },
+    {
+      // F1960: "what do I call this user" was hand-rolled SEVEN times before
+      // user-display-name.ts collapsed it to one resolver that checks `isDeleted`
+      // FIRST — a hand-rolled `displayName?.trim() || username?.trim() || fallback`
+      // skips that branch and mislabels a deleted account as a nameless live one.
+      // Ban the shape at the syntax level (not just the import) so a caller can't
+      // silently re-derive the same three lines instead of importing the resolver.
+      // Excluded: the resolver's own module (it must contain this exact expression)
+      // and its spec.
+      files: ['src/**/*.ts', 'src/**/*.tsx'],
+      excludedFiles: ['src/utils/user-display-name.ts', 'src/utils/user-display-name.spec.ts'],
+      rules: {
+        'no-restricted-syntax': [
+          'error',
+          {
+            selector:
+              "LogicalExpression[operator='||'] CallExpression[callee.property.name='trim'][callee.object.property.name=/^(displayName|username)$/]",
+            message:
+              "Hand-rolled display-name fallback chain. Use resolveUserDisplayName(user, fallback) from utils/user-display-name.ts — it checks isDeleted first, which a `displayName?.trim() || username?.trim() || ...` chain silently skips.",
+          },
+        ],
+      },
+    },
   ],
   rules: {
     // F808: see the staging note at the top of this file. A second top-level `rules` key

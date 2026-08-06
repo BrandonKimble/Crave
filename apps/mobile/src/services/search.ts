@@ -22,6 +22,7 @@ import { logPerfScenarioSearchRequestLifecycle } from '../perf/perf-scenario-att
 import { getPerfScenarioWorkNow, logPerfScenarioWorkSpan } from '../perf/perf-scenario-work-span';
 import api from './api';
 import { SILENT, type ApiRequestBehaviorConfig } from './api';
+import { getCurrentLocale } from '../i18n/current-locale';
 
 export interface StructuredSearchRequest {
   entities: {
@@ -197,8 +198,18 @@ const normalizeSearchCacheValue = (value: unknown): unknown => {
   return value;
 };
 
+// F1950: the response content is locale-dependent (api.ts sends `Accept-Language:
+// getCurrentLocale()` on every request, and the backend threads it into `matchedTags`
+// via `entityDisplay.localizeRows()`) — so the cache key MUST fold in the same locale
+// cell the header reads, via the same accessor, or a locale change mid-session could
+// silently serve a stale-locale cached response. Folded in HERE, inside the shared
+// builder, rather than left for each of the three call sites to remember: that makes
+// "a cache key that forgets locale" unrepresentable instead of merely discouraged.
 const buildSearchCacheKey = (payload: unknown): string =>
-  JSON.stringify(normalizeSearchCacheValue(payload) ?? {});
+  JSON.stringify({
+    locale: getCurrentLocale(),
+    payload: normalizeSearchCacheValue(payload) ?? {},
+  });
 
 const hashSearchCacheKey = (value: string): string => {
   let hash = 2166136261;
