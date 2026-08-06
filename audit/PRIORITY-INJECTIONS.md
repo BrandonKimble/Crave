@@ -2,20 +2,43 @@
 
 Source: the 3-lens foundation audit of 2026-08-02 (see memory
 `foundation-audit-2026-08-02`), verified still-open against the live tree on
-2026-08-03. These are NOT in `FINDINGS.md` yet — the territories that own them
-have not been reached, or the pass through them did not surface these.
+2026-08-03. (These were NOT in `FINDINGS.md` for three days — see the LEDGER
+STATUS block below; they are all filed now, F2075-F2079.)
 
 **Orchestrator: treat these as seeded findings.** Run the full ladder on each
 (descend to bedrock, rederive, red-team the design, delete what it obsoletes,
 mutation-prove). Do not fix them as guards. Two of them are escalations, marked.
 
+**LEDGER STATUS (F2074, 2026-08-05).** This file was reviewed as its own audit
+territory and its defect was that it tracked nothing: a "READ FIRST" doc whose
+five items had **no F-row in `FINDINGS.md`** — only I3 was even referenced, from
+one COVERAGE row. Findings that live only here are invisible to the ledger gate,
+so nothing could ever mark them closed. Each item now carries its F-row below;
+`FINDINGS.md` is the ledger, this file is the provenance.
+
+| item | F-row | status                                  |
+| ---- | ----- | --------------------------------------- |
+| I1   | F2075 | OPEN — boot config validation           |
+| I2   | F2076 | ESCALATED — list-share product question |
+| I3   | F2077 | OPEN — `workClass` string contract      |
+| I4   | F2078 | ESCALATED — deletion/user_identity      |
+| I5   | F2079 | OPEN — viewer-scope chokepoint          |
+
 ---
 
 ## I1 | api-core | `apps/api/src/config/configuration.ts:44,50` + `app.module.ts`
+
 **BOOT-TIME CONFIG VALIDATION DOES NOT EXIST.** 197 env vars are read across
-api+worker; `ConfigModule.forRoot` has **no `validationSchema`** (verified: 0
-occurrences), and `configuration.ts` contains zero `throw`. The API boots with
-every secret undefined.
+api+worker; `ConfigModule.forRoot` has **no `validationSchema`** (re-verified
+2026-08-05: still 0 occurrences repo-wide). The API boots with every secret
+undefined.
+
+> CORRECTION (2026-08-05, F2073): this section used to assert "`configuration.ts`
+> contains zero `throw`". That is now FALSE — `ceilingEnv` and `positiveIntEnv`
+> each throw on a malformed value. The substantive finding is UNCHANGED and the
+> correction sharpens it: what exists validates the SHAPE of values that were
+> supplied; nothing asserts that a required secret was supplied AT ALL. Do not
+> read the two throws as the guard this item asks for.
 
 Worst instance, verified live: `getDatabaseUrl()` falls back to
 `postgresql://postgres:postgres@localhost:5432/crave_search`. A deployed
@@ -36,6 +59,7 @@ RELATED, already approved as F401: `CRONS_ENABLED` not using `env-flag.ts`. Same
 disease, and `env-flag.ts` is the half-built foundation — finish it.
 
 ## I2 | messaging | `apps/api/src/modules/messaging/share-package-resolver.service.ts:118`
+
 **A SECOND, DIVERGENT LIST-ACCESS AUTHORITY.** `viewerCanSee` is computed inline
 as `owner || visibility==='public' || list.shareEnabled || collaborator`.
 `shareEnabled` ALONE grants the preview (list name + item count) to any viewer
@@ -50,6 +74,7 @@ whether the fix is "call the policy" or "thread the slug through the share
 package". Do not pick one silently.
 
 ## I3 | external-integrations | `spend-analytics.service.ts:31` (`workClass: string`)
+
 **A CROSS-MODULE STRING CONTRACT THAT PRODUCES WRONG MONEY.** `workClass` is a
 bare `string`, is a DB compound key (`workClass_unit`), and is declared twice
 (`GEMINI_BACKSTOP_WORK_CLASS` in spend-analytics AND governance) then read as
@@ -68,6 +93,7 @@ an untyped literal, so the vocabulary is enforced by a spec reading source text
 rather than by the compiler.
 
 ## I4 | identity | `account-deletion.service.ts` + `prisma/schema.prisma`
+
 **THREE COMPETING DEFINITIONS OF "USER DATA", BECAUSE DELETION IS SOFT.**
 `users` is anonymized in place (`deletedAt` + null the columns), so **no FK
 cascade ever fires on a real account deletion** — the 63 `ON DELETE CASCADE` FKs
@@ -95,6 +121,7 @@ and changes what "deleted" means to every reader. The redesign is right; the
 cutover is an owner call.
 
 ## I5 | cross-cutting | the recurring root cause
+
 **NO MANDATORY DECISION POINT FOR "WHO MAY SEE THIS ROW."** 309 raw
 `prisma.<model>.find*/count` calls across 106 files, zero chokepoints. Blocking
 (19 sites), soft-delete (32 reads), moderationStatus (7), list access (25 raw

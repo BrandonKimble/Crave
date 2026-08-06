@@ -34,6 +34,9 @@ const createInputs = () => {
     allowSearchBlurExitRef: { current: false },
     ignoreNextSearchBlurRef: { current: false },
     inputRef: { current: null },
+    // NOT read by the composition (only `setSuggestions` is) — the negative
+    // half of the memo contract mutates this. (F2072)
+    suggestions: [] as string[],
   };
   const stateFoundationLane = {
     rootPrimitivesRuntime: { searchState },
@@ -189,8 +192,13 @@ describe('useSearchRootForegroundEditingRuntimeArgs', () => {
     expect(next).not.toBe(first);
     expect(next.query).toBe('ramen');
 
-    // A field NOT read by the composition must not invalidate the memo.
+    // A field NOT read by the composition must not invalidate the memo. This
+    // used to be two bare re-renders that mutated nothing — the comment claimed
+    // a negative case the code never exercised. Mutate a genuinely-unread field
+    // (`searchState.suggestions`; only `setSuggestions` is read) and require
+    // the SAME object back. (F2072)
     const stable = harness.render();
+    inputs.stateFoundationLane.rootPrimitivesRuntime.searchState.suggestions = ['ramen'];
     expect(harness.render()).toBe(stable);
 
     harness.unmount();
@@ -201,7 +209,11 @@ describe('useSearchRootForegroundEditingRuntimeArgs', () => {
     const harness = mountArgs(() => inputs);
     const sequence = harness.hookSequence();
 
-    expect(sequence.every((kind) => kind === 'useMemo')).toBe(true);
+    // toEqual, NOT `sequence.every(...)`: [].every() is true, so the previous
+    // form passed vacuously if the composition called NO hooks at all — the
+    // exact regression (collapsing the memo away) this contract exists to
+    // catch would have read green. (F2072)
+    expect(sequence).toEqual(['useMemo']);
 
     // Re-render through both a memo HIT and a memo MISS — the harness throws on any
     // change of hook count or order, so reaching the assertions is itself the proof.

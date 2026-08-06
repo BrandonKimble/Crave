@@ -1013,6 +1013,22 @@ describe('SpendAnalyticsService.checkTomtomPoolHot (§18.4 TomTom credit proxy)'
         dedupeKey: 'tomtom_pool_hot:2026-07',
       }),
     );
+    // WHICH POOL is the whole substance of the 2026-08-04 fix: this check read
+    // tomtom.scarcePolygons — reshaped to perMinute/300 — so it compared ONE
+    // MINUTE of a rate window against a monthly threshold and could effectively
+    // never fire. Without this assertion the mock answers any pool name and a
+    // revert to scarcePolygons keeps every test above green. (F2071)
+    expect(governance.pools.poolStatus).toHaveBeenCalledWith(
+      'tomtom.monthlySpend',
+    );
+    // And the alert an operator reads must name the pool the code actually
+    // queried, or it sends them to the wrong dashboard. (F2070)
+    const emitted = (
+      opsAlerts.emit.mock.calls as Array<[{ title: string; body: string }]>
+    )[0][0];
+    expect(emitted.title).toContain('monthlySpend');
+    expect(emitted.body).toContain('monthlySpend');
+    expect(`${emitted.title} ${emitted.body}`).not.toContain('scarcePolygons');
   });
 
   it('does NOT fire below the 80% fraction threshold (RED-proof: the band can read green too)', () => {

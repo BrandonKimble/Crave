@@ -1210,7 +1210,7 @@ export class SpendAnalyticsService {
     }
     const monthKey = now.toISOString().slice(0, 7);
     this.logger.warn(
-      'TomTom scarcePolygons pool unusually hot for the day of month',
+      'TomTom monthlySpend pool unusually hot for the day of month',
       {
         dayOfMonth,
         used: status.used,
@@ -1221,8 +1221,8 @@ export class SpendAnalyticsService {
     this.opsAlerts.emit({
       severity: 'warn',
       kind: 'tomtom_pool_hot',
-      title: 'TomTom scarcePolygons pool running hot',
-      body: `TomTom scarcePolygons used ${Math.round(usedFraction * 1000) / 10}% of its monthly limit (${status.used}/${status.limit}) by day ${dayOfMonth} of the month — check TomTom balance/top-up. (Proxy signal — the vendor API exposes no true prepaid balance.)`,
+      title: 'TomTom monthlySpend pool running hot',
+      body: `TomTom monthlySpend used ${Math.round(usedFraction * 1000) / 10}% of its monthly limit (${status.used}/${status.limit}) by day ${dayOfMonth} of the month — check TomTom balance/top-up. (Proxy signal — the vendor API exposes no true prepaid balance.)`,
       dedupeKey: `tomtom_pool_hot:${monthKey}`,
     });
   }
