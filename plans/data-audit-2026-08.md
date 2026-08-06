@@ -1223,3 +1223,60 @@ with only structural non-places (route, geocode, locality, political)
 excluded; venue kind is not the question at grounding time any more than it
 was at extraction time. The Gemini chooser already adjudicates same-business,
 which is the right place for that judgment.
+
+## OWNER RULINGS (2026-08-05) — decisions closed, round 2 opened
+
+Owner declined the Austin re-extract for now. Confirmed: NO data was deleted
+or written by any of the Phase-4 testing — both harnesses are read-only.
+
+1. SURFACE FIELDS — DELETE, do not add to the schema. They were never
+   emittable (absent from COLLECTION_RESPONSE_JSON_SCHEMA), so every consumer
+   has run on the fallback since day one and none is broken: six months of
+   production IS the experiment. The one real claimant (metro/chain matching)
+   already reconstructs the same information by regex-matching the canonical
+   name back into the source text, for free. Adding them would spend tokens on
+   every mention forever to re-derive what we already have. Already absent
+   from the candidate prompt. LEFTOVER: extraction-pipeline.service.ts:1813+
+   and :1906+ still branch on mention.restaurant_surface, a branch that can
+   never be true — round-2 cleanup, not urgent.
+2. ASSERTED-VS-INFERRED MARKER — DROPPED (owner + agreed). The product acts on
+   implication ("chicken tikka masala" -> indian) rather than requiring proof,
+   so the flag has no consumer, and a field nothing branches on is cost plus
+   drift. Revisit only if we ever rank asserted evidence above inferred.
+3. THE 705 food_mention-ONLY PAIRS — RULED A REAL RECALL GAP; fix in round 2's
+   projection phase, not as a patch now. Verified independently (5,704 pairs
+   carry food_mention; 705 carry ONLY it; all 705 produce zero connections).
+   They are not silently discarded — projection-rebuild:335 turns them into
+   ItemSupportMentions — but they never mint a core_restaurant_items row, so
+   the dish is unsearchable at that restaurant. The claims are real: "34th st
+   cafe has a KILLER SALAD like this" -> asian chicken salad; "just get a
+   burger and regular fries" -> fries; italian beef sandwich @ Midway Dogs.
+   The is_menu_item=false gate is doing more than it was meant to.
+4. GOOGLE VENUE TYPES — KEEP the 60-type list for its real jobs (cuisine
+   attribute naming, grounding candidate selection). Do NOT add a venue-class
+   admission gate. Type stays an audit signal only.
+5. SINGLE-MENTION RANKING FLOOR — DROPPED (owner). Ranking already buries
+   thin-support items; a floor would be a second mechanism doing it worse.
+6. GROUNDING FAILURES — DEFERRED BY OWNER, DO NOT FORGET. 1,626 active
+   restaurants (23.5%) ungrounded, exactly the null-city set; 1,341 of them
+   (6,502 events) failed with "no prediction matched preferred place types",
+   195 with "place permanently closed". NOT a type-list problem: 866 of the
+   1,341 had a candidate carrying type `restaurant`. Root cause is upstream —
+   autocomplete returned geographically irrelevant candidates (Rebel Cheese,
+   Austin -> "Rebel Burger, Asheville NC" / "Chase Bank, Nicholasville KY").
+   Re-running the Places backfill without fixing location bias would spend
+   money to fail identically.
+
+## ROUND 2 CHARTER: audit the JOINS and the DROPS, not the rows
+
+Round 1's blind spot, now explicit: it measured things that EXIST AND ARE
+WRONG. It never asked what SHOULD exist and is missing, nor what happens
+BETWEEN layers. Both big findings since (the 705 pairs, the 1,341 ungrounded)
+live in that gap, and neither was visible to any count-the-bad-rows query.
+
+Round 2 scope, layer by layer, each asking "what entered, what left, where
+did the difference go?": documents -> events -> connections -> projections ->
+scores -> read path; entities -> locations; foods -> categories -> edges;
+attributes -> vocabulary. Same discipline as round 1: trace to raw source,
+red-team my own conclusions, prove by executed query, and treat one sample as
+noise until repeated.
