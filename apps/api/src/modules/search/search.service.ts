@@ -434,6 +434,7 @@ export class SearchService {
           nameVariantFoodIds,
           twinIngredientIds,
           siblingMatches,
+          judgedRelations,
         ] = await Promise.all([
           // Category members apply on EVERY search (they replace the old
           // per-connection `c.categories &&` SQL arm) — one-hop: resolved
@@ -452,17 +453,29 @@ export class SearchService {
                 this.denseSiblingsCut,
               )
             : Promise.resolve([] as { siblingId: string; relevance: number }[]),
+          // LLM-judged substitutability (concept-graph rung 4) — the residual
+          // that grammar and the category graph could not decide. `satisfies`
+          // is a tier-0 claim, `cousin` rides the tier-1 widened set.
+          this.siblingExpansion.getSatisfiesFoodIds(anchorFoodIds),
         ]);
         // Head-final name variants ARE the thing (tier 0 with verified
         // category members); terms that merely mention the query food
         // ("pizza sauce") are related, so they ride the tier-1 widened set.
         const categoryMemberFoodIds = Array.from(
-          new Set([...edgeMemberFoodIds, ...nameVariantFoodIds.isVariantOf]),
+          new Set([
+            ...edgeMemberFoodIds,
+            ...nameVariantFoodIds.isVariantOf,
+            // A judged `satisfies` is the same class of claim as a verified
+            // category member or a head-final variant: it IS what was asked
+            // for, so it belongs in the front section.
+            ...judgedRelations.satisfies,
+          ]),
         );
         const denseSiblingFoodIds = Array.from(
           new Set([
             ...siblingMatches.map((s) => s.siblingId),
             ...nameVariantFoodIds.mentionsIt,
+            ...judgedRelations.cousin,
           ]),
         );
         if (
@@ -475,6 +488,10 @@ export class SearchService {
           for (const s of siblingMatches)
             relevanceByFoodId[s.siblingId] = s.relevance;
           for (const id of nameVariantFoodIds.mentionsIt)
+            relevanceByFoodId[id] = relevanceByFoodId[id] ?? 1;
+          for (const id of judgedRelations.satisfies)
+            relevanceByFoodId[id] = relevanceByFoodId[id] ?? 1;
+          for (const id of judgedRelations.cousin)
             relevanceByFoodId[id] = relevanceByFoodId[id] ?? 1;
           planExpansion = {
             foodIds: [],

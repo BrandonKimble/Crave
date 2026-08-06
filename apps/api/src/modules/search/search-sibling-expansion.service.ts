@@ -1,5 +1,9 @@
 import { Injectable } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
+import {
+  redirectJoinSql,
+  resolvedSubjectSql,
+} from '../signals/subject-identity';
 import { PrismaService } from '../../prisma/prisma.service';
 import { LoggerService } from '../../shared';
 
@@ -145,6 +149,77 @@ export class SearchSiblingExpansionService {
    * regex injection surface), base names ≥ 4 chars, BASE ids only (the same
    * one-hop law as categories: never expand an expansion). Fails open to [].
    */
+  /**
+   * LLM-JUDGED SUBSTITUTABILITY (concept-graph plan, rung 4).
+   *
+   * `satisfies` = "a user who asked for the anchor would be happy with this",
+   * so it joins the TIER-0 set beside verified category members and head-final
+   * variants. `cousin` = related but a different craving, so it joins the
+   * TIER-1 widened set with the dense siblings. Everything else was judged
+   * `reject` and is stored precisely so it is never reconsidered.
+   *
+   * DIRECTED: only edges FROM an anchor are read. The reverse of a satisfies
+   * edge is frequently false (`cheese -> cheese pizza` is a fine substitution;
+   * `cheese pizza -> cheese` is not), and under the ranking invariant a wrong
+   * tier-0 claim with a high Crave Score ranks FIRST.
+   *
+   * Merged-away targets are followed one hop through `entity_redirects` — the
+   * merge pipeline archives a loser and writes a redirect, and nothing prunes
+   * this table, so a stale edge must resolve rather than vanish. Archived
+   * targets that have no redirect are dropped. ONE HOP from the anchors only:
+   * the same law categories and name-containment follow — never expand an
+   * expansion.
+   */
+  async getSatisfiesFoodIds(
+    baseFoodIds: string[],
+    options: { maxAnchors?: number } = {},
+  ): Promise<{ satisfies: string[]; cousin: string[] }> {
+    const ids = Array.from(new Set(baseFoodIds.filter(Boolean))).slice(
+      0,
+      Math.max(1, options.maxAnchors ?? 3),
+    );
+    if (!ids.length) return { satisfies: [], cousin: [] };
+    try {
+      const rows = await this.prisma.$queryRaw<
+        { foodId: string; relation: string }[]
+      >(
+        Prisma.sql`
+          SELECT ${resolvedSubjectSql('s', 'r', 'to_entity_id')} AS "foodId",
+                 s.relation AS "relation"
+          FROM entity_satisfies s
+          ${redirectJoinSql('s', 'r', 'to_entity_id')}
+          JOIN core_entities t
+            ON t.entity_id = ${resolvedSubjectSql('s', 'r', 'to_entity_id')}
+           AND t.status = 'active'::entity_status
+           AND t.type = 'food'::entity_type
+          WHERE s.from_entity_id = ANY(${ids}::uuid[])
+            AND s.relation IN ('satisfies', 'cousin')
+        `,
+      );
+      const exclude = new Set(ids);
+      const satisfies = new Set<string>();
+      const cousin = new Set<string>();
+      for (const row of rows) {
+        if (exclude.has(row.foodId)) continue;
+        (row.relation === 'satisfies' ? satisfies : cousin).add(row.foodId);
+      }
+      // A concept judged BOTH ways across different anchors is treated as the
+      // weaker claim — tier 0 is the expensive place to be wrong.
+      for (const id of satisfies) cousin.delete(id);
+      return { satisfies: Array.from(satisfies), cousin: Array.from(cousin) };
+    } catch (error) {
+      // FAILS OPEN, like every other expansion read here: a widening that
+      // cannot be computed must never take the search down with it.
+      this.logger.warn('Satisfies expansion read failed (failing open)', {
+        baseCount: ids.length,
+        error: {
+          message: error instanceof Error ? error.message : String(error),
+        },
+      });
+      return { satisfies: [], cousin: [] };
+    }
+  }
+
   async getNameContainmentVariantFoodIds(
     baseFoodIds: string[],
     options: { maxAnchors?: number } = {},
