@@ -15,10 +15,20 @@ export const flushAsync = async (): Promise<void> => {
   });
 };
 
-/** ONE PAINT BOUNDARY. The setup file maps requestAnimationFrame onto
- *  setTimeout(0), which no amount of promise-flushing will advance — so a lane
- *  that must observe "the frame AFTER the commit" (the press-up handoff's
- *  release, the [PERF] probe's rAF pair) yields to the macrotask queue here.
+/** ONE PAINT BOUNDARY, and the ONLY thing in this lane that crosses one.
+ *  The setup file maps requestAnimationFrame onto setTimeout(0), and the lane
+ *  runs on FAKE timers (jest.tracksheet-render.config.js, `fakeTimers.
+ *  enableGlobally`) precisely so that shim cannot fire on its own: a frame
+ *  happens HERE, when this advances the clock, and nowhere else.
+ *
+ *  That is load-bearing, not tidiness. Under real timers the 0ms macrotask
+ *  carrying the press-up handoff's release could fire inside any `await
+ *  act(async …)` that yields — setFrame's included — so the destination's real
+ *  body could render in what the spec believes is still the flip frame, and the
+ *  handoff falsifier went RED on machine load alone (3 of 8 runs, 2026-08-05).
+ *  A falsifier that reds for timing reasons proves nothing and masks the
+ *  regression it exists to catch.
+ *
  *  Deliberately explicit: a test that does NOT call this is asserting on the
  *  flip frame itself, which is the whole point of the handoff. */
 export const flushFrame = async (): Promise<void> => {
@@ -26,12 +36,8 @@ export const flushFrame = async (): Promise<void> => {
     const painted = new Promise<void>((resolve) => {
       setTimeout(resolve, 0);
     });
-    try {
-      // Fake-timer specs: advance the clock the rAF shim rides.
-      jest.advanceTimersByTime(1);
-    } catch {
-      // Real timers: the setTimeout above resolves on its own.
-    }
+    // The rAF shim rides the clock; nothing pending advances without this.
+    jest.advanceTimersByTime(1);
     await painted;
   });
 };

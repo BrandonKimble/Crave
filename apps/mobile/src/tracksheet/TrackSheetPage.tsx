@@ -54,6 +54,11 @@ import {
 import { TrackSheetDockedStrip } from './TrackSheetStrip';
 import { trackEntrySceneKey, type TrackEntryKey } from './track-entry-identity';
 import {
+  projectTrackListRenderedBandPx,
+  resolveTrackListDrawDistance,
+  resolveTrackSheetVisibleHeight,
+} from './track-list-window';
+import {
   noteTrackPressChromeBuild,
   noteTrackPressRowInvoke,
   noteTrackPressSubtreeRender,
@@ -668,6 +673,14 @@ export function TrackSheetPage({
         // detent, which the old sampler could not express at all. The detent
         // (or null) is data on the fact, never a condition for reporting it.
         onSettleRef.current?.(report.detentTau ?? fact.posture);
+        // THE RENDER WINDOW FOLLOWS THE SETTLED POSTURE (track-list-window.ts).
+        // Quantised to SETTLES, never to tau: tau is a SharedValue written every
+        // frame on the UI thread, and turning it into a React prop would put a
+        // JS render on the finger — the exact cost this rung exists to remove.
+        // Between settles the window still tracks the drag for free: tau IS the
+        // list's scroll offset, so FlashList's viewport moves with the sheet;
+        // only the OVERSCAN waits for the posture to land.
+        setSettledTau(report.detentTau ?? fact.posture);
         if (report.postureMemoryTau != null) {
           onGestureSettleRef.current?.(report.postureMemoryTau);
         }
@@ -1246,6 +1259,19 @@ export function TrackSheetPage({
     [physics]
   );
 
+  // The settled posture in tau-space — the one JS-side fact the render window
+  // needs. Seeded at 0 (collapsed), which is where every tab switch starts.
+  const [settledTau, setSettledTau] = React.useState(0);
+  const listDrawDistance = React.useMemo(() => {
+    const visibleHeight = resolveTrackSheetVisibleHeight({
+      tau: settledTau,
+      collapsedTop: geometry.collapsedTop,
+      expandedTop: geometry.expandedTop,
+      screenHeight: SCREEN.height,
+    });
+    return resolveTrackListDrawDistance({ visibleHeight, screenHeight: SCREEN.height });
+  }, [geometry.collapsedTop, geometry.expandedTop, settledTau]);
+
   const [hud, setHud] = React.useState('');
   React.useEffect(() => {
     if (!debugHud) {
@@ -1318,7 +1344,11 @@ export function TrackSheetPage({
               onEndReached={presentedLeg?.list.onEndReached}
               onEndReachedThreshold={presentedLeg?.list.onEndReachedThreshold}
               extraData={presentedLeg?.list.extraData}
-              drawDistance={SCREEN.height}
+              // WAS SCREEN.height — which, through FlashList's `drawDistance * 2`
+              // redistribution at the top of the list, asked for ~3 screen-heights
+              // of content and built 23 of 25 poll cards on a collapsed sheet
+              // (measured). Now derived from what the sheet actually shows.
+              drawDistance={listDrawDistance}
               maintainVisibleContentPosition={{ disabled: true }}
               renderScrollComponent={TrackScrollComponent}
               ListHeaderComponent={headerForLeg(presentedLeg)}
