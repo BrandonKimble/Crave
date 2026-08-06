@@ -1,4 +1,5 @@
 import { create } from 'zustand';
+import { normalizeDietary } from '../screens/Search/dietary-controls';
 import { persist, createJSONStorage } from 'zustand/middleware';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { logger } from '../utils';
@@ -22,6 +23,8 @@ import { logger } from '../utils';
 // is an owner question, and a silent change here would answer it without asking.
 const SEARCH_STORE_VERSION = 9;
 export type SearchActiveTab = 'restaurants' | 'dishes';
+
+export { normalizeDietary } from '../screens/Search/dietary-controls';
 
 export const normalizePriceLevels = (levels: unknown): number[] => {
   if (!Array.isArray(levels)) {
@@ -88,9 +91,13 @@ export const useSearchStore = create<SearchState>()(
     (set) => ({
       ...defaultState,
       priceLevels: [...defaultState.priceLevels],
+      dietary: [...defaultState.dietary],
       applySearchRuntimeStateMirror: (patch) =>
         set(() => {
           const next: Partial<SearchRuntimeMirroredState> = { ...patch };
+          if (patch.dietary != null) {
+            next.dietary = normalizeDietary(patch.dietary);
+          }
           if (patch.priceLevels != null) {
             next.priceLevels = normalizePriceLevels(patch.priceLevels);
           }
@@ -124,6 +131,7 @@ export const useSearchStore = create<SearchState>()(
         return {
           ...defaultState,
           ...carried,
+          dietary: normalizeDietary(carried.dietary),
           priceLevels: normalizePriceLevels(carried.priceLevels),
         } as SearchState;
       },

@@ -178,6 +178,22 @@ const areNumberArraysEqual = (a: readonly number[], b: readonly number[]): boole
   a.length === b.length && a.every((value, index) => value === b[index]);
 
 /** Dietary walls are a SET — order never distinguishes two lenses. */
+/** THE dietary set comparison — exported so the reconciler and the strip
+ *  read the SAME rule the lens key is built from. Three private copies with
+ *  two different semantics (sort-compare vs length+includes) existed briefly
+ *  and genuinely disagreed on duplicates; a second way to compute one fact
+ *  is the disease this contract exists to prevent. */
+/** The ONE canonicalization the key and every comparison share: deduped and
+ *  sorted, so order and repetition can never mint a second slice. */
+export const canonicalDietary = (names: readonly string[]): string[] =>
+  Array.from(new Set(names)).sort();
+
+export const areDietarySetsEqual = (a: readonly string[], b: readonly string[]): boolean => {
+  const ca = canonicalDietary(a);
+  const cb = canonicalDietary(b);
+  return ca.length === cb.length && ca.every((name, i) => name === cb[i]);
+};
+
 const areStringArraysEqual = (a: readonly string[], b: readonly string[]): boolean =>
   a.length === b.length && [...a].sort().every((value, index) => value === [...b].sort()[index]);
 
@@ -242,7 +258,7 @@ export const areSearchFilterVariantsEqual = (
   b: SearchFilterVariant
 ): boolean =>
   a.openNow === b.openNow &&
-  areStringArraysEqual(a.dietary, b.dietary) &&
+  areDietarySetsEqual(a.dietary, b.dietary) &&
   a.rising === b.rising &&
   a.includeSimilar === b.includeSimilar &&
   (a.listSort ?? null) === (b.listSort ?? null) &&
@@ -297,7 +313,7 @@ export const selectSearchLens = (tuple: SearchDesiredTuple): SearchLens => ({
 
 export const areSearchLensesEqual = (a: SearchLens, b: SearchLens): boolean =>
   a.openNow === b.openNow &&
-  areStringArraysEqual(a.dietary, b.dietary) &&
+  areDietarySetsEqual(a.dietary, b.dietary) &&
   a.rising === b.rising &&
   (a.listSort ?? null) === (b.listSort ?? null) &&
   (a.cityPlaceId ?? null) === (b.cityPlaceId ?? null) &&
@@ -332,7 +348,7 @@ export const selectLensRequestFields = (lens: SearchLens): SearchLensRequestFiel
  *  the DEFAULT lens serializes to the same token everywhere so the unlensed slice is
  *  the canonical page-1 world. */
 export const buildSearchLensKey = (lens: SearchLens): string =>
-  `open:${lens.openNow ? 1 : 0}|diet:${[...lens.dietary].sort().join(',')}|price:${lens.priceLevels.join(',')}|rising:${lens.rising ? 1 : 0}${lens.listSort != null ? `|sort:${lens.listSort}` : ''}${lens.cityPlaceId != null ? `|city:${lens.cityPlaceId}` : ''}`;
+  `open:${lens.openNow ? 1 : 0}|diet:${canonicalDietary(lens.dietary).join(',')}|price:${lens.priceLevels.join(',')}|rising:${lens.rising ? 1 : 0}${lens.listSort != null ? `|sort:${lens.listSort}` : ''}${lens.cityPlaceId != null ? `|city:${lens.cityPlaceId}` : ''}`;
 
 /** WORLD IDENTITY equality (M-1 session coercion + S2's identity-keyed cache): the
  *  lens is EXCLUDED — a lens flip over a live session is a slice presentation, never

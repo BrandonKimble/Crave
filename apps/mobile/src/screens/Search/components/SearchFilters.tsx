@@ -8,6 +8,8 @@ import { SegmentedToggle } from '../../../components/SegmentedToggle';
 import { SelectorChip } from '../../../components/SelectorChip';
 import { ToggleStrip } from '../../../toggles/ToggleStrip';
 import type { ToggleStripCacheSeat } from '../../../toggles/toggle-strip-layout-cache';
+import { resolveDietaryControls } from '../hooks/use-dietary-options';
+import { areDietarySetsEqual } from '../runtime/shared/search-desired-state-contract';
 import type { SearchRuntimeBus } from '../runtime/shared/search-runtime-bus';
 import { useSearchRuntimeBusSelector } from '../runtime/shared/use-search-runtime-bus-selector';
 
@@ -101,8 +103,7 @@ const SearchFilters: React.FC<SearchFiltersProps> = ({
     (left, right) =>
       left.activeTab === right.activeTab &&
       left.openNow === right.openNow &&
-      left.dietary.length === right.dietary.length &&
-      left.dietary.every((name) => right.dietary.includes(name)) &&
+      areDietarySetsEqual(left.dietary, right.dietary) &&
       left.includeSimilarActive === right.includeSimilarActive &&
       left.similarAvailableCount === right.similarAvailableCount &&
       left.risingActive === right.risingActive &&
@@ -174,7 +175,7 @@ const SearchFilters: React.FC<SearchFiltersProps> = ({
         accessibilityLabel="Toggle open now results"
         testID="search-open-now-toggle"
       />
-      {dietaryOptions.map((option) => (
+      {resolveDietaryControls(dietaryOptions, activeDietary).map((option) => (
         <FilterChip
           key={`dietary-${option.name}`}
           label={option.label}

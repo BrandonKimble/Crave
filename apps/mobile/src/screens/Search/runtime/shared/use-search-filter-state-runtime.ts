@@ -76,7 +76,17 @@ export const useSearchFilterStateRuntime = (searchRuntimeBus: SearchRuntimeBus) 
     writeSearchDesiredTuple(
       searchRuntimeBus,
       {
-        filterVariant: { openNow: false, priceLevels: [], includeSimilar: false, rising: false },
+        // EVERY filter, dietary included. Dietary was omitted when it landed, so
+        // "reset filters" left a hard wall standing that the user had just asked
+        // to clear — the one filter that can silently empty a result set was the
+        // one the reset didn't touch.
+        filterVariant: {
+          openNow: false,
+          dietary: [],
+          priceLevels: [],
+          includeSimilar: false,
+          rising: false,
+        },
       },
       'dismiss'
     );

@@ -1,6 +1,7 @@
 import React from 'react';
 
 import { writeSearchDesiredTuple } from '../shared/search-desired-state-writer';
+import { canonicalDietary } from '../shared/search-desired-state-contract';
 import type { SearchCommittedBounds } from '../shared/search-desired-state-contract';
 import type { SearchRuntimeBus } from '../shared/search-runtime-bus';
 import {
@@ -160,7 +161,10 @@ export const useQueryMutationOrchestrator = (
         const next = current.includes(name)
           ? current.filter((entry) => entry !== name)
           : [...current, name];
-        return { dietary: next };
+        // Canonical at the WRITER, not just at the key: the stored set is then
+        // the same value for the same walls no matter what order the taps came
+        // in, so nothing downstream has to re-sort to compare.
+        return { dietary: canonicalDietary(next) };
       }, 'chip_dietary');
     },
     [searchRuntimeBus, setIsPriceSelectorVisible, writeChipVariantTuple]

@@ -18,6 +18,7 @@ import {
   type SearchRequestDecoration,
 } from './search-request-decoration-registry';
 import {
+  areDietarySetsEqual,
   areSearchCommittedBoundsEqual,
   areSearchFilterVariantsEqual,
   areSearchQueryIdentitiesEqual,
@@ -210,10 +211,6 @@ export type SearchWorldReconcilerEnv = {
 export type SearchWorldReconciler = {
   start: () => () => void;
 };
-
-/** Dietary walls are a SET — order never means a different lens. */
-const areDietarySetsEqual = (a: readonly string[], b: readonly string[]): boolean =>
-  a.length === b.length && a.every((name) => b.includes(name));
 
 const areSearchPriceLevelsEqual = (a: readonly number[], b: readonly number[]): boolean =>
   a.length === b.length && a.every((level, index) => level === b[index]);
