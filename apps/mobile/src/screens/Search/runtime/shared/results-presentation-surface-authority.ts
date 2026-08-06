@@ -107,16 +107,6 @@ export const deriveCommittedSearchSurfaceResultsTransactionKeyFromSurface = ({
     : resultsSnapshotKey;
 };
 
-export const deriveSearchSurfaceResultsTransactionKeyFromSurface = (
-  surfaceSnapshot: Pick<
-    ResultsPresentationSurfaceAuthoritySnapshot,
-    'searchSurfaceResultsTransactionKey' | 'resultsIdentityKey' | 'resultsRequestKey'
-  >
-): string | null =>
-  surfaceSnapshot.searchSurfaceResultsTransactionKey ??
-  surfaceSnapshot.resultsIdentityKey ??
-  surfaceSnapshot.resultsRequestKey;
-
 export class ResultsPresentationSurfaceAuthority {
   private snapshot = INITIAL_RESULTS_PRESENTATION_SURFACE_AUTHORITY_SNAPSHOT;
 

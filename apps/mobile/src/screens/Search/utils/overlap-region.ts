@@ -56,18 +56,27 @@ export const resolveOverlapRegion = ({
 // Web-Mercator zoom level at which a circle of `radiusMiles` (its diameter, plus
 // padding) fits across a viewport `viewportWidthPx` wide at `centerLat`. Used to
 // auto-zoom the camera onto the overlap radius for far-out shortcut runs.
+//
+// F2308: returns NULL when the question is unanswerable (no viewport width yet —
+// the first frame before layout — or a non-positive radius). It used to return a
+// bare `12`, a fabricated camera indistinguishable from a computed one, whose
+// digits also collided with OVERLAP_REGION_RADIUS_MILES above (a zoom level in
+// one place, miles in the other). The caller decides what to do with "not
+// measurable yet"; this function does not invent an answer.
 export const zoomToFitRadiusMiles = (
   centerLat: number,
   radiusMiles: number,
   viewportWidthPx: number
-): number => {
+): number | null => {
   const METERS_PER_MILE = 1609.344;
   const EQUATOR_METERS_PER_PIXEL_Z0 = 156543.03392; // 256px tile.
-  const PADDING_FACTOR = 1.3; // leave margin so the region isn't edge-to-edge.
+  // Owner choice, not a measurement: leave ~30% margin so the overlap circle is
+  // not drawn edge-to-edge against the viewport bezel.
+  const PADDING_FACTOR = 1.3;
   const diameterMeters = radiusMiles * 2 * METERS_PER_MILE * PADDING_FACTOR;
   const cosLat = Math.max(0.01, Math.cos((centerLat * Math.PI) / 180));
   if (!(viewportWidthPx > 0) || !(diameterMeters > 0)) {
-    return 12;
+    return null;
   }
   const zoom = Math.log2((EQUATOR_METERS_PER_PIXEL_Z0 * cosLat * viewportWidthPx) / diameterMeters);
   return Math.max(1, Math.min(20, zoom));

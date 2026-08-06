@@ -21,7 +21,7 @@ import {
   PRICE_THUMB_SIZE,
   SCREEN_WIDTH,
 } from '../constants/search';
-import type { PriceRangeTuple } from '../utils/price';
+import type { PriceSliderRange } from '../utils/price';
 import { PRICE_SLIDER_MAX, PRICE_SLIDER_MIN } from '../utils/price';
 import styles from '../styles';
 
@@ -40,7 +40,7 @@ const VALUE_UPDATE_EPSILON = 0.0005;
 type PriceRangeSliderProps = {
   motionLow: SharedValue<number>;
   motionHigh: SharedValue<number>;
-  onRangeCommit: (range: PriceRangeTuple) => void;
+  onRangeCommit: (range: PriceSliderRange) => void;
 };
 
 type TrackSegment = {
@@ -103,7 +103,7 @@ const PriceRangeSlider: React.FC<PriceRangeSliderProps> = React.memo(
     const highActiveProgress = useSharedValue(0);
     const activeGestureCount = useSharedValue(0);
 
-    const normalizeWorklet = React.useCallback((low: number, high: number): PriceRangeTuple => {
+    const normalizeWorklet = React.useCallback((low: number, high: number): PriceSliderRange => {
       'worklet';
       const clamp = (value: number, min: number, max: number) =>
         Math.min(max, Math.max(min, value));
@@ -121,7 +121,9 @@ const PriceRangeSlider: React.FC<PriceRangeSliderProps> = React.memo(
           min = clamp(min - 1, PRICE_SLIDER_MIN, PRICE_SLIDER_MAX);
         }
       }
-      return [min, max];
+      // Clamped and rounded above; the branded tuple is the same numbers.
+      // (a worklet, so it cannot call the priceSliderRange constructor).
+      return [min, max] as unknown as PriceSliderRange;
     }, []);
 
     const trackStart = PRICE_THUMB_SIZE / 2;

@@ -341,6 +341,12 @@ export const useSearchRuntimeInstrumentationRuntime = ({
         ensureInitialCameraReady();
         const viewportWidthPx = Dimensions.get('window').width;
         const zoom = zoomToFitRadiusMiles(center.lat, radiusMiles, viewportWidthPx);
+        if (zoom == null) {
+          // F2308: the fit zoom is not measurable (no viewport width yet), and a
+          // CameraIntent requires a zoom. Skip the auto-zoom rather than commit a
+          // fabricated camera — the user keeps their own framing.
+          return;
+        }
         cameraIntentArbiter.commit({
           center: [center.lng, center.lat],
           zoom,

@@ -40,8 +40,8 @@ import {
   formatRestaurantCardMatchedTagLabel,
   type RestaurantResultCardDescriptor,
   type RestaurantResultCardMatchedTagDescriptor,
-  type RestaurantResultCardTextSegment,
 } from '../../../screens/Search/components/restaurant-result-card-descriptor';
+import type { SuggestionMatchSegment } from '../../../screens/Search/utils/suggestion-match-highlight';
 import CardActionPillRow from './CardActionPillRow';
 import { useSavedMembership } from '../../../store/saved-membership-store';
 import {
@@ -213,13 +213,13 @@ const RestaurantResultCard: React.FC<RestaurantResultCardProps> = ({
       const segments =
         preparedDescriptor?.topFoodNameSegmentsByConnectionId.get(connectionId) ??
         buildRestaurantCardHighlightedTextSegments(foodName, primaryFoodHighlight);
-      if (segments.length === 1 && !segments[0]?.highlighted) {
+      if (segments.length === 1 && !segments[0]?.isMatch) {
         return segments[0]?.text ?? foodName;
       }
       return (
         <>
-          {segments.map((segment: RestaurantResultCardTextSegment, segmentIndex: number) =>
-            segment.highlighted ? (
+          {segments.map((segment: SuggestionMatchSegment, segmentIndex: number) =>
+            segment.isMatch ? (
               <Text
                 key={`${connectionId}:highlight:${segmentIndex}`}
                 variant="body"

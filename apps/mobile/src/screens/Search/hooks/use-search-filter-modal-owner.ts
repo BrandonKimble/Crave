@@ -10,7 +10,12 @@ import type { OverlayModalSheetHandle } from '../../../overlays/OverlayModalShee
 import type { SearchRuntimeBus } from '../runtime/shared/search-runtime-bus';
 import type { ScoreInfoPayload } from '../components/SearchRankAndScoreSheets';
 import { useQueryMutationOrchestrator } from '../runtime/mutations/query-mutation-orchestrator';
-import { formatPriceRangeSummary, getRangeFromLevels, type PriceRangeTuple } from '../utils/price';
+import {
+  formatPriceRangeSummary,
+  getRangeFromLevels,
+  priceSliderRange,
+  type PriceSliderRange,
+} from '../utils/price';
 
 type UseSearchFilterModalOwnerArgs = {
   searchRuntimeBus: SearchRuntimeBus;
@@ -24,10 +29,10 @@ type UseSearchFilterModalOwnerArgs = {
   onMechanismEvent?: (event: 'query_mutation_coalesced', payload?: Record<string, unknown>) => void;
 };
 
-const arePriceRangesEqual = (a: PriceRangeTuple, b: PriceRangeTuple) =>
+const arePriceRangesEqual = (a: PriceSliderRange, b: PriceSliderRange) =>
   Math.abs(a[0] - b[0]) < 0.001 && Math.abs(a[1] - b[1]) < 0.001;
 
-const PRICE_SUMMARY_REEL_RANGES: PriceRangeTuple[] = [
+const PRICE_SUMMARY_REEL_RANGES: PriceSliderRange[] = [
   [1, 2],
   [1, 3],
   [1, 4],
@@ -38,7 +43,7 @@ const PRICE_SUMMARY_REEL_RANGES: PriceRangeTuple[] = [
   [3, 4],
   [3, 5],
   [4, 5],
-];
+].map(([min, max]) => priceSliderRange(min, max));
 
 const PRICE_SUMMARY_REEL_ENTRIES = PRICE_SUMMARY_REEL_RANGES.map((range) => ({
   range,
@@ -112,7 +117,7 @@ type SearchFilterModalOwner = {
   closeSortSelector: () => void;
   handleSortSelect: (mode: SearchSortMode) => void;
   isPriceSheetContentReady: boolean;
-  pendingPriceRange: PriceRangeTuple;
+  pendingPriceRange: PriceSliderRange;
   scoreInfo: ScoreInfoPayload | null;
   isScoreInfoVisible: boolean;
   openScoreInfo: (payload: ScoreInfoPayload) => void;
@@ -126,7 +131,7 @@ type SearchFilterModalOwner = {
   measureSummaryCandidateWidth: (nextWidth: number) => void;
   priceSliderLowValue: ReturnType<typeof useSharedValue<number>>;
   priceSliderHighValue: ReturnType<typeof useSharedValue<number>>;
-  handlePriceSliderCommit: (range: PriceRangeTuple) => void;
+  handlePriceSliderCommit: (range: PriceSliderRange) => void;
   summaryReelItems: readonly {
     key: string;
     label: string;
@@ -159,8 +164,8 @@ export const useSearchFilterModalOwner = ({
   const [isSortSelectorVisible, setIsSortSelectorVisible] = React.useState(false);
   const [isPriceSheetContentReady, setIsPriceSheetContentReady] = React.useState(false);
   const priceSheetRef = React.useRef<OverlayModalSheetHandle | null>(null);
-  const [pendingPriceRange, setPendingPriceRange] = React.useState<PriceRangeTuple>(
-    () => [Math.min(...priceLevels), Math.max(...priceLevels)] as PriceRangeTuple
+  const [pendingPriceRange, setPendingPriceRange] = React.useState<PriceSliderRange>(
+    () => priceSliderRange(Math.min(...priceLevels), Math.max(...priceLevels))
   );
   const [scoreInfo, setScoreInfo] = React.useState<ScoreInfoPayload | null>(null);
   const [isScoreInfoVisible, setScoreInfoVisible] = React.useState(false);
@@ -193,8 +198,8 @@ export const useSearchFilterModalOwner = ({
     setPriceSummaryPillWidth((prev) => (prev != null && prev >= nextWidth ? prev : nextWidth));
   }, []);
 
-  const priceSliderLowValue = useSharedValue(pendingPriceRange[0]);
-  const priceSliderHighValue = useSharedValue(pendingPriceRange[1]);
+  const priceSliderLowValue = useSharedValue<number>(pendingPriceRange[0]);
+  const priceSliderHighValue = useSharedValue<number>(pendingPriceRange[1]);
   const priceSheetSummaryReelPosition = useDerivedValue(() =>
     getPriceSummaryReelIndexFromBoundaries(priceSliderLowValue.value, priceSliderHighValue.value)
   );
@@ -220,7 +225,7 @@ export const useSearchFilterModalOwner = ({
     wasPriceSelectorVisibleRef.current = isPriceSelectorVisible;
   }, [isPriceSelectorVisible, pendingPriceRange, priceSliderHighValue, priceSliderLowValue]);
 
-  const handlePriceSliderCommit = React.useCallback((range: PriceRangeTuple) => {
+  const handlePriceSliderCommit = React.useCallback((range: PriceSliderRange) => {
     const applyUpdate = () => {
       setPendingPriceRange((prev) => (arePriceRangesEqual(prev, range) ? prev : range));
     };

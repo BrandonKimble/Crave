@@ -13,7 +13,7 @@ import type { OverlayModalSheetHandle } from '../../../overlays/OverlayModalShee
 import OverlayModalSheet from '../../../overlays/OverlayModalSheet';
 import { OVERLAY_HORIZONTAL_PADDING } from '../../../overlays/overlaySheetStyles';
 import { ACTIVE_TAB_COLOR_DARK } from '../constants/search';
-import type { PriceRangeTuple } from '../utils/price';
+import type { PriceSliderRange } from '../utils/price';
 import PriceRangeSlider from './price-range-slider';
 import styles from '../styles';
 
@@ -42,7 +42,7 @@ export type SearchPriceSheetProps = {
   isPriceSheetContentReady: boolean;
   priceSliderLowValue: SharedValue<number>;
   priceSliderHighValue: SharedValue<number>;
-  handlePriceSliderCommit: (range: PriceRangeTuple) => void;
+  handlePriceSliderCommit: (range: PriceSliderRange) => void;
   dismissPriceSelector: () => void;
   handlePriceDone: () => void;
   activeTabColor: string;

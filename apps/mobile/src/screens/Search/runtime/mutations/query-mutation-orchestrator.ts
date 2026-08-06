@@ -9,7 +9,7 @@ import {
   getRangeFromLevels,
   isFullPriceRange,
   normalizePriceRangeValues,
-  type PriceRangeTuple,
+  type PriceSliderRange,
 } from '../../utils/price';
 
 type QueryMutationMechanismEmitter = (
@@ -19,8 +19,8 @@ type QueryMutationMechanismEmitter = (
 
 type UseQueryMutationOrchestratorArgs = {
   searchRuntimeBus: SearchRuntimeBus;
-  pendingPriceRange: PriceRangeTuple;
-  setPendingPriceRange: (next: PriceRangeTuple) => void;
+  pendingPriceRange: PriceSliderRange;
+  setPendingPriceRange: (next: PriceSliderRange) => void;
   isPriceSelectorVisible: boolean;
   setIsPriceSelectorVisible: (next: boolean) => void;
   priceLevels: readonly number[];
@@ -95,7 +95,7 @@ export const useQueryMutationOrchestrator = (
     [captureFreshTupleBounds, searchRuntimeBus]
   );
 
-  const pendingPriceRangeRef = React.useRef<PriceRangeTuple>(pendingPriceRange);
+  const pendingPriceRangeRef = React.useRef<PriceSliderRange>(pendingPriceRange);
 
   React.useEffect(() => {
     pendingPriceRangeRef.current = pendingPriceRange;

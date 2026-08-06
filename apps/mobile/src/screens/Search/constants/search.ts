@@ -14,10 +14,11 @@ export const SEARCH_HEADER_HEIGHT = 50;
 // Near-expanded zone where visible search chrome scales down and the map scrim strengthens.
 export const SEARCH_CHROME_SHEET_RESPONSE_ZONE_PX = 220;
 export const SEARCH_CHROME_SCALE_TRANSFORM_ORIGIN = 'center bottom';
+// F2311: CARD_GAP -> SHARED_SECTION_GAP -> SECTION_GAP were three exported names
+// for this one number, and "SHARED" asserted a sharing that did not exist (no
+// reader outside this file). One name now.
 export const CARD_GAP = 6;
-export const SHARED_SECTION_GAP = CARD_GAP;
 export const FIRST_RESULT_TOP_PADDING_EXTRA = 8;
-export const SECTION_GAP = SHARED_SECTION_GAP;
 export const ACTIVE_TAB_COLOR = themeColors.primary;
 const deriveDarkerHexColor = (hexColor: string, factor = 0.72) => {
   const raw = hexColor.replace('#', '');
@@ -51,18 +52,16 @@ export const USA_FALLBACK_ZOOM = 3.2;
 export const TOP_FOOD_RENDER_LIMIT = 3;
 export const SINGLE_LOCATION_ZOOM_LEVEL = 13;
 export const PIN_MARKER_SIZE = 28;
-export const PIN_MARKER_SCALE = 1;
-export const PIN_MARKER_RENDER_SIZE = PIN_MARKER_SIZE * PIN_MARKER_SCALE;
+export const PIN_MARKER_RENDER_SIZE = PIN_MARKER_SIZE;
 export const PIN_BASE_WIDTH = 96;
 export const PIN_BASE_HEIGHT = 96;
 export const PIN_FILL_WIDTH = 80;
 export const PIN_FILL_HEIGHT = 72;
-export const PIN_FILL_SCALE = 1.0;
 export const PIN_BASE_SCALE = PIN_MARKER_RENDER_SIZE / PIN_BASE_HEIGHT;
 export const PIN_FILL_VERTICAL_BIAS = -4; // Shift up so top gap = side gap
 export const PIN_FILL_HORIZONTAL_BIAS = 0;
-export const PIN_FILL_RENDER_WIDTH = PIN_FILL_WIDTH * PIN_BASE_SCALE * PIN_FILL_SCALE;
-export const PIN_FILL_RENDER_HEIGHT = PIN_FILL_HEIGHT * PIN_BASE_SCALE * PIN_FILL_SCALE;
+export const PIN_FILL_RENDER_WIDTH = PIN_FILL_WIDTH * PIN_BASE_SCALE;
+export const PIN_FILL_RENDER_HEIGHT = PIN_FILL_HEIGHT * PIN_BASE_SCALE;
 export const PIN_FILL_LEFT_OFFSET =
   (PIN_BASE_WIDTH * PIN_BASE_SCALE - PIN_FILL_RENDER_WIDTH) / 2 +
   PIN_FILL_HORIZONTAL_BIAS * PIN_BASE_SCALE;
@@ -75,16 +74,13 @@ export const PIN_FILL_CENTER_X = PIN_FILL_LEFT_OFFSET + PIN_FILL_RENDER_WIDTH / 
 export const PIN_FILL_CENTER_Y = PIN_FILL_TOP_OFFSET + PIN_FILL_RENDER_HEIGHT / 2;
 
 // Rank text sizing - use pin fill dimensions for container
-export const PIN_RANK_FONT_SIZE = FONT_SIZES.body; // 14
-export const PIN_RANK_CONTAINER_WIDTH = PIN_FILL_RENDER_WIDTH; // ~22.63 - wider for 2-digit numbers
-export const PIN_RANK_CONTAINER_HEIGHT = PIN_FILL_RENDER_HEIGHT; // ~20.37
+export const PIN_RANK_FONT_SIZE = FONT_SIZES.body;
+// Wider than the glyph so 2-digit ranks fit; the expression above IS the value.
+export const PIN_RANK_CONTAINER_WIDTH = PIN_FILL_RENDER_WIDTH;
+export const PIN_RANK_CONTAINER_HEIGHT = PIN_FILL_RENDER_HEIGHT;
 
-// Optical adjustment for platform text rendering (positive = shift right)
-const PIN_RANK_OPTICAL_OFFSET_X = 0;
-
-// Position container centered on pin fill center (with optical adjustment)
-export const PIN_RANK_LEFT =
-  PIN_FILL_CENTER_X - PIN_RANK_CONTAINER_WIDTH / 2 + PIN_RANK_OPTICAL_OFFSET_X;
+// Position container centered on pin fill center.
+export const PIN_RANK_LEFT = PIN_FILL_CENTER_X - PIN_RANK_CONTAINER_WIDTH / 2;
 export const PIN_RANK_TOP = PIN_FILL_CENTER_Y - PIN_RANK_CONTAINER_HEIGHT / 2;
 
 export const AUTOCOMPLETE_MIN_CHARS = 1;
@@ -96,7 +92,7 @@ export const SEARCH_SUGGESTION_PANEL_PADDING_BOTTOM = 0;
 export const SEARCH_SUGGESTION_HEADER_PADDING_BOTTOM = 9;
 export const SEARCH_SUGGESTION_HEADER_PADDING_OVERLAP = 1;
 export const SEARCH_SUGGESTION_HEADER_PANEL_GAP = 0;
-export const SEARCH_SHORTCUTS_BOTTOM_MARGIN = SECTION_GAP;
+export const SEARCH_SHORTCUTS_BOTTOM_MARGIN = CARD_GAP;
 export const SEARCH_SHORTCUTS_STRIP_FALLBACK_HEIGHT = 52;
 
 export const MARKER_SHADOW_STYLE = {
@@ -119,7 +115,6 @@ export const MAP_MOVE_DISTANCE_RATIO = 0.08;
 
 export const NAV_TOP_PADDING = 8;
 export const NAV_BOTTOM_PADDING = 0;
-export const RESULT_HEADER_ICON_SIZE = 35;
 export const SECONDARY_METRIC_ICON_SIZE = 14;
 export const VOTE_ICON_SIZE = SECONDARY_METRIC_ICON_SIZE;
 export const RESULT_ACTIONS_LEFT_GAP = 24;

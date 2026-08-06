@@ -5,12 +5,35 @@ import { TOP_FOOD_RENDER_LIMIT } from '../constants/search';
 import type { CachedTopFoodLayout } from '../hooks/use-top-food-measurement';
 import { formatDistanceMiles } from '../utils/format';
 import { formatRankLabel, getRankFontSize } from '../utils/rank-badge';
+import {
+  splitMatchSegmentsWithPolicy,
+  type SuggestionMatchPolicy,
+  type SuggestionMatchSegment,
+} from '../utils/suggestion-match-highlight';
 
 const MAX_MATCHED_TAGS = 3;
 
-export type RestaurantResultCardTextSegment = {
-  highlighted: boolean;
-  text: string;
+// F2302: the card once carried its OWN matcher. It does not any more — these are
+// the card's presentation rules over the ONE spec-covered matcher in
+// utils/suggestion-match-highlight.ts.
+const RESTAURANT_CARD_HIGHLIGHT_POLICY: SuggestionMatchPolicy = {
+  minLength: 3,
+  singleWordOnly: true,
+  expandPluralSuffix: true,
+};
+
+export const buildRestaurantCardHighlightedTextSegments = (
+  foodName: string,
+  highlight: RestaurantResultCardPrimaryFoodHighlight | null
+): SuggestionMatchSegment[] => {
+  if (highlight == null) {
+    return [{ text: foodName, isMatch: false }];
+  }
+  return splitMatchSegmentsWithPolicy(
+    highlight.term,
+    foodName,
+    RESTAURANT_CARD_HIGHLIGHT_POLICY
+  );
 };
 
 export type RestaurantResultCardMatchedTagDescriptor = {
@@ -19,9 +42,7 @@ export type RestaurantResultCardMatchedTagDescriptor = {
 };
 
 export type RestaurantResultCardPrimaryFoodHighlight = {
-  singleWord: boolean;
   term: string;
-  termLower: string;
 };
 
 export type RestaurantResultCardDescriptor = {
@@ -41,7 +62,7 @@ export type RestaurantResultCardDescriptor = {
   restaurantId: string;
   showDistanceInScore: boolean;
   topFoodLayout: CachedTopFoodLayout | null;
-  topFoodNameSegmentsByConnectionId: Map<string, RestaurantResultCardTextSegment[]>;
+  topFoodNameSegmentsByConnectionId: Map<string, SuggestionMatchSegment[]>;
   totalDishCount: number;
 };
 
@@ -62,78 +83,7 @@ export const createRestaurantCardPrimaryFoodHighlight = (
   if (normalized == null) {
     return null;
   }
-  return {
-    singleWord: !/\s/u.test(normalized),
-    term: normalized,
-    termLower: normalized.toLowerCase(),
-  };
-};
-
-const isWordChar = (char: string | undefined): boolean => {
-  if (!char) {
-    return false;
-  }
-  return /[A-Za-z0-9]/.test(char);
-};
-
-export const buildRestaurantCardHighlightedTextSegments = (
-  foodName: string,
-  highlight: RestaurantResultCardPrimaryFoodHighlight | null
-): RestaurantResultCardTextSegment[] => {
-  if (!highlight?.singleWord || highlight.term.length < 3) {
-    return [{ highlighted: false, text: foodName }];
-  }
-
-  const nameLower = foodName.toLowerCase();
-  const matchIndex = nameLower.indexOf(highlight.termLower);
-  if (matchIndex < 0) {
-    return [{ highlighted: false, text: foodName }];
-  }
-
-  const matchStart = matchIndex;
-  const matchEnd = matchIndex + highlight.term.length;
-
-  let wordStart = matchStart;
-  let wordEnd = matchEnd;
-  while (wordStart > 0 && isWordChar(foodName[wordStart - 1])) {
-    wordStart -= 1;
-  }
-  while (wordEnd < foodName.length && isWordChar(foodName[wordEnd])) {
-    wordEnd += 1;
-  }
-
-  const isPrefixMatch = matchStart === wordStart;
-  const isSuffixMatch = matchEnd === wordEnd;
-  const word = foodName.slice(wordStart, wordEnd);
-
-  let highlightStart = matchStart;
-  let highlightEnd = matchEnd;
-  if (isPrefixMatch) {
-    const suffix = word.slice(highlight.term.length);
-    const shouldExpandPluralSuffix = suffix === 's' || suffix === 'es';
-    if (shouldExpandPluralSuffix) {
-      highlightStart = wordStart;
-      highlightEnd = wordEnd;
-    }
-  } else if (isSuffixMatch) {
-    highlightStart = matchStart;
-    highlightEnd = matchEnd;
-  }
-
-  const segments: RestaurantResultCardTextSegment[] = [];
-  const before = foodName.slice(0, highlightStart);
-  const match = foodName.slice(highlightStart, highlightEnd);
-  const after = foodName.slice(highlightEnd);
-  if (before.length > 0) {
-    segments.push({ highlighted: false, text: before });
-  }
-  if (match.length > 0) {
-    segments.push({ highlighted: true, text: match });
-  }
-  if (after.length > 0) {
-    segments.push({ highlighted: false, text: after });
-  }
-  return segments.length > 0 ? segments : [{ highlighted: false, text: foodName }];
+  return { term: normalized };
 };
 
 const resolveCraveScoreValue = (restaurant: RestaurantResult): number | null => {
@@ -173,7 +123,7 @@ export const buildRestaurantResultCardDescriptor = ({
     topFoodItems.length
   );
   const primaryFoodHighlight = createRestaurantCardPrimaryFoodHighlight(primaryFoodTerm);
-  const topFoodNameSegmentsByConnectionId = new Map<string, RestaurantResultCardTextSegment[]>();
+  const topFoodNameSegmentsByConnectionId = new Map<string, SuggestionMatchSegment[]>();
   candidateTopFoods.forEach((food) => {
     topFoodNameSegmentsByConnectionId.set(
       food.connectionId,

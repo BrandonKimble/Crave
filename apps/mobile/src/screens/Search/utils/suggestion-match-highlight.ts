@@ -81,3 +81,93 @@ export const splitSuggestionMatchSegments = (
 
 export const hasSuggestionMatchSegments = (segments: SuggestionMatchSegment[]): boolean =>
   segments.some((segment) => segment.isMatch);
+
+// ── Presentation POLICY over the one match (F2302) ──────────────────────────
+// The result card used to carry its OWN matcher (plain toLowerCase, first
+// occurrence only, no spec), so typing "cafe" bolded "Café con Leche" in the
+// suggestion list and highlighted nothing on the card — one screen giving two
+// answers to "what did the user type". There is one matcher now
+// (splitSuggestionMatchSegments, above); the card's extra rules are POLICY over
+// that same match, expressed here.
+
+export type SuggestionMatchPolicy = {
+  /** Refuse to match a needle shorter than this many characters. */
+  minLength: number;
+  /** Refuse to match a needle containing whitespace. */
+  singleWordOnly: boolean;
+  /** When a match is a word PREFIX and the rest of that word is 's'/'es',
+   *  extend the match over the whole word ("taco" highlights all of "tacos"). */
+  expandPluralSuffix: boolean;
+};
+
+const isMatchWordChar = (char: string | undefined): boolean =>
+  typeof char === 'string' && /[A-Za-z0-9]/.test(char);
+
+/**
+ * Expand each match segment that starts a word and is followed only by a
+ * plural suffix ('s' / 'es') so the whole word reads as matched.
+ */
+const expandPluralSuffixes = (
+  segments: SuggestionMatchSegment[],
+  displayText: string
+): SuggestionMatchSegment[] => {
+  const matchRanges: Array<[number, number]> = [];
+  let cursor = 0;
+  for (const segment of segments) {
+    const start = cursor;
+    cursor += segment.text.length;
+    if (segment.isMatch) {
+      matchRanges.push([start, cursor]);
+    }
+  }
+
+  const expandedRanges = matchRanges.map(([start, end]): [number, number] => {
+    if (isMatchWordChar(displayText[start - 1])) {
+      return [start, end];
+    }
+    let wordEnd = end;
+    while (wordEnd < displayText.length && isMatchWordChar(displayText[wordEnd])) {
+      wordEnd += 1;
+    }
+    const suffix = displayText.slice(end, wordEnd);
+    return suffix === 's' || suffix === 'es' ? [start, wordEnd] : [start, end];
+  });
+
+  const expanded: SuggestionMatchSegment[] = [];
+  let position = 0;
+  for (const [start, end] of expandedRanges) {
+    if (end <= position) {
+      continue;
+    }
+    const from = Math.max(start, position);
+    if (from > position) {
+      expanded.push({ text: displayText.slice(position, from), isMatch: false });
+    }
+    expanded.push({ text: displayText.slice(from, end), isMatch: true });
+    position = end;
+  }
+  if (position < displayText.length) {
+    expanded.push({ text: displayText.slice(position), isMatch: false });
+  }
+  return expanded;
+};
+
+export const splitMatchSegmentsWithPolicy = (
+  query: string,
+  displayText: string,
+  policy: SuggestionMatchPolicy
+): SuggestionMatchSegment[] => {
+  const trimmed = query.trim();
+  if (
+    trimmed.length < policy.minLength ||
+    (policy.singleWordOnly && /\s/u.test(trimmed)) ||
+    !displayText
+  ) {
+    return displayText ? [{ text: displayText, isMatch: false }] : [];
+  }
+  const segments = splitSuggestionMatchSegments(trimmed, displayText);
+  if (!policy.expandPluralSuffix) {
+    return segments;
+  }
+  return expandPluralSuffixes(segments, displayText);
+};

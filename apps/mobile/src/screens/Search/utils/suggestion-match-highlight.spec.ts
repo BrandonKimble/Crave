@@ -2,7 +2,9 @@
 // contract for bolding the predictive completion in suggestion rows.
 import {
   hasSuggestionMatchSegments,
+  splitMatchSegmentsWithPolicy,
   splitSuggestionMatchSegments,
+  type SuggestionMatchPolicy,
 } from './suggestion-match-highlight';
 
 describe('splitSuggestionMatchSegments', () => {
@@ -88,6 +90,72 @@ describe('splitSuggestionMatchSegments', () => {
       { text: '🌮 ', isMatch: false },
       { text: 'Taco', isMatch: true },
       { text: ' Truck', isMatch: false },
+    ]);
+  });
+});
+
+// F2302: the result card used to carry a SECOND matcher (plain toLowerCase,
+// first occurrence only, no spec), so "cafe" highlighted Café con Leche in the
+// suggestion list and NOTHING on the card. There is one matcher now; the card's
+// extra rules are policy over it, and they are exercised here.
+describe('splitMatchSegmentsWithPolicy (result-card policy)', () => {
+  const cardPolicy: SuggestionMatchPolicy = {
+    minLength: 3,
+    singleWordOnly: true,
+    expandPluralSuffix: true,
+  };
+
+  it('diacritic match on the card: "cafe" highlights "Café con Leche"', () => {
+    expect(splitMatchSegmentsWithPolicy('cafe', 'Café con Leche', cardPolicy)).toEqual([
+      { text: 'Café', isMatch: true },
+      { text: ' con Leche', isMatch: false },
+    ]);
+  });
+
+  it('minLength: a 2-character term is refused', () => {
+    expect(splitMatchSegmentsWithPolicy('ne', 'New England Roll', cardPolicy)).toEqual([
+      { text: 'New England Roll', isMatch: false },
+    ]);
+  });
+
+  it('singleWordOnly: a multi-word term is refused', () => {
+    expect(
+      splitMatchSegmentsWithPolicy('chicken sandwich', 'Chicken Sandwich', cardPolicy)
+    ).toEqual([{ text: 'Chicken Sandwich', isMatch: false }]);
+  });
+
+  it('plural expansion: a word-prefix match swallows an s/es suffix', () => {
+    expect(splitMatchSegmentsWithPolicy('taco', 'Carne Tacos', cardPolicy)).toEqual([
+      { text: 'Carne ', isMatch: false },
+      { text: 'Tacos', isMatch: true },
+    ]);
+    expect(splitMatchSegmentsWithPolicy('sandwich', 'Sandwiches', cardPolicy)).toEqual([
+      { text: 'Sandwiches', isMatch: true },
+    ]);
+  });
+
+  it('plural expansion does NOT fire mid-word or on a non-plural remainder', () => {
+    expect(splitMatchSegmentsWithPolicy('taco', 'Tacotruck', cardPolicy)).toEqual([
+      { text: 'Taco', isMatch: true },
+      { text: 'truck', isMatch: false },
+    ]);
+    expect(splitMatchSegmentsWithPolicy('rice', 'Fried rice', cardPolicy)).toEqual([
+      { text: 'Fried ', isMatch: false },
+      { text: 'rice', isMatch: true },
+    ]);
+  });
+
+  it('no policy expansion: policy off leaves the raw match alone', () => {
+    expect(
+      splitMatchSegmentsWithPolicy('taco', 'Carne Tacos', {
+        minLength: 3,
+        singleWordOnly: true,
+        expandPluralSuffix: false,
+      })
+    ).toEqual([
+      { text: 'Carne ', isMatch: false },
+      { text: 'Taco', isMatch: true },
+      { text: 's', isMatch: false },
     ]);
   });
 });

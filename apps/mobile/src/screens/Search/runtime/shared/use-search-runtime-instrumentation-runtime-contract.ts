@@ -95,12 +95,3 @@ export type UseSearchRuntimeInstrumentationRuntimeResult = {
   shouldLogMapEventRates: boolean;
   mapEventLogIntervalMs: number;
 };
-
-export const areResultsPresentationTransportLifecycleStatesEqual = (
-  left: ResultsPresentationTransportState,
-  right: ResultsPresentationTransportState
-): boolean =>
-  left.transactionId === right.transactionId &&
-  left.snapshotKind === right.snapshotKind &&
-  left.coverState === right.coverState &&
-  left.executionStage === right.executionStage;
