@@ -342,8 +342,15 @@ export const INVARIANTS: readonly Invariant[] = [
     mutations: [
       {
         file: 'src/modules/places/tomtom-chain-probe.adapter.ts',
-        find: "    try {\n      await this.governance.assertTomtomSpendOpen();\n    } catch {\n      return { kind: 'denied' };\n    }\n\n    const outcome",
-        replace: '\n    const outcome',
+        // RE-DERIVED 2026-08-05. The gate used to be inlined at the top of
+        // probe(), and this mutation deleted that block. It has since moved
+        // into spendGateVerdict(), shared by probe() and fetchPolygon() — so
+        // the mutation now targets the verdict itself, which is strictly
+        // better: one edit disarms the gate at EVERY call site rather than
+        // the one that happened to be inlined.
+        find: "      if (error instanceof SpendBudgetClosedError) {\n        return { kind: 'denied' };\n      }",
+        replace:
+          '      if (error instanceof SpendBudgetClosedError) {\n        return null; // MUTATED: a closed budget no longer denies.\n      }',
       },
     ],
   },
@@ -363,7 +370,7 @@ export const INVARIANTS: readonly Invariant[] = [
     mutations: [
       {
         file: 'src/modules/places/tomtom-chain-probe.adapter.ts',
-        find: "// recordAttempt, which was right by luck, not by type.\n      return { kind: 'failed', reason: describeTransportFault(error) };",
+        find: "// recordAttempt, which was right by luck, not by type.\n      return {\n        kind: 'failed',\n        reason: describeTransportFault(error),\n        scope: 'systemic',\n      };",
         replace:
           "// MUTATED: the pre-2026-08-04 conflation.\n      return { kind: 'miss' };",
       },
