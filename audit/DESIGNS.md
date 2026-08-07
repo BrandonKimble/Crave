@@ -2124,3 +2124,54 @@ protect against a PRE-EXISTING dirty index — another lane's staged deletions r
 the commit unless caught at commit time. The lane caught it via --name-only review,
 soft-reset, recommitted clean. The rule is now: review `git diff --cached --name-only`
 against your pathspec list BEFORE every commit in a multi-lane tree.
+
+---
+
+## D81 — P2 verdicts on the Fable second-opinion (F3910–F3915, 2026-08-06)
+
+The owner asked for an independent Fable audit of the Opus-era work. Its overall verdict —
+production changes CLEAN end to end (messaging wire shape traced into the mobile mirror;
+the batch collapse's ordering preserved; the tsbuildinfo reasoning checked against real
+import shapes; sampled spec hardenings are liveness witnesses, not implementation
+coupling) — and its five proof-holes are ALL IN THE GUARD MACHINERY, most of it written by
+me. That distribution is itself the lesson: the guards got one round of adversarial
+attention at birth and none since, while production changes got P2 + mutation proofs +
+this second pass.
+
+**F3910/F3911 — APPROVED, scanner-source hardening.** A regex literal containing escaped
+slashes false-strips the rest of its line, blinding a REAL call on that line — the exact
+failure the header promises cannot happen; a quote inside a regex char class re-admits
+prose false-passes; the header claims `#` handling that does not exist. AND there is a
+SECOND stripper (`apps/api/src/shared/testing/code-only.ts`) with the OPPOSITE documented
+bias, neither citing the other — the hand-rolled-duplicate pattern this exercise polices,
+in the exercise's own tooling. Design: ONE stripper, regex-literal-aware (track the
+after-operator position heuristic or bail conservatively per line), the bias trade-off
+documented once, both consumers on it; the false-strip case becomes a spec.
+
+**F3912 — APPROVED.** Trailing `--` comments false-pass the backtick gate. Extend to
+in-line detection WITHOUT flagging `--` in code (decrement) — the line-start heuristic
+stays primary; a trailing detector only fires inside a line that is inside a template
+literal per the (single, hardened) stripper. If that coupling proves heavy, the honest
+alternative is documenting the line-start-only scope in the gate's output. My own
+verification attempt was CONFOUNDED — the gate crashed on a concurrently-deleted file —
+which surfaced **the sixth hole: raw ENOENT crash on index/worktree mismatch.** All gates
+get the same treatment: a tracked-but-absent file is SKIPPED WITH A COUNT (CI checkouts
+are clean; locally the tree moves), never a stack trace.
+
+**F3913 — APPROVED.** Root-anchored pathspec: `git ls-files 'railway*.json'` misses a
+nested manifest. `'**/railway*.json'` plus a spec-fixture proof.
+
+**F3914 — APPROVED.** The migration guard's grandfather list checks existence, not
+content — an EDIT to a grandfathered migration is invisible; guard position (the SETs
+must precede the heavy statement) is unchecked; the unbounded-UPDATE regex requires a
+terminating `;`. Harden all three: grandfather entries pin the file's blob sha; position
+check; statement-boundary tolerance.
+
+**F3915 — APPROVED.** 41 reviewed COVERAGE rows whose path left the tree stay green
+forever in `--check`. A missing path is a judgement someone must make (DELETED or a
+rename to chase) — surface them as a failing count with a `--acknowledge-missing` path,
+mirroring the unverifiable-rows fix (F2600) this same file already got.
+
+One P3 lane, scripts/ + code-only.ts only. NOTE for that lane: the stage-2 inline is
+actively deleting files — expect transient ENOENT/staleness noise until it lands; fixing
+that noise IS item six.
