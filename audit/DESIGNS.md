@@ -3457,3 +3457,30 @@ exclusion ZEROES autocomplete's attribute-selection lane out of the map entirely
 exact harm the census-first STOP predicted and the doctrine-text ruling avoided. All five
 daily-acts dialects now route through the one builder. One P3 remains (the D114 gate
 sequence); clean pass 1 fans out on its landing.
+
+---
+
+## D117 — the D114 sequence lands; all approved work is terminal; clean passes begin (2026-08-07)
+
+**Ratified with three deviations, all correct:** 8 conversions not 10 (two of the ten WERE
+two of the three dependency rules — handled once, not twice); one ban tightened against
+measurement (the bare form has one legal live call — the ban is the exact killed form);
+and **F7300, which is mine to own**: my D114 summary said the three new `-U` matches were
+"all in the delete bucket" — the third was a RESIDUE check F7200 explicitly declined to
+classify, and executing my summary literally would have shipped a red gate. The lane
+measured before trusting, caught it, resolved it on F7200's own residue data. Third
+instance of a summary outliving its measurement; two of the three were mine.
+
+**The scoreboard:** 22 checks RED-proven in one pass (9 bans + 13 laws), ZERO demotions —
+every law fired on its multi-line planted shape, the shape that was invisible for the
+class's whole prior life. The dependency rules landed as import restrictions (strictly
+stronger: `runOnUI` is live in seven other modules, so only a file-scoped rule can express
+the law). The concentration ratchet watches the TREE with zero-headroom measured budgets
+and names its argmax. Delete-gate 203→183, ownership 27→23, six theatre budgets retired
+WITH their birth measurements recorded.
+
+**All approved designs are now implemented or formally closed. CLEAN PASS 1 BEGINS.**
+Charter per territory lane: fresh-eyes re-hunt (zero new findings = success, reported
+honestly either way); close the remaining UNREVIEWED residue reachable in its territory
+and any PARTIAL whose named gap is readable; every full-suite invocation captured
+`> file 2>&1` (F6803 protocol); no re-litigation of terminal rows.
