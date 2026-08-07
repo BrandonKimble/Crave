@@ -2584,3 +2584,32 @@ Options and a recommendation are on the row.
 **F4934/F4932 folded into the F2700/F2701 escalations** as adjacent instances, not
 re-litigated. The zero-residue sweeps (ladder/sync-LLM: zero; prompt paths: zero dangling,
 with the REASON — one glob, no per-file list to forget) are accepted as evidence.
+
+---
+
+## D92 — resolver/reconciler P3 ratified (F4800–F4806 + F4507, 2026-08-06)
+
+All eight landed, 88 suites / 955 tests green run twice. Three things worth the record:
+
+**F4800 landed at the top of the ladder.** The union REFUSES to let the abort be ignored —
+deleting the aborted arm is TS2339, reverting to null-return is TS2322 at two sites. The
+old shape is unwritable, not merely untested, and both false comments died with it. The
+list fetchers' null now classifies as an honest failure rather than a phantom
+cancellation.
+
+**Two of the design's sub-claims were refuted by reading, and the lane proved better ones.**
+F4804's guard count was 4, not 7 (three DEV-trace defaults are genuinely live pre-dispatch
+and stay WITH a comment saying so), and the row's proposed mutation compiles silently —
+TS does not flag a null comparison on a non-nullable — so the lane replaced it with real
+unwritability proofs (TS2322 both directions). F4802's `Object.is` mutation is NOT
+satisfied without F1610's collapse, and the lane said so instead of pretending.
+
+**The gate ecology worked live.** Deleting F4802's dead memo made its wrapper hookless —
+and `check-search-runtime-hook-names` FAILED it mid-lane, forcing the honest outcome (the
+wrapper deleted, the caller direct). A guard built three days ago caught the consequence
+of a deletion made today. That is what the mechanism-over-convention investment buys.
+
+F4507's ten-contract dead-handler chain deleted as ONE typechecking commit with the spec's
+seventeen identity assertions. F5000 filed OPEN rather than deleted-on-a-grep: a route
+lane that can be closed but never opened needs its three opener surfaces READ first —
+the F4939 lesson applied forward.
