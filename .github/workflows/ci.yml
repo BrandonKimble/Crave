@@ -201,6 +201,21 @@ jobs:
         working-directory: apps/mobile
         run: yarn test:track-domain
 
+      # F7800 — THE HERMETIC LANE, RUN DETERMINISTICALLY IN ONE WORKER. The
+      # mobile pure lane's `yarn test` (above, via turbo) runs jest in PARALLEL,
+      # so a hermeticity regression — a spec whose result is a function of which
+      # siblings share its worker process — passes here 5 runs in 6. That is
+      # exactly how F4700/F7800 hid: a `virtual: true` mock of the REAL
+      # react-native module let a transitive import load the untransformed ESM
+      # file, but only when the wrong siblings co-scheduled. A single-worker
+      # `--runInBand` run pins module order, so the class shows RED
+      # deterministically instead of 1-in-6. If a real-module virtual mock (or
+      # any other worker-order dependence) is reintroduced, this step reds where
+      # the parallel run stays green.
+      - name: Test (hermetic lane — deterministic single-worker order)
+        working-directory: apps/mobile
+        run: yarn test:inband
+
       # DO THE GUARDS STILL BITE? For every entry in the invariant registry,
       # apply a mutation that must break it and require the check to FAIL.
       #

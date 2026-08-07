@@ -15,15 +15,11 @@
  * PHOTO_STRIP_TILE_HEIGHT = 72 / ASPECT = 4/3 as local literals instead of the
  * imported gallery constants) and the matching case fails.
  */
-jest.mock(
-  'react-native',
-  () => ({
-    Dimensions: { get: () => ({ width: 393, height: 852 }) },
-    StyleSheet: { create: <T>(styles: T): T => styles, absoluteFillObject: {} },
-    Platform: { OS: 'ios', select: (spec: Record<string, unknown>) => spec.ios },
-  }),
-  { virtual: true }
-);
+jest.mock('react-native', () => ({
+  Dimensions: { get: () => ({ width: 393, height: 852 }) },
+  StyleSheet: { create: <T>(styles: T): T => styles, absoluteFillObject: {} },
+  Platform: { OS: 'ios', select: (spec: Record<string, unknown>) => spec.ios },
+}));
 
 import { buildPresetHoles } from './cutout-skeleton-presets';
 import {

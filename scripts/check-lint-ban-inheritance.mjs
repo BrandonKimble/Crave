@@ -68,6 +68,42 @@ const PROBES = [
 ];
 
 /**
+ * SCOPED FLOORS (F7901/D122 — the gate that covered half its mandate).
+ *
+ * The single repo-wide BASELINE_FILE cannot carry a SCOPED ban. F2050 was TWO
+ * door-lock bans; only one — the native `<Modal>` ban — is repo-wide and thus
+ * visible to a plain-util baseline. The other, the SKELETON LAW (no raw
+ * `ActivityIndicator` in a panel or in `Button.tsx`), exists ONLY on the panels
+ * override. A superset-of-baseline check therefore never required it, so an
+ * override could drop the skeleton-law ban and the gate stayed GREEN — the
+ * exact class this gate exists to catch, on the exact ban that motivated it
+ * (demonstrated live: appending a panels override with `importNames: ['Modal']`
+ * left the gate at exit 0 while `--print-config` showed the ActivityIndicator
+ * ban gone).
+ *
+ * The fix is a FROZEN floor: every file in a named scope MUST carry these ban
+ * keys, asserted directly rather than derived from a live config a later
+ * override could shrink in lockstep (deriving the floor from a panel file would
+ * reproduce the same subset-of-what-it-guards hole one level up). Adding a
+ * scoped ban means adding its key here — a deliberate, visible act, which is
+ * the point; a frozen digest going stale on an intentional ban addition is
+ * correct and cheap.
+ */
+const SCOPED_FLOORS = [
+  {
+    scope: 'panels + shared Button (THE SKELETON LAW, F2050)',
+    rule: 'no-restricted-imports',
+    // Representative files that must each carry the scoped bans. Explicit, not
+    // globbed, for the same reason PROBES is: adding a scoped file without a
+    // probe should be visible in review.
+    probes: ['src/overlays/panels/ListDetailPanel.tsx', 'src/components/ui/Button.tsx'],
+    // Effective-config ban keys required in every probe above. Both F2050 door
+    // locks: the skeleton-law spinner ban AND the native-Modal ban.
+    requiredKeys: ['path:react-native:ActivityIndicator', 'path:react-native:Modal'],
+  },
+];
+
+/**
  * Every literal (non-glob) path an override names must still exist. A config
  * block scoped to a deleted file is dead weight that reads as live protection
  * — and it is how a probe list silently stops covering anything. Found on the
@@ -124,8 +160,10 @@ function banKeys(ruleEntry) {
   return keys;
 }
 
+const SCOPED_PROBES = [...new Set(SCOPED_FLOORS.flatMap((f) => f.probes))];
+
 // Missing tooling is a FAILURE, never a pass.
-for (const rel of [BASELINE_FILE, ...PROBES]) {
+for (const rel of [BASELINE_FILE, ...PROBES, ...SCOPED_PROBES]) {
   if (!existsSync(join(PKG, rel))) {
     console.error(
       `FAIL: probe file ${rel} does not exist. This gate measures nothing ` +
@@ -188,6 +226,33 @@ for (const probe of PROBES) {
   }
 }
 
+// SCOPED FLOORS: a scoped ban is invisible to the repo-wide baseline, so assert
+// it directly against every probe in its scope.
+let scopedRequired = 0;
+for (const floor of SCOPED_FLOORS) {
+  for (const probe of floor.probes) {
+    const cfg = printConfig(probe);
+    const got = banKeys(cfg.rules?.[floor.rule]);
+    const covers = (k) => {
+      if (got.has(k)) return true;
+      const m = /^path:([^:]+):/.exec(k);
+      return m ? got.has(`path:${m[1]}`) : false;
+    };
+    const missing = floor.requiredKeys.filter((k) => !covers(k));
+    if (missing.length) {
+      failures.push(
+        `${probe}: the scoped floor "${floor.scope}" requires ` +
+          `${missing.length} ban(s) that this file's effective \`${floor.rule}\` ` +
+          `config does not carry — ${missing.join(', ')}. This ban is SCOPED (it ` +
+          `is not in the repo-wide baseline), so the superset check cannot see it; ` +
+          `an override that drops it from this scope must red HERE. Restate the ban ` +
+          `in the scope's override.`,
+      );
+    }
+  }
+  scopedRequired += floor.requiredKeys.length;
+}
+
 if (failures.length) {
   console.error(
     'lint-ban-inheritance FAILED:\n' +
@@ -197,5 +262,6 @@ if (failures.length) {
 }
 console.log(
   `lint-ban-inheritance OK — ${PROBES.length} override scopes each carry all ` +
-    `${totalBaseline} baseline ban(s).`,
+    `${totalBaseline} baseline ban(s); ${SCOPED_FLOORS.length} scoped floor(s) ` +
+    `assert ${scopedRequired} additional scoped ban(s) over ${SCOPED_PROBES.length} probe(s).`,
 );

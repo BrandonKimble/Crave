@@ -18,27 +18,23 @@
 // The persisted store writes through AsyncStorage; in the hermetic node project
 // there is no native module, so stand in a memory map rather than let every
 // write log a warning (and, worse, resolve after teardown).
-jest.mock(
-  '@react-native-async-storage/async-storage',
-  () => {
-    const memory = new Map<string, string>();
-    return {
-      __esModule: true,
-      default: {
-        getItem: (key: string) => Promise.resolve(memory.get(key) ?? null),
-        setItem: (key: string, value: string) => {
-          memory.set(key, value);
-          return Promise.resolve();
-        },
-        removeItem: (key: string) => {
-          memory.delete(key);
-          return Promise.resolve();
-        },
+jest.mock('@react-native-async-storage/async-storage', () => {
+  const memory = new Map<string, string>();
+  return {
+    __esModule: true,
+    default: {
+      getItem: (key: string) => Promise.resolve(memory.get(key) ?? null),
+      setItem: (key: string, value: string) => {
+        memory.set(key, value);
+        return Promise.resolve();
       },
-    };
-  },
-  { virtual: true }
-);
+      removeItem: (key: string) => {
+        memory.delete(key);
+        return Promise.resolve();
+      },
+    },
+  };
+});
 
 import { useOnboardingStore } from '../../store/onboardingStore';
 import { decideOnboardingCompletionReplay } from './onboarding-completion-replay';

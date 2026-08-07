@@ -9,6 +9,7 @@
     "dev": "yarn start",
     "build": "node -e \"console.log('Skipping web build (native-only app).')\"",
     "test": "node scripts/jest-honest.js",
+    "test:inband": "node scripts/jest-honest.js --runInBand",
     "test:raw": "jest",
     "test:tracksheet-render": "jest --config jest.tracksheet-render.config.js",
     "test:track-domain": "ios/TrackScrollKit/Tests/run.sh",

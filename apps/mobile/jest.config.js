@@ -31,11 +31,17 @@ module.exports = {
   roots: ['<rootDir>/src'],
   testMatch: ['**/*.spec.ts'],
   moduleFileExtensions: ['ts', 'js', 'json', 'node'],
-  // @sentry/react-native ships untranspiled ESM and node_modules is not transformed in
-  // this hermetic lane — see jest.sentry-stub.js for why a stub (not an avoidance) is
-  // the right answer.
+  // @sentry/react-native and react-native both ship untranspiled ESM and node_modules is
+  // not transformed in this hermetic lane — see jest.sentry-stub.js / jest.react-native-stub.js
+  // for why a stub (not an avoidance) is the right answer. Mapping ^react-native$ here is
+  // F7800's fix: it makes the lane's hermeticity a CONFIG fact so a transitive import of
+  // react-native from any directory resolves to the stub instead of the real ESM file —
+  // the load-order flake the deleted per-spec `virtual: true` mocks could never prevent.
+  // A spec needing a richer surface still `jest.mock('react-native', factory)`s it (no
+  // `virtual`), which overrides this map for that suite.
   moduleNameMapper: {
     '^@sentry/react-native$': '<rootDir>/jest.sentry-stub.js',
+    '^react-native$': '<rootDir>/jest.react-native-stub.js',
   },
   transform: {
     '^.+\\.ts$': [

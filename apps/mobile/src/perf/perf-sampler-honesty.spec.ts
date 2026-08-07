@@ -16,31 +16,20 @@
  */
 const nativeModules: Record<string, unknown> = {};
 
-jest.mock(
-  'react-native',
-  () => ({
-    Platform: { OS: 'ios' },
-    NativeModules: nativeModules,
-    NativeEventEmitter: class {
-      addListener() {
-        return { remove: () => undefined };
-      }
-    },
-  }),
-  { virtual: true }
-);
+jest.mock('react-native', () => ({
+  Platform: { OS: 'ios' },
+  NativeModules: nativeModules,
+  NativeEventEmitter: class {
+    addListener() {
+      return { remove: () => undefined };
+    }
+  },
+}));
 
-jest.mock(
-  '../screens/Search/runtime/shared/search-nav-switch-runtime-attribution',
-  () => ({
-    withSearchNavSwitchRuntimeAttribution: (
-      _source: string,
-      _phase: string,
-      run: () => void
-    ): void => run(),
-  }),
-  { virtual: true }
-);
+jest.mock('../screens/Search/runtime/shared/search-nav-switch-runtime-attribution', () => ({
+  withSearchNavSwitchRuntimeAttribution: (_source: string, _phase: string, run: () => void): void =>
+    run(),
+}));
 
 import { startUiFrameSampler, UI_FRAME_SAMPLER_MODULE_NAME } from './ui-frame-sampler';
 import { startJsFrameSampler, type JsFrameSamplerStallEvent } from './js-frame-sampler';

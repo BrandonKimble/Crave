@@ -43,6 +43,15 @@ const routeSceneRuntime = {
   },
 };
 
+// F7800 — `virtual: true` is CORRECT here, unlike the react-native/async-storage mocks
+// this pass de-virtualised. `AppRouteSceneRuntimeProvider` is a `.tsx` module, and this
+// hermetic node lane's `moduleFileExtensions` deliberately omits `tsx` (see jest.config.js),
+// so the module is UNRESOLVABLE in the lane by design. `virtual` registers the factory under
+// the specifier both this spec AND its subject import (same relative path, same directory),
+// so the real `.tsx` never loads — which is the point. There is no load-order flake: a `.tsx`
+// cannot resolve in this lane regardless of worker scheduling, so no untransformed real module
+// can slip in the way `react-native` (a resolvable node_module) could. A rename still surfaces
+// loudly because the subject shares the import.
 jest.mock(
   '../navigation/runtime/AppRouteSceneRuntimeProvider',
   () => ({
