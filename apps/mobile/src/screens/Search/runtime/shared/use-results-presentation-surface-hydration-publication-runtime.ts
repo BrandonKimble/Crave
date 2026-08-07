@@ -5,7 +5,6 @@ import {
   commitSearchMountedResultsHydrationRuntimeSnapshot,
   registerSearchMountedResultsMotionInteractionRef,
 } from './search-mounted-results-data-store';
-import type { RouteSceneSwitchAuthority } from './route-authority-contract';
 import type { SearchRuntimeInteractionState } from './search-root-session-runtime-contract';
 
 // F1012 *-patch-runtime collapse: this type lived in
@@ -40,17 +39,14 @@ const isResultsMotionLaneBlocked = (
 export const useResultsPresentationSurfaceHydrationPublicationRuntime = ({
   activeTab,
   resultsPresentationSurfaceAuthority,
-  routeSceneSwitchAuthority,
   searchInteractionRef,
   searchSceneListHydrationPatch,
 }: {
   activeTab: 'dishes' | 'restaurants';
   resultsPresentationSurfaceAuthority: ResultsPresentationSurfaceAuthority;
-  routeSceneSwitchAuthority: RouteSceneSwitchAuthority;
   searchInteractionRef: React.MutableRefObject<SearchRuntimeInteractionState>;
   searchSceneListHydrationPatch: SearchRootSearchSceneListHydrationPatch;
 }) => {
-  void routeSceneSwitchAuthority;
   const pendingPublicationRef = React.useRef<HydrationPublicationPayload | null>(null);
   const publicationFrameRef = React.useRef<number | null>(null);
   const publicationTimeoutRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);

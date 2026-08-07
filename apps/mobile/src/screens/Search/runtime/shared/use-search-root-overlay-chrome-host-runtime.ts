@@ -33,7 +33,6 @@ export const useSearchRootOverlayChromeHostRuntime = ({
   appEntryPlaneRuntime,
   stateFoundationLane,
   rootOverlayFoundationRuntime,
-  routeOverlayVisibilityAuthority,
   overlayHostVisualRuntime,
   overlaySceneHostVisualRuntime,
   foregroundInteractionControlLane,
@@ -45,7 +44,6 @@ export const useSearchRootOverlayChromeHostRuntime = ({
   | 'appEntryPlaneRuntime'
   | 'stateFoundationLane'
   | 'rootOverlayFoundationRuntime'
-  | 'routeOverlayVisibilityAuthority'
   | 'overlayHostVisualRuntime'
   | 'overlaySceneHostVisualRuntime'
   | 'foregroundInteractionControlLane'
@@ -53,7 +51,6 @@ export const useSearchRootOverlayChromeHostRuntime = ({
   | 'profileControlRuntime'
   | 'controlAuthorityRuntime'
 >): SearchRootOverlayChromeHostRuntime => {
-  void routeOverlayVisibilityAuthority;
   const shouldRenderSearchOverlay =
     rootOverlayFoundationRuntime.rootOverlaySessionSurfaceRuntime.shouldRenderSearchOverlay;
   const shortcutsInputs = useSearchRootOverlayShortcutsVisualRuntime({

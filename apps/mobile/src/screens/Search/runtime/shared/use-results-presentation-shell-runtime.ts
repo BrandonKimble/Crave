@@ -11,7 +11,6 @@ import {
 } from './results-presentation-policy-facts-controller';
 import type { ResultsPresentationAuthority } from './results-presentation-authority';
 import type { SearchRuntimeBus } from './search-runtime-bus';
-import type { RouteSceneSwitchAuthority } from './route-authority-contract';
 import {
   areSearchSurfaceVisualPoliciesEqual,
   selectSearchSurfaceVisualPolicy,
@@ -30,7 +29,6 @@ type UseResultsPresentationShellRuntimeArgs = {
   shouldEnableShortcutInteractions: boolean;
   searchRuntimeBus: SearchRuntimeBus;
   resultsPresentationAuthority: ResultsPresentationAuthority;
-  routeSceneSwitchAuthority: RouteSceneSwitchAuthority;
   onSearchSheetContentLaneChanged?: (change: ResultsPresentationPolicyFactsLaneChange) => void;
   resultsSheetRuntime: Pick<AppRouteSharedSheetRuntimeOwner, 'sheetTranslateY' | 'snapPoints'>;
 };
@@ -46,7 +44,6 @@ export const useResultsPresentationShellRuntime = ({
   shouldEnableShortcutInteractions,
   searchRuntimeBus,
   resultsPresentationAuthority,
-  routeSceneSwitchAuthority,
   onSearchSheetContentLaneChanged,
   resultsSheetRuntime,
 }: UseResultsPresentationShellRuntimeArgs) => {
@@ -69,7 +66,6 @@ export const useResultsPresentationShellRuntime = ({
     isSearchLoading,
     isSuggestionPanelActive,
   });
-  void routeSceneSwitchAuthority;
   const surfaceVisualPolicy = useSearchSurfaceRuntimeSelector(
     selectSearchSurfaceVisualPolicy,
     areSearchSurfaceVisualPoliciesEqual

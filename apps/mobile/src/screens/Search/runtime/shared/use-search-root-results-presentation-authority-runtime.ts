@@ -108,7 +108,6 @@ export const useSearchRootResultsPresentationAuthorityRuntime = ({
     isClearingSearchRef: rootPrimitivesRuntime.searchState.isClearingSearchRef,
     searchRuntimeBus: sessionCoreLane.searchRuntimeBus,
     resultsPresentationAuthority: sessionCoreLane.resultsPresentationAuthority,
-    routeSceneSwitchAuthority: rootOverlayFoundationRuntime.routeSceneRuntime.sceneSwitchAuthority,
     resultsPresentationSurfaceAuthority: sessionCoreLane.resultsPresentationSurfaceAuthority,
     searchMapSourceFramePort: sessionCoreLane.searchMapSourceFramePort,
     log: logControlPresentationDiag,

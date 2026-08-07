@@ -101,9 +101,8 @@ describe('F2: a redraw armed MID-FLIGHT is born NOT settled (the seed asks the m
       atMs: 0,
     });
     const runtime = new SearchSurfaceRuntime();
-    const id = runtime.beginRedrawTransaction({ reason: 'submit' });
+    runtime.beginRedrawTransaction({ reason: 'submit' });
     expect(runtime.getSnapshot().sheetMotionSettled).toBe(false);
-    void id;
   });
 
   it('armed AT REST → still born open (a sheet that never moves has no settle to wait for)', () => {

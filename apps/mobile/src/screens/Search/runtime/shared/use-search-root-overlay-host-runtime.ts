@@ -38,7 +38,6 @@ export const useSearchRootOverlayHostRuntime = ({
     appEntryPlaneRuntime,
     stateFoundationLane,
     rootOverlayFoundationRuntime,
-    routeOverlayVisibilityAuthority,
     overlayHostVisualRuntime,
     overlaySceneHostVisualRuntime,
     foregroundInteractionControlLane,

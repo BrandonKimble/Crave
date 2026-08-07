@@ -2801,8 +2801,6 @@ const useSearchMapNativeRenderOwnerStatus = ({
                   deferredUntilAfterBoundaryFrame: false,
                 });
               });
-              const releasedRequestKey = event.requestKey;
-              void releasedRequestKey;
               return;
             }
             if (event.type === 'presentation_exit_settled') {

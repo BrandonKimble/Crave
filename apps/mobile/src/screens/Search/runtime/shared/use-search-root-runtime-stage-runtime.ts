@@ -187,7 +187,6 @@ export const useSearchRootRuntimeStageRuntime = ({
         .activeTab,
     resultsPresentationSurfaceAuthority:
       sessionAssemblyRuntime.sessionRuntime.sessionCoreLane.resultsPresentationSurfaceAuthority,
-    routeSceneSwitchAuthority,
     searchInteractionRef:
       sessionAssemblyRuntime.sessionRuntime.sessionPrimitivesLane.primitives.searchInteractionRef,
     hydrationKeyRuntime:

@@ -3,7 +3,6 @@ import type * as React from 'react';
 import type { useSearchResultsReadModelSelectors } from '../read-models/read-model-selectors';
 import type { ResultsPresentationSurfaceAuthority } from './results-presentation-surface-authority';
 import { useResultsPresentationSurfaceAuthoritySelector } from './results-presentation-surface-authority';
-import type { RouteSceneSwitchAuthority } from './route-authority-contract';
 import type { SearchRuntimeInteractionState } from './search-root-session-runtime-contract';
 import type { useSearchResultsPanelHydrationKeyRuntime } from './use-search-results-panel-hydration-key-runtime';
 import {
@@ -14,7 +13,6 @@ import {
 type UseSearchRootSearchSceneListHydrationPublicationRuntimeArgs = {
   activeTab: 'dishes' | 'restaurants';
   resultsPresentationSurfaceAuthority: ResultsPresentationSurfaceAuthority;
-  routeSceneSwitchAuthority: RouteSceneSwitchAuthority;
   searchInteractionRef: React.MutableRefObject<SearchRuntimeInteractionState>;
   hydrationKeyRuntime: ReturnType<typeof useSearchResultsPanelHydrationKeyRuntime>;
   resultsReadModelSelectors: ReturnType<typeof useSearchResultsReadModelSelectors>;
@@ -23,7 +21,6 @@ type UseSearchRootSearchSceneListHydrationPublicationRuntimeArgs = {
 export const useSearchRootSearchSceneListHydrationPublicationRuntime = ({
   activeTab,
   resultsPresentationSurfaceAuthority,
-  routeSceneSwitchAuthority,
   searchInteractionRef,
   hydrationKeyRuntime,
   resultsReadModelSelectors,
@@ -70,7 +67,6 @@ export const useSearchRootSearchSceneListHydrationPublicationRuntime = ({
   useResultsPresentationSurfaceHydrationPublicationRuntime({
     activeTab,
     resultsPresentationSurfaceAuthority,
-    routeSceneSwitchAuthority,
     searchInteractionRef,
     searchSceneListHydrationPatch,
   });

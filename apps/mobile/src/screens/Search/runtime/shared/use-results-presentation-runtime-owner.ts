@@ -16,7 +16,6 @@ import { publishResultsPresentationCloseTransitionBridgeRuntime } from './publis
 import { useResultsPresentationCloseTransitionRuntime } from './use-results-presentation-close-transition-runtime';
 import { useResultsPresentationOwnerPresentationActionsRuntime } from './use-results-presentation-owner-presentation-actions-runtime';
 import { createResultsPresentationOwnerValue } from '../controller/results-presentation-owner-runtime';
-import type { RouteSceneSwitchAuthority } from './route-authority-contract';
 export type {
   ResultsInteractionModel,
   ResultsPresentationOwner,
@@ -58,7 +57,6 @@ export type UseResultsPresentationOwnerArgs = {
   >;
   searchRuntimeBus: SearchRuntimeBus;
   resultsPresentationAuthority: ResultsPresentationAuthority;
-  routeSceneSwitchAuthority: RouteSceneSwitchAuthority;
   resultsPresentationSurfaceAuthority: ResultsPresentationSurfaceAuthority;
   searchMapSourceFramePort: SearchMapSourceFramePort;
   log: ResultsPresentationLog;
@@ -85,7 +83,6 @@ export const useResultsPresentationOwner = ({
   resultsSheetRuntime,
   searchRuntimeBus,
   resultsPresentationAuthority,
-  routeSceneSwitchAuthority,
   resultsPresentationSurfaceAuthority,
   searchMapSourceFramePort,
   log,
@@ -117,7 +114,6 @@ export const useResultsPresentationOwner = ({
     shouldEnableShortcutInteractions,
     searchRuntimeBus,
     resultsPresentationAuthority,
-    routeSceneSwitchAuthority,
     onSearchSheetContentLaneChanged,
     resultsSheetRuntime,
   });
