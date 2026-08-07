@@ -2411,3 +2411,43 @@ The cousin it found instead (values alive past their last reader) is this pass's
 captures, effects leaving via the command bus — the polls detached-pan disease
 unrepresentable) and ProfileSectionsBody's DOUBLE compile-time enforcement of the section
 union — the one panel-family guard that goes RED under mutation.
+
+---
+
+## D88 — mobile P3+P1 hybrid ratified (F3900/F3906/F4100/F4101, 2026-08-06)
+
+**F3900 cascaded past the design, and corrected the design's own false claim.** The
+deletion surfaced a THIRD copy of the chip-state bug — chrome-freeze-runtime spreading the
+frozen header then punching the exact 8 toggle states back through it live, the FIRST
+attempt at the bug the bus read later fixed properly, surviving as a fossil. Net −184
+lines. And the design's claim "after the rederivation the mutation cannot be written" was
+FALSE as first implemented — a JSX spread is not excess-property checked, so the dead prop
+re-added silently. The lane made both producers build through an annotated props local,
+which IS excess-property checked; re-adding now fails TS2353 at both sites, proven. That
+is the difference between a claim of unrepresentability and a proof of one, caught by the
+lane rather than shipped by me.
+
+**F3906's bedrock was importability, not laziness.** The decision functions were untested
+because UNIMPORTABLE — react-native poisoning through `constants/search.ts` into
+`utils/geo.ts`. Thresholds moved to a pure module, decisions to a pure file, 17 tests, and
+the finding's own previously-green mutation now reds 5. The territory's Node-pure
+decision-layer law (already in .eslintrc for three files) is the shape this confirms.
+
+**F4100's orphan check caught a second orphan ON ITS FIRST RUN — one whose coverage row
+read "correct as written" from a line-by-line read.** Recorded as a lesson on
+IDEAL-VERIFIED itself: reachability is a fact reading a single file cannot establish; a
+file can be internally perfect and dead. The gate's over-crediting bias (last-segment
+match, dynamic forms count) is ruled correct for a verdict whose failure mode is "delete
+this live file".
+
+**F4101's general guard STOPPED, correctly.** Two regex censuses both mis-parsed nested
+type members as top-level args — for a scanner whose verdict is "this argument is dead",
+that is accusing live code. Five endemic instances fixed by hand; F4601 filed for a
+type-aware (compiler API) version. A false-accusing guard is worse than none — the same
+reasoning as the migration guard's narrow scope, applied by the lane unprompted.
+
+The transient tsc error at useBottomSheetSharedRuntime.tsx(433) is the OTHER live lane's
+F4502 contract annotation mid-flight — expected, not a defect.
+
+Ten of the sweep-reverted rows re-reviewed and restored with arguments (the 11th was
+lefthook.yml, repo-root, already re-pinned).
