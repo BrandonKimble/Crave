@@ -10,6 +10,7 @@ export type {
   NaturalSearchRequest,
   OperatingStatus,
   Pagination,
+  QueryEntity,
   QueryFormat,
   QueryPlan,
   RestaurantFoodSnippet,

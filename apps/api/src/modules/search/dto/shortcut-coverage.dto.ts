@@ -1,5 +1,6 @@
 import { Type } from 'class-transformer';
 import {
+  ArrayMaxSize,
   IsArray,
   IsString,
   IsBoolean,
@@ -24,8 +25,12 @@ export class ShortcutCoverageRequestDto {
 
   // Screen-accurate viewport polygon ([lng, lat] pairs). When present the coverage/dots query filters
   // by the exact polygon (ST_Covers) on top of the bounds bbox pre-filter. Shape validated in service.
+  // The client projects the FOUR screen corners (search-fresh-bounds-capture.ts:94-99); the service
+  // interpolates one ST_MakePoint per point into the SQL text, so an unbounded array is an unbounded
+  // SQL string. Cap at 8 — double the real quad, headroom for a richer polygon, no room for abuse.
   @IsOptional()
   @IsArray()
+  @ArrayMaxSize(8)
   viewportPolygon?: Array<[number, number]>;
 
   @IsOptional()

@@ -400,6 +400,24 @@ export interface Pagination {
   pageSize?: number;
 }
 
+/**
+ * ONE linked query entity — the element of every `entities` group in a
+ * structured search request (restaurants / food / foodAttributes /
+ * restaurantAttributes / ingredients). The api `QueryEntityDto`
+ * (search-query.dto.ts) `implements` this shape, so a field renamed or
+ * retyped on the server fails to compile against the wire type instead of
+ * silently drifting — the mobile client previously typed each group as
+ * `unknown[]`, erasing all element checking (F3803).
+ */
+export interface QueryEntity {
+  normalizedName: string;
+  entityIds: string[];
+  originalText?: string | null;
+  /** true when this is the DECOMPOSED reading of a compound span (widens
+   *  membership at tier 1 only); absent = primary reading. */
+  decomposed?: boolean;
+}
+
 export interface NaturalSearchRequest {
   query: string;
   searchRequestId?: string;

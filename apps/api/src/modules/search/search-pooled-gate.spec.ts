@@ -61,25 +61,24 @@ function directives(
 const builder = new SearchQueryBuilder();
 const plan = () => compileQueryPlanFromConstraints(constraints());
 
-const dishSqlText = (d: SearchExecutionDirectives): string =>
-  builder
-    .buildDishQuery({
-      plan: plan(),
-      pagination: { skip: 0, take: 25 },
-      searchCenter: null,
-      directives: d,
-    })
-    .dataSql.sql.replace(/\s+/g, ' ');
+const dishData = (d: SearchExecutionDirectives) =>
+  builder.buildDishQuery({
+    plan: plan(),
+    pagination: { skip: 0, take: 25 },
+    searchCenter: null,
+    directives: d,
+  }).dataSql;
 
-const restaurantSqlText = (d: SearchExecutionDirectives): string =>
-  builder
-    .buildRestaurantQuery({
-      plan: plan(),
-      pagination: { skip: 0, take: 25 },
-      searchCenter: null,
-      directives: d,
-    })
-    .dataSql.sql.replace(/\s+/g, ' ');
+const restaurantData = (d: SearchExecutionDirectives) =>
+  builder.buildRestaurantQuery({
+    plan: plan(),
+    pagination: { skip: 0, take: 25 },
+    searchCenter: null,
+    directives: d,
+  }).dataSql;
+
+const dishSqlText = (d: SearchExecutionDirectives): string =>
+  dishData(d).sql.replace(/\s+/g, ' ');
 
 describe('step-3 pooled richness gate (SQL shape)', () => {
   it('dish: soft ids are PROVENANCE (containment CASE), never WHERE membership', () => {
@@ -91,13 +90,19 @@ describe('step-3 pooled richness gate (SQL shape)', () => {
   });
 
   it('dish: the gate is a WINDOW count, not a re-evaluated subquery (the 20s regression)', () => {
-    const sql = dishSqlText(directives());
+    const data = dishData(directives());
+    const sql = data.sql.replace(/\s+/g, ' ');
     expect(sql).toContain('OVER () AS pooled_full_count');
     // Tier 2 (similar ring) is scan-only — the gate arm now names tier 1
-    // explicitly so ring rows can never serve on the default page.
-    expect(sql).toContain(
-      'fc.pooled_tier = 0 OR (fc.pooled_tier = 1 AND fc.pooled_full_count <',
+    // explicitly so ring rows can never serve on the default page. The
+    // operand is the caller-supplied threshold BOUND as a parameter, not a
+    // literal — hardcoding the comparison to `< 0` (page 1 goes empty when
+    // no all-word matches exist, the §1.4 regression this file prevents)
+    // must red here: the bound value 25 disappears and a bare `< 0` appears.
+    expect(sql).toMatch(
+      /fc\.pooled_tier = 0 OR \(fc\.pooled_tier = 1 AND fc\.pooled_full_count < \?\)/,
     );
+    expect(data.values).toContain(25);
     expect(sql).not.toContain('pooled_gate AS');
   });
 
@@ -114,9 +119,12 @@ describe('step-3 pooled richness gate (SQL shape)', () => {
   });
 
   it('restaurant: gate present with window count and tier-first order', () => {
-    const sql = restaurantSqlText(directives());
+    const data = restaurantData(directives());
+    const sql = data.sql.replace(/\s+/g, ' ');
     expect(sql).toContain('OVER () AS pooled_full_count');
-    expect(sql).toContain('rrx.match_tier = 0 OR rrx.pooled_full_count <');
+    // Same as the dish gate: the threshold is a BOUND operand, not a literal.
+    expect(sql).toMatch(/rrx\.match_tier = 0 OR rrx\.pooled_full_count < \?/);
+    expect(data.values).toContain(25);
     expect(sql).toContain('ORDER BY rrx.match_tier ASC,');
   });
 

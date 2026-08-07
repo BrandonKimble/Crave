@@ -307,15 +307,24 @@ describe('see-locations executor membership (in-view locations of THAT restauran
     expect(sqlText).toContain('rl.latitude BETWEEN');
     expect(sqlText).toContain('rl.longitude BETWEEN');
     const values = sqlArg.values ?? [];
-    expect(values).toEqual(
-      expect.arrayContaining([
-        BOUNDS.southWest.lat,
-        BOUNDS.northEast.lat,
-        BOUNDS.southWest.lng,
-        BOUNDS.northEast.lng,
-        RESTAURANT_ID,
-      ]),
+    expect(values).toContain(RESTAURANT_ID);
+    // The four bbox operands are bound as a CONTIGUOUS, ORDERED run matching
+    // the two BETWEEN pairs: [SW.lat, NE.lat] then [SW.lng, NE.lng]. Plain
+    // `arrayContaining` pins presence but not position — swapping the latitude
+    // and longitude bindings leaves the value SET unchanged and would stay
+    // green. Requiring the exact ordered run reds that swap.
+    const bboxRun = [
+      BOUNDS.southWest.lat,
+      BOUNDS.northEast.lat,
+      BOUNDS.southWest.lng,
+      BOUNDS.northEast.lng,
+    ];
+    const runStart = values.findIndex(
+      (_, i) =>
+        i + bboxRun.length <= values.length &&
+        bboxRun.every((v, k) => values[i + k] === v),
     );
+    expect(runStart).toBeGreaterThanOrEqual(0);
 
     // Assembly: the response row's locations ARE the in-view SQL rows —
     // nothing is refetched, recapped, or padded.

@@ -26,6 +26,7 @@ import type {
   DishRestaurantLocation as SharedDishRestaurantLocation,
   FilterClause as SharedFilterClause,
   FoodResult as SharedFoodResult,
+  QueryEntity as SharedQueryEntity,
   QueryFormat as SharedQueryFormat,
   QueryPlan as SharedQueryPlan,
   RestaurantFoodSnippet as SharedRestaurantFoodSnippet,
@@ -69,7 +70,7 @@ export class UnresolvedEntityGroupDto {
   terms!: string[];
 }
 
-export class QueryEntityDto {
+export class QueryEntityDto implements SharedQueryEntity {
   @IsString()
   @IsNotEmpty()
   normalizedName!: string;
