@@ -36,6 +36,28 @@ describe('subject-text k-floor', () => {
     } as unknown as LoggerService,
   );
 
+  beforeAll(async () => {
+    // The guard its three siblings carry (subject-identity, occurred-at-timezone,
+    // entity-alias-lost-update) and this file did not — F6609. Every assertion
+    // below is about what the DATABASE returns, so a missing DATABASE_URL turns
+    // the whole file into a differently-shaped vacuity: it fails obscurely at
+    // the first query with a Prisma initialization error that reads like a
+    // broken test rather than a missing environment, or it connects somewhere
+    // unintended and reports on a corpus nobody chose.
+    //
+    // MEASURED while proving this: on a tree that has apps/api/.env, importing
+    // @prisma/client INJECTS DATABASE_URL into process.env before any
+    // beforeAll runs, so this guard — and its three siblings' — is dormant on
+    // every developer machine and live only where the file is absent, which is
+    // CI and containers. That is where it matters, and it is worth knowing.
+    if (!process.env.DATABASE_URL) {
+      throw new Error(
+        'DATABASE_URL is required — a skipped k-floor test proves nothing.',
+      );
+    }
+    await prisma.$connect();
+  });
+
   afterAll(async () => {
     await prisma.$disconnect();
   });
@@ -100,19 +122,76 @@ describe('subject-text k-floor', () => {
    * The view is the authority, so its own contents are worth asserting
    * directly: nothing eligible may be below the floor.
    */
-  it('the view itself contains no below-floor term', async () => {
-    const rows = await prisma.$queryRawUnsafe<Array<{ term: string }>>(
-      `SELECT v.term
-       FROM signal_emittable_terms v
-       JOIN (
-         SELECT subject_text, count(DISTINCT actor_id) AS n
-         FROM signal_demand_daily
-         WHERE subject_text IS NOT NULL
-         GROUP BY subject_text
-       ) t ON t.subject_text = v.term
-       WHERE t.n < $1`,
-      SUBJECT_TEXT_K_FLOOR,
+  it('the view admits an at-or-above-floor term and excludes a below-floor one', async () => {
+    // A POSITIVE WITNESS THE CASE MINTS ITSELF (F6609). This assertion used to
+    // be a bare `expect(belowFloorTerms).toEqual([])`, which returns `[]`
+    // identically for an empty database, an empty view, a broken join key and
+    // a genuinely correct view. It was not a hypothetical: MEASURED on the dev
+    // corpus, signal_emittable_terms holds ZERO rows and no subject_text
+    // reaches more than 2 distinct actors against a floor of 3 — so the
+    // assertion was empty-vs-empty and could not have shown RED for any
+    // reason. Its neighbour twenty lines above already refuses to pass on a
+    // corpus that cannot exercise it.
+    //
+    // Throwing VACUOUS here would only move the vacuity into a permanently red
+    // case, since nothing in the corpus reaches the floor. So the case SEEDS
+    // both sides instead: one term carrying exactly SUBJECT_TEXT_K_FLOOR
+    // distinct actors and one carrying a single actor. Now the emptiness of
+    // the second is a DISCRIMINATION — the same machinery that produced the
+    // first refused the second — rather than a default, and the case no longer
+    // depends on whatever happens to be in the developer's database.
+    const above = `f6609-above-${Date.now()}`;
+    const below = `f6609-below-${Date.now()}`;
+    const actors = Array.from(
+      { length: SUBJECT_TEXT_K_FLOOR },
+      (_unused, index) =>
+        `00000000-0000-4000-8000-00000066090${index.toString(16)}`,
     );
-    expect(rows.map((r) => r.term)).toEqual([]);
+    const seed = async (term: string, actorIds: string[]) => {
+      for (const actorId of actorIds) {
+        await prisma.$executeRaw`
+          INSERT INTO signal_demand_daily
+            (row_id, day, place_id, actor_id, kind, subject_type, subject_text,
+             signal_count, last_occurred_at)
+          VALUES (gen_random_uuid(), CURRENT_DATE, NULL, ${actorId}::uuid,
+                  'search', 'query', ${term}, 1, now())
+        `;
+      }
+    };
+
+    try {
+      await seed(above, actors);
+      await seed(below, actors.slice(0, 1));
+
+      const terms = await prisma.$queryRawUnsafe<Array<{ term: string }>>(
+        `SELECT term FROM signal_emittable_terms WHERE term = ANY($1::text[])`,
+        [above, below],
+      );
+      const admitted = terms.map((r) => r.term);
+
+      // The witness: the view CAN admit, so the exclusion below is a choice.
+      expect(admitted).toContain(above);
+      expect(admitted).not.toContain(below);
+
+      // And the standing repo-wide claim, now known to be non-vacuous.
+      const leaked = await prisma.$queryRawUnsafe<Array<{ term: string }>>(
+        `SELECT v.term
+         FROM signal_emittable_terms v
+         JOIN (
+           SELECT subject_text, count(DISTINCT actor_id) AS n
+           FROM signal_demand_daily
+           WHERE subject_text IS NOT NULL
+           GROUP BY subject_text
+         ) t ON t.subject_text = v.term
+         WHERE t.n < $1`,
+        SUBJECT_TEXT_K_FLOOR,
+      );
+      expect(leaked.map((r) => r.term)).toEqual([]);
+    } finally {
+      await prisma.$executeRaw`
+        DELETE FROM signal_demand_daily
+        WHERE subject_text IN (${above}, ${below})
+      `;
+    }
   });
 });
