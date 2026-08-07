@@ -4041,13 +4041,36 @@ export class RestaurantLocationEnrichmentService {
 
       entity.restaurantMetadata = mergedMetadata as unknown as Prisma.JsonValue;
     } catch (error) {
-      this.logger.warn('Failed to record no-match candidates', {
+      // SWALLOW AND TELL SOMEONE (F205 doctrine, F4907's twin — F5100). This
+      // catch guards the SAME attempt counter as recordEnrichmentFailure
+      // forty lines below, and it carries the same stake, recorded in the
+      // `countEnrichmentFailure` comment above: the janitor's archive/retry
+      // policy reads that count, and when it was wrong "the restaurants with
+      // the most evidence got archived". A transient DB error here leaves the
+      // count where it was and the incident recurs with nothing but one warn
+      // line to show for it. It still swallows (one entity must not end a
+      // batch) — it just rings a bell now, in its twin's shape.
+      const message = error instanceof Error ? error.message : String(error);
+      this.logger.error('Failed to record no-match candidates', {
         entityId: entity.entityId,
         reason,
         error:
           error instanceof Error
-            ? { message: error.message, stack: error.stack }
-            : { message: String(error) },
+            ? { message, stack: error.stack }
+            : { message },
+      });
+      this.opsAlerts.emit({
+        severity: 'warn',
+        kind: 'no_match_candidate_count_write_failed',
+        title: 'No-match candidate counter did not persist',
+        body: [
+          'The write that records a no-match enrichment outcome — and increments the attempt COUNT the janitor reads — threw.',
+          `Entity: ${entity.entityId}`,
+          `No-match reason: ${reason}`,
+          `Error: ${message}`,
+          'Downstream: the count stays where it was, so the janitor archives and retries off a stale number — the incident countEnrichmentFailure exists to prevent — and this placeholder is re-enriched on the next run at real Places spend.',
+        ].join('\n'),
+        dedupeKey: `no_match_candidate_count_write_failed:${entity.entityId}`,
       });
     }
   }

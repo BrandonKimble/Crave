@@ -20,7 +20,7 @@ import { RestaurantLocationEnrichmentService } from './restaurant-location-enric
  * in the shape SignalPartitionMaintenanceService and PollWeeklyRitualService
  * use.
  */
-describe('recordEnrichmentFailure — the failure counter is not silent', () => {
+describe('the enrichment attempt counters are not silent (F4907 + F5100)', () => {
   type OpsAlert = {
     severity: string;
     kind: string;
@@ -62,12 +62,21 @@ describe('recordEnrichmentFailure — the failure counter is not silent', () => 
     // the service's own surface for a test.
     const asPrivate = service as unknown as {
       recordEnrichmentFailure(entity: unknown, reason: string): Promise<void>;
+      recordNoMatchCandidates(
+        entity: unknown,
+        reason: string,
+        metadata: Record<string, unknown>,
+      ): Promise<void>;
     };
     const recordEnrichmentFailure = (
       entity: unknown,
       reason: string,
     ): Promise<void> => asPrivate.recordEnrichmentFailure(entity, reason);
-    return { recordEnrichmentFailure, emit, logger };
+    const recordNoMatchCandidates = (
+      entity: unknown,
+      reason: string,
+    ): Promise<void> => asPrivate.recordNoMatchCandidates(entity, reason, {});
+    return { recordEnrichmentFailure, recordNoMatchCandidates, emit, logger };
   }
 
   const ENTITY = {
@@ -110,6 +119,51 @@ describe('recordEnrichmentFailure — the failure counter is not silent', () => 
 
     expect(update).toHaveBeenCalledTimes(1);
     // The counter increment is IN the write this test just proved happened.
+    expect(update.mock.calls[0][0].data).toHaveProperty('restaurantMetadata');
+    expect(emit).not.toHaveBeenCalled();
+    expect(logger.error).not.toHaveBeenCalled();
+  });
+
+  /**
+   * THE IDENTICAL TWIN (F5100). `recordNoMatchCandidates` sits forty lines
+   * above with the same body shape and the same write — `countEnrichmentFailure()`
+   * — and its own comment records the incident it guards: the janitor read a
+   * count whose only writer set it to the number of Google CANDIDATES, "so the
+   * restaurants with the most evidence got archived". The loudness had been
+   * applied to one of the two, which is exactly the divergence that makes two
+   * hand-copied bodies a defect rather than a duplication.
+   */
+  it('the no-match twin also raises an ops alert on a throwing count write', async () => {
+    const update = jest
+      .fn<Promise<unknown>, [EntityUpdateArgs]>()
+      .mockRejectedValue(new Error('deadlock detected'));
+    const { recordNoMatchCandidates, emit, logger } = makeService(update);
+
+    await expect(
+      recordNoMatchCandidates(ENTITY, 'places_no_candidates'),
+    ).resolves.toBeUndefined();
+
+    expect(emit).toHaveBeenCalledTimes(1);
+    const alert = emit.mock.calls[0][0];
+    expect(alert.kind).toBe('no_match_candidate_count_write_failed');
+    expect(alert.severity).toBe('warn');
+    expect(alert.body).toContain(ENTITY.entityId);
+    expect(alert.body).toContain('places_no_candidates');
+    expect(alert.body).toContain('deadlock detected');
+    expect(alert.dedupeKey).toContain(ENTITY.entityId);
+    expect(logger.error).toHaveBeenCalledTimes(1);
+    expect(logger.warn).not.toHaveBeenCalled();
+  });
+
+  it('a successful no-match write raises nothing (the twin can show green too)', async () => {
+    const update = jest
+      .fn<Promise<unknown>, [EntityUpdateArgs]>()
+      .mockResolvedValue({});
+    const { recordNoMatchCandidates, emit, logger } = makeService(update);
+
+    await recordNoMatchCandidates(ENTITY, 'places_no_candidates');
+
+    expect(update).toHaveBeenCalledTimes(1);
     expect(update.mock.calls[0][0].data).toHaveProperty('restaurantMetadata');
     expect(emit).not.toHaveBeenCalled();
     expect(logger.error).not.toHaveBeenCalled();
