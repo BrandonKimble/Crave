@@ -4455,3 +4455,29 @@ Two more VERIFY-DON'T-TRUST passes over fresh high-value territory.
 Pass tally toward "two consecutive zero-finding passes": #1=0, #2=1(fixed), #3=0, #4=3(fixed).
 The verification is still earning its keep (pass #4 found a real convention-in-costume in code
 marked IDEAL-VERIFIED) — exactly why the mandate requires it. Continuing.
+
+## D144 — adversarial verify passes #5–#10 (2026-08-07)
+
+Six more VERIFY-DON'T-TRUST passes over fresh, non-re-verified load-bearing territory.
+Findings decayed toward the marginal/gated as coverage deepened — every CORE held:
+- #5 reveal statechart: F9430 (phantom-state union → narrowed, unrepresentable) FIXED.
+- #6 scoring/governance: cores ideal (no fabricated prior, caps measured+fail-closed, tally
+  DB-idempotent). F9440 (endorsement P2002 idempotency) FIXED, mutation-proven.
+- #7 shared/reextract/FK-laws: all UPHELD (single-sourced contracts, fail-closed versioned
+  prompts, shadow-diff can-show-red, cursor-advance-at-extraction, FK onDelete matches laws).
+  F9450 (falsy-zero firewall bypass) FIXED.
+- #8 results-list/reddit-commit: UPHELD (no fabricated row, RED-capable gates, idempotent
+  race-safe commit). F9460 (adopted-entity re-enrichment) → OWNER (bounded by queue jobId
+  dedup; the fix trades off re-enrichment coverage — money-adjacent).
+- #9 auth/perf/signals/photos/session: 4/5 UPHELD (auth fail-closed w/ 2nd-order checks,
+  signals partition idempotent + pg_inherits invariant, perf bus no destructive verb, session
+  holds no cacheable token). OVERTURNED: F9470 — photos destroyAssetSafely leaks a Cloudinary
+  asset permanently on destroy-failure (the "retry via cron" only sweeps pending, never
+  removed) — privacy + cost. ESCALATED-CONCURRENT (photos.service.ts is dirty) + task-chipped.
+- #10 nav/overlay-session: ZERO defects. Lifecycle-clean by construction (single-sweep
+  subscription arrays, identity-guarded singletons, unconditional resubscribe/F2401 intact,
+  compile-time-total keyspace).
+
+The verification keeps earning its keep — #9 found a genuine permanent privacy+cost leak the
+original passes missed. That is exactly why the mandate requires re-verification wider than the
+original. Continuing toward two consecutive zero passes; #10 was clean.
