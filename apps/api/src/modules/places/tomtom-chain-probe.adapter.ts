@@ -3,18 +3,12 @@
  * §2 "sketch mechanics, live-verified") — replaces the Phase-A not-wired stub.
  *
  * Vendor facts (probed live 2026-07-19 against api.tomtom.com, this session):
- *  - Reverse geocode with a multi-value `entityType` list returns ONE
- *    address: the MOST SPECIFIC matching geography, carrying its own
- *    `address.boundingBox` ({northEast,southWest} as "lat,lng" STRINGS), its
- *    stable `dataSources.geometry.id`, and PARENT CHAIN NAMES inline
- *    WITHOUT parent bboxes or ids.
- *
- *    ⚠️ CORRECTED 2026-08-07 — that inline chain is NOT COMPLETE, and the
- *    original wording ("municipality / countrySecondarySubdivision /
- *    countrySubdivision / country") named a rung the filtered request does
- *    not actually return. PASSING `entityType` NULLS OUT
- *    `municipalitySubdivision` AND USUALLY `countrySecondarySubdivision`.
- *    Measured against the live API, filtered vs plain at the same point:
+ *  - The probe's reverse geocode is PLAIN — no `entityType` filter — and
+ *    that is load-bearing (corrected 2026-08-07). The original vendor fact
+ *    here claimed the filtered request carried the parent chain inline
+ *    including countrySecondarySubdivision. Measured, it does not: PASSING
+ *    `entityType` NULLS OUT `municipalitySubdivision` AND USUALLY
+ *    `countrySecondarySubdivision`. Filtered vs plain at the same points:
  *
  *      point          filtered mSub / county   plain mSub / county
  *      Austin         null      / null         null      / Travis
@@ -22,25 +16,26 @@
  *      Chicago        null      / null         null      / Cook
  *      Los Angeles    null      / Los Angeles  null      / Los Angeles
  *
- *    So every probe ever run here has built chains missing up to two rungs:
- *    the BOROUGH tier (Manhattan, Brooklyn, and city districts generally) and
- *    the COUNTY. It is why the catalog has no "Manhattan" while TomTom knows
- *    it perfectly well — a gap that was very nearly blamed on the vendor.
+ *    Every probe run before the correction built chains missing up to two
+ *    rungs — the BOROUGH tier (Manhattan, Brooklyn, London districts, Paris
+ *    arrondissements) and the COUNTY. MunicipalitySubdivision had ZERO rows
+ *    in a 22k-place catalog, and the gap was nearly blamed on the vendor.
  *
- *    THE FILTER IS NOT SIMPLY DELETABLE. It is what makes the response a
- *    GEOGRAPHY: entityType is set, `address.boundingBox` is that geography's
- *    OUTLINE, and `dataSources.geometry.id` is present. The plain response is
- *    an ADDRESS — entityType is null and boundingBox is
- *    `{"entity":"position"}`, a few-metre box around the street address, not
- *    the neighbourhood polygon. The two requests answer two different
- *    questions and this probe asks only the first:
+ *    What the filter bought, and what replaces it: the filtered response is
+ *    a GEOGRAPHY (entityType set, boundingBox = that geography's outline,
+ *    dataSources.geometry.id present), so the finest rung's bbox+id came
+ *    free. The plain response is an ADDRESS — no geometry id, boundingBox is
+ *    `{"entity":"position"}`, a few-metre box that must NEVER be read as an
+ *    outline. Geometry now comes from the forward-geocode enrichment that
+ *    every OTHER rung already used (same stable id family — the §1 identity
+ *    law below), at most one extra cheap draw per probe against geocode's
+ *    own 20k/month free allowance. One request shape, one geometry path,
+ *    complete chain — instead of two request shapes where one silently
+ *    truncated and the other padded.
  *
- *      filtered → the finest named geography here, WITH its geometry
- *      plain    → the COMPLETE parent chain of names
- *
- *    Closing it costs one extra cheap call per probe (a second reverse
- *    geocode for the names, or dropping the free bbox and letting the
- *    existing forward-geocode enrichment fill it). Not yet decided.
+ *    `lookupLevelEntity` KEEPS its single-level `entityType` filter
+ *    deliberately: its whole question is "the geography AT THIS LEVEL, with
+ *    its id" — the geography-shaping behaviour is the point there.
  *  - Forward geocode (`entityTypeSet=<level>&limit=1`) returns a Geography
  *    result with `boundingBox` as {topLeftPoint,btmRightPoint} {lat,lon}
  *    OBJECTS (a DIFFERENT shape than reverse — do not unify blindly) plus the
@@ -48,14 +43,14 @@
  *    reverse and forward for the same entity, live-validated).
  *
  * §2 mechanics implemented here:
- *  - 1 reverse geocode per probe → full chain of names; the returned entity's
- *    bbox+id come free.
+ *  - 1 PLAIN reverse geocode per probe → the COMPLETE chain of names, and
+ *    nothing else (address-mode responses carry no outline and no id).
  *  - +1 cheap forward geocode per PREVIOUSLY-UNKNOWN node (unknown = the
  *    catalog has no bbox for that identity tuple — which also delivers §2's
- *    "once ever per node globally" without any extra bookkeeping).
- *  - Forward-geocode ceiling per probe = 5: DEFINITIONAL (§16) — the vendor
- *    ladder has 6 rungs (Neighbourhood → Country) and the most specific rung
- *    always comes free with the reverse response.
+ *    "once ever per node globally" without any extra bookkeeping). This is
+ *    the ONE geometry path; the finest rung is not special.
+ *  - Forward-geocode ceiling per probe = the ladder's 6 rungs: DEFINITIONAL
+ *    (§16). Nothing comes free with the reverse response any more.
  *  - Every vendor call rides the governed cheap pool (§14/§22). A denial on
  *    a FORWARD call just leaves that node bbox-less (a later probe fills it);
  *    a denial on the REVERSE call throws — the ground was never asked, so the
@@ -138,8 +133,14 @@ const LEVEL_LADDER: ReadonlyArray<{
   { levelCode: 'Country', nameOf: (a) => a.country },
 ];
 
-/** §16 definitional: 6-rung ladder, most-specific rung free with reverse. */
-const MAX_FORWARD_GEOCODES_PER_PROBE = LEVEL_LADDER.length - 1;
+/**
+ * §16 definitional: one forward geocode per rung of the ladder, no more.
+ * Was `length - 1` when the filtered reverse donated the finest rung's bbox
+ * for free; the plain reverse donates nothing (its boundingBox is a position
+ * box, not an outline), so every rung may need enrichment. In practice the
+ * catalog already knows the coarse rungs and the real spend is 1-2.
+ */
+const MAX_FORWARD_GEOCODES_PER_PROBE = LEVEL_LADDER.length;
 
 /**
  * Vendor fact: reverse geocode's default search radius — the ground a probe
@@ -450,16 +451,13 @@ export class TomtomChainProbeAdapter implements TomtomChainProbe {
       };
     }
 
-    // The returned entity's own bbox + stable geometry id come free.
-    const freeNode = chain.find(
-      (node) => node.providerLevelCode === entry.entityType,
-    );
-    if (freeNode) {
-      freeNode.bbox = parseReverseBoundingBox(address.boundingBox);
-      freeNode.centroid = parseLatLngString(entry.position);
-      freeNode.providerPlaceId =
-        entry.dataSources?.geometry?.id?.trim() || null;
-    }
+    // NOTHING IS FREE OFF A PLAIN REVERSE. The address-mode response's
+    // boundingBox is `{"entity":"position"}` — a few-metre box around the
+    // street address — and it carries no geometry id. The deleted `freeNode`
+    // step here used to adopt the filtered response's outline for the finest
+    // rung; adopting the position box the same way would sketch a
+    // neighbourhood as a doorstep. Every rung goes through the one geometry
+    // path below.
 
     // +1 cheap forward geocode per PREVIOUSLY-UNKNOWN node (§2): unknown =
     // catalog holds no bbox for the identity tuple. Once sketched with a
@@ -674,10 +672,13 @@ export class TomtomChainProbeAdapter implements TomtomChainProbe {
           firstValueFrom(
             this.httpService.get<TomtomReverseResponse>(url, {
               params: {
+                // PLAIN — no entityType. The filter nulls out
+                // municipalitySubdivision and usually
+                // countrySecondarySubdivision (measured 2026-08-07, header
+                // table), so filtering here truncated every chain this
+                // adapter ever built. Geometry comes from the forward
+                // enrichment, never from this response.
                 key: this.apiKey as string,
-                entityType: LEVEL_LADDER.map((rung) => rung.levelCode).join(
-                  ',',
-                ),
               },
               timeout: this.timeoutMs,
             }),
@@ -1021,36 +1022,18 @@ export class TomtomChainProbeAdapter implements TomtomChainProbe {
   }
 }
 
-/** Reverse-shape bbox: {northEast,southWest} as "lat,lng" strings.
+/** Forward-shape bbox: {topLeftPoint,btmRightPoint} as {lat,lon} objects.
  *
  * LONGITUDE PRESERVES THE PROVIDER'S EDGE ORDER (F3001, 2026-08-06):
- * southWest.lng is the WEST edge (minLng) and northEast.lng the EAST edge
- * (maxLng), verbatim. Math.min/max on longitude destroyed the antimeridian
- * crossing representation (minLng > maxLng) that the shared lib's
- * bboxContainsPoint/bboxLngArcs were taught to read on 2026-07-26 — a
- * 20° wrap box parsed as its 340° COMPLEMENT arc. min/max stays for
- * LATITUDE only, where there is no wraparound.
- */
-export function parseReverseBoundingBox(
-  box: TomtomAddress['boundingBox'],
-): GeoBbox | null {
-  const ne = parseLatLngString(box?.northEast);
-  const sw = parseLatLngString(box?.southWest);
-  if (!ne || !sw) {
-    return null;
-  }
-  return {
-    minLat: Math.min(ne.lat, sw.lat),
-    minLng: sw.lng,
-    maxLat: Math.max(ne.lat, sw.lat),
-    maxLng: ne.lng,
-  };
-}
-
-/** Forward-shape bbox: {topLeftPoint,btmRightPoint} as {lat,lon} objects.
  * topLeftPoint = NW corner (lon = WEST edge = minLng), btmRightPoint = SE
- * corner (lon = EAST edge = maxLng) — preserved verbatim so a crossing box
- * keeps minLng > maxLng (see parseReverseBoundingBox's F3001 note). */
+ * corner (lon = EAST edge = maxLng), verbatim. Math.min/max on longitude
+ * destroyed the antimeridian crossing representation (minLng > maxLng) that
+ * the shared lib's bboxContainsPoint/bboxLngArcs were taught to read on
+ * 2026-07-26 — a 20° wrap box parsed as its 340° COMPLEMENT arc. min/max
+ * stays for LATITUDE only, where there is no wraparound. (The reverse-shape
+ * parser that carried this law first was deleted 2026-08-07 with the free
+ * bbox it fed — the probe's reverse geocode is plain/address-mode now and
+ * returns no outline at all. This parser is where F3001 lives.) */
 export function parseForwardBoundingBox(
   box: TomtomGeocodeResult['boundingBox'],
 ): GeoBbox | null {
@@ -1070,18 +1053,4 @@ export function parseForwardBoundingBox(
     maxLat: Math.max(tl.lat, br.lat),
     maxLng: br.lon,
   };
-}
-
-/** TomTom's "lat,lng" comma string → GeoPoint. */
-function parseLatLngString(value: string | undefined): GeoPoint | null {
-  if (!value) {
-    return null;
-  }
-  const [latRaw, lngRaw] = value.split(',');
-  const lat = Number(latRaw);
-  const lng = Number(lngRaw);
-  if (!Number.isFinite(lat) || !Number.isFinite(lng)) {
-    return null;
-  }
-  return { lat, lng };
 }

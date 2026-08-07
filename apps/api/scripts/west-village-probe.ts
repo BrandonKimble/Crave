@@ -22,6 +22,16 @@
  * Still unresolved, and unrelated to this probe: three of those five rungs
  * are all spelled "New York".
  *
+ * ADDENDUM 2026-08-07 (same day, after the entityType-truncation fix): rerun
+ * at Bed-Stuy (40.6782,-73.9442) with the PLAIN reverse geocode, the probe
+ * minted BOTH rungs in one pass —
+ *
+ *   t+5s CREATED: Bedford Stuyvesant (Neighbourhood), Brooklyn
+ *        (MunicipalitySubdivision) — both with geometry
+ *
+ * "Brooklyn" is the first MunicipalitySubdivision row this catalog has EVER
+ * held; the filtered request had erased that rung from every previous probe.
+ *
  * ── original question ───────────────────────────────────────────────────
  * Does SETTLING a viewport on the West Village actually create it?
  *

@@ -1,18 +1,28 @@
 import type { PlaceSketchNode } from './places-catalog.service';
 /**
- * TomtomChainProbeAdapter specs — §2 sketch mechanics against the two
- * live-verified vendor shapes (reverse = "lat,lng" strings, forward =
- * {topLeftPoint,btmRightPoint} objects).
+ * TomtomChainProbeAdapter specs — §2 sketch mechanics.
+ *
+ * The probe's reverse geocode is PLAIN (address-mode, corrected 2026-08-07):
+ * it supplies the COMPLETE chain of names and NO geometry — its boundingBox
+ * is a position box, never an outline. All geometry arrives through the
+ * forward geocode ({topLeftPoint,btmRightPoint} objects), which is why the
+ * F3001 antimeridian tests below exercise only the forward parser.
  */
 import { of } from 'rxjs';
 import {
   TomtomChainProbeAdapter,
   parseForwardBoundingBox,
-  parseReverseBoundingBox,
 } from './tomtom-chain-probe.adapter';
 import { bboxContainsPoint } from '@crave-search/shared';
 import { SpendBudgetClosedError } from '../external-integrations/governance/governance.service';
 
+/**
+ * A PLAIN (address-mode) reverse entry, the shape the probe actually
+ * receives: entityType null, no dataSources, boundingBox a few-metre
+ * position box. The position box is included PRECISELY so the suite proves
+ * nobody adopts it as an outline — the deleted freeNode step would have
+ * sketched this neighbourhood as a doorstep.
+ */
 const UWS_REVERSE_ENTRY = {
   address: {
     countryCode: 'US',
@@ -20,16 +30,18 @@ const UWS_REVERSE_ENTRY = {
     countrySubdivisionName: 'New York',
     countrySubdivisionCode: 'NY',
     municipality: 'New York',
+    // The rung the entityType filter used to null out (2026-08-07): a plain
+    // response carries it, and the chain must too.
+    municipalitySubdivision: 'Manhattan',
     neighbourhood: 'Upper West Side',
     country: 'United States',
     boundingBox: {
-      northEast: '40.807972,-73.964694',
-      southWest: '40.779488,-73.992672',
+      northEast: '40.787099,-73.975303',
+      southWest: '40.786899,-73.975503',
+      entity: 'position',
     },
   },
   position: '40.786999,-73.975403',
-  dataSources: { geometry: { id: 'geo-uws' } },
-  entityType: 'Neighbourhood',
 };
 
 const MANHATTAN_FORWARD_RESULT = {
@@ -141,35 +153,39 @@ function buildAdapter(options: {
 const ANCHOR = { lat: 40.787, lng: -73.9754 };
 
 describe('TomtomChainProbeAdapter', () => {
-  it('builds the chain most-specific-first with the free bbox/id on the returned entity', async () => {
-    const { adapter } = buildAdapter({
+  it('builds the COMPLETE chain most-specific-first — including the rung the entityType filter used to erase', async () => {
+    const { adapter, calls } = buildAdapter({
       reverseAddresses: [UWS_REVERSE_ENTRY],
       knownBboxIdentities: true, // no forward geocodes — isolate reverse parsing
     });
     const result = await adapter.probe(ANCHOR);
+    // The request is PLAIN: an entityType param would truncate the chain
+    // (nulls municipalitySubdivision and usually countrySecondarySubdivision
+    // — measured 2026-08-07; it is why the catalog had zero boroughs).
+    const reverse = calls.find((c) => c.url.includes('/reverseGeocode/'));
+    expect(reverse?.params).not.toHaveProperty('entityType');
     expect(
       (result as { chain: PlaceSketchNode[] }).chain.map(
         (n) => n.providerLevelCode,
       ),
     ).toEqual([
       'Neighbourhood',
+      'MunicipalitySubdivision',
       'Municipality',
       'CountrySubdivision',
       'Country',
     ]);
     const uws = (result as { chain: PlaceSketchNode[] }).chain[0];
     expect(uws.name).toBe('Upper West Side');
-    expect(uws.providerPlaceId).toBe('geo-uws');
-    // Reverse-shape "lat,lng" strings parsed and min/max normalized.
-    expect(uws.bbox).toEqual({
-      minLat: 40.779488,
-      minLng: -73.992672,
-      maxLat: 40.807972,
-      maxLng: -73.964694,
-    });
+    // NOTHING IS FREE off a plain reverse: its boundingBox is a position box
+    // (a doorstep, present in the fixture), and adopting it as the
+    // neighbourhood's outline is exactly the defect deleting freeNode
+    // removed. No geometry may come from this response.
+    expect(uws.bbox ?? null).toBeNull();
+    expect(uws.providerPlaceId ?? null).toBeNull();
     // Country identity carries no subdivision (§1 identity tuple).
     expect(
-      (result as { chain: PlaceSketchNode[] }).chain[3].subdivisionCode,
+      (result as { chain: PlaceSketchNode[] }).chain[4].subdivisionCode,
     ).toBeNull();
     expect(
       (result as { chain: PlaceSketchNode[] }).chain[1].subdivisionCode,
@@ -186,8 +202,8 @@ describe('TomtomChainProbeAdapter', () => {
     const forwardCalls = calls.filter(
       (c) => !c.url.includes('/reverseGeocode/'),
     );
-    // 4-node chain, most-specific comes free → 3 unknown nodes probed.
-    expect(forwardCalls).toHaveLength(3);
+    // 5-node chain, nothing free off the plain reverse → all 5 probed.
+    expect(forwardCalls).toHaveLength(5);
     const municipality = (result as { chain: PlaceSketchNode[] }).chain.find(
       (n) => n.providerLevelCode === 'Municipality',
     );
@@ -453,31 +469,8 @@ describe('bbox parsers — F3001: longitude preserves the provider edge order (a
     expect(bboxContainsPoint(parsed!, { lat: 40.75, lng: -75.5 })).toBe(false);
   });
 
-  it('reverse shape: a crossing box (sw.lng=170 / ne.lng=-170) keeps the crossing representation', () => {
-    const parsed = parseReverseBoundingBox({
-      northEast: '53,-170',
-      southWest: '51,170',
-    });
-    expect(parsed).toEqual({
-      minLat: 51,
-      minLng: 170,
-      maxLat: 53,
-      maxLng: -170,
-    });
-    expect(bboxContainsPoint(parsed!, { lat: 52, lng: 179 })).toBe(true);
-    expect(bboxContainsPoint(parsed!, { lat: 52, lng: 0 })).toBe(false);
-  });
-
-  it('reverse shape: a non-crossing box parses as before', () => {
-    const parsed = parseReverseBoundingBox({
-      northEast: '40.807972,-73.964694',
-      southWest: '40.779488,-73.992672',
-    });
-    expect(parsed).toEqual({
-      minLat: 40.779488,
-      minLng: -73.992672,
-      maxLat: 40.807972,
-      maxLng: -73.964694,
-    });
-  });
+  // The reverse-shape F3001 tests died with parseReverseBoundingBox
+  // (2026-08-07): the probe's reverse geocode is plain/address-mode and
+  // returns no outline, so there is no reverse-shape bbox to parse. F3001's
+  // antimeridian law lives in parseForwardBoundingBox — tested above.
 });
