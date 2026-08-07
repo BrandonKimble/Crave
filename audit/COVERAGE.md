@@ -4562,7 +4562,7 @@ CLEAN-PASS-1 api-core + api-search (2026-08-07, ATTEMPT 2, F8400): FRESH-EYES RE
 | apps/mobile/src/tracksheet/track-entry-handoff.ts | mobile-tracksheet | IDEAL-VERIFIED | 1 | ab81cee29de6 | ordered total decision, every 'direct' a stated reason; residency-not-history verified. |
 | apps/mobile/src/tracksheet/track-entry-hidden.ts | mobile-tracksheet | IDEAL-VERIFIED | 1 | 85a532dd6733 | depth+edge fact native; JS holds intent only; resolveHiddenPresentation pure+total. |
 | apps/mobile/src/tracksheet/track-entry-identity.ts | mobile-tracksheet | IDEAL-VERIFIED | 1 | 05560bd92c8b | derived ids, root-singleton stated; unstamped-passes adoption gate. |
-| apps/mobile/src/tracksheet/track-entry-interrupt.ts | mobile-tracksheet | PARTIAL | 1 | 6552809f4525 | F9400 (±2pt epsilon duplicated with track-motion-plan). |
+| apps/mobile/src/tracksheet/track-entry-interrupt.ts | mobile-tracksheet | IDEAL-VERIFIED | 1 | 46ba12ecb540 | F9400 resolved (detent epsilon single-sourced); ordered total decision, every 'direct' a stated reason. |
 | apps/mobile/src/tracksheet/track-entry-liveness.ts | mobile-tracksheet | PARTIAL | 1 | eeaefdbff032 | F9403 (presented-suspended structurally green for list-lane scenes — documented scope). |
 | apps/mobile/src/tracksheet/track-entry-prewarm.ts | mobile-tracksheet | IDEAL-VERIFIED | 1 | 13eb1e0c3176 | host-owned data-driven decision; TTL-lazy span; anchor shared with phase probe. |
 | apps/mobile/src/tracksheet/track-entry-readiness.ts | mobile-tracksheet | PARTIAL | 1 | 14af86f6901d | F9402 (hasShownContent exported, spec-only consumer). |
@@ -4574,7 +4574,7 @@ CLEAN-PASS-1 api-core + api-search (2026-08-07, ATTEMPT 2, F8400): FRESH-EYES RE
 | apps/mobile/src/tracksheet/track-list-window.ts | mobile-tracksheet | IDEAL-VERIFIED | 1 | 6443ae8204be | overscan from FlashList's own formula (restated to disagree w/ device); ratio/floor/cap reasoned. |
 | apps/mobile/src/tracksheet/track-motion-authority.ts | mobile-tracksheet | IDEAL-VERIFIED | 1 | b9e88da84fa2 | one episode store, identity-stamped facts, snap-retry deleted with its premise; pure reducer. |
 | apps/mobile/src/tracksheet/track-motion-deadline.ts | mobile-tracksheet | PARTIAL | 1 | 2f9a2f97d6f1 | F9402 (two selectors spec-only); backstop law verified; 700ms a stated deadline not a fake duration. |
-| apps/mobile/src/tracksheet/track-motion-plan.ts | mobile-tracksheet | PARTIAL | 1 | 5ab1e1f7506b | F9400 (±2pt), F9401 (0.5pt mirrors native). |
+| apps/mobile/src/tracksheet/track-motion-plan.ts | mobile-tracksheet | PARTIAL | 1 | 7c82eb7ec87b | F9401 (0.5pt willMove mirrors native — NATIVE-gated). F9400 resolved. |
 | apps/mobile/src/tracksheet/track-native-contract.ts | mobile-tracksheet | IDEAL-VERIFIED | 1 | de43c33b65ad | version+capability handshake wired; native header matches (v2, all 5 caps). No silent shim. |
 | apps/mobile/src/tracksheet/track-press-phase-probe.ts | mobile-tracksheet | IDEAL-VERIFIED | 1 | 4137f69e9fd4 | '?' vs '0.0ms' honesty, first-write-wins, row-window outlives phase-span. CONCURRENT-dirty. |
 | apps/mobile/src/tracksheet/track-settle-fact.ts | mobile-tracksheet | IDEAL-VERIFIED | 1 | e450fb40a0b4 | rest!=detent split; generation stale-guard; hiddenEngaged never writes memory. |
@@ -4583,3 +4583,4 @@ CLEAN-PASS-1 api-core + api-search (2026-08-07, ATTEMPT 2, F8400): FRESH-EYES RE
 | apps/mobile/src/tracksheet/use-track-a11y-announcer.ts | mobile-tracksheet | IDEAL-VERIFIED | 1 | dec62c33bc94 | no-dep effect on purpose (latch is where RED lands); no capability gate to go stale. |
 | apps/mobile/src/tracksheet/use-track-leg-resolver.tsx | mobile-tracksheet | IDEAL-VERIFIED | 1 | 95c4af08b174 | mounted via TrackSheetRouteHost:508 so its own effects commit; no stranded effect. |
 | apps/mobile/src/tracksheet/use-track-motion-controller.ts | mobile-tracksheet | IDEAL-VERIFIED | 1 | ee6785e894b3 | thin adapter over authority+deadline reducers; one OS timer, scheduleId rejects resume-stampede; degrade barks. |
+| apps/mobile/src/tracksheet/track-detent-epsilon-agreement.spec.ts | mobile-tracksheet | IDEAL-VERIFIED | 1 | 5736825f1567 | F9400 falsifier: divergent detent epsilon reds a boundary-τ classification. |
