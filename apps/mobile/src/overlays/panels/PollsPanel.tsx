@@ -370,7 +370,6 @@ const usePollsHeaderCreateActionRegistration = () => {
   React.useEffect(
     () =>
       registerHeaderCreateAction('polls', () => {
-        const sceneState = routeSceneRuntime.routePollsSceneRuntime.sceneAuthority.getSnapshot();
         const headerModel =
           routeSceneRuntime.routePollsSceneRuntime.headerModelAuthority.getSnapshot();
         const settledBounds = getViewportSubjectState().settledBounds;
@@ -383,7 +382,6 @@ const usePollsHeaderCreateActionRegistration = () => {
           return;
         }
 
-        sceneState.onRequestPollCreationExpand?.();
         pushRoute('pollCreation', {
           placeName: headerModel?.placeName ?? null,
           bounds: settledBounds,

@@ -44,18 +44,11 @@ const OVERLAY_ROUTE_PARAMS_COMPARATORS = {
   polls: (left, right) => left.pollId === right.pollId,
   profile: (left, right) => left.profileUserId === right.profileUserId,
   restaurant: (left, right) =>
-    left.restaurantId === right.restaurantId &&
-    left.source === right.source &&
-    left.parentSceneKey === right.parentSceneKey &&
-    left.ownerSceneKey === right.ownerSceneKey &&
-    left.openerRouteKey === right.openerRouteKey &&
-    left.routeInstanceId === right.routeInstanceId &&
-    left.sessionToken === right.sessionToken,
+    left.restaurantId === right.restaurantId && left.source === right.source,
   saveList: (left, right) =>
     left.listType === right.listType &&
     left.target?.restaurantId === right.target?.restaurantId &&
     left.target?.connectionId === right.target?.connectionId &&
-    left.parentSceneKey === right.parentSceneKey &&
     left.ownerSceneKey === right.ownerSceneKey &&
     left.openerRouteKey === right.openerRouteKey &&
     left.routeInstanceId === right.routeInstanceId,
@@ -64,13 +57,11 @@ const OVERLAY_ROUTE_PARAMS_COMPARATORS = {
     // Reference compare (the old `bounds` arm's semantics) — bounds is a captured
     // map-region snapshot, stable per publish.
     left.bounds === right.bounds &&
-    left.parentSceneKey === right.parentSceneKey &&
     left.ownerSceneKey === right.ownerSceneKey &&
     left.routeInstanceId === right.routeInstanceId,
   pollDetail: (left, right) =>
     // `poll` (feed-card snapshot) intentionally excluded — see the module doc.
     left.pollId === right.pollId &&
-    left.parentSceneKey === right.parentSceneKey &&
     left.ownerSceneKey === right.ownerSceneKey &&
     left.routeInstanceId === right.routeInstanceId &&
     left.commentAnchorId === right.commentAnchorId,

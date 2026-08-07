@@ -1,7 +1,7 @@
 import {
   createSearchRoutePollsSceneStateRuntime,
   type SearchRoutePollsSceneStateRuntime,
-} from '../../overlays/useSearchRoutePollsSceneStateRuntime';
+} from '../../overlays/search-route-polls-scene-state';
 import { overlaySheetStyles } from '../../overlays/overlaySheetStyles';
 import { normalizeSearchRouteSceneStackShellSpec } from '../../overlays/searchOverlayRouteHostContract';
 import {
@@ -227,13 +227,11 @@ class AppRoutePollsSceneInputRuntimeController implements AppRoutePollsSceneInpu
       visible: pollsSceneStateRuntime.visible,
       params: pollsSceneStateRuntime.params,
       initialSnapPoint: pollsSceneStateRuntime.initialSnapPoint,
-      mode: pollsSceneStateRuntime.mode,
       currentSnap: pollsSceneStateRuntime.currentSnap,
       navBarTop: pollsSceneStateRuntime.navBarTop,
       navBarHeight: pollsSceneStateRuntime.navBarHeight,
       searchBarTop: pollsSceneStateRuntime.searchBarTop,
       snapPoints: pollsSceneStateRuntime.snapPoints,
-      onRequestPollCreationExpand: undefined,
       // CURRENTLY UNWIRED (2026-07-02): the polls grab-handle used to invoke this in overlay mode,
       // but the grab-handle tap is now the shared promote-to-middle (owner req: dismiss ONLY from
       // the close X, and polls-as-home has no close). The programmatic path is KEPT intact pending

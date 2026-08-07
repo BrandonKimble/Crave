@@ -57,8 +57,8 @@ const PARAMS_EQUALITY_CASES: readonly ParamsCase[] = [
   paramsCase({
     name: 'restaurant: identical params equal',
     key: 'restaurant',
-    left: { restaurantId: 'r1', source: 'search', sessionToken: 7 },
-    right: { restaurantId: 'r1', source: 'search', sessionToken: 7 },
+    left: { restaurantId: 'r1', source: 'search' },
+    right: { restaurantId: 'r1', source: 'search' },
     expected: true,
   }),
   paramsCase({
@@ -66,13 +66,6 @@ const PARAMS_EQUALITY_CASES: readonly ParamsCase[] = [
     key: 'restaurant',
     left: { restaurantId: 'r1' },
     right: { restaurantId: 'r2' },
-    expected: false,
-  }),
-  paramsCase({
-    name: 'restaurant: differing sessionToken unequal',
-    key: 'restaurant',
-    left: { restaurantId: 'r1', sessionToken: 1 },
-    right: { restaurantId: 'r1', sessionToken: 2 },
     expected: false,
   }),
   // ── postPhotos (previously rode the restaurant arm's union) ──────────────
@@ -178,14 +171,12 @@ const PARAMS_EQUALITY_CASES: readonly ParamsCase[] = [
     left: {
       listType: 'dish',
       target: { connectionId: 'c1' },
-      parentSceneKey: 'search',
       ownerSceneKey: 'search',
       routeInstanceId: 'i1',
     },
     right: {
       listType: 'dish',
       target: { connectionId: 'c1' },
-      parentSceneKey: 'search',
       ownerSceneKey: 'search',
       routeInstanceId: 'i1',
     },
@@ -197,14 +188,12 @@ const PARAMS_EQUALITY_CASES: readonly ParamsCase[] = [
     left: {
       listType: 'dish',
       target: { connectionId: 'c1' },
-      parentSceneKey: 'search',
       ownerSceneKey: 'search',
       routeInstanceId: 'i1',
     },
     right: {
       listType: 'dish',
       target: { connectionId: 'c2' },
-      parentSceneKey: 'search',
       ownerSceneKey: 'search',
       routeInstanceId: 'i1',
     },

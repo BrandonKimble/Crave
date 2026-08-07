@@ -1,7 +1,6 @@
 import React from 'react';
 import { useAnimatedStyle } from 'react-native-reanimated';
 
-import type { OverlayRouteEntry } from '../navigation/runtime/app-overlay-route-types';
 import type {
   AppRouteSceneBodyContentSpec,
   AppRouteSceneBodyTransportSpec,
@@ -19,6 +18,7 @@ import {
 import { publishRestaurantHeaderLiveState } from './restaurant-header-live-state';
 import { createRestaurantRoutePanelHostConfig } from './restaurantRoutePanelContract';
 import { normalizeSearchRouteSceneStackShellSpec } from './searchOverlayRouteHostContract';
+import { isSearchRestaurantRouteEntry } from './searchRestaurantRouteController';
 import { isOverlayListContentSpec, type OverlayContentSpec } from './types';
 import { useRestaurantRouteContentSpecRuntime } from './useRestaurantRouteContentSpecRuntime';
 import { useRestaurantRouteEntryRuntime } from './useRestaurantRouteEntryRuntime';
@@ -33,16 +33,6 @@ type RestaurantRouteSceneDescriptor = {
   sceneChrome: AppRouteSceneChromePublication;
   sceneBodyContent: AppRouteSceneBodyContentSpec;
   sceneBodyTransport: AppRouteSceneBodyTransportSpec;
-};
-
-const isSearchRestaurantRouteEntry = (
-  route: OverlayRouteEntry
-): route is OverlayRouteEntry<'restaurant'> => {
-  if (route.key !== 'restaurant') {
-    return false;
-  }
-  const params = route.params as OverlayRouteEntry<'restaurant'>['params'] | undefined;
-  return params?.source === 'search';
 };
 
 const createRestaurantSharedSceneDescriptor = (

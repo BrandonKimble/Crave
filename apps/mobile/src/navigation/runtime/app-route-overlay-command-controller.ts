@@ -16,7 +16,6 @@ export type AppRouteSaveSheetState = {
   visible: boolean;
   listType: UserListType;
   target: AppOverlaySaveListTarget | null;
-  parentSceneKey: AppOverlayTopLevelProductRouteKey | null;
   ownerSceneKey: AppOverlayTopLevelProductRouteKey | null;
   openerRouteKey: OverlayKey | null;
   routeInstanceId: string | null;
@@ -49,7 +48,6 @@ const DEFAULT_SAVE_SHEET_STATE: AppRouteSaveSheetState = {
   visible: false,
   listType: 'restaurant',
   target: null,
-  parentSceneKey: null,
   ownerSceneKey: null,
   openerRouteKey: null,
   routeInstanceId: null,
@@ -169,7 +167,6 @@ class AppRouteOverlayCommandController {
 
   private resolveCurrentSaveSheetOwner(): {
     ownerSceneKey: AppOverlayTopLevelProductRouteKey;
-    parentSceneKey: AppOverlayTopLevelProductRouteKey;
     openerRouteKey: OverlayKey;
   } {
     const routeState = this.routeOverlayRouteCommandRuntime.getRouteState();
@@ -188,27 +185,23 @@ class AppRouteOverlayCommandController {
     listType,
     target,
     ownerSceneKey,
-    parentSceneKey,
     openerRouteKey,
     routeInstanceId,
   }: {
     listType: UserListType;
     target: AppOverlaySaveListTarget;
     ownerSceneKey?: AppOverlayTopLevelProductRouteKey | null;
-    parentSceneKey?: AppOverlayTopLevelProductRouteKey | null;
     openerRouteKey?: OverlayKey | null;
     routeInstanceId?: string | null;
   }): void {
     const currentOwner = this.resolveCurrentSaveSheetOwner();
     const resolvedOwnerSceneKey = ownerSceneKey ?? currentOwner.ownerSceneKey;
-    const resolvedParentSceneKey = parentSceneKey ?? currentOwner.parentSceneKey;
     const resolvedOpenerRouteKey = openerRouteKey ?? currentOwner.openerRouteKey;
     const resolvedRouteInstanceId = routeInstanceId ?? this.createSaveSheetRouteInstanceId();
     const saveSheetState: AppRouteSaveSheetState = {
       visible: true,
       listType,
       target,
-      parentSceneKey: resolvedParentSceneKey,
       ownerSceneKey: resolvedOwnerSceneKey,
       openerRouteKey: resolvedOpenerRouteKey,
       routeInstanceId: resolvedRouteInstanceId,
@@ -216,7 +209,6 @@ class AppRouteOverlayCommandController {
     const routeParams: NonNullable<OverlayRouteParamsMap['saveList']> = {
       listType,
       target,
-      parentSceneKey: resolvedParentSceneKey,
       ownerSceneKey: resolvedOwnerSceneKey,
       openerRouteKey: resolvedOpenerRouteKey,
       routeInstanceId: resolvedRouteInstanceId,

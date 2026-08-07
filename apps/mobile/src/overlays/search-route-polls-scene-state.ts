@@ -1,10 +1,7 @@
-import React from 'react';
-
 import type { RouteSceneSwitchDockedSceneRestoreIntent } from '../navigation/runtime/app-overlay-route-transition-contract';
 import type { SearchRouteSceneLayoutState } from './searchRouteSceneLayoutContract';
 import type {
   PollsPanelInitialSnapPoint,
-  PollsPanelMode,
   UsePollsPanelSpecOptions,
 } from './panels/runtime/polls-panel-runtime-contract';
 import type { OverlaySheetSnap } from './types';
@@ -29,7 +26,6 @@ export type SearchRoutePollsSceneStateRuntime = {
   visible: boolean;
   interactionRef: UsePollsPanelSpecOptions['interactionRef'];
   params: UseSearchRoutePollsSceneStateRuntimeArgs['pollOverlayParams'];
-  mode: PollsPanelMode;
   initialSnapPoint: PollsPanelInitialSnapPoint;
   currentSnap: OverlaySheetSnap;
   navBarTop: number;
@@ -46,7 +42,6 @@ export const createSearchRoutePollsSceneStateRuntime = ({
   overlayVisibilityState,
   interactionRef,
 }: UseSearchRoutePollsSceneStateRuntimeArgs): SearchRoutePollsSceneStateRuntime => {
-  const mode: PollsPanelMode = 'docked';
   // F1494: this constant is 'collapsed', not 'expanded' — corrected 2026-08-05.
   // The prior comment here ("opens at the content seat (expanded); the collapsed
   // docked-bar initial is history") contradicted the line it annotated; verified
@@ -63,7 +58,6 @@ export const createSearchRoutePollsSceneStateRuntime = ({
     visible: isPollsVisible,
     interactionRef,
     params: pollOverlayParams,
-    mode,
     initialSnapPoint,
     currentSnap,
     navBarTop: sceneLayout.navBarTop,
@@ -71,33 +65,4 @@ export const createSearchRoutePollsSceneStateRuntime = ({
     searchBarTop: sceneLayout.searchBarTop,
     snapPoints: sceneLayout.snapPoints,
   };
-};
-
-export const useSearchRoutePollsSceneStateRuntime = ({
-  sceneLayout,
-  pollOverlayParams,
-  commandState,
-  dockedSceneRestoreIntent,
-  overlayVisibilityState,
-  interactionRef,
-}: UseSearchRoutePollsSceneStateRuntimeArgs): SearchRoutePollsSceneStateRuntime => {
-  return React.useMemo(
-    () =>
-      createSearchRoutePollsSceneStateRuntime({
-        sceneLayout,
-        pollOverlayParams,
-        commandState,
-        dockedSceneRestoreIntent,
-        overlayVisibilityState,
-        interactionRef,
-      }),
-    [
-      commandState,
-      dockedSceneRestoreIntent,
-      interactionRef,
-      overlayVisibilityState,
-      pollOverlayParams,
-      sceneLayout,
-    ]
-  );
 };

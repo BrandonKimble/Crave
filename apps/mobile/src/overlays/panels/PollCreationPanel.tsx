@@ -388,7 +388,7 @@ const resolvePollCreationHeaderPlace = (
     return null;
   }
   const params = route.params as OverlayRouteEntry<'pollCreation'>['params'];
-  if (params?.parentSceneKey !== 'polls' || params?.ownerSceneKey !== 'polls') {
+  if (params?.ownerSceneKey !== 'polls') {
     return null;
   }
   return {

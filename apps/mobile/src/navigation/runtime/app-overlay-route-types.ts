@@ -427,7 +427,6 @@ export const createPollCreationChildRouteParams = (
   params?: OverlayRouteParamsMap['pollCreation']
 ): NonNullable<OverlayRouteParamsMap['pollCreation']> => ({
   ...params,
-  parentSceneKey: 'polls',
   ownerSceneKey: 'polls',
 });
 
@@ -436,7 +435,6 @@ export const createPollDetailChildRouteParams = (
 ): NonNullable<OverlayRouteParamsMap['pollDetail']> => ({
   ...params,
   pollId: params?.pollId ?? '',
-  parentSceneKey: 'polls',
   ownerSceneKey: 'polls',
 });
 
@@ -460,16 +458,10 @@ export type OverlayRouteParamsMap = {
   restaurant?: {
     restaurantId: string | null;
     source?: 'search';
-    parentSceneKey?: AppOverlayTopLevelProductRouteKey | null;
-    ownerSceneKey?: AppOverlayTopLevelProductRouteKey | null;
-    openerRouteKey?: OverlayKey | null;
-    routeInstanceId?: string | null;
-    sessionToken?: number | null;
   };
   saveList?: {
     listType: AppOverlaySaveListType;
     target: AppOverlaySaveListTarget | null;
-    parentSceneKey: AppOverlayTopLevelProductRouteKey;
     ownerSceneKey: AppOverlayTopLevelProductRouteKey;
     openerRouteKey?: OverlayKey | null;
     routeInstanceId: string;
@@ -480,7 +472,6 @@ export type OverlayRouteParamsMap = {
     /** Display label for the creation header (the feed's §2 place verdict). */
     placeName?: string | null;
     bounds?: MapBounds | null;
-    parentSceneKey?: 'polls' | null;
     ownerSceneKey?: 'polls' | null;
     routeInstanceId?: string | null;
   };
@@ -488,7 +479,6 @@ export type OverlayRouteParamsMap = {
     pollId: string;
     /** Optional snapshot for an instant header render (the feed card already has it). */
     poll?: import('../../services/polls').Poll | null;
-    parentSceneKey?: 'polls' | null;
     ownerSceneKey?: 'polls' | null;
     routeInstanceId?: string | null;
     // The comment a cross-surface reveal launched from. Set only when the route is RE-PUSHED by the

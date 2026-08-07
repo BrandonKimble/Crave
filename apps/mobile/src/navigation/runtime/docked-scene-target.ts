@@ -66,10 +66,9 @@ export const getRouteOwnerSceneKey = (
   const params = route.params as
     | {
         ownerSceneKey?: AppOverlayTopLevelProductRouteKey | null;
-        parentSceneKey?: AppOverlayTopLevelProductRouteKey | null;
       }
     | undefined;
-  const ownerSceneKey = params?.ownerSceneKey ?? params?.parentSceneKey ?? null;
+  const ownerSceneKey = params?.ownerSceneKey ?? null;
   return isTopLevelProductSceneKey(ownerSceneKey) ? ownerSceneKey : null;
 };
 
@@ -87,7 +86,6 @@ export const resolveOwnerSceneKeyAndOpener = ({
   rootOverlayKey: OverlayKey;
 }): {
   ownerSceneKey: AppOverlayTopLevelProductRouteKey;
-  parentSceneKey: AppOverlayTopLevelProductRouteKey;
   openerRouteKey: OverlayKey;
 } => {
   const routeOwnerSceneKey = getRouteOwnerSceneKey(activeRoute);
@@ -106,7 +104,7 @@ export const resolveOwnerSceneKeyAndOpener = ({
   // (search/home/lists/profile/polls) and `grep '\[OWNER-FALLBACK\]' /tmp/crave-metro.log`
   // (dev console goes to Metro's stdout, never to os_log). If it never fires, delete the
   // arm and narrow the return type. If it fires, the owner belongs in the pushed entry's
-  // params — `getRouteOwnerSceneKey` already reads `ownerSceneKey`/`parentSceneKey`, so
+  // params — `getRouteOwnerSceneKey` already reads `ownerSceneKey`, so
   // making it REQUIRED at push makes the fallback unnecessary rather than defaulted.
   const resolvedOwnerSceneKey = routeOwnerSceneKey ?? rootOwnerSceneKey;
   if (__DEV__ && resolvedOwnerSceneKey == null) {
@@ -120,7 +118,6 @@ export const resolveOwnerSceneKeyAndOpener = ({
   const ownerSceneKey = resolvedOwnerSceneKey ?? 'search';
   return {
     ownerSceneKey,
-    parentSceneKey: ownerSceneKey,
     openerRouteKey: activeRoute.key,
   };
 };

@@ -10,7 +10,6 @@ export type AppRoutePollsSceneBodySnapshot = Pick<
   AppRoutePollsSceneState,
   | 'params'
   | 'initialSnapPoint'
-  | 'mode'
   | 'currentSnap'
   | 'navBarTop'
   | 'navBarHeight'
@@ -49,12 +48,9 @@ export type AppRoutePollsSceneRuntime = {
 
 export const EMPTY_APP_ROUTE_POLLS_SCENE_STATE: AppRoutePollsSceneState = {
   visible: false,
-  mode: 'docked',
 };
 
-const EMPTY_APP_ROUTE_POLLS_SCENE_BODY_SNAPSHOT: AppRoutePollsSceneBodySnapshot = {
-  mode: 'docked',
-};
+const EMPTY_APP_ROUTE_POLLS_SCENE_BODY_SNAPSHOT: AppRoutePollsSceneBodySnapshot = {};
 
 export const arePollsSceneStatesEqual = (
   left: AppRoutePollsSceneState,
@@ -63,13 +59,11 @@ export const arePollsSceneStatesEqual = (
   left.visible === right.visible &&
   left.params === right.params &&
   left.initialSnapPoint === right.initialSnapPoint &&
-  left.mode === right.mode &&
   left.currentSnap === right.currentSnap &&
   left.navBarTop === right.navBarTop &&
   left.navBarHeight === right.navBarHeight &&
   left.searchBarTop === right.searchBarTop &&
   left.snapPoints === right.snapPoints &&
-  left.onRequestPollCreationExpand === right.onRequestPollCreationExpand &&
   left.onRequestReturnToSearch === right.onRequestReturnToSearch &&
   left.interactionRef === right.interactionRef;
 
@@ -114,7 +108,6 @@ const resolvePollsSceneBodySnapshot = (
 ): AppRoutePollsSceneBodySnapshot => ({
   params: snapshot.params,
   initialSnapPoint: snapshot.initialSnapPoint,
-  mode: snapshot.mode,
   currentSnap: snapshot.currentSnap,
   navBarTop: snapshot.navBarTop,
   navBarHeight: snapshot.navBarHeight,
@@ -129,7 +122,6 @@ const arePollsSceneBodyRenderSnapshotsEqual = (
 ): boolean =>
   left.params === right.params &&
   left.initialSnapPoint === right.initialSnapPoint &&
-  left.mode === right.mode &&
   left.currentSnap === right.currentSnap &&
   left.navBarTop === right.navBarTop &&
   left.navBarHeight === right.navBarHeight &&
@@ -202,7 +194,6 @@ class AppRoutePollsSceneController implements AppRoutePollsSceneRuntime {
       this.sceneSnapshot.initialSnapPoint,
       snapshot.initialSnapPoint
     );
-    markPollsSceneStateFieldDiff('mode', this.sceneSnapshot.mode, snapshot.mode);
     markPollsSceneStateFieldDiff(
       'currentSnap',
       this.sceneSnapshot.currentSnap,

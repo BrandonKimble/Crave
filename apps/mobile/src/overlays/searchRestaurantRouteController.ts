@@ -14,13 +14,9 @@ export type SearchRestaurantRouteCommand =
       restaurantId: string | null;
     };
 
-const isSearchRestaurantRouteEntry = (
+export const isSearchRestaurantRouteEntry = (
   route: OverlayRouteEntry
-): route is OverlayRouteEntry<'restaurant'> =>
-  route.key === 'restaurant' &&
-  route.params != null &&
-  'source' in route.params &&
-  route.params.source === 'search';
+): route is OverlayRouteEntry<'restaurant'> => route.key === 'restaurant';
 
 export const applySearchRestaurantRouteCommand = (
   command: SearchRestaurantRouteCommand | undefined,

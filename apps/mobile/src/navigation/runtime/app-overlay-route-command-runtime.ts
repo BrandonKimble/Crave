@@ -50,7 +50,7 @@ export type AppOverlayRouteCommandRuntime = {
   revealRoute: <K extends OverlayKey>(overlay: K, params?: OverlayRouteParamsMap[K]) => void;
   pushRoute: <K extends OverlayKey>(overlay: K, params?: OverlayRouteParamsMap[K]) => void;
   restoreDockedScene: () => void;
-  collapseActiveSheet: (args?: { snap?: Exclude<OverlaySheetSnap, 'hidden'> }) => void;
+  collapseActiveSheet: () => void;
   // The shared HEADER-TAP / grab-handle press (owner req 2026-07-02): tapping the persistent
   // header PROMOTES the sheet up to at least middle when it sits below middle, and is a no-op
   // at/above middle. It NEVER collapses or dismisses — pages dismiss ONLY via the close (X)
@@ -298,7 +298,7 @@ export const createAppOverlayRouteCommandRuntime = ({
         dockedSceneRestoreSnap: snap,
       });
     },
-    collapseActiveSheet: ({ snap = 'collapsed' } = {}) => {
+    collapseActiveSheet: () => {
       const { activeOverlayRoute } = routeSceneSwitchRuntime.getRouteState();
       if (!isAppOverlayRouteSceneSwitchKey(activeOverlayRoute.key)) {
         return;
@@ -309,7 +309,7 @@ export const createAppOverlayRouteCommandRuntime = ({
         routeParams: activeOverlayRoute.params as RouteSceneSwitchRouteParams,
         sheetTransitionKind: 'gesture',
         sheetOpenerSource: 'routeCommand',
-        sheetMotion: { kind: 'snapTo', snap },
+        sheetMotion: { kind: 'snapTo', snap: 'collapsed' },
       });
     },
     promoteActiveSheet: ({ snap = 'middle' } = {}) => {

@@ -19,7 +19,7 @@ const isPollCreationRouteEntry = (
     return false;
   }
   const params = route.params as OverlayRouteEntry<'pollCreation'>['params'];
-  return params?.parentSceneKey === 'polls' && params?.ownerSceneKey === 'polls';
+  return params?.ownerSceneKey === 'polls';
 };
 
 export const useSearchRoutePollCreationSceneStateRuntime = ({
