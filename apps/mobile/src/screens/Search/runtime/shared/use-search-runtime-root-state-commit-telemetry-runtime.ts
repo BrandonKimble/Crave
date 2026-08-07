@@ -1,14 +1,10 @@
 import React from 'react';
 
 import type { ResultsPresentationAuthority } from './results-presentation-authority';
-import type { ResultsPresentationSurfaceAuthority } from './results-presentation-surface-authority';
-import type { SearchRuntimeBus } from './search-runtime-bus';
 import type { SearchRootStateCommitSnapshot } from './search-runtime-instrumentation-runtime-contract';
 
 export const useSearchRuntimeRootStateCommitTelemetryRuntime = ({
-  searchRuntimeBus,
   resultsPresentationAuthority,
-  resultsPresentationSurfaceAuthority,
   getActiveScenarioRunNumber,
   emitRuntimeMechanismEvent,
   searchMode,
@@ -21,9 +17,7 @@ export const useSearchRuntimeRootStateCommitTelemetryRuntime = ({
   resultsRequestKey,
   resultsPage,
 }: {
-  searchRuntimeBus: SearchRuntimeBus;
   resultsPresentationAuthority: ResultsPresentationAuthority;
-  resultsPresentationSurfaceAuthority: ResultsPresentationSurfaceAuthority;
   getActiveScenarioRunNumber: () => number | null;
   emitRuntimeMechanismEvent: (event: string, payload?: Record<string, unknown>) => void;
   searchMode: 'natural' | 'shortcut' | null;
@@ -36,9 +30,6 @@ export const useSearchRuntimeRootStateCommitTelemetryRuntime = ({
   resultsRequestKey: string | null;
   resultsPage: number | null;
 }): void => {
-  void resultsPresentationSurfaceAuthority;
-  // F1735: the bus was only read for the deleted redraw-coordinator fields.
-  void searchRuntimeBus;
   const rootStateCommitSnapshotRef = React.useRef<SearchRootStateCommitSnapshot | null>(null);
   const latestRootFieldsRef = React.useRef({
     activeOverlayKey,
@@ -102,10 +93,6 @@ export const useSearchRuntimeRootStateCommitTelemetryRuntime = ({
     emitRuntimeMechanismEvent('runtime_write_span', {
       domain: 'root_state_commit',
       label: 'search_root_state_commit',
-      // F1735: the redraw-coordinator bus fields are deleted (structural fossil);
-      // these only ever carried the permanent idle values.
-      operationId: null,
-      phase: 'idle',
       changedKeys,
       snapshot,
     });

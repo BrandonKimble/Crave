@@ -393,9 +393,7 @@ export const useSearchRuntimeInstrumentationRuntime = ({
   });
 
   useSearchRuntimeRootStateCommitTelemetryRuntime({
-    searchRuntimeBus,
     resultsPresentationAuthority,
-    resultsPresentationSurfaceAuthority,
     getActiveScenarioRunNumber,
     emitRuntimeMechanismEvent,
     searchMode,
