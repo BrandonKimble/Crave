@@ -36,6 +36,8 @@ import { existsSync, readFileSync } from 'fs';
 import { dirname, join, resolve } from 'path';
 import { fileURLToPath } from 'url';
 
+import { readTrackedFile, skipNote } from './lib/tracked-source.mjs';
+
 const REPO_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 
 /**
@@ -100,6 +102,13 @@ if (files.length === 0) {
   process.exit(1);
 }
 
+/**
+ * Tracked-but-absent files skipped this run (F3912 item six). Counted here so
+ * both discovery passes report into one number, and PRINTED — a gate that
+ * silently covers fewer files than it claims is the always-green disease.
+ */
+let skippedFiles = 0;
+
 /** workspace name -> Set(script names), plus the root under the name '.'. */
 function scriptIndex() {
   const manifests = execFileSync('git', ['ls-files', '*package.json'], {
@@ -114,9 +123,14 @@ function scriptIndex() {
   const byWorkspaceName = new Map();
   let rootScripts = new Set();
   for (const rel of manifests) {
+    const rawPkg = readTrackedFile(join(REPO_ROOT, rel));
+    if (rawPkg === null) {
+      skippedFiles += 1; // tracked, absent from the worktree (F3912 item six)
+      continue;
+    }
     let pkg;
     try {
-      pkg = JSON.parse(readFileSync(join(REPO_ROOT, rel), 'utf8'));
+      pkg = JSON.parse(rawPkg);
     } catch {
       continue;
     }
@@ -203,7 +217,11 @@ let checkedPaths = 0;
 let suppressed = 0;
 
 for (const rel of files) {
-  const text = readFileSync(join(REPO_ROOT, rel), 'utf8');
+  const text = readTrackedFile(join(REPO_ROOT, rel));
+  if (text === null) {
+    skippedFiles += 1; // tracked, absent from the worktree (F3912 item six)
+    continue;
+  }
   const lines = text.split('\n');
 
   lines.forEach((line, i) => {
@@ -277,5 +295,6 @@ console.log(
   `doc-claims OK — ${files.length} gated .md file(s); ` +
     `${checkedCommands} yarn command(s) and ${checkedPaths} repo path(s) all resolve; ` +
     `${suppressed} line(s) skipped as self-declared corrections. ` +
-    `(${EXCLUDED.length} corpora excluded BY DESIGN — they are history, not recipes.)`
+    `(${EXCLUDED.length} corpora excluded BY DESIGN — they are history, not recipes.)` +
+    skipNote(skippedFiles)
 );

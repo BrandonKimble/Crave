@@ -28,9 +28,10 @@
  * marker terminating a doc comment early.
  */
 import { execFileSync } from 'child_process';
-import { readFileSync } from 'fs';
 import { dirname, join, resolve } from 'path';
 import { fileURLToPath } from 'url';
+
+import { readTrackedFile, skipNote } from './lib/tracked-source.mjs';
 
 const REPO_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 
@@ -65,12 +66,36 @@ if (files.length === 0) {
  * template-literal state — once the stray backtick is present the template's
  * own boundaries are ambiguous, so state-tracking would be reasoning about a
  * structure the defect has already destroyed.
+ *
+ * THE SCOPE THIS LEAVES OPEN, stated so a green run is not over-read (F3912).
+ * The law is "no backtick inside a template literal, EVER" — the trap is
+ * position-agnostic. This gate enforces a strict SUBSET: comments that START a
+ * line. A TRAILING comment —
+ *
+ *     SELECT 1 -- a bare `::date` note
+ *
+ * — closes the template just the same and passes here. The scope is not an
+ * oversight; it is the header's own argument applied honestly. Widening it
+ * needs template-literal state, which is the structure the defect destroys,
+ * and the only hardened stripper in this repo
+ * (`apps/api/src/shared/testing/code-only.ts`) is TypeScript that this .mjs
+ * gate cannot import — replicating it here would recreate the very duplicate
+ * F3911 just eliminated. So the limitation is PRINTED on every OK line
+ * instead: the gate's job is to NAME the trap, tsc still catches the break,
+ * and an operator who reads "no line-initial backtick" as "no backtick" is the
+ * only way this scope can hurt.
  */
 const SQL_COMMENT_LINE = /^\s*--/;
 
 const failures = [];
+let skipped = 0;
 for (const rel of files) {
-  const src = readFileSync(join(REPO_ROOT, rel), 'utf8');
+  const src = readTrackedFile(join(REPO_ROOT, rel));
+  if (src === null) {
+    // Tracked, absent from the worktree (F3912 item six): skip and COUNT.
+    skipped += 1;
+    continue;
+  }
   if (!src.includes('--')) continue;
   const lines = src.split('\n');
   for (let i = 0; i < lines.length; i += 1) {
@@ -95,5 +120,9 @@ if (failures.length) {
 }
 console.log(
   `sql-comment-backticks OK — ${files.length} TypeScript files, no backtick ` +
-    `inside an embedded SQL comment.`,
+    `in a LINE-INITIAL SQL comment` +
+    skipNote(skipped) +
+    `. SCOPE (F3912): this checks comments that START a line only. A TRAILING ` +
+    `\`-- ... \\\` ...\` closes the template just as hard and is NOT covered ` +
+    `here — tsc catches the break, this gate only names the ones it sees.`,
 );

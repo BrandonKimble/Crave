@@ -17,10 +17,12 @@
  * Type-position references (`typeof useX`) do not count: `ReturnType<typeof
  * useSharedValue<number>>` is a type describing a hook, not a call to one.
  *
- * Comment stripping replicates apps/api/scripts/scanner-source.ts (the
- * repo's "source as the compiler sees it" precedent) — replicated locally
- * rather than imported because scripts/ must not reach across workspaces
- * into apps/api's TS toolchain.
+ * Comment stripping replicates apps/api/src/shared/testing/code-only.ts (the
+ * repo's "source as the compiler sees it" precedent, and since F3911 its ONE
+ * home) — replicated locally rather than imported because scripts/ must not
+ * reach across workspaces into apps/api's TS toolchain. A replica is a debt:
+ * it inherited the F3910 regex-literal false strip and has been repaired to
+ * match. If the original changes again, this changes with it.
  *
  * MUTATION PROOF (2026-08-06): run against the pre-rename tree, this gate
  * failed naming all 13 NAME-LIE files; after the D70 Stage-1 renames it
@@ -37,9 +39,58 @@ const SHARED_DIR = join(
 );
 
 /**
+ * F3910, ported. A `/` in EXPRESSION position opens a regex literal, and a
+ * regex containing escaped slashes ends in `//` — which the line-comment
+ * branch below would read as a comment and use to blank the REST OF THE LINE,
+ * hiding a real `useX(` call from this gate. A blinded gate reports clean.
+ * If the candidate has no closing `/` on its own line it is not a regex, and
+ * the comment branches get their turn (the conservative bail).
+ */
+const REGEX_PRECEDING_PUNCT = new Set([
+  '(', ',', '=', ':', '[', '!', '&', '|', '?', '{', '}', ';', '+', '-', '*',
+  '%', '~', '^', '<', '>',
+]);
+const REGEX_PRECEDING_KEYWORDS = new Set([
+  'return', 'typeof', 'instanceof', 'in', 'of', 'new', 'delete', 'void', 'do',
+  'else', 'case', 'yield', 'await', 'throw',
+]);
+
+function isRegexPosition(source, i) {
+  let j = i - 1;
+  while (j >= 0 && /\s/.test(source[j])) j -= 1;
+  if (j < 0) return true;
+  const p = source[j];
+  if (REGEX_PRECEDING_PUNCT.has(p)) return true;
+  if (/[A-Za-z0-9_$]/.test(p)) {
+    let k = j;
+    while (k >= 0 && /[A-Za-z0-9_$]/.test(source[k])) k -= 1;
+    return REGEX_PRECEDING_KEYWORDS.has(source.slice(k + 1, j + 1));
+  }
+  return false;
+}
+
+function regexEnd(source, i) {
+  let j = i + 1;
+  let inClass = false;
+  while (j < source.length) {
+    const c = source[j];
+    if (c === '\n') return -1;
+    if (c === '\\') {
+      j += 2;
+      continue;
+    }
+    if (c === '[') inClass = true;
+    else if (c === ']') inClass = false;
+    else if (c === '/' && !inClass) return j;
+    j += 1;
+  }
+  return -1;
+}
+
+/**
  * Blank comments while preserving line count, so any future line reporting
- * stays honest. Local replica of scanner-source.ts's stripComments (TS/JS
- * branch only — no SQL here).
+ * stays honest. Local replica of code-only.ts's stripComments (TS/JS branch
+ * only — no SQL here).
  */
 function stripComments(source) {
   let out = '';
@@ -89,6 +140,16 @@ function stripComments(source) {
       out += c;
       i += 1;
       continue;
+    }
+    if (c === '/' && next !== '*' && next !== '/' && isRegexPosition(source, i)) {
+      const end = regexEnd(source, i);
+      if (end >= 0) {
+        let j = end + 1;
+        while (j < n && /[a-z]/.test(source[j])) j += 1;
+        out += source.slice(i, j);
+        i = j;
+        continue;
+      }
     }
     if (c === '/' && next === '*') {
       inBlock = true;

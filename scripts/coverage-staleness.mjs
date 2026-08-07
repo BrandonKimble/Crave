@@ -16,9 +16,27 @@
  * re-read, a false IDEAL-VERIFIED costs the thing this whole exercise exists to
  * prevent.
  *
+ * F3915 — THE ONE STALENESS CHANNEL THIS GATE LEFT SILENT. A reviewed row
+ * whose PATH leaves the tree used to be counted and skipped, and `--check`
+ * ignored the count entirely: a rename left the old row riding green as
+ * IDEAL-VERIFIED on a path that no longer exists, forever, while this file
+ * presented itself as the mechanical enforcement of the revert rule. Same
+ * shape as F2600 one paragraph down — a guard reporting coverage it never
+ * measured — so it gets the same remedy: the rows are PRINTED, `--check`
+ * FAILS on them, and the judgement (DELETED, or a rename to chase) is
+ * discharged EXPLICITLY rather than by silence.
+ *
+ * The judgement is a human one, so `--apply` deliberately will not make it.
+ * `--acknowledge-missing` records that it is OWED: the row's status becomes
+ * NEEDS-TRIAGE, which asserts nothing about the file and is not a review, so
+ * the ledger stops claiming a verification of something that is not there.
+ *
  *   node scripts/coverage-staleness.mjs           # report only, exit 0
  *   node scripts/coverage-staleness.mjs --apply   # rewrite stale rows
  *   node scripts/coverage-staleness.mjs --check   # exit 1 if any row is stale
+ *                                                 # or missing or unverifiable
+ *   node scripts/coverage-staleness.mjs --acknowledge-missing
+ *                                                 # mark missing rows NEEDS-TRIAGE
  */
 import { execFileSync } from 'child_process';
 import { readFileSync, writeFileSync } from 'fs';
@@ -35,6 +53,7 @@ const ABSENT = new Set(['DELETED', 'MOOT']);
 
 const apply = process.argv.includes('--apply');
 const check = process.argv.includes('--check');
+const acknowledgeMissing = process.argv.includes('--acknowledge-missing');
 
 /** Current blob sha for every tracked path, in ONE git call. */
 function currentShas() {
@@ -70,6 +89,7 @@ let unverifiable = 0;
 let rescued = 0;
 const staleRows = [];
 const unverifiableRows = [];
+const missingRows = [];
 
 /** Cheap membership test: is this token a commit we can resolve? */
 const commitCache = new Map();
@@ -142,8 +162,17 @@ for (let i = 0; i < lines.length; i += 1) {
   const now = shas.get(path);
   if (now === undefined) {
     // Tracked-at-review, absent now. Not stale — the row's subject is gone, and
-    // saying so is a different (DELETED) judgement a human should make.
+    // whether that is DELETED or a rename to chase is a judgement a human must
+    // make. F3915: what this used NOT to do is make anyone make it. The row is
+    // reported and fails --check; --acknowledge-missing converts it to
+    // NEEDS-TRIAGE, which claims nothing about a file that is not there.
     missing += 1;
+    missingRows.push({ path, status });
+    if (acknowledgeMissing) {
+      cols[2] = ` NEEDS-TRIAGE${' '.repeat(Math.max(0, cols[2].length - 13))}`;
+      cols[5] = `${cols[5].replace(/\s+$/, '')} (was ${status}: path no longer tracked — DELETED or renamed, judgement owed — F3915) `;
+      lines[i] = `|${cols.join('|')}`;
+    }
     continue;
   }
   if (now.startsWith(recordedSha) || recordedSha.startsWith(now.slice(0, recordedSha.length))) {
@@ -179,7 +208,7 @@ for (let i = 0; i < lines.length; i += 1) {
   }
 }
 
-if (apply) {
+if (apply || acknowledgeMissing) {
   writeFileSync(COVERAGE, lines.join('\n'));
 }
 
@@ -195,6 +224,12 @@ for (const r of unverifiableRows.slice(0, 15)) {
 if (unverifiableRows.length > 15) {
   console.log(`  ... and ${unverifiableRows.length - 15} more unverifiable rows.`);
 }
+for (const r of missingRows.slice(0, 15)) {
+  console.log(`  MISSING       ${r.status.padEnd(15)} ${r.path}`);
+}
+if (missingRows.length > 15) {
+  console.log(`  ... and ${missingRows.length - 15} more rows whose path is no longer tracked.`);
+}
 for (const r of staleRows.slice(0, 40)) {
   console.log(`  ${r.status.padEnd(15)} ${r.path}  (${r.recordedSha} -> ${r.now})`);
 }
@@ -202,7 +237,11 @@ if (staleRows.length > 40) {
   console.log(`  ... and ${staleRows.length - 40} more (nothing truncated in --apply).`);
 }
 if (apply) console.log(`Reverted ${stale} row(s) to UNREVIEWED.`);
+if (acknowledgeMissing) {
+  console.log(`Marked ${missing} row(s) NEEDS-TRIAGE (path no longer tracked).`);
+}
 // An UNVERIFIABLE row fails too. The alternative — counting it and moving on —
 // is precisely the hole F2600 found in this file: a guard reporting coverage it
-// never measured.
-if (check && (stale > 0 || unverifiable > 0)) process.exit(1);
+// never measured. A MISSING row is the same hole with a different name (F3915):
+// it is a reviewed status asserted about a file that is not there.
+if (check && (stale > 0 || unverifiable > 0 || missing > 0)) process.exit(1);

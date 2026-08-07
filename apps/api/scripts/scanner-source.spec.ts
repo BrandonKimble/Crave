@@ -72,4 +72,60 @@ describe('stripComments', () => {
 
     expect(stripComments(src, 'a.ts')).toContain('not // a comment');
   });
+
+  /**
+   * F3910 — THE FALSE STRIP THE OLD HEADER PROMISED COULD NOT HAPPEN.
+   *
+   * A regex literal containing an escaped-slash pair ends in `//`. Without a
+   * regex-literal state that tripped the line-comment branch and blanked the
+   * REST OF THE LINE, so a real call sharing that line was invisible to the
+   * guard — a blinded guard reports clean, which is the one failure mode that
+   * matters. Revert to the naive strip and this goes RED.
+   */
+  it('a regex literal with escaped slashes does not blind the rest of the line', () => {
+    const src = `const isUrl = /^https?:\\/\\//.test(s); publicAuthorIdentity(row);\n`;
+
+    expect(codeMatches(/publicAuthorIdentity\s*\(/, src, 'a.ts')).toBe(true);
+    expect(stripComments(src, 'a.ts')).toContain('publicAuthorIdentity(row);');
+  });
+
+  it('a quote inside a regex character class does not open a phantom string', () => {
+    // The second half of F3910: `/['x]/` used to open a string that was never
+    // closed, after which comments stopped being stripped — re-admitting the
+    // prose false-pass for the whole rest of the file.
+    const src = `const q = /['x]/;\n// we map through publicAuthorIdentity(row) here\n`;
+
+    expect(codeMatches(/publicAuthorIdentity\s*\(/, src, 'a.ts')).toBe(false);
+  });
+
+  it('a division is still a division — the regex heuristic does not eat code', () => {
+    const src = `const half = total / 2; publicAuthorIdentity(row);\n`;
+
+    expect(codeMatches(/publicAuthorIdentity\s*\(/, src, 'a.ts')).toBe(true);
+    expect(stripComments(src, 'a.ts')).toContain('total / 2');
+  });
+
+  it('a block comment after a semicolon is still stripped, not read as a regex', () => {
+    const src = `const a = 1; /* joins signal_emittable_terms */\n`;
+
+    expect(codeMatches(/signal_emittable_terms/, src, 'a.ts')).toBe(false);
+  });
+
+  /**
+   * F3911 — the unified bias, stated as a spec rather than as two headers that
+   * disagreed. Inside a template literal a `--` is a SQL comment (this repo
+   * writes SQL in `Prisma.sql`), so it is stripped; but the blank STOPS at an
+   * interpolation, because `${...}` is real code and eating it would be the
+   * false strip all over again.
+   */
+  it('strips a SQL comment inside a template literal but never an interpolation', () => {
+    const src =
+      'const q = Prisma.sql`SELECT 1 -- we do NOT join signal_emittable_terms\n' +
+      '  AND id = ${publicAuthorIdentity(row)}`;\n';
+    const stripped = stripComments(src, 'a.ts');
+
+    expect(codeMatches(/signal_emittable_terms/, src, 'a.ts')).toBe(false);
+    expect(stripped).toContain('${publicAuthorIdentity(row)}');
+    expect(stripped.length).toBe(src.length);
+  });
 });

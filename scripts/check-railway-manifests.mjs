@@ -29,22 +29,42 @@
  * the smoke asserts /health.commit == HEAD).
  */
 import { execFileSync } from 'child_process';
-import { readFileSync } from 'fs';
 import { dirname, join, resolve } from 'path';
 import { fileURLToPath } from 'url';
 
+import { readTrackedFile, skipNote } from './lib/tracked-source.mjs';
+
 const REPO_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 
-/** Discovered, not hardcoded: a new railway manifest must be covered too. */
-function manifests() {
-  const out = execFileSync('git', ['ls-files', 'railway*.json'], {
+/**
+ * Discovered, not hardcoded: a new railway manifest must be covered too.
+ *
+ * THE PATHSPEC WAS ROOT-ANCHORED (F3913, 2026-08-06). `git ls-files
+ * 'railway*.json'` does NOT cross directories — a pathspec without a leading
+ * `*` matches repo-root files only (executed: `git ls-files 'check*.mjs'`
+ * returns nothing while `git ls-files '*check*.mjs'` returns the scripts/
+ * files). All three manifests happen to be root-level, so the gate was honest
+ * and blind at the same time; a per-service `apps/worker/railway.json` — the
+ * standard Railway layout — would have carried startCommand/watchPatterns
+ * un-audited while this printed OK. The recursive form plus a BASENAME filter:
+ * `*railway*.json` crosses directories but would also drag in
+ * `railway-notes.json`, and a gate that fails on a file Railway never reads is
+ * a gate that gets deleted.
+ */
+export function manifests() {
+  const out = execFileSync('git', ['ls-files', '*railway*.json'], {
     cwd: REPO_ROOT,
     encoding: 'utf8',
   });
-  return out.split('\n').map((l) => l.trim()).filter(Boolean);
+  return out
+    .split('\n')
+    .map((l) => l.trim())
+    .filter(Boolean)
+    .filter((rel) => /^railway[^/]*\.json$/.test(rel.split('/').pop()));
 }
 
 const files = manifests();
+let skipped = 0;
 
 // Missing tooling is a FAILURE, never a pass — a gate that finds no manifests
 // reports clean while covering nothing.
@@ -59,7 +79,12 @@ if (files.length === 0) {
 const failures = [];
 for (const rel of files) {
   let cfg;
-  const raw = readFileSync(join(REPO_ROOT, rel), 'utf8');
+  const raw = readTrackedFile(join(REPO_ROOT, rel));
+  if (raw === null) {
+    // Tracked, absent from the worktree (F3912 item six): skip and COUNT.
+    skipped += 1;
+    continue;
+  }
   try {
     cfg = JSON.parse(raw);
   } catch (err) {
@@ -98,5 +123,6 @@ if (failures.length) {
 console.log(
   `railway-manifests OK — ${files.length} manifest(s), no startCommand, no ` +
     `non-empty watchPatterns. (Dashboard-side watchPatterns are NOT covered ` +
-    `here; deploy.sh's unconditional SKIPPED check owns that half.)`,
+    `here; deploy.sh's unconditional SKIPPED check owns that half.)` +
+    skipNote(skipped),
 );
