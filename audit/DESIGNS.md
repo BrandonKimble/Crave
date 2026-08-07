@@ -2451,3 +2451,41 @@ F4502 contract annotation mid-flight — expected, not a defect.
 
 Ten of the sweep-reverted rows re-reviewed and restored with arguments (the 11th was
 lefthook.yml, repo-root, already re-pinned).
+
+---
+
+## D89 — P2 verdicts on the resolver/reconciler pass (F4800–F4807, 2026-08-06)
+
+**F4800 — APPROVED, and it is the owner's no-guards preference as a single specimen.** The
+ground truth (`controller.signal.aborted`) is OBSERVED and then discarded — runSearch
+returns null, fetch converts null to a sentence, the resolver string-matches the sentence
+to reconstruct the boolean. Verified myself: `.includes('canceled')` at
+search-world-resolver.ts:366 matches NOTHING any file under apps/mobile/src throws, so the
+arm exists only as a trap that silently demotes a real failure containing the word; and
+two comments credit an F1050 enforcer that does not exist. The rederivation carries the
+observation instead of reconstructing it: `runSearch` returns
+`{kind:'response'|'aborted'}` and the string-match becomes UNWRITABLE. Mutation: the
+resolver cannot express the old arm (tsc), plus a spec where an aborted run classifies
+as canceled without any message inspection.
+
+**F4804 — APPROVED, same ladder rung.** `SearchWorldTransition.intent` flattened to
+`X | null` across ten classes forces SEVEN downstream guards a discriminated union makes
+unwritable. Discriminate the union; the guards die with the flattening.
+
+**F4801/F4802/F4803/F4805/F4806 — APPROVED.** A parameter whose one call site passes
+literal `false` (dead conjunct + unreachable lane + an instrument that can only say
+`reset:false` — the F2901 shape, third instance); a useMemo whose dep array holds a
+fresh-every-render rest-destructure (amends F1610: the cost is a dead optimization, not
+verbosity); two params no caller supplies under a comment crediting a parameterization
+with zero users; the twice-derived delta whose "unreachable by construction" comment names
+the WRONG enforcer — fix the comment to name the real one (retry gated on failure level)
+AND pin it with the test the row says is missing; the `as string ?? ''` that defeats the
+check it appears to make, ten lines from five honest guards — plus `resolvedAt`, written
+thrice and read never.
+
+**F4807 clean bill — ACCEPTED, and flagged to the owner as the model of the target state.**
+The overlay-relay controllers are the audit's doctrine already executed: deleted wrappers
+named WITH their mechanism, an interaction path RECLASSIFIED so its publish machinery
+could be deleted rather than gated, comparators citing the composite spec by assertion
+title, and a measurement recorded as expected-to-fall rather than frozen. When the DONE
+report is written, this family is the exhibit for "what ideal looks like here".
