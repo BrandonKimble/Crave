@@ -24,6 +24,9 @@ import {
  *  - Loosen the watchdog epsilon to always-pass: spec 3's wrong-region arm RED (it would
  *    settle 'finished' at the wrong region — the always-green lie the epsilon exists to
  *    prevent).
+ *  - Delete either parkSuperseded emission (gesture site or newer-commit site): spec 2's
+ *    matching arm goes RED — a committed intent vanishes with the instrument silent while
+ *    commit() already answered true (F5704).
  *  - Make the watchdog retry supersede itself again (mint a fresh completion id / let the
  *    F1374 cancel fire on `isWatchdogRetry`): spec 3's retry-identity arm and the
  *    successful-rescue spec both go RED — the retry would cancel the very completion it is
@@ -40,6 +43,8 @@ type Harness = {
   stateWrites: Array<{ kind: string; value: unknown }>;
   completions: ProgrammaticCameraAnimationCompletionPayload[];
   commitPathLegs: Array<CameraIntentArbiterCommitPathLeg>;
+  /** The discarding CAUSE the parkSuperseded leg carries ('gesture' | 'newerCommit'). */
+  commitPathLegDetails: Array<{ leg: CameraIntentArbiterCommitPathLeg; cause: unknown }>;
   surrenders: Array<{ completionId: string }>;
   setObservedCamera: (camera: { center: [number, number]; zoom: number } | null) => void;
   /** fire every armed watchdog timer (fake clock) */
@@ -53,6 +58,7 @@ const createHarness = (): Harness => {
   const stateWrites: Array<{ kind: string; value: unknown }> = [];
   const completions: ProgrammaticCameraAnimationCompletionPayload[] = [];
   const commitPathLegs: Array<CameraIntentArbiterCommitPathLeg> = [];
+  const commitPathLegDetails: Array<{ leg: CameraIntentArbiterCommitPathLeg; cause: unknown }> = [];
   const surrenders: Array<{ completionId: string }> = [];
   const pendingTimers: Array<() => void> = [];
 
@@ -84,7 +90,10 @@ const createHarness = (): Harness => {
         };
       },
       onWatchdogSurrender: ({ completionId }) => surrenders.push({ completionId }),
-      logCommitPath: (leg) => commitPathLegs.push(leg),
+      logCommitPath: (leg, data) => {
+        commitPathLegs.push(leg);
+        commitPathLegDetails.push({ leg, cause: data?.cause });
+      },
     }
   );
   arbiter.subscribeProgrammaticCameraAnimationCompletion((payload) => completions.push(payload));
@@ -98,6 +107,7 @@ const createHarness = (): Harness => {
     stateWrites,
     completions,
     commitPathLegs,
+    commitPathLegDetails,
     surrenders,
     setObservedCamera: (camera) => {
       observedCamera = camera;
@@ -209,6 +219,15 @@ describe('D61 camera intent park-and-replay (F1716)', () => {
     expect(harness.executedCommands).toHaveLength(1);
     expect(harness.executedCommands[0].center).toEqual(DOWNTOWN.center);
     expect(harness.arbiter.notifyCameraWriterAvailable()).toBe(false);
+    // F5704 — the discarded METRO_OVERVIEW park is REPORTED, not silent. `commit()`
+    // returned true for it, so the leg is the only terminal signal its caller can get.
+    // The DOWNTOWN commit that superseded it parks in turn (the host is still gone), so
+    // the honest sequence is park, discard-the-first, park-the-second, replay it.
+    expect(harness.commitPathLegs).toEqual(['parked', 'parkSuperseded', 'parked', 'replayed']);
+    expect(harness.commitPathLegDetails[1]).toEqual({
+      leg: 'parkSuperseded',
+      cause: 'newerCommit',
+    });
   });
 
   it('a user gesture supersedes the parked intent — nothing executes on host return', () => {
@@ -224,6 +243,12 @@ describe('D61 camera intent park-and-replay (F1716)', () => {
     harness.setHostMounted(true);
     expect(harness.arbiter.notifyCameraWriterAvailable()).toBe(false);
     expect(harness.executedCommands).toHaveLength(0);
+    // F5704 — exactly one terminal leg for the parked intent, naming who took the camera.
+    expect(harness.commitPathLegs).toEqual(['parked', 'parkSuperseded']);
+    expect(harness.commitPathLegDetails).toEqual([
+      { leg: 'parked', cause: undefined },
+      { leg: 'parkSuperseded', cause: 'gesture' },
+    ]);
   });
 
   // ── Spec 3: the completion watchdog — a lane whose only settle signal can silently not

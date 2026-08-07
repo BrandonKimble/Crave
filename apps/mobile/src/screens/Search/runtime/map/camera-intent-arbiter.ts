@@ -46,9 +46,22 @@ export type CameraIntentArbiterWriters = {
   }) => void;
 };
 
+/**
+ * The commit lane's OUTCOME SPACE, closed. An intent executes, is replaced while in flight,
+ * is surrendered by the watchdog — or is superseded WHILE PARKED, which is the one outcome
+ * in which a committed intent genuinely disappears.
+ *
+ * F5704: `parkSuperseded` was the missing leg, and it was missing from the only leg the
+ * instrument was commissioned for. A parked intent has no completion id to cancel, so both
+ * discard sites were silent, while `commit()` had already returned `true` for that intent —
+ * so `commitFitAllCamera`, whose contract says an unexecuted intent must be a RED bark and
+ * never silence, emitted `commit=true` and said nothing. The list-world fitAll decree could
+ * fail exactly as F1716 described with its instrument reporting success.
+ */
 export type CameraIntentArbiterCommitPathLeg =
   | 'parked'
   | 'replayed'
+  | 'parkSuperseded'
   | 'watchdogRecommit'
   | 'surrendered';
 
@@ -184,6 +197,26 @@ export class CameraIntentArbiter {
     });
   }
 
+  /**
+   * F5704 — the terminal report for a parked intent that will never execute. A parked
+   * intent has no completion id, so the commit-path leg IS its completion: exactly one
+   * `parkSuperseded` per parked intent that is discarded, naming who took the camera and
+   * what target was dropped. Callers that treated `commit() === true` as an oracle now
+   * have a signal to subscribe to.
+   */
+  private dischargeParkedIntent(cause: 'gesture' | 'newerCommit'): void {
+    const parked = this.parkedIntent;
+    if (parked == null) {
+      return;
+    }
+    this.parkedIntent = null;
+    this.options.logCommitPath?.('parkSuperseded', {
+      cause,
+      center: parked.center,
+      zoom: parked.zoom,
+    });
+  }
+
   private clearWatchdog(): void {
     if (this.pendingWatchdog != null) {
       this.pendingWatchdog.cancel();
@@ -199,8 +232,9 @@ export class CameraIntentArbiter {
       }
       // D61 — the user's gesture supersedes a parked intent: they took the camera; the
       // parked promise is theirs to overrule. Same law the pending-completion cancel below
-      // has always encoded for in-flight animations.
-      this.parkedIntent = null;
+      // has always encoded for in-flight animations — and, since F5704, reported the same
+      // way: the discard is announced, not silent.
+      this.dischargeParkedIntent('gesture');
       if (this.pendingProgrammaticCameraCompletionId == null) {
         return;
       }
@@ -262,8 +296,9 @@ export class CameraIntentArbiter {
       const completionId = animation.completionId;
       const shouldSyncPadding = Object.prototype.hasOwnProperty.call(intent, 'padding');
       // A new commit supersedes whatever the lane was doing: the parked intent (newest
-      // wins) and any armed watchdog for the prior animation.
-      this.parkedIntent = null;
+      // wins) and any armed watchdog for the prior animation. The parked drop is REPORTED
+      // (F5704) — it is the one outcome in which a committed intent vanishes.
+      this.dischargeParkedIntent('newerCommit');
       this.clearWatchdog();
       // F1374 — AND THE PRIOR PENDING COMPLETION. Superseding used to overwrite
       // `pendingProgrammaticCameraCompletionId` in silence, so whoever armed on the OLD
