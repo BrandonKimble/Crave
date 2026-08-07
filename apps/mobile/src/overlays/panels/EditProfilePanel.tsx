@@ -4,8 +4,13 @@ import { Pressable, StyleSheet, TextInput, View } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
 
 import { Text } from '../../components';
-import { usersService, type UsernameAvailability } from '../../services/users';
+import { usersService } from '../../services/users';
 import { normalizeUsernameDraft } from '../../services/username-draft';
+import {
+  availabilityAnswerFor,
+  isUsernameClaimable,
+  type UsernameAvailabilityAnswer,
+} from '../../services/username-availability-answer';
 import { photosService } from '../../services/photos';
 import { useAppOverlayRouteController } from '../useAppOverlayRouteController';
 import { MonogramAvatar } from '../../components/MonogramAvatar';
@@ -29,7 +34,9 @@ export const EditProfilePanelBody = React.memo((_props: MountedSceneBodyProps) =
   const [savedDisplayName, setSavedDisplayName] = React.useState('');
   const [currentUsername, setCurrentUsername] = React.useState<string | null>(null);
   const [usernameDraft, setUsernameDraft] = React.useState('');
-  const [availability, setAvailability] = React.useState<UsernameAvailability | null>(null);
+  // The answer AND the draft it answered for (F5804) — a bare answer outlives its question.
+  const [availabilityAnswer, setAvailabilityAnswer] =
+    React.useState<UsernameAvailabilityAnswer | null>(null);
   const [busy, setBusy] = React.useState(false);
   const [notice, setNotice] = React.useState<string | null>(null);
   const [avatarUrl, setAvatarUrl] = React.useState<string | null>(null);
@@ -71,32 +78,38 @@ export const EditProfilePanelBody = React.memo((_props: MountedSceneBodyProps) =
   const usernameNormalized = normalizeUsernameDraft(usernameDraft);
 
   React.useEffect(() => {
-    const trimmed = usernameNormalized;
-    if (!trimmed || trimmed === currentUsername) {
-      setAvailability(null);
+    const asked = usernameNormalized;
+    // Nothing to ask about: an empty draft, or the name the user already has.
+    if (!asked || asked === currentUsername) {
       return;
     }
     const seq = ++checkSeqRef.current;
     const timer = setTimeout(() => {
       void usersService
-        .checkUsername(trimmed)
+        .checkUsername(asked)
         .then((result) => {
           if (checkSeqRef.current === seq) {
-            setAvailability(result);
+            setAvailabilityAnswer({ forNormalized: asked, result });
           }
         })
         .catch(() => {
           if (checkSeqRef.current === seq) {
-            setAvailability(null);
+            setAvailabilityAnswer(null);
           }
         });
     }, 350);
     return () => clearTimeout(timer);
   }, [currentUsername, usernameNormalized]);
 
+  // Only an answer to THIS draft is an answer. No clear-on-change needed — a superseded
+  // answer stops matching, which is what "we do not know yet" actually looks like.
+  const settledAvailability = availabilityAnswerFor(availabilityAnswer, usernameNormalized);
   const displayNameDirty = displayName.trim() !== savedDisplayName;
-  const usernameClaimable =
-    availability?.available === true && usernameNormalized !== currentUsername;
+  const usernameClaimable = isUsernameClaimable(
+    availabilityAnswer,
+    usernameNormalized,
+    currentUsername
+  );
   const canSave = !busy && (displayNameDirty || usernameClaimable);
 
   const handleSave = React.useCallback(() => {
@@ -116,7 +129,8 @@ export const EditProfilePanelBody = React.memo((_props: MountedSceneBodyProps) =
           // Trust the server's normalized spelling, not the raw draft.
           const claimed = await usersService.claimUsername(usernameNormalized);
           setCurrentUsername(claimed.username);
-          setAvailability(null);
+          // The question is over — this is a state transition, not staleness bookkeeping.
+          setAvailabilityAnswer(null);
         }
         if (displayNameDirty) {
           await usersService.updateMe({ displayName: displayName.trim() });
@@ -245,16 +259,16 @@ export const EditProfilePanelBody = React.memo((_props: MountedSceneBodyProps) =
         style={styles.input}
         testID="edit-profile-username"
       />
-      {availability != null ? (
+      {settledAvailability != null ? (
         <Text
           variant="caption"
-          style={availability.available ? styles.availabilityOk : styles.availabilityBad}
+          style={settledAvailability.available ? styles.availabilityOk : styles.availabilityBad}
           testID="edit-profile-username-availability"
         >
-          {availability.available
-            ? `@${availability.normalized} is available`
-            : availability.suggestions[0]
-              ? `Taken — try @${availability.suggestions[0]}`
+          {settledAvailability.available
+            ? `@${settledAvailability.normalized} is available`
+            : settledAvailability.suggestions[0]
+              ? `Taken — try @${settledAvailability.suggestions[0]}`
               : 'Not available'}
         </Text>
       ) : null}
