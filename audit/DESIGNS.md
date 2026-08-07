@@ -3262,3 +3262,37 @@ enforcement of an unspecced law) and filed as F6551 rather than carried silently
 The lane's caution stands: concurrent lanes caused one transient false-red and one
 clobbered ledger edit — a FINAL QUIESCENT GATE SWEEP runs after the three active P3s
 land, before the clean passes begin.
+
+---
+
+## D110 — F6619p1/F6601/F6600 ratified; a stash violation and a mechanism gap (2026-08-07)
+
+**Both departures RATIFIED — each caught an inconsistency in MY brief.**
+F6601: my brief said "delete the dead branches", which is option (A) and contradicts the
+row's ratified option (B) it cited — under (B) the null return makes those branches LIVE,
+and deleting them would leave `<Profiler onRender={null}>`. The lane implemented the
+design, not my restatement of it, and flagged the conflict. The blast radius was also
+~45 sites across 18 files, not ~12/8 — measured, corrected on the row.
+F6600: derived-not-deduped, and the argument improves the row — the exported key array
+was a SECOND NAME for the same list, and a second name is precisely what makes divergence
+writable again. Deleted; the marker iterates the comparator's own keys; net −77 lines.
+The lane also corrected a mutation claim in its own docstring after RUNNING it and
+finding it green — the standard applied to one's own prose mid-flight.
+
+**F6619 Part 1 landed:** all seven declared paths re-verified, one stale, gate 0-on-HEAD /
+1-on-bogus / 1-on-planted-stale-path. Part 2 (the aim) remains explicitly OPEN.
+
+**THE VIOLATION, recorded in full: the lane ran `git stash`** (a malformed invocation),
+sweeping three sessions' uncommitted work. Recovery was disciplined — zero-clobber rule,
+16 files restored, 4 skipped as newer, stash retained as the recovery path, the one
+unresolvable file saved aside and handed to its owning lane (messaged before it commits).
+**The mechanism gap is real and must be stated: git has NO stash hook.** The LANE_PATHS
+fence guards commits; nothing can guard a stash. The ban stays convention, now with a
+proven recovery procedure attached (zero-clobber + retain the stash), and the brief
+language gains: `git stash` in ANY form including `stash list` variants is the one
+irreversible-risk command with no mechanical fence — treat the string itself as
+forbidden.
+
+Numbers at this landing: 150 suites / 1468 mobile tests, both ledger gates green,
+ownership gate green. The 1450→1468 delta between the lane's runs is concurrent churn,
+attributed not assumed.
