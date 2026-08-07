@@ -218,7 +218,6 @@ export const useSearchRootRuntimeStageRuntime = ({
   });
   useSearchRootRouteRestaurantOverlayInteractionPublicationRuntime({
     routeRestaurantOverlayInteractionPublicationLane,
-    rootOverlayFoundationRuntime: overlayFoundationAssemblyRuntime.rootOverlayFoundationRuntime,
     profilePresentationControlLane: profileControlRuntime.profilePresentationControlLane,
   });
   const routeDynamicSceneInputRuntime = React.useMemo(
