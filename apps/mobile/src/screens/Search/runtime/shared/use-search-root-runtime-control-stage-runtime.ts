@@ -183,7 +183,6 @@ export const useSearchRootRuntimeControlStageRuntime = ({
     navigation: appEntryPlaneRuntime.navigation,
     routeSearchIntent: appEntryPlaneRuntime.routeSearchIntent,
     userLocation: appEntryPlaneRuntime.userLocation,
-    profileOwner: profileControlRuntime.profileOwner,
     transientCleanupActions: foregroundTransientCleanupActions,
   });
   const foregroundTransientHandlersRuntime = useSearchForegroundTransientController({

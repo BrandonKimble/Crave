@@ -139,14 +139,17 @@ export type CreateProfileActionRuntimeArgs = {
 };
 
 /** F1064 — the PRESENTATION factories (preview/open/focus) read `actionExecutionPorts` and
- *  `runtimeState` ONLY. Demanding the other two port bags from them forced their one caller
+ *  `runtimeState` ONLY. Demanding the other port bags from them forced their one caller
  *  to fabricate six no-op ports purely to satisfy the type. Each factory now takes exactly
  *  what it uses, so there is nothing left to fabricate.
+ *  F6900 finished the sentence F1064 wrote: the Omit it used stopped two keys short, so
+ *  `queryState` and `selectionState` survived — declared, memoized every render, read by
+ *  none of the three factories. Stated as a Pick of exactly the two that are read.
  *  RED recipe: pass a `refreshSelectionExecutionPorts:` key to
  *  createProfilePreviewActionRuntime and tsc rejects the excess property. */
-export type CreateProfilePresentationActionRuntimeArgs = Omit<
+export type CreateProfilePresentationActionRuntimeArgs = Pick<
   CreateProfileActionRuntimeArgs,
-  'refreshSelectionExecutionPorts' | 'autoOpenActionExecutionPorts'
+  'runtimeState' | 'actionExecutionPorts'
 >;
 
 export type ProfileRestaurantActionModelRuntimeArgs = Pick<

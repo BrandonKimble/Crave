@@ -14,7 +14,6 @@ export const useSearchRootOverlayForegroundVisualPresentationSourceRuntime = ({
     shouldDimResultsSheet: boolean;
     inputMode: 'editing' | 'resting';
     searchSheetContentLaneKind: SearchResultsPanelEnvironment['resultsPresentationOwner']['shellModel']['searchSheetContentLane']['kind'];
-    searchHeaderDefaultChromeProgress: SearchResultsPanelEnvironment['resultsPresentationOwner']['shellModel']['defaultChromeProgress'];
     headerShortcutsVisibleTarget: boolean;
     headerShortcutsInteractive: boolean;
     backdropTarget: 'suggestions' | 'results' | 'none';
@@ -25,7 +24,6 @@ export const useSearchRootOverlayForegroundVisualPresentationSourceRuntime = ({
       inputMode:
         resultsPresentationOwner.shellModel.inputMode === 'editing' ? 'editing' : 'resting',
       searchSheetContentLaneKind: resultsPresentationOwner.shellModel.searchSheetContentLane.kind,
-      searchHeaderDefaultChromeProgress: resultsPresentationOwner.shellModel.defaultChromeProgress,
       headerShortcutsVisibleTarget:
         resultsPresentationOwner.shellModel.headerVisualModel.shortcutsVisibleTarget,
       headerShortcutsInteractive:
@@ -37,7 +35,6 @@ export const useSearchRootOverlayForegroundVisualPresentationSourceRuntime = ({
     }),
     [
       resultsPresentationOwner.shellModel.backdropTarget,
-      resultsPresentationOwner.shellModel.defaultChromeProgress,
       resultsPresentationOwner.shellModel.headerVisualModel.shortcutsInteractive,
       resultsPresentationOwner.shellModel.headerVisualModel.shortcutsVisibleTarget,
       resultsPresentationOwner.shellModel.inputMode,

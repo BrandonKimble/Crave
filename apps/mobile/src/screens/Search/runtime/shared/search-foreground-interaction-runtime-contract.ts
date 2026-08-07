@@ -15,7 +15,6 @@ import type { SearchClearOwner } from '../../hooks/use-search-clear-owner';
 import type useSearchHistory from '../../hooks/use-search-history';
 import type useSearchSubmitOwner from '../../hooks/use-search-submit-owner';
 import type { AppSearchRouteCommandActions } from '../../../../navigation/runtime/app-search-route-command-runtime';
-import type { AppRouteOverlaySessionSnapshot } from '../../../../navigation/runtime/app-route-overlay-session-contract';
 import type { RouteSceneSwitchTransitionActions } from '../../../../navigation/runtime/app-route-scene-switch-controller';
 
 export type SearchForegroundSubmitRuntime = Pick<
@@ -116,7 +115,6 @@ export type SearchForegroundSubmitRuntimeArgs = {
   isLoadingMore: boolean;
   isSearchSessionActive: boolean;
   isSuggestionPanelActive: boolean;
-  shouldShowDockedSceneRef: React.RefObject<AppRouteOverlaySessionSnapshot>;
   suppressAutocompleteResults: () => void;
   cancelAutocomplete: () => void;
   dismissSearchKeyboard: () => void;
@@ -187,11 +185,6 @@ export type SearchForegroundOverlayRuntimeArgs = {
     : never;
   rootOverlay: OverlayKey;
   transientCleanupActions: SearchForegroundTransientCleanupActions;
-  isSuggestionPanelActive: boolean;
-  profilePresentationActive: boolean;
-  closeRestaurantProfile: SearchForegroundCloseRestaurantProfile;
-  dismissTransientOverlays: () => void;
-  beginSuggestionCloseHoldRef: React.MutableRefObject<() => boolean>;
   transitionActions: RouteSceneSwitchTransitionActions;
   setIsSearchFocused: React.Dispatch<React.SetStateAction<boolean>>;
   setIsSuggestionPanelActive: React.Dispatch<React.SetStateAction<boolean>>;

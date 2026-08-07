@@ -607,19 +607,12 @@ export const usePollsPanelListSceneParts = (): {
     },
     [pushRoute]
   );
-  const {
-    params,
-    initialSnapPoint,
-    mode = 'docked',
-    currentSnap,
-    interactionRef,
-  } = usePollsSceneBodyState();
+  const { params, initialSnapPoint, currentSnap, interactionRef } = usePollsSceneBodyState();
   const shouldSubscribeDataLane = currentSnap !== 'hidden';
 
   const pollsPanelFeedRuntime = usePollsPanelFeedRuntime({
     visible: shouldSubscribeDataLane,
     params,
-    mode,
     currentSnap,
     initialSnapPoint,
     interactionRef,

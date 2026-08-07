@@ -151,6 +151,21 @@ jobs:
       - name: 'Static guard: no orphan StyleSheet key under screens/Search'
         run: node scripts/check-search-styles-orphan-keys.mjs
 
+      # And this one asks whether a declared ARGUMENT is read. TypeScript checks
+      # only that an argument is SUPPLIED; eslint sees only the identifiers a
+      # binding pattern NAMES — so a property present in an args TYPE but absent
+      # from the destructure is checked by nothing (F4601), and a `{ ...rest }`
+      # pattern hides it entirely. EARN-THEN-DRAIN-THEN-WIRE (D111, third use of
+      # the pattern): the scanner was calibrated against the real F4101 family
+      # restored from pre-fix blobs, ran report-only until its false positives
+      # were designed out, then found ELEVEN live dead arguments — all eleven
+      # verified genuine by reading, two of them already declared dead in the
+      # code's own comments. --check stayed deliberately UNWIRED until F6900
+      # deleted those eleven, because a gate that lands red is the thing this
+      # repo keeps learning not to ship. Zero files in scope is a FAILURE.
+      - name: 'Static guard: no declared-but-never-read hook argument'
+        run: node scripts/find-dead-hook-args.mjs --check
+
       - name: Build
         run: yarn build
 

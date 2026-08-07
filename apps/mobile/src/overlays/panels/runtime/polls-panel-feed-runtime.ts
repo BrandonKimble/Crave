@@ -15,7 +15,7 @@ import { useViewportSubjectVerdict } from '../../../store/viewport-subject-store
 
 type UsePollsPanelFeedRuntimeArgs = Pick<
   UsePollsPanelSpecOptions,
-  'visible' | 'params' | 'mode' | 'currentSnap' | 'initialSnapPoint' | 'interactionRef'
+  'visible' | 'params' | 'currentSnap' | 'initialSnapPoint' | 'interactionRef'
 >;
 
 export type PollsPanelFeedRuntime = {
@@ -67,8 +67,9 @@ export const usePollsPanelFeedRuntime = ({
   const feedTime = usePollsFeedControlsStore((state) => state.feedTime);
 
   const contentBottomPadding = resolveChinlessContentBottomPadding(insets.bottom);
-  // F1494: mode is now the single literal 'docked' (see polls-panel-runtime-contract.ts),
-  // so this always resolved to 'collapsed' — the 'overlay' arm was dead.
+  // F1494: `mode` is the single literal 'docked' (see polls-panel-runtime-contract.ts),
+  // so this always resolved to 'collapsed' — the 'overlay' arm was dead. F6900 then
+  // dropped `mode` from this runtime's args entirely: it was supplied and never bound.
   const initialSnap: PollsPanelInitialSnapPoint = initialSnapPoint ?? 'collapsed';
   const resolvedSnap = currentSnap ?? initialSnap;
   const headerAction: 'create' | 'close' =

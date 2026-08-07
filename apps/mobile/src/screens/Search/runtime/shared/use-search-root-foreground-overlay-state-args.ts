@@ -1,6 +1,5 @@
 import React from 'react';
 
-import type { ProfileOwner } from '../profile/profile-owner-runtime-contract';
 import type { SearchRootEnvironment } from './search-root-environment-contract';
 import type { SearchRootOverlayFoundationRuntime } from './search-root-overlay-foundation-runtime-contract';
 import type { SearchRootStateFoundationLane } from './search-root-foundation-runtime';
@@ -12,9 +11,6 @@ type SearchRootForegroundOverlayStateArgs = Pick<
   | 'routeSearchIntent'
   | 'userLocation'
   | 'rootOverlay'
-  | 'isSuggestionPanelActive'
-  | 'profilePresentationActive'
-  | 'beginSuggestionCloseHoldRef'
   | 'ignoreNextSearchBlurRef'
   | 'allowSearchBlurExitRef'
   | 'inputRef'
@@ -26,7 +22,6 @@ type UseSearchRootForegroundOverlayStateArgsArgs = {
   navigation: SearchRootEnvironment['navigation'];
   routeSearchIntent: SearchRootEnvironment['routeSearchIntent'];
   userLocation: SearchRootEnvironment['userLocation'];
-  profileOwner: ProfileOwner;
 };
 
 export const useSearchRootForegroundOverlayStateArgs = ({
@@ -35,7 +30,6 @@ export const useSearchRootForegroundOverlayStateArgs = ({
   navigation,
   routeSearchIntent,
   userLocation,
-  profileOwner,
 }: UseSearchRootForegroundOverlayStateArgsArgs): SearchRootForegroundOverlayStateArgs => {
   const { rootPrimitivesRuntime } = stateFoundationLane;
   const { rootOverlay } = rootOverlayFoundationRuntime.rootOverlayStoreRuntime;
@@ -46,22 +40,16 @@ export const useSearchRootForegroundOverlayStateArgs = ({
       routeSearchIntent,
       userLocation,
       rootOverlay,
-      isSuggestionPanelActive: rootPrimitivesRuntime.searchState.isSuggestionPanelActive,
-      profilePresentationActive: profileOwner.profileViewState.presentation.isPresentationActive,
-      beginSuggestionCloseHoldRef: rootPrimitivesRuntime.searchState.beginSuggestionCloseHoldRef,
       ignoreNextSearchBlurRef: rootPrimitivesRuntime.searchState.ignoreNextSearchBlurRef,
       allowSearchBlurExitRef: rootPrimitivesRuntime.searchState.allowSearchBlurExitRef,
       inputRef: rootPrimitivesRuntime.searchState.inputRef,
     }),
     [
       navigation,
-      profileOwner.profileViewState.presentation.isPresentationActive,
       rootOverlay,
       rootPrimitivesRuntime.searchState.allowSearchBlurExitRef,
-      rootPrimitivesRuntime.searchState.beginSuggestionCloseHoldRef,
       rootPrimitivesRuntime.searchState.ignoreNextSearchBlurRef,
       rootPrimitivesRuntime.searchState.inputRef,
-      rootPrimitivesRuntime.searchState.isSuggestionPanelActive,
       routeSearchIntent,
       userLocation,
     ]

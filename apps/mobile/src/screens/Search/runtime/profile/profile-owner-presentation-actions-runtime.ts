@@ -36,12 +36,10 @@ export const useProfileOwnerPresentationActionsRuntime = ({
   // satisfy a god-shaped contract are GONE, not merely unused.
   const actionRuntimeArgs = React.useMemo<CreateProfilePresentationActionRuntimeArgs>(
     () => ({
-      queryState,
-      selectionState,
       runtimeState,
       actionExecutionPorts,
     }),
-    [actionExecutionPorts, queryState, runtimeState, selectionState]
+    [actionExecutionPorts, runtimeState]
   );
   const restaurantActionModelRuntime = React.useMemo(
     () =>

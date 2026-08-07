@@ -10,7 +10,7 @@ import type { useSearchForegroundSubmitPreparationRuntime } from './use-search-f
 
 type UseSearchForegroundQuerySubmitRuntimeArgs = Pick<
   SearchForegroundSubmitRuntimeArgs,
-  'submitRuntime' | 'query' | 'isSuggestionPanelActive' | 'shouldShowDockedSceneRef'
+  'submitRuntime' | 'query'
 > & {
   // The autocomplete suggestion list currently shown under the input, so a typed
   // Return can be promoted to the same profile-jump the tap path uses when it

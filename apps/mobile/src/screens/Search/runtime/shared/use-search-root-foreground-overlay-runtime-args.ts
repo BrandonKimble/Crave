@@ -1,6 +1,5 @@
 import React from 'react';
 
-import type { ProfileOwner } from '../profile/profile-owner-runtime-contract';
 import type { SearchRootEnvironment } from './search-root-environment-contract';
 import type { SearchRootOverlayFoundationRuntime } from './search-root-overlay-foundation-runtime-contract';
 import type { SearchRootStateFoundationLane } from './search-root-foundation-runtime';
@@ -17,7 +16,6 @@ type UseSearchRootForegroundOverlayRuntimeArgsArgs = {
   navigation: SearchRootEnvironment['navigation'];
   routeSearchIntent: SearchRootEnvironment['routeSearchIntent'];
   userLocation: SearchRootEnvironment['userLocation'];
-  profileOwner: ProfileOwner;
   transientCleanupActions: SearchForegroundTransientCleanupActions;
 };
 
@@ -27,7 +25,6 @@ export const useSearchRootForegroundOverlayRuntimeArgs = ({
   navigation,
   routeSearchIntent,
   userLocation,
-  profileOwner,
   transientCleanupActions,
 }: UseSearchRootForegroundOverlayRuntimeArgsArgs): SearchForegroundOverlayRuntimeArgs => {
   const overlayStateArgs = useSearchRootForegroundOverlayStateArgs({
@@ -36,12 +33,10 @@ export const useSearchRootForegroundOverlayRuntimeArgs = ({
     navigation,
     routeSearchIntent,
     userLocation,
-    profileOwner,
   });
   const overlayActionArgs = useSearchRootForegroundOverlayActionArgs({
     stateFoundationLane,
     rootOverlayFoundationRuntime,
-    profileOwner,
   });
 
   return React.useMemo(

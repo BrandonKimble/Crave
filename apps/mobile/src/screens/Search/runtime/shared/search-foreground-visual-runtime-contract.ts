@@ -21,7 +21,6 @@ export type UseSearchForegroundVisualRuntimeArgs = {
   navBarTopForSnaps: number;
   fallbackNavBarHeight: number;
   bottomNavHiddenTranslateY: number;
-  searchHeaderDefaultChromeProgress: SharedValue<number>;
   shouldDisableSearchShortcuts: boolean;
   shouldRenderSearchOverlay: boolean;
   headerShortcutsVisibleTarget: boolean;
