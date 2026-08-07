@@ -37,6 +37,7 @@ import {
 import { RestaurantEntityMergeService } from './restaurant-entity-merge.service';
 import { RestaurantCuisineExtractionQueueService } from './restaurant-cuisine-extraction-queue.service';
 import { RestaurantSecondaryLocationExpansionQueueService } from './restaurant-secondary-location-expansion-queue.service';
+import { OpsAlertsService } from '../external-integrations/shared/ops-alerts.service';
 import {
   GOOGLE_BOOLEAN_ATTRIBUTE_VOCAB,
   GOOGLE_PLACE_TYPE_ATTRIBUTE_CANONICAL_NAMES,
@@ -244,6 +245,7 @@ export class RestaurantLocationEnrichmentService {
     private readonly cuisineExtractionQueue: RestaurantCuisineExtractionQueueService,
     private readonly secondaryLocationExpansionQueue: RestaurantSecondaryLocationExpansionQueueService,
     private readonly configService: ConfigService,
+    private readonly opsAlerts: OpsAlertsService,
     @Inject(LoggerService) loggerService: LoggerService,
   ) {
     this.logger = loggerService.setContext(
@@ -4084,13 +4086,37 @@ export class RestaurantLocationEnrichmentService {
 
       entity.restaurantMetadata = mergedMetadata as unknown as Prisma.JsonValue;
     } catch (error) {
-      this.logger.warn('Failed to record enrichment failure metadata', {
+      // SWALLOW AND TELL SOMEONE (F205 doctrine, F4907). The write this
+      // catch guards is the FAILURE COUNTER — the only thing standing
+      // between a permanently-unenrichable placeholder and weekly Places
+      // re-spend, which is the exact incident the `countEnrichmentFailure`
+      // comment above records. A `warn` on the one path whose absence costs
+      // money every week is not telling anyone: the count stays 0, the
+      // janitor never archives, and the entity is re-enriched on the next
+      // run at ~$0.045 per grounded location with no signal at all. It still
+      // swallows (one entity must not end a batch) — it just rings a bell
+      // now, in the sibling's shape.
+      const message = error instanceof Error ? error.message : String(error);
+      this.logger.error('Failed to record enrichment failure metadata', {
         entityId: entity.entityId,
         reason,
         error:
           error instanceof Error
-            ? { message: error.message, stack: error.stack }
-            : { message: String(error) },
+            ? { message, stack: error.stack }
+            : { message },
+      });
+      this.opsAlerts.emit({
+        severity: 'warn',
+        kind: 'enrichment_failure_count_write_failed',
+        title: 'Enrichment failure counter did not persist',
+        body: [
+          'The write that records an enrichment failure — and increments the attempt COUNT the janitor reads — threw.',
+          `Entity: ${entity.entityId}`,
+          `Enrichment reason: ${reason}`,
+          `Error: ${message}`,
+          'Downstream: the count stays where it was, so this placeholder is re-enriched on the next run at real Places spend, every run, until someone notices. That is the incident countEnrichmentFailure exists to prevent.',
+        ].join('\n'),
+        dedupeKey: `enrichment_failure_count_write_failed:${entity.entityId}`,
       });
     }
   }

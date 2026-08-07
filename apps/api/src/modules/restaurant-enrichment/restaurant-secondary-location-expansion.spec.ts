@@ -96,6 +96,8 @@ function makeService(pages: Array<() => Promise<unknown>>) {
     getPlaceDetails: jest.fn(async () => ({ place: CANONICAL })),
   };
 
+  const opsAlerts = { emit: jest.fn() };
+
   const logger = {
     setContext: () => logger,
     info: jest.fn(),
@@ -115,6 +117,7 @@ function makeService(pages: Array<() => Promise<unknown>>) {
     {} as never,
     {} as never,
     { get: () => undefined } as never,
+    opsAlerts as never,
     logger as never,
   );
 
