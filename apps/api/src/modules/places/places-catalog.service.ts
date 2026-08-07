@@ -33,6 +33,7 @@ import {
   GeoPoint,
   PlaceGround,
   bboxArea,
+  bboxCenter,
   bboxCrossesAntimeridian,
   bboxIntersectionParts,
   bboxLatSpan,
@@ -74,14 +75,15 @@ export const PLACE_BIRTH_LISTENER = Symbol('PLACE_BIRTH_LISTENER');
 export const GROUND_SIMPLIFY_VIEW_FRACTION = 512;
 
 /**
- * §16 DERIVED — candidate ceiling for one viewport read. The §2.5 law needs
- * only places that can hold >= 1/3 of the view (attention) or >= 2/3
- * (dominator), so at most 3 places can hold attention and the dominator is
- * always among the largest present. Ordered by ground area descending, a few
- * hundred candidates is orders of magnitude more than the law can consume;
- * the rest are the tiny-place tail that ships bytes and changes no verdict.
- * What changes it: a law that reads more than the top dominators, never
- * tuning.
+ * §16 DERIVED — candidate ceiling for one viewport read: an abuse bound on
+ * bytes and scan work (a world-span view once serialized 11 MB per request),
+ * never a judgment input. The header's candidates cannot be truncated by it:
+ * the read ranks grounds containing the view's CENTRE ahead of the cut, and
+ * the centre chain is nesting-bounded (a handful of rows). What the cap can
+ * drop, at pathological density, is off-centre feed-membership tail —
+ * coarsest-first within each band so the drop lands on the places least
+ * able to hold attention. What changes it: measured dense-view row counts,
+ * never tuning.
  */
 export const PLACES_IN_VIEW_CANDIDATE_CAP = 400;
 
@@ -118,8 +120,6 @@ export interface PlaceInView {
   placeArea: number;
   /** Header anchor: does the ONE ground contain the view's centre? */
   containsViewCenter: boolean;
-  /** Deduped DAG parent edges (placeParentIds) — §6 descendant reads. */
-  parentPlaceIds: string[];
   /**
    * Simplified real ground (§2.6: ALWAYS present — sketch-grade rows carry
    * their envelope rectangle; hydration failure degrades to the envelope
@@ -401,7 +401,6 @@ export class PlacesCatalogService {
         coverageOfView: coverage.coverageOfView,
         placeArea: coverage.placeArea,
         containsViewCenter: coverage.containsViewCenter,
-        parentPlaceIds: placeParentIds(place),
         ground,
       });
     }
@@ -495,6 +494,14 @@ export class PlacesCatalogService {
       this.viewArms(view).map((arm) => Prisma.sql`g.geometry && ${arm}`),
       ' OR ',
     );
+    // The header's anchor, as a sort key: grounds holding the view's CENTRE
+    // rank ahead of the candidate cap. bboxCenter is wrap-aware, so the
+    // point is a plain lng even when the view crosses the antimeridian.
+    const centre = bboxCenter(view);
+    const centreCoversSql = Prisma.sql`ST_Covers(
+      g.geometry,
+      ST_SetSRID(ST_MakePoint(${centre.lng}::float8, ${centre.lat}::float8), 4326)
+    )`;
     try {
       const rows = await this.prisma.$queryRaw<
         Array<{ placeId: string; geojson: string | null } & DerivedBboxRow>
@@ -507,16 +514,25 @@ export class PlacesCatalogService {
                ${derivedBboxSelectSql('g')}
         FROM place_geometries g
         WHERE ${overlapsAnyArm}
-        -- COARSEST FIRST, and bounded. Abuse audit 2026-08-01: this read had
-        -- no LIMIT, so a world-span view seq-scanned every ground and
-        -- serialized 11 MB of GeoJSON per request — reachable at 100/min from
-        -- an UNAUTHENTICATED endpoint. The §2.5 law only ever names a
-        -- DOMINATOR (>=2/3 of the view), and at any scale the places that can
-        -- dominate are the largest ones present, so ordering by ground area
-        -- descending means the cap can never drop a candidate that could have
-        -- won. What it drops is the long tail of tiny places that could not
-        -- clear 1/3 of the view — invisible to the judgment, expensive to ship.
-        ORDER BY ST_Area(g.geometry) DESC
+        -- BOUNDED, with the CENTRE CHAIN guaranteed in. Abuse audit
+        -- 2026-08-01: this read had no LIMIT, so a world-span view
+        -- seq-scanned every ground and serialized 11 MB of GeoJSON per
+        -- request — reachable at 100/min from an UNAUTHENTICATED endpoint.
+        -- The cap survives; its ORDERING flipped with the header law
+        -- (2026-08-07). The old comment argued coarsest-first was safe
+        -- because "the §2.5 law only ever names a DOMINATOR, and the places
+        -- that can dominate are the largest present" — TRUE then, INVERTED
+        -- now: the centre-anchored law names the FINEST centred place, so
+        -- area-descending dropped exactly the class the law selects from,
+        -- and a dense-view read silently coarsened the header to an
+        -- ancestor. The centre-containment sort key ranks every ground
+        -- holding the view's centre ahead of the cut: the centre chain is
+        -- nesting-bounded (a handful of rows), so the header's candidates
+        -- can never be truncated; what the cap drops is off-centre tail,
+        -- which can affect only feed MEMBERSHIP at pathological density —
+        -- coarsest-first within each band keeps that drop to the places
+        -- least able to hold attention.
+        ORDER BY ${centreCoversSql} DESC, ST_Area(g.geometry) DESC
         LIMIT ${PLACES_IN_VIEW_CANDIDATE_CAP}
       `);
       for (const row of rows) {

@@ -528,26 +528,23 @@ describe('PlacesCatalogService.placesInView — §2.5 coverage', () => {
       Math.cos((0.5 * Math.PI) / 180),
       9,
     );
-    expect(results[0].parentPlaceIds).toEqual(['p-1', 'p-2']);
   });
 
-  it('the viewport read names a cap and orders coarsest-first (SHAPE ONLY — the LAW is proven in places-viewport-cap.integration.spec.ts)', async () => {
+  it('the viewport read names a cap and ranks centre-containing grounds ahead of it (SHAPE ONLY — the LAW is proven in places-viewport-cap.integration.spec.ts)', async () => {
     // Abuse audit 2026-08-01: this read had no LIMIT, so a world-span view
     // scanned every ground and serialized 11 MB of GeoJSON — reachable at
-    // 100/min from an UNAUTHENTICATED endpoint. Ordering by ground area
-    // DESC means the cap can never drop a place that could have won the
-    // §2.5 judgment (a dominator holds >= 2/3 of the view, so it is always
-    // among the largest present); it drops the tiny-place tail only.
+    // 100/min from an UNAUTHENTICATED endpoint. The ORDERING flipped with
+    // the center-anchored header law (2026-08-07): area-DESC protected the
+    // dominator law's winners (the largest places) and dropped exactly the
+    // class the new law selects from (the finest centred place), so the
+    // centre-containment key now outranks the cut.
     //
     // F371/D30 — READ THE TITLE. This case string-matches the query and
-    // therefore proves nothing about the cap's VALUE: setting
-    // PLACES_IN_VIEW_CANDIDATE_CAP to 1 (which reduces the §2.5 law to a
-    // single candidate and silently changes the header verdict at every zoom)
-    // left this file and places.controller 33/33 GREEN. The relationship the
-    // cap is justified by — "every place that could clear 1/3 of the view
-    // survives it" — is a PostGIS fact and is now asserted against a real
-    // database in places-viewport-cap.integration.spec.ts, where a cap of 1
-    // turns RED. What survives here is a shape tripwire, nothing more.
+    // proves nothing about the cap's VALUE or the ordering's EFFECT; the
+    // relationship — "the smallest centred ground survives an over-capacity
+    // read" — is a PostGIS fact asserted in
+    // places-viewport-cap.integration.spec.ts, where bare area-DESC turns
+    // RED. What survives here is a shape tripwire, nothing more.
     const { service, queryRaw } = makeHarness([]);
     queryRaw.mockResolvedValueOnce([]);
     await service.placesInView({
@@ -562,7 +559,8 @@ describe('PlacesCatalogService.placesInView — §2.5 coverage', () => {
     const sql = template.strings
       ? template.strings.join('?')
       : String(template.sql ?? '');
-    expect(sql).toContain('ORDER BY ST_Area(g.geometry) DESC');
+    expect(sql).toContain('ST_Covers(');
+    expect(sql).toContain('ST_Area(g.geometry) DESC');
     expect(sql).toContain('LIMIT');
   });
 

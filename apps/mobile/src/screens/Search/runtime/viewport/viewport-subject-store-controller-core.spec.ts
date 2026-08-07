@@ -52,7 +52,7 @@ const place = (partial: Partial<PlaceLike> & Pick<PlaceLike, 'placeId' | 'bbox'>
 });
 
 /**
- * Texas: real ground covers lat 29.11→30 of the view = 89% (a §2.5 dominator).
+ * Texas: real ground covers lat 29.11→30 of the view = 89% (a header winner).
  */
 const TEXAS = place({
   placeId: 'texas',

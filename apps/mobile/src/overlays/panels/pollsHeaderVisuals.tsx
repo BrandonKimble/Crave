@@ -9,7 +9,7 @@ export type PollsHeaderVisualModel = {
 };
 
 type BuildPollsHeaderVisualModelArgs = {
-  /** §2 header verdict from the feed response (null = multi-place straddle / unnamed ground). */
+  /** Header verdict from the feed response (null = nothing under the view's centre clears the header fraction). */
   placeName?: string | null;
   /** First-ever load, nothing to say yet — the title stays a quiet placeholder. */
   isResolvingPlace?: boolean;

@@ -15,13 +15,15 @@ import type { MapBounds } from '../types';
  * effects FIRE, never a scene body-spec hook); readers are the mouths (polls
  * header, on-demand notice, poll-creation title) via useViewportSubjectState.
  *
- * verdict semantics (§2.5 polygon-native header law, ratified 2026-07-22):
- *   - { kind: 'place' }     → the finest dominator: the smallest place whose
- *                             the ONE ground (sketch rows: the envelope rectangle) covers
- *                             ≥ 2/3 of the view — "Polls in Austin".
- *   - { kind: 'this-area' } → the §2.5 reservation: a genuine multi-place
- *                             straddle or unnamed ground — "Polls in this
- *                             area".
+ * verdict semantics (center-anchored header law, 2026-08-07):
+ *   - { kind: 'place' }     → the finest centred place: the smallest-area
+ *                             place whose ONE ground (sketch rows: the
+ *                             envelope rectangle) contains the view's centre
+ *                             AND holds ≥ HEADER_ATTENTION_FRACTION of it —
+ *                             "Polls in Austin".
+ *   - { kind: 'this-area' } → nothing under the centre clears the fraction
+ *                             (open water, or a centred sliver at
+ *                             continental zoom) — "Polls in this area".
  *   - null                  → UNKNOWN: no commit yet (cold start before the
  *                             first slice + settle). Mouths keep their legacy
  *                             fallback (server header.placeName, route params)

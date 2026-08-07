@@ -33,9 +33,15 @@ describe('poll-feed-membership — §6 members + §2 header + §4 feed-at-that-z
   it('commensurate covering town: header named, town is subject AND member', () => {
     const town = candidate(TOWN, 'Round Rock', 0.9, 1.2);
     const result = resolveFeedMembership(VIEW, [town], new Set());
-    expect(result.headerPlaceName).toBe('Round Rock');
+    expect(
+      result.resolution.kind === 'place' ? result.resolution.place.name : null,
+    ).toBe('Round Rock');
     expect(result.memberPlaceIds).toEqual([TOWN]);
-    expect(result.subjectPlaceIds).toEqual([TOWN]);
+    expect(
+      result.resolution.kind === 'place'
+        ? result.resolution.place.placeId
+        : null,
+    ).toBe(TOWN);
   });
 
   it('over-scale SUBDIVISION+ place is NOT a feed member (§4 feed-at-that-zoom), while the commensurate town stays', () => {
@@ -43,22 +49,30 @@ describe('poll-feed-membership — §6 members + §2 header + §4 feed-at-that-z
     const state = candidate(STATE, 'Texas', 1, 400); // view ≪ place → over-scale
     const result = resolveFeedMembership(VIEW, [town, state], new Set([STATE]));
     expect(result.memberPlaceIds).toEqual([TOWN]);
-    expect(result.headerPlaceName).toBe('Round Rock');
+    expect(
+      result.resolution.kind === 'place' ? result.resolution.place.name : null,
+    ).toBe('Round Rock');
   });
 
-  it('a merely over-scale TOWN-CLASS place (street zoom inside a city) KEEPS membership and IS the subject (§2.5: covering ⇒ dominator)', () => {
+  it('a merely over-scale TOWN-CLASS place (street zoom inside a city) KEEPS membership and IS the subject (a covering city contains the centre and is finest)', () => {
     const city = candidate(CITY, 'Austin', 1, 400); // over-scale but not subdivision+
     const result = resolveFeedMembership(VIEW, [city], new Set());
     expect(result.memberPlaceIds).toEqual([CITY]);
     // §2.5: the city covers the view → it IS the finest dominator (the old
     // containing-fallback arm is subsumed) — and as the named subject its
     // descendants join the feed (street zoom shows the city's ground).
-    expect(result.headerPlaceName).toBe('Austin');
+    expect(
+      result.resolution.kind === 'place' ? result.resolution.place.name : null,
+    ).toBe('Austin');
     expect(result.resolution.kind).toBe('place');
     expect(
       result.resolution.kind === 'place' ? result.resolution.reason : null,
     ).toBe('finest-centered');
-    expect(result.subjectPlaceIds).toEqual([CITY]);
+    expect(
+      result.resolution.kind === 'place'
+        ? result.resolution.place.placeId
+        : null,
+    ).toBe(CITY);
   });
 
   it('a covering parent with two child towns: the CENTERED child names the header and is the sole subject (the straddle reservation is dead)', () => {
@@ -78,9 +92,15 @@ describe('poll-feed-membership — §6 members + §2 header + §4 feed-at-that-z
       [cityWide, west, east],
       new Set(),
     );
-    expect(result.headerPlaceName).toBe('Westside');
+    expect(
+      result.resolution.kind === 'place' ? result.resolution.place.name : null,
+    ).toBe('Westside');
     expect(result.resolution.kind).toBe('place');
-    expect(result.subjectPlaceIds).toEqual([TOWN]);
+    expect(
+      result.resolution.kind === 'place'
+        ? result.resolution.place.placeId
+        : null,
+    ).toBe(TOWN);
     // All three stay members (none is subdivision+).
     expect(new Set(result.memberPlaceIds)).toEqual(
       new Set([CITY, TOWN, TOWN_B]),
@@ -97,19 +117,19 @@ describe('poll-feed-membership — §6 members + §2 header + §4 feed-at-that-z
       containsViewCenter: false,
     };
     const result = resolveFeedMembership(VIEW, [a, b], new Set());
-    expect(result.headerPlaceName).toBeNull();
+    expect(result.resolution.kind).toBe('this-area');
     expect(result.resolution.kind).toBe('this-area');
     // Subjects are EMPTY now (the straddle used to surface both towns for
     // descendant expansion) — a this-area view's feed is exactly its
     // in-view members, which both towns remain.
-    expect(result.subjectPlaceIds).toEqual([]);
+    expect(result.resolution.kind).toBe('this-area');
     expect(new Set(result.memberPlaceIds)).toEqual(new Set([TOWN, TOWN_B]));
   });
 
   it('unnamed ground: nothing commensurate, nothing containing → header null, no subjects', () => {
     const result = resolveFeedMembership(VIEW, [], new Set());
-    expect(result.headerPlaceName).toBeNull();
-    expect(result.subjectPlaceIds).toEqual([]);
+    expect(result.resolution.kind).toBe('this-area');
+    expect(result.resolution.kind).toBe('this-area');
     expect(result.memberPlaceIds).toEqual([]);
   });
 });

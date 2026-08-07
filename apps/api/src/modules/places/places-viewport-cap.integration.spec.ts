@@ -5,18 +5,24 @@
  * because an unbounded world-span read seq-scanned every ground and serialized
  * 11 MB of GeoJSON per request from an endpoint reachable at 100/min
  * UNAUTHENTICATED. Its unit test asserted `expect(sql).toContain('LIMIT')`.
- * EXECUTED MUTATION: set the cap to 1 — the §2.5 dominator law then sees a
- * single candidate and the header verdict silently changes at every zoom —
- * and places-catalog + places.controller stayed 33/33 GREEN. Any cap value
- * satisfies "contains LIMIT", including one that breaks the law the cap was
- * chosen to protect.
+ * EXECUTED MUTATION: set the cap to 1 and every consumer suite stayed GREEN —
+ * so the relationship, not the spelling, is what this file asserts.
  *
- * The cap's justification is a RELATIONSHIP, not a spelling: ordered by ground
- * area DESC, the cap can never drop a candidate that could have won, because a
- * place holding >= 1/3 of the view (attention) is by definition among the
- * largest present. So that is what is asserted here — seed MORE grounds than
- * the cap, of which a known handful can clear 1/3, and prove every one of them
- * survives the cap. A cap of 1 turns this RED.
+ * REDERIVED 2026-08-07 for the center-anchored header law. The old assertion
+ * proved area-DESC ordering could never drop a place holding >= 1/3 of the
+ * view — the winning class of the DOMINATOR law. That law is dead, and its
+ * guarantee INVERTED: the new header names the FINEST place containing the
+ * view's centre, i.e. potentially the SMALLEST row in the read, which
+ * area-DESC truncation drops FIRST. The read now ranks centre-containing
+ * grounds ahead of the cut, so the assertion here is the new relationship:
+ *
+ *   a fine place containing the view's centre survives the cap even when the
+ *   read is over capacity and every other row is coarser.
+ *
+ * Flipping the ORDER BY back to bare area-DESC turns this RED (the sentinel
+ * fixture is deliberately the smallest ground in the read). The old
+ * attention-floor assertion survives below as the membership half: the cap
+ * still drops only sub-attention tail.
  *
  * Run: yarn test:db   (needs DATABASE_URL — a dev database, never prod)
  * It FAILS LOUDLY without one rather than skipping.
@@ -31,8 +37,9 @@ const TEST_TAG = 'itest-viewport-cap';
 /** A 1°×1° box in the open Pacific — no real place in the corpus reaches it,
  *  so the cap is contested only by this spec's own fixtures. */
 const VIEW = { minLat: 0, minLng: -150, maxLat: 1, maxLng: -149 };
-/** The attention floor of the §2.5 law: a place below it can change no
- *  verdict, which is the entire argument for dropping the tail. */
+/** The §4 attention floor: the feed-membership half of the assertion —
+ *  places above it must survive the cap for the FEED even though the header
+ *  no longer ranks on it. */
 const ATTENTION_FRACTION = 1 / 3;
 
 const prisma = new PrismaClient();
@@ -97,6 +104,15 @@ beforeAll(async () => {
     );
   }
 
+  // THE SENTINEL: a fine place CONTAINING THE VIEW'S CENTRE (-149.5, 0.5),
+  // deliberately the SMALLEST ground in the whole read — the row bare
+  // area-DESC truncation drops first, and the row the center-anchored
+  // header may need most.
+  await seed(
+    `${TEST_TAG}:centered-fine`,
+    box(-149.50005, 0.49995, -149.49995, 0.50005),
+  );
+
   // …and MORE tiny places than the cap, all inside the view. Each is far
   // below the attention floor, so the law can never name one — they are
   // exactly the tail the cap exists to drop.
@@ -146,6 +162,15 @@ describe('the viewport cap cannot drop a place that could have won (§2.5)', () 
       `SELECT count(*) AS count FROM places WHERE provider = '${TEST_TAG}'`,
     );
     expect(Number(count)).toBeGreaterThan(PLACES_IN_VIEW_CANDIDATE_CAP);
+
+    // THE NEW LAW'S HALF: the centre-chain sentinel — the smallest ground
+    // in an over-capacity read — survived, because centre-containment
+    // outranks the cut. Bare area-DESC ordering turns exactly this RED.
+    const sentinel = mine.find(
+      (r) => r.place.name === `${TEST_TAG}:centered-fine`,
+    );
+    expect(sentinel).toBeDefined();
+    expect(sentinel?.containsViewCenter).toBe(true);
 
     // THE LAW: the cap dropped only the tail.
     expect(mine.length).toBeLessThanOrEqual(PLACES_IN_VIEW_CANDIDATE_CAP);

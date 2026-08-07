@@ -2575,8 +2575,9 @@ export class SearchService {
   /**
    * §2 header naming (master plan §22 cut 3): the search header's display
    * name comes from the Place Catalog — every place intersecting the view,
-   * judged by the read-time subjecthood law (resolveHeaderPlace). "this
-   * area" verdicts (multi-place straddle, unnamed ground) surface as null;
+   * judged by the read-time header law (resolveHeaderPlace — finest centred
+   * place clearing the header fraction). "this area" verdicts (nothing under
+   * the centre, or nothing clearing the fraction) surface as null;
    * the client renders its own fallback for null. Never throws — a naming
    * failure must not affect the search response (reads never wait on
    * naming, §2).

@@ -35,14 +35,15 @@ import {
 export type FeedPlaceCandidate = SubjectCandidate;
 
 export interface FeedMembership {
-  /** §2.5 header verdict: the place name, or null → "Polls in this area". */
-  headerPlaceName: string | null;
-  /** The full §2.5 resolution (promise state + diagnostics read it). */
+  /**
+   * The header verdict (the place's NAME lives at resolution.place.name —
+   * a headerPlaceName copy used to sit beside this and nothing in
+   * production read it; deleted 2026-08-07 with subjectPlaceIds, which was
+   * always derivable as kind === 'place' ? [place.placeId] : []).
+   */
   resolution: HeaderResolution;
   /** In-view feed members (before descendant expansion). */
   memberPlaceIds: string[];
-  /** Header subjects whose DESCENDANTS also join the feed (§6). */
-  subjectPlaceIds: string[];
 }
 
 export function resolveFeedMembership(
@@ -52,8 +53,6 @@ export function resolveFeedMembership(
 ): FeedMembership {
   const viewArea = bboxArea(view);
   const resolution = resolveHeaderPlace(view, candidates);
-  const headerPlaceName =
-    resolution.kind === 'place' ? resolution.place.name : null;
 
   const memberPlaceIds = candidates
     .filter(
@@ -65,13 +64,5 @@ export function resolveFeedMembership(
     )
     .map((candidate) => candidate.placeId);
 
-  // §6 "+ descendants of the subject": the subject is the header place
-  // (this-area carries none — the straddle that used to surface attention
-  // holders died with the center-anchored law). Its subtree carries the
-  // ground's polls (the in-view read already carries every intersecting
-  // descendant that has a bbox; expansion adds the un-indexed/out-of-view
-  // tail).
-  const subjectPlaceIds = resolution.subjects.map((subject) => subject.placeId);
-
-  return { headerPlaceName, resolution, memberPlaceIds, subjectPlaceIds };
+  return { resolution, memberPlaceIds };
 }

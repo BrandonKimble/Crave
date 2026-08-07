@@ -64,8 +64,9 @@ export const ATTENTION_FRACTION = 1 / 3;
 export const MAX_PROBE_ANCHORS = Math.floor(1 / ATTENTION_FRACTION);
 
 /**
- * §16 K6 DEFINITIONAL — float tolerance so exact-boundary fixtures
- * (coverage == 2/3) judge stably; nothing changes it.
+ * §16 K6 DEFINITIONAL — float tolerance so an exact-boundary coverage
+ * (== HEADER_ATTENTION_FRACTION) judges stably as a closed threshold;
+ * nothing changes it.
  */
 const EPSILON = 1e-9;
 
@@ -131,8 +132,6 @@ export interface PlaceLike {
   bbox: GeoBbox;
   /** OPEN vocabulary (§1) — stored verbatim, never switched on. */
   providerLevelCode: string;
-  /** DAG parent edges (dedupe is the reader's concern, §1). */
-  parentPlaceIds: string[];
   /** Optional cached bboxArea(bbox); recomputed when absent. */
   area?: number;
   /**
@@ -212,33 +211,28 @@ export function subjectCandidatesInView(view: GeoBbox, places: PlaceLike[]): Sub
 export type HeaderResolution =
   | {
       kind: 'place';
+      /** The finest centred place holding ≥ HEADER_ATTENTION_FRACTION —
+       *  the header name AND the §6 feed's descendant-expansion subject. */
       place: SubjectCandidate;
-      /** The finest centered place holding ≥ HEADER_ATTENTION_FRACTION. */
       reason: 'finest-centered';
-      /**
-       * The named subject — descendant expansion (§6 feed) keys off this.
-       * Always exactly [place] for the place verdict.
-       */
-      subjects: SubjectCandidate[];
     }
   | {
       kind: 'this-area';
       /**
        * 'nothing-under-center' → no candidate's ground contains the view's
        *                          centre (open water, unmapped ground);
-       * 'under-threshold'      → centred places exist but the finest-to-
-       *                          coarsest of them all hold < the header
-       *                          fraction (continental zoom: the country is
-       *                          under the centre at a sliver of the view).
+       * 'under-threshold'      → centred places exist but every one of them
+       *                          holds < the header fraction (continental
+       *                          zoom: the country is under the centre at a
+       *                          sliver of the view).
+       *
+       * NO subjects field (deleted 2026-08-07): it was always derivable —
+       * [place] or [] — and the multi-subject shape it kept alive was the
+       * last structural echo of the straddle. A this-area view's feed is
+       * exactly its in-view members; only a NAMED place earns descendant
+       * expansion.
        */
       reason: 'nothing-under-center' | 'under-threshold';
-      /**
-       * Always empty. The straddle arm used to surface "attention holders"
-       * here, and the feed expanded their descendants; the straddle is gone
-       * (it fired between NESTED places — see resolveHeaderPlace) and a
-       * this-area view's feed is exactly its in-view members.
-       */
-      subjects: SubjectCandidate[];
     };
 
 /**
@@ -369,21 +363,16 @@ export function resolveHeaderPlace(
 ): HeaderResolution {
   const centered = placesInView.filter((candidate) => candidate.containsViewCenter);
   if (centered.length === 0) {
-    return { kind: 'this-area', reason: 'nothing-under-center', subjects: [] };
+    return { kind: 'this-area', reason: 'nothing-under-center' };
   }
   // Finest first — smallest ground area; ties close on name for determinism.
   const chosen = centered
     .filter((candidate) => candidate.coverageOfView + EPSILON >= HEADER_ATTENTION_FRACTION)
     .sort((a, b) => a.placeArea - b.placeArea || a.name.localeCompare(b.name))[0];
   if (!chosen) {
-    return { kind: 'this-area', reason: 'under-threshold', subjects: [] };
+    return { kind: 'this-area', reason: 'under-threshold' };
   }
-  return {
-    kind: 'place',
-    place: chosen,
-    reason: 'finest-centered',
-    subjects: [chosen],
-  };
+  return { kind: 'place', place: chosen, reason: 'finest-centered' };
 }
 
 /**

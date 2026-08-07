@@ -17,11 +17,11 @@ import { PlacesCatalogService } from './places-catalog.service';
 import { descendantPlaceIds, isSubdivisionOrBigger } from './place-dag-read';
 
 export interface ViewportVerdict {
-  /** §2.5 header verdict: the covering place, or null → "this area". */
+  /** The header verdict: the finest centred place, or null → "this area". */
   headerPlace: { placeId: string; name: string } | null;
   /**
    * §6 membership: in-view places (minus over-scale subdivision+ places, the
-   * §4 feed boundary) ∪ descendants of the commensurate subject(s).
+   * §4 feed boundary) ∪ descendants of the header place.
    */
   placeIds: string[];
   /** The raw in-view candidate rows (id + name), for consumers that label. */
@@ -60,9 +60,12 @@ export class ViewportVerdictService {
     const membership = resolveFeedMembership(view, candidates, bigPlaceIds);
     // Docket #1: the header-answer earned-moment hook is DELETED — a place
     // that can answer a header already has (or is seconds from) its outline.
-    const descendants = membership.subjectPlaceIds.length
-      ? await descendantPlaceIds(this.prisma, membership.subjectPlaceIds)
-      : [];
+    const descendants =
+      membership.resolution.kind === 'place'
+        ? await descendantPlaceIds(this.prisma, [
+            membership.resolution.place.placeId,
+          ])
+        : [];
     // §4 feed half holds through descendant expansion too: a §2.5 subject
     // can itself be an over-scale subdivision+ dominator (state-scale zoom),
     // and the subtree read echoes its roots — subtract the structurally big

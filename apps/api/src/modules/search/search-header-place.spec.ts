@@ -8,7 +8,7 @@ import type { PlaceInView } from '../places/places-catalog.service';
 // from the Place Catalog (§2.5 polygon-native law), NOT the old
 // market-resolver election, and the §2 naming reconciler goes live at the
 // search viewport chokepoint. Three families here:
-//   (a) header derivation — the finest dominator names the header,
+//   (a) header derivation — the finest centred place names the header,
 //       straddle → null, over-scale containing places dominate only when
 //       nothing finer does;
 //   (b) reconciler wiring — a submitted search with bounds hands the viewport
@@ -51,7 +51,6 @@ function placeInView(
     coverageOfView,
     placeArea: bboxArea(bbox),
     containsViewCenter: true,
-    parentPlaceIds: [],
     // §2.6: ground is REQUIRED — sketch-grade envelope rectangle fixture.
     ground: [
       [
@@ -191,7 +190,7 @@ describe('§2 header derivation (the catalog names the header, not the resolver)
   // The header-answer earned-moment test was DELETED with its hook
   // (docket #1): a place that answers a header already has its outline.
 
-  it('a multi-place straddle yields null (mobile renders its own fallback)', async () => {
+  it('centre over neither town yields null (mobile renders its own fallback)', async () => {
     const west: GeoBbox = {
       minLat: 30.1,
       minLng: -97.9,

@@ -194,7 +194,7 @@ describe('GET /places/in-view — slice membership + margin law', () => {
     );
   });
 
-  it('rows are lean PlaceLike: bbox + identity + DAG edges (deduped) + the §2.6 ground, NO derivable area/coverage', async () => {
+  it('rows are lean PlaceLike: bbox + identity + the §2.6 ground — NO derivable data, NO DAG edges (dropped 2026-08-07: the client header law reads geometry only)', async () => {
     const row = placeRow(
       'Coreville',
       { minLat: 30.2, minLng: -97.8, maxLat: 30.6, maxLng: -97.4 },
@@ -209,7 +209,6 @@ describe('GET /places/in-view — slice membership + margin law', () => {
         name: 'Coreville',
         bbox: { minLat: 30.2, minLng: -97.8, maxLat: 30.6, maxLng: -97.4 },
         providerLevelCode: 'Municipality',
-        parentPlaceIds: ['p-1', 'p-2'],
         // §2.6: ground ALWAYS ships. A sketch-grade place's ground is its
         // ENVELOPE, read from place_geometries like any other — PostGIS
         // returns a CLOSED ring (first vertex repeated last).

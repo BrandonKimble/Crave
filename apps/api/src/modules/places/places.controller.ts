@@ -13,7 +13,7 @@ import {
 import { ClerkAuthGuard } from '../identity/auth/clerk-auth.guard';
 import { RateLimitTier } from '../infrastructure/throttler/throttler.decorator';
 import { PlacesInViewQueryDto } from './dto/places-in-view.dto';
-import { PlacesCatalogService, placeParentIds } from './places-catalog.service';
+import { PlacesCatalogService } from './places-catalog.service';
 import { ViewportVerdictService } from './viewport-verdict.service';
 
 /**
@@ -31,10 +31,11 @@ import { ViewportVerdictService } from './viewport-verdict.service';
  * served, which is the client's cache-validity region.
  *
  * CONTAINING-CHAIN REASONING (why there is no separate "containing chain"
- * field): the §2.5 law's dominators include every place whose ground covers
- * the view — and covering implies intersecting, so every such place (however
- * over-scale: city, state, country) already intersects the margin box and is
- * already in `places`. placesInView's candidate find is the geometry GiST
+ * field), restated for the center-anchored law (2026-08-07): the header's
+ * candidates are places whose ground contains a view centre inside the
+ * margin box — and containing a point inside the box implies intersecting
+ * the box, so every such place (however over-scale: city, state, country)
+ * already intersects the margin box and is already in `places`. placesInView's candidate find is the geometry GiST
  * (`geometry && arm`, per-arm at the seam — P4a), so no covering node can
  * be dropped; the only rows it excludes are GROUND-LESS places, which are
  * honestly not containers (§2.6). Shipping a second "smallestContaining +
@@ -52,9 +53,9 @@ export class PlacesController {
 
   /**
    * The standalone viewport→place-verdict read (home's header): the SAME
-   * §2/§2.5 law composition the polls feed runs (ViewportVerdictService is
-   * the one implementation). Nulls when the viewport resolves to no covering
-   * place — the client renders its "this area" copy.
+   * law composition the polls feed runs (ViewportVerdictService is the one
+   * implementation). Nulls when nothing under the viewport's centre clears
+   * the header fraction — the client renders its "this area" copy.
    */
   // heavyGeoRead, not default (red team 2026-08-02). That tier was created
   // for exactly this shape and its own comment describes these two endpoints
@@ -112,7 +113,6 @@ export class PlacesController {
         name: place.name,
         bbox,
         providerLevelCode: place.providerLevelCode,
-        parentPlaceIds: placeParentIds(place),
         ground,
       })),
     };

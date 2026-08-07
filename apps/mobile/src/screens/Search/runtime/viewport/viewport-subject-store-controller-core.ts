@@ -99,8 +99,9 @@ export const VIEWPORT_SUBJECT_DWELL_MS = 1_000;
 
 // [SUBJECT-STORE] marker logs (temporary-but-committed, BUILDCHECK-style): the
 // owner's Austin→San Antonio pan repro greps these in /tmp/crave-metro.log.
-// `reason` passes the §2.5 union through verbatim ('finest-dominator' |
-// 'straddle' | 'unnamed-ground', or the controller's own 'no-slice').
+// `reason` passes the header law's union through verbatim ('finest-centered'
+// | 'nothing-under-center' | 'under-threshold', or the controller's own
+// 'no-slice').
 const logSubjectStore = (event: string, data: Record<string, unknown>): void => {
   if (__DEV__) {
     // eslint-disable-next-line no-console
@@ -365,7 +366,7 @@ export const createViewportSubjectStoreController = ({
         // Replace slice+marginBox atomically; the committed verdict stands
         // until the hysteresis pipeline re-judges (never blank mid-move).
         // Rows are stored VERBATIM (PlaceLike) — §2.5 ground rings and
-        // parentPlaceIds ride along untouched for the shared law to judge.
+        // ride along untouched for the shared law to judge.
         setViewportSubjectState({
           slice: response.places,
           marginBox: response.marginBox,
@@ -383,7 +384,7 @@ export const createViewportSubjectStoreController = ({
         });
         logSubjectStore('slice-landed', {
           places: response.places.length,
-          grounded: response.places.filter((place) => (place.ground?.length ?? 0) > 0).length,
+          grounded: response.places.filter((place) => place.ground.length > 0).length,
           marginBox: response.marginBox,
         });
         if (settledEpisode != null && settleTimer == null) {

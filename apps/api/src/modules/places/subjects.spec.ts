@@ -72,7 +72,6 @@ function placeLike(
     name,
     bbox,
     providerLevelCode: 'Municipality',
-    parentPlaceIds: [],
     // §2.6: ground is REQUIRED — the default fixture is the sketch-grade
     // envelope (exactly what a sketch place_geometries row ships; wrap-aware:
     // a crossing bbox becomes two rings).
@@ -205,7 +204,6 @@ describe('resolveHeaderPlace — the center-anchored law (2026-08-07)', () => {
     if (result.kind !== 'place') throw new Error('unreachable');
     expect(result.place.name).toBe('Austin');
     expect(result.reason).toBe('finest-centered');
-    expect(result.subjects.map((s) => s.name)).toEqual(['Austin']);
   });
 
   it('THE FALSE STRADDLE: nested city-in-county names the CITY, never "this area"', () => {
@@ -338,11 +336,7 @@ describe('resolveHeaderPlace — the center-anchored law (2026-08-07)', () => {
       { containsViewCenter: true },
     );
     const result = resolveHeaderPlace(view, [us]);
-    expect(result).toEqual({
-      kind: 'this-area',
-      reason: 'under-threshold',
-      subjects: [],
-    });
+    expect(result).toEqual({ kind: 'this-area', reason: 'under-threshold' });
   });
 
   it('nothing under the centre: open water with a coastal town in frame is "this area"', () => {
@@ -357,7 +351,6 @@ describe('resolveHeaderPlace — the center-anchored law (2026-08-07)', () => {
     expect(result).toEqual({
       kind: 'this-area',
       reason: 'nothing-under-center',
-      subjects: [],
     });
   });
 
@@ -377,11 +370,12 @@ describe('resolveHeaderPlace — the center-anchored law (2026-08-07)', () => {
 describe('subjectCandidatesInView — the shared slice read (both runtimes)', () => {
   it('derives coverage + finest key + centre containment; disjoint places drop', () => {
     const view: GeoBbox = { minLat: 0, minLng: 0, maxLat: 1, maxLng: 2 };
-    const half = placeLike(
-      'Halftown',
-      { minLat: 0, minLng: 0, maxLat: 1, maxLng: 1 },
-      { parentPlaceIds: ['p-1'] },
-    );
+    const half = placeLike('Halftown', {
+      minLat: 0,
+      minLng: 0,
+      maxLat: 1,
+      maxLng: 1,
+    });
     const disjoint = placeLike('Elsewhere', {
       minLat: 10,
       minLng: 10,
