@@ -2919,3 +2919,34 @@ Design corrections accepted: the newer-commit park arm's real sequence is
 parked/parkSuperseded/parked/replayed (the superseding commit parks in turn — the host is
 still unmounted), and the resetSheetToHidden producer attribution moves to the
 clear-restore authority. Both now recorded where the next reader will look.
+
+---
+
+## D101 — D99 P3 ratified; F5901 fixed by me; the missing CLAUDE.md entry (2026-08-06)
+
+**All five F580x items landed**, each with the reading that changed something:
+
+- **F5806**: the frame-rate fix matched F889's mechanism found IN THE CODE — because the
+  CLAUDE.md entry my brief told the lane to extend DID NOT EXIST. That absence is not a
+  detail; it is the causal explanation for the recurrence. The lane wrote the entry with
+  both sites named. A law that lives only in a fixed file's history protects nobody.
+- **F5805**: the server's own regex dictated the rule — `@` is not in the username
+  alphabet at any position, so client-side stripping is LOSSLESS, and the one normalizer
+  lives in its own module because the proposed home (users.ts) pulls axios and cannot be
+  tested hermetically. "A rule nobody can test is how it drifted."
+- **F5803**: the enum crosses the wire typed with a `satisfies` pin at the API WRITE, so
+  a new Prisma member fails the api build before any client sees it — and no wire-level
+  unknown-string parse was added, deliberately, because it would need the exact fallback
+  the row killed.
+- **F5802**: the row's proving mutation was REFUTED (the FollowListPanel destination
+  accepts null, so those casts were never load-bearing) — the real fix (require the
+  param) filed as F5900 with its blast radius, not improvised.
+
+**F5901 fixed by me, and it closes a loop:** the one red test on main was a SOURCE
+SCANNER over coordinator ternary text whose subject F4501/D97 moved into the pure
+destination module — where the SAME law is pinned behaviorally. The scanner breaks on any
+refactor the law survives; the successor breaks only when the law breaks. Deleted with a
+pointer; 19/19 both suites; main green.
+
+F5850's non-checking-positions class and F5851's gate widening remain queued; F5900 joins
+the P2 queue as a small design (param requires userId; four consumers).
