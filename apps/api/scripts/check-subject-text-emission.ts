@@ -106,10 +106,6 @@ const ALLOWED: Record<string, { class: Classification; why: string }> = {
     class: 'declaration',
     why: "Proves each rule's SCOPE can reach the person; names subject_text only as a secondary column in its allowlist of reasons.",
   },
-  'src/modules/identity/person-data/person-data-census.spec.ts': {
-    class: 'declaration',
-    why: 'The census harness that found this column was person data in the first place.',
-  },
   'src/modules/signals/act-identity.ts': {
     class: 'internal-pipeline',
     why: 'A SQL BUILDER: emits `a.subject_text` as a dedupe/grouping key for callers. Never selects it out — the comment at line 73 says exactly that neither slot is read downstream.',
