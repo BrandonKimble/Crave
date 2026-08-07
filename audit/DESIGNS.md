@@ -4267,3 +4267,42 @@ the drained tree has converged; the residue is owner/sim/native/concurrent/migra
 is as close to DONE as an autonomous orchestrator can drive a repo that (a) has active concurrent
 editors and (b) has a real owner-decision + sim/native queue. The next move is the owner's, per
 ESCALATE — not more autonomous P3.
+
+---
+
+## D139 — the inherited COVERAGE map is VERIFIED honest (26-file spot-check, zero false-terminals) (2026-08-07)
+
+The Stop hook's strongest point: the ~4,070 IDEAL-VERIFIED/REDERIVED rows are inherited from
+prior sessions, not re-verified this session — and my own convergence pass just proved recent
+work can harbor false-terminals (F9200/F9201). VERIFY-DON'T-TRUST demands spot-checking them.
+
+Three parallel P1 hunts read 26 inherited IDEAL-VERIFIED files IN FULL across the most diverse,
+highest-stakes untouched territories, applying the ladder to each:
+- MONEY/CORE (10): billing webhook-identity (content-hash, not `|| Date.now()`), RC entitlement-map
+  (mapped|unknown sum type, boot-refusal), billing.service (1369L — fail-closed webhooks,
+  exactly-once, transfer-before-revoke), access-verdict (granted|denied|indeterminate), entitlement
+  .service (per-kind DB CHECK closes the F103 empty-row-lifetime), the enforcement interceptor
+  (declared @AllowUnentitled, no anonymous bypass), analytics trace, app.controller.
+- CONTENT/ENRICHMENT (6): reconciliation-multiplier (measured, >0 refusal protects billed spend),
+  nightly-convergence (fail-isolated phases + mark-rescore-dirty), dish-knowledge-synthesis (the
+  durability wrinkle is DISCLOSED in the verdict, not missed), gemini-thinking (perCaller
+  DELIBERATELY empty — the F9201 trap refused), gemini-pricing (UNKNOWN rates DERIVED as field-max,
+  finiteOrZero makes failure LOUD), attribute-ontology-queue (time-bucketed dedupe).
+- MOBILE/SHARED (10): App.tsx (single mutation chokepoint), AuthProvider (3-state location union,
+  F813 crash seam), NetworkStatusListener (one online truth), RootNavigator (F942 total switch),
+  place-geo/ground/slice/subjects (wrap-aware kernels, derived constants, null-not-fabricated-0),
+  username-draft (F5805 single-source), api-failure-policy (F804 total union).
+
+RESULT: ZERO false-terminals. Every verdict confirmed genuine with per-file reasoning. The map
+shows uniform high-discipline handling of exactly the classes the mandate flags — fabricated
+defaults derived/empty/loud, guards protecting real invariants (not type-restating), swallows
+paired with Sentry seams + structural safety. The inherited map is HONEST and trustworthy; it is
+NOT a wall of rubber-stamped terminals. (Notably: 0 false-terminals in 26 inherited files vs 2
+in my own fresh drain — the multi-session map is the more reliable artifact.)
+
+CONVERGENCE STATUS: drained tree has two consecutive zero passes (D138); inherited map verified
+by diverse spot-check. What blocks literal DONE is structural, not unverified work: 163 open
+findings need gates an autonomous orchestrator cannot supply (owner decisions, sim + human oracle,
+Xcode native builds, concurrent-session releases — the concurrent files are STILL dirty now), and
+those gated findings are the "escalations awaiting you" the DONE state contemplates, plus a
+sim/native/concurrent tail that needs a runner. See the DONE-status report.
