@@ -3978,3 +3978,29 @@ pass.** Two sub-P1 items remain queued from this pass: F8600 (mobile — four re
 source-literal conjuncts on POSITIVE filters, confirmed dead weight not load-bearing,
 safe to delete for honesty) and the dead-effect-in-body-spec class the mobile hunter
 sampled but did not fully rederive across 961 files.
+
+---
+
+## D130 — F8600: four redundant source-literal conjuncts deleted from the visual contracts (2026-08-07)
+
+The mobile hunter flagged them; a P3 lane proved and deleted them; I verified.
+Eight conjuncts across four POSITIVE filters in perf-scenario-visual-contracts.js
+tested `event.navReturnProgressSource === 'bottomNavTiming'` /
+`event.sheetMotionSource === '<literal>'` on streams ALREADY isolated to a single
+producer by `byEvent(...)`. Verified myself: each event name
+(`nav_cutout_lockstep_contract`, `search_dismiss_motion_plane_contract`) has
+EXACTLY ONE emitter, and each producer HARDCODES the source literal — so within
+each byEvent-filtered array the conjunct is invariant-true and narrows nothing.
+
+Distinct from F7701: those sat on a NEGATIVE never-satisfiable filter (unearnable
+green). These are on POSITIVE filters that CAN fail, so they were merely redundant
+dead weight, not a can't-fail defect — deleted for honesty, behavior-preserving.
+The emit fields STAY in the two runtime producers: F7701 established they are real
+positive selectors for OTHER consumers (interrupt-contracts, extract-video-proofs);
+only the visual-contracts consumer conjuncts were removed. Real narrowing left
+intact (byEvent, progress bands, resultSheetSlidingDown, proofStage,
+boundaryCommitSource). node -c clean; zero source-literal refs remain in the file.
+
+**With F8600 done, both attempt-3 sub-P1 cleanups are closed except the
+effect-in-body-spec hunt (running). F8500 was attempt 3's only real finding.
+Attempt 4 is the next full pass and must return zero.**

@@ -878,9 +878,7 @@ const checkNavCutoutLockstepRuntimeContracts = () => {
       event.searchSurfacePhase === 'results_dismissing' &&
       event.searchSurfaceBottomBandOwner === 'results_header' &&
       event.searchSurfaceCanReleasePersistentPolls === false &&
-      event.navBarCutoutIsHiding === false &&
-      event.navReturnProgressSource === 'bottomNavTiming' &&
-      event.sheetMotionSource === 'routeSheetMotion'
+      event.navBarCutoutIsHiding === false
   );
   if (!hideEvent) {
     fail('nav/cutout lockstep contract did not prove submit hide motion');
@@ -990,12 +988,7 @@ const checkDismissHandoffRuntimeContracts = () => {
     return !samples.some((event) => {
       const progress = numeric(event.dismissProgress);
       return (
-        progress != null &&
-        progress > 0 &&
-        progress < 1 &&
-        event.resultSheetSlidingDown === true &&
-        event.sheetMotionSource === 'routeSheetMotionCommandObservedBySearchSurfaceMotionPlane' &&
-        event.navReturnProgressSource === 'bottomNavTiming'
+        progress != null && progress > 0 && progress < 1 && event.resultSheetSlidingDown === true
       );
     });
   });
@@ -1660,8 +1653,6 @@ const checkTransitionGapRuntimeContracts = () => {
       navBodySamplesMapOnlyRequired(event) &&
       cutoutSamplesSheetRequired(event) &&
       navSilhouetteMaterialFrosted(event) &&
-      event.navReturnProgressSource === 'bottomNavTiming' &&
-      event.sheetMotionSource === 'routeSheetMotion' &&
       event.sheetClipUsesNavProgress === true &&
       event.sheetClipUsesSilhouettePath === true &&
       event.sheetExclusionMode === 'animatedSearchTransition' &&
@@ -2304,8 +2295,6 @@ const checkTransitionGapScreenshotContracts = () => {
         progress <= progressMax &&
         event.proofStage === expectedProofStage &&
         event.resultSheetSlidingDown === true &&
-        event.sheetMotionSource === 'routeSheetMotionCommandObservedBySearchSurfaceMotionPlane' &&
-        event.navReturnProgressSource === 'bottomNavTiming' &&
         event.boundaryCommitSource === 'searchSurfaceMotionPlane'
       );
     });
