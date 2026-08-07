@@ -228,7 +228,6 @@ export const useSearchRouteSceneStackBottomSheetRuntimeAssembly = ({
 
   const bodyScrollRuntime = React.useMemo<BottomSheetSceneStackBodyScrollRuntime>(
     () => ({
-      shouldEnableScroll: scrollRuntime.shouldEnableScroll,
       // Stable-identity UI-thread mirror (SharedValue ref never changes). Sinks read scrollEnabled
       // off THIS via useAnimatedProps (frame-drop fix — see useBottomSheetSharedRuntime).
       shouldEnableScrollShared: scrollRuntime.shouldEnableScrollShared,
@@ -246,7 +245,6 @@ export const useSearchRouteSceneStackBottomSheetRuntimeAssembly = ({
       scrollRuntime.scrollOffset,
       scrollRuntime.contentOverscroll,
       scrollRuntime.secondaryListOnScroll,
-      scrollRuntime.shouldEnableScroll,
       scrollRuntime.shouldEnableScrollShared,
     ]
   );

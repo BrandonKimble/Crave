@@ -115,9 +115,15 @@ export type BottomSheetSharedGestureRuntime = {
 
 export type BottomSheetSharedScrollRuntime = {
   ScrollComponent: React.ComponentType<ScrollViewProps & React.RefAttributes<ScrollView>>;
-  shouldEnableScroll: boolean;
-  // UI-thread mirror of shouldEnableScroll. Applied to the REAL ScrollView inside
-  // BottomSheetScrollContainer (the single scrollEnabled authority); exposed for non-render readers.
+  /**
+   * THE scrollEnabled AUTHORITY, and the only one (F4504). A JS `shouldEnableScroll`
+   * boolean used to ride alongside this SharedValue — the OLD authority, superseded by
+   * the 2026-07-02 frame-drop fix and never removed. It was minted, threaded through
+   * the scene-stack assembly, listed in that memo's dependency array (which is what
+   * re-minted the runtime on every page switch), and then deliberately IGNORED by the
+   * comparator to absorb the churn its own presence caused. It had no sinks at all.
+   * Applied to the REAL ScrollView inside BottomSheetScrollContainer.
+   */
   shouldEnableScrollShared: SharedValue<boolean>;
   effectiveShowsVerticalScrollIndicator: boolean;
   scrollHeaderHeight: number;

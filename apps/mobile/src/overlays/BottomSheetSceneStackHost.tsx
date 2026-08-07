@@ -456,9 +456,6 @@ const areSceneBodyScrollRuntimesEqual = createShapeEquality<BottomSheetSceneStac
     secondaryListOnScroll: sameFieldRef,
     scrollOffset: sameFieldRef,
     contentOverscroll: sameFieldRef,
-    // Deliberately NOT compared — see the frame-drop note below; the JS boolean re-mints on
-    // every switch while nothing that renders reads it.
-    shouldEnableScroll: ignoreField,
   }
 );
 
@@ -479,16 +476,16 @@ const areSceneBodyRuntimeSelectionsEqual = (
     });
     return false;
   }
-  // Frame-drop fix (red-team-validated 2026-07-02): the SHARED bodyScrollRuntime object re-mints
-  // whenever its JS `shouldEnableScroll` boolean toggles — which happens on EVERY page switch (the
-  // transient interactionEnabled flip during the transition). That identity churn was busting this
-  // selection and re-rendering the heavy list body (~45ms/switch, the biggest single cost). Now that
-  // scrollEnabled is driven off the STABLE `shouldEnableScrollShared` SharedValue (useAnimatedProps
-  // on the FlashList — verified to scroll), a shouldEnableScroll-ONLY re-mint changes nothing that
-  // renders. Compare the render-affecting fields (all stable refs) and treat a shouldEnableScroll-
-  // only delta as EQUAL so the list body no longer re-renders on a switch. (The JS `shouldEnableScroll`
-  // is intentionally NOT compared; sinks that still read it get a stale-but-correct value — it is
-  // `true` whenever the scene is active, and inactive legs are pointerEvents-blocked by the swap lane.)
+  // Frame-drop fix (red-team-validated 2026-07-02, completed by F4504): the SHARED
+  // bodyScrollRuntime object used to re-mint whenever a JS `shouldEnableScroll` boolean
+  // toggled — on EVERY page switch, via the transient interactionEnabled flip. That identity
+  // churn busted this selection and re-rendered the heavy list body (~45ms/switch, the biggest
+  // single cost). The fix drove scrollEnabled off the STABLE `shouldEnableScrollShared`
+  // SharedValue and then ABSORBED the churn here, mapping the superseded boolean to
+  // `ignoreField` with a note conceding that "sinks that still read it get a stale-but-correct
+  // value" — a concession made to nobody: it had no sinks. The boolean is deleted, so the
+  // churn stops at the SOURCE (it is no longer a dependency of the mint) and this comparator
+  // needs no exception. Every field it compares is now a stable ref that genuinely renders.
   if (areSceneBodyScrollRuntimesEqual(left.bodyScrollRuntime, right.bodyScrollRuntime)) {
     return true;
   }

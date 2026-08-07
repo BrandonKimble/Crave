@@ -31,10 +31,10 @@ export type BottomSheetSceneStackBodyDefaults = {
 };
 
 export type BottomSheetSceneStackBodyScrollRuntime = {
-  shouldEnableScroll: boolean;
-  // Stable-identity UI-thread mirror of shouldEnableScroll. Sinks drive the FlashList/ScrollView
-  // scrollEnabled off this via useAnimatedProps so a transient activation toggle doesn't re-render
-  // the heavy list body (frame-drop fix, 2026-07-02).
+  // Stable-identity UI-thread mirror: sinks drive the FlashList/ScrollView scrollEnabled
+  // off this via useAnimatedProps so a transient activation toggle doesn't re-render the
+  // heavy list body (frame-drop fix, 2026-07-02). The JS boolean it used to mirror is gone
+  // (F4504) — it had no sinks, and its identity churn is what the fix was absorbing.
   shouldEnableScrollShared: SharedValue<boolean>;
   ScrollComponent: React.ComponentType<ScrollViewProps & React.RefAttributes<ScrollView>>;
   primaryScrollViewOnScroll: ScrollViewProps['onScroll'];

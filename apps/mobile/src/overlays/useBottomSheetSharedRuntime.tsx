@@ -315,7 +315,6 @@ export const useBottomSheetSharedRuntime = ({
     showsVerticalScrollIndicator,
     scrollHeaderComponent,
   });
-  const shouldEnableScroll = visible && listScrollEnabled && interactionEnabled;
 
   useBottomSheetSharedActiveListRuntime({
     resolvedActiveList,
@@ -454,10 +453,8 @@ export const useBottomSheetSharedRuntime = ({
     },
     scrollRuntime: {
       ScrollComponent: scrollContainerRuntime.ScrollComponent,
-      shouldEnableScroll,
-      // UI-thread mirror of shouldEnableScroll. scrollEnabled is now applied INSIDE
-      // BottomSheetScrollContainer from this SharedValue (the single authority —
-      // plans/sheet-scroll-primitive.md §3.1); exposed here only for non-render readers.
+      // scrollEnabled is applied INSIDE BottomSheetScrollContainer from this SharedValue,
+      // the single authority (plans/sheet-scroll-primitive.md §3.1).
       shouldEnableScrollShared: runtimeConfigValues.shouldEnableScroll,
       effectiveShowsVerticalScrollIndicator:
         publicationRuntime.effectiveShowsVerticalScrollIndicator,
