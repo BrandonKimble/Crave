@@ -99,6 +99,26 @@ const DEFAULT_SHORTLIST_K = 10;
 const DEFAULT_BATCH_SIZE = 24;
 const DEFAULT_CONCURRENCY = 12;
 
+/**
+ * A tuning knob is either absent (take the measured default) or a positive
+ * integer. Zero/negative/fractional is refused HERE, at the argv boundary, so
+ * no downstream loop has to defend against `chunk(0)` or a fractional stride.
+ */
+function requirePositiveInt(
+  value: number | undefined,
+  fallback: number,
+  label: string,
+): number {
+  if (value === undefined) return fallback;
+  if (!Number.isInteger(value) || value <= 0) {
+    throw new Error(
+      `${label} must be a positive integer; got ${value}. ` +
+        `A non-positive batch/shortlist size silently runs the whole set unbatched.`,
+    );
+  }
+  return value;
+}
+
 /** Tokens too generic to be a useful shared-token recall signal. */
 /**
  * LEXICAL-RECALL FLOOR — MEASURED, 2026-08-03, against the live vocabulary
@@ -213,9 +233,26 @@ export class AttributeOntologyService {
     scope: CanonicalizationScope = 'pending',
     options: BuildPlanOptions = {},
   ): Promise<CanonicalizationPlan> {
-    const shortlistK = options.shortlistK ?? DEFAULT_SHORTLIST_K;
-    const batchSize = options.batchSize ?? DEFAULT_BATCH_SIZE;
-    const concurrency = options.concurrency ?? DEFAULT_CONCURRENCY;
+    // These flow straight from CLI argv into a loop that issues one Gemini
+    // call per candidate; `chunk` used to treat size <= 0 as "one batch of
+    // everything", so `--batch=0` on a 40k-candidate run silently became one
+    // unbatched mapLimit (F4946). Refuse a non-positive knob at the boundary
+    // rather than let it degrade the run silently.
+    const shortlistK = requirePositiveInt(
+      options.shortlistK,
+      DEFAULT_SHORTLIST_K,
+      'shortlistK',
+    );
+    const batchSize = requirePositiveInt(
+      options.batchSize,
+      DEFAULT_BATCH_SIZE,
+      'batchSize',
+    );
+    const concurrency = requirePositiveInt(
+      options.concurrency,
+      DEFAULT_CONCURRENCY,
+      'concurrency',
+    );
 
     const rows = await this.fetchAttributeRows(type);
     const activeRows = rows.filter((r) => r.status === 'active');
@@ -726,16 +763,14 @@ export class AttributeOntologyService {
             // round-4: use the row's REAL type, not a hardcoded one — the
             // pass renames both attribute types (identical fold semantics
             // today; latent divergence trap otherwise).
-            const renameTarget = await tx.$queryRawUnsafe<
-              Array<{ type: string }>
-            >(
-              `SELECT type::text AS type FROM core_entities WHERE entity_id = $1::uuid`,
-              rename.entityId,
-            );
-            const identity = identityInsertData(
-              rename.to,
-              (renameTarget[0]?.type ?? 'food_attribute') as EntityType,
-            );
+            // F4947: DERIVE the type from the plan, not a DB re-query with a
+            // `?? 'food_attribute'` fallback. Every rename in a plan came from
+            // rows fetched for `plan.type` (buildPlan → fetchAttributeRows), so
+            // `plan.type` IS this row's type — the old lookup could silently
+            // write a food_attribute-keyed identity onto a restaurant_attribute
+            // when the row read returned []. AttributeEntityType is a subset of
+            // EntityType, so no cast and no fallback is representable.
+            const identity = identityInsertData(rename.to, plan.type);
             counts.renames += await tx.$executeRawUnsafe(
               `UPDATE core_entities
                SET name = $2,
@@ -873,7 +908,8 @@ export class AttributeOntologyService {
   }
 
   private chunk<T>(items: T[], size: number): T[][] {
-    if (size <= 0) return [items];
+    // size is a positive integer by construction (requirePositiveInt at the
+    // buildPlan boundary) — no silent "size <= 0 => one unbatched pass" branch.
     const out: T[][] = [];
     for (let i = 0; i < items.length; i += size) {
       out.push(items.slice(i, i + size));

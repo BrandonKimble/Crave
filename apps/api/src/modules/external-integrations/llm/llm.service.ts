@@ -178,9 +178,11 @@ interface LLMGenerationOptions {
   /** REQUIRED distinct usage-ledger caller tag (§24 caller taxonomy,
    *  2026-07-25). Every call site must name its prompt class (e.g.
    *  'entity-resolution.match', 'query.interpret') so per-class spend is
-   *  measurable. The generic 'llm.callGeminiApi' fallback is a dead-man
-   *  default that logs a warning when hit. */
-  usageCaller?: string;
+   *  measurable. NON-OPTIONAL (F4931): the compiler now refuses a call site
+   *  that omits it, so the taxonomy is a type property, not a text-scanned
+   *  one. The generic 'llm.callGeminiApi' fallback remains only as a
+   *  runtime dead-man for an empty-string tag. */
+  usageCaller: string;
 }
 
 type CacheRefreshReason =
@@ -2851,7 +2853,7 @@ export class LLMService implements OnModuleInit, OnModuleDestroy {
    */
   private async callLLMApi(
     prompt: string,
-    options: LLMGenerationOptions = {},
+    options: LLMGenerationOptions,
   ): Promise<LLMApiResponse> {
     // §24.1 Tier 3 catastrophe backstop (demoted from work governor, §24.4
     // item 2): when the gemini.monthlySpend pool (metered from ACTUAL

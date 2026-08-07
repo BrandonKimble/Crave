@@ -241,9 +241,12 @@ function configureCloudinary(): string {
   return process.env.CLOUDINARY_ENV_PREFIX || 'dev';
 }
 
-/** B: owner-attributed photos (side-copies of import assets) + My shots. */
-async function seedOwnPhotos(ownerUserId: string): Promise<void> {
+/** B: owner-attributed photos (side-copies of import assets) + My shots.
+ *  Returns the restaurant names that had NO source assets yet — a partial
+ *  run must be distinguishable from a complete one (see main). */
+async function seedOwnPhotos(ownerUserId: string): Promise<string[]> {
   const envPrefix = configureCloudinary();
+  const missingSources: string[] = [];
   const restaurantIdByName = new Map<string, string>();
   for (const name of [...OWN_PHOTO_RESTAURANTS, ...MY_SHOTS_UNSHOT]) {
     const row = await prisma.entity.findFirst({
@@ -273,6 +276,7 @@ async function seedOwnPhotos(ownerUserId: string): Promise<void> {
       console.warn(
         `own photos: NO source assets yet at ${name} (run the google seeder first)`,
       );
+      missingSources.push(name);
       continue;
     }
     for (const source of sources) {
@@ -329,11 +333,14 @@ async function seedOwnPhotos(ownerUserId: string): Promise<void> {
   console.log(
     `list [restaurant] ${MY_SHOTS_LIST}: ${count} items (use_own_photos=true)`,
   );
+  return missingSources;
 }
 
-/** C: link unlinked import photos to photo-less owner dish connections. */
-async function linkConnectionPhotos(ownerUserId: string): Promise<void> {
+/** C: link unlinked import photos to photo-less owner dish connections.
+ *  Returns the connections that had NO free photos to link (partial run). */
+async function linkConnectionPhotos(ownerUserId: string): Promise<string[]> {
   const importUserId = await userId(IMPORT_USER_EMAIL);
+  const missingFreePhotos: string[] = [];
   const rows = await prisma.$queryRawUnsafe<
     { connection_id: string; restaurant_id: string; name: string }[]
   >(
@@ -343,12 +350,13 @@ async function linkConnectionPhotos(ownerUserId: string): Promise<void> {
     join user_lists l on l.list_id = li.list_id and l.list_type = 'dish'
     join core_restaurant_items c on c.connection_id = li.connection_id
     join core_entities r on r.entity_id = c.restaurant_id
-    where l.owner_user_id = '${ownerUserId}'::uuid
+    where l.owner_user_id = $1::uuid
       and not exists (
         select 1 from photos p
         where p.connection_id = c.connection_id and p.status = 'live'
       )
     `,
+    ownerUserId,
   );
   let linked = 0;
   for (const row of rows) {
@@ -367,6 +375,7 @@ async function linkConnectionPhotos(ownerUserId: string): Promise<void> {
       console.warn(
         `connection link: no free photos at ${row.name} (${row.connection_id})`,
       );
+      missingFreePhotos.push(`${row.name} (${row.connection_id})`);
       continue;
     }
     await prisma.photo.updateMany({
@@ -381,13 +390,27 @@ async function linkConnectionPhotos(ownerUserId: string): Promise<void> {
   console.log(
     `connection links added: ${linked} (photo-less connections found: ${rows.length})`,
   );
+  return missingFreePhotos;
 }
 
 async function main(): Promise<void> {
   const ownerUserId = await userId(OWNER_EMAIL);
   await seedLists(ownerUserId);
-  await seedOwnPhotos(ownerUserId);
-  await linkConnectionPhotos(ownerUserId);
+  const missingSources = await seedOwnPhotos(ownerUserId);
+  const missingFreePhotos = await linkConnectionPhotos(ownerUserId);
+  if (missingSources.length || missingFreePhotos.length) {
+    // A partial run must NOT read as a complete one. Fail loud with the
+    // exact gaps so the operator re-runs the google seeder and this script.
+    throw new Error(
+      'owner scale fixtures INCOMPLETE — re-run the google seeder, then this script.\n' +
+        (missingSources.length
+          ? `  no source assets yet at: ${missingSources.join(', ')}\n`
+          : '') +
+        (missingFreePhotos.length
+          ? `  no free photos to link at: ${missingFreePhotos.join(', ')}\n`
+          : ''),
+    );
+  }
   console.log('owner scale fixtures complete.');
 }
 

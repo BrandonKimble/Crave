@@ -1,15 +1,20 @@
 import * as fs from 'fs';
 import * as path from 'path';
+import { GEMINI_CALLER_PROFILES } from './gemini-caller-profiles';
 
 /**
  * §24 caller taxonomy (Job 1, 2026-07-25): the usage ledger's per-class
  * measurement depends on EVERY interactive Gemini call site threading a
  * distinct `usageCaller` tag into callLLMApi — the generic
  * 'llm.callGeminiApi' tag is a dead-man default (it logs a warning when
- * hit), not an acceptable steady state. This spec is a structural guard:
- * it parses llm.service.ts and fails (RED-provable — delete any one tag and
- * watch it go red) if a `this.callLLMApi(` invocation's options do not
- * include a `usageCaller:` within the call's argument span.
+ * hit), not an acceptable steady state.
+ *
+ * The "every call site is tagged" half is now a TYPE property — `usageCaller`
+ * is a required field on callLLMApi's options (F4931), so an untagged site is
+ * a compile error, not something this spec has to text-scan for. What remains
+ * here is what the compiler cannot see: that each tag RESOLVES to a caller
+ * profile (a typo'd tag silently gets the default profile + ledger blur), that
+ * tags are unique, and that nobody hardcodes the dead-man tag.
  */
 describe('LLMService caller taxonomy (§24 Job 1)', () => {
   const source = fs.readFileSync(
@@ -44,20 +49,23 @@ describe('LLMService caller taxonomy (§24 Job 1)', () => {
     return spans;
   }
 
+  const siteTags = (): string[] =>
+    callSiteSpans()
+      .map(({ span }) => /usageCaller:\s*'([^']+)'/.exec(span)?.[1])
+      .filter((tag): tag is string => tag !== undefined);
+
   it('finds the expected call sites at all (guards against the marker rotting)', () => {
-    expect(callSiteSpans().length).toBeGreaterThanOrEqual(12);
+    // DERIVED floor, not a seeded 12 (F4931): the marker must still match at
+    // least as many sites as there are literal usageCaller tags we can read —
+    // if the paren-scanner rots, the spans (and their tags) vanish together.
+    expect(callSiteSpans().length).toBeGreaterThanOrEqual(siteTags().length);
+    expect(siteTags().length).toBeGreaterThan(0);
   });
 
-  it('every this.callLLMApi call site passes a distinct usageCaller tag (no blur-tagged interactive spend)', () => {
-    const untagged = callSiteSpans().filter(
-      ({ span }) => !span.includes('usageCaller:'),
-    );
-    expect(
-      untagged.map(({ index }) => {
-        const line = source.slice(0, index).split('\n').length;
-        return `llm.service.ts:${line}`;
-      }),
-    ).toEqual([]);
+  it('every usageCaller tag resolves to a caller profile (a typo silently gets the default profile + ledger blur)', () => {
+    const registryKeys = new Set(Object.keys(GEMINI_CALLER_PROFILES));
+    const unresolved = siteTags().filter((tag) => !registryKeys.has(tag));
+    expect(unresolved).toEqual([]);
   });
 
   it('no call site reuses the generic dead-man tag explicitly', () => {

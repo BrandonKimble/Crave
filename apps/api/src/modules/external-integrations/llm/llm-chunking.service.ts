@@ -8,6 +8,31 @@ const DEFAULT_MAX_CHUNK_COMMENTS = 80;
 const DEFAULT_MAX_CHUNK_TOKEN_ESTIMATE = 35000;
 
 /**
+ * Resolve LLM_CHUNK_TARGET_TOKENS at BOOT, not per chunk (F4954).
+ *
+ * ABSENT → the documented default (an owner choice, declared here). But a value
+ * that is SET and unparseable/non-positive (`abc`, `0`, `-1`) is REFUSED, not
+ * silently coerced to the default: `plans/env-config-audit.md` already caught a
+ * stale `LLM_CHUNK_TARGET_TOKENS=30000` living in `.env` unnoticed — the exact
+ * class of "the override is wrong and nobody sees it" a silent parse-fallback
+ * guarantees. Boot fails loud instead, and the running service holds a typed
+ * number with no parser and no per-post fallback.
+ */
+export function resolveChunkTargetTokens(raw: string | undefined): number {
+  if (raw === undefined || raw.trim() === '') {
+    return DEFAULT_MAX_CHUNK_TOKEN_ESTIMATE;
+  }
+  const parsed = Number(raw);
+  if (!Number.isInteger(parsed) || parsed <= 0) {
+    throw new Error(
+      `LLM_CHUNK_TARGET_TOKENS must be a positive integer when set; got '${raw}'. ` +
+        `A silent fallback here once hid a stale override (env-config-audit).`,
+    );
+  }
+  return parsed;
+}
+
+/**
  * Chunk metadata for tracking processing information
  */
 export interface ChunkMetadata {
@@ -43,6 +68,8 @@ export interface ChunkResult<TInput extends LLMModelInput = LLMModelInput> {
 @Injectable()
 export class LLMChunkingService implements OnModuleInit {
   private logger!: LoggerService;
+  /** Resolved once at boot (onModuleInit) — refuses a set-but-invalid value. */
+  private maxTokensPerChunk = DEFAULT_MAX_CHUNK_TOKEN_ESTIMATE;
 
   constructor(
     @Inject(LoggerService) private readonly loggerService: LoggerService,
@@ -50,6 +77,11 @@ export class LLMChunkingService implements OnModuleInit {
 
   onModuleInit() {
     this.logger = this.loggerService.setContext('LlmChunking');
+    // BOOT-REFUSE an invalid token budget here — not a per-chunk silent
+    // fallback (F4954). A bad LLM_CHUNK_TARGET_TOKENS crashes startup.
+    this.maxTokensPerChunk = resolveChunkTargetTokens(
+      process.env.LLM_CHUNK_TARGET_TOKENS,
+    );
   }
 
   private getChunkingLimits(): {
@@ -57,15 +89,7 @@ export class LLMChunkingService implements OnModuleInit {
     maxCharsPerChunk: number;
     maxTokensPerChunk: number;
   } {
-    const parsePositiveInt = (value: string | undefined, fallback: number) => {
-      const parsed = Number.parseInt(value ?? '', 10);
-      return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
-    };
-
-    const maxTokensPerChunk = parsePositiveInt(
-      process.env.LLM_CHUNK_TARGET_TOKENS,
-      DEFAULT_MAX_CHUNK_TOKEN_ESTIMATE,
-    );
+    const maxTokensPerChunk = this.maxTokensPerChunk;
     return {
       // Thread-coherence bound only (a single degenerate mega-thread), not a
       // packing knob — packing is governed by the token target alone.

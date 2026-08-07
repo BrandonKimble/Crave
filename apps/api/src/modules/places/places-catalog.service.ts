@@ -218,27 +218,41 @@ export function bboxFromDerivedRow(row: DerivedBboxRow): GeoBbox {
 /**
  * PostGIS GeoJSON → shared PlaceGround: MultiPolygon/Polygon flattened to
  * OUTER rings ([lng, lat] positions; holes dropped — see shared ground.ts).
- * Returns null on any unexpected shape (the caller falls back to bbox).
+ *
+ * THROWS on any shape a `place_geometries.geometry` (MultiPolygon/Polygon)
+ * column cannot produce. There is NO bbox fallback — the bbox columns were
+ * removed in P4 — so a malformed `ST_AsGeoJSON` output can only mean a corrupt
+ * geometry or a PostGIS version change, not a routine miss. The sole caller
+ * (`groundsIntersectingView`) wraps the read in a try that logs and yields "no
+ * candidates for this read" (§2.6) — a signalled failure, not a silent drop.
  */
-export function parseGroundGeoJson(geojson: string): PlaceGround | null {
-  try {
-    const parsed = JSON.parse(geojson) as {
-      type?: string;
-      coordinates?: unknown;
-    };
-    if (parsed.type === 'MultiPolygon' && Array.isArray(parsed.coordinates)) {
-      return (parsed.coordinates as number[][][][])
-        .map((polygon) => polygon[0])
-        .filter((ring) => Array.isArray(ring) && ring.length >= 3);
+export function parseGroundGeoJson(geojson: string): PlaceGround {
+  const parsed = JSON.parse(geojson) as {
+    type?: string;
+    coordinates?: unknown;
+  };
+  if (parsed.type === 'MultiPolygon' && Array.isArray(parsed.coordinates)) {
+    const rings = (parsed.coordinates as number[][][][])
+      .map((polygon) => polygon[0])
+      .filter((ring) => Array.isArray(ring) && ring.length >= 3);
+    if (rings.length === 0) {
+      throw new Error(
+        'parseGroundGeoJson: MultiPolygon has no usable outer ring',
+      );
     }
-    if (parsed.type === 'Polygon' && Array.isArray(parsed.coordinates)) {
-      const outer = (parsed.coordinates as number[][][])[0];
-      return Array.isArray(outer) && outer.length >= 3 ? [outer] : null;
-    }
-    return null;
-  } catch {
-    return null;
+    return rings;
   }
+  if (parsed.type === 'Polygon' && Array.isArray(parsed.coordinates)) {
+    const outer = (parsed.coordinates as number[][][])[0];
+    if (!Array.isArray(outer) || outer.length < 3) {
+      throw new Error('parseGroundGeoJson: Polygon has no usable outer ring');
+    }
+    return [outer];
+  }
+  throw new Error(
+    `parseGroundGeoJson: unexpected geometry type '${String(parsed.type)}' ` +
+      `(a MultiPolygon/Polygon column cannot produce this)`,
+  );
 }
 
 /**
@@ -504,10 +518,11 @@ export class PlacesCatalogService {
       `);
       for (const row of rows) {
         if (!row.geojson) continue;
+        // parseGroundGeoJson THROWS on a malformed shape (no bbox fallback
+        // exists). A throw here aborts the read into the catch below, which
+        // logs and yields no candidates — never a silent per-row drop.
         const ground = parseGroundGeoJson(row.geojson);
-        if (ground && ground.length > 0) {
-          grounds.set(row.placeId, { ground, bbox: bboxFromDerivedRow(row) });
-        }
+        grounds.set(row.placeId, { ground, bbox: bboxFromDerivedRow(row) });
       }
     } catch (error) {
       this.logger.warn(

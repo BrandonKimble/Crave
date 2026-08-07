@@ -46,7 +46,9 @@
  * square. So `--spacing-km 15` is not a guess about how big towns are; it is a
  * contract: EVERY place at least 15 km across is probed. The owner picks the
  * resolution they want and the spacing IS that number. Nothing here estimates
- * how many places exist or how large they are.
+ * how many places exist or how large they are. The ONE stated exclusion: the
+ * |lat| > 89° polar band is not probed at all (no populated place lives there),
+ * rather than being silently over-spaced by a cos-clamp — see the lat_rows CTE.
  *
  * ── THE CATALOG IS THE PROGRESS LEDGER ────────────────────────────────────────
  * A cell is skipped when a Municipality-or-finer ground already covers it. That
@@ -305,15 +307,25 @@ async function main(): Promise<void> {
                FROM seed_pieces
            ),
            lat_rows AS (
+             -- POLAR EXCLUSION (F4941): rows with abs(lat) > 89 deg are dropped,
+             -- not clamped. cos(lat) goes to 0 at the poles making lng_step blow
+             -- up, so the old greatest(cos(radians(lat)), 0.01) clamp kept the
+             -- query finite but SILENTLY over-spaced those rows -- falsifying the
+             -- s-by-s guarantee this file calls a contract, not an estimate,
+             -- precisely where it claimed to hold. We instead do not probe the
+             -- abs(lat) > 89 band at all; no populated place lives there, and the
+             -- contract now holds everywhere it is applied. cos(radians(89)) is
+             -- about 0.01745, so lng_step is bounded without any clamp.
              SELECT box.*, box.ymin + i * $1::float8 AS lat
                FROM box,
                     generate_series(0, floor((box.ymax - box.ymin) / $1::float8)::int) AS i
+              WHERE abs(box.ymin + i * $1::float8) <= 89
            ),
            cells AS (
              SELECT r.lat, r.xmin + j * step.lng_step AS lng
                FROM lat_rows r
                CROSS JOIN LATERAL (
-                 SELECT $2::float8 / ($3::float8 * greatest(cos(radians(r.lat)), 0.01)) AS lng_step
+                 SELECT $2::float8 / ($3::float8 * cos(radians(r.lat))) AS lng_step
                ) step
                CROSS JOIN LATERAL
                  generate_series(0, floor((r.xmax - r.xmin) / step.lng_step)::int) AS j
