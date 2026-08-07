@@ -3880,3 +3880,35 @@ notification-dispatcher held by another session). Pass 1's remediation is comple
 
 **NEXT: the quiescent re-sweep, then PASS 1 RESTARTS (attempt 2).** The two-consecutive-
 clean counter is at zero and stays there until a full re-hunt returns empty twice.
+
+---
+
+## D127 — pass 1 attempt 2: NOT CLEAN (F8400) + a coordination-seam catch. Counter stays at zero. (2026-08-07)
+
+**Attempt 2's verdict: NOT clean, and the loop earned its cost twice.**
+- api lane: all 7 attempt-1 fixes VERIFIED HOLDING under fresh reads, and ONE new finding —
+  F8400, the `llmMs: 0` twin of F7601 that the original sweep stopped short of, WITH the
+  producer's own comment saying the field should have been deleted. The F6001 sibling class
+  a final time. FIXED BY ME (edd36c82d): a phase that does not run has no phaseTiming; the
+  generic-Record consumer handles the 2-key object identically. Verified: tsc clean, 121
+  search tests pass.
+- mobile+tooling lane: ZERO NEW FINDINGS — every pass-1 fix held, the three wave-changed
+  gates RED-proven, the flake class green 6/6.
+
+**A coordination-seam catch the mobile lane surfaced, now closing: F7701 was never landed.**
+D126 assumed F7700's lane would fold it in; that lane edited the same file but did not.
+Not a new finding — a tracked-OPEN row that fell through a seam — and its approved
+TYPE-branch fix is dispatched (delete the unearnable `ln` check + tautological conjuncts
+across both contract scripts + the maestro pin).
+
+**A verified infra trap recorded (not a finding):** `yarn invariants` run CONCURRENTLY
+with `yarn test` produces 7 spurious FAILs — the invariants harness plants/removes probe
+files mid-compile and ts-jest picks them up. tsc clean throughout; serial re-run green.
+NEVER run the two concurrently. This goes into the quiescent-sweep protocol.
+
+**The counter does NOT advance.** Attempt 2 found F8400 -> remediated -> attempt 3 is the
+next full pass, and it must come back zero to be the FIRST clean pass. The convergence is
+visible in the SHAPE of what each pass finds: pass 1 found 12 (structural defects across
+every territory); attempt 2 found 1 (a single sibling-twin the prior sweep missed by one
+file). The findings are getting smaller and more peripheral — which is what approaching a
+fixed point looks like — but "smaller" is not "zero," and the mandate is zero, twice.
