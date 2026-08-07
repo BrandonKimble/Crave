@@ -65,7 +65,9 @@ type NavigationTarget<TSelected> = {
 
 type NavigationOutputAuthority = {
   getSnapshot: () => RouteOverlayNavigationSnapshot;
-  registerTarget: <TSelected>(target: NavigationTarget<TSelected>) => () => void;
+  // F5403: notify-on-change (`subscribeTarget`), deliberately NOT push-on-register like the
+  // six sibling authorities' `registerTarget`. Named apart so the contracts cannot be confused.
+  subscribeTarget: <TSelected>(target: NavigationTarget<TSelected>) => () => void;
 };
 
 type DisplayOutputAuthority = {
@@ -220,7 +222,6 @@ type NativeOverlayTargetAuthorities = {
   routeOverlayDockedSceneVisibilityAuthority: PollsVisibilityOutputAuthority;
   routeOverlayVisibilityAuthority: OutputAuthority<RouteOverlayVisibilitySnapshot>;
   routeSheetHostSurfaceAuthority: OutputAuthority<AppRouteSheetHostSurfaceSnapshot>;
-  routeSheetHostNavigationAuthority: NavigationOutputAuthority;
   routeSheetHostSheetPolicyAuthority: SheetPolicyOutputAuthority;
   dispose: () => void;
 };
@@ -265,12 +266,6 @@ const areIdentitySnapshotsEqual = (
   left.rootOverlayKey === right.rootOverlayKey &&
   left.isSearchOverlay === right.isSearchOverlay;
 
-const areRootSnapshotsEqual = (
-  left: RouteOverlayRootSnapshot,
-  right: RouteOverlayRootSnapshot
-): boolean =>
-  left.rootOverlayKey === right.rootOverlayKey && left.isSearchOverlay === right.isSearchOverlay;
-
 const arePollsVisibilitySnapshotsEqual = (
   left: RouteOverlayDockedSceneVisibilitySnapshot,
   right: RouteOverlayDockedSceneVisibilitySnapshot
@@ -281,16 +276,6 @@ const areChromeModeSnapshotsEqual = (
   left: RouteOverlayChromeModeSnapshot,
   right: RouteOverlayChromeModeSnapshot
 ): boolean => left.routeChromeOverlayMode === right.routeChromeOverlayMode;
-
-const areVisibilitySnapshotsEqual = (
-  left: RouteOverlayVisibilitySnapshot,
-  right: RouteOverlayVisibilitySnapshot
-): boolean => left.shouldRenderSearchOverlay === right.shouldRenderSearchOverlay;
-
-const areSheetHostSurfaceSnapshotsEqual = (
-  left: AppRouteSheetHostSurfaceSnapshot,
-  right: AppRouteSheetHostSurfaceSnapshot
-): boolean => left.shouldRenderSceneStackSurface === right.shouldRenderSceneStackSurface;
 
 const areSheetPolicySnapshotsEqual = (
   left: RouteOverlaySheetPolicySnapshot,
@@ -471,13 +456,18 @@ export const createAppRouteNativeOverlayTargetAuthorities = ({
     sheetSessionSnapshot.isDockedSceneDismissed,
   ];
 
+  // The visibility lane's snapshot IS this single boolean, and its signature IS the same
+  // boolean — one definition, read by both (F5401).
+  const resolveShouldRenderSearchOverlay = (
+    sourceSnapshot: NativeOverlayTargetSourceSnapshot
+  ): boolean =>
+    resolveIsDockedLane(sourceSnapshot) ||
+    sourceSnapshot.routeSceneSwitchSnapshot.routeActiveSceneKey != null ||
+    sourceSnapshot.routeSceneSwitchSnapshot.transitionPhase !== 'idle';
+
   const resolveVisibilitySignature = (
     sourceSnapshot: NativeOverlayTargetSourceSnapshot
-  ): NativeOverlayOutputSignature => [
-    resolveIsDockedLane(sourceSnapshot) ||
-      sourceSnapshot.routeSceneSwitchSnapshot.routeActiveSceneKey != null ||
-      sourceSnapshot.routeSceneSwitchSnapshot.transitionPhase !== 'idle',
-  ];
+  ): NativeOverlayOutputSignature => [resolveShouldRenderSearchOverlay(sourceSnapshot)];
 
   const resolveNavigationSnapshot = (
     sourceSnapshot: NativeOverlayTargetSourceSnapshot
@@ -549,10 +539,7 @@ export const createAppRouteNativeOverlayTargetAuthorities = ({
   const resolveVisibilitySnapshot = (
     sourceSnapshot: NativeOverlayTargetSourceSnapshot
   ): RouteOverlayVisibilitySnapshot => ({
-    shouldRenderSearchOverlay:
-      resolveIsDockedLane(sourceSnapshot) ||
-      sourceSnapshot.routeSceneSwitchSnapshot.routeActiveSceneKey != null ||
-      sourceSnapshot.routeSceneSwitchSnapshot.transitionPhase !== 'idle',
+    shouldRenderSearchOverlay: resolveShouldRenderSearchOverlay(sourceSnapshot),
   });
 
   const resolveSheetHostSurfaceSnapshot = (
@@ -871,12 +858,13 @@ export const createAppRouteNativeOverlayTargetAuthorities = ({
             if (areOutputSignaturesEqual(rootSignature, nextSignature)) {
               return;
             }
-            const nextSnapshot = resolveRootSnapshot(sourceSnapshot);
+            // F5401: `root`'s snapshot is {rootOverlayKey, isSearchOverlay} where
+            // isSearchOverlay is a pure function of rootOverlayKey — the entire signature.
+            // Signature-differs implies snapshot-differs, so a second comparator can never
+            // filter anything here.
             rootSignature = nextSignature;
-            if (!areRootSnapshotsEqual(rootSnapshot, nextSnapshot)) {
-              rootSnapshot = nextSnapshot;
-              syncRootTargets(nextSnapshot, `syncRootTargets:${source}`);
-            }
+            rootSnapshot = resolveRootSnapshot(sourceSnapshot);
+            syncRootTargets(rootSnapshot, `syncRootTargets:${source}`);
             return;
           }
           case 'display': {
@@ -910,12 +898,12 @@ export const createAppRouteNativeOverlayTargetAuthorities = ({
             if (areOutputSignaturesEqual(sheetHostSurfaceSignature, nextSignature)) {
               return;
             }
-            const nextSnapshot = resolveSheetHostSurfaceSnapshot(sourceSnapshot);
+            // F5401: the signature IS `shouldRenderRouteSheetSurfaceForRouteState(routeState)`,
+            // and the snapshot's only field calls the same function — so a signature change is
+            // a snapshot change. No second comparator can filter.
             sheetHostSurfaceSignature = nextSignature;
-            if (!areSheetHostSurfaceSnapshotsEqual(sheetHostSurfaceSnapshot, nextSnapshot)) {
-              sheetHostSurfaceSnapshot = nextSnapshot;
-              didSheetHostSurfaceChange = true;
-            }
+            sheetHostSurfaceSnapshot = resolveSheetHostSurfaceSnapshot(sourceSnapshot);
+            didSheetHostSurfaceChange = true;
             return;
           }
           case 'chromeMode': {
@@ -952,12 +940,11 @@ export const createAppRouteNativeOverlayTargetAuthorities = ({
             if (areOutputSignaturesEqual(visibilitySignature, nextSignature)) {
               return;
             }
-            const nextSnapshot = resolveVisibilitySnapshot(sourceSnapshot);
+            // F5401: signature and snapshot are the SAME single boolean
+            // (resolveShouldRenderSearchOverlay) — signature-differs implies snapshot-differs.
             visibilitySignature = nextSignature;
-            if (!areVisibilitySnapshotsEqual(visibilitySnapshot, nextSnapshot)) {
-              visibilitySnapshot = nextSnapshot;
-              didVisibilityChange = true;
-            }
+            visibilitySnapshot = resolveVisibilitySnapshot(sourceSnapshot);
+            didVisibilityChange = true;
             return;
           }
         }
@@ -995,7 +982,7 @@ export const createAppRouteNativeOverlayTargetAuthorities = ({
       };
     };
 
-  const registerNavigationTarget = <TSelected>(
+  const subscribeNavigationTarget = <TSelected>(
     target: NavigationTarget<TSelected>
   ): (() => void) => {
     const entry: NavigationTargetEntry = {
@@ -1038,7 +1025,7 @@ export const createAppRouteNativeOverlayTargetAuthorities = ({
   return {
     routeOverlayNavigationAuthority: {
       getSnapshot: () => navigationSnapshot,
-      registerTarget: registerNavigationTarget,
+      subscribeTarget: subscribeNavigationTarget,
     },
     routeOverlayIdentityAuthority: {
       getSnapshot: () => identitySnapshot,
@@ -1069,10 +1056,6 @@ export const createAppRouteNativeOverlayTargetAuthorities = ({
           chromeSnapSharedValueTargets.delete(values);
         };
       },
-    },
-    routeSheetHostNavigationAuthority: {
-      getSnapshot: () => navigationSnapshot,
-      registerTarget: registerNavigationTarget,
     },
     routeOverlayDisplayAuthority: {
       getSnapshot: () => displaySnapshot,

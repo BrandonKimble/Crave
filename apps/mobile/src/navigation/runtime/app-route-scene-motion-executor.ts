@@ -435,21 +435,29 @@ export class AppRouteSceneMotionExecutor {
     targetSceneKey: OverlayKey,
     target: AppRouteSceneSheetMotionTarget
   ): OverlaySheetSnapRequest | null {
+    // F5423(d): the sole caller (dispatchRouteSceneMotion) reaches here strictly after its own
+    // `if (transitionContract == null) return`, so the contract is non-null. Assert that once
+    // here rather than through five silent `?.` that would degrade instead of failing. (The
+    // `?? targetSceneKey` below stays: it is type-load-bearing — targetOwnsScene requires a
+    // non-null OverlayKey and the contract's scene-key chain is nullable.)
     const transitionContract = transitionState.transitionContract;
+    if (transitionContract == null) {
+      return null;
+    }
     const isMatchingTransitionTarget =
       transitionState.isOverlaySwitchInFlight &&
-      (transitionContract?.sheetHostSceneKey ??
-        transitionContract?.sheetIntent?.sceneKey ??
-        transitionContract?.targetSceneKey) != null &&
+      (transitionContract.sheetHostSceneKey ??
+        transitionContract.sheetIntent?.sceneKey ??
+        transitionContract.targetSceneKey) != null &&
       this.input.sheetMotionTargetRegistry.targetOwnsScene(
         target,
-        transitionContract?.sheetHostSceneKey ??
-          transitionContract?.sheetIntent?.sceneKey ??
-          transitionContract?.targetSceneKey ??
+        transitionContract.sheetHostSceneKey ??
+          transitionContract.sheetIntent?.sceneKey ??
+          transitionContract.targetSceneKey ??
           targetSceneKey
       );
 
-    if (isMatchingTransitionTarget && transitionContract?.sheetSnapTarget != null) {
+    if (isMatchingTransitionTarget && transitionContract.sheetSnapTarget != null) {
       return {
         snap: transitionContract.sheetSnapTarget,
         token: transitionContract.transitionToken,

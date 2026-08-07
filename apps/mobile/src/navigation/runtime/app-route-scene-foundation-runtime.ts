@@ -46,7 +46,12 @@ export type RouteShellSceneInteractivityAuthority = AppRouteSceneInteractivityAu
 
 export type RouteShellOverlayNavigationAuthority = {
   getSnapshot: () => RouteOverlayNavigationSnapshot;
-  registerTarget: <TSelected>(target: {
+  // F5403: notify-on-change, NOT push-on-register. Unlike the six sibling authorities
+  // whose `registerTarget` pushes the current snapshot before returning, this seeds the
+  // target's `selected` from the current snapshot and stays silent until the next change,
+  // so a registrant that needs the current value pulls `getSnapshot()` first. Named apart
+  // so the two contracts cannot be confused through one identical type.
+  subscribeTarget: <TSelected>(target: {
     selector: (snapshot: RouteOverlayNavigationSnapshot) => TSelected;
     syncNavigationSnapshot: (snapshot: RouteOverlayNavigationSnapshot, selected: TSelected) => void;
     isEqual?: (left: TSelected, right: TSelected) => boolean;
@@ -122,7 +127,6 @@ export type AppRouteSceneFoundationRuntime = {
   routeOverlayChromeModeAuthority: RouteShellOverlayChromeModeAuthority;
   routeOverlaySheetPolicyAuthority: RouteShellOverlaySheetPolicyAuthority;
   routeSheetHostSurfaceAuthority: RouteShellSheetHostSurfaceAuthority;
-  routeSheetHostNavigationAuthority: RouteShellOverlayNavigationAuthority;
   routeSheetHostSheetPolicyAuthority: RouteShellOverlaySheetPolicyAuthority;
   routeOverlayVisibilityAuthority: RouteShellOverlayVisibilityAuthority;
   routeScenePolicyAuthority: RouteScenePolicyAuthority;
@@ -175,8 +179,6 @@ export const createAppRouteSceneFoundationRuntime = ({
     routeOverlaySheetPolicyAuthority:
       nativeOverlayTargetAuthorities.routeSheetHostSheetPolicyAuthority,
     routeSheetHostSurfaceAuthority: nativeOverlayTargetAuthorities.routeSheetHostSurfaceAuthority,
-    routeSheetHostNavigationAuthority:
-      nativeOverlayTargetAuthorities.routeSheetHostNavigationAuthority,
     routeSheetHostSheetPolicyAuthority:
       nativeOverlayTargetAuthorities.routeSheetHostSheetPolicyAuthority,
     routeOverlayVisibilityAuthority: nativeOverlayTargetAuthorities.routeOverlayVisibilityAuthority,

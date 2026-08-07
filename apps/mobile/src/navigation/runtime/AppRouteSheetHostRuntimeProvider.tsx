@@ -56,7 +56,7 @@ export const AppRouteSheetHostRuntimeProvider = ({
       createAppRouteSheetHostAuthorityController({
         routeSceneFrameAuthority: routeSceneRuntime.sceneFrameAuthority,
         routeSheetHostSurfaceAuthority: routeSceneRuntime.routeSheetHostSurfaceAuthority,
-        routeOverlayNavigationAuthority: routeSceneRuntime.routeSheetHostNavigationAuthority,
+        routeOverlayNavigationAuthority: routeSceneRuntime.routeOverlayNavigationAuthority,
         routeOverlaySheetPolicyAuthority: routeSceneRuntime.routeSheetHostSheetPolicyAuthority,
         routeSheetVisualAuthority: routeSceneRuntime.routeSheetVisualAuthority,
         routeSceneSwitchAuthority: routeSceneRuntime.sceneSwitchAuthority,
@@ -71,7 +71,7 @@ export const AppRouteSheetHostRuntimeProvider = ({
     [
       routeSceneRuntime.sceneFrameAuthority,
       routeSceneRuntime.routeSheetHostSurfaceAuthority,
-      routeSceneRuntime.routeSheetHostNavigationAuthority,
+      routeSceneRuntime.routeOverlayNavigationAuthority,
       routeSceneRuntime.routeSheetHostSheetPolicyAuthority,
       routeSceneRuntime.routeSheetVisualAuthority,
       routeSceneRuntime.sceneSwitchAuthority,

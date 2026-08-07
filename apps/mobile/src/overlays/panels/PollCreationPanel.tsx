@@ -412,7 +412,7 @@ const usePollCreationHeaderPlace = (): PollCreationHeaderPlace => {
   );
   React.useEffect(
     () =>
-      routeOverlayNavigationAuthority.registerTarget({
+      routeOverlayNavigationAuthority.subscribeTarget({
         selector: (snapshot) => resolvePollCreationHeaderPlace(snapshot.activeOverlayRoute),
         syncNavigationSnapshot: (_snapshot, resolved) => {
           // LATCH: null (another route is active) keeps the last pollCreation place so the title

@@ -54,25 +54,27 @@ export const useRestaurantEntryPopTeardownWriterRuntime = ({
       isFinalizePending = false;
       actionsRef.current.finalizeRestaurantEntryPopTeardown();
     };
-    const unsubscribeNavigation = routeSceneRuntime.routeOverlayNavigationAuthority.registerTarget({
-      selector: selectHasRestaurantEntry,
-      syncNavigationSnapshot: (_snapshot: RouteOverlayNavigationSnapshot, hasEntry: boolean) => {
-        if (hasEntry) {
-          // A fresh restaurant open owns the snapshot — a still-pending finalize from a
-          // previous pop must never clear it.
-          isFinalizePending = false;
-          return;
-        }
-        if (actionsRef.current.handleRestaurantEntryPopped()) {
-          isFinalizePending = true;
-          // The pop may commit with no transition in flight (motionless pop shapes) —
-          // finalize immediately in that case rather than waiting for a frame publication.
-          runPendingFinalizeIfSettled();
-        }
-      },
-      isEqual: (left: boolean, right: boolean) => left === right,
-      attributionLabel: 'RestaurantEntryPopTeardownWriterRuntime',
-    });
+    const unsubscribeNavigation = routeSceneRuntime.routeOverlayNavigationAuthority.subscribeTarget(
+      {
+        selector: selectHasRestaurantEntry,
+        syncNavigationSnapshot: (_snapshot: RouteOverlayNavigationSnapshot, hasEntry: boolean) => {
+          if (hasEntry) {
+            // A fresh restaurant open owns the snapshot — a still-pending finalize from a
+            // previous pop must never clear it.
+            isFinalizePending = false;
+            return;
+          }
+          if (actionsRef.current.handleRestaurantEntryPopped()) {
+            isFinalizePending = true;
+            // The pop may commit with no transition in flight (motionless pop shapes) —
+            // finalize immediately in that case rather than waiting for a frame publication.
+            runPendingFinalizeIfSettled();
+          }
+        },
+        isEqual: (left: boolean, right: boolean) => left === right,
+        attributionLabel: 'RestaurantEntryPopTeardownWriterRuntime',
+      }
+    );
     const unsubscribeFrame =
       routeSceneRuntime.routeOverlayTransitionActions.subscribePresentationFrame(() => {
         runPendingFinalizeIfSettled();

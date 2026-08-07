@@ -102,7 +102,7 @@ const resolveRestoreRootOverlay = (snapshot: OriginSnapshot): OverlayKey =>
 // switch args (assertDegenerateHomeEmission forbids exactly that, and a spec proves a
 // camera-bearing origin cannot flip this predicate or that emission).
 const isDegenerateHomeOrigin = (snapshot: OriginSnapshot): boolean =>
-  (snapshot.scroll == null || snapshot.scroll.length === 0) &&
+  snapshot.scroll.length === 0 &&
   snapshot.sceneParams == null &&
   (snapshot.sceneKey === 'search' || snapshot.sceneKey === DOCKED_SCENE_KEY) &&
   snapshot.detent === 'collapsed';
@@ -275,7 +275,7 @@ export class AppRouteOverlaySessionStateController {
           snap: origin.detent,
           writer: 'named',
         });
-        origin.scroll?.forEach((lane) => {
+        origin.scroll.forEach((lane) => {
           stageOverlayScrollRestore(lane.laneKey, lane.offset);
         });
         // D56 — the CAMERA lane, a peer of the detent and scroll lanes. It rides EVERY pop that
@@ -594,8 +594,7 @@ export class AppRouteOverlaySessionStateController {
   // the captured segment's row extent). A null segment clears any stale pending — a no-op for
   // lists (publishes no segment).
   private seedSceneRestoreState(snapshot: OriginSnapshot): void {
-    const scrollLanes = snapshot.scroll ?? [];
-    for (const lane of scrollLanes) {
+    for (const lane of snapshot.scroll) {
       stageOverlayScrollRestore(lane.laneKey, lane.offset);
     }
     stageOriginSceneSegmentRestore(snapshot.sceneKey, snapshot.segment ?? null);

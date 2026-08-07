@@ -36,8 +36,9 @@ const isRootNavScene = (sceneKey: OverlayKey): boolean => resolveSheetPostureSea
 export type SceneLoadFailure = {
   /** The load-failure edge (e.g. react-query isError on the scene's primary query). */
   isError: boolean;
-  /** Human noun for the modal copy: "this list", "messages" … */
-  what?: string;
+  /** Human noun for the modal copy: "this list", "messages" … REQUIRED — every producer
+   *  supplies it (F5423e). */
+  what: string;
   /** Root scenes: re-run the load on next presentation. Child scenes: unused (pop is the law). */
   retry?: () => void;
 };
@@ -74,7 +75,7 @@ export const useSceneLoadFailurePolicy = (
     const isNewEpisode = announcedEpisodeRef.current !== sceneKey;
     announcedEpisodeRef.current = sceneKey;
     const commandRuntime = routeSceneRuntime.routeOverlayRouteCommandRuntime;
-    const message = `We couldn't load ${what ?? 'this'}. Please try again.`;
+    const message = `We couldn't load ${what}. Please try again.`;
     if (isRootNavScene(sceneKey)) {
       if (isNewEpisode) {
         announceFailureIfOnline({ message });

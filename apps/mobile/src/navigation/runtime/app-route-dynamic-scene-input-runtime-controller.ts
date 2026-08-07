@@ -17,7 +17,7 @@ type ListenerEntry = {
 };
 
 export type AppRouteDynamicSceneInputRuntimeAuthority = {
-  subscribePollsRuntime: (listener: Listener, attributionLabel?: string) => () => void;
+  subscribePollsRuntime: (listener: Listener, attributionLabel: string) => () => void;
   getPollsRuntimeSnapshot: () => AppRoutePollsDynamicSceneInputRuntime;
 };
 
@@ -41,7 +41,7 @@ class AppRouteDynamicSceneInputController implements AppRouteDynamicSceneInputRu
   private readonly pollsRuntimeListeners = new Set<ListenerEntry>();
 
   public readonly authority: AppRouteDynamicSceneInputRuntimeAuthority = {
-    subscribePollsRuntime: (listener, attributionLabel = 'anonymous') =>
+    subscribePollsRuntime: (listener, attributionLabel) =>
       this.subscribePollsRuntime(listener, attributionLabel),
     getPollsRuntimeSnapshot: () => this.runtimeSnapshot,
   };

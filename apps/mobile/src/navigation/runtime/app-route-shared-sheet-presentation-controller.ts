@@ -128,11 +128,12 @@ export class AppRouteSharedSheetPresentationController
     return true;
   };
 
-  public recordSharedSheetSnap = (nextSnap: SheetPosition | 'hidden'): void => {
-    const nextState: SheetPosition = nextSnap === 'hidden' ? 'hidden' : nextSnap;
+  public recordSharedSheetSnap = (nextSnap: SheetPosition): void => {
+    // F5423(c): 'hidden' is a member of SheetPosition, so the old
+    // `nextSnap === 'hidden' ? 'hidden' : nextSnap` had two identical arms.
     this.commitSnapshot({
       panelVisible: nextSnap !== 'hidden',
-      sheetState: nextState,
+      sheetState: nextSnap,
     });
   };
 

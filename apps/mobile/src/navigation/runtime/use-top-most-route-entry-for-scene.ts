@@ -49,7 +49,7 @@ export const useTopMostRouteEntryForScene = <K extends OverlayKey>(
   );
   return useRouteAuthoritySelector({
     subscribe: (listener, attributionLabel) =>
-      routeSceneRuntime.routeOverlayNavigationAuthority.registerTarget({
+      routeSceneRuntime.routeOverlayNavigationAuthority.subscribeTarget({
         selector,
         syncNavigationSnapshot: () => listener(),
         isEqual: (left, right) => areOverlayRoutesEqual(left, right),

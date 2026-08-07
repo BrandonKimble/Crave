@@ -118,7 +118,6 @@ export type AppRouteSceneRuntime = {
   routeOverlayChromeModeAuthority: RouteShellOverlayChromeModeAuthority;
   routeOverlaySheetPolicyAuthority: RouteShellOverlaySheetPolicyAuthority;
   routeSheetHostSurfaceAuthority: RouteShellSheetHostSurfaceAuthority;
-  routeSheetHostNavigationAuthority: RouteShellOverlayNavigationAuthority;
   routeSheetHostSheetPolicyAuthority: RouteShellOverlaySheetPolicyAuthority;
   routeOverlayVisibilityAuthority: RouteShellOverlayVisibilityAuthority;
   routeScenePolicyAuthority: RouteScenePolicyAuthority;
@@ -250,8 +249,6 @@ export const createAppRouteSceneRuntime = (): AppRouteSceneRuntime => {
     routeOverlayChromeModeAuthority: routeSceneFoundationRuntime.routeOverlayChromeModeAuthority,
     routeOverlaySheetPolicyAuthority: routeSceneFoundationRuntime.routeOverlaySheetPolicyAuthority,
     routeSheetHostSurfaceAuthority: routeSceneFoundationRuntime.routeSheetHostSurfaceAuthority,
-    routeSheetHostNavigationAuthority:
-      routeSceneFoundationRuntime.routeSheetHostNavigationAuthority,
     routeSheetHostSheetPolicyAuthority:
       routeSceneFoundationRuntime.routeSheetHostSheetPolicyAuthority,
     routeOverlayVisibilityAuthority: routeSceneFoundationRuntime.routeOverlayVisibilityAuthority,

@@ -32,14 +32,15 @@ export type OriginScrollLane = {
 export type OriginSnapshot = {
   /** TRUE scene identity (search|polls|pollDetail|lists|profile) — NOT root-collapsed. */
   sceneKey: OverlayKey;
-  /** {pollId} | {profileUserId,...} | null (home). Degenerate (null) in P0. */
-  sceneParams?: OverlayRouteParamsMap[OverlayKey] | null;
+  /** {pollId} | {profileUserId,...} | null (home). REQUIRED — every producer writes it
+   *  (null is the real "no params" value, never absent). F5408. */
+  sceneParams: OverlayRouteParamsMap[OverlayKey] | null;
   /** LIVE snap at trigger (not hard-coded 'expanded'). */
   detent: TabOverlaySnap;
-  /** active sub-tab for segmented scenes (profile). Degenerate (null) in P0. */
-  segment?: string | null;
-  /** nested-aware; EMPTY for home. Degenerate ([]) in P0. */
-  scroll?: OriginScrollLane[];
+  /** active sub-tab for segmented scenes (profile); null when none. REQUIRED (F5408). */
+  segment: string | null;
+  /** nested-aware; EMPTY ([]) for home. REQUIRED — always an array (F5408). */
+  scroll: OriginScrollLane[];
   // NO origin-anchor field. The old childAnchor slot-threading died with the re-push machinery
   // (entries survive pops now), and the replacement — a departing scene PUBLISHING its own anchor
   // via the origin live-state registry, the way `scroll` and `segment` do — has not landed. The

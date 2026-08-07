@@ -50,7 +50,7 @@ const useAppRouteDynamicChildRouteStateRuntime = ({
 
   React.useEffect(
     () =>
-      routeSceneRuntime.routeOverlayNavigationAuthority.registerTarget({
+      routeSceneRuntime.routeOverlayNavigationAuthority.subscribeTarget({
         selector: selectDynamicChildRoute,
         syncNavigationSnapshot: (_snapshot, selectedRouteState) => {
           setOverlayNavigationState(selectedRouteState);

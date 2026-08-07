@@ -101,7 +101,7 @@ const useTopMostChildEntryForHeader = (sceneKey: ChildSceneKey): OverlayRouteEnt
   );
   return useRouteAuthoritySelector({
     subscribe: (listener, attributionLabel) =>
-      routeSceneRuntime.routeOverlayNavigationAuthority.registerTarget({
+      routeSceneRuntime.routeOverlayNavigationAuthority.subscribeTarget({
         selector,
         syncNavigationSnapshot: () => listener(),
         isEqual: (left, right) => areOverlayRoutesEqual(left, right),

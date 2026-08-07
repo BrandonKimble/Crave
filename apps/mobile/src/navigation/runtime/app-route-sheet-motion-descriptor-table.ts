@@ -378,8 +378,9 @@ export const materializeSheetMotionDescriptorRule = ({
 };
 
 // F1381: the ONE key-building expression for the duplicate-row invariant — the __DEV__ bark
-// below and the spec both call this rather than hand-keeping a copy of the template string.
-export const buildSheetMotionDescriptorRowKey = (
+// below and findAmbiguousSheetMotionDescriptorRowKeys both call this rather than hand-keeping
+// a copy of the template string.
+const buildSheetMotionDescriptorRowKey = (
   row: Pick<SheetMotionDescriptorRow, 'tier' | 'from' | 'to' | 'transitionKind'>
 ): string => `${row.tier ?? 'default'}|${row.from}|${row.to}|${row.transitionKind}`;
 

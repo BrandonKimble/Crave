@@ -18,10 +18,7 @@ import type {
   AppRoutePollsDynamicSceneInputRuntime,
   AppRoutePollsRouteStateRuntime,
 } from './app-route-dynamic-scene-inputs-contract';
-import {
-  EMPTY_APP_ROUTE_DYNAMIC_SCENE_INPUT_RUNTIME,
-  areAppRouteDynamicSceneInputRuntimesEqual,
-} from './app-route-dynamic-scene-inputs-contract';
+import { areAppRouteDynamicSceneInputRuntimesEqual } from './app-route-dynamic-scene-inputs-contract';
 import type { AppRouteScenePayloadSnapshot } from './app-route-scene-switch-authority';
 import type { AppRouteSceneRuntime } from './app-route-scene-runtime';
 import type { AppRoutePollsSceneState } from './app-route-polls-scene-runtime';
@@ -89,8 +86,7 @@ class AppRoutePollsSceneInputRuntimeController implements AppRoutePollsSceneInpu
     this.pollsSheetSnap =
       routeSceneRuntime.routeSheetSnapSessionActions.getRouteSceneSwitchSceneSnap('polls');
     this.dynamicSceneInputRuntime =
-      routeSceneRuntime.routeDynamicSceneInputAuthority.getPollsRuntimeSnapshot() ??
-      EMPTY_APP_ROUTE_DYNAMIC_SCENE_INPUT_RUNTIME;
+      routeSceneRuntime.routeDynamicSceneInputAuthority.getPollsRuntimeSnapshot();
 
     this.disposers.push(
       routeSceneRuntime.routeOverlayRootAuthority.registerTarget({
@@ -193,9 +189,7 @@ class AppRoutePollsSceneInputRuntimeController implements AppRoutePollsSceneInpu
   }
 
   private setDynamicSceneInputRuntime(nextRuntime: AppRoutePollsDynamicSceneInputRuntime): void {
-    if (
-      areAppRouteDynamicSceneInputRuntimesEqual(this.dynamicSceneInputRuntime, nextRuntime)
-    ) {
+    if (areAppRouteDynamicSceneInputRuntimesEqual(this.dynamicSceneInputRuntime, nextRuntime)) {
       return;
     }
     this.dynamicSceneInputRuntime = nextRuntime;

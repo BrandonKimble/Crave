@@ -48,8 +48,6 @@ export type RouteShellSceneInputLane = {
      * the outgoing entry's rows into the incoming one. */
     sceneBodyForEntryId?: string | null;
   }) => void;
-  clearRouteSceneShell: (sceneKey: AppRouteSceneInputKey) => void;
-  clearRouteSceneChrome: (sceneKey: AppRouteSceneInputKey) => void;
   clearRouteSceneBody: (sceneKey: AppRouteSceneInputKey) => void;
   clearRouteSceneInput: (sceneKey: AppRouteSceneInputKey) => void;
 };
@@ -76,8 +74,6 @@ export const createRouteSceneInputLane = ({
   publishRouteSceneShell: sceneInputActions.publishSceneShell,
   publishRouteSceneChrome: sceneInputActions.publishSceneChrome,
   publishRouteSceneBody: sceneInputActions.publishSceneBody,
-  clearRouteSceneShell: sceneInputActions.clearSceneShell,
-  clearRouteSceneChrome: sceneInputActions.clearSceneChrome,
   clearRouteSceneBody: sceneInputActions.clearSceneBody,
   clearRouteSceneInput: sceneInputActions.clearSceneInput,
 });

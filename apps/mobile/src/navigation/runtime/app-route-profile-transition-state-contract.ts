@@ -2,7 +2,7 @@ import type { FoodResult, RestaurantResult, RestaurantResultScorePreview } from 
 
 export type ProfileTransitionStatus = 'idle' | 'opening' | 'open' | 'closing';
 
-export type MapCameraPadding = {
+type MapCameraPadding = {
   paddingTop: number;
   paddingBottom: number;
   paddingLeft: number;

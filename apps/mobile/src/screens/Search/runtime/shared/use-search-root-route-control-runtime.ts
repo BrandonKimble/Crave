@@ -29,7 +29,7 @@ export const useSearchRootRouteControlRuntime = ({
 
   if (!routeRestaurantOverlayRuntimeRef.current) {
     routeRestaurantOverlayRuntimeRef.current = createRouteRestaurantOverlayRuntime({
-      routeOverlayNavigationAuthority: routeSceneRuntime.routeSheetHostNavigationAuthority,
+      routeOverlayNavigationAuthority: routeSceneRuntime.routeOverlayNavigationAuthority,
     });
   }
 

@@ -674,7 +674,7 @@ class AppRouteSheetHostAuthorityController {
       input.routeSceneFrameAuthority.subscribe(() => {
         this.recomputeAll(true, 'routeSceneFrameAuthority');
       }),
-      input.routeOverlayNavigationAuthority.registerTarget({
+      input.routeOverlayNavigationAuthority.subscribeTarget({
         selector: (snapshot): SheetHostNavigationSelectorSnapshot => ({
           activeOverlayRouteKey: snapshot.activeOverlayRouteKey,
           overlayRouteStackLength: snapshot.overlayRouteStackLength,

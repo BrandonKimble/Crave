@@ -85,13 +85,11 @@ export const resolveMountedSceneEntryUnits = ({
   overlayRouteStack,
   outgoingEntryId,
   previousUnits,
-  depthLimit = SCENE_ENTRY_MOUNT_DEPTH_LIMIT,
 }: {
   sceneKey: OverlayKey;
   overlayRouteStack: readonly OverlayRouteEntry[];
   outgoingEntryId: string | null;
   previousUnits: readonly SceneEntryMountUnit[] | null;
-  depthLimit?: number;
 }): readonly SceneEntryMountUnit[] | null => {
   if (!isEntryKeyedMountSceneKey(sceneKey)) {
     return null;
@@ -109,7 +107,7 @@ export const resolveMountedSceneEntryUnits = ({
       return;
     }
     const depthBelowTop = topIndex - index;
-    if (depthBelowTop > depthLimit && entry.entryId !== outgoingEntryId) {
+    if (depthBelowTop > SCENE_ENTRY_MOUNT_DEPTH_LIMIT && entry.entryId !== outgoingEntryId) {
       return; // depth-K eviction — the entry stays in the stack; only the mount drops.
     }
     const previousUnit = previousUnitsByEntryId.get(entry.entryId);

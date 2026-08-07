@@ -7,7 +7,8 @@ import type { RouteOverlayNavigationSnapshot } from './route-overlay-navigation-
 
 type OutputAuthority<TSnapshot> = {
   getSnapshot: () => TSnapshot;
-  registerTarget: <TSelected>(target: {
+  // F5403: notify-on-change contract (see RouteShellOverlayNavigationAuthority).
+  subscribeTarget: <TSelected>(target: {
     selector: (snapshot: TSnapshot) => TSelected;
     syncNavigationSnapshot: (snapshot: TSnapshot, selected: TSelected) => void;
     isEqual?: (left: TSelected, right: TSelected) => boolean;
@@ -100,7 +101,7 @@ export class RouteLocalRestaurantOverlaySessionStateController {
       getSnapshot: () => this.snapshot,
     };
     this.recompute(false);
-    this.unsubscribeOverlayNavigation = overlayNavigationOutputAuthority.registerTarget({
+    this.unsubscribeOverlayNavigation = overlayNavigationOutputAuthority.subscribeTarget({
       selector: selectLocalRestaurantNavigation,
       syncNavigationSnapshot: (snapshot) => {
         this.setRouteOverlayNavigationSnapshot(snapshot);
