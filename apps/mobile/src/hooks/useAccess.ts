@@ -20,6 +20,15 @@ export interface AccessState {
   daysRemaining?: number;
   /** Server-owned rollout switch: the app-wide paywall is enforcing. */
   enforced: boolean;
+  /**
+   * F4501: has server access truth actually been OBSERVED for this user? Both
+   * `enforced` and `active` read false when the server says "off" AND when nothing
+   * has ever answered (a failed fetch, or a profile payload that omitted the
+   * `access` block — it is OPTIONAL on the DTO). Those are not the same fact, and
+   * for `enforced` the difference is fail-open vs. walled, so the routing axis
+   * needs to be able to tell them apart. See app-route-destination.ts.
+   */
+  isKnown: boolean;
   isLoading: boolean;
   /** Force-refetch server truth NOW and return it (purchase/restore polls
    *  await this — unlike invalidate, it works with no observer mounted). */
@@ -79,9 +88,20 @@ export function useAccess(): AccessState {
       source: active ? (access?.source ?? null) : null,
       daysRemaining,
       enforced: access?.enforced ?? false,
+      isKnown: access !== null,
       isLoading: query.isLoading,
       refresh,
     }),
-    [access?.enforced, access?.source, active, daysRemaining, expiresAt, query.isLoading, refresh]
+    [
+      // F4501: the whole summary is the dependency now (`isKnown` reads its
+      // presence, not one field), which subsumes the two field deps that used to
+      // sit here.
+      access,
+      active,
+      daysRemaining,
+      expiresAt,
+      query.isLoading,
+      refresh,
+    ]
   );
 }

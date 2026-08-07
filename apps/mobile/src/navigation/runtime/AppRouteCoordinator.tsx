@@ -17,31 +17,41 @@ import {
   NO_LAUNCH_INTENT,
   parseLaunchIntentFromUrl,
 } from './app-route-types';
+import { resolveAppRouteDestination, resolveAppRouteReadiness } from './app-route-destination';
 import { useAccountDeletedStore } from '../../store/accountDeletedStore';
 import { useClearOnIdentityChange } from './use-clear-on-identity-change';
 
+/**
+ * THE STICKINESS IS UNCONDITIONAL, AND UNGUARDED (F917, corrected by F4500).
+ *
+ * `isReady` is STICKY: once any route state has been published the coordinator
+ * reports ready forever, and `routeState` keeps serving the LAST known destination
+ * even while auth is genuinely unresolved again (a session recovery, a lapse
+ * re-entering 'loading'). That is deliberate — it is what stops the app tearing down
+ * the current screen and flashing a splash on every auth blip.
+ *
+ * This type used to also publish `isResolving` (`!isReady && stableRouteState !== null`)
+ * with a docblock telling the reader that "a consumer that must not act on stale
+ * routing — a sign-out, an access-gated redirect — checks it". NOTHING CHECKED IT: a
+ * whole-tree grep found zero readers, and reading the two named flows end to end says
+ * why neither ever would. Sign-out (overlays/panels/runtime/use-account-actions-runtime)
+ * is user-initiated and calls Clerk's `signOut` directly — it consults no routing at
+ * all. The "access-gated redirect" is not a consumer either: it is PRODUCED here, by
+ * the destination memo, which recomputes only when `isReady` (and is now gated on the
+ * access axis too — F4501). So the field was deleted rather than left as a guard the
+ * next reader would believe in.
+ *
+ * THE HAZARD IS THEREFORE UNHANDLED, ON PURPOSE, AND THAT IS THE HONEST STATEMENT:
+ * while auth is re-resolving, every consumer (RootNavigator, MainLaunchCoordinator)
+ * is handed the LAST known destination with no way to tell it from a current one, and
+ * they keep painting it. If a future consumer genuinely must not act on stale routing,
+ * it needs a fact that does not exist yet — do not assume one is here.
+ */
 type AppRouteCoordinatorContextValue = {
-  /** True once a destination has EVER been published — sticky by design (see
-   *  `exposedIsReady`). Pair it with `isResolving` before acting on the route. */
+  /** True once a destination has EVER been published — sticky by design; see the
+   *  block above for what that hides and for the fact this type does NOT publish. */
   isReady: boolean;
   routeState: AppRouteState | null;
-  /**
-   * THE ANTI-FLICKER DISTINCTION, NAMED (F917).
-   *
-   * `isReady` is STICKY: once any route state has been published the coordinator
-   * reports ready forever, and `routeState` keeps serving the LAST known destination
-   * even while auth is genuinely unresolved again (a session recovery, a lapse
-   * re-entering 'loading'). That is deliberate — it is what stops the app tearing down
-   * the current screen and flashing a splash on every auth blip — but it used to live
-   * entirely inside an unnamed `||`, so a consumer had no way to tell "this is the
-   * current destination" from "this is the last one we knew".
-   *
-   * `isResolving` is that missing fact: TRUE means what you are being handed is the
-   * last known destination, not a current one. A consumer that must not act on stale
-   * routing — a sign-out, an access-gated redirect — checks it; a consumer that just
-   * wants to keep painting (the whole point of the stickiness) ignores it.
-   */
-  isResolving: boolean;
   activeMainIntent: LaunchIntent;
   consumeActiveMainIntent: () => void;
   dispatchLaunchIntent: (intent: LaunchIntent) => void;
@@ -411,36 +421,34 @@ export const AppRouteCoordinator: React.FC<{ children: React.ReactNode }> = ({ c
     return onboardingStatus;
   }, [onboardingStatus, serverOnboardingProfile?.status]);
 
-  const isReady =
-    isOnboardingHydrated &&
-    isInitialIntentResolved &&
-    authStatus !== 'loading' &&
-    (authStatus !== 'signed_in' || hasResolvedSignedInProfile);
+  // F4501: the access axis is one of the facts readiness AWAITS now, not a fifth
+  // fact read after readiness has already declared the route trustworthy. The
+  // composition and the destination both live in app-route-destination.ts, where
+  // they are pure and specable (this package's jest lane cannot render).
+  const isReady = resolveAppRouteReadiness({
+    isOnboardingHydrated,
+    isInitialIntentResolved,
+    authStatus,
+    hasResolvedSignedInProfile,
+    accessIsLoading: access.isLoading,
+  });
 
   const routeState = React.useMemo<AppRouteState | null>(() => {
     if (!isReady) {
       return null;
     }
-    // HARD PAYWALL routing axis (decided 2026-07-09): a signed-in,
-    // onboarded user without access lands on the paywall, not 'main' —
-    // but ONLY when the server wall is live (access.enforced rides the
-    // profile payload; rollout stays a single server-side switch).
-    const needsPaywall = access.enforced && !access.active;
-    // ABOVE THE PAYWALL, deliberately: a closed account has nothing to buy
-    // access TO, and every authenticated route refuses it anyway. Showing the
-    // paywall here would sell a subscription for an account being erased.
-    const accountDeleted = isAccountDeleted;
-    const destination = isPerfScenarioNavigationBypassActive
-      ? 'main'
-      : effectiveOnboardingStatus === 'completed'
-        ? authStatus === 'signed_in'
-          ? accountDeleted
-            ? 'account_deleted'
-            : needsPaywall
-              ? 'paywall'
-              : 'main'
-          : 'sign_in'
-        : 'onboarding';
+    const destination = resolveAppRouteDestination({
+      isPerfScenarioNavigationBypassActive,
+      onboardingStatus: effectiveOnboardingStatus,
+      authStatus,
+      isAccountDeleted,
+      access: {
+        isLoading: access.isLoading,
+        isKnown: access.isKnown,
+        enforced: access.enforced,
+        active: access.active,
+      },
+    });
     return {
       destination,
       authStatus,
@@ -456,6 +464,8 @@ export const AppRouteCoordinator: React.FC<{ children: React.ReactNode }> = ({ c
     effectiveOnboardingStatus,
     isPerfScenarioNavigationBypassActive,
     isReady,
+    access.isLoading,
+    access.isKnown,
     access.enforced,
     access.active,
   ]);
@@ -470,10 +480,9 @@ export const AppRouteCoordinator: React.FC<{ children: React.ReactNode }> = ({ c
   }, [routeState]);
 
   const exposedRouteState = routeState ?? stableRouteState;
-  // Sticky-ready: see `isResolving` on the context type for why, and for the fact this
+  // Sticky-ready: see the block above the context type for why, and for the fact this
   // hides. `stableRouteState` + `areRouteStatesEqual` exist to serve exactly this.
   const exposedIsReady = isReady || stableRouteState !== null;
-  const isResolving = !isReady && stableRouteState !== null;
 
   React.useEffect(() => {
     if (!routeState) {
@@ -514,7 +523,6 @@ export const AppRouteCoordinator: React.FC<{ children: React.ReactNode }> = ({ c
   const value = React.useMemo<AppRouteCoordinatorContextValue>(
     () => ({
       isReady: exposedIsReady,
-      isResolving,
       routeState: exposedRouteState,
       activeMainIntent,
       consumeActiveMainIntent,
@@ -526,7 +534,6 @@ export const AppRouteCoordinator: React.FC<{ children: React.ReactNode }> = ({ c
       dispatchLaunchIntent,
       exposedIsReady,
       exposedRouteState,
-      isResolving,
     ]
   );
 
