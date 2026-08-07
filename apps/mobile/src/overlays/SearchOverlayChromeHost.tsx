@@ -16,6 +16,7 @@ import type {
 } from '../screens/Search/runtime/shared/search-foreground-chrome-contract';
 import type { SearchOverlayChromeHostAuthority } from '../screens/Search/runtime/shared/search-root-host-authority-contract';
 import { useRouteAuthoritySelector } from '../navigation/runtime/use-route-authority-selector';
+import { useFrozenWhile } from './use-frozen-while';
 
 type SearchOverlaySuggestionSurfaceFrozenProps = Pick<
   SearchOverlayChromeSuggestionSurfaceProps,
@@ -42,9 +43,7 @@ const areSearchOverlayChromeFrameSelectionsEqual = (
 ): boolean =>
   left.isFocused === right.isFocused &&
   left.shouldRenderSearchOverlay === right.shouldRenderSearchOverlay &&
-  left.shouldFreezeSuggestionSurfaceForRunOne === right.shouldFreezeSuggestionSurfaceForRunOne &&
-  left.shouldFreezeOverlayHeaderChromeForRunOne ===
-    right.shouldFreezeOverlayHeaderChromeForRunOne &&
+  left.isRunOneFreezeActive === right.isRunOneFreezeActive &&
   left.onProfilerRender === right.onProfilerRender &&
   left.hiddenSearchFiltersWarmupProps === right.hiddenSearchFiltersWarmupProps;
 
@@ -92,13 +91,11 @@ const resolveChromeLayerStyle = (
 const SearchOverlaySuggestionSurfaceHost = React.memo(
   ({
     suggestionSurfaceProps,
-    shouldFreezeSuggestionSurfaceForRunOne,
+    isRunOneFreezeActive,
   }: {
     suggestionSurfaceProps: SearchOverlayChromeSuggestionSurfaceProps;
-    shouldFreezeSuggestionSurfaceForRunOne: boolean;
+    isRunOneFreezeActive: boolean;
   }) => {
-    const frozenSuggestionSurfacePropsRef =
-      React.useRef<SearchOverlaySuggestionSurfaceFrozenProps | null>(null);
     const nextSuggestionSurfaceFrozenProps =
       React.useMemo<SearchOverlaySuggestionSurfaceFrozenProps>(
         () => ({
@@ -116,12 +113,10 @@ const SearchOverlaySuggestionSurfaceHost = React.memo(
           suggestionSurfaceProps.suggestionHighlightQuery,
         ]
       );
-    if (!shouldFreezeSuggestionSurfaceForRunOne) {
-      frozenSuggestionSurfacePropsRef.current = nextSuggestionSurfaceFrozenProps;
-    }
-    const suggestionSurfacePropsForRender = shouldFreezeSuggestionSurfaceForRunOne
-      ? (frozenSuggestionSurfacePropsRef.current ?? nextSuggestionSurfaceFrozenProps)
-      : nextSuggestionSurfaceFrozenProps;
+    const suggestionSurfacePropsForRender = useFrozenWhile(
+      nextSuggestionSurfaceFrozenProps,
+      isRunOneFreezeActive
+    );
 
     return (
       <SearchSuggestionSurface
@@ -143,12 +138,11 @@ SearchOverlaySuggestionSurfaceHost.displayName = 'SearchOverlaySuggestionSurface
 const SearchOverlayHeaderHost = React.memo(
   ({
     headerProps,
-    shouldFreezeOverlayHeaderChromeForRunOne,
+    isRunOneFreezeActive,
   }: {
     headerProps: SearchOverlayChromeHeaderProps;
-    shouldFreezeOverlayHeaderChromeForRunOne: boolean;
+    isRunOneFreezeActive: boolean;
   }) => {
-    const frozenHeaderChromePropsRef = React.useRef<SearchOverlayHeaderFrozenProps | null>(null);
     const nextHeaderChromeFrozenProps = React.useMemo<SearchOverlayHeaderFrozenProps>(
       () => ({
         searchShortcutsAnimatedStyle: headerProps.searchShortcutsAnimatedStyle,
@@ -167,12 +161,10 @@ const SearchOverlayHeaderHost = React.memo(
         headerProps.shouldShowSearchThisArea,
       ]
     );
-    if (!shouldFreezeOverlayHeaderChromeForRunOne) {
-      frozenHeaderChromePropsRef.current = nextHeaderChromeFrozenProps;
-    }
-    const headerChromePropsForRender = shouldFreezeOverlayHeaderChromeForRunOne
-      ? (frozenHeaderChromePropsRef.current ?? nextHeaderChromeFrozenProps)
-      : nextHeaderChromeFrozenProps;
+    const headerChromePropsForRender = useFrozenWhile(
+      nextHeaderChromeFrozenProps,
+      isRunOneFreezeActive
+    );
 
     return (
       <SearchOverlayHeaderChrome
@@ -231,16 +223,14 @@ const SearchOverlayChromeContainerHost = React.memo(
     headerProps,
     shouldRenderChromeHost,
     hiddenSearchFiltersWarmupProps,
-    shouldFreezeSuggestionSurfaceForRunOne,
-    shouldFreezeOverlayHeaderChromeForRunOne,
+    isRunOneFreezeActive,
   }: {
     containerSnapshot: SearchOverlayChromeContainerSnapshot;
     suggestionSurfaceProps: SearchOverlayChromeSuggestionSurfaceProps;
     headerProps: SearchOverlayChromeHeaderProps;
     shouldRenderChromeHost: boolean;
     hiddenSearchFiltersWarmupProps: SearchOverlayChromeHiddenSearchFiltersWarmupProps | null;
-    shouldFreezeSuggestionSurfaceForRunOne: boolean;
-    shouldFreezeOverlayHeaderChromeForRunOne: boolean;
+    isRunOneFreezeActive: boolean;
   }) => {
     return (
       <View
@@ -249,14 +239,14 @@ const SearchOverlayChromeContainerHost = React.memo(
       >
         <SearchOverlaySuggestionSurfaceHost
           suggestionSurfaceProps={suggestionSurfaceProps}
-          shouldFreezeSuggestionSurfaceForRunOne={shouldFreezeSuggestionSurfaceForRunOne}
+          isRunOneFreezeActive={isRunOneFreezeActive}
         />
         <SearchOverlayFiltersWarmupHost
           hiddenSearchFiltersWarmupProps={hiddenSearchFiltersWarmupProps}
         />
         <SearchOverlayHeaderHost
           headerProps={headerProps}
-          shouldFreezeOverlayHeaderChromeForRunOne={shouldFreezeOverlayHeaderChromeForRunOne}
+          isRunOneFreezeActive={isRunOneFreezeActive}
         />
         <SearchChromeNativeHitTargetSurface />
       </View>
@@ -292,8 +282,7 @@ export const SearchOverlayChromeHost = React.memo(
       shouldRenderSearchOverlay,
       onProfilerRender,
       hiddenSearchFiltersWarmupProps,
-      shouldFreezeSuggestionSurfaceForRunOne,
-      shouldFreezeOverlayHeaderChromeForRunOne,
+      isRunOneFreezeActive,
     } = frameSnapshot;
     const shouldRenderChromeHost = isFocused && shouldRenderSearchOverlay;
     const chromeHost = (
@@ -303,8 +292,7 @@ export const SearchOverlayChromeHost = React.memo(
         headerProps={headerProps}
         shouldRenderChromeHost={shouldRenderChromeHost}
         hiddenSearchFiltersWarmupProps={hiddenSearchFiltersWarmupProps}
-        shouldFreezeSuggestionSurfaceForRunOne={shouldFreezeSuggestionSurfaceForRunOne}
-        shouldFreezeOverlayHeaderChromeForRunOne={shouldFreezeOverlayHeaderChromeForRunOne}
+        isRunOneFreezeActive={isRunOneFreezeActive}
       />
     );
 

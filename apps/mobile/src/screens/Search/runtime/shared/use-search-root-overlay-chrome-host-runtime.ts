@@ -206,12 +206,12 @@ export const useSearchRootOverlayChromeHostRuntime = ({
     () => ({
       isFocused: appEntryPlaneRuntime.isFocused,
       shouldRenderSearchOverlay,
-      // F1324: these two were written out as byte-identical three-disjunct expressions under
-      // two names, in this one memo — so a change to the freeze rule had to be made twice, in
-      // adjacent lines, with nothing to catch a half-edit. There is ONE freeze decision here;
-      // the two consumers that read it under different names still get their own field.
-      shouldFreezeSuggestionSurfaceForRunOne: isRunOneFreezeActive,
-      shouldFreezeOverlayHeaderChromeForRunOne: isRunOneFreezeActive,
+      // F1324: this was two byte-identical three-disjunct expressions under two names in
+      // this one memo, so a change to the freeze RULE had to be made twice. F6204 finished
+      // the job: the two fields the consumers read under different names are ONE field, and
+      // the two hand-copied latch machines behind them are one `useFrozenWhile` — a half-edit
+      // now deletes the shared hook's only implementation and both hosts fail to compile.
+      isRunOneFreezeActive,
       onProfilerRender:
         rootOverlayFoundationRuntime.rootInstrumentationRuntime.handleProfilerRender,
       hiddenSearchFiltersWarmupProps,

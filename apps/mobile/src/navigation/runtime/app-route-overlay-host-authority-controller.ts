@@ -45,8 +45,7 @@ type SnapshotSlot<TSnapshot> = SnapshotAuthority<TSnapshot> & {
 const EMPTY_SEARCH_OVERLAY_CHROME_FRAME_SNAPSHOT: SearchOverlayChromeFrameSnapshot = {
   isFocused: false,
   shouldRenderSearchOverlay: false,
-  shouldFreezeSuggestionSurfaceForRunOne: false,
-  shouldFreezeOverlayHeaderChromeForRunOne: false,
+  isRunOneFreezeActive: false,
   onProfilerRender: null,
   hiddenSearchFiltersWarmupProps: null,
 };

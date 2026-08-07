@@ -20,8 +20,9 @@ export type SearchOverlayChromeHiddenSearchFiltersWarmupProps = HiddenSearchFilt
 export type SearchOverlayChromeFrameSnapshot = {
   isFocused: boolean;
   shouldRenderSearchOverlay: boolean;
-  shouldFreezeSuggestionSurfaceForRunOne: boolean;
-  shouldFreezeOverlayHeaderChromeForRunOne: boolean;
+  /** ONE run-one freeze decision, read by both chrome consumers (F1324 + F6204:
+   *  one rule AND one mechanism — `useFrozenWhile`). */
+  isRunOneFreezeActive: boolean;
   onProfilerRender: React.ProfilerOnRenderCallback | null;
   hiddenSearchFiltersWarmupProps: SearchOverlayChromeHiddenSearchFiltersWarmupProps | null;
 };

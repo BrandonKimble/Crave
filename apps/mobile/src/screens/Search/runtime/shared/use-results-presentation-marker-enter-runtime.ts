@@ -55,7 +55,7 @@ export const useResultsPresentationMarkerEnterRuntime = ({
 
   const flushPendingMarkerEnterStart = React.useCallback((): boolean => {
     const pending = pendingMarkerEnterStartRef.current;
-    if (pending == null || pending.executionBatch == null) {
+    if (pending == null) {
       return false;
     }
     if (!canStartMarkerEnterForSurface(pending.requestKey)) {
@@ -148,14 +148,17 @@ export const useResultsPresentationMarkerEnterRuntime = ({
         // [REVEALSYNC] native ramp actually started (presentation_enter_started consumer).
         // Logged on RECEIPT (markEnterStarted below may correctly no-op when the start-request
         // path already hid the cover). nativeStartedAtMs = CACurrentMediaTime*1000 at ramp start.
-        const startedAtMs = (payload as { startedAtMs?: number }).startedAtMs;
+        // Read UNCAST: the payload declares `startedAtMs: number`, so renaming or
+        // dropping the field is a compile error here rather than a probe that prints
+        // 'nil' forever (an instrument that degrades silently is the always-green
+        // metric this repo's methodology names as the disease).
         console.log(
-          `[REVEALSYNC] rampStart key=${payload.requestKey} nativeStartedAtMs=${startedAtMs ?? 'nil'} jsNowMs=${performance.now().toFixed(1)}`
+          `[REVEALSYNC] rampStart key=${payload.requestKey} nativeStartedAtMs=${payload.startedAtMs} jsNowMs=${performance.now().toFixed(1)}`
         );
       }
-      if (!runtimeMachineRef.current!.markEnterStarted(payload.requestKey, executionBatch)) {
-        return;
-      }
+      // Called for its effect: its false return means the start-request path already
+      // hid the cover, and this callback has nothing left to do either way.
+      runtimeMachineRef.current!.markEnterStarted(payload.requestKey, executionBatch);
     },
     [canStartMarkerEnterForSurface, runtimeMachineRef]
   );
