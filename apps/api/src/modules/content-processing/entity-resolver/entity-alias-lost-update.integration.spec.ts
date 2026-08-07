@@ -39,10 +39,17 @@ import { addAliases } from './entity-alias.service';
  * array with its own stale snapshot. This is TEST-ONLY instrumentation — it
  * changes nothing about which SQL runs, only when control returns to the
  * caller after that one specific read.
+ *
+ * `onGated` fires the instant the discriminator matches — the test asserts it
+ * ran, so a harness that silently STOPPED recognising the gated read (the SQL
+ * reworded, moved to $queryRawUnsafe, or migrated to the client API) reds
+ * loudly instead of degrading into a plain-concurrency test that proves
+ * nothing (F6614).
  */
 function wrapTxWithReadGate(
   tx: Prisma.TransactionClient,
   gate: Promise<void>,
+  onGated: () => void,
 ): Prisma.TransactionClient {
   return new Proxy(tx, {
     get(target, prop, receiver) {
@@ -50,6 +57,7 @@ function wrapTxWithReadGate(
         return async (strings: TemplateStringsArray, ...values: unknown[]) => {
           const result = await (target.$queryRaw as any)(strings, ...values);
           if (strings.join(' ').includes('DISTINCT ON (form)')) {
+            onGated();
             await gate;
           }
           return result;
@@ -146,11 +154,22 @@ describe('entity_alias.aliases projection under concurrent writers (FOR UPDATE l
       releaseGate = resolve;
     });
 
+    // Witness that the harness's read-gate ACTUALLY engaged. Without this, a
+    // divergence between this proxy's `DISTINCT ON (form)` pattern and the
+    // service's real SQL turns the gate into a silent pass-through and this
+    // "deterministic race" degrades into plain concurrency — which the file's
+    // own header certifies as unable to show RED.
+    let gateFired = false;
+
     const writerA = prisma.$transaction(
       (tx) =>
-        addAliases(wrapTxWithReadGate(tx, gate), entityId, [
-          { form: 'race-form-a', source: 'extraction' },
-        ]),
+        addAliases(
+          wrapTxWithReadGate(tx, gate, () => {
+            gateFired = true;
+          }),
+          entityId,
+          [{ form: 'race-form-a', source: 'extraction' }],
+        ),
       { timeout: 20000 },
     );
 
@@ -177,6 +196,8 @@ describe('entity_alias.aliases projection under concurrent writers (FOR UPDATE l
     expect(new Set(row.aliases)).toEqual(
       new Set(['race-form-a', 'race-form-b']),
     );
+    // The determinism claim is only true if the gate engaged; assert it did.
+    expect(gateFired).toBe(true);
   });
 
   // NOTE (finding, not a test): a THIRD case attempting 5+ fully-concurrent

@@ -60,6 +60,7 @@ function referenceColumns(): Column[] {
   const lines = readFileSync(SCHEMA, 'utf8').split('\n');
   const out: Column[] = [];
   let model: string | null = null;
+  let mappedTable: string | null = null;
   let pending: Column[] = [];
 
   const flush = (table: string): void => {
@@ -71,19 +72,25 @@ function referenceColumns(): Column[] {
     const open = /^model\s+(\w+)\s*\{/.exec(line);
     if (open) {
       model = open[1];
+      mappedTable = null;
       pending = [];
       continue;
     }
     if (model === null) continue;
     if (/^\}/.test(line)) {
-      // A model with no @@map is keyed by its model name.
-      flush(model);
+      // A model's table name is its @@map value if present, else the model
+      // name — and it holds for EVERY field regardless of whether the field
+      // was declared before or after the `@@map` line. Flushing on `@@map`
+      // (the prior bug) keyed post-@@map fields under the model name, latent
+      // only because Prisma convention puts @@map last.
+      flush(mappedTable ?? model);
       model = null;
+      mappedTable = null;
       continue;
     }
     const mapped = /@@map\("([^"]+)"\)/.exec(line);
     if (mapped) {
-      flush(mapped[1]);
+      mappedTable = mapped[1];
       continue;
     }
     const field = /^\s{2}(\w+)\s+\w+/.exec(line);
@@ -98,12 +105,42 @@ function referenceColumns(): Column[] {
 /**
  * Every `table.column` an arm of preserved-anchors.sql actually reads.
  *
- * The file is a union of arms; each arm names its source table in its own
- * `FROM`. Splitting on `UNION` and pairing each arm's FROM-table with the
- * column names appearing in it is a faithful read of what the SQL preserves —
- * and unlike a bare substring search it cannot be satisfied by a column name
- * that merely appears somewhere else in the file.
+ * The file is a union of arms; each arm names its source tables in its own
+ * `FROM`/`JOIN`. A column counts as covered for `<table>.<column>` only when
+ * it is READ AS that column of that table:
+ *
+ *   - a qualified reference `<alias>.<column>` where the alias resolves,
+ *     through the arm's own FROM/JOIN aliases, to `<table>`; or
+ *   - a BARE `<column>` token, but ONLY in an arm that has exactly one real
+ *     table in scope, so the token cannot belong to anything else.
+ *
+ * This is what makes the comment TRUE: crediting a bare identifier to the
+ * arm's FROM-table regardless of which JOINed table it belongs to (the prior
+ * behaviour) satisfied coverage from a column that merely appears somewhere in
+ * the arm — a join column of another table, an alias, even a keyword — which
+ * is the exact FALSE-GREEN direction of the law this gate enforces.
  */
+const SQL_NON_ALIAS = new Set([
+  'ON',
+  'WHERE',
+  'JOIN',
+  'LEFT',
+  'RIGHT',
+  'INNER',
+  'OUTER',
+  'FULL',
+  'CROSS',
+  'UNION',
+  'GROUP',
+  'ORDER',
+  'AND',
+  'OR',
+  'AS',
+  'USING',
+  'SELECT',
+  'INSERT',
+]);
+
 function coveredColumns(): Set<string> {
   const sql = readFileSync(ANCHORS, 'utf8')
     .split('\n')
@@ -114,11 +151,35 @@ function coveredColumns(): Set<string> {
   // block is not swallowed by the tail of the previous block (which would
   // pair it with the WRONG table and silently mark it covered).
   for (const arm of sql.split(/\bUNION\b|CREATE\s+TEMP\s+TABLE/i)) {
-    const from = /\bFROM\s+([a-z_][a-z0-9_]*)/i.exec(arm);
-    if (!from) continue;
-    const table = from[1];
-    for (const m of arm.matchAll(/\b([a-z_][a-z0-9_]*)\b/g)) {
-      covered.add(`${table}.${m[1]}`);
+    // Map every table alias in this arm to its real table; a bare table maps
+    // to itself. `AS`-less aliases are the common case here.
+    const aliases = new Map<string, string>();
+    const tables = new Set<string>();
+    const src =
+      /\b(?:FROM|JOIN)\s+([a-z_][a-z0-9_]*)(?:\s+(?:AS\s+)?([a-z_][a-z0-9_]*))?/gi;
+    for (const m of arm.matchAll(src)) {
+      const table = m[1];
+      tables.add(table);
+      aliases.set(table, table);
+      const alias = m[2];
+      if (alias && !SQL_NON_ALIAS.has(alias.toUpperCase())) {
+        aliases.set(alias, table);
+      }
+    }
+    if (tables.size === 0) continue;
+    // Qualified `<alias>.<column>` — resolve the alias to its table.
+    for (const m of arm.matchAll(
+      /\b([a-z_][a-z0-9_]*)\.([a-z_][a-z0-9_]*)\b/g,
+    )) {
+      const table = aliases.get(m[1]);
+      if (table) covered.add(`${table}.${m[2]}`);
+    }
+    // Bare tokens count only when a single real table is in scope.
+    if (tables.size === 1) {
+      const only = [...tables][0];
+      for (const m of arm.matchAll(/\b([a-z_][a-z0-9_]*)\b/g)) {
+        covered.add(`${only}.${m[1]}`);
+      }
     }
   }
   return covered;
@@ -199,8 +260,14 @@ describe('preserved-anchors.sql covers every entity reference in the schema', ()
   });
 
   it('the census actually sees the schema (no empty-loop green)', () => {
-    // An always-green guard is the disease, not the cure.
-    expect(referenceColumns().length).toBeGreaterThan(35);
+    // An always-green guard is the disease, not the cure. The floor is the
+    // RECORDED census size, not an underived magic constant: a schema only
+    // grows, so the census must never drop below what it last measured.
+    // A parser regression that collapsed the census (e.g. 45 -> 3) would red
+    // here instead of silently shrinking the set of columns audited above.
+    // Bump this when the schema legitimately adds reference columns.
+    const RECORDED_CENSUS = 45;
+    expect(referenceColumns().length).toBeGreaterThanOrEqual(RECORDED_CENSUS);
   });
 
   it('the messages share anchor is present (F1250, the column that proved it)', () => {

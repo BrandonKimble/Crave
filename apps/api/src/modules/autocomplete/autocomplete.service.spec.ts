@@ -1,7 +1,11 @@
 import 'reflect-metadata';
 import { EntityType } from '@prisma/client';
 import type { User } from '@prisma/client';
-import { AutocompleteService } from './autocomplete.service';
+import {
+  AutocompleteService,
+  mergeIngredientTwinMatches,
+  type LaneCandidate,
+} from './autocomplete.service';
 
 // Suggest refit (owner-ratified 2026-07-24, plans/suggest-ideal-shape.md).
 // Laws under test:
@@ -30,7 +34,16 @@ function sqlText(query: unknown): string {
   if (Array.isArray(q?.strings)) {
     return q.strings.join(' ');
   }
-  return String(query);
+  // NOT a wide `String(query)` fallback: every lane discriminator below is a
+  // substring match over a real `Prisma.Sql`, so a `String(query)` on a plain
+  // string or object would let each predicate MISS, `queryRaw` return `[]`,
+  // and the min-query-length gate tests pass for the wrong reason while the
+  // lane-cap tests fail confusingly elsewhere. A non-Sql at this boundary is
+  // a broken call site — fail loudly here.
+  throw new Error(
+    `autocomplete spec: $queryRaw received a non-Prisma.Sql query (${typeof query}); ` +
+      'a lane call site stopped passing a tagged template.',
+  );
 }
 
 function createLogger() {
@@ -86,6 +99,19 @@ interface HarnessOverrides {
   typedDemand?: Map<string, number>;
   selectionDemand?: Map<string, number>;
 }
+
+// The harness sets AUTOCOMPLETE_CACHE_TTL_SECONDS in a worker process shared
+// with other suites; save the original once and restore it after every test so
+// this file cannot leak the '0' onto a neighbour (the sibling
+// ops-summary.service.spec.ts saves/restores its env for the same reason).
+const ORIGINAL_CACHE_TTL = process.env.AUTOCOMPLETE_CACHE_TTL_SECONDS;
+afterEach(() => {
+  if (ORIGINAL_CACHE_TTL === undefined) {
+    delete process.env.AUTOCOMPLETE_CACHE_TTL_SECONDS;
+  } else {
+    process.env.AUTOCOMPLETE_CACHE_TTL_SECONDS = ORIGINAL_CACHE_TTL;
+  }
+});
 
 function createHarness(overrides: HarnessOverrides = {}) {
   process.env.AUTOCOMPLETE_CACHE_TTL_SECONDS = '0';
@@ -557,8 +583,14 @@ describe('AutocompleteService — query lane rank-only', () => {
 });
 
 describe('AutocompleteService — ingredient twin merge', () => {
-  const candidate = (entityType: string, name: string) => ({
-    match: { entityId: `${entityType}-${name}`, entityType, name },
+  const candidate = (entityType: string, name: string): LaneCandidate => ({
+    match: {
+      entityId: `${entityType}-${name}`,
+      entityType: entityType as unknown as EntityType,
+      name,
+      confidence: 1,
+      aliases: [],
+    },
     textStrength: 6,
     favorite: false,
     viewed: false,
@@ -567,14 +599,7 @@ describe('AutocompleteService — ingredient twin merge', () => {
   });
 
   it('twin names: ONE row — the food seat adopts the ingredient identity (superset tap)', () => {
-    const { service } = createHarness();
-    const kept = (
-      service as unknown as {
-        mergeIngredientTwinMatches: (c: unknown[]) => Array<{
-          match: { entityId: string; entityType: string; name: string };
-        }>;
-      }
-    ).mergeIngredientTwinMatches([
+    const kept = mergeIngredientTwinMatches([
       candidate('food', 'Burrata'),
       candidate('ingredient', 'burrata'),
       candidate('ingredient', 'octopus'),
@@ -590,14 +615,7 @@ describe('AutocompleteService — ingredient twin merge', () => {
   });
 
   it('keeps ingredient rows untouched (in ranked position) when no food name collides', () => {
-    const { service } = createHarness();
-    const kept = (
-      service as unknown as {
-        mergeIngredientTwinMatches: (c: unknown[]) => Array<{
-          match: { entityType: string; name: string };
-        }>;
-      }
-    ).mergeIngredientTwinMatches([
+    const kept = mergeIngredientTwinMatches([
       candidate('restaurant', 'Octo Sushi'),
       candidate('ingredient', 'octopus'),
       candidate('food', 'grilled octopus'),

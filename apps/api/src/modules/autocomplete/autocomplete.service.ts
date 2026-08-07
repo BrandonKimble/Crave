@@ -111,7 +111,7 @@ const EVIDENCE_TIER_STRENGTH: Record<string, number> = Object.fromEntries(
  *     with this exact row,
  * (c) popularity — the global demand fact.
  */
-type LaneCandidate = {
+export type LaneCandidate = {
   match: AutocompleteMatchDto;
   textStrength: number;
   favorite: boolean;
@@ -119,6 +119,58 @@ type LaneCandidate = {
   affinity: number;
   popularity: number;
 };
+
+/**
+ * Twin-name merge: when a food seat and an ingredient seat share a name, the
+ * food row adopts the ingredient identity (superset tap). Pure and free of
+ * `this` — exported so its spec can drive it directly instead of reaching a
+ * private method through a cast whose return type the test itself declares.
+ */
+export function mergeIngredientTwinMatches(
+  candidates: LaneCandidate[],
+): LaneCandidate[] {
+  const ingredientByName = new Map<string, LaneCandidate>();
+  for (const candidate of candidates) {
+    if (candidate.match.entityType === EntityType.ingredient) {
+      ingredientByName.set(
+        candidate.match.name.trim().toLowerCase(),
+        candidate,
+      );
+    }
+  }
+  const foodNames = new Set(
+    candidates
+      .filter((c) => c.match.entityType === EntityType.food)
+      .map((c) => c.match.name.trim().toLowerCase()),
+  );
+  const merged: LaneCandidate[] = [];
+  for (const candidate of candidates) {
+    const key = candidate.match.name.trim().toLowerCase();
+    if (candidate.match.entityType === EntityType.ingredient) {
+      if (!foodNames.has(key)) {
+        merged.push(candidate); // ingredient-only name keeps its own seat
+      }
+      continue; // twin: the food candidate carries the merged row
+    }
+    const twin =
+      candidate.match.entityType === EntityType.food
+        ? ingredientByName.get(key)
+        : undefined;
+    merged.push(
+      twin
+        ? {
+            ...candidate,
+            match: {
+              ...candidate.match,
+              entityId: twin.match.entityId,
+              entityType: EntityType.ingredient,
+            },
+          }
+        : candidate,
+    );
+  }
+  return merged;
+}
 
 // The three attribute-lane support signals, RAW (facts/derivations, no
 // normalization — the lane consumes them rank-only via RRF):
@@ -875,7 +927,7 @@ export class AutocompleteService {
     // ENTITY-LANE EXCEPTION (ratified): internal order stays evidence-tier-
     // first with the band-clamped demand re-rank INSIDE tiers — RRF fuses the
     // lanes but never breaks tier ordering within the entity lane itself.
-    const entityLane = this.mergeIngredientTwinMatches(
+    const entityLane = mergeIngredientTwinMatches(
       scoredEntities
         .filter(
           ({ candidate }) => !this.isAttributeType(candidate.match.entityType),
@@ -1425,52 +1477,6 @@ export class AutocompleteService {
    * ("octopus") keep their own row; to the user every one of these is
    * simply a dish-ish row (no separate icon).
    */
-  private mergeIngredientTwinMatches(
-    candidates: LaneCandidate[],
-  ): LaneCandidate[] {
-    const ingredientByName = new Map<string, LaneCandidate>();
-    for (const candidate of candidates) {
-      if (candidate.match.entityType === EntityType.ingredient) {
-        ingredientByName.set(
-          candidate.match.name.trim().toLowerCase(),
-          candidate,
-        );
-      }
-    }
-    const foodNames = new Set(
-      candidates
-        .filter((c) => c.match.entityType === EntityType.food)
-        .map((c) => c.match.name.trim().toLowerCase()),
-    );
-    const merged: LaneCandidate[] = [];
-    for (const candidate of candidates) {
-      const key = candidate.match.name.trim().toLowerCase();
-      if (candidate.match.entityType === EntityType.ingredient) {
-        if (!foodNames.has(key)) {
-          merged.push(candidate); // ingredient-only name keeps its own seat
-        }
-        continue; // twin: the food candidate carries the merged row
-      }
-      const twin =
-        candidate.match.entityType === EntityType.food
-          ? ingredientByName.get(key)
-          : undefined;
-      merged.push(
-        twin
-          ? {
-              ...candidate,
-              match: {
-                ...candidate.match,
-                entityId: twin.match.entityId,
-                entityType: EntityType.ingredient,
-              },
-            }
-          : candidate,
-      );
-    }
-    return merged;
-  }
-
   private resolveEntityTypes(dto: AutocompleteRequestDto): EntityType[] {
     const hasExplicitTypes =
       Boolean(dto.entityType) || Boolean(dto.entityTypes?.length);

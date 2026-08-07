@@ -156,14 +156,13 @@ describe('territoryEntityDemand (C3: demand reaches collection only through the 
     const demandSql = h.queries.find((q) =>
       q.text.includes('signal_demand_daily'),
     )!.text;
+    // LIVENESS WITNESS: the absence assertion below is only evidence if the
+    // statement it inspects is the demand read. Without this, a `.find` that
+    // ever selected a different or empty statement makes the `not.toMatch`
+    // vacuously true. Assert the demand read was actually issued first.
+    expect(demandSql).toContain('FROM signal_demand_daily');
     expect(demandSql).not.toMatch(/a\.kind\s*=/);
   });
-
-  // Docket #6: fresh-arm pin died with the fresh arm.
-
-  // Docket #6: fresh-arm pin died with the fresh arm.
-
-  // Docket #6: fresh-arm pin died with the fresh arm.
 
   // Docket #6: fresh-arm pin died with the fresh arm.
 
@@ -241,7 +240,14 @@ describe('territory trend + global specialization reads', () => {
       q.text.includes('signal_demand_daily'),
     )!.text;
     expect(sql).toContain('MAX(a.signal_count)');
-    expect(sql).toContain('FILTER');
+    // The test name promises TWO windows: a bare `FILTER` keyword is satisfied
+    // by any aggregate anywhere in the composed statement. Assert BOTH window
+    // definitions by name and by their split boundary, so deleting either one
+    // reds.
+    expect(sql).toContain('current_acts');
+    expect(sql).toContain('previous_acts');
+    expect(sql).toContain('FILTER (WHERE day >=');
+    expect(sql).toContain('FILTER (WHERE day <');
   });
 
   it('global demand reads the GLOBAL tile (place_id IS NULL — every signal once)', async () => {

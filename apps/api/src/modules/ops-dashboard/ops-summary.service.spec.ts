@@ -36,7 +36,17 @@ interface PrismaOverrides {
     unit: string;
     microUsdPerUnit: number;
   }>;
-  queryRawRows?: unknown[][];
+  // Keyed by the query's SQL discriminator, NOT by call order. A positional
+  // FIFO (`shift()`) fed a section's rows to whichever raw query happened to
+  // resolve first, so any reorder inside a `Promise.all` silently handed a
+  // section the wrong (or an empty) result. Keying by discriminator makes a
+  // reorder a no-op and an UNRECOGNISED query a thrown failure.
+  queryRawByFixture?: {
+    sources?: unknown[];
+    docs?: unknown[];
+    entities?: unknown[];
+    laneTimes?: unknown[];
+  };
 }
 
 const buildLogger = () => {
@@ -51,7 +61,7 @@ const buildLogger = () => {
 };
 
 function buildPrisma(overrides: PrismaOverrides = {}) {
-  const queryRawResults = [...(overrides.queryRawRows ?? [])];
+  const fixtures = overrides.queryRawByFixture ?? {};
   return {
     spendCampaign: { findMany: jest.fn(() => Promise.resolve([])) },
     spendUnitCost: {
@@ -104,7 +114,27 @@ function buildPrisma(overrides: PrismaOverrides = {}) {
         Promise.resolve(args.where.ingestedAt === null ? 2 : 5),
       ),
     },
-    $queryRaw: jest.fn(() => Promise.resolve(queryRawResults.shift() ?? [])),
+    // Key by a discriminator in the SQL itself. An unrecognised query THROWS
+    // rather than returning a wide `[]`, so a new/renamed raw read reds here
+    // instead of silently feeding a dashboard section an empty result.
+    $queryRaw: jest.fn((strings: TemplateStringsArray) => {
+      const sql = [...strings].join(' ');
+      if (/FROM\s+sources\b/.test(sql)) {
+        return Promise.resolve(fixtures.sources ?? []);
+      }
+      if (sql.includes('collection_source_documents')) {
+        return Promise.resolve(fixtures.docs ?? []);
+      }
+      if (sql.includes('ev_scope.entity_id')) {
+        return Promise.resolve(fixtures.entities ?? []);
+      }
+      if (sql.includes('source_collection_lanes')) {
+        return Promise.resolve(fixtures.laneTimes ?? []);
+      }
+      throw new Error(
+        `ops-summary spec: $queryRaw received a query no fixture discriminator matched:\n${sql}`,
+      );
+    }),
   };
 }
 
@@ -393,14 +423,13 @@ describe('OpsSummaryService.summary (V2 shape test)', () => {
             microUsdPerUnit: 150,
           },
         ],
-        // $queryRaw call order inside placesSection's Promise.all is
-        // sources → docs → entities; sourcesSection's lane-times query
-        // resolves afterward from the same FIFO (empty default).
-        queryRawRows: [
-          [{ handle: 'FoodNYC', anchor_place_name: 'New York City' }],
-          [{ community: 'foodnyc', docs_total: 24_000n, docs_24h: 120n }],
-          [{ community: 'foodnyc', entities: 1_800n }],
-        ],
+        // Keyed by SQL discriminator, so the section each fixture feeds is
+        // independent of the order the Promise.all awaits resolve in.
+        queryRawByFixture: {
+          sources: [{ handle: 'FoodNYC', anchor_place_name: 'New York City' }],
+          docs: [{ community: 'foodnyc', docs_total: 24_000n, docs_24h: 120n }],
+          entities: [{ community: 'foodnyc', entities: 1_800n }],
+        },
       }) as never,
       buildOpsAlerts() as never,
       buildRegistry() as never,

@@ -75,16 +75,23 @@ export class MessagingService {
       : `${userIdB}:${userIdA}`;
   }
 
-  /** §1.1: request ⇔ never replied AND not following AND not accepted. */
-  private isRequestFor(
-    viewerParticipant: Pick<ConversationParticipant, 'acceptedAt'>,
-    viewerHasSentMessage: boolean,
-    viewerFollowsOther: boolean,
-  ): boolean {
+  /**
+   * §1.1: request ⇔ never replied AND not following AND not accepted.
+   *
+   * Named-object parameter (not positional booleans): the three inputs are
+   * order-independent flags, and a positional signature let a call-site swap
+   * two of them without any type error — the exact failure mode the spec for
+   * this rule table cannot otherwise catch.
+   */
+  private isRequestFor(args: {
+    viewerParticipant: Pick<ConversationParticipant, 'acceptedAt'>;
+    viewerHasSentMessage: boolean;
+    viewerFollowsOther: boolean;
+  }): boolean {
     return (
-      viewerParticipant.acceptedAt == null &&
-      !viewerHasSentMessage &&
-      !viewerFollowsOther
+      args.viewerParticipant.acceptedAt == null &&
+      !args.viewerHasSentMessage &&
+      !args.viewerFollowsOther
     );
   }
 
@@ -370,11 +377,11 @@ export class MessagingService {
       );
       if (!viewerParticipant || !otherParticipant) continue;
       if (blockedPeers.has(otherParticipant.userId)) continue;
-      const isRequest = this.isRequestFor(
+      const isRequest = this.isRequestFor({
         viewerParticipant,
-        viewerSentSet.has(row.conversationId),
-        followsSet.has(otherParticipant.userId),
-      );
+        viewerHasSentMessage: viewerSentSet.has(row.conversationId),
+        viewerFollowsOther: followsSet.has(otherParticipant.userId),
+      });
       if (isRequest) continue;
       total += 1;
     }
@@ -910,11 +917,11 @@ export class MessagingService {
             : null,
           lastMessageAt: row.lastMessageAt.toISOString(),
           unreadCount,
-          isRequest: this.isRequestFor(
+          isRequest: this.isRequestFor({
             viewerParticipant,
-            viewerSentSet.has(row.conversationId),
-            followsSet.has(otherParticipant.userId),
-          ),
+            viewerHasSentMessage: viewerSentSet.has(row.conversationId),
+            viewerFollowsOther: followsSet.has(otherParticipant.userId),
+          }),
           frozen: blockedPeers.has(otherParticipant.userId),
         };
       }),

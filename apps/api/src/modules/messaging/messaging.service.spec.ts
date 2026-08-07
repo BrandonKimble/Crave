@@ -23,6 +23,12 @@ const ME = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
 const THEM = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb';
 const CONVO = 'cccccccc-cccc-4ccc-8ccc-cccccccccccc';
 const MSG = 'dddddddd-dddd-4ddd-8ddd-dddddddddddd';
+// A second recipient USER and a second CONVERSATION, distinct from MSG (a
+// MESSAGE id): a message id must never stand in for a user or conversation id
+// (F6613). Without the type check the service handle used to erase, these were
+// interchangeable and a fixture read as valid while confusing three id spaces.
+const RECIPIENT2 = 'eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee';
+const CONVO2 = 'ffffffff-ffff-4fff-8fff-ffffffffffff';
 
 const p2002 = () =>
   new Prisma.PrismaClientKnownRequestError('duplicate', {
@@ -367,18 +373,57 @@ describe('unread + request derivation (§1.1/§2.4)', () => {
   });
 
   it('request-lane rule table', () => {
-    const svc: any = service;
-    const cases: Array<[Date | null, boolean, boolean, boolean]> = [
-      // [acceptedAt, viewerSent, viewerFollows, expectedIsRequest]
-      [null, false, false, true],
-      [null, true, false, false], // first reply promotes
-      [null, false, true, false], // following promotes
-      [new Date(), false, false, false], // explicit accept promotes
+    // Typed handle (not `any`) onto the private rule, and a NAMED-OBJECT
+    // parameter: with three positional booleans a call site could swap two
+    // arguments and every case here would still pass while testing the wrong
+    // rule (F6613). Named fields make that swap a compile error at both the
+    // production call sites and here.
+    const svc = service as unknown as {
+      isRequestFor(args: {
+        viewerParticipant: { acceptedAt: Date | null };
+        viewerHasSentMessage: boolean;
+        viewerFollowsOther: boolean;
+      }): boolean;
+    };
+    const cases: Array<{
+      acceptedAt: Date | null;
+      viewerHasSentMessage: boolean;
+      viewerFollowsOther: boolean;
+      expected: boolean;
+    }> = [
+      {
+        acceptedAt: null,
+        viewerHasSentMessage: false,
+        viewerFollowsOther: false,
+        expected: true,
+      },
+      {
+        acceptedAt: null,
+        viewerHasSentMessage: true,
+        viewerFollowsOther: false,
+        expected: false,
+      }, // first reply promotes
+      {
+        acceptedAt: null,
+        viewerHasSentMessage: false,
+        viewerFollowsOther: true,
+        expected: false,
+      }, // following promotes
+      {
+        acceptedAt: new Date(),
+        viewerHasSentMessage: false,
+        viewerFollowsOther: false,
+        expected: false,
+      }, // explicit accept promotes
     ];
-    for (const [acceptedAt, sent, follows, expected] of cases) {
+    for (const c of cases) {
       expect(
-        svc.isRequestFor(participant(ME, { acceptedAt }), sent, follows),
-      ).toBe(expected);
+        svc.isRequestFor({
+          viewerParticipant: participant(ME, { acceptedAt: c.acceptedAt }),
+          viewerHasSentMessage: c.viewerHasSentMessage,
+          viewerFollowsOther: c.viewerFollowsOther,
+        }),
+      ).toBe(c.expected);
     }
   });
 
@@ -386,7 +431,7 @@ describe('unread + request derivation (§1.1/§2.4)', () => {
     const rows = [
       conversation(), // ME never sent, no follow, not accepted → request
       conversation({
-        conversationId: MSG,
+        conversationId: CONVO2,
         participants: [
           participant(ME, { acceptedAt: new Date() }),
           participant(THEM),
@@ -401,7 +446,7 @@ describe('unread + request derivation (§1.1/§2.4)', () => {
       CONVO,
     ]);
     const inbox = await service.listConversations(ME, { filter: 'inbox' });
-    expect(inbox.conversations.map((c) => c.conversationId)).toEqual([MSG]);
+    expect(inbox.conversations.map((c) => c.conversationId)).toEqual([CONVO2]);
   });
 
   it('ghost-request fix: list + badge reads exclude zero-message conversations', async () => {
@@ -543,7 +588,7 @@ describe('shareFanOut (§3.2)', () => {
       .spyOn(service, 'sendMessage')
       .mockResolvedValue({ messageId: MSG } as any);
     const { results } = await service.shareFanOut(ME, {
-      recipientUserIds: [THEM, MSG],
+      recipientUserIds: [THEM, RECIPIENT2],
       sharedEntityKind: 'dish' as any,
       sharedEntityId: CONVO,
     });
@@ -555,7 +600,7 @@ describe('shareFanOut (§3.2)', () => {
         error: null,
       },
       {
-        recipientUserId: MSG,
+        recipientUserId: RECIPIENT2,
         conversationId: null,
         messageId: null,
         error: 'CONVERSATION_FROZEN',
@@ -574,14 +619,14 @@ describe('shareFanOut (§3.2)', () => {
       .spyOn(service, 'sendMessage')
       .mockResolvedValue({ messageId: MSG } as any);
     const { results } = await service.shareFanOut(ME, {
-      recipientUserIds: [THEM, MSG],
+      recipientUserIds: [THEM, RECIPIENT2],
       sharedEntityKind: 'dish' as any,
       sharedEntityId: CONVO,
     });
     // The first (successful) recipient is still reported.
     expect(results[0].error).toBeNull();
     expect(results[1]).toEqual({
-      recipientUserId: MSG,
+      recipientUserId: RECIPIENT2,
       conversationId: null,
       messageId: null,
       error: 'FAILED',

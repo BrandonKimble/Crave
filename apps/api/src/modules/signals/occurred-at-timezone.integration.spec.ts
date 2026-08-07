@@ -26,7 +26,7 @@
  *
  * Run: yarn test:db  (needs DATABASE_URL — a dev database, never prod)
  */
-import { PrismaClient } from '@prisma/client';
+import { Prisma, PrismaClient } from '@prisma/client';
 import { utcDayStart } from './occurred-at';
 
 /** UTC-11 to UTC+14, plus a zone whose offset is not a whole hour. */
@@ -47,13 +47,16 @@ const prisma = new PrismaClient();
 /** Ask one question with the session pinned to `zone`. */
 async function inZone<T>(
   zone: string,
-  run: (tx: PrismaClient) => Promise<T>,
+  run: (tx: Prisma.TransactionClient) => Promise<T>,
 ): Promise<T> {
   let out!: T;
   await prisma
     .$transaction(async (tx) => {
       await tx.$executeRawUnsafe(`SET LOCAL TimeZone = '${zone}'`);
-      out = await run(tx as unknown as PrismaClient);
+      // `tx` is a TransactionClient, not a PrismaClient — the callback only
+      // needs the raw-query surface, so type it precisely instead of casting
+      // the difference away.
+      out = await run(tx);
       throw new Error('ROLLBACK');
     })
     .catch((error: unknown) => {
@@ -110,20 +113,13 @@ describe('signals.occurred_at is an instant, not a wall-clock reading', () => {
     expect(row?.data_type).toBe('timestamp with time zone');
   });
 
-  it('a BOUND INSTANT selects the same rows from every timezone', async () => {
-    const since = new Date('2026-07-01T00:00:00Z');
-    const counts = await Promise.all(
-      ZONES.map((zone) =>
-        inZone(zone, async (tx) => {
-          const [row] = await tx.$queryRaw<{ n: bigint }[]>`
-            SELECT count(*) AS n FROM signals WHERE occurred_at >= ${since}
-          `;
-          return `${zone}=${Number(row.n)}`;
-        }),
-      ),
-    );
-    expect(new Set(counts.map((c) => c.split('=')[1])).size).toBe(1);
-  });
+  // NOTE: a "bound instant selects the same rows from every timezone" case was
+  // removed here (F6608). Once :105-111 establishes the column is timestamptz,
+  // a bound parameter compared against it is timezone-independent BY POSTGRES
+  // DEFINITION — the case asserted a property of Postgres, not of this code,
+  // and could not fail for any reason inside this repository. The real hazard
+  // — that a bare `::date` LOCAL comparison DOES diverge across zones — is the
+  // point of `utcDayStart` and is proven live by THE RED CASE below.
 
   it('a UTC DAY WINDOW selects the same rows from every timezone', async () => {
     // The shape that became dangerous when the column converted. utcDayStart
