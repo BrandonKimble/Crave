@@ -109,10 +109,22 @@ function createHarness(options: {
       findUnique: jest.fn().mockResolvedValue(options.existingDocument ?? null),
     },
     restaurantEvent: {
-      findMany: jest.fn().mockResolvedValue(
-        (options.existingEventRestaurantIds ?? []).map((restaurantId) => ({
-          restaurantId,
-        })),
+      // F4916: the idempotency lookup KEYS ON THE ACTIVE RUN. Serve the
+      // already-minted rows ONLY when the query asks for the existing
+      // document's active run (RUN_ID) — mirroring the entityRedirect double
+      // above. A production read keyed on the wrong run id now sees zero rows
+      // and re-mints, going RED at the "never re-mints" assertions.
+      findMany: jest.fn((args: { where: { extractionRunId: string } }) =>
+        Promise.resolve(
+          args.where.extractionRunId ===
+            (options.existingDocument?.activeExtractionRunId ?? RUN_ID)
+            ? (options.existingEventRestaurantIds ?? []).map(
+                (restaurantId) => ({
+                  restaurantId,
+                }),
+              )
+            : [],
+        ),
       ),
     },
     restaurantEntityEvent: {
@@ -151,19 +163,24 @@ function endorsement(
 describe('PollBallotMentionService — K6 vote→mention at graduation', () => {
   it('mints exactly ONE mention per distinct voter (latest standing choice wins), m=1 and NO upvote term', async () => {
     const { service, tx, projectionRebuild } = createHarness({
+      // Rows are DELIBERATELY OUT OF createdAt ORDER: USER_1's LATER switch
+      // to REST_B is listed BEFORE their abandoned REST_A. If recency were
+      // decided by row order / last-write-wins (the pre-F4915 bug), USER_1
+      // would mint the abandoned REST_A and this suite would go RED. It stays
+      // green only because resolveBallot takes the max by createdAt in JS.
       endorsements: [
-        endorsement(
-          USER_1,
-          REST_A,
-          PollLeaderboardSubjectType.entity,
-          '2026-07-13T00:00:00Z',
-        ),
         // USER_1 later switched their vote — only REST_B may mint.
         endorsement(
           USER_1,
           REST_B,
           PollLeaderboardSubjectType.entity,
           '2026-07-15T00:00:00Z',
+        ),
+        endorsement(
+          USER_1,
+          REST_A,
+          PollLeaderboardSubjectType.entity,
+          '2026-07-13T00:00:00Z',
         ),
         endorsement(
           USER_2,

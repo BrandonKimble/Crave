@@ -322,9 +322,19 @@ export class PollBallotMentionService {
         createdAt: true,
       },
     });
+    // K6's one-per-voter law: each distinct voter contributes their MOST
+    // RECENT standing choice. The resolution rule lives HERE (max by
+    // createdAt), not in the query's `orderBy` — so a re-ordered read (or a
+    // flipped orderBy) cannot silently mint an abandoned choice.
     const latestByUser = new Map<string, (typeof endorsements)[number]>();
     for (const endorsement of endorsements) {
-      latestByUser.set(endorsement.userId, endorsement);
+      const current = latestByUser.get(endorsement.userId);
+      if (
+        !current ||
+        endorsement.createdAt.getTime() > current.createdAt.getTime()
+      ) {
+        latestByUser.set(endorsement.userId, endorsement);
+      }
     }
 
     const parsed = [...latestByUser.values()]

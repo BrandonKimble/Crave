@@ -359,8 +359,19 @@ export const checkPollDuplicate = async (body: {
   bounds?: MapBounds | null;
 }): Promise<{ matches: PollDuplicateMatch[] }> => {
   const response = await api.post('/polls/check-duplicate', body);
-  const data = (response.data ?? {}) as { matches?: PollDuplicateMatch[] };
-  return { matches: Array.isArray(data.matches) ? data.matches : [] };
+  // BEDROCK: a guard may fail closed or fail loud — never open. This verdict
+  // FEEDS A DECISION (the caller takes matches[0] and, if falsy, routes
+  // straight to createPoll). A `?? []` here turned a broken contract — a route
+  // rename, a wrapper envelope, a 200 proxy error page — into "this question
+  // is new", silently minting the duplicate the check exists to prevent.
+  // expectArrayAt THROWS on a shape break; the caller's existing catch reports
+  // it, so the user is told the check failed instead of being waved through.
+  const matches = expectArrayAt<PollDuplicateMatch>(
+    response.data,
+    'matches',
+    'POST /polls/check-duplicate'
+  );
+  return { matches };
 };
 
 // ─── Restaurant mentions (W3, page-registry §8.4 Discussions view) ──────────

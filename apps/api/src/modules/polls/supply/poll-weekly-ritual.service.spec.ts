@@ -96,7 +96,23 @@ function createHarness(options: HarnessOptions = {}) {
       }),
     },
     pollWeeklyTick: {
-      findMany: jest.fn().mockResolvedValue(options.existingTicks ?? []),
+      // F4919: the idempotency pre-filter KEYS ON THE DUE (placeId, weekOf)
+      // pairs. Serve an existing tick ONLY when the query actually asked for
+      // its pair (the `where.OR` list production builds from `due`). A read
+      // widened to `{}` (every tick ever) now matches nothing here, so the
+      // suppression it is meant to prove goes RED instead of falsely green.
+      findMany: jest.fn(
+        (args: { where?: { OR?: { placeId: string; weekOf: string }[] } }) => {
+          const asked = new Set(
+            (args.where?.OR ?? []).map((p) => `${p.placeId}:${p.weekOf}`),
+          );
+          return Promise.resolve(
+            (options.existingTicks ?? []).filter((t) =>
+              asked.has(`${t.placeId}:${t.weekOf}`),
+            ),
+          );
+        },
+      ),
     },
     poll: { findMany: jest.fn().mockResolvedValue(options.harvestPolls ?? []) },
     pollTopic: {
@@ -118,10 +134,6 @@ function createHarness(options: HarnessOptions = {}) {
   const notifications = {
     queuePollReleaseForPlace: jest.fn().mockResolvedValue(undefined),
   };
-  const placesPromotions = {
-    enqueue: jest.fn().mockResolvedValue(undefined),
-    noteHeaderAnswer: jest.fn(),
-  };
   const opsAlerts = { emit: jest.fn() };
   const service = new PollWeeklyRitualService(
     prisma as never,
@@ -138,7 +150,6 @@ function createHarness(options: HarnessOptions = {}) {
     tx,
     demandMass,
     notifications,
-    placesPromotions,
     opsAlerts,
   };
 }
