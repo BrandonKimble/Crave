@@ -1768,21 +1768,22 @@ export const useDirectSearchMapSourceController = ({
     // their region is ALWAYS that viewport — never a radius, never an auto-zoom — even
     // when the user searched while zoomed out.
     const isShortcutSearch = searchMode === 'shortcut';
-    const overlapRegion =
-      viewportBoundsService.getOverlapRegion() ??
-      (isShortcutSearch
-        ? resolveOverlapRegion({
-            submittedBounds: submittedSearchBounds,
-            submittedPolygon: submittedSearchPolygon,
-            userLocation: userLocationRef.current,
-          })
-        : submittedSearchBounds
-          ? ({
-              kind: 'viewport',
-              bounds: submittedSearchBounds,
-              polygon: submittedSearchPolygon,
-            } as const)
-          : null);
+    // F5426: the viewport service's overlap region was never written (setOverlapRegion
+    // had zero callers), so its former `getOverlapRegion() ??` left operand was always
+    // null and dead — the consumer has always resolved the region locally at build time.
+    const overlapRegion = isShortcutSearch
+      ? resolveOverlapRegion({
+          submittedBounds: submittedSearchBounds,
+          submittedPolygon: submittedSearchPolygon,
+          userLocation: userLocationRef.current,
+        })
+      : submittedSearchBounds
+        ? ({
+            kind: 'viewport',
+            bounds: submittedSearchBounds,
+            polygon: submittedSearchPolygon,
+          } as const)
+        : null;
 
     // Far-out shortcut → auto-zoom onto the radius once per search (programmatic, so it
     // doesn't trip "map moved"; the region stays a radius off the frozen baseline).

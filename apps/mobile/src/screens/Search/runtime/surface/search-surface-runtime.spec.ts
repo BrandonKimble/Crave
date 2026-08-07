@@ -10,6 +10,7 @@ jest.mock('../../../../perf/perf-scenario-runtime-store', () => ({
 
 import {
   SearchSurfaceRuntime,
+  buildRetainedDismissPrewarmContractPayload,
   isDismissChoreographyComplete,
   selectSearchSurfaceVisualPolicy,
 } from './search-surface-runtime';
@@ -171,5 +172,60 @@ describe('dismiss choreography release (bottom boundary AND nav return)', () => 
     expect(releasedPolicy.sheetClipMode).toBe('dockedScene');
     expect(releasedPolicy.bottomBandOwner).toBe('docked_scene');
     expect(runtime.getSnapshot().dismissTransaction?.committedAtMs).not.toBeNull();
+  });
+});
+
+// F2901: the retained-dismiss-prewarm attribution verdicts used to be hardcoded literals
+// identical to the arm-time values, so the perf-scenario contract asserting them could
+// never fail. They are now DERIVED from the live snapshot policy. These tests are the
+// mutation proof: a snapshot whose docked scene is releasable must flow that fact into the
+// emitted verdict. Re-hardcoding any field (e.g. `canReleaseDockedScene: false`) reds the
+// released-state assertions below.
+describe('SearchSurfaceRuntime retained-dismiss-prewarm contract is derived, not hardcoded', () => {
+  it('at dismiss-arm the verdict mirrors the held policy (nothing released yet)', () => {
+    const runtime = new SearchSurfaceRuntime();
+    const id = runtime.armDismissMotion({});
+    const payload = buildRetainedDismissPrewarmContractPayload(runtime.getSnapshot(), {
+      activeTransactionId: id,
+      transactionId: id,
+    });
+    expect(payload.canReleaseDockedScene).toBe(false);
+    expect(payload.canAdmitResultsBody).toBe(true);
+    expect(payload.outgoingResultsBodyAdmitted).toBe(true);
+    expect(payload.outgoingResultsChromeHeld).toBe(true);
+    expect(payload.outgoingResultsHeld).toBe(true);
+    expect(payload.shouldHoldResultsHeader).toBe(true);
+    expect(payload.bottomBandOwner).toBe('results_header');
+    expect(payload.sheetClipMode).toBe('animatedSearchTransition');
+    expect(payload.searchSurfacePhase).toBe('results_dismissing');
+    expect(payload.searchSheetContentLaneKind).toBe('results_closing');
+    // Prewarmed poll bundle — the ready fact comes from the bundle, not the false triple.
+    expect(payload.pollPageReadyBeforeMotion).toBe(true);
+    expect(payload.pollHeaderReady).toBe(false);
+  });
+
+  it('once the docked scene is releasable the SAME verdict fields flip — the instrument shows red', () => {
+    const runtime = new SearchSurfaceRuntime();
+    const id = runtime.armDismissMotion({});
+    markAllPollPartsReady(runtime, id);
+    runtime.commitDismissBoundary(id);
+    runtime.markBottomNavReturnReady(id);
+    // Sanity: the policy now reports a releasable docked scene.
+    expect(selectSearchSurfaceVisualPolicy(runtime.getSnapshot()).canReleaseDockedScene).toBe(true);
+
+    const payload = buildRetainedDismissPrewarmContractPayload(runtime.getSnapshot(), {
+      activeTransactionId: id,
+      transactionId: id,
+    });
+    // The hardcoded literals asserted these were 'false is impossible / true forever' —
+    // derivation makes the true state observable.
+    expect(payload.canReleaseDockedScene).toBe(true);
+    expect(payload.canAdmitResultsBody).toBe(false);
+    expect(payload.outgoingResultsBodyAdmitted).toBe(false);
+    expect(payload.outgoingResultsChromeHeld).toBe(false);
+    expect(payload.outgoingResultsHeld).toBe(false);
+    expect(payload.shouldHoldResultsHeader).toBe(false);
+    expect(payload.bottomBandOwner).toBe('docked_scene');
+    expect(payload.sheetClipMode).toBe('dockedScene');
   });
 });

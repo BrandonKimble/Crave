@@ -1,5 +1,6 @@
 import { readFileSync, readdirSync, statSync } from 'fs';
 import { join } from 'path';
+import { stripComments } from '../../../shared/testing/code-only';
 import { GEMINI_CALLER_PROFILES } from './gemini-caller-profiles';
 
 /**
@@ -115,9 +116,13 @@ describe('Gemini gateway lockdown', () => {
     // Red team F1: the haystack included gemini-caller-profiles.ts itself,
     // whose keys are single-quoted — every profile matched its own
     // definition and the test could never fail. Exclude the table.
+    // F2702: strip comments before joining. A raw-text scan credits prose —
+    // a `// see 'relevance-gate.judgeBatch'` mention would keep a dead profile
+    // "alive", the same comment-satisfies-the-guard shape the header docstring
+    // says killed the previous scanner generation. Match against code only.
     const allSource = files
       .filter((file) => !file.endsWith('gemini-caller-profiles.ts'))
-      .map((file) => readFileSync(file, 'utf8'))
+      .map((file) => stripComments(readFileSync(file, 'utf8'), file))
       .join('\n');
     const orphans = Object.keys(GEMINI_CALLER_PROFILES).filter(
       (caller) => !allSource.includes(`'${caller}'`),

@@ -1,6 +1,6 @@
 import type { MutableRefObject } from 'react';
 import type { MapBounds } from '../../../../types';
-import type { LngLat, OverlapRegion, ReadonlyOverlapRegion } from '../../utils/overlap-region';
+import type { LngLat } from '../../utils/overlap-region';
 
 type BoundsSubscriber = (bounds: MapBounds | null) => void;
 
@@ -64,10 +64,6 @@ export class ViewportBoundsService {
   // later (same viewport, service-only). Null after dismiss — no searched area.
   private searchBaselineBounds: MapBounds | null = null;
   private submittedPolygon: LngLat[] | null = null;
-  // The frozen overlap-allowed region for the active search (viewport or radius). Pins
-  // inside it overlap/rank; outside it collision-cull/score. Resolved at submit time
-  // (where userLocation + shortcut intent are known) and read by the source builder.
-  private overlapRegion: OverlapRegion | null = null;
   private readonly subscribers = new Set<BoundsSubscriber>();
 
   public readonly boundsRef: MutableRefObject<MapBounds | null>;
@@ -140,19 +136,6 @@ export class ViewportBoundsService {
     return this.submittedPolygon
       ? this.submittedPolygon.map(([lng, lat]) => [lng, lat] as LngLat)
       : null;
-  }
-
-  public setOverlapRegion(region: OverlapRegion | null): void {
-    this.overlapRegion = region;
-  }
-
-  /** F5306: READONLY, not a clone. This is the only accessor pair in the class that hands
-   *  back the internal object rather than a copy — deliberately, because the region carries
-   *  a polygon and the copy would be paid on every source build. The return type is what
-   *  establishes the invariant the other four buy with `cloneX`: a writer through this
-   *  handle does not compile, so the frozen region cannot be corrupted mid-search. */
-  public getOverlapRegion(): ReadonlyOverlapRegion | null {
-    return this.overlapRegion;
   }
 
   public subscribe(subscriber: BoundsSubscriber): () => void {

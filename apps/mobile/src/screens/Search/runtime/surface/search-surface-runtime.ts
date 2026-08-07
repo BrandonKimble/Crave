@@ -267,6 +267,48 @@ export const selectSearchSurfaceVisualPolicy = (
   };
 };
 
+// F2901: the retained-dismiss-prewarm attribution verdict, DERIVED from the live snapshot
+// so the instrument can show RED. Every field was previously a hardcoded literal identical
+// to the value a correct dismiss-arm produces, so the perf-scenario contract that asserts
+// them (scripts/perf-scenario-parity-contracts.js, perf-scenario-visual-contracts.js) could
+// never fail — the codebase's signature defect. The surface-phase verdicts come from the
+// policy (the same source the header contract already derives from); the poll-page-ready
+// fact comes from the prewarmed poll bundle; the lane kind is a projection of the phase.
+// Extracted as a pure function so a snapshot with the invariant VIOLATED (a releasable
+// docked scene at arm) is directly constructible in a hermetic test.
+export const buildRetainedDismissPrewarmContractPayload = (
+  snapshot: SearchSurfaceRuntimeSnapshot,
+  { activeTransactionId, transactionId }: { activeTransactionId: string; transactionId: string }
+) => {
+  const dismissTransaction = snapshot.dismissTransaction;
+  const pollBundle = snapshot.pollBundle;
+  const policy = selectSearchSurfaceVisualPolicy(snapshot);
+  const pollPageReadyBeforeMotion =
+    pollBundle.chromeReady && pollBundle.bodyReady && pollBundle.hostReady;
+  return {
+    event: 'retained_dismiss_prewarm_contract' as const,
+    accepted: dismissTransaction != null && dismissTransaction.id === activeTransactionId,
+    activeTransactionId,
+    bottomBandOwner: policy.bottomBandOwner,
+    canAdmitResultsBody: policy.canAdmitResultsBody,
+    canReleaseDockedScene: policy.canReleaseDockedScene,
+    outgoingResultsBodyAdmitted: policy.canAdmitResultsBody,
+    outgoingResultsChromeHeld: policy.shouldHoldResultsHeader,
+    outgoingResultsHeld: !policy.canReleaseDockedScene,
+    pollBodyReady: dismissTransaction?.pollBodyReady ?? false,
+    pollHeaderReady: dismissTransaction?.pollHeaderReady ?? false,
+    pollHostReady: dismissTransaction?.pollHostReady ?? false,
+    pollPageReadyBeforeMotion,
+    searchSheetContentLaneKind:
+      policy.phase === 'results_dismissing' ? 'results_closing' : policy.phase,
+    searchSurfacePhase: policy.phase,
+    sheetClipMode: policy.sheetClipMode,
+    shouldHoldResultsHeader: policy.shouldHoldResultsHeader,
+    shouldHoldSearchDisplayForPollRestore: policy.shouldHoldSearchDisplayForPollRestore,
+    transactionId,
+  };
+};
+
 export type BeginRedrawTransactionInput = {
   reason: SearchSurfaceRedrawReason;
   transactionId?: string | null;
@@ -1446,28 +1488,14 @@ export class SearchSurfaceRuntime {
     if (!isPerfScenarioAttributionActive(scenarioConfig)) {
       return;
     }
-    const dismissTransaction = this.snapshot.dismissTransaction;
-    logPerfScenarioAttributionEvent('VisualReadiness', scenarioConfig, {
-      event: 'retained_dismiss_prewarm_contract',
-      accepted: dismissTransaction != null && dismissTransaction.id === activeTransactionId,
-      activeTransactionId,
-      bottomBandOwner: 'results_header',
-      canAdmitResultsBody: true,
-      canReleaseDockedScene: false,
-      outgoingResultsBodyAdmitted: true,
-      outgoingResultsChromeHeld: true,
-      outgoingResultsHeld: true,
-      pollBodyReady: dismissTransaction?.pollBodyReady ?? false,
-      pollHeaderReady: dismissTransaction?.pollHeaderReady ?? false,
-      pollHostReady: dismissTransaction?.pollHostReady ?? false,
-      pollPageReadyBeforeMotion: true,
-      searchSheetContentLaneKind: 'results_closing',
-      searchSurfacePhase: 'results_dismissing',
-      sheetClipMode: 'animatedSearchTransition',
-      shouldHoldResultsHeader: true,
-      shouldHoldSearchDisplayForPollRestore: false,
-      transactionId,
-    });
+    logPerfScenarioAttributionEvent(
+      'VisualReadiness',
+      scenarioConfig,
+      buildRetainedDismissPrewarmContractPayload(this.snapshot, {
+        activeTransactionId,
+        transactionId,
+      })
+    );
   }
 
   private logMotionPlaneArmContract(phase: 'dismiss' | 'open', transactionId: string): void {
@@ -1475,11 +1503,16 @@ export class SearchSurfaceRuntime {
     if (!isPerfScenarioAttributionActive(scenarioConfig)) {
       return;
     }
+    // F2901: the two motion-plane verdict booleans this event used to carry
+    // (listenerFanoutDeferredUntilMotionStarted, motionArmBeforeSnapshotPublish) were
+    // hardcoded `true` literals — instruments that could never show red — describing
+    // control-flow ordering that is not a function of the snapshot, so nothing here can
+    // derive them. They had ZERO consumers repo-wide (no perf-scenario reader, maestro
+    // contract, or allow-list entry), so they are deleted rather than faked. The event
+    // keeps the observed identity/phase it actually witnesses.
     logPerfScenarioAttributionEvent('VisualReadiness', scenarioConfig, {
       event: 'search_surface_motion_plane_arm_contract',
       authority: 'SearchSurfaceRuntime',
-      listenerFanoutDeferredUntilMotionStarted: true,
-      motionArmBeforeSnapshotPublish: true,
       phase,
       transactionId,
     });
