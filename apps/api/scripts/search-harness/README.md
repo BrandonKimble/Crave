@@ -44,6 +44,17 @@ The read-only majority:
 
 ## Scripts
 
+**THIS IS A PARTIAL CENSUS — 4 of the 27 `.ts` files here** (corrected
+2026-08-06, F4938). It documents the four original Deliverable-0 harnesses;
+the rest (`run-launch-gate.ts`, `linker-calibration-sweep.ts`,
+`margin-link-eval.ts`, the three `rt-*` writers warned about above, the
+`*-probe.ts` family, …) arrived with later search work and are not listed.
+A hand-maintained per-file list in a directory that grows is a drift machine
+— `ls scripts/search-harness/*.ts` is the census; read a script's own
+docblock for what it does. What matters here is that the three DANGEROUS
+files are named in the banner at the top, which is exactly the set a reader
+must not miss.
+
 Run each from the repo root:
 
 ```bash
@@ -52,10 +63,11 @@ yarn workspace api ts-node scripts/search-harness/<name>.ts
 
 ### 1. `frozen-fixture.ts`
 
-Dumps all active `core_entities` (id, type, name, aliases) + market presence to a
-versioned JSON file (`frozen-fixture.v1.json`, git-ignorable). **Regenerate only on
-demand** — the replay harnesses read this file so their corpus can't shift
-mid-sweep.
+Dumps all active `core_entities` (id, type, name, aliases) + `hasRegionPresence`
+— a geometric bbox check against the default region, NOT the deleted
+market-presence row (`_shared.ts:52-54`) — to a versioned JSON file
+(`frozen-fixture.v1.json`, git-ignorable). **Regenerate only on demand** — the
+replay harnesses read this file so their corpus can't shift mid-sweep.
 
 ```bash
 yarn workspace api ts-node scripts/search-harness/frozen-fixture.ts
@@ -122,7 +134,14 @@ yarn workspace api ts-node scripts/search-harness/corpus-integrity.ts
 yarn workspace api ts-node scripts/search-harness/corpus-integrity.ts --json   # CI line
 ```
 
-## Baseline (measured against the live dev DB, 2026-07-02, fixture v1, 3654 entities)
+## SUPERSEDED baseline — history only (dev DB, 2026-07-02, fixture v1, 3654 entities)
+
+> Kept as the record of what the harnesses measured BEFORE the calibrated
+> linker shipped. Every `0.82` number below was taken under the retired
+> hand-set threshold (see the correction above), and the corpus-integrity
+> counts were re-measured 2026-08-03 and had all moved. **Re-run a harness
+> before quoting any figure here.** The table header used to read "Baseline",
+> which reads as current (F4938).
 
 **corpus-integrity** — every audit number reproduced exactly:
 
@@ -164,8 +183,14 @@ links that are actually the ambiguous-alias/duplicate **data defects** surfacing
   `rt-*.ts` exclusion is gone, so the writers are type-checked too (F1255).
 - **Dependency-light.** Only `ts-node` + what the AppModule already pulls in; no new
   deps.
-- **Market scoping.** The dev corpus is ~99% NYC (`region-us-ny-new-york`), the
-  default `MARKET_KEY`. Foods/attributes are never market-filtered; only restaurant
-  recall is scoped.
+- **`MARKET_KEY` IS A LABEL, NOT A FILTER** (corrected 2026-08-06, F4938). This
+  bullet used to describe live market scoping — "only restaurant recall is
+  scoped". `_shared.ts:37-39` says the opposite in its own words: the
+  market-keyed recall scoping that name refers to **died with the market
+  model**; restaurant recall is engine-territory scoped in production, and
+  these harnesses run **global (unscoped)** queries. The dev corpus is ~99%
+  NYC, so `MARKET_KEY` (default `region-us-ny-new-york`) survives only as the
+  region label printed in harness output and used for the `hasRegionPresence`
+  bbox check. Nothing here filters recall by it.
 - **Determinism.** Typo generation uses a seeded PRNG (`SEED`), so runs are
   reproducible.

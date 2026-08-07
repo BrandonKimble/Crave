@@ -25,7 +25,6 @@ const VIEW_BOUNDS = {
 interface FakePollRow {
   poll_id: string;
   place_id: string | null;
-  market_key: string | null;
   created_at: Date;
 }
 
@@ -139,7 +138,6 @@ function createHarness(options: {
             .map((row) => ({
               pollId: row.poll_id,
               placeId: row.place_id,
-              marketKey: row.market_key,
               state: 'active',
               mode: 'ranked',
               origin: 'seeded',
@@ -248,44 +246,31 @@ const STATE_IN_VIEW = {
 };
 
 describe('PollsService.queryPolls — the §6 places-in-view feed', () => {
-  it('feed = in-view places + descendants of the commensurate subject; over-scale subdivision+ places excluded; place-keying is the ONLY membership (backfilled legacy rows join via their place)', async () => {
+  it('feed = in-view places + descendants of the commensurate subject; over-scale subdivision+ places excluded; place-keying is the ONLY membership', async () => {
     const now = Date.now();
     const table: FakePollRow[] = [
       {
         poll_id: pollId(1),
         place_id: TOWN,
-        market_key: null,
         created_at: new Date(now - 1000),
       },
       // Descendant of the commensurate town — NOT itself in the viewport read.
       {
         poll_id: pollId(2),
         place_id: NEIGHBORHOOD,
-        market_key: null,
         created_at: new Date(now - 2000),
       },
       // Subdivision+ over-scale place: §4 feed-at-that-zoom → excluded here.
       {
         poll_id: pollId(3),
         place_id: STATE,
-        market_key: null,
         created_at: new Date(now - 3000),
       },
-      // BACKFILLED legacy row (legacy-poll expiry): market_key still stamped
-      // but place-keyed like every other row — joins via its place, and only
-      // when that place is a member.
+      // A place outside the view's membership never joins.
       {
         poll_id: pollId(4),
-        place_id: TOWN,
-        market_key: 'Austin-Metro',
-        created_at: new Date(now - 4000),
-      },
-      // A place outside the view's membership never joins, market_key or not.
-      {
-        poll_id: pollId(5),
         place_id: '99999999-9999-9999-9999-999999999999',
-        market_key: 'elsewhere',
-        created_at: new Date(now - 5000),
+        created_at: new Date(now - 4000),
       },
     ];
     const { service } = createHarness({
@@ -299,7 +284,7 @@ describe('PollsService.queryPolls — the §6 places-in-view feed', () => {
     const ids = (response.polls as Array<{ pollId: string }>).map(
       (poll) => poll.pollId,
     );
-    expect(ids).toEqual([pollId(1), pollId(2), pollId(4)]);
+    expect(ids).toEqual([pollId(1), pollId(2)]);
   });
 
   it('stamps the §2 header verdict (place name) and per-poll place labels via ONE batch query', async () => {
@@ -309,13 +294,11 @@ describe('PollsService.queryPolls — the §6 places-in-view feed', () => {
         {
           poll_id: pollId(1),
           place_id: TOWN,
-          market_key: null,
           created_at: new Date(now - 1000),
         },
         {
           poll_id: pollId(2),
           place_id: NEIGHBORHOOD,
-          market_key: null,
           created_at: new Date(now - 2000),
         },
       ],
@@ -327,7 +310,6 @@ describe('PollsService.queryPolls — the §6 places-in-view feed', () => {
     expect(response.header).toEqual({ placeName: 'Round Rock' });
     // The legacy market envelope is DEAD (wave-6 item 8): no marketName mirror.
     expect(response).not.toHaveProperty('marketName');
-    expect(response).not.toHaveProperty('marketKey');
 
     const polls = response.polls as Array<{
       pollId: string;
@@ -349,7 +331,6 @@ describe('PollsService.queryPolls — the §6 places-in-view feed', () => {
     const table: FakePollRow[] = [1, 2, 3, 4, 5].map((n) => ({
       poll_id: pollId(n),
       place_id: TOWN,
-      market_key: null,
       created_at: new Date(base - n * 1000),
     }));
     const { service } = createHarness({
@@ -368,7 +349,6 @@ describe('PollsService.queryPolls — the §6 places-in-view feed', () => {
     table.push({
       poll_id: pollId(9),
       place_id: TOWN,
-      market_key: null,
       created_at: new Date(base + 1000),
     });
 
@@ -424,19 +404,16 @@ describe('PollsService.queryPolls — the §6 places-in-view feed', () => {
         {
           poll_id: pollId(1),
           place_id: NEIGHBORHOOD,
-          market_key: null,
           created_at: new Date(now - 1000),
         },
         {
           poll_id: pollId(2),
           place_id: NEIGHBORHOOD,
-          market_key: null,
           created_at: new Date(now - 2000),
         },
         {
           poll_id: pollId(3),
           place_id: TOWN,
-          market_key: null,
           created_at: new Date(now - 3000),
         },
       ],
@@ -467,19 +444,16 @@ describe('PollsService.queryPolls — the §6 places-in-view feed', () => {
       {
         poll_id: pollId(1),
         place_id: TOWN, // the filter place itself
-        market_key: null,
         created_at: new Date(now - 1000),
       },
       {
         poll_id: pollId(2),
         place_id: NEIGHBORHOOD, // CHILD of TOWN (subtree member)
-        market_key: null,
         created_at: new Date(now - 2000),
       },
       {
         poll_id: pollId(3),
         place_id: SIBLING, // in the viewport membership, NOT in the subtree
-        market_key: null,
         created_at: new Date(now - 3000),
       },
     ];
@@ -521,7 +495,7 @@ describe('PollsService.queryPolls — the §6 places-in-view feed', () => {
     ).toEqual(expect.arrayContaining([TOWN, NEIGHBORHOOD, SIBLING]));
   });
 
-  it('no view (no bounds, no legacy marketKey) → empty renderable envelope', async () => {
+  it('no view (no bounds) → empty renderable envelope', async () => {
     const { service, placesCatalog } = createHarness({
       pollTable: [],
       placesInView: [],
