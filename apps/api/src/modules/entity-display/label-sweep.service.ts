@@ -9,6 +9,7 @@ import {
   normalizeLocaleTag,
 } from '../../shared/locale';
 import {
+  canonicalFold,
   isDisplayable,
   normalizeSurface,
 } from '../content-processing/entity-resolver/entity-identity';
@@ -240,6 +241,10 @@ export class LabelSweepService {
           entityId: label.entityId,
           locale,
           form,
+          // The FOLD LAW: a label cannot be written without its folded recall
+          // mirror (same canonicalFold entity_alias.form_folded uses), so the
+          // labels match arm can fold BOTH sides. Never a SQL fold.
+          formFolded: canonicalFold(form),
           description: label.description,
           isDefault,
           rank: 0,
@@ -248,6 +253,10 @@ export class LabelSweepService {
           promptVersion: VOCABULARY_PROMPT_VERSION,
         },
         update: {
+          // form is the conflict key (unchanged on update), so the fold is
+          // invariant — but writing it self-heals any row whose fold predates
+          // this column (pre-backfill '' seed) the next time the sweep re-pays.
+          formFolded: canonicalFold(form),
           description: label.description,
           status: label.status,
           promptVersion: VOCABULARY_PROMPT_VERSION,

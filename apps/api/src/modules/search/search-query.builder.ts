@@ -600,7 +600,11 @@ LEFT JOIN LATERAL (
       AND e.status <> 'archived'
     WHERE res.restaurant_id = rr.restaurant_id
       AND ${signalMatch.sql}
-    ORDER BY res.mention_count DESC, e.name ASC
+    -- res.entity_id ASC is the unique tail: this subquery does not restrict
+    -- entity type, so two DIFFERENT entities sharing a name and mention_count
+    -- are fully tied and the LIMIT 5 cut would admit/drop them arbitrarily
+    -- (F7602, the F3802 determinism family). entity_id is unique per row.
+    ORDER BY res.mention_count DESC, e.name ASC, res.entity_id ASC
     LIMIT 5
   ) tag_rows
 ) tm ON ${signalMatch.hasConditions ? Prisma.sql`TRUE` : Prisma.sql`FALSE`}`;

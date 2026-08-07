@@ -562,7 +562,6 @@ LIMIT 3
       userLocation,
     );
 
-    const openNowFilterMs = 0;
     // Openness is applied IN SQL (membership) on both axes — rows arriving
     // here are already open (or the graceful-degradation arm admitted the
     // whole unsupported pool). Pagination and every count are therefore
@@ -597,7 +596,10 @@ LIMIT 3
     const timings = {
       buildSqlMs: Math.round(buildSqlMs),
       dbQueryMs: Math.round(dbQueryMs),
-      openNowFilterMs: Math.round(openNowFilterMs),
+      // No openNowFilterMs: openness is applied in SQL membership (above), so
+      // there is no JS open-now filter phase to time. A constant 0 here would
+      // report "the open-now filter costs nothing" instead of "no such phase"
+      // — a metric that can only show green (F7601).
       mapRestaurantMs: Math.round(mapRestaurantMs),
       mapDishMs: Math.round(mapDishMs),
       postProcessMs: Math.round(postProcessMs),

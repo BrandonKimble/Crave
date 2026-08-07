@@ -1274,7 +1274,8 @@ export class EntityTextSearchService {
     //   1. identity_key = folded candidate      (N1 name fold symmetry)
     //   2. LOWER(name)  = candidate             (exact typed name)
     //   3. entity_alias.form_folded, locale-chained (N1 alias fold symmetry)
-    //   4. entity_labels.form, locale-chained   (labels double as surfaces)
+    //   4. entity_labels.form_folded, locale-chained (labels-as-surfaces,
+    //      N1 fold symmetry — same folded shape as arm 3)
     // The legacy `crave_text_array_lower(aliases)` GIN arm was REMOVED here
     // (i18n red team, executed): it was the untyped, UNLOCALED shadow of
     // entity_alias — it re-grounded seeded es forms ('americana') for English
@@ -1297,8 +1298,9 @@ export class EntityTextSearchService {
     // is always the chain's tail; a null-locale request => ['und'] only, so
     // tagged rows are excluded — the conservative side F2 established.
     const localeChain = localeLookupChain(analysis.requestLocale);
-    const rawCandidates = candidates; // folded candidates match LOWER(form) for single-word labels
     const aliasLocaleFilter = Prisma.sql`AND LOWER(ea.locale) = ANY(${localeChain}::text[])`;
+    // Labels carry a locale on their OWN column, chained through localeChain.
+    const labelLocaleFilter = Prisma.sql`AND LOWER(el.locale) = ANY(${localeChain}::text[])`;
     const matchedFormsSelect = Prisma.sql`
              LOWER(e.name) AS "normName",
              e.identity_key AS "foldedName",
@@ -1309,7 +1311,14 @@ export class EntityTextSearchService {
                  AND ea.status = 'active'
                  ${aliasLocaleFilter}
                  AND ea.form_folded = ANY(${candidates}::text[])
-             ) AS "foldedAliases"`;
+             ) AS "foldedAliases",
+             ARRAY(
+               SELECT el.form_folded FROM entity_labels el
+               WHERE el.entity_id = e.entity_id
+                 AND el.status = 'active'
+                 ${labelLocaleFilter}
+                 AND el.form_folded = ANY(${candidates}::text[])
+             ) AS "foldedLabels"`;
     const rows = await this.prisma.$queryRaw<
       {
         entityId: string;
@@ -1319,6 +1328,7 @@ export class EntityTextSearchService {
         foldedName: string | null;
         normAliases: string[];
         foldedAliases: string[];
+        foldedLabels: string[];
       }[]
     >(Prisma.sql`
       SELECT e.entity_id AS "entityId", e.name, e.type,
@@ -1366,8 +1376,13 @@ export class EntityTextSearchService {
           SELECT 1 FROM entity_labels el
           WHERE el.entity_id = e.entity_id
             AND el.status = 'active'
-            AND LOWER(el.locale) = ANY(${localeChain}::text[])
-            AND LOWER(el.form) = ANY(${rawCandidates}::text[])
+            ${labelLocaleFilter}
+            -- N1 FOLD SYMMETRY: fold BOTH sides. entity_labels.form_folded is
+            -- APP-WRITTEN by canonicalFold (the alias table's exact shape);
+            -- the old LOWER(el.form) compared unfolded stored text against the
+            -- always-folded candidate, so every accented/apostrophe es label
+            -- was unmatchable.
+            AND el.form_folded = ANY(${candidates}::text[])
         )
         ${territoryFilter}
     `);
@@ -1392,6 +1407,12 @@ export class EntityTextSearchService {
       }
       for (const alias of row.foldedAliases) {
         if (candidateSet.has(alias)) matchedPhrases.add(alias);
+      }
+      // Labels double as match surfaces: a folded label that equals a
+      // candidate is a matched phrase, so the span is attributable (without
+      // this the labels arm returned rows that produced no span).
+      for (const label of row.foldedLabels) {
+        if (candidateSet.has(label)) matchedPhrases.add(label);
       }
       for (const phrase of matchedPhrases) {
         for (const span of candidateSpans.get(phrase) ?? []) {
