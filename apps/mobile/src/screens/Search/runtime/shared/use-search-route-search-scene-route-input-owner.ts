@@ -26,7 +26,6 @@ export const useSearchRouteSearchSceneRouteInputOwner = ({
 
   React.useEffect(() => {
     routeSceneInputLane.publishRouteSceneSheetPolicyInputs({
-      sceneKey: 'search',
       sheetPolicyInputs: routeSearchSceneModel.routeSearchSceneSheetPolicyInputs,
     });
   }, [routeSceneInputLane, routeSearchSceneModel.routeSearchSceneSheetPolicyInputs]);

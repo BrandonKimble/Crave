@@ -10,20 +10,21 @@ import {
   type AppRouteSceneSheetPolicyInputs,
   type RouteScenePolicySnapshot,
 } from './app-route-scene-policy-contract';
-import type { RouteScenePolicyKey } from './route-scene-policy-authority-contract';
 import { resolveSearchCloseHandoffFreezeClassification } from '../../screens/Search/runtime/shared/search-freeze-classification-runtime';
 
 type RouteScenePolicyListener = () => void;
 
+/**
+ * F5418: these verbs carry no scene key. This controller's state IS the search
+ * scene (two `searchScene*PolicyInputs` singletons), so a second scene must not be
+ * RECEIVABLE — the guards that used to drop one silently were unfalsifiable, and
+ * deleting them alone would have let a second scene alias onto search state.
+ */
 export type RouteScenePolicyInputAuthority = {
   setForegroundPolicyInputs: (args: {
-    sceneKey: RouteScenePolicyKey;
     foregroundPolicyInputs: AppRouteSceneForegroundPolicyInputs;
   }) => void;
-  setSheetPolicyInputs: (args: {
-    sceneKey: RouteScenePolicyKey;
-    sheetPolicyInputs: AppRouteSceneSheetPolicyInputs;
-  }) => void;
+  setSheetPolicyInputs: (args: { sheetPolicyInputs: AppRouteSceneSheetPolicyInputs }) => void;
 };
 
 export type RouteScenePolicyOutputAuthority = {
@@ -70,16 +71,10 @@ export class RouteScenePolicyController {
   }
 
   private setRouteSceneForegroundPolicyInputs({
-    sceneKey,
     foregroundPolicyInputs,
   }: {
-    sceneKey: RouteScenePolicyKey;
     foregroundPolicyInputs: AppRouteSceneForegroundPolicyInputs;
   }): void {
-    if (sceneKey !== 'search') {
-      return;
-    }
-
     if (
       areAppRouteSceneForegroundPolicyInputsEqual(
         this.searchSceneForegroundPolicyInputs,
@@ -94,16 +89,10 @@ export class RouteScenePolicyController {
   }
 
   private setRouteSceneSheetPolicyInputs({
-    sceneKey,
     sheetPolicyInputs,
   }: {
-    sceneKey: RouteScenePolicyKey;
     sheetPolicyInputs: AppRouteSceneSheetPolicyInputs;
   }): void {
-    if (sceneKey !== 'search') {
-      return;
-    }
-
     if (
       areAppRouteSceneSheetPolicyInputsEqual(this.searchSceneSheetPolicyInputs, sheetPolicyInputs)
     ) {

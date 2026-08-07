@@ -13,15 +13,13 @@ import {
   type AppRouteSceneInputKey,
   type AppRouteSceneInputActions,
 } from './app-route-scene-input-registry';
-import type { RouteScenePolicyKey } from './route-scene-policy-authority-contract';
 
 export type RouteShellSceneInputLane = {
+  /** F5418: single-scene by type — the policy controller's state IS the search scene. */
   publishRouteSceneForegroundPolicyInputs: (args: {
-    sceneKey: RouteScenePolicyKey;
     foregroundPolicyInputs: AppRouteSceneForegroundPolicyInputs;
   }) => void;
   publishRouteSceneSheetPolicyInputs: (args: {
-    sceneKey: RouteScenePolicyKey;
     sheetPolicyInputs: AppRouteSceneSheetPolicyInputs;
   }) => void;
   publishRouteSceneDescriptor: (args: {
@@ -63,26 +61,16 @@ export const createRouteSceneInputLane = ({
   sceneInputActions: AppRouteSceneInputActions;
   scenePolicyInputAuthority: {
     setForegroundPolicyInputs: (args: {
-      sceneKey: RouteScenePolicyKey;
       foregroundPolicyInputs: AppRouteSceneForegroundPolicyInputs;
     }) => void;
-    setSheetPolicyInputs: (args: {
-      sceneKey: RouteScenePolicyKey;
-      sheetPolicyInputs: AppRouteSceneSheetPolicyInputs;
-    }) => void;
+    setSheetPolicyInputs: (args: { sheetPolicyInputs: AppRouteSceneSheetPolicyInputs }) => void;
   };
 }): RouteShellSceneInputLane => ({
-  publishRouteSceneForegroundPolicyInputs: ({ sceneKey, foregroundPolicyInputs }) => {
-    scenePolicyInputAuthority.setForegroundPolicyInputs({
-      sceneKey,
-      foregroundPolicyInputs,
-    });
+  publishRouteSceneForegroundPolicyInputs: ({ foregroundPolicyInputs }) => {
+    scenePolicyInputAuthority.setForegroundPolicyInputs({ foregroundPolicyInputs });
   },
-  publishRouteSceneSheetPolicyInputs: ({ sceneKey, sheetPolicyInputs }) => {
-    scenePolicyInputAuthority.setSheetPolicyInputs({
-      sceneKey,
-      sheetPolicyInputs,
-    });
+  publishRouteSceneSheetPolicyInputs: ({ sheetPolicyInputs }) => {
+    scenePolicyInputAuthority.setSheetPolicyInputs({ sheetPolicyInputs });
   },
   publishRouteSceneDescriptor: sceneInputActions.publishSceneDescriptor,
   publishRouteSceneShell: sceneInputActions.publishSceneShell,

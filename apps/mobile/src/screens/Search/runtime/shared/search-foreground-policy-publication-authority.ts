@@ -40,7 +40,6 @@ export const createSearchForegroundPolicyPublicationAuthority = ({
 
     lastPublishedForegroundPolicyInputs = foregroundPolicyInputs;
     routeSceneInputLane.publishRouteSceneForegroundPolicyInputs({
-      sceneKey: 'search',
       foregroundPolicyInputs,
     });
     return true;
