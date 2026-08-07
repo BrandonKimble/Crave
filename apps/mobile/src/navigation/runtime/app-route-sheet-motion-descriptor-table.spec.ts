@@ -1,38 +1,20 @@
-// P6 STEP-1 PARITY GATE (page-switch-master-plan.md §6-P6): the sheet-motion descriptor table
-// must resolve the SAME motion plan as the old inline per-transitionKind switch for EVERY
-// (source, target, transitionKind, currentSnap, explicitSnapTarget) combination — step 1 is a
-// pure relocation of the snap decision into config, zero behavior change.
+// TOTALITY + AMBIGUITY GATE for the sheet-motion descriptor table.
 //
-// The oracle below (legacyOracleSheetMotionPlan) is a frozen copy of the pre-table EFFECTIVE
-// flow behavior: resolveDefaultSheetMotionPlan's switch (app-route-scene-transition-policy-
-// runtime.ts, pre-P6) PLUS the one call-site override the relocation folded into the table (the
-// pollCreation revealRoute mode:'instant' — see the inline note on that branch). It is NOT a
-// byte-copy of the old switch alone. It exists ONLY as the parity oracle. WHEN THE OWNER
-// INTENTIONALLY TUNES A ROW (the whole point of req 2d), update the matching oracle branch here
-// in the same change — this spec pins ACCIDENTAL divergence, not the table's freedom to evolve.
+// F6604(a) 2026-08-07: the P6 step-1 PARITY ORACLE that used to open this file
+// (`legacyOracleSheetMotionPlan`, a hand-transcribed copy of the pre-table switch) is GONE.
+// It presented itself as a frozen fossil while its own header instructed authors to update it
+// "in the same change" on every intentional tune — three are on the record — so it was a second
+// implementation maintained in lockstep with the first, and a lockstep copy cannot police the
+// thing it copies. The parity claim now lives in app-route-sheet-motion-plan-parity.spec.ts as a
+// frozen content DIGEST over the full 24,200-point legacy domain plus a frozen readable sample,
+// neither of which can be edited in lockstep unknowingly (a change of intent must be BLESSED,
+// visibly, via scripts/bless-sheet-motion-parity.sh --bless).
 //
-// INTENTIONAL TUNE 2026-07-02 (owner decision): 'rememberedDetent' upgraded from live-shared
-// detent (preserveLiveY when the shared sheet sat usable) to TRUE PER-PAGE memory — snapTo the
-// TARGET scene's own remembered detent when usable (middle/expanded), else the fallback. The
-// oracle's lists/profile branch and the sweep's snap dimension were updated in-change.
-//
-// INTENTIONAL TUNE 2026-07-12 (owner ratified — THE TWO-POSTURE LAW, plans/root-snap-law.md
-// §Leg 2): topLevelSwitch now resolves to the TARGET side's posture seat ('postureSeat'):
-// home (search/polls) and content (all other root pages, ONE shared seat) each remember
-// wherever the user's finger last put the sheet — collapsed included — falling to the side's
-// cold-start seed (home 'collapsed', content 'expanded') only for hidden/unset. This replaced
-// the 2026-07-01 map-first `snapTo collapsed` home rows and the 2026-07-02 per-tab memory rows.
-// The oracle's topLevelSwitch branch was updated in-change. NOTE: the sweep feeds ONE remembered
-// value to every scene, which under seats is exact for the motion decision (the seat READ is the
-// resolver's job; seat aliasing/sharing is pinned by the snap-session runtime, not this oracle).
+// What remains here is what this file was always uniquely for: TOTALITY over the FULL scene set
+// (T1) and the no-ambiguous-duplicate-rows rule, plus the two-posture-law exhaustiveness sweep.
 
-import type { BottomSheetSnap } from '../../overlays/bottomSheetMotionTypes';
 import type { OverlayKey } from '../../overlays/types';
-import type {
-  RouteSceneSwitchSheetMotionPlan,
-  RouteSceneSwitchSheetTransitionKind,
-} from './app-overlay-route-transition-contract';
-import { resolveDefaultSheetMotionPlan } from './app-route-scene-transition-policy-runtime';
+import type { RouteSceneSwitchSheetTransitionKind } from './app-overlay-route-transition-contract';
 import {
   findAmbiguousSheetMotionDescriptorRowKeys,
   lookupDefaultSheetMotionDescriptorRow,
@@ -73,24 +55,6 @@ const SCENE_KEY_DOMAIN = {
 
 const ALL_SCENE_KEYS = Object.keys(SCENE_KEY_DOMAIN) as readonly OverlayKey[];
 
-// The parity oracle below is a byte-frozen fossil of the PRE-TABLE switch. Scene keys added
-// AFTER the table migration (the 7 stub scenes, 2026-07) have deliberate table rows the oracle
-// never knew about — parity is only meaningful over the legacy domain. Totality tests (T1,
-// duplicate-rows) still sweep the FULL domain.
-const LEGACY_SCENE_KEYS: readonly OverlayKey[] = [
-  'search',
-  'sheetHost',
-  'polls',
-  'lists',
-  'profile',
-  'restaurant',
-  'saveList',
-  'price',
-  'scoreInfo',
-  'pollCreation',
-  'pollDetail',
-];
-
 const TRANSITION_KIND_DOMAIN = {
   bootstrap: true,
   topLevelSwitch: true,
@@ -106,151 +70,7 @@ const ALL_TRANSITION_KINDS = Object.keys(
   TRANSITION_KIND_DOMAIN
 ) as readonly RouteSceneSwitchSheetTransitionKind[];
 
-// The TARGET scene's remembered detent (the per-scene snap-session ledger read).
-const ALL_REMEMBERED_SNAPS: readonly (BottomSheetSnap | null)[] = [
-  null,
-  'collapsed',
-  'middle',
-  'expanded',
-  'hidden',
-];
-
-const ALL_EXPLICIT_SNAPS: readonly (BottomSheetSnap | null)[] = [
-  null,
-  'collapsed',
-  'middle',
-  'expanded',
-  'hidden',
-];
-
-const MODAL_SCENES = new Set<OverlayKey>(['price', 'scoreInfo']);
-
-// ─── the byte-frozen pre-table switch (see header) ──────────────────────────────────────────
-const legacyOracleSheetMotionPlan = ({
-  sourceSceneKey,
-  targetSceneKey,
-  transitionKind,
-  explicitSnapTarget,
-  rememberedSceneSnap,
-}: {
-  sourceSceneKey: OverlayKey;
-  targetSceneKey: OverlayKey;
-  transitionKind: RouteSceneSwitchSheetTransitionKind;
-  explicitSnapTarget: BottomSheetSnap | null;
-  rememberedSceneSnap: BottomSheetSnap | null;
-}): RouteSceneSwitchSheetMotionPlan => {
-  if (MODAL_SCENES.has(targetSceneKey)) {
-    return { kind: 'none' };
-  }
-  if (explicitSnapTarget != null) {
-    return explicitSnapTarget === 'hidden'
-      ? { kind: 'hide' }
-      : { kind: 'snapTo', snap: explicitSnapTarget };
-  }
-  switch (transitionKind) {
-    case 'terminalDismiss':
-      return { kind: 'hide' };
-    case 'openChild':
-      // Owner ruling 2026-08-03: every sheet GLIDES — there is no instant mode anywhere.
-      // pollCreation's historical mode:'instant' override is deleted; it springs like any child.
-      if (
-        targetSceneKey === 'pollCreation' ||
-        targetSceneKey === 'saveList' ||
-        targetSceneKey === 'pollDetail'
-      ) {
-        return { kind: 'snapTo', snap: 'expanded' };
-      }
-      if (targetSceneKey === 'restaurant') {
-        return { kind: 'promoteAtLeast', snap: 'middle' };
-      }
-      return { kind: 'preserveLiveY' };
-    case 'closeChild':
-      // 2026-07-10 owner tune: pollDetail dismiss glides back to the PARENT's remembered
-      // detent (origin-faithful) instead of leaving the feed at the detail's expanded Y.
-      if (sourceSceneKey === 'pollDetail') {
-        return rememberedSceneSnap === 'middle' || rememberedSceneSnap === 'expanded'
-          ? { kind: 'snapTo', snap: rememberedSceneSnap }
-          : { kind: 'snapTo', snap: 'middle' };
-      }
-      return { kind: 'preserveLiveY' };
-    case 'topLevelSwitch': {
-      // 2026-07-12 intentional tune (see header): the TWO-POSTURE LAW. Every root page snaps
-      // to its side's posture seat; collapsed is a first-class remembered posture; hidden/
-      // unset fall to the side's cold-start seed (home collapsed, content expanded).
-      // 2026-07-26 intentional amendment (home-surface-charter Job 3): polls demoted to a
-      // CONTENT page — the home side is search (+ the 'home' docked scene, outside this
-      // legacy domain); polls joins lists/profile on the content seat.
-      const isHomeSide = targetSceneKey === 'search';
-      if (
-        isHomeSide ||
-        targetSceneKey === 'polls' ||
-        targetSceneKey === 'lists' ||
-        targetSceneKey === 'profile'
-      ) {
-        const isUsableSeatSnap =
-          rememberedSceneSnap === 'collapsed' ||
-          rememberedSceneSnap === 'middle' ||
-          rememberedSceneSnap === 'expanded';
-        return {
-          kind: 'snapTo',
-          snap: isUsableSeatSnap ? rememberedSceneSnap : isHomeSide ? 'collapsed' : 'expanded',
-        };
-      }
-      return { kind: 'preserveLiveY' };
-    }
-    case 'gesture':
-    case 'modalClose':
-    case 'bootstrap':
-    default:
-      return { kind: 'preserveLiveY' };
-  }
-};
-
-describe('sheet-motion descriptor table (P6 step 1)', () => {
-  it('resolves byte-identically to the pre-table switch over the LEGACY input domain', () => {
-    const mismatches: string[] = [];
-    let combos = 0;
-    for (const sourceSceneKey of LEGACY_SCENE_KEYS) {
-      for (const targetSceneKey of LEGACY_SCENE_KEYS) {
-        for (const transitionKind of ALL_TRANSITION_KINDS) {
-          for (const rememberedSceneSnap of ALL_REMEMBERED_SNAPS) {
-            for (const explicitSnapTarget of ALL_EXPLICIT_SNAPS) {
-              combos += 1;
-              const tablePlan = resolveDefaultSheetMotionPlan({
-                sourceSceneKey,
-                targetSceneKey,
-                transitionKind,
-                explicitSnapTarget,
-                resolveSceneRememberedSnap: () => rememberedSceneSnap,
-              });
-              const legacyPlan = legacyOracleSheetMotionPlan({
-                sourceSceneKey,
-                targetSceneKey,
-                transitionKind,
-                explicitSnapTarget,
-                rememberedSceneSnap,
-              });
-              if (JSON.stringify(tablePlan) !== JSON.stringify(legacyPlan)) {
-                mismatches.push(
-                  `${sourceSceneKey}->${targetSceneKey} kind=${transitionKind} ` +
-                    `remembered=${rememberedSceneSnap} explicit=${explicitSnapTarget}: ` +
-                    `table=${JSON.stringify(tablePlan)} legacy=${JSON.stringify(legacyPlan)}`
-                );
-              }
-            }
-          }
-        }
-      }
-    }
-    expect(combos).toBe(
-      LEGACY_SCENE_KEYS.length ** 2 *
-        ALL_TRANSITION_KINDS.length *
-        ALL_REMEMBERED_SNAPS.length *
-        ALL_EXPLICIT_SNAPS.length
-    );
-    expect(mismatches).toEqual([]);
-  });
-
+describe('sheet-motion descriptor table (totality + ambiguity)', () => {
   // F6604(b): this case used to assert `expect(row).not.toBeNull()` over all 3,528
   // combinations. `lookupDefaultSheetMotionDescriptorRow` returns a NON-NULLABLE
   // SheetMotionDescriptorRow and THROWS when the catch-all is missing, so that assertion
