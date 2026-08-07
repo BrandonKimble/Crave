@@ -33,15 +33,34 @@ type SearchAutocompleteRuntimeValue = {
 const bucketCoordinate = (value: number | undefined): string =>
   typeof value === 'number' && Number.isFinite(value) ? value.toFixed(2) : 'none';
 
-const buildAutocompleteScopeKey = (bounds: MapBounds | null): string =>
-  bounds
-    ? [
-        bucketCoordinate(bounds.northEast.lat),
-        bucketCoordinate(bounds.northEast.lng),
-        bucketCoordinate(bounds.southWest.lat),
-        bucketCoordinate(bounds.southWest.lng),
-      ].join(':')
-    : 'global';
+/**
+ * F6004: THE SCOPE KEY IS EVERY INPUT THE REQUEST CARRIES.
+ *
+ * The autocomplete request passes BOTH `bounds` and `userLocation` (see the
+ * execution runtime), so both belong in the identity of anything cached from
+ * its answer. This used to be built from `bounds` alone and applied as a
+ * wholesale `cache.clear()` effect keyed on it — an invalidation that is only
+ * correct AFTER commit, while the cache is read during RENDER by the lifecycle
+ * memo. The key carries the scope now, so there is no moment at which the map
+ * holds a reachable wrong-scope entry, and no effect to run.
+ */
+export const buildAutocompleteScopeKey = (
+  bounds: MapBounds | null,
+  userLocation: Coordinate | null
+): string =>
+  [
+    bounds
+      ? [
+          bucketCoordinate(bounds.northEast.lat),
+          bucketCoordinate(bounds.northEast.lng),
+          bucketCoordinate(bounds.southWest.lat),
+          bucketCoordinate(bounds.southWest.lng),
+        ].join(':')
+      : 'global',
+    userLocation
+      ? [bucketCoordinate(userLocation.lat), bucketCoordinate(userLocation.lng)].join(':')
+      : 'nowhere',
+  ].join('|');
 
 export const useSearchAutocompleteRuntime = ({
   query,
@@ -54,7 +73,7 @@ export const useSearchAutocompleteRuntime = ({
   bounds,
   userLocation,
 }: UseSearchAutocompleteRuntimeArgs) => {
-  const cacheScopeKey = buildAutocompleteScopeKey(bounds);
+  const cacheScopeKey = buildAutocompleteScopeKey(bounds, userLocation);
   const autocompleteCacheRuntime = useSearchAutocompleteCacheRuntime({
     cancelAutocomplete,
     setSuggestions,

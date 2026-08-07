@@ -13,6 +13,37 @@ type CachedAutocompleteEntry = {
   updatedAtMs: number;
 };
 
+/**
+ * F6004: A CACHE ENTRY'S KEY IS THE COMPLETE SET OF INPUTS THAT PRODUCED IT.
+ *
+ * Entries used to be keyed by folded query text alone, with the request's scope
+ * (viewport bounds, and — absent from the old key entirely — the userLocation
+ * the request also carries) applied as a wholesale `cache.clear()` in an effect
+ * keyed on the scope. That is right only AFTER commit, and this map is read
+ * during RENDER by the lifecycle memo: on a render where the query and the
+ * bounds bucket move in the same pass, the memo could return an entry minted
+ * under the previous scope and the panel would show it once — in a family whose
+ * two written rules are "never blank" and "never flash stale rows".
+ *
+ * The scope is part of the key now. Cross-scope reuse is unrepresentable rather
+ * than cleaned up after; the clearing effect is gone; entries from a previous
+ * scope survive until LRU evicts them, which costs the same bounded peak
+ * (MAX_AUTOCOMPLETE_CACHE_ENTRIES) and turns a pan-back into a HIT.
+ *
+ * `\u0000` cannot occur in a folded query, so the split is unambiguous — which
+ * matters because the prefix-placeholder scan must compare query text WITHIN a
+ * scope, never across.
+ */
+const CACHE_KEY_SEPARATOR = '\u0000';
+
+const buildCacheKey = (scopeKey: string, normalizedQuery: string): string =>
+  `${scopeKey}${CACHE_KEY_SEPARATOR}${normalizedQuery}`;
+
+const readCacheKeyQuery = (key: string, scopeKey: string): string | null => {
+  const prefix = `${scopeKey}${CACHE_KEY_SEPARATOR}`;
+  return key.startsWith(prefix) ? key.slice(prefix.length) : null;
+};
+
 type CachedAutocompleteLookup = {
   matches: AutocompleteMatch[];
   isExactMatch: boolean;
@@ -38,10 +69,6 @@ export const useSearchAutocompleteCacheRuntime = ({
 }: UseSearchAutocompleteCacheRuntimeArgs): SearchAutocompleteCacheRuntime => {
   const autocompleteCacheRef = React.useRef<Map<string, CachedAutocompleteEntry>>(new Map());
 
-  React.useEffect(() => {
-    autocompleteCacheRef.current.clear();
-  }, [cacheScopeKey]);
-
   const clearAutocompleteSuggestions = React.useCallback(() => {
     writeAutocompleteSuggestions(setSuggestions, []);
   }, [setSuggestions]);
@@ -54,30 +81,35 @@ export const useSearchAutocompleteCacheRuntime = ({
       }
 
       const now = Date.now();
-      const exact = autocompleteCacheRef.current.get(normalized);
+      const exact = autocompleteCacheRef.current.get(buildCacheKey(cacheScopeKey, normalized));
       if (exact) {
+        const exactKey = buildCacheKey(cacheScopeKey, normalized);
+        autocompleteCacheRef.current.delete(exactKey);
         if (now - exact.updatedAtMs <= AUTOCOMPLETE_CACHE_TTL_MS) {
-          autocompleteCacheRef.current.delete(normalized);
-          autocompleteCacheRef.current.set(normalized, exact);
+          autocompleteCacheRef.current.set(exactKey, exact);
           return {
             matches: exact.matches,
             isExactMatch: true,
           };
         }
-        autocompleteCacheRef.current.delete(normalized);
       }
 
       const staleKeys: string[] = [];
-      const prefixCandidates: Array<{ key: string; entry: CachedAutocompleteEntry }> = [];
+      const prefixCandidates: Array<{
+        key: string;
+        query: string;
+        entry: CachedAutocompleteEntry;
+      }> = [];
       for (const [key, entry] of autocompleteCacheRef.current.entries()) {
         if (now - entry.updatedAtMs > AUTOCOMPLETE_CACHE_TTL_MS) {
           staleKeys.push(key);
           continue;
         }
-        if (normalized === key || !normalized.startsWith(key)) {
+        const query = readCacheKeyQuery(key, cacheScopeKey);
+        if (query == null || normalized === query || !normalized.startsWith(query)) {
           continue;
         }
-        prefixCandidates.push({ key, entry });
+        prefixCandidates.push({ key, query, entry });
       }
 
       staleKeys.forEach((key) => {
@@ -91,7 +123,7 @@ export const useSearchAutocompleteCacheRuntime = ({
       // filtered set is empty, shorter prefixes get a turn; when nothing
       // survives, return null so the caller keeps the PREVIOUS list while the
       // fresh request loads (rule b: never blank the panel on a keystroke).
-      prefixCandidates.sort((left, right) => right.key.length - left.key.length);
+      prefixCandidates.sort((left, right) => right.query.length - left.query.length);
       for (const candidate of prefixCandidates) {
         const filteredMatches = filterAutocompletePlaceholderMatches(
           candidate.entry.matches,
@@ -110,7 +142,7 @@ export const useSearchAutocompleteCacheRuntime = ({
 
       return null;
     },
-    []
+    [cacheScopeKey]
   );
 
   const writeAutocompleteCache = React.useCallback(
@@ -119,10 +151,9 @@ export const useSearchAutocompleteCacheRuntime = ({
       if (!normalized) {
         return;
       }
-      if (autocompleteCacheRef.current.has(normalized)) {
-        autocompleteCacheRef.current.delete(normalized);
-      }
-      autocompleteCacheRef.current.set(normalized, {
+      const key = buildCacheKey(cacheScopeKey, normalized);
+      autocompleteCacheRef.current.delete(key);
+      autocompleteCacheRef.current.set(key, {
         matches,
         updatedAtMs: Date.now(),
       });
@@ -134,7 +165,7 @@ export const useSearchAutocompleteCacheRuntime = ({
         autocompleteCacheRef.current.delete(oldestKey);
       }
     },
-    []
+    [cacheScopeKey]
   );
 
   const showCachedSuggestionsIfFresh = React.useCallback(
