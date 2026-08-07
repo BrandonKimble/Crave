@@ -21,11 +21,6 @@ export type RestaurantRoutePanelDraft = {
   data: RestaurantOverlayData | null;
 };
 
-export type GlobalRestaurantRouteDraft = {
-  sessionToken: number;
-  panelDraft: RestaurantRoutePanelDraft;
-};
-
 export type RestaurantRoutePanelHostConfig = {
   shouldFreezeContent?: boolean;
   interactionEnabled?: boolean;

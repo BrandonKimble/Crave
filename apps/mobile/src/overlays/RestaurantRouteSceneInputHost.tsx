@@ -9,15 +9,9 @@ import type {
   AppRouteSceneStackShellSpec,
 } from '../navigation/runtime/app-route-scene-descriptor-contract';
 import type { RouteShellSceneInputLane } from '../navigation/runtime/app-route-scene-runtime';
-import { useAppRouteSceneRuntime } from '../navigation/runtime/AppRouteSceneRuntimeProvider';
-import type { RouteGlobalRestaurantOverlaySnapshot } from '../navigation/runtime/route-global-restaurant-overlay-snapshot-contract';
 import { useRouteAuthoritySelector } from '../navigation/runtime/use-route-authority-selector';
 import type { SearchOverlayLocalRestaurantSheetHostSnapshot } from '../screens/Search/runtime/shared/search-overlay-local-restaurant-sheet-host-snapshot-contract';
-import type {
-  SearchOverlayGlobalRestaurantHostAuthority,
-  SearchOverlayLocalRestaurantSheetHostAuthority,
-} from '../screens/Search/runtime/shared/search-root-host-authority-contract';
-import type { RouteSceneLayoutSnapshot } from '../screens/Search/runtime/shared/route-scene-layout-snapshot-contract';
+import type { SearchOverlayLocalRestaurantSheetHostAuthority } from '../screens/Search/runtime/shared/search-root-host-authority-contract';
 import {
   selectSearchSurfaceVisualPolicy,
   useSearchSurfaceRuntimeSelector,
@@ -30,7 +24,6 @@ import { useRestaurantRouteContentSpecRuntime } from './useRestaurantRouteConten
 import { useRestaurantRouteEntryRuntime } from './useRestaurantRouteEntryRuntime';
 
 type RestaurantRouteSceneInputHostProps = {
-  overlayGlobalRestaurantHostAuthority: SearchOverlayGlobalRestaurantHostAuthority;
   overlayLocalRestaurantSheetHostAuthority: SearchOverlayLocalRestaurantSheetHostAuthority;
   routeSceneInputLane: RouteShellSceneInputLane;
 };
@@ -175,44 +168,15 @@ const createRestaurantSharedSceneDescriptor = (
   };
 };
 
+// F5000: this host used to resolve `parent ?? search`. The parent-scoped
+// (global-restaurant-draft) leg is GONE — its only producer, `openRestaurantRoute`, had no
+// callers, so its draft was never written and `parent` was structurally always null. Every
+// real opener (polls / lists / profile, via the entity-ref executor's `restaurantWorld`
+// action) routes through the COMMITTED search world, i.e. the search leg below.
 const RestaurantRouteSceneInputHost = ({
-  overlayGlobalRestaurantHostAuthority,
   overlayLocalRestaurantSheetHostAuthority,
   routeSceneInputLane,
 }: RestaurantRouteSceneInputHostProps) => {
-  const routeSceneRuntime = useAppRouteSceneRuntime();
-  const closeRuntime = React.useMemo(
-    () => routeSceneRuntime.routeGlobalRestaurantRouteActions,
-    [routeSceneRuntime.routeGlobalRestaurantRouteActions]
-  );
-
-  const parentRestaurantSnapshot = useRouteAuthoritySelector<
-    RouteGlobalRestaurantOverlaySnapshot,
-    RouteGlobalRestaurantOverlaySnapshot
-  >({
-    subscribe: React.useCallback(
-      (listener: () => void) => overlayGlobalRestaurantHostAuthority.subscribe(listener),
-      [overlayGlobalRestaurantHostAuthority]
-    ),
-    getSnapshot: overlayGlobalRestaurantHostAuthority.getSnapshot,
-    selector: React.useCallback((snapshot) => snapshot, []),
-    attributionOwner: 'RestaurantRouteSceneInputHost',
-    attributionOperation: 'parentRestaurantSnapshotSelector',
-  });
-  const routeSceneLayoutSnapshot = useRouteAuthoritySelector<
-    RouteSceneLayoutSnapshot,
-    RouteSceneLayoutSnapshot
-  >({
-    subscribe: React.useCallback(
-      (listener: () => void) => routeSceneRuntime.routeSceneLayoutAuthority.subscribe(listener),
-      [routeSceneRuntime.routeSceneLayoutAuthority]
-    ),
-    getSnapshot: routeSceneRuntime.routeSceneLayoutAuthority.getSnapshot,
-    selector: React.useCallback((snapshot) => snapshot, []),
-    attributionOwner: 'RestaurantRouteSceneInputHost',
-    attributionOperation: 'routeSceneLayoutSnapshotSelector',
-  });
-
   const {
     restaurantSessionSnapshot,
     restaurantControlSelectionSnapshot,
@@ -231,38 +195,6 @@ const RestaurantRouteSceneInputHost = ({
     attributionOwner: 'RestaurantRouteSceneInputHost',
     attributionOperation: 'searchRestaurantSnapshotSelector',
   });
-
-  const parentPresentationDraft = parentRestaurantSnapshot.presentationDraft;
-  const isActiveParentRestaurant =
-    parentPresentationDraft != null &&
-    parentRestaurantSnapshot.activeSessionToken === parentPresentationDraft.sessionToken;
-  const parentRestaurantEntryRuntime = useRestaurantRouteEntryRuntime({
-    panelDraft: isActiveParentRestaurant ? parentPresentationDraft.panelDraft : null,
-    onRequestClose: () => {
-      if (parentPresentationDraft == null) {
-        return;
-      }
-      const currentSessionToken = closeRuntime.getActiveRestaurantRouteSessionToken();
-      if (currentSessionToken !== parentPresentationDraft.sessionToken) {
-        return;
-      }
-      closeRuntime.closeRestaurantRoute(parentPresentationDraft.sessionToken);
-    },
-    hostConfig: null,
-  });
-  const parentRestaurantContentSpecRuntime = useRestaurantRouteContentSpecRuntime({
-    panel: parentRestaurantEntryRuntime.panel,
-    hostConfig: parentRestaurantEntryRuntime.hostConfig,
-    navBarTop: routeSceneLayoutSnapshot.routeSceneLayout?.navBarTop ?? 0,
-    searchBarTop: routeSceneLayoutSnapshot.routeSceneLayout?.searchBarTop ?? 0,
-  });
-  const parentRestaurantSceneDescriptor = React.useMemo(
-    () =>
-      createRestaurantSharedSceneDescriptor(
-        isActiveParentRestaurant ? parentRestaurantContentSpecRuntime.spec : null
-      ),
-    [isActiveParentRestaurant, parentRestaurantContentSpecRuntime.spec]
-  );
 
   const restaurantOverlayAnimatedStyle = useAnimatedStyle(
     () => ({
@@ -326,18 +258,16 @@ const RestaurantRouteSceneInputHost = ({
     [searchRestaurantContentSpecRuntime.spec, shouldUseSearchRestaurant]
   );
 
-  const activeRestaurantSceneDescriptor =
-    parentRestaurantSceneDescriptor ?? searchRestaurantSceneDescriptor;
+  const activeRestaurantSceneDescriptor = searchRestaurantSceneDescriptor;
   const didPublishSceneInputRef = React.useRef(false);
 
-  // P3 persistent header: publish the WINNING entry's header inputs (freeze-retained data +
-  // favorite/close handlers) to the restaurant-header-live-state store — the exact `parent ??
-  // search` resolution the scene descriptor above uses, so the hoisted persistent header always
+  // P3 persistent header: publish the entry's header inputs (freeze-retained data + close
+  // handler) to the restaurant-header-live-state store, so the hoisted persistent header always
   // shows the same restaurant the leg body does (incl. the entity-tap seeded name at frame 1 and
   // the results_dismissing preserve window).
-  const activeRestaurantHeaderState =
-    (isActiveParentRestaurant ? parentRestaurantContentSpecRuntime.headerState : null) ??
-    (shouldUseSearchRestaurant ? searchRestaurantContentSpecRuntime.headerState : null);
+  const activeRestaurantHeaderState = shouldUseSearchRestaurant
+    ? searchRestaurantContentSpecRuntime.headerState
+    : null;
 
   React.useLayoutEffect(() => {
     publishRestaurantHeaderLiveState(activeRestaurantHeaderState);

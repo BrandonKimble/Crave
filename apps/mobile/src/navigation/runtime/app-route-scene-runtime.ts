@@ -70,11 +70,6 @@ import {
   type AppRouteOverlayCommandControllerRuntime,
 } from './app-route-overlay-command-controller';
 import {
-  createAppRouteGlobalRestaurantRouteController,
-  type AppRouteGlobalRestaurantRouteActions,
-  type AppRouteGlobalRestaurantRouteAuthority,
-} from './app-route-global-restaurant-route-controller';
-import {
   createAppRouteSheetSnapSessionRuntime,
   type AppRouteSheetSnapSessionActions,
   type AppRouteSheetSnapSessionAuthority,
@@ -131,8 +126,6 @@ export type AppRouteSceneRuntime = {
   routeOverlayCommandAuthority: AppRouteOverlayCommandAuthority;
   routeOverlayCommandActions: AppRouteOverlayCommandActions;
   routeOverlayCommandController: AppRouteOverlayCommandControllerRuntime;
-  routeGlobalRestaurantOverlayAuthority: AppRouteGlobalRestaurantRouteAuthority;
-  routeGlobalRestaurantRouteActions: AppRouteGlobalRestaurantRouteActions;
   routeOverlayRouteCommandRuntime: AppOverlayRouteCommandRuntime;
   routeOverlayTransitionActions: RouteSceneSwitchTransitionActions;
   routeSheetSnapSessionAuthority: AppRouteSheetSnapSessionAuthority;
@@ -220,10 +213,6 @@ export const createAppRouteSceneRuntime = (): AppRouteSceneRuntime => {
       routeSceneFoundationRuntime.sceneInputAuthority.getSceneInputSnapshot(sceneKey)?.shellSpec
         ?.snapPoints ?? null,
   });
-  const routeGlobalRestaurantRouteController = createAppRouteGlobalRestaurantRouteController({
-    routeOverlayNavigationAuthority: routeSceneFoundationRuntime.routeSheetHostNavigationAuthority,
-    routeOverlayRouteCommandRuntime,
-  });
   const routePollsSceneRuntime = createAppRoutePollsSceneRuntime();
   const routeDynamicSceneInputRuntime = createAppRouteDynamicSceneInputRuntimeController();
   const routeSceneStackRuntime = createAppRouteSceneStackRuntime({
@@ -271,8 +260,6 @@ export const createAppRouteSceneRuntime = (): AppRouteSceneRuntime => {
     routeOverlayCommandAuthority: routeOverlayCommandController.authority,
     routeOverlayCommandActions: routeOverlayCommandController.actions,
     routeOverlayCommandController,
-    routeGlobalRestaurantOverlayAuthority: routeGlobalRestaurantRouteController.authority,
-    routeGlobalRestaurantRouteActions: routeGlobalRestaurantRouteController.actions,
     routeOverlayRouteCommandRuntime,
     routeOverlayTransitionActions: routeSceneSwitchRuntime,
     routeSheetSnapSessionAuthority: routeSheetSnapSessionRuntime.authority,
@@ -309,7 +296,6 @@ export const createAppRouteSceneRuntime = (): AppRouteSceneRuntime => {
       routePollsSceneRuntime.dispose();
       routeDynamicSceneInputRuntime.dispose();
       routeStaticSceneDescriptorRuntime.dispose();
-      routeGlobalRestaurantRouteController.dispose();
       routeOverlayCommandController.dispose();
       routeSheetSnapSessionRuntime.dispose();
       routeSceneSwitchRuntime.dispose();

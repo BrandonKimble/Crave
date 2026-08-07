@@ -33,8 +33,6 @@ export type {
 
 export type { RouteSceneLayoutAuthority } from '../../../../navigation/runtime/route-scene-layout-state-controller';
 
-export type { AppRouteGlobalRestaurantRouteAuthority as RouteGlobalRestaurantOverlayAuthority } from '../../../../navigation/runtime/app-route-global-restaurant-route-controller';
-
 export type { RouteLocalRestaurantOverlaySessionAuthority } from '../../../../navigation/runtime/route-local-restaurant-overlay-session-state-controller';
 
 export type { RouteLocalRestaurantOverlayInteractionAuthority } from '../../../../navigation/runtime/route-local-restaurant-overlay-interaction-runtime';

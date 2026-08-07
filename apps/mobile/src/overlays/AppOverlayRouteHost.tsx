@@ -13,7 +13,6 @@ import type {
 import type {
   SearchOverlayChromeHostAuthority,
   SearchOverlayGateHostAuthority,
-  SearchOverlayGlobalRestaurantHostAuthority,
   SearchOverlayLocalRestaurantSheetHostAuthority,
   SearchOverlayShellHostAuthority,
 } from '../screens/Search/runtime/shared/search-root-host-authority-contract';
@@ -32,7 +31,6 @@ export type AppOverlayRouteHostRuntime = {
   overlayChromeHostAuthority: SearchOverlayChromeHostAuthority;
   overlayGateHostAuthority: SearchOverlayGateHostAuthority;
   overlayShellHostAuthority: SearchOverlayShellHostAuthority;
-  overlayGlobalRestaurantHostAuthority: SearchOverlayGlobalRestaurantHostAuthority;
   overlayLocalRestaurantSheetHostAuthority: SearchOverlayLocalRestaurantSheetHostAuthority;
   routeSceneDisplayTargetRegistry: AppRouteSceneDisplayTargetRegistry;
   routeSceneInputLane: RouteShellSceneInputLane;
@@ -117,7 +115,6 @@ const AppOverlayRouteHost = ({
   overlayChromeHostAuthority,
   overlayGateHostAuthority,
   overlayShellHostAuthority,
-  overlayGlobalRestaurantHostAuthority,
   overlayLocalRestaurantSheetHostAuthority,
   routeSceneDisplayTargetRegistry,
   routeSceneInputLane,
@@ -133,7 +130,6 @@ const AppOverlayRouteHost = ({
         <SearchOverlayChromeHost overlayChromeHostAuthority={overlayChromeHostAuthority} />
         <SearchOverlayShellHost overlayShellHostAuthority={overlayShellHostAuthority} />
         <RestaurantRouteSceneInputHost
-          overlayGlobalRestaurantHostAuthority={overlayGlobalRestaurantHostAuthority}
           overlayLocalRestaurantSheetHostAuthority={overlayLocalRestaurantSheetHostAuthority}
           routeSceneInputLane={routeSceneInputLane}
         />
@@ -180,11 +176,6 @@ const areAppOverlayRouteHostPropsEqual = (
     nextProps.overlayShellHostAuthority
   );
   markAppOverlayRouteHostPropDiff(
-    'overlayGlobalRestaurantHostAuthority',
-    previousProps.overlayGlobalRestaurantHostAuthority,
-    nextProps.overlayGlobalRestaurantHostAuthority
-  );
-  markAppOverlayRouteHostPropDiff(
     'overlayLocalRestaurantSheetHostAuthority',
     previousProps.overlayLocalRestaurantSheetHostAuthority,
     nextProps.overlayLocalRestaurantSheetHostAuthority
@@ -223,8 +214,6 @@ const areAppOverlayRouteHostPropsEqual = (
     previousProps.overlayChromeHostAuthority === nextProps.overlayChromeHostAuthority &&
     previousProps.overlayGateHostAuthority === nextProps.overlayGateHostAuthority &&
     previousProps.overlayShellHostAuthority === nextProps.overlayShellHostAuthority &&
-    previousProps.overlayGlobalRestaurantHostAuthority ===
-      nextProps.overlayGlobalRestaurantHostAuthority &&
     previousProps.overlayLocalRestaurantSheetHostAuthority ===
       nextProps.overlayLocalRestaurantSheetHostAuthority &&
     previousProps.routeSceneDisplayTargetRegistry === nextProps.routeSceneDisplayTargetRegistry &&

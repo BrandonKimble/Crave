@@ -1,5 +1,4 @@
 import type {
-  RouteGlobalRestaurantOverlayAuthority,
   RouteHostOverlayGeometryAuthority,
   RouteHostVisualRuntimeAuthority,
   RouteLocalRestaurantOverlayInteractionAuthority,
@@ -26,7 +25,6 @@ import type {
 
 export type {
   RouteOverlayVisibilityAuthority,
-  RouteGlobalRestaurantOverlayAuthority,
   RouteLocalRestaurantOverlaySessionAuthority,
   RouteLocalRestaurantOverlayPanelContentAuthority,
   RouteLocalRestaurantOverlayPolicyAuthority,

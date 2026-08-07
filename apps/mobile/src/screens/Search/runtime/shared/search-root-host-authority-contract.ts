@@ -5,7 +5,6 @@ import type { SearchOverlayShellHostSnapshot } from './search-overlay-shell-host
 import type { RouteLocalRestaurantOverlayInteractionSnapshot } from '../../../../navigation/runtime/route-local-restaurant-overlay-interaction-snapshot-contract';
 import type { RouteLocalRestaurantOverlayPanelContentSnapshot } from '../../../../navigation/runtime/route-local-restaurant-overlay-panel-content-snapshot-contract';
 import type { RouteLocalRestaurantOverlayPolicySnapshot } from '../../../../navigation/runtime/route-local-restaurant-overlay-policy-snapshot-contract';
-import type { RouteGlobalRestaurantOverlaySnapshot } from '../../../../navigation/runtime/route-global-restaurant-overlay-snapshot-contract';
 import type { RouteLocalRestaurantOverlaySessionSnapshot } from '../../../../navigation/runtime/route-local-restaurant-overlay-session-snapshot-contract';
 import type {
   SearchOverlayChromeHostSnapshot,
@@ -65,9 +64,6 @@ export type SearchOverlaySuggestionSelectionHostAuthority =
   SnapshotAuthority<SearchForegroundSuggestionSelectionInputs>;
 
 export type SearchOverlayShellHostAuthority = SnapshotAuthority<SearchOverlayShellHostSnapshot>;
-
-export type SearchOverlayGlobalRestaurantHostAuthority =
-  SnapshotAuthority<RouteGlobalRestaurantOverlaySnapshot>;
 
 export type SearchOverlayLocalRestaurantSessionHostAuthority =
   SnapshotAuthority<RouteLocalRestaurantOverlaySessionSnapshot>;

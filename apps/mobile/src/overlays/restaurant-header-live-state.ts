@@ -5,11 +5,14 @@ import type { RestaurantOverlayData } from './restaurantRoutePanelContract';
 // P3 persistent header (page-switch-master-plan.md §6-P3 / §8-R10) — the RESTAURANT header's
 // live-state publication. The persistent header's Title/Action/grab components mount OUTSIDE the
 // restaurant panel (inside the hoisted PersistentSheetHeaderHost chrome) and therefore cannot
-// read the panel's props. The restaurant presentation, however, has TWO producers (the
-// parent-scoped global-restaurant draft opened from polls/lists/profile, and the
-// search-scoped control-selection snapshot the search runtime seeds), and the ONE place the
-// winner is resolved — including the freeze-retain semantics the header must honor — is
-// RestaurantRouteSceneInputHost (`parent ?? search`, mirroring its published scene descriptor).
+// read the panel's props. The restaurant presentation is produced by the search-scoped
+// control-selection snapshot the search runtime seeds, and the ONE place it is resolved —
+// including the freeze-retain semantics the header must honor — is
+// RestaurantRouteSceneInputHost, mirroring its published scene descriptor. (F5000: there used
+// to be a second, parent-scoped producer named here — a global-restaurant draft "opened from
+// polls/lists/profile". It had no opener: all three of those surfaces route a restaurant tap
+// through the entity-ref executor's `restaurantWorld` action into the committed search world,
+// and the draft's only writer had zero callers. That leg is deleted.)
 // Re-deriving that selection here would recreate exactly the multi-site presented-scene disease
 // the PresentationFrame work deletes, so instead the input host (an app-level input-writer that
 // is NOT the panel and persists across scene switches) publishes the resolved header inputs to

@@ -57,7 +57,6 @@ const AppRouteOverlayHostRuntimeBoundary = React.memo(function AppRouteOverlayHo
       overlayChromeHostAuthority={authoritySurface.overlayChromeHostAuthority}
       overlayGateHostAuthority={authoritySurface.overlayGateHostAuthority}
       overlayShellHostAuthority={authoritySurface.overlayShellHostAuthority}
-      overlayGlobalRestaurantHostAuthority={routeSceneRuntime.routeGlobalRestaurantOverlayAuthority}
       overlayLocalRestaurantSheetHostAuthority={
         authoritySurface.overlayLocalRestaurantSheetHostAuthority
       }

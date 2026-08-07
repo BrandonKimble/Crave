@@ -11,11 +11,11 @@ import type {
   RestaurantRoutePanelHostConfig,
 } from './restaurantRoutePanelContract';
 
-type RestaurantRouteEntrySource =
-  | { panelDraft: RestaurantRoutePanelDraft | null; data?: never }
-  | { panelDraft?: never; data: RestaurantOverlayData | null };
-
-type UseRestaurantRouteEntryRuntimeArgs = RestaurantRouteEntrySource & {
+// F5000: this used to take a two-armed source union — a parent-scoped `panelDraft` (from the
+// global-restaurant route draft) OR search-scoped `data`. The panelDraft arm's only producer,
+// `openRestaurantRoute`, had no callers, so that arm was never taken; `data` is the source.
+type UseRestaurantRouteEntryRuntimeArgs = {
+  data: RestaurantOverlayData | null;
   hostConfig: RestaurantRoutePanelHostConfig | null;
   onRequestClose: RestaurantRoutePanelContract['onRequestClose'];
 };
@@ -47,20 +47,12 @@ const useStableEvent = <TArgs extends readonly unknown[], TResult>(
 };
 
 export const useRestaurantRouteEntryRuntime = ({
+  data,
   hostConfig,
   onRequestClose,
-  ...source
 }: UseRestaurantRouteEntryRuntimeArgs): RestaurantRouteEntryRuntime => {
-  const sourcePanelDraft = 'panelDraft' in source ? source.panelDraft : undefined;
-  const sourceData = 'data' in source ? source.data : undefined;
   const stableRequestClose = useStableEvent(onRequestClose);
-  const panelDraft = React.useMemo(() => {
-    if (sourcePanelDraft !== undefined) {
-      return sourcePanelDraft;
-    }
-
-    return createRestaurantRoutePanelDraft({ data: sourceData ?? null });
-  }, [sourceData, sourcePanelDraft]);
+  const panelDraft = React.useMemo(() => createRestaurantRoutePanelDraft({ data }), [data]);
   const retainedPanelDraftRef = React.useRef<RetainedRestaurantRoutePanelDraft>({
     panelDraft: null,
     payloadSignature: null,
