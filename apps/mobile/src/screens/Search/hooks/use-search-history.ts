@@ -43,13 +43,11 @@ type UseSearchHistoryResult = {
   trackRecentlyViewedFood: (value: TrackRecentlyViewedFoodInput) => void;
 };
 
-let recentHistoryRequest: Promise<void> | null = null;
-let recentlyViewedRequest: Promise<void> | null = null;
-let recentlyViewedFoodsRequest: Promise<void> | null = null;
-let hasLoadedRecent = false;
-let hasLoadedRecentlyViewed = false;
-let hasLoadedRecentlyViewedFoods = false;
-
+// F1053(b) — request-dedupe + load-once state lives in searchHistoryStore now (it is state
+// ABOUT the data). Read/written imperatively via getState()/setState() from the load
+// callbacks below — never through a reactive selector — so nothing subscribes to it and
+// render timing is byte-identical to the module-level `let`s these replaced. The sign-out
+// reset is one `resetHistory()` call (they are part of the store's defaultState).
 const useSearchHistory = ({
   isSignedIn,
   autoLoad = true,
@@ -91,16 +89,17 @@ const useSearchHistory = ({
       if (!isSignedIn) {
         setIsRecentLoading(false);
         setRecentSearches([]);
-        hasLoadedRecent = false;
+        useSearchHistoryStore.setState({ hasLoadedRecent: false });
         return;
       }
 
-      if (!force && hasLoadedRecent) {
+      if (!force && useSearchHistoryStore.getState().hasLoadedRecent) {
         return;
       }
 
-      if (recentHistoryRequest) {
-        return recentHistoryRequest;
+      const inFlight = useSearchHistoryStore.getState().recentHistoryRequest;
+      if (inFlight) {
+        return inFlight;
       }
 
       const request = (async () => {
@@ -108,7 +107,7 @@ const useSearchHistory = ({
         try {
           const history = await searchService.recentHistory(RECENT_HISTORY_LIMIT);
           setRecentSearches(history);
-          hasLoadedRecent = true;
+          useSearchHistoryStore.setState({ hasLoadedRecent: true });
         } catch (err) {
           // F838 (2026-08-03): this failure used to reach NOBODY — the request passes
           // `suppressErrorLog`, so the interceptor stays quiet, and this `logger.warn` is
@@ -122,11 +121,11 @@ const useSearchHistory = ({
           });
         } finally {
           setIsRecentLoading(false);
-          recentHistoryRequest = null;
+          useSearchHistoryStore.setState({ recentHistoryRequest: null });
         }
       })();
 
-      recentHistoryRequest = request;
+      useSearchHistoryStore.setState({ recentHistoryRequest: request });
       return request;
     },
     [isSignedIn, setIsRecentLoading, setRecentSearches]
@@ -137,16 +136,17 @@ const useSearchHistory = ({
       if (!isSignedIn) {
         setIsRecentlyViewedLoading(false);
         setRecentlyViewedRestaurants([]);
-        hasLoadedRecentlyViewed = false;
+        useSearchHistoryStore.setState({ hasLoadedRecentlyViewed: false });
         return;
       }
 
-      if (!force && hasLoadedRecentlyViewed) {
+      if (!force && useSearchHistoryStore.getState().hasLoadedRecentlyViewed) {
         return;
       }
 
-      if (recentlyViewedRequest) {
-        return recentlyViewedRequest;
+      const inFlight = useSearchHistoryStore.getState().recentlyViewedRequest;
+      if (inFlight) {
+        return inFlight;
       }
 
       const request = (async () => {
@@ -154,7 +154,7 @@ const useSearchHistory = ({
         try {
           const items = await searchService.recentlyViewedRestaurants(RECENTLY_VIEWED_LIMIT);
           setRecentlyViewedRestaurants(items);
-          hasLoadedRecentlyViewed = true;
+          useSearchHistoryStore.setState({ hasLoadedRecentlyViewed: true });
         } catch (err) {
           // F838 (2026-08-03): this failure used to reach NOBODY — the request passes
           // `suppressErrorLog`, so the interceptor stays quiet, and this `logger.warn` is
@@ -168,11 +168,11 @@ const useSearchHistory = ({
           });
         } finally {
           setIsRecentlyViewedLoading(false);
-          recentlyViewedRequest = null;
+          useSearchHistoryStore.setState({ recentlyViewedRequest: null });
         }
       })();
 
-      recentlyViewedRequest = request;
+      useSearchHistoryStore.setState({ recentlyViewedRequest: request });
       return request;
     },
     [isSignedIn, setIsRecentlyViewedLoading, setRecentlyViewedRestaurants]
@@ -183,16 +183,17 @@ const useSearchHistory = ({
       if (!isSignedIn) {
         setIsRecentlyViewedFoodsLoading(false);
         setRecentlyViewedFoods([]);
-        hasLoadedRecentlyViewedFoods = false;
+        useSearchHistoryStore.setState({ hasLoadedRecentlyViewedFoods: false });
         return;
       }
 
-      if (!force && hasLoadedRecentlyViewedFoods) {
+      if (!force && useSearchHistoryStore.getState().hasLoadedRecentlyViewedFoods) {
         return;
       }
 
-      if (recentlyViewedFoodsRequest) {
-        return recentlyViewedFoodsRequest;
+      const inFlight = useSearchHistoryStore.getState().recentlyViewedFoodsRequest;
+      if (inFlight) {
+        return inFlight;
       }
 
       const request = (async () => {
@@ -200,7 +201,7 @@ const useSearchHistory = ({
         try {
           const items = await searchService.recentlyViewedFoods(RECENTLY_VIEWED_LIMIT);
           setRecentlyViewedFoods(items);
-          hasLoadedRecentlyViewedFoods = true;
+          useSearchHistoryStore.setState({ hasLoadedRecentlyViewedFoods: true });
         } catch (err) {
           // F838 (2026-08-03): this failure used to reach NOBODY — the request passes
           // `suppressErrorLog`, so the interceptor stays quiet, and this `logger.warn` is
@@ -214,11 +215,11 @@ const useSearchHistory = ({
           });
         } finally {
           setIsRecentlyViewedFoodsLoading(false);
-          recentlyViewedFoodsRequest = null;
+          useSearchHistoryStore.setState({ recentlyViewedFoodsRequest: null });
         }
       })();
 
-      recentlyViewedFoodsRequest = request;
+      useSearchHistoryStore.setState({ recentlyViewedFoodsRequest: request });
       return request;
     },
     [isSignedIn, setIsRecentlyViewedFoodsLoading, setRecentlyViewedFoods]
@@ -228,13 +229,10 @@ const useSearchHistory = ({
     if (isSignedIn) {
       return;
     }
+    // F1053(b): resetHistory() now clears the dedupe promises + load-once flags too (they
+    // are part of the store's defaultState), so the sign-out reset is one call instead of
+    // seven hand-kept assignments. The per-instance autoLoad ref stays local to the hook.
     resetHistory();
-    recentHistoryRequest = null;
-    recentlyViewedRequest = null;
-    recentlyViewedFoodsRequest = null;
-    hasLoadedRecent = false;
-    hasLoadedRecentlyViewed = false;
-    hasLoadedRecentlyViewedFoods = false;
     autoLoadTriggeredRef.current = false;
   }, [isSignedIn, resetHistory]);
 

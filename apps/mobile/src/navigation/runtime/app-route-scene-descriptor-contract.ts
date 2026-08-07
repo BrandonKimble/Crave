@@ -3,7 +3,7 @@ import type { FlashListProps, FlashListRef } from '@shopify/flash-list';
 import type { ScrollViewProps, StyleProp, ViewStyle } from 'react-native';
 
 import type { BottomSheetWithFlashListBaseProps } from '../../overlays/bottomSheetWithFlashListContract';
-import type { OverlaySheetFrameSpec } from '../../overlays/types';
+import type { OverlayKey, OverlaySheetFrameSpec } from '../../overlays/types';
 import type { SceneBodyContentInsets } from '../../overlays/bottomSheetSurfaceStyleUtils';
 
 type AppRouteSceneListItem = unknown;
@@ -47,38 +47,34 @@ export type AppRouteSceneSecondaryListTransportPublication = {
   testID?: string;
 };
 
-export type AppRouteMountedSceneBodyKey =
-  | 'lists'
-  | 'home'
-  | 'polls'
-  | 'profile'
-  | 'saveList'
-  | 'search'
-  | 'userProfile'
-  | 'listDetail'
-  | 'followList'
-  | 'notifications'
-  | 'settings'
-  | 'editProfile'
-  | 'postPhotos'
-  | 'messagesInbox'
-  | 'dmSession';
+// F959(b) — ONE SOURCE for the mounted-scene key vocabulary, so the body and chrome
+// unions cannot drift apart. This used to be TWO hand-typed unions (15 keys and 14),
+// and a key added to one but not the other compiled cleanly. Now the body keys are a
+// single `as const` tuple (guarded `satisfies readonly OverlayKey[]`, so a typo'd or
+// non-overlay key is a build error), and the chrome union DERIVES from it — chrome is
+// the body vocabulary minus 'search' ('search' renders inline searchChrome, never a
+// mounted chrome surface), so a body-key add/remove flows to chrome by construction.
+export const APP_ROUTE_MOUNTED_SCENE_BODY_KEYS = [
+  'lists',
+  'home',
+  'polls',
+  'profile',
+  'saveList',
+  'search',
+  'userProfile',
+  'listDetail',
+  'followList',
+  'notifications',
+  'settings',
+  'editProfile',
+  'postPhotos',
+  'messagesInbox',
+  'dmSession',
+] as const satisfies readonly OverlayKey[];
 
-export type AppRouteMountedSceneChromeKey =
-  | 'lists'
-  | 'home'
-  | 'polls'
-  | 'profile'
-  | 'saveList'
-  | 'userProfile'
-  | 'listDetail'
-  | 'followList'
-  | 'notifications'
-  | 'settings'
-  | 'editProfile'
-  | 'postPhotos'
-  | 'messagesInbox'
-  | 'dmSession';
+export type AppRouteMountedSceneBodyKey = (typeof APP_ROUTE_MOUNTED_SCENE_BODY_KEYS)[number];
+
+export type AppRouteMountedSceneChromeKey = Exclude<AppRouteMountedSceneBodyKey, 'search'>;
 
 export type AppRouteMountedSceneChromeSurface = 'underlay' | 'background' | 'header' | 'overlay';
 
