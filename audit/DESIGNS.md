@@ -2531,3 +2531,56 @@ lands, one green run of this territory is not final; re-runs are.
 Bookkeeping: six new files' COVERAGE rows added by me (the lane correctly stopped on the
 dirty ledger), the D87/D90-ratified edits re-pinned, and one 'GATE' prose token replaced
 with a real blob sha.
+
+---
+
+## D91 — P2 verdicts on the api-tails sweep (F4900–F4959 highlights, 2026-08-06)
+
+**F4926 — APPROVED, first in line.** The thinking-config spec defines its own copy of
+`resolveGenerationConfig` and imports nothing from llm.service.ts, where the merge is
+inlined and private — reverting the production line to the original bug keeps all 196
+tests green, so the measured 118x output-token regression the file exists to prevent is
+fully reintroducible. The fix is ONE EXPORT: production's function becomes the spec's
+subject. The purest testing-a-copy specimen this exercise has found.
+
+**F4950 — APPROVED.** `undefined + 1 = NaN`, `NaN >= 3` is false, so the retirement
+ceiling guarding an hourly scarce-polygon draw is unreachable in every test — set the
+constant to 999 and nothing reds. One type annotation on the fixture builder makes the
+omission unwritable; then a spec must show the ceiling firing.
+
+**F4920/F4921/F4922 — APPROVED AS SPEC-ONLY, the established money-area rule.** Three
+unkeyed doubles each ONE SEAM OVER from where a prior campaign stopped (Stripe fixed,
+`user.findFirst` beside it not; `findUnique` fixed, `$queryRaw` beside it not;
+`entityRedirect` fixed, `pollEndorsement` beside it not). No production line changes;
+input-keyed doubles per F2210's pattern. The meta-lesson goes in the row: a hardening
+campaign's stopping boundary is itself a place to hunt.
+
+**F4907 — APPROVED.** `recordEnrichmentFailure` swallows the very count write whose
+absence caused the documented weekly Places re-spend. The failure-counting write fails
+LOUD (the F205 sibling doctrine); no dial changes.
+
+**F4936 — APPROVED with an owner flag.** The one gap in the preserved-anchors enumeration:
+`poll_comments.entity_spans` (GIN-indexed, user-authored, feeds the leaderboard) joins the
+anchor list in the same clause shape as `messages.shared_entity_id`. This EXTENDS wipe
+protection — the safe direction under the restaurants-never-deleted law — but it edits the
+wipe script, so: BEGIN/ROLLBACK proof against the local corpus, and the owner is notified
+in the report rather than asked first, since the change is strictly protective.
+
+**F4913/F4938 — APPROVED, markets extermination continues:** fixtures proving nothing
+about a deleted system and a README crediting recall scoping that the code says in its own
+words is display-only.
+
+**F4939 — APPROVED, and the lesson enters the briefs:** the F414 sweep stamped "deletion
+candidate" on three files it had not read — defaulting an unknown to the most destructive
+value. Correct the stamps; the rule (a sweep emits only the fact it established) joins the
+standing brief language.
+
+**F4908 — ESCALATED (owner): two of YOUR rulings disagree.** F109/D7 says the teaser shows
+only numbers a real card shows; the implementation clamps `Math.min(score, 9.9)` while the
+live corpus contains 10.00 scores that the teaser's own ORDER BY selects. Either the clamp
+goes (teaser may show 10.0) or the ruling gains an exception (and the row records why).
+Options and a recommendation are on the row.
+
+**F4934/F4932 folded into the F2700/F2701 escalations** as adjacent instances, not
+re-litigated. The zero-residue sweeps (ladder/sync-LLM: zero; prompt paths: zero dangling,
+with the REASON — one glob, no per-file list to forget) are accepted as evidence.
