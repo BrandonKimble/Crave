@@ -4488,7 +4488,7 @@ CLEAN-PASS-1 api-core + api-search (2026-08-07, ATTEMPT 2, F8400): FRESH-EYES RE
 | apps/api/src/modules/entity-display/entity-display.service.ts | api-entity-display-search | IDEAL-VERIFIED | 1 | 3eb4456c8a59 | One display fn, batch-load/pure-render split, total fallback to name. |
 | apps/api/src/modules/entity-display/entity-display.types.ts | api-entity-display-search | IDEAL-VERIFIED | 1 | e2ea61d42b58 | Types only; submitToken contract sound. |
 | apps/api/src/modules/entity-display/label-generator.ts | api-entity-display-search | IDEAL-VERIFIED | 1 | cfaa42660524 | NoopLabelGenerator = honest no-fake-estimates stub. |
-| apps/api/src/modules/entity-display/label-sweep.service.ts | api-entity-display-search | PARTIAL | 1 | 867f10cb1a9e | writeLabels default-collision race + uncaught upsert aborts sweep (F9342). |
+| apps/api/src/modules/entity-display/label-sweep.service.ts | api-entity-display-search | PARTIAL | 1 | fb2d627c942d | writeLabels default-collision race + uncaught upsert aborts sweep (F9342). |
 | apps/api/src/modules/entity-display/poll-title-render.ts | api-entity-display-search | IDEAL-VERIFIED | 1 | 9933bedaa4ff | null-on-unrenderable keeps stored title. |
 | apps/api/src/modules/entity-display/recipe-messages.ts | api-entity-display-search | IDEAL-VERIFIED | 1 | 851c8056bfa4 | Typed exhaustive catalogue; unknown-placeholder-intact correct-loud. |
 | apps/api/src/modules/entity-display/recipe-render.ts | api-entity-display-search | IDEAL-VERIFIED | 1 | 9c3cbe3d254e | Derives from recipe_key, no new column; null fallback sound. |
@@ -4496,7 +4496,7 @@ CLEAN-PASS-1 api-core + api-search (2026-08-07, ATTEMPT 2, F8400): FRESH-EYES RE
 | apps/api/src/modules/entity-text-search/query-analyzer.ts | api-entity-display-search | PARTIAL | 1 | cf82d467e2ac | Four placeholder detector thresholds gate paid embeddings (F9340). |
 | apps/api/src/modules/search/demand-vocabulary.service.ts | api-entity-display-search | PARTIAL | 1 | 62ffccbc3e33 | MIN_ASKS=1 inert HAVING gate; real floor is the view (F9341). |
 | apps/api/src/modules/search/open-intervals-builder.service.ts | api-entity-display-search | PARTIAL | 1 | c60a81ad4947 | in-process buildInFlight vs distributed (F9344, minor). |
-| apps/api/src/modules/content-processing/entity-resolver/concept-satisfies.service.ts | api-entity-display-search | PARTIAL | 1 | f1cf3f467d7b | rung-2 lower() vs canonicalFold, safe-direction (F9343). |
+| apps/api/src/modules/content-processing/entity-resolver/concept-satisfies.service.ts | api-entity-display-search | PARTIAL | 1 | d7e1194f5067 | rung-2 lower() vs canonicalFold, safe-direction (F9343). |
 | apps/api/src/modules/restaurant-enrichment/enrichment-failure-counter.ts | api-entity-display-search | IDEAL-VERIFIED | 1 | bdc8d13bc97e | increment-only fn + eslint selector closes the door. Exemplary. |
 | apps/api/src/modules/polls/supply/ballot-document-marker.ts | api-entity-display-search | IDEAL-VERIFIED | 1 | 00f84f5fbc61 | single exported literal makes drift inexpressible. Exemplary. |
 | apps/api/src/modules/external-integrations/llm/gemini-billable-surfaces.ts | api-entity-display-search | IDEAL-VERIFIED | 1 | f6ec726ab07f | billable list VERIFIED COMPLETE + boot-enforced (undeclaredSurfaces at gated-gemini-client:94). |
