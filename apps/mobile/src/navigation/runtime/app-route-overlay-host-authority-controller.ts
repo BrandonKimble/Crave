@@ -142,27 +142,50 @@ const getChangedRecordKeys = <TSnapshot>(left: TSnapshot, right: TSnapshot): str
   return changedKeys;
 };
 
+// F5411 — THE SLOT-PUBLISH WORK SPAN, MEASURED.
+//
+// This emitted `durationMs: 0` HARD-CODED. A WorkSpan whose duration is a literal zero
+// cannot ever report a slow publish — the dimension its own event type is named for was a
+// constant, and its two honest fields (changedKeys, listenerCount) made the event look
+// measured. CLAUDE.md's methodology, verbatim: "every metric must be able to show RED (an
+// always-green metric is lying — that was the whole disease)".
+//
+// The consumer settles the F2901 question of measure-or-delete. scripts/perf-scenario-report.js
+// sorts WorkSpans by `durationMs` for `worstByDuration` and sums them into per-owner totals
+// and maxima — so a permanent zero pinned this owner to the bottom of the worst list and
+// contributed nothing to any total. The report could not surface this publish however slow it
+// got. The span is worth having; what it needed was a number.
+//
+// WHAT IS MEASURED is the publish's real cost: the listener fan-out. So the scenario gate is
+// read BEFORE the fan-out (it decides whether to take the clock at all) and the event is
+// emitted after it. Two `performance.now()` calls, paid only while a perf scenario is
+// attributing — and the changed-key diff, which used to be computed on EVERY publish as an
+// argument to a logger that usually returned immediately, is now behind the same gate.
+type OverlayChromeSlotPublishSpan = {
+  scenarioConfig: NonNullable<ReturnType<typeof resolveActivePerfScenarioConfig>>;
+  startedAt: number;
+  changedKeys: string[];
+};
+
+const resolveActivePerfScenarioConfig = () => {
+  const scenarioConfig = usePerfScenarioRuntimeStore.getState().activeConfig;
+  return isPerfScenarioAttributionActive(scenarioConfig) ? scenarioConfig : null;
+};
+
 const logOverlayChromeSlotScenarioPublish = ({
   slotName,
-  changedKeys,
+  span,
   listenerCount,
 }: {
-  slotName: string | null;
-  changedKeys: string[];
+  slotName: string;
+  span: OverlayChromeSlotPublishSpan;
   listenerCount: number;
 }): void => {
-  if (slotName == null) {
-    return;
-  }
-  const scenarioConfig = usePerfScenarioRuntimeStore.getState().activeConfig;
-  if (!isPerfScenarioAttributionActive(scenarioConfig)) {
-    return;
-  }
-  logPerfScenarioAttributionEvent('WorkSpan', scenarioConfig, {
+  logPerfScenarioAttributionEvent('WorkSpan', span.scenarioConfig, {
     event: 'scenario_work_span',
     owner: `overlay_chrome_slot_publish:${slotName}`,
-    durationMs: 0,
-    path: changedKeys.join(',') || '<unknown>',
+    durationMs: performance.now() - span.startedAt,
+    path: span.changedKeys.join(',') || '<unknown>',
     listenerCount,
   });
 };
@@ -601,11 +624,18 @@ const areLocalRestaurantSheetHostSnapshotsEqual = (
   ) &&
   left.onProfilerRender === right.onProfilerRender;
 
+// F5411 — `slotName` is REQUIRED and comes SECOND. It used to default to `null`, and the
+// logger early-returned on null, so of the four publication slots only the two that happened
+// to be named were attributed at all: `gateSlot` and `localRestaurantSheetSlot` were invisible
+// to the perf scenario by OMISSION rather than by decision. A fallback that silently opts a
+// subject out of instrumentation is the same disease as a constant duration, one level up —
+// the instrument reports on whatever it happens to have been named for. A new slot cannot be
+// created uninstrumented now; tsc enforces it.
 const createSnapshotSlot = <TSnapshot>(
   initialSnapshot: TSnapshot,
+  slotName: string,
   isEqual: SnapshotEquality<TSnapshot> = areShallowSnapshotsEqual,
-  normalizeSnapshot: SnapshotNormalizer<TSnapshot> | null = null,
-  slotName: string | null = null
+  normalizeSnapshot: SnapshotNormalizer<TSnapshot> | null = null
 ): SnapshotSlot<TSnapshot> => {
   let snapshot = initialSnapshot;
   let rawSnapshot = initialSnapshot;
@@ -647,11 +677,17 @@ const createSnapshotSlot = <TSnapshot>(
         return false;
       }
 
-      logOverlayChromeSlotScenarioPublish({
-        slotName,
-        changedKeys: getChangedRecordKeys(snapshot, normalizedSnapshot),
-        listenerCount: listeners.size,
-      });
+      // The span opens BEFORE the fan-out and closes after it — the fan-out IS the cost this
+      // publish has. Nothing here runs unless a perf scenario is actively attributing.
+      const scenarioConfig = resolveActivePerfScenarioConfig();
+      const span: OverlayChromeSlotPublishSpan | null =
+        scenarioConfig == null
+          ? null
+          : {
+              scenarioConfig,
+              startedAt: performance.now(),
+              changedKeys: getChangedRecordKeys(snapshot, normalizedSnapshot),
+            };
       snapshot = normalizedSnapshot;
       listeners.forEach((listener) => {
         listener();
@@ -664,6 +700,9 @@ const createSnapshotSlot = <TSnapshot>(
         record.selected = nextSelected;
         listener();
       });
+      if (span != null) {
+        logOverlayChromeSlotScenarioPublish({ slotName, span, listenerCount: listeners.size });
+      }
       return true;
     },
     clearListeners: () => {
@@ -676,26 +715,28 @@ const createSnapshotSlot = <TSnapshot>(
 export class AppRouteOverlayHostAuthorityController {
   private readonly chromeHostSlot = createSnapshotSlot(
     EMPTY_SEARCH_OVERLAY_CHROME_HOST_SNAPSHOT,
+    'chromeHost',
     areChromeHostSnapshotsEqual,
-    createChromeHostSnapshotNormalizer(),
-    'chromeHost'
+    createChromeHostSnapshotNormalizer()
   );
 
   private readonly gateSlot = createSnapshotSlot(
     EMPTY_SEARCH_OVERLAY_GATE_SNAPSHOT,
+    'gate',
     areShallowSnapshotsEqual,
     createTopLevelStableCallbackNormalizer()
   );
 
   private readonly shellSlot = createSnapshotSlot(
     EMPTY_SEARCH_OVERLAY_SHELL_SNAPSHOT,
+    'shell',
     areShallowSnapshotsEqual,
-    createShellSnapshotNormalizer(),
-    'shell'
+    createShellSnapshotNormalizer()
   );
 
   private readonly localRestaurantSheetSlot = createSnapshotSlot(
     EMPTY_SEARCH_OVERLAY_LOCAL_RESTAURANT_SHEET_SNAPSHOT,
+    'localRestaurantSheet',
     areLocalRestaurantSheetHostSnapshotsEqual
   );
 
