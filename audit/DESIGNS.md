@@ -2996,3 +2996,41 @@ escalation's instance list.
 (route stack, equality map, URL codec, entry-restore) and reports whether requiring
 `userId: string` is mechanical or a design — implementing only if mechanical, else the
 report becomes the P2 input.
+
+---
+
+## D103 — D102 P3 ratified; F5900 landed mechanical (2026-08-06)
+
+All seven items, five commits, 50 suites / 335 tests. Ratifications and the round's
+corrections:
+
+**F5900's navigation carve-out is RATIFIED.** The scope line excluded navigation/ "except
+reading"; item 7 authorized implementing if mechanical. The lane read the tension
+correctly, landed the one-file tightening in its own commit, and flagged it instead of
+burying it. The verdict rests on all four consumers read (no algebra path mints the
+entry; the codec parses only from a present segment; zero producers of getSceneParams
+today), and the decisive proof closes a loop: F5802's mutation that COULD NOT go red —
+deleting the interactability guard — now fails TS2322. The cast-laundering class in that
+corner is extinct at the type.
+
+**F6003's benefit claim is REFUTED and the correction recorded:** the deletion buys
+TRUTH, not identity stability — the callback closes over a memo whose dep list re-mints
+on every mark regardless. The change was still right; the ledger now says what it
+actually bought. A fix's justification is as auditable as the fix.
+
+**F6005 found a stale meta-claim with real consequences:** the hook harness's comment
+that the jest project lacks react-test-renderer is FALSE — it resolves and runs effects —
+so the row's demanded observable spec became real instead of skipped. Every future
+"cannot test here" claim in this territory now has a counterexample to check against.
+
+**F6001's predicate was deleted, not rehomed,** on the right argument: no real caller is
+POSSIBLE because terminality depends on surface policy that module never sees. The
+sentence moved to where the decision actually lives.
+
+**F6000 landed with specs strengthened, not weakened** — the deleted member's absence is
+itself asserted — and the three orphan suppression paths are each composed with the
+lifecycle memo and proven to survive a render.
+
+Remaining UNREVIEWED after this wave: ~63 mobile-search, 32 nav-overlays, ~17 api tails.
+Final P1 push next; then the CRAVE.md pass (the non-checking-positions section, the F889
+class note, this session's arcs) and the terminal report.
