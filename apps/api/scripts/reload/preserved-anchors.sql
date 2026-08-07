@@ -66,6 +66,25 @@ SELECT DISTINCT entity_id FROM (
     WHERE kind = 'entity_share'
       AND shared_entity_kind IN ('restaurant', 'dish')
       AND shared_entity_id ~ '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$'
+  -- POLL COMMENT ENTITY SPANS (F4936, 2026-08-06): the SAME shape as the
+  -- messages clause above, one table over — a bare JSON id with no FK, in a
+  -- table the wipe deliberately does not touch. `poll_comments.entity_spans`
+  -- is derived from A USER'S OWN COMMENT TEXT, is GIN-indexed for
+  -- containment (the restaurant-mentions read), and is the INPUT to
+  -- refreshPollLeaderboard — nothing re-scans the comment body. So deleting
+  -- a spanned entity both breaks the user's highlight (broken link law 2)
+  -- and silently drops that subject's leaderboard contribution. The
+  -- uuid-shape guard is the poll_endorsements template, as with messages.
+  -- The CASE is not defence-in-depth, it is required: a set-returning
+  -- function in FROM is evaluated BEFORE the WHERE, so a row whose
+  -- entity_spans is a JSON object or scalar would ERROR the whole wipe
+  -- rather than be filtered out.
+  UNION SELECT (span->>'entityId')::uuid FROM poll_comments c,
+    jsonb_array_elements(
+      CASE WHEN jsonb_typeof(c.entity_spans) = 'array'
+           THEN c.entity_spans ELSE '[]'::jsonb END
+    ) span
+    WHERE span->>'entityId' ~ '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$'
   UNION SELECT ci.food_id FROM core_restaurant_items ci
     JOIN preserved_connections pc ON pc.connection_id = ci.connection_id
   UNION SELECT ci.restaurant_id FROM core_restaurant_items ci
