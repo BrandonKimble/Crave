@@ -4,6 +4,10 @@ import {
   type GeminiThinkingConfig,
   type ThinkingContext,
 } from './gemini-thinking';
+import {
+  resolveGenerationConfig,
+  type GeminiGenerationConfig,
+} from './gemini-generation-config';
 import { DecisionLedgerService } from '../shared/decision-ledger.service';
 import {
   GeminiContextCacheRegistry,
@@ -114,23 +118,6 @@ interface SearchQueryRawResponse {
   restaurantAttributes: unknown;
   ingredients?: unknown;
 }
-
-type GeminiGenerationConfig = Record<string, unknown> & {
-  responseMimeType?: string;
-  responseSchema?: Record<string, unknown>;
-  responseJsonSchema?: Record<string, unknown>;
-  cachedContent?: string;
-  systemInstruction?: string;
-  httpOptions?: {
-    timeout?: number;
-  };
-  abortSignal?: AbortSignal;
-  thinkingConfig?: {
-    thinkingBudget?: number;
-    thinkingLevel?: string;
-    includeThoughts?: boolean;
-  };
-};
 
 /** Minimal remote-batch shape the transport reads — exported so the batch
  *  service needs no SDK import of its own (the lockdown spec flags any file
@@ -3209,16 +3196,14 @@ export class LLMService implements OnModuleInit, OnModuleDestroy {
     // reintroduce the identical bug silently. Now the whole universal block
     // merges, and `undefined` values in the caller's config are stripped so
     // an explicitly-undefined key cannot clobber a computed one either.
-    const definedOnly = (
-      config: GeminiGenerationConfig,
-    ): GeminiGenerationConfig =>
-      Object.fromEntries(
-        Object.entries(config).filter(([, value]) => value !== undefined),
-      ) as GeminiGenerationConfig;
-
-    const generationConfig: GeminiGenerationConfig = options.generationConfig
-      ? { ...universalDefaults, ...definedOnly(options.generationConfig) }
-      : collectionDefaults;
+    //
+    // The merge itself lives in gemini-generation-config.ts so its
+    // regression spec can call THIS function rather than a copy of it.
+    const generationConfig: GeminiGenerationConfig = resolveGenerationConfig(
+      options.generationConfig,
+      universalDefaults,
+      collectionDefaults,
+    );
     // The systemPrompt fallback is for the COLLECTION path only (callers
     // that pass neither an instruction nor a config are the extraction
     // flow). A gateway caller that supplies its own generationConfig but no

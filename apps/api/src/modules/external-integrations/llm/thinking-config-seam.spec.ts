@@ -1,7 +1,15 @@
-type GeminiGenerationConfig = Record<string, unknown>;
+import {
+  resolveGenerationConfig,
+  type GeminiGenerationConfig,
+} from './gemini-generation-config';
 
 /**
- * COST-BUG REGRESSION (2026-07-27, hardened 2026-07-28).
+ * COST-BUG REGRESSION (2026-07-27, hardened 2026-07-28, repointed 2026-08-06).
+ *
+ * These assertions used to run against a hand-copied twin of the merge
+ * declared in this file, so reverting production to the original bug left
+ * all 196 tests in the module green (F4926). `resolveGenerationConfig` is
+ * now imported from production and is the subject under test.
  *
  * `callLLMApi` used to resolve its config as `options.generationConfig ??
  * defaultGenerationConfig`, so any caller supplying its own config silently
@@ -16,20 +24,6 @@ type GeminiGenerationConfig = Record<string, unknown>;
  * COLLECTION-specific response schema must NOT leak onto callers that bring
  * their own config, or every unrelated prompt inherits the extraction shape.
  */
-function resolveGenerationConfig(
-  optionsConfig: GeminiGenerationConfig | undefined,
-  universalDefaults: GeminiGenerationConfig,
-  collectionDefaults: GeminiGenerationConfig,
-): GeminiGenerationConfig {
-  const definedOnly = (config: GeminiGenerationConfig) =>
-    Object.fromEntries(
-      Object.entries(config).filter(([, value]) => value !== undefined),
-    );
-  return optionsConfig
-    ? { ...universalDefaults, ...definedOnly(optionsConfig) }
-    : collectionDefaults;
-}
-
 describe('callLLMApi generationConfig merge', () => {
   const thinking = { thinkingLevel: 'MINIMAL' };
   const universal: GeminiGenerationConfig = {
