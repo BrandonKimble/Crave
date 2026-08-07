@@ -41,6 +41,7 @@ import {
 import type { RootStackParamList } from '../types/navigation';
 import { logger } from '../utils';
 import { usersService, type UsernameAvailability } from '../services/users';
+import { normalizeUsernameDraft } from '../services/username-draft';
 import { normalizePersistedCity } from '../navigation/runtime/city-viewports';
 import {
   findAdjacentVisibleStepIndex,
@@ -580,24 +581,20 @@ const OnboardingScreen: React.FC<OnboardingProps> = ({ navigation: _navigation }
     setEmailModalVisible(true);
   }, []);
 
-  const normalizeUsernameInput = React.useCallback((value: string) => {
-    return value.trim().toLowerCase().replace(/\s+/g, '').replace(/@/g, '');
-  }, []);
-
   const handleUsernameChange = React.useCallback(
     (value: string) => {
-      const normalized = normalizeUsernameInput(value);
+      const normalized = normalizeUsernameDraft(value);
       setUsernameValue(normalized);
       setUsernameStatus(null);
       setUsernameError(null);
       updateAnswer('username', normalized);
     },
-    [normalizeUsernameInput, updateAnswer]
+    [updateAnswer]
   );
 
   const usernameNormalized = React.useMemo(
-    () => normalizeUsernameInput(usernameValue),
-    [normalizeUsernameInput, usernameValue]
+    () => normalizeUsernameDraft(usernameValue),
+    [usernameValue]
   );
 
   React.useEffect(() => {

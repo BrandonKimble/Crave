@@ -5,6 +5,7 @@ import * as ImagePicker from 'expo-image-picker';
 
 import { Text } from '../../components';
 import { usersService, type UsernameAvailability } from '../../services/users';
+import { normalizeUsernameDraft } from '../../services/username-draft';
 import { photosService } from '../../services/photos';
 import { useAppOverlayRouteController } from '../useAppOverlayRouteController';
 import { MonogramAvatar } from '../../components/MonogramAvatar';
@@ -64,10 +65,10 @@ export const EditProfilePanelBody = React.memo((_props: MountedSceneBodyProps) =
     load();
   }, [load]);
 
-  // Debounced availability check while typing a username draft.
-  // Same normalization as onboarding + server (trim/lowercase/no spaces) so the
-  // dirty-compare and the availability check see what the server will store.
-  const usernameNormalized = usernameDraft.trim().toLowerCase().replace(/\s+/g, '');
+  // Debounced availability check while typing a username draft. The normalization is the
+  // service's ONE copy (F5805) — this panel's own restatement forgot to strip the '@' its
+  // own placeholder invites, so typing what the field showed reported the name unavailable.
+  const usernameNormalized = normalizeUsernameDraft(usernameDraft);
 
   React.useEffect(() => {
     const trimmed = usernameNormalized;
