@@ -2489,3 +2489,45 @@ named WITH their mechanism, an interaction path RECLASSIFIED so its publish mach
 could be deleted rather than gated, comparators citing the composite spec by assertion
 title, and a measurement recorded as expected-to-fall rather than frozen. When the DONE
 report is written, this family is the exhibit for "what ideal looks like here".
+
+---
+
+## D90 — nav-overlays P3 ratified; a second design of mine refuted by reading (2026-08-06)
+
+Nine of eleven landed, both STOPs correct, 44 suites / 640 tests green.
+
+**F4506 — MY APPROVED DESIGN'S PREMISE WAS FALSE, and the STOP is the system working.**
+The design said a reverse-of-construction collector "preserves today's ordering, which the
+hand-written list already approximates." The lane compared the two orders: construction
+1–19 versus dispose 9,17,11,7,13,14,18,12,6,3,4,1,19,2,16,15,10 — not an approximation of
+anything, and a literal reverse would move the foundation runtime AHEAD of six
+collaborators holding subscriptions into its authorities: a silent teardown-order change
+on the composition root that nothing in the tree can catch. That is the second design of
+mine refuted by a lane that READ where I had pattern-matched (F2403 was the first). Filed
+with the real order and two honest paths; returns to P2 with data instead of a premise.
+
+**F4501 landed with a shape better than the design asked:** the routing decision extracted
+to a pure module BECAUSE the jest lane cannot render — otherwise the fix would have been
+unassertable — and `useAccess` gained `isKnown` because `enforced ?? false` cannot
+distinguish "server says off" from "nothing answered". The escalated arm is a named
+constant pinned by a test, citing D87. The owner's policy question stands, now with a
+one-line landing site when answered.
+
+**F4500's choice is the honest one:** both flows the docblock named as consumers were read
+end to end and neither could ever check the field — one calls Clerk directly, the other IS
+this file's own memo. Implementing would have meant inventing a consumer for a doc's
+claim. Field deleted; the doc now says UNHANDLED.
+
+**F4502's detail earns recording:** `useMemo<T>` did NOT fire excess-property checking;
+the callback RETURN annotation does. Same class as D88's JSX-spread discovery — the
+repo now has two documented cases where the obvious typing gesture fails to buy the
+guarantee and the working form is known.
+
+**F4507 STOPPED on scope** (the ten-contract chain crosses another lane's dirty tree; a
+partial deletion does not typecheck) — queued for a screens/Search-owning lane. **F4700
+filed:** a 1-in-6 pack-flaky spec from a `virtual: true` mock of a real module — until it
+lands, one green run of this territory is not final; re-runs are.
+
+Bookkeeping: six new files' COVERAGE rows added by me (the lane correctly stopped on the
+dirty ledger), the D87/D90-ratified edits re-pinned, and one 'GATE' prose token replaced
+with a real blob sha.
