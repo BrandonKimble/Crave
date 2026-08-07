@@ -23,9 +23,90 @@ const SENSITIVE_KEY_SUBSTRINGS = [
   'ssn',
 ] as const;
 
+/**
+ * PII field-name vocabulary (F9315, 2026-08-07 — owner-ruled).
+ *
+ * THE RULING: scrub PII VALUES from log/error payloads, but KEEP the internal
+ * userId — it is the debug handle, meaningless outside our DB, and the shell it
+ * points at is anonymized on erasure. So `userId`/`user_id`/`actorId`/`entityId`
+ * are deliberately absent from this list; ids identify a row, PII identifies a
+ * person.
+ *
+ * Matching is done on a NORMALIZED key (lowercased, separators stripped), so
+ * one needle covers `first_name`, `firstName`, `first-name` and `FIRSTNAME`.
+ *
+ * NOT included, deliberately:
+ *  - latitude/longitude/lat/lng. In this app coordinates are overwhelmingly
+ *    RESTAURANT coordinates — they are on search requests, map viewports,
+ *    geocode results and Places payloads — so redacting them would blind the
+ *    most-debugged surface in the product to protect a case (a person's own
+ *    location) that does not travel under these key names. Revisit only if a
+ *    person-scoped coordinate field is introduced, and add THAT key by name.
+ *  - bare `name`. Far too broad here (restaurant name, dish name, city name,
+ *    field name); the person-shaped spellings below are the ones that matter.
+ */
+const PII_KEY_SUBSTRINGS = [
+  'email',
+  'phone',
+  'mobile',
+  'address', // also covers homeAddress / mailingAddress / ipAddress
+  'street',
+  'dateofbirth',
+  'birthdate',
+  'birthday',
+  'firstname',
+  'lastname',
+  'fullname',
+  'realname',
+  'displayname',
+] as const;
+
+/**
+ * Short PII keys that are matched WHOLE, never as substrings: `ip` would
+ * otherwise hit `description`, `recipe`, `zip`, `clip`, `multiplier`… and `dob`
+ * is short enough to collide by accident.
+ */
+const PII_EXACT_KEYS = new Set([
+  'dob',
+  'ip',
+  'ipv4',
+  'ipv6',
+  'clientip',
+  'remoteip',
+  'ipaddr',
+  'peerip',
+]);
+
+/**
+ * Already-hashed fields are NOT PII: `ip_hash`, `subnetHash`, `emailHmac` are
+ * the equality-joinable audit fields the abuse/GDPR surfaces rely on, and
+ * redacting them would destroy the only join key those logs have. The exclusion
+ * is scoped to the PII vocabulary ONLY — a `passwordHash`/`tokenHash` still
+ * redacts, because losing a credential-shaped value costs nothing.
+ */
+function isAlreadyHashedKey(normalized: string): boolean {
+  return normalized.endsWith('hash') || normalized.endsWith('hmac');
+}
+
+function normalizeKey(key: string): string {
+  return key.toLowerCase().replace(/[^a-z0-9]/g, '');
+}
+
 export function isSensitiveKey(key: string): boolean {
   const lower = key.toLowerCase();
-  return SENSITIVE_KEY_SUBSTRINGS.some((needle) => lower.includes(needle));
+  if (SENSITIVE_KEY_SUBSTRINGS.some((needle) => lower.includes(needle))) {
+    return true;
+  }
+
+  const normalized = normalizeKey(key);
+  if (isAlreadyHashedKey(normalized)) {
+    return false;
+  }
+
+  return (
+    PII_EXACT_KEYS.has(normalized) ||
+    PII_KEY_SUBSTRINGS.some((needle) => normalized.includes(needle))
+  );
 }
 
 /**
