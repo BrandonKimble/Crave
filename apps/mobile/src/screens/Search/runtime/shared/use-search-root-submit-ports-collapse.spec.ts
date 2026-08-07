@@ -41,9 +41,7 @@ jest.mock('./use-search-root-submit-read-model', () => ({
 }));
 
 /* eslint-disable @typescript-eslint/no-var-requires */
-const {
-  useSearchRootSubmitControlRuntime,
-} = require('./use-search-root-submit-control-runtime');
+const { useSearchRootSubmitControlRuntime } = require('./use-search-root-submit-control-runtime');
 /* eslint-enable @typescript-eslint/no-var-requires */
 
 type OwnerArgs = {
@@ -99,10 +97,6 @@ const createSources = () => ({
     handlePresentationIntentAbort: () => undefined,
     handlePageOneResultsCommitted: () => undefined,
   },
-  profileOwner: {
-    profileViewState: { presentation: { isPresentationActive: false } },
-    profileActions: { clearMapHighlightedRestaurantId: () => undefined },
-  },
   userLocation: null,
 });
 
@@ -147,31 +141,26 @@ describe('useSearchRootSubmitControlRuntime ports collapse', () => {
       sources.rootOverlayFoundationRuntime.rootSharedSheetRuntimeLane.resetMapMoveFlag
     );
     // presentation ports (through the REAL kept derivation hooks)
-    expect(uiPorts.clearMapHighlightedRestaurantId).toBe(
-      sources.profileOwner.profileActions.clearMapHighlightedRestaurantId
-    );
     expect(uiPorts.onPresentationIntentAbort).toBe(
       sources.resultsPresentationOwner.handlePresentationIntentAbort
     );
-    expect(typeof uiPorts.getIsProfilePresentationActive).toBe('function');
     expect(typeof uiPorts.onPageOneResultsCommitted).toBe('function');
+    // F5701: the options type names exactly what the owner reads, so the members that
+    // had no reader are not merely unwired — they are unpassable.
+    expect(uiPorts).not.toHaveProperty('getIsProfilePresentationActive');
+    expect(uiPorts).not.toHaveProperty('clearMapHighlightedRestaurantId');
+    expect(uiPorts).not.toHaveProperty('onShortcutSearchCoverageSnapshot');
     expect(typeof uiPorts.onPresentationIntentStart).toBe('function');
     // the control-runtime's own fitAll port survives the collapse
     expect(typeof uiPorts.onListWorldPresented).toBe('function');
 
     // runtime ports
-    expect(runtimePorts.runtimeWorkSchedulerRef).toBe(
-      sources.sessionCoreLane.runtimeWorkSchedulerRef
-    );
     expect(runtimePorts.searchRuntimeBus).toBe(sources.sessionCoreLane.searchRuntimeBus);
     expect(runtimePorts.lastSearchRequestIdRef).toBe(
       sources.stateFoundationLane.sessionPrimitivesLane.primitives.lastSearchRequestIdRef
     );
     expect(runtimePorts.lastAutoOpenKeyRef).toBe(
       sources.requestExecutionAuthorityRuntime.lastAutoOpenKeyRef
-    );
-    expect(runtimePorts.resultsPresentationAuthority).toBe(
-      sources.sessionCoreLane.resultsPresentationAuthority
     );
     expect(runtimePorts.resultsPresentationSurfaceAuthority).toBe(
       sources.sessionCoreLane.resultsPresentationSurfaceAuthority
@@ -182,12 +171,12 @@ describe('useSearchRootSubmitControlRuntime ports collapse', () => {
     expect(runtimePorts.mapRef).toBe(
       sources.stateFoundationLane.rootPrimitivesRuntime.mapState.mapRef
     );
-    expect(runtimePorts.latestBoundsRef).toBe(sources.sessionCoreLane.latestBoundsRef);
-    expect(runtimePorts.viewportBoundsService).toBe(
-      sources.sessionCoreLane.viewportBoundsService
-    );
+    expect(runtimePorts.viewportBoundsService).toBe(sources.sessionCoreLane.viewportBoundsService);
     // viewport KEEP hook: the stable ref container, not the raw value
     expect(runtimePorts.userLocationRef).toEqual({ current: null });
+    expect(runtimePorts).not.toHaveProperty('runtimeWorkSchedulerRef');
+    expect(runtimePorts).not.toHaveProperty('resultsPresentationAuthority');
+    expect(runtimePorts).not.toHaveProperty('latestBoundsRef');
 
     harness.unmount();
   });

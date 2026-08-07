@@ -86,7 +86,6 @@ export const useSearchRootRuntimeControlStageRuntime = ({
     resultsPresentationOwner:
       controlAuthorityRuntime.presentationAuthorityRuntime.resultsPresentationControlLane
         .resultsPresentationOwner,
-    profileOwner: profileControlRuntime.profileOwner,
     userLocation: appEntryPlaneRuntime.userLocation,
   });
   // F1012 lane-cluster collapse: each lane is the single-field wrapper its deleted

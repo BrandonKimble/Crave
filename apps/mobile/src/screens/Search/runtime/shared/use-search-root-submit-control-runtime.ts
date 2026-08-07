@@ -6,7 +6,6 @@ import useSearchSubmitOwnerValue from '../../hooks/use-search-submit-owner';
 import { bboxCenter, bboxLatSpan, bboxLngSpan } from '@crave-search/shared';
 import { registerMapCameraBboxFlyHandler } from '../../../../store/map-camera-command-store';
 import { commitFitAllCamera, resolveWorldFitSafeRegion } from '../camera/resolve-fit-all-camera';
-import type { ProfileOwner } from '../profile/profile-owner-runtime-contract';
 import type { SearchRootEnvironment } from './search-root-environment-contract';
 import type { SearchRootOverlayFoundationRuntime } from './search-root-overlay-foundation-runtime-contract';
 import type {
@@ -45,17 +44,9 @@ type SearchRootSubmitUiResultsPorts = SearchRootSubmitUiHistoryPorts &
   SearchRootSubmitUiSurfacePorts;
 type SearchRootSubmitUiPresentationPorts = Pick<
   SearchRootSubmitUiPorts,
-  | 'getIsProfilePresentationActive'
-  | 'clearMapHighlightedRestaurantId'
-  | 'onPageOneResultsCommitted'
-  | 'onShortcutSearchCoverageSnapshot'
-  | 'onPresentationIntentStart'
-  | 'onPresentationIntentAbort'
+  'onPageOneResultsCommitted' | 'onPresentationIntentStart' | 'onPresentationIntentAbort'
 >;
-type SearchRootSubmitRuntimeBusPorts = Pick<
-  SearchRootSubmitRuntimePorts,
-  'runtimeWorkSchedulerRef' | 'searchRuntimeBus'
->;
+type SearchRootSubmitRuntimeBusPorts = Pick<SearchRootSubmitRuntimePorts, 'searchRuntimeBus'>;
 type SearchRootSubmitRuntimeRequestPorts = Pick<
   SearchRootSubmitRuntimePorts,
   'lastSearchRequestIdRef' | 'lastAutoOpenKeyRef'
@@ -71,7 +62,6 @@ type UseSearchRootSubmitControlRuntimeArgs = {
   recentActivityAuthorityRuntime: SearchRootRecentActivityAuthorityRuntime;
   resultsScrollAuthorityRuntime: SearchRootResultsScrollAuthorityRuntime;
   resultsPresentationOwner: ResultsPresentationOwner;
-  profileOwner: ProfileOwner;
   userLocation: SearchRootEnvironment['userLocation'];
 };
 
@@ -83,7 +73,6 @@ export const useSearchRootSubmitControlRuntime = ({
   recentActivityAuthorityRuntime,
   resultsScrollAuthorityRuntime,
   resultsPresentationOwner,
-  profileOwner,
   userLocation,
 }: UseSearchRootSubmitControlRuntimeArgs): SubmitRuntimeResult => {
   const readModel = useSearchRootSubmitReadModel({
@@ -140,7 +129,6 @@ export const useSearchRootSubmitControlRuntime = ({
   // load-bearing KEEPs: real derivation lives in these two hooks.
   const resultsPresentationPorts = useSearchRootSubmitUiResultsPresentationPorts({
     resultsPresentationOwner,
-    profileOwner,
   });
   const presentationIntentPorts = useSearchRootSubmitUiPresentationIntentPorts({
     stateFoundationLane,
@@ -150,8 +138,6 @@ export const useSearchRootSubmitControlRuntime = ({
   // --- inlined (was use-search-root-submit-ui-presentation-ports) ---
   const presentationUiPorts = React.useMemo<SearchRootSubmitUiPresentationPorts>(
     () => ({
-      getIsProfilePresentationActive: resultsPresentationPorts.getIsProfilePresentationActive,
-      clearMapHighlightedRestaurantId: resultsPresentationPorts.clearMapHighlightedRestaurantId,
       onPageOneResultsCommitted: resultsPresentationPorts.onPageOneResultsCommitted,
       onPresentationIntentStart: presentationIntentPorts.onPresentationIntentStart,
       onPresentationIntentAbort: presentationIntentPorts.onPresentationIntentAbort,
@@ -167,8 +153,6 @@ export const useSearchRootSubmitControlRuntime = ({
       resetSheetToHidden: resultsUiPorts.resetSheetToHidden,
       scrollResultsToTop: resultsUiPorts.scrollResultsToTop,
       resetMapMoveFlag: resultsUiPorts.resetMapMoveFlag,
-      getIsProfilePresentationActive: presentationUiPorts.getIsProfilePresentationActive,
-      clearMapHighlightedRestaurantId: presentationUiPorts.clearMapHighlightedRestaurantId,
       onPageOneResultsCommitted: presentationUiPorts.onPageOneResultsCommitted,
       onPresentationIntentStart: presentationUiPorts.onPresentationIntentStart,
       onPresentationIntentAbort: presentationUiPorts.onPresentationIntentAbort,
@@ -280,10 +264,9 @@ export const useSearchRootSubmitControlRuntime = ({
   // --- inlined runtime ports (was use-search-root-submit-runtime-bus-ports) ---
   const busRuntimePorts = React.useMemo<SearchRootSubmitRuntimeBusPorts>(
     () => ({
-      runtimeWorkSchedulerRef: sessionCoreLane.runtimeWorkSchedulerRef,
       searchRuntimeBus: sessionCoreLane.searchRuntimeBus,
     }),
-    [sessionCoreLane.runtimeWorkSchedulerRef, sessionCoreLane.searchRuntimeBus]
+    [sessionCoreLane.searchRuntimeBus]
   );
   // --- inlined (was use-search-root-submit-runtime-request-ports) ---
   const { sessionPrimitivesLane } = stateFoundationLane;
@@ -298,7 +281,6 @@ export const useSearchRootSubmitControlRuntime = ({
   // --- inlined (was use-search-root-submit-runtime-core-ports) ---
   const coreRuntimePorts = React.useMemo<SearchRootSubmitRuntimeCorePorts>(
     () => ({
-      runtimeWorkSchedulerRef: busRuntimePorts.runtimeWorkSchedulerRef,
       searchRuntimeBus: busRuntimePorts.searchRuntimeBus,
       lastSearchRequestIdRef: requestRuntimePorts.lastSearchRequestIdRef,
       lastAutoOpenKeyRef: requestRuntimePorts.lastAutoOpenKeyRef,
@@ -309,31 +291,22 @@ export const useSearchRootSubmitControlRuntime = ({
   const viewportRuntimePorts = useSearchRootSubmitRuntimeViewportPorts({
     runSearch: stateFoundationLane.rootDataPlaneRuntime.requestStatusRuntime.runSearch,
     mapRef: rootPrimitivesRuntime.mapState.mapRef,
-    latestBoundsRef: sessionCoreLane.latestBoundsRef,
     viewportBoundsService: sessionCoreLane.viewportBoundsService,
     userLocation,
   });
   // --- inlined (was use-search-root-submit-runtime-ports) ---
   const runtimePorts = React.useMemo<SearchRootSubmitRuntimePorts>(
     () => ({
-      runtimeWorkSchedulerRef: coreRuntimePorts.runtimeWorkSchedulerRef,
       searchRuntimeBus: coreRuntimePorts.searchRuntimeBus,
       lastSearchRequestIdRef: coreRuntimePorts.lastSearchRequestIdRef,
       lastAutoOpenKeyRef: coreRuntimePorts.lastAutoOpenKeyRef,
-      resultsPresentationAuthority: sessionCoreLane.resultsPresentationAuthority,
       resultsPresentationSurfaceAuthority: sessionCoreLane.resultsPresentationSurfaceAuthority,
       runSearch: viewportRuntimePorts.runSearch,
       mapRef: viewportRuntimePorts.mapRef,
-      latestBoundsRef: viewportRuntimePorts.latestBoundsRef,
       viewportBoundsService: viewportRuntimePorts.viewportBoundsService,
       userLocationRef: viewportRuntimePorts.userLocationRef,
     }),
-    [
-      coreRuntimePorts,
-      sessionCoreLane.resultsPresentationAuthority,
-      sessionCoreLane.resultsPresentationSurfaceAuthority,
-      viewportRuntimePorts,
-    ]
+    [coreRuntimePorts, sessionCoreLane.resultsPresentationSurfaceAuthority, viewportRuntimePorts]
   );
 
   return useSearchSubmitOwnerValue({

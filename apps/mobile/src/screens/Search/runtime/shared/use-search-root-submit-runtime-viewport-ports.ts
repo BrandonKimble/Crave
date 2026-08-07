@@ -8,13 +8,12 @@ type SearchRootSubmitRuntimePorts = Parameters<
 
 type SearchRootSubmitRuntimeViewportPorts = Pick<
   SearchRootSubmitRuntimePorts,
-  'runSearch' | 'mapRef' | 'latestBoundsRef' | 'viewportBoundsService' | 'userLocationRef'
+  'runSearch' | 'mapRef' | 'viewportBoundsService' | 'userLocationRef'
 >;
 
 type UseSearchRootSubmitRuntimeViewportPortsArgs = {
   runSearch: SearchRootSubmitRuntimePorts['runSearch'];
   mapRef: SearchRootSubmitRuntimePorts['mapRef'];
-  latestBoundsRef: SearchRootSubmitRuntimePorts['latestBoundsRef'];
   viewportBoundsService: SearchRootSubmitRuntimePorts['viewportBoundsService'];
   userLocation: SearchRootEnvironment['userLocation'];
 };
@@ -22,7 +21,6 @@ type UseSearchRootSubmitRuntimeViewportPortsArgs = {
 export const useSearchRootSubmitRuntimeViewportPorts = ({
   runSearch,
   mapRef,
-  latestBoundsRef,
   viewportBoundsService,
   userLocation,
 }: UseSearchRootSubmitRuntimeViewportPortsArgs): SearchRootSubmitRuntimeViewportPorts => {
@@ -36,10 +34,9 @@ export const useSearchRootSubmitRuntimeViewportPorts = ({
     () => ({
       runSearch,
       mapRef,
-      latestBoundsRef,
       viewportBoundsService,
       userLocationRef: stableUserLocationRef,
     }),
-    [latestBoundsRef, mapRef, runSearch, viewportBoundsService]
+    [mapRef, runSearch, viewportBoundsService]
   );
 };

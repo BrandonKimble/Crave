@@ -7,16 +7,14 @@ import {
 } from '../runtime/shared/search-desired-tuple-selectors';
 
 import type { UseSearchRequestsResult } from '../../../hooks/useSearchRequests';
-import type { Coordinate, MapBounds, NaturalSearchRequest, SearchResponse } from '../../../types';
-import type { RecentSearch, StructuredSearchRequest } from '../../../services/search';
+import type { Coordinate, MapBounds, NaturalSearchRequest } from '../../../types';
+import type { RecentSearch } from '../../../services/search';
 import { userListsService, type UserListType } from '../../../services/user-lists';
 import { fetchCuratedListDetail } from '../../../services/home';
 import { mapCuratedDetailToSearchResponse } from '../../../services/curated-list-adapter';
 import type { SegmentValue } from '../constants/search';
 import type { MapboxMapRef } from '../components/search-map';
 import type { ViewportBoundsService } from '../runtime/viewport/viewport-bounds-service';
-import type { RuntimeWorkScheduler } from '../runtime/scheduler/runtime-work-scheduler';
-import type { ResultsPresentationAuthority } from '../runtime/shared/results-presentation-authority';
 import type { ResultsPresentationSurfaceAuthority } from '../runtime/shared/results-presentation-surface-authority';
 import type { SearchRuntimeBus } from '../runtime/shared/search-runtime-bus';
 import {
@@ -48,21 +46,15 @@ import { Keyboard } from 'react-native';
 import { logger } from '../../../utils';
 import { searchService } from '../../../services/search';
 import { useSearchSubmitActionOwner } from './use-search-submit-action-owner';
+// F5701 — the options type IS the contract, so it names exactly what is read. It used to
+// declare 14 read-model fields against three readers (`query` and `isLoadingMore` here,
+// `submittedQuery` in use-search-root-submit-ui-presentation-intent-ports), and the
+// producing memo carried eleven extra dependencies — `currentResults`, an entire
+// SearchResponse identity, among them — solely to keep fields fresh that nobody read.
 type SearchSubmitOwnerReadModel = {
   query: string;
   submittedQuery: string;
-  hasResults: boolean;
-  canLoadMore: boolean;
-  currentPage: number;
-  activeTab: SegmentValue;
-  currentResults: SearchResponse | null;
-  isPaginationExhausted: boolean;
-  preferredActiveTab: SegmentValue;
-  hasActiveTabPreference: boolean;
   isLoadingMore: boolean;
-  openNow: boolean;
-  priceLevels: readonly number[];
-  risingActive: boolean;
 };
 
 type SearchSubmitOwnerUiPorts = {
@@ -72,8 +64,6 @@ type SearchSubmitOwnerUiPorts = {
   resetMapMoveFlag: () => void;
   loadRecentHistory: (options?: { force?: boolean }) => Promise<void>;
   updateLocalRecentSearches: (value: string | RecentSearchInput) => void;
-  getIsProfilePresentationActive?: () => boolean;
-  clearMapHighlightedRestaurantId?: () => void;
   onPageOneResultsCommitted?: (payload: {
     searchRequestId: string | null;
     operationToken: string;
@@ -84,11 +74,6 @@ type SearchSubmitOwnerUiPorts = {
     searchInputKey: string | null;
     replaceResultsInPlace: boolean;
     presentationIntentKind?: SearchSubmitInPlaceRerunIntentKind;
-  }) => void;
-  onShortcutSearchCoverageSnapshot?: (snapshot: {
-    searchRequestId: string;
-    bounds: MapBounds | null;
-    entities: StructuredSearchRequest['entities'];
   }) => void;
   onPresentationIntentStart?: (params: {
     kind: SearchSubmitPresentationIntentKind;
@@ -114,15 +99,12 @@ type SearchSubmitOwnerUiPorts = {
 };
 
 type SearchSubmitOwnerRuntimePorts = {
-  runtimeWorkSchedulerRef?: React.MutableRefObject<RuntimeWorkScheduler> | null;
   searchRuntimeBus: SearchRuntimeBus;
-  resultsPresentationAuthority: ResultsPresentationAuthority;
   resultsPresentationSurfaceAuthority: ResultsPresentationSurfaceAuthority;
   lastSearchRequestIdRef: React.MutableRefObject<string | null>;
   lastAutoOpenKeyRef: React.MutableRefObject<string | null>;
   runSearch: UseSearchRequestsResult['runSearch'];
   mapRef: React.RefObject<MapboxMapRef | null>;
-  latestBoundsRef: React.MutableRefObject<MapBounds | null>;
   viewportBoundsService: ViewportBoundsService;
   userLocationRef: React.MutableRefObject<Coordinate | null>;
 };
