@@ -31,7 +31,7 @@ import { ChromeTitleText, toSingleLineText } from '../ChromeTitleText';
 import type { PageStaticBodySpec } from '../page-body-contract';
 import { MonogramAvatar } from '../../components/MonogramAvatar';
 import SquircleSpinner from '../../components/SquircleSpinner';
-import { resolveUserDisplayName } from '../../utils/user-display-name';
+import { resolveUserDisplayName, resolveUserHandleLabel } from '../../utils/user-display-name';
 
 // ─── Child-scene panel hub ───────────────────────────────────────────────────────────────────
 // The Settings scene body lives here, plus the re-export + persistent-header registration seam
@@ -169,7 +169,10 @@ const BlockedRowAvatar = ({ user }: { user: FollowListUser }) => (
   <MonogramAvatar
     seed={user.userId}
     avatarUrl={user.avatarUrl}
-    title={user.displayName ?? user.username ?? '?'}
+    // F3700: this chain restored the exact `'?'` fallback F934(a)'s docstring
+    // names as UserProfilePanel's ELIMINATED copy — in the `??` dialect, two
+    // lines from an import of the resolver that already answers this.
+    title={resolveUserDisplayName(user)}
     size={36}
     textVariant="caption"
   />
@@ -247,7 +250,7 @@ const BlockedUsersSection = () => {
               onPress={() => handleUnblock(user)}
               disabled={pendingUnblockId === user.userId}
               accessibilityRole="button"
-              accessibilityLabel={`Unblock ${user.username ?? 'user'}`}
+              accessibilityLabel={`Unblock ${resolveUserHandleLabel(user, 'user')}`}
               style={styles.unblockButton}
               testID={`settings-unblock-${user.userId}`}
             >

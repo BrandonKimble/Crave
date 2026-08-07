@@ -190,6 +190,27 @@ module.exports = {
       // silently re-derive the same three lines instead of importing the resolver.
       // Excluded: the resolver's own module (it must contain this exact expression)
       // and its spec.
+      //
+      // F3700 (2026-08-06): THE LOCK WAS SHAPED LIKE THE COPIES IT WAS BUILT
+      // FROM, NOT LIKE THE RULE. The first selector requires `||` AND `.trim()`
+      // — but user-display-name.ts's own header records that the six originals
+      // split on exactly that axis, "half the copies used `??` (which keeps an
+      // empty string) where the other half used `||`". The ban was written
+      // against the half that happened to be in front of it, and five chains
+      // lived on in the dialect it could not see — one of them restoring the
+      // very `'?'` fallback F934(a) says was eliminated. The `??` and
+      // bare-member dialects are added HERE, in the SAME block: a second
+      // `no-restricted-syntax` block would REPLACE this one for any file it
+      // matched rather than add to it (F2050), so every ban this door has must
+      // live in one array.
+      //
+      // The two exclusions on the `??` selector are not softenings, they are
+      // the boundary of the rule. `me.displayName ?? ''` / `?? null` in
+      // EditProfilePanel initialises a FORM FIELD from your own profile — it
+      // produces an absent value, not a label, and there is no name to get
+      // wrong. And `creator.username ?? resolvePollCreatorName(creator)`
+      // already delegates to a resolver on the right, which is the thing this
+      // rule is asking for; a call on the right is compliance, not a chain.
       files: ['src/**/*.ts', 'src/**/*.tsx'],
       excludedFiles: ['src/utils/user-display-name.ts', 'src/utils/user-display-name.spec.ts'],
       rules: {
@@ -200,6 +221,23 @@ module.exports = {
               "LogicalExpression[operator='||'] CallExpression[callee.property.name='trim'][callee.object.property.name=/^(displayName|username)$/]",
             message:
               'Hand-rolled display-name fallback chain. Use resolveUserDisplayName(user, fallback) from utils/user-display-name.ts — it checks isDeleted first, which a `displayName?.trim() || username?.trim() || ...` chain silently skips.',
+          },
+          {
+            // The `??` dialect. Same defect, different operator — and worse,
+            // because `??` also keeps a whitespace-only name.
+            selector:
+              "LogicalExpression[operator='??']:not([right.raw=\"''\"]):not([right.raw='null']):not([right.raw='\"\"']):not([right.type='CallExpression']) > MemberExpression.left[property.name=/^(displayName|username)$/]",
+            message:
+              'Hand-rolled display-name fallback chain in the `??` dialect. Use resolveUserDisplayName(user, fallback) — or resolveUserHandleLabel(user, fallback) where the HANDLE is the point — from utils/user-display-name.ts. `??` skips the isDeleted branch AND keeps a whitespace-only name, so a deleted account renders as a nameless live one and a blank username renders as blank.',
+          },
+          {
+            // The bare-member `||` dialect: `profile?.displayName ||
+            // profile?.username || ...`, i.e. the same chain without the
+            // `.trim()` calls the first selector keys on.
+            selector:
+              "LogicalExpression[operator='||'] > ChainExpression.left[expression.property.name=/^(displayName|username)$/]",
+            message:
+              'Hand-rolled display-name fallback chain (no `.trim()`, so the first selector misses it). Use resolveUserDisplayName(user, fallback) from utils/user-display-name.ts — it checks isDeleted first and trims.',
           },
         ],
       },

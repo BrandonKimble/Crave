@@ -165,7 +165,10 @@ const UserProfileContent = React.memo(({ data }: { data: UserProfilePageData }) 
       .then((conversation) => {
         pushRoute('dmSession', {
           conversationId: conversation.conversationId,
-          peerName: conversation.otherUser.displayName ?? conversation.otherUser.username ?? null,
+          // F3700: was a hand-rolled `??` chain whose last resort was `null` —
+          // so a deleted peer arrived at the DM session as an unnamed row rather
+          // than as "Deleted user". The resolver answers both.
+          peerName: resolveUserDisplayName(conversation.otherUser),
         });
       })
       .catch(() => {

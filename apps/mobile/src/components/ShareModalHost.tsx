@@ -29,6 +29,7 @@ import {
 } from './share-modal-store';
 import { useSingletonSurfaceHost } from './singleton-surface-store';
 import { isInteractableAuthor } from '../services/author-identity';
+import { resolveUserDisplayName } from '../utils/user-display-name';
 
 /**
  * THE universal share modal (W3, page-registry §9b). One OverlayModalSheet
@@ -43,8 +44,11 @@ import { isInteractableAuthor } from '../services/author-identity';
  * owner design pass.
  */
 
-const peerDisplayName = (peer: ConversationPeer): string =>
-  peer.displayName ?? peer.username ?? 'Crave user';
+// F3700: this was a ninth hand-rolled chain, in the `??` dialect the F1960 ban
+// could not see — so it skipped the isDeleted branch (a deleted peer rendered as
+// a nameless live one) and invented a ninth fallback word, 'Crave user', for the
+// same sentence the rest of the app writes as 'Crave member'.
+const peerDisplayName = (peer: ConversationPeer): string => resolveUserDisplayName(peer);
 
 const TargetAvatar = ({
   peer,

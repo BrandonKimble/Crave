@@ -21,7 +21,12 @@ export const useProfilePanelIdentityRuntime = ({
   const displayName = resolveUserDisplayName(profile, 'Crave Explorer');
   const usernameLabel = profile?.username ? `@${profile.username}` : 'Pick a username';
   const initials = React.useMemo(() => {
-    const base = profile?.displayName || profile?.username || profile?.email || 'You';
+    // F3700: the initials seed re-derived the precedence by hand (the bare-`||`
+    // dialect, which the F1960 selector's `.trim()` requirement could not see) —
+    // two lines below the comment declaring the eighth chain eliminated. The
+    // resolver owns displayName-then-username; email-then-'You' is this
+    // surface's own fallback and is all that is left to pass in.
+    const base = resolveUserDisplayName(profile, profile?.email?.trim() || 'You');
     const cleaned = base.replace('@', '').trim();
     if (!cleaned) {
       return 'C';

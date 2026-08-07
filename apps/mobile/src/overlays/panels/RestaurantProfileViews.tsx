@@ -15,6 +15,7 @@ import { colors as themeColors } from '../../constants/theme';
 import { OVERLAY_HORIZONTAL_PADDING } from '../overlaySheetStyles';
 import { useAppOverlayRouteController } from '../useAppOverlayRouteController';
 import { openPostPhotosFunnel } from '../PostPhotosFunnelHost';
+import { resolveUserDisplayName } from '../../utils/user-display-name';
 
 // W3 (page-registry §8.4): the restaurant profile's segmented views. The panel
 // spec hook (RestaurantPanel) owns WHICH view is active (render-time state —
@@ -152,8 +153,14 @@ const MentionCard: React.FC<{
   card: RestaurantMentionCard;
   onPress: (card: RestaurantMentionCard) => void;
 }> = ({ card, onPress }) => {
+  // F3700: a seventh precedence, hand-rolled — display name, else an @-prefixed
+  // handle, else 'Someone' (the NotificationsPanel word). It skipped isDeleted,
+  // so a ghost's stale name rode this byline. The '@' prefix goes with it: this
+  // line reads as a NAME ("Ada · 3 votes"), the resolver is what names people,
+  // and a per-surface decoration on one branch of the chain is exactly the drift
+  // the one-resolver rule exists to stop.
   const authorLabel = (c: { user: RestaurantMentionCard['user'] }) =>
-    c.user.displayName ?? (c.user.username ? `@${c.user.username}` : 'Someone');
+    resolveUserDisplayName(c.user, 'Someone');
   return (
     <Pressable style={styles.mentionCard} onPress={() => onPress(card)}>
       <Text style={styles.mentionPollContext} numberOfLines={1}>
