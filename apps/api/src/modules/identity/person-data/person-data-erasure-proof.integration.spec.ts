@@ -383,15 +383,26 @@ describe('erasure proof — each rule provably acts on a row it owns', () => {
               cols.push(link.column);
               vals.push(`'${await link.resolve(client, userId)}'`);
             } else {
-              // THE TABLE'S KEY, not the rule's own column. A `null_column`
-              // rule names the value to DESTROY (users.auth_provider_user_id),
-              // which is not what locates the person — seeding the user id into
-              // that column would prove nothing about whether the rule finds
-              // the right row. Only a declared locating column identifies.
-              const keyColumn =
-                PERSON_DATA_RULES.find(
-                  (r) => r.table === rule.table && r.personKey,
-                )?.column ?? rule.column;
+              // THE RULE'S OWN KEY IF IT HAS ONE, otherwise the table's.
+              //
+              // A `personKey` rule acts on the rows where ITS column holds the
+              // person (D146 — per-column scoping), so the seed has to put the
+              // person THERE. This used to take the table's FIRST person key
+              // for every rule, which was only ever right because the old scope
+              // ORed the whole table together: it planted `follower_user_id`
+              // and then "proved" the `following_user_id` rule by finding a row
+              // that rule should never have matched. A fixture that passes for
+              // the wrong reason is the vacuous green this file exists to end.
+              //
+              // A `null_column` rule is the other case and still takes the
+              // table's key: it names the value to DESTROY
+              // (users.auth_provider_user_id), not what locates the person, so
+              // seeding the user id into it would prove nothing.
+              const keyColumn = rule.personKey
+                ? rule.column
+                : (PERSON_DATA_RULES.find(
+                    (r) => r.table === rule.table && r.personKey,
+                  )?.column ?? rule.column);
               cols.push(keyColumn);
               vals.push(`'${userId}'`);
             }

@@ -35,20 +35,43 @@ import {
  * ONCE, here, and the consumers ask instead of deciding.
  *
  * TWO SCOPES, BECAUSE THERE ARE GENUINELY TWO QUESTIONS. Collapsing them would
- * be a different kind of wrong:
+ * be a different kind of wrong — and collapsing them is exactly what caused the
+ * defect this file's second rederivation (D146) repairs:
  *
- *   ruleWhere(rule)    — "where does THIS rule act?"       (erasure)
- *   subjectRows(table) — "which rows NAME this person?"    (access/export)
+ *   ruleWhere(rule)      — "where does THIS rule act?"       (erasure)
+ *   retentionWhere(rule) — "where does THIS horizon act?"    (retention sweep)
+ *   subjectRows(table)   — "which rows NAME this person?"    (access/export)
  *
- * `ruleWhere` is now a thin reading of `subjectRows` rather than a second
- * resolution path — see its doc for why having two was the same disease this
- * file exists to cure, reproduced inside the file.
+ * `ruleWhere` USED TO BE a thin reading of `subjectRows`, on the argument that
+ * one question deserves one answer. That argument was right about the question
+ * and wrong about which question each caller was asking. `subjectRows` ORs
+ * EVERY person-bearing column of a table, because for an EXPORT every naming
+ * role is the person's ("every row that names me" is precisely a subject-access
+ * response). Handed to a DELETE, that same OR destroys rows the declaration
+ * said survive:
  *
- * `user_blocks` shows why they differ: erasure deletes rows where the person is
- * the BLOCKER and retains rows where they are the BLOCKED (a block protects
- * whoever placed it and must outlive the blocked account). But BOTH kinds of
- * row are about them, so a subject-access request covers both. One function
- * answering both questions would have to be wrong about one of them.
+ *   - erasing person A ran `DELETE FROM user_list_collaborators
+ *     WHERE user_id = A OR invited_by_user_id = A`, wiping THIRD PARTIES'
+ *     memberships from other people's lists — while `invited_by_user_id` is
+ *     declared `sever` ("the invite survives; who sent it does not").
+ *   - the 2555-day horizon sweep for `user_reports.reported_user_id` ORed
+ *     `reporter_user_id`, deleting a departed reporter's safety records ABOUT
+ *     still-live third parties, at a horizon that was never theirs.
+ *
+ * SO ERASURE AND RETENTION ARE PER-COLUMN NOW. A `delete_row` rule on column C
+ * deletes only `WHERE C = subject`; a retained horizon on column C deletes only
+ * `WHERE C = subject AND horizon passed`. A column where the person is merely
+ * REFERENCED follows its own declared disposition — `sever` nulls that column,
+ * `retain` leaves it, `anonymized_by_shell` does nothing row-level. The
+ * declaration already said all of this per column; the compiler now obeys it
+ * instead of flattening it into an OR.
+ *
+ * `user_blocks` shows why the questions differ even without the defect: erasure
+ * deletes rows where the person is the BLOCKER and retains rows where they are
+ * the BLOCKED (a block protects whoever placed it and must outlive the blocked
+ * account). But BOTH kinds of row are about them, so a subject-access request
+ * covers both. One function answering both questions would have to be wrong
+ * about one of them.
  */
 
 /** Every disposition that performs a statement — the three the eraser runs. */
@@ -69,20 +92,127 @@ const eq = (column: string, alias?: string) =>
   `${alias ? `${alias}.` : ''}"${column}"::text = $1::text`;
 
 /**
- * WHERE DOES A RULE ACT? The same place every other rule on that table acts.
+ * THE TABLE'S DECLARED JOIN, if it has one — with the two contradictions that
+ * would let authoring order decide, refused rather than resolved.
  *
- * `ruleScope` used to be a SECOND resolution path, with its own precedence
- * (declared -> personKey -> sole-by-elimination), its own classify-only skip,
- * and its own ambiguity throw — while `null_column` went through
- * `subjectRows`. Two answers to one question, which is the exact shape this
- * file was written to end, reproduced inside the file itself.
+ * Shared by every scope builder, so a table that reaches its person through a
+ * join answers the same way to erasure, retention and export. It used to live
+ * inside `subjectRows`, which meant the erasure path only saw these guards by
+ * going THROUGH the export scope — the coupling that produced the over-deletion.
+ */
+function declaredScope(table: string): string | null {
+  const rules = PERSON_DATA_RULES.filter((r) => r.table === table);
+
+  // A DECLARED SCOPE WINS — but only if the table declares ONE.
+  //
+  // This used to `find` the first rule carrying a scope, which is the same
+  // unguarded assumption as the exporter's old `rules[0].column`: it silently
+  // picks by authoring order and is right only while nobody disagrees. Two
+  // rules on one table declaring DIFFERENT scopes is a contradiction in the
+  // declaration, and the honest response is to refuse rather than to resolve
+  // it by whichever was typed first.
+  const declared = [
+    ...new Set(
+      rules.map((r) => r.personScopeSql).filter((sql): sql is string => !!sql),
+    ),
+  ];
+  if (declared.length > 1) {
+    throw new Error(
+      `person-data: ${table} declares ${declared.length} different person ` +
+        `scopes. A table has one answer to "which rows are this person's"; ` +
+        `reconcile them rather than letting authoring order decide.`,
+    );
+  }
+  if (declared.length === 0) return null;
+
+  // A DECLARED SCOPE AND A PERSON KEY ARE TWO ANSWERS TO ONE QUESTION.
+  //
+  // If the table reaches its person through a join, no column on it locates
+  // them directly — saying both is a contradiction, and the declared scope
+  // would silently mask the key. That masking is not hypothetical: it made
+  // re-introducing the original taste-profile bug (scope actor_id by user id)
+  // pass every test, because the sibling rule still carried the correct join
+  // and answered for the whole table. A guard the defect can hide behind is
+  // not a guard.
+  const alsoKeyed = rules.filter((r) => r.personKey);
+  if (alsoKeyed.length > 0) {
+    throw new Error(
+      `person-data: ${table} declares a personScopeSql AND marks ` +
+        `${alsoKeyed.map((r) => r.column).join(', ')} as a person key. The ` +
+        `table is reached one way; pick it.`,
+    );
+  }
+  return declared[0];
+}
+
+/** Columns declared to IDENTIFY the person in this table. */
+function personKeyColumns(table: string): string[] {
+  return [
+    ...new Set(
+      PERSON_DATA_RULES.filter((r) => r.table === table && r.personKey).map(
+        (r) => r.column,
+      ),
+    ),
+  ];
+}
+
+/** The disposition declared for one (table, column), if any. */
+function dispositionOf(
+  table: string,
+  column: string,
+): PersonDataDisposition | undefined {
+  return PERSON_DATA_RULES.find((r) => r.table === table && r.column === column)
+    ?.disposition;
+}
+
+/**
+ * WHICH COLUMNS DOES THIS RULE'S STATEMENT SCOPE BY? The one derivation both
+ * the SQL builder and the over-reach guard read.
  *
- * There is one question: which rows of this table are this person's. A rule's
- * own `personScopeSql` overrides it (the taste profile reaches its person
- * through signal_actors); otherwise the table's scope IS the answer. The
- * elimination heuristic is gone — every locating column is declared with
- * `personKey`, so nothing is inferred from how many siblings a rule happens to
- * have.
+ * They must read the SAME list, or the guard becomes a second opinion about
+ * what the statement does — the re-derivation drift this file exists to end,
+ * committed by the guard itself. Building the predicate FROM this list means a
+ * change that widens the scope (say, back to `subjectRows`' OR-of-everything)
+ * widens the guard's view in the same edit, and the guard goes RED.
+ *
+ * Returns null when the rule reaches its person through a DECLARED join (no
+ * per-column OR exists then) or acts on nothing at all.
+ */
+export function eraseScopeColumns(rule: PersonDataRule): string[] | null {
+  if (!ACTING.has(rule.disposition)) return null;
+  if (rule.personScopeSql || declaredScope(rule.table)) return null;
+
+  // PER COLUMN. A column declared to IDENTIFY the person in this table is the
+  // column its own rule acts through — `delete_row` deletes the rows where IT
+  // holds the subject, `sever` nulls IT where it holds the subject. Nothing
+  // else on the table is ORed in, because the other columns carry their own
+  // dispositions and those dispositions are what governs them.
+  if (rule.personKey) return [rule.column];
+
+  // A NON-KEY COLUMN DOES NOT LOCATE ANYBODY, so it cannot scope by itself.
+  //  - `delete_row`: the row is already removed by the key's own statement; a
+  //    second DELETE would be a duplicate, and scoping BY this column would
+  //    compare a user id to `residue_text`. Nothing to do.
+  //  - `null_column`: it names a VALUE to destroy on the person's own rows
+  //    (`users.auth_provider_user_id`, `signal_actors.device_key`), so the
+  //    table's person key locates them.
+  //  - `sever` is only ever declared on a locating column (severing a
+  //    non-locating one would be a `null_column`), so it never lands here.
+  if (rule.disposition === 'delete_row') return null;
+  const keys = personKeyColumns(rule.table);
+  return keys.length > 0 ? keys : null;
+}
+
+/**
+ * WHERE DOES A RULE ACT?
+ *
+ * On the rows THIS column makes the person's — not on every row of the table
+ * that happens to name them. See the file header: reading the export scope here
+ * is what made erasing an inviter destroy other people's list memberships.
+ *
+ * A rule's own `personScopeSql` (or its table's declared join) still wins: the
+ * taste profile reaches its person through `signal_actors`, and there is no
+ * column on it to scope by.
  *
  * Returns null for rules that do not act on rows, and for a classify-only
  * column whose table locates the person elsewhere. Null means "nothing to do",
@@ -91,36 +221,73 @@ const eq = (column: string, alias?: string) =>
 export function ruleWhere(rule: PersonDataRule): string | null {
   if (!ACTING.has(rule.disposition)) return null;
 
+  const joined = rule.personScopeSql ?? declaredScope(rule.table);
   const scope =
-    rule.personScopeSql ?? subjectRows(rule.table, { includeRetained: false });
+    joined ??
+    eraseScopeColumns(rule)
+      ?.map((c) => eq(c))
+      .join(' OR ');
   if (!scope) return null;
-
-  // A classify-only column (it names person data but does not locate a person)
-  // defers to its table's key. Acting on it separately would emit a duplicate
-  // statement, and scoping BY it would emit a predicate over a non-key column.
-  // ONLY `delete_row` defers. A non-key `sever`/`null_column` column is not
-  // classify-only: it names a value that must be DESTROYED, located by the
-  // table's key — `user_list_collaborators.invited_by_user_id` is exactly
-  // that (the invite survives, who sent it does not). Skipping them made a
-  // real sever a silent no-op. `delete_row` defers because the row is already
-  // removed by the key's own statement; a second DELETE would be a duplicate.
-  if (
-    rule.disposition === 'delete_row' &&
-    !rule.personScopeSql &&
-    !rule.personKey
-  ) {
-    return null;
-  }
 
   return rule.rowPredicate ? `(${scope}) AND (${rule.rowPredicate})` : scope;
 }
 
 /**
- * WHICH ROWS OF THIS TABLE NAME THIS PERSON?
+ * WHICH COLUMNS DOES THIS HORIZON'S DELETE SCOPE BY? Same contract as
+ * `eraseScopeColumns`, for the retention sweep.
+ *
+ * A retained column IS the column whose retention is being enforced: the
+ * 2555-day promise on `user_reports.reported_user_id` is a promise about the
+ * rows that REPORT that person, and nothing else. Scoping the sweep by the
+ * table's whole person-OR is what let a departed reporter's purge delete
+ * safety records about live third parties.
+ */
+export function retentionScopeColumns(rule: PersonDataRule): string[] | null {
+  if (rule.disposition !== 'retain' || typeof rule.horizon !== 'number') {
+    return null;
+  }
+  if (rule.personScopeSql || declaredScope(rule.table)) return null;
+  return [rule.column];
+}
+
+/**
+ * The horizon sweep's predicate for one retained rule.
+ *
+ * `alias` is not decoration: the sweep JOINs the table to `users`, and both
+ * carry a `user_id`, so an unqualified predicate makes Postgres refuse the
+ * query outright ("column reference user_id is ambiguous").
+ */
+export function retentionWhere(
+  rule: PersonDataRule,
+  alias?: string,
+): string | null {
+  if (rule.disposition !== 'retain' || typeof rule.horizon !== 'number') {
+    return null;
+  }
+  const joined = rule.personScopeSql ?? declaredScope(rule.table);
+  const scope =
+    joined ??
+    retentionScopeColumns(rule)
+      ?.map((c) => eq(c, alias))
+      .join(' OR ');
+  if (!scope) return null;
+  return rule.rowPredicate ? `(${scope}) AND (${rule.rowPredicate})` : scope;
+}
+
+/**
+ * WHICH ROWS OF THIS TABLE NAME THIS PERSON? — THE EXPORT SCOPE, AND ONLY THAT.
  *
  * The OR of every person-bearing column, because a person can appear in one
  * table in several roles: both sides of a follow, both sides of a collaborator
- * invite, both sides of a block. Their data is every row naming them.
+ * invite, both sides of a block. Their data is every row naming them, and a
+ * subject-access response that omitted the rows where they are the RECIPIENT
+ * would be a false statement about what we hold.
+ *
+ * NEVER HAND THIS TO A DELETE. That is the F7500/D118 defect: a DELETE destroys
+ * the whole row, so an OR that is exactly right for "show me everything about
+ * me" removes rows the declaration keeps for somebody else. Erasure uses
+ * `ruleWhere`, retention uses `retentionWhere`, and both are per-column;
+ * `assertNoOverbroadDeleteScope` fails the sweep if that ever regresses.
  *
  * `includeRetained` is the access-vs-erasure distinction made explicit. A
  * subject-access request covers retained rows too (they are still personal
@@ -145,46 +312,8 @@ export function subjectRows(
 ): string | null {
   const rules = PERSON_DATA_RULES.filter((r) => r.table === table);
 
-  // A DECLARED SCOPE WINS — but only if the table declares ONE.
-  //
-  // This used to `find` the first rule carrying a scope, which is the same
-  // unguarded assumption as the exporter's old `rules[0].column`: it silently
-  // picks by authoring order and is right only while nobody disagrees. Two
-  // rules on one table declaring DIFFERENT scopes is a contradiction in the
-  // declaration, and the honest response is to refuse rather than to resolve
-  // it by whichever was typed first.
-  const declared = [
-    ...new Set(
-      rules.map((r) => r.personScopeSql).filter((sql): sql is string => !!sql),
-    ),
-  ];
-  if (declared.length > 1) {
-    throw new Error(
-      `person-data: ${table} declares ${declared.length} different person ` +
-        `scopes. A table has one answer to "which rows are this person's"; ` +
-        `reconcile them rather than letting authoring order decide.`,
-    );
-  }
-  if (declared.length === 1) {
-    // A DECLARED SCOPE AND A PERSON KEY ARE TWO ANSWERS TO ONE QUESTION.
-    //
-    // If the table reaches its person through a join, no column on it locates
-    // them directly — saying both is a contradiction, and the declared scope
-    // would silently mask the key. That masking is not hypothetical: it made
-    // re-introducing the original taste-profile bug (scope actor_id by user
-    // id) pass every test, because the sibling rule still carried the correct
-    // join and answered for the whole table. A guard the defect can hide
-    // behind is not a guard.
-    const alsoKeyed = rules.filter((r) => r.personKey);
-    if (alsoKeyed.length > 0) {
-      throw new Error(
-        `person-data: ${table} declares a personScopeSql AND marks ` +
-          `${alsoKeyed.map((r) => r.column).join(', ')} as a person key. The ` +
-          `table is reached one way; pick it.`,
-      );
-    }
-    return declared[0];
-  }
+  const declared = declaredScope(table);
+  if (declared) return declared;
 
   const naming = personNamingRules(table, options);
   if (naming.length === 0) return null;
@@ -205,13 +334,15 @@ export function subjectRows(
 /**
  * THE RULES WHOSE COLUMNS `subjectRows` ORs TOGETHER for this table+options.
  *
- * This is the exact set the OR is built from — the columns a scope built here
- * will locate. Exposed as its own function so a guard can inspect what a scope
- * would REACH without re-deriving the filter (the re-derivation-drift this file
- * exists to end). Returns `[]` when the table reaches its person through a
- * DECLARED scope (a join): there is no per-column OR then, so nothing to widen.
+ * Private, deliberately. It was exported so the over-reach guard could inspect
+ * what an erasure DELETE would reach — back when erasure WAS the export scope.
+ * Now that the DELETE scopes are per-column, a guard reading this would be
+ * reading the wrong function: it must read `eraseScopeColumns` /
+ * `retentionScopeColumns`, the exact lists the statements are built from.
+ * Returns `[]` when the table reaches its person through a DECLARED scope (a
+ * join): there is no per-column OR then, so nothing to widen.
  */
-export function personNamingRules(
+function personNamingRules(
   table: string,
   options: { includeRetained: boolean },
 ): PersonDataRule[] {
@@ -234,35 +365,31 @@ export function personNamingRules(
 }
 
 /**
- * A COLUMN OR'd INTO A ROW-DELETE SCOPE WHOSE DISPOSITION SAYS THE ROW SURVIVES.
+ * A COLUMN SCOPED INTO A ROW-DELETE WHOSE DISPOSITION SAYS THE ROW SURVIVES.
  *
- * `subjectRows` ORs every person-bearing column of a table — correct for
- * access/export, where every naming role is the person's. But two consumers
- * hand that OR to a DELETE:
- *
- *   - the eraser's `delete_row` branch  (subjectRows, includeRetained:false)
- *   - the retention sweep's horizon DELETE (subjectRows, includeRetained:true)
- *
- * and a DELETE destroys the WHOLE row. So when the OR includes a column whose
- * disposition is not the verb that warrants the deletion — a `sever`/
- * `anonymized_by_shell` column on a `delete_row` scope, or any non-`retain`
- * column on a horizon scope — the delete removes rows the declaration said
- * survive. Both live instances are of exactly this shape:
+ * THE DEFECT THIS WATCHES FOR (F7500 / D118, fixed by D146). Erasure and
+ * retention used to build their DELETEs from `subjectRows` — the OR of every
+ * person-bearing column, which is right for an export and catastrophic for a
+ * DELETE, because a DELETE destroys the WHOLE row:
  *
  *   - user_list_collaborators.invited_by_user_id is `sever` ("the invite
- *     survives on someone else's list; who sent it does not") yet is ORed into
- *     the delete_row scope, so erasing the inviter deletes THIRD PARTIES'
+ *     survives on someone else's list; who sent it does not") yet was ORed into
+ *     the delete_row scope, so erasing the inviter deleted THIRD PARTIES'
  *     memberships on other people's lists.
- *   - user_reports.reporter_user_id is `anonymized_by_shell` yet is ORed into
+ *   - user_reports.reporter_user_id is `anonymized_by_shell` yet was ORed into
  *     the 2555-day horizon scope enforcing reported_user_id, so a reporter's
- *     purge deletes the safety record ABOUT a still-live third party.
+ *     purge deleted the safety record ABOUT a still-live third party.
  *
- * This computes those contradictions from the declaration, so the silent
- * over-deletion is a fact anything can assert on rather than a surprise a
- * regulator finds. It does NOT change what any scope emits — the per-column
- * re-scoping that ends the over-deletion is a change to real user data on a
- * legal-compliance surface, and is the OWNER's ruling to make (see D118 / the
- * escalation on F7500).
+ * Both are gone: the scopes are per-column now. This is what keeps them gone.
+ * It reads `eraseScopeColumns` / `retentionScopeColumns` — the EXACT lists the
+ * statements are built from, not a second opinion about them — and reports any
+ * scoped column whose declared disposition is not the verb that warrants the
+ * deletion. Widening a scope therefore widens this in the same edit, which is
+ * what makes it able to show RED: restore the OR and both instances come back
+ * by name.
+ *
+ * It is wired FAIL-CLOSED into the live `erase()` and the live retention
+ * `sweep()` (see `assertNoOverbroadDeleteScope`).
  */
 export interface DeleteScopeContradiction {
   /** Which DELETE construction over-reaches. */
@@ -270,7 +397,7 @@ export interface DeleteScopeContradiction {
   table: string;
   /** The `table.column` rule whose scope this DELETE is (the verb it serves). */
   onBehalfOf: string;
-  /** The column wrongly ORed into that DELETE. */
+  /** The column wrongly scoped into that DELETE. */
   offendingColumn: string;
   /** Why that column's row was supposed to survive. */
   offendingDisposition: PersonDataDisposition;
@@ -279,54 +406,38 @@ export interface DeleteScopeContradiction {
 export function deleteScopeContradictions(): DeleteScopeContradiction[] {
   const out: DeleteScopeContradiction[] = [];
 
-  // 1. ERASURE. A `delete_row` rule hands subjectRows(includeRetained:false) to
-  //    DELETE. Any ORed column that is not itself `delete_row` names a row the
-  //    declaration keeps.
-  const deleteRowTables = [
-    ...new Set(
-      PERSON_DATA_RULES.filter(
-        (r) => r.disposition === 'delete_row' && !r.personScopeSql,
-      ).map((r) => r.table),
-    ),
-  ];
-  for (const table of deleteRowTables) {
-    const key =
-      PERSON_DATA_RULES.find(
-        (r) =>
-          r.table === table && r.disposition === 'delete_row' && r.personKey,
-      )?.column ?? '(no declared key)';
-    for (const r of personNamingRules(table, { includeRetained: false })) {
-      if (r.disposition !== 'delete_row') {
-        out.push({
-          scope: 'erasure',
-          table,
-          onBehalfOf: `${table}.${key}`,
-          offendingColumn: r.column,
-          offendingDisposition: r.disposition,
-        });
-      }
+  const check = (
+    scope: 'erasure' | 'retention-horizon',
+    rule: PersonDataRule,
+    columns: string[] | null,
+    warranted: PersonDataDisposition,
+  ) => {
+    for (const column of columns ?? []) {
+      const disposition = dispositionOf(rule.table, column);
+      // An UNDECLARED column in a delete scope is the worse case, not a pass:
+      // nobody has said what happens to it, and the DELETE is already acting.
+      if (disposition === warranted) continue;
+      out.push({
+        scope,
+        table: rule.table,
+        onBehalfOf: `${rule.table}.${rule.column}`,
+        offendingColumn: column,
+        offendingDisposition: disposition ?? ('undeclared' as never),
+      });
     }
-  }
+  };
 
-  // 2. RETENTION HORIZON. A `retain` rule with a numeric horizon hands
-  //    subjectRows(includeRetained:true) to a DELETE. Any ORed column that is
-  //    not `retain` names a row governed by a different fate, deleted at this
-  //    horizon.
   for (const rule of PERSON_DATA_RULES) {
-    if (rule.disposition !== 'retain' || typeof rule.horizon !== 'number') {
-      continue;
+    // 1. ERASURE — a `delete_row` rule's DELETE may only be scoped by columns
+    //    that are themselves `delete_row`.
+    if (rule.disposition === 'delete_row') {
+      check('erasure', rule, eraseScopeColumns(rule), 'delete_row');
     }
-    if (rule.personScopeSql) continue;
-    for (const r of personNamingRules(rule.table, { includeRetained: true })) {
-      if (r.disposition !== 'retain') {
-        out.push({
-          scope: 'retention-horizon',
-          table: rule.table,
-          onBehalfOf: `${rule.table}.${rule.column}`,
-          offendingColumn: r.column,
-          offendingDisposition: r.disposition,
-        });
-      }
+    // 2. RETENTION HORIZON — a bounded `retain` rule's DELETE may only be
+    //    scoped by columns that are themselves `retain`. Any other column names
+    //    a row governed by a different fate, deleted at a horizon never its own.
+    if (rule.disposition === 'retain' && typeof rule.horizon === 'number') {
+      check('retention-horizon', rule, retentionScopeColumns(rule), 'retain');
     }
   }
 
@@ -334,21 +445,23 @@ export function deleteScopeContradictions(): DeleteScopeContradiction[] {
 }
 
 /**
- * THE LOUD-FAIL GUARD (D118, F7500). Throws if any DELETE scope would OR in a
- * surviving-data column, naming every offending (table, column). Approved as
- * engineering — it makes the current silent over-deletion impossible to run
- * unnoticed — while the erasure SEMANTICS (per-column re-scoping) stay the
- * owner's ruling. Fail-open vs fail-closed on the LIVE erase/sweep path is a
- * compliance decision escalated to the owner and is NOT wired here; this
- * assertion is the non-production proof (specs + a dev/startup check may call
- * it) that the defect is real and named.
+ * THE LOUD-FAIL GUARD (F7500 / D118 / D146). Throws if any DELETE scope would
+ * reach a surviving-data column, naming every offending (table, column).
+ *
+ * FAIL-CLOSED, ON THE LIVE PATH. `erase()` and the retention `sweep()` both
+ * call it before their first statement, so the over-deletion cannot run at all
+ * — the alternative (log and continue) would mean noticing third-party data
+ * loss in a log after destroying it, on the one surface where the damage is
+ * irreversible and reportable. It is a pure function of the declaration, so it
+ * cannot fail intermittently: it is red for everybody or nobody, at the first
+ * erasure after the bad edit, with the offending columns named.
  */
 export function assertNoOverbroadDeleteScope(): void {
   const contradictions = deleteScopeContradictions();
   if (contradictions.length === 0) return;
   const lines = contradictions.map(
     (c) =>
-      `  [${c.scope}] ${c.onBehalfOf}: DELETE scope ORs ` +
+      `  [${c.scope}] ${c.onBehalfOf}: DELETE scope reaches ` +
       `${c.table}.${c.offendingColumn} (${c.offendingDisposition}) — that row ` +
       `was declared to SURVIVE, and the delete destroys it.`,
   );

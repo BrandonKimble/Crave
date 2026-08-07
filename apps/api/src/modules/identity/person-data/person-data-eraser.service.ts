@@ -2,7 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../../../prisma/prisma.service';
 import { LoggerService } from '../../../shared';
 import { PERSON_DATA_RULES, type PersonDataRule } from './person-data-class';
-import { ruleWhere, subjectRows } from './person-data-scope';
+import { assertNoOverbroadDeleteScope, ruleWhere } from './person-data-scope';
 
 export interface ErasureReport {
   userId: string;
@@ -81,6 +81,14 @@ export class PersonDataEraserService {
    * safe (and is the documented recovery path).
    */
   async erase(userId: string): Promise<ErasureReport> {
+    // BEFORE THE FIRST STATEMENT, NOT AFTER. If any DELETE scope reaches a
+    // column the declaration says survives, this throws and the sweep does not
+    // run at all. The alternative — log and continue — means learning about
+    // third-party data loss from a log AFTER destroying it, which on this
+    // surface is irreversible and reportable. It is a pure function of the
+    // declaration, so it is red for everybody or nobody.
+    assertNoOverbroadDeleteScope();
+
     const applied: Record<string, number> = {};
     const skipped: string[] = [];
 
@@ -132,9 +140,15 @@ export class PersonDataEraserService {
    * `delete_row` and `sever` by their own column, `null_column` by
    * personScopeSql-or-a-sibling. Three derivations, three chances to drift
    * from the declaration, and every erasure defect found lived in one of them.
-   * The scope is now `ruleWhere`'s answer — itself a thin reading of the
-   * table's person scope — shared with the exporter and the proofs, so a
-   * disagreement is impossible rather than merely unlikely.
+   * The scope is now `ruleWhere`'s answer for all three, so a disagreement
+   * between the dispositions is impossible rather than merely unlikely.
+   *
+   * AND `ruleWhere` IS PER-COLUMN (D146). It is NOT the export scope: a rule
+   * acts on the rows ITS OWN column makes the person's, never on every row of
+   * the table that happens to name them. The other person-columns on that row
+   * are governed by their own declared dispositions, which this same loop
+   * applies — `sever` nulls the inviter, and the invited person's membership
+   * survives, exactly as declared.
    */
   private async applyRule(
     rule: PersonDataRule,
@@ -162,21 +176,22 @@ export class PersonDataEraserService {
 
       case 'null_column': {
         // The value to destroy is NOT the person key, so the person is reached
-        // either by the rule's own declared scope or by the table's key.
-        const scope =
-          rule.personScopeSql ??
-          subjectRows(rule.table, { includeRetained: false });
-        if (!scope) {
+        // either by the rule's own declared scope or by the table's key —
+        // which is exactly what `ruleWhere` resolves. This used to call
+        // `subjectRows` directly, i.e. the EXPORT scope, and so nulled the
+        // column on every row naming the person rather than on the person's
+        // own rows. Harmless only by accident (no `null_column` column happens
+        // to sit on a multi-role table today); it is the same wrong reading
+        // that made the DELETEs over-reach, and one wrong reading left in
+        // place is the next defect.
+        if (!where) {
           throw new Error(
             `null_column on ${rule.table}.${rule.column} has no personScopeSql ` +
               `and the table declares no person key to scope by`,
           );
         }
-        const predicate = rule.rowPredicate
-          ? ` AND (${rule.rowPredicate})`
-          : '';
         return this.prisma.$executeRawUnsafe(
-          `UPDATE "${rule.table}" SET "${rule.column}" = NULL WHERE (${scope})${predicate}`,
+          `UPDATE "${rule.table}" SET "${rule.column}" = NULL WHERE ${where}`,
           userId,
         );
       }

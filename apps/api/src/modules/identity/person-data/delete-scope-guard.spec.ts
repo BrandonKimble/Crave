@@ -1,69 +1,121 @@
+import { PERSON_DATA_RULES } from './person-data-class';
 import {
   assertNoOverbroadDeleteScope,
   deleteScopeContradictions,
+  eraseScopeColumns,
+  retentionScopeColumns,
+  ruleWhere,
+  retentionWhere,
+  subjectRows,
 } from './person-data-scope';
 
 /**
- * THE LOUD-FAIL GUARD FOR F7500 (D118).
+ * THE GUARD FOR F7500 / D118, NOW GREEN BY CONSTRUCTION (D146).
  *
- * `subjectRows` ORs every person-bearing column of a table — correct for
- * access/export, WRONG when the OR is handed to a DELETE, because a DELETE
- * destroys the whole row. Two consumers do exactly that (the eraser's
- * `delete_row` branch and the retention sweep's horizon DELETE), so a column
- * the declaration says SURVIVES is silently deleted whenever it shares a table
- * with a delete verb.
+ * The defect: erasure and the retention sweep built their DELETEs from
+ * `subjectRows` — the OR of every person-bearing column of a table. That OR is
+ * exactly right for an EXPORT ("every row that names me") and catastrophic for
+ * a DELETE, because a DELETE destroys the WHOLE row. Two live instances:
+ * erasing an inviter deleted third parties' list memberships, and a departed
+ * reporter's horizon sweep deleted safety records about still-live third
+ * parties.
  *
- * The correct fix — scoping each DELETE by the columns whose disposition IS the
- * verb — CHANGES what an erasure does to real user data on a legal-compliance
- * surface, so it is the owner's ruling (escalated). Approved NOW as engineering
- * is this guard: it makes the silent over-deletion a fact anything can assert
- * on. It goes RED on the live declaration today, naming both live instances.
- *
- * This is the NON-PRODUCTION assertion path. Whether the LIVE erase/sweep path
- * should additionally throw (fail-closed) or log-and-continue (fail-open) is
- * the compliance decision left to the owner; nothing here wires it into the
- * running sweep.
+ * Both scopes are PER-COLUMN now, so the contradiction list is empty. An empty
+ * list is worth nothing unless it can be made non-empty, so the last test
+ * MUTATES the compiler back to the OR and proves both instances return, by
+ * name. That mutation is the reason to believe the green.
  */
-describe('person-data: DELETE scope must not erase surviving columns (F7500)', () => {
-  it('DETECTS both live over-deletions, named, and nothing else', () => {
-    const contradictions = deleteScopeContradictions();
-
-    // The erasure delete_row scope on user_list_collaborators ORs
-    // invited_by_user_id, whose ruling is: "the invite survives on someone
-    // else's list; who sent it does not."
-    expect(contradictions).toContainEqual({
-      scope: 'erasure',
-      table: 'user_list_collaborators',
-      onBehalfOf: 'user_list_collaborators.user_id',
-      offendingColumn: 'invited_by_user_id',
-      offendingDisposition: 'sever',
-    });
-
-    // The 2555-day horizon sweep for user_reports.reported_user_id ORs
-    // reporter_user_id (anonymized_by_shell), deleting the safety record about
-    // a still-live third party at a horizon that was never its own.
-    expect(contradictions).toContainEqual({
-      scope: 'retention-horizon',
-      table: 'user_reports',
-      onBehalfOf: 'user_reports.reported_user_id',
-      offendingColumn: 'reporter_user_id',
-      offendingDisposition: 'anonymized_by_shell',
-    });
-
-    // Exactly those two — a wider net would mean the detector is flagging
-    // correct scopes (e.g. user_blocks, which is correct today because the
-    // erasure path passes includeRetained:false).
-    expect(contradictions).toHaveLength(2);
+describe('person-data: DELETE scope must not erase surviving columns (F7500/D146)', () => {
+  it('has NO contradictions on the live declaration', () => {
+    expect(deleteScopeContradictions()).toEqual([]);
+    expect(() => assertNoOverbroadDeleteScope()).not.toThrow();
   });
 
-  it('THROWS on the live declaration, naming both offending columns', () => {
-    // The guard is fail-closed WHERE it runs (this proof, and any dev/startup
-    // check that calls it). It throws until the semantics land.
-    expect(() => assertNoOverbroadDeleteScope()).toThrow(
-      /user_list_collaborators\.invited_by_user_id/,
-    );
-    expect(() => assertNoOverbroadDeleteScope()).toThrow(
-      /user_reports\.reporter_user_id/,
-    );
+  it('the two live over-deletions are gone, named', () => {
+    // Erasing a person deletes the collaborator rows that are THEIRS, and only
+    // those. `invited_by_user_id` is `sever` — the invite survives on someone
+    // else's list, minus who made it — so it must not appear in the DELETE.
+    const collaborator = PERSON_DATA_RULES.find(
+      (r) => r.table === 'user_list_collaborators' && r.column === 'user_id',
+    )!;
+    expect(eraseScopeColumns(collaborator)).toEqual(['user_id']);
+    expect(ruleWhere(collaborator)).not.toContain('invited_by_user_id');
+
+    // The 2555-day horizon on `reported_user_id` is a promise about the rows
+    // reporting THAT person. `reporter_user_id` is a different person under a
+    // different disposition, at a horizon that was never its own.
+    const reported = PERSON_DATA_RULES.find(
+      (r) => r.table === 'user_reports' && r.column === 'reported_user_id',
+    )!;
+    expect(retentionScopeColumns(reported)).toEqual(['reported_user_id']);
+    expect(retentionWhere(reported, 't')).not.toContain('reporter_user_id');
+  });
+
+  it('EXPORT keeps the OR — the question it answers is the other one', () => {
+    // The split is the whole design: a subject-access response that omitted the
+    // rows where the person is the INVITER (or the blocked, or the followed)
+    // would be a false statement about what we hold. Same table, same person,
+    // opposite correct answers — which is why one function cannot serve both.
+    const or = subjectRows('user_list_collaborators', {
+      includeRetained: false,
+    })!;
+    expect(or).toContain('user_id');
+    expect(or).toContain('invited_by_user_id');
+  });
+
+  it('MUTATION: the export OR, handed to these DELETEs, is still both defects', () => {
+    // WHY THIS IS THE MUTATION AND NOT A RE-DERIVATION. The columns below are
+    // read out of the REAL `subjectRows` SQL — the very string the two DELETEs
+    // used to be built from — and judged by the same rule the guard applies:
+    // a scope column whose disposition is not the verb warranting the delete is
+    // a contradiction. So this asks the guard's own question of the OLD scope
+    // and gets the old, red answer, while the live scopes above answer green.
+    // If someone reverts `ruleWhere`/`retentionWhere` to `subjectRows`, these
+    // are exactly the two rows `deleteScopeContradictions()` reports again.
+    const scopeColumns = (sql: string) => [
+      ...new Set(
+        [...sql.matchAll(/"([a-z_]+)"::text = \$1/g)].map((m) => m[1]),
+      ),
+    ];
+
+    const offenders = (table: string, warranted: string, sql: string) =>
+      scopeColumns(sql).filter(
+        (column) =>
+          PERSON_DATA_RULES.find(
+            (r) => r.table === table && r.column === column,
+          )?.disposition !== warranted,
+      );
+
+    // The erasure instance: the OR reaches `invited_by_user_id` (sever), whose
+    // row the declaration KEEPS — that is the third party's membership.
+    const collaboratorOr = subjectRows('user_list_collaborators', {
+      includeRetained: false,
+    })!;
+    expect(
+      offenders('user_list_collaborators', 'delete_row', collaboratorOr),
+    ).toEqual(['invited_by_user_id']);
+
+    // The retention instance: the OR reaches `reporter_user_id`
+    // (anonymized_by_shell) at a horizon that was never its own.
+    const reportsOr = subjectRows('user_reports', {
+      includeRetained: true,
+      alias: 't',
+    })!;
+    expect(offenders('user_reports', 'retain', reportsOr)).toEqual([
+      'reporter_user_id',
+    ]);
+
+    // And the live scopes contain NEITHER — the delta this design is.
+    expect(scopeColumns(collaboratorOr).length).toBeGreaterThan(1);
+    expect(
+      scopeColumns(
+        ruleWhere(
+          PERSON_DATA_RULES.find(
+            (r) =>
+              r.table === 'user_list_collaborators' && r.column === 'user_id',
+          )!,
+        )!,
+      ),
+    ).toEqual(['user_id']);
   });
 });

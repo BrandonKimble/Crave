@@ -3,7 +3,11 @@ import { Cron, CronExpression } from '@nestjs/schedule';
 import { PrismaService } from '../../../prisma/prisma.service';
 import { LoggerService } from '../../../shared';
 import { PERSON_DATA_RULES } from './person-data-class';
-import { deleteScopeContradictions, subjectRows } from './person-data-scope';
+import {
+  assertNoOverbroadDeleteScope,
+  deleteScopeContradictions,
+  retentionWhere,
+} from './person-data-scope';
 
 /**
  * THE HORIZON, ENFORCED.
@@ -62,12 +66,12 @@ export class RetentionHorizonService {
   async overdue(): Promise<Array<{ rule: string; rows: number }>> {
     const report: Array<{ rule: string; rows: number }> = [];
     for (const rule of this.horizonRules()) {
-      // A retained column is not a scoping key, so the table's own person
-      // scope locates the rows — the compiler's answer, not a new one.
-      const scope = subjectRows(rule.table, {
-        includeRetained: true,
-        alias: 't',
-      });
+      // THE RETAINED COLUMN IS THE SCOPE. A 2555-day promise about
+      // `user_reports.reported_user_id` is a promise about the rows that report
+      // THAT person; reading the table's whole person-OR here (`subjectRows`,
+      // the EXPORT scope) is what made a departed reporter's sweep count — and
+      // then delete — safety records about live third parties.
+      const scope = retentionWhere(rule, 't');
       if (!scope) continue;
       const [row] = await this.prisma.$queryRawUnsafe<Array<{ n: number }>>(
         `SELECT count(*)::int AS n
@@ -94,12 +98,14 @@ export class RetentionHorizonService {
    */
   @Cron(CronExpression.EVERY_WEEK)
   async sweep(): Promise<{ deleted: number }> {
+    // FAIL-CLOSED, BEFORE THE FIRST DELETE — same guard, same reason, as the
+    // eraser: this is the second construction that hands a person scope to a
+    // DELETE, and it is the one that runs unattended on a cron.
+    assertNoOverbroadDeleteScope();
+
     let deleted = 0;
     for (const rule of this.horizonRules()) {
-      const scope = subjectRows(rule.table, {
-        includeRetained: true,
-        alias: 't',
-      });
+      const scope = retentionWhere(rule, 't');
       if (!scope) continue;
       const count = await this.prisma.$executeRawUnsafe(
         `DELETE FROM "${rule.table}" t
@@ -140,18 +146,18 @@ export class RetentionHorizonService {
    * null for every non-acting disposition (`retain` is not in ACTING), so the
    * second conjunct was false for every candidate — a green light wired to
    * nothing, in the file whose own header argues against promises with no
-   * mechanism. The question has content only at the TABLE level, and there it is
-   * currently VIOLATED: the 2555-day sweep for `user_reports.reported_user_id`
-   * runs a DELETE whose scope also matches `reporter_user_id`
-   * (`anonymized_by_shell`), so a reporter's purge deletes the safety record
-   * about a still-live third party at a horizon that was never its own.
+   * mechanism. Rederived, it went RED and named the real violation: the
+   * 2555-day sweep for `user_reports.reported_user_id` ran a DELETE whose scope
+   * also matched `reporter_user_id` (`anonymized_by_shell`), so a reporter's
+   * purge deleted the safety record about a still-live third party at a horizon
+   * that was never its own.
    *
-   * Rederived at the grain the question has: the disposition contradictions the
-   * compiler now computes, restricted to the horizon sweep — a retained rule
-   * whose DELETE scope reaches rows the declaration keeps for a different
-   * reason. Non-empty on the live corpus (`user_reports`); `[]` only for a
-   * declaration with no such conflict. This is the same predicate F7500's guard
-   * asserts, read from the one place it is derived.
+   * That is fixed (D146): `sweep()` scopes by the RETAINED COLUMN, so this is
+   * `[]` today. It stays here — and stays wired into the sweep through
+   * `assertNoOverbroadDeleteScope` — because it is what makes the fix hold:
+   * widening the sweep's scope back to the table's person-OR brings the pair
+   * back by name, in the same edit. It reads the same derivation the DELETE is
+   * built from, not a second opinion about it.
    */
   static contradictions(): string[] {
     return deleteScopeContradictions()

@@ -3,7 +3,7 @@ import { readFileSync } from 'fs';
 import { join } from 'path';
 import { PERSON_DATA_RULES } from './person-data-class';
 import { RetentionHorizonService } from './retention-horizon.service';
-import { subjectRows } from './person-data-scope';
+import { retentionWhere } from './person-data-scope';
 
 /**
  * A HORIZON NOBODY ENFORCES IS A LIE, and a SECOND ANSWER DRIFTS.
@@ -38,7 +38,11 @@ describe('retention horizon — the promise has a mechanism', () => {
       (rule) =>
         rule.disposition === 'retain' &&
         typeof rule.horizon === 'number' &&
-        subjectRows(rule.table, { includeRetained: true }) === null,
+        // The sweep's OWN scope builder, not the export scope. Asking
+        // `subjectRows` here would have declared a horizon "reachable" through
+        // a predicate the sweep no longer uses — a reachability test for the
+        // wrong query.
+        retentionWhere(rule, 't') === null,
     ).map((rule) => `${rule.table}.${rule.column}`);
     expect(unreachable).toEqual([]);
     // And the net must be non-empty, or this test is reading an empty list
@@ -77,25 +81,24 @@ describe('retention horizon — the promise has a mechanism', () => {
     expect(unexplained).toEqual([]);
   });
 
-  it('SEES the horizon-sweep contradiction it is named to catch (RED on user_reports today)', () => {
-    // The old assertion here was `toEqual([])`, guarding a check that could
-    // NEVER return anything else (its filter required `ruleWhere` to be
-    // non-null for a `retain` rule, which is impossible — `retain` is not an
-    // acting disposition). A green light wired to nothing.
+  it('the horizon sweep no longer deletes rows a different rule keeps (D146)', () => {
+    // THIS ASSERTION IS THE MUTATION PROOF, AND ITS HISTORY IS THE EVIDENCE.
     //
-    // The rederived check reads the compiler's disposition contradictions. On
-    // the live declaration it is NON-EMPTY, because the 2555-day sweep for
-    // `user_reports.reported_user_id` runs a DELETE whose scope also matches
-    // `reporter_user_id` (`anonymized_by_shell`) — deleting the safety record
-    // about a still-live third party at a horizon that was never its own. If
-    // the declaration ever carried no such conflict this list would be `[]`;
-    // today it must NOT be, and it must name that pair.
-    const contradictions = RetentionHorizonService.contradictions();
-    expect(contradictions.length).toBeGreaterThan(0);
-    expect(contradictions.join('\n')).toContain(
-      'user_reports.reported_user_id',
-    );
-    expect(contradictions.join('\n')).toContain('reporter_user_id');
+    // It has been all three states, in order. First `toEqual([])` guarding a
+    // check that could NEVER return anything else (it required `ruleWhere` to
+    // be non-null for a `retain` rule — impossible, `retain` is not an acting
+    // disposition): a green light wired to nothing. Then, rederived against the
+    // compiler's real contradictions, it was asserted NON-EMPTY, because the
+    // 2555-day sweep for `user_reports.reported_user_id` built its DELETE from
+    // the table's person-OR and so also matched `reporter_user_id`
+    // (`anonymized_by_shell`) — destroying the safety record about a still-live
+    // third party at a horizon that was never its own.
+    //
+    // Now the sweep scopes by the RETAINED COLUMN, so it is `[]` — and the flip
+    // from "must be non-empty" to "must be empty" is what proves the defect is
+    // gone rather than merely unwatched. Revert `sweep()` to `subjectRows` and
+    // this goes red naming that exact pair again.
+    expect(RetentionHorizonService.contradictions()).toEqual([]);
   });
 
   it('the sweep runs against the real schema and reports honestly', async () => {
