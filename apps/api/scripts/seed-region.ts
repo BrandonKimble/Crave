@@ -1,12 +1,23 @@
 /**
- * @script-class: probe
- * @finding: NOT YET BANKED — record what this probe answered, or delete it.
+ * @script-class: operational
+ * @runner: none — invoked by hand, deliberately
  *
- * A banked probe's value is the RECORDED RESULT, kept so the finding stays
- * reproducible. This one has no runner and no written-down finding: the
- * F414 sweep (2026-08-02) could establish the first fact mechanically but
- * not the second, and inventing one would be worse than leaving it visible.
- * Until a finding is written here, this file is a deletion candidate.
+ * NOT a probe, and emphatically not a deletion candidate: this is the
+ * 478-line coarse-grid city/region onboarder, written to owner direction
+ * (2026-07-28). It drives the same discovery path organic traffic uses
+ * (TomtomChainProbe -> sketchChain), which mints places and spends real
+ * vendor credit. Read the charter docblock immediately below before
+ * touching it.
+ *
+ * STAMP CORRECTED (F4939, 2026-08-06). The F414 sweep (2026-08-02) marked
+ * this file `@script-class: probe` / `@finding: NOT YET BANKED — deletion
+ * candidate`. The sweep's own header admits it could establish the CLASS
+ * mechanically "but not the second" fact — and it then defaulted that
+ * unknown to the most destructive available value on a file it had not
+ * read. THE RULE: a sweep emits only the fact it established. What it
+ * actually knew is its reference census result — no runner invokes this
+ * file — which is recorded above. Banking status was never checked, so no
+ * `@finding` is claimed.
  */
 /**
  * SEED A REGION — the coarse-grid onboarder (one-ground charter).

@@ -1,12 +1,21 @@
 /**
- * @script-class: probe
- * @finding: NOT YET BANKED — record what this probe answered, or delete it.
+ * @script-class: operational
+ * @runner: none yet — the docblock below says it is "ideal to run on deploy
+ *   + on a periodic refresh", which is a runner this repo has not wired up.
  *
- * A banked probe's value is the RECORDED RESULT, kept so the finding stays
- * reproducible. This one has no runner and no written-down finding: the
- * F414 sweep (2026-08-02) could establish the first fact mechanically but
- * not the second, and inventing one would be worse than leaving it visible.
- * Until a finding is written here, this file is a deletion candidate.
+ * NOT a probe: it pre-warms the query-embedding cache that the always-on
+ * dense autocomplete lane reads. A file cannot be both a deploy step and a
+ * deletion candidate.
+ *
+ * STAMP CORRECTED (F4939, 2026-08-06). The F414 sweep (2026-08-02) marked
+ * this file `@script-class: probe` / `@finding: NOT YET BANKED — deletion
+ * candidate`. The sweep's own header admits it could establish the CLASS
+ * mechanically "but not the second" fact — and it then defaulted that
+ * unknown to the most destructive available value on a file it had not
+ * read. THE RULE: a sweep emits only the fact it established. What it
+ * actually knew is its reference census result — no runner invokes this
+ * file — which is recorded above. Banking status was never checked, so no
+ * `@finding` is claimed.
  */
 import 'dotenv/config';
 process.env.PROCESS_ROLE ||= 'api';
