@@ -390,8 +390,13 @@ surface-coverage watermark (open).
 4. **Dense truth.** Three sites: Understand tier (always on), sibling
    membership (`includeSimilar===true` only, service:3168), and a DTO comment
    promising "silent thin-results widening" that siblingsWanted does not
-   implement — reconcile comment vs code, then decide the ideal: automatic
-   thin-results dense widening (one list, admission-gated) vs explicit chip.
+   implement — reconcile comment vs code. RULED 2026-08-06 (owner): cousins
+   AUTO-FILL only when exact+decomposed+partial cannot fill the page (same
+   admission discipline as partial words, Crave-Score order, one list). The
+   CHIP STAYS, separate purpose: explicit user intent to explore similar
+   REGARDLESS of fill ("I might be in the mood for something similar").
+   Fill-gated auto-inclusion + intent-gated chip are two different doors to
+   the same judged ring.
 5. **One-list presentation.** exactMatch stays row metadata; no client
    divider (owner ruling). Pooled admission (full-fills-first) stays.
 6. **Batch rail + prompt registry** for vocabulary/satisfies passes (50% off,
