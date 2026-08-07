@@ -1982,3 +1982,22 @@ abstraction grade: wrong spellings inexpressible or build-failing. This is the s
 Also accepted from the report: the ts-jest concurrent-compile flake (TS2304 on a
 same-file symbol, isolated rerun green) is recorded as an infrastructure fact, not chased
 as a code defect.
+
+---
+
+## D77 — MVCP merge-proof P3 ratified; the F2400 arc closes (2026-08-06)
+
+Landed as designed and independently re-verified (the module's 6 specs green, hook-names
+gate green, ledger gates pass). One function serves all four merge sites because the sites
+differ in WHICH SLOTS THEY FILL, not in merge order — the agent's argument for one function
+over two is accepted and recorded. Both D72 mutations proven directionally: default deleted
+→ RED; default moved after the scene spread → RED with the opt-in case asserting the
+scene's override still wins. Three value-identical restatements deleted with the false
+PollsPanel comment corrected; PollDetailPanel's documented one and TrackSheetPage's
+non-transport one kept, as ruled.
+
+The F2400 arc, end to end, for the record: proposed (D62, approved by me citing a deleted
+precedent) → refuted in P3 (D68) → discovered already-implemented by F983 (D69, which
+neither side of the debate had re-read) → refined to a provable shape (D72/F2954) →
+landed with both-direction proofs (this). The ledger now carries the whole path, including
+both of my errors. That is what the artifact is for.
