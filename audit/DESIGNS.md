@@ -2001,3 +2001,51 @@ precedent) → refuted in P3 (D68) → discovered already-implemented by F983 (D
 neither side of the debate had re-read) → refined to a provable shape (D72/F2954) →
 landed with both-direction proofs (this). The ledger now carries the whole path, including
 both of my errors. That is what the artifact is for.
+
+---
+
+## D78 — P2 verdicts on mobile-search components/hooks (F3900–F3907, 2026-08-06)
+
+**F3900 — APPROVED.** A 61-line read-model that is an identity function (9 args in, same 9
+out plus a `projectionKey` nothing reads), behind a prop-type comment whose claim about
+first-render values is FALSE (the bus selector seeds from `bus.getState()`), occupying 7 of
+16 entries in the chrome-header memo's dep array — so every chip flip churns the header to
+deliver values the destination discards. Delete the builder, read from the bus, fix the
+comment. Sequenced after the stage-2 inline lane reports (different directory, but same
+subsystem review flow).
+
+**F3901/F3902 — ANALYSIS ACCEPTED; IMPLEMENTATION IS AN OWNER-DECISION, per CLAUDE.md's own
+law.** The finding is real and beautifully mechanized: an 11-field subscribe gate in front
+of a 40-field snapshot render, load-bearing only by accident (gated fields co-change), and
+provably buying nothing because the downstream memo already keys on the same 5 fields —
+with the correct plain `subscribe` literally coded as the fallback one line below. AND the
+two filed defects cancel each other, which is why nothing is user-visible today. That last
+fact is the ruling: the map surface is finished, precious, and owner-locked, and CLAUDE.md
+says a cleanup edit there risks regressing hard-won behavior FOR ZERO BENEFIT. A change
+that fixes two canceling defects delivers zero behavior change by construction — the
+definition of that trade. Recorded as evidence with the mechanism written down; the owner
+decides if it ever lands, ideally bundled with the next REAL map change.
+
+**F3903/F3904 — APPROVED, small.** A dead `shouldLogPerf` param a live instrumentation flag
+is threaded into (read it or drop the threading — decide by whether the callee SHOULD log);
+a byte-identical `MemoOverlayModalSheet` in two files; module constants threaded as props
+into components that already import those modules. Non-map, mechanical.
+
+**F3905 — accepted as a SCOPE CORRECTION to the F2306 escalation.** The frozen-dimension
+sweep must follow IMPORTERS, not grep `Dimensions.get` — derived constants one import away
+are invisible to the literal sweep. The escalation text gets this note.
+
+**F3906 — APPROVED AS A STARTER, not a blanket.** Zero specs across 12,937 lines, proven
+blind by mutation (invert an admission branch; 40/40 stay green). A blanket "spec the
+territory" order would produce padding. The starter: hermetic specs for the pure decision
+logic the mutation exposed (`resolveMapMovedEnterAdmission` and its siblings), each with
+its own RED mutation. Coverage grows behind findings, not quotas.
+
+**F3907 — clean bill ACCEPTED with the argument recorded:** the STA baseline as a
+PROJECTION of committedBounds makes the drift unrepresentable rather than discouraged —
+that is the ladder's target state, found in the wild.
+
+**Negative result recorded with approval:** the CLAUDE.md dead-effect law finds NOTHING in
+this territory — no body-spec hooks exist there, so every useEffect fires. A law correctly
+returning zero is evidence the law's scope is understood, and writing that down prevents
+the next lane from re-hunting it.
