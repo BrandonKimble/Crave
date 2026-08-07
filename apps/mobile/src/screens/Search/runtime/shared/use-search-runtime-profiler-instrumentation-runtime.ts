@@ -7,7 +7,10 @@ import {
   SEARCH_SUBMIT_DISMISS_REPEAT_SCENARIO,
 } from '../../../../perf/perf-scenario-attribution';
 import { usePerfScenarioRuntimeStore } from '../../../../perf/perf-scenario-runtime-store';
-import { getActiveSearchNavSwitchAttributionProbe } from './search-nav-switch-perf-probe';
+import {
+  getActiveSearchNavSwitchAttributionProbe,
+  shouldLogSearchNavSwitchAttribution,
+} from './search-nav-switch-perf-probe';
 import { logSearchProfilerSpan } from './search-runtime-profiler-log-runtime';
 
 const JS_FLOOR_PROBE_PROFILER_SPAN_LOG_MODE =
@@ -61,12 +64,30 @@ export const useSearchRuntimeProfilerInstrumentationRuntime = ({
 }: UseSearchRuntimeProfilerInstrumentationRuntimeArgs): React.ProfilerOnRenderCallback | null => {
   const activeScenarioConfig = usePerfScenarioRuntimeStore((state) => state.activeConfig);
 
+  // F6601: THE OFF-SWITCH DECIDED PER COMMIT WHAT IT MUST DECIDE PER MOUNT.
+  //
+  // The three emit-reasons below were computed inside the callback, which then
+  // returned early when none held — so the hook's declared `| null` had no
+  // producer, `React.Profiler` was permanently mounted across the overlay tree,
+  // and every host's "no profiler" arm was unreachable. All three reasons are
+  // knowable at render time: two are hook inputs, and the nav-switch reason is
+  // gated by `EXPO_PUBLIC_PERF_NAV_SWITCH_ATTRIBUTION` — a module constant, so
+  // when it is off no probe can ever be active and no commit can change that.
+  // Hoisting them here loses no sample: in exactly the case the hook now
+  // returns null, the callback would have returned at its first branch.
+  const shouldEmitProfilerSpanLog =
+    JS_FLOOR_PROBE_PROFILER_SPAN_LOG_MODE && searchMode === 'shortcut';
+  const shouldEmitScenarioProfilerSpan = isPerfScenarioAttributionActive(activeScenarioConfig);
+  const isProfilerInstrumentationArmed =
+    shouldEmitProfilerSpanLog ||
+    shouldEmitScenarioProfilerSpan ||
+    shouldLogSearchNavSwitchAttribution();
+
   const profilerRender = React.useCallback<React.ProfilerOnRenderCallback>(
     (id, phase, actualDuration, baseDuration, startTime, commitTime) => {
+      // Still narrowed per commit: the nav-switch probe opens and expires on a
+      // wall clock, not on a render, so being armed is not being active.
       const activeNavSwitchProbe = getActiveSearchNavSwitchAttributionProbe();
-      const shouldEmitProfilerSpanLog =
-        JS_FLOOR_PROBE_PROFILER_SPAN_LOG_MODE && searchMode === 'shortcut';
-      const shouldEmitScenarioProfilerSpan = isPerfScenarioAttributionActive(activeScenarioConfig);
       const shouldEmitNavSwitchProfilerLog = activeNavSwitchProbe != null;
       if (
         !shouldEmitProfilerSpanLog &&
@@ -119,12 +140,6 @@ export const useSearchRuntimeProfilerInstrumentationRuntime = ({
             commitTimeMs: Number(commitTime.toFixed(3)),
             nowMs: Number(nowMs.toFixed(3)),
             searchMode,
-            // F1735: the redraw coordinator is deleted (structural fossil); these
-            // handoff fields only ever carried its permanent idle snapshot.
-            handoffOperationId: null,
-            handoffPhase: 'idle',
-            handoffSeq: null,
-            handoffPage: null,
           });
         }
       }
@@ -136,8 +151,10 @@ export const useSearchRuntimeProfilerInstrumentationRuntime = ({
       resolveProfilerStageHint,
       searchMode,
       scenarioRunId,
+      shouldEmitProfilerSpanLog,
+      shouldEmitScenarioProfilerSpan,
     ]
   );
 
-  return profilerRender;
+  return isProfilerInstrumentationArmed ? profilerRender : null;
 };
