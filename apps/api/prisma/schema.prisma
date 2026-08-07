@@ -196,6 +196,15 @@ model EntityLabel {
   /// Canonical BCP 47 (R5-5). RFC 4647 lookup fallback es-MX → es-419 → es.
   locale      String
   form        String   @db.VarChar(255)
+  /// APP-WRITTEN canonicalFold(form) — the folded RECALL mirror, the exact
+  /// shape entity_alias.form_folded carries. The labels-as-surfaces match arm
+  /// (entity-text-search: scanForKnownEntityGroups) folds BOTH sides; without
+  /// this column it compared a folded query candidate against LOWER(form) and
+  /// every accented/apostrophe label — the es rows the arm exists to serve —
+  /// was structurally unmatchable. There is NO SQL fold (Postgres Unicode
+  /// classes are platform-dependent); write it ONLY via canonicalFold at the
+  /// one write site (LabelSweepService.writeLabels).
+  formFolded  String   @map("form_folded") @db.VarChar(255)
   /// R5-6(a) the Wikidata disambiguator: labels collide across concepts
   /// ("pan"). Drafted by the sweep in the same call; sharpens judge-merge.
   description String?  @db.VarChar(500)
@@ -224,6 +233,10 @@ model EntityLabel {
   @@id([entityId, locale, form], map: "pk_entity_labels")
   @@index([locale], map: "idx_entity_labels_locale")
   @@index([locale, status], map: "idx_entity_labels_locale_status")
+  /// The labels match arm: fold BOTH sides, then match — mirrors the two
+  /// entity_alias.form_folded indexes exactly.
+  @@index([formFolded], map: "idx_entity_labels_form_folded")
+  @@index([locale, formFolded], map: "idx_entity_labels_locale_form_folded")
   @@map("entity_labels")
 }
 
@@ -1242,7 +1255,10 @@ model UserNotification {
   createdAt          DateTime         @default(now()) @map("created_at") @db.Timestamptz(3)
   user               User             @relation(fields: [userId], references: [userId], onDelete: Cascade)
 
-  @@index([userId, createdAt(sort: Desc)], map: "idx_user_notifications_user_created")
+  // The userNotificationId tail makes the paginated order TOTAL (F7502): a feed
+  // paged by createdAt alone can drop or duplicate rows sharing a millisecond,
+  // and the tiebreak rides this covering index for free.
+  @@index([userId, createdAt(sort: Desc), userNotificationId(sort: Desc)], map: "idx_user_notifications_user_created")
   @@map("user_notifications")
 }
 
