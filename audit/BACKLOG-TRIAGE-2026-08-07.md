@@ -92,3 +92,35 @@ spec/tsc/gate), deletes the scaffolding it obsoletes, keeps green, and updates t
 row to FIXED. Orchestrator ratifies (VERIFY DON'T TRUST — spot-check the mutation actually
 reds and the fix isn't a new guard) and commits per territory. Owner items go to the user;
 concurrent-blocked items wait for the owning session to land.
+
+---
+
+## DRAIN PROGRESS UPDATE (2026-08-07, ~18 clusters into the drain)
+
+HONEST recount (dedup FINDINGS by latest status): **877 FIXED, 183 open-bucket
+(115 OPEN + 56 PARTIAL + 9 CONFIRMED-STILL-LIVE + 3 NEEDS-TRIAGE), 49 owner
+(27 OWNER-DECISION + 22 ESCALATED), 152 MOOT, 11 DELETED.** The reckoning's initial
+"~190 LIVE-MINE" is being drained, but note two things the running commentary undercounted:
+(1) "open-bucket" ≠ "OPEN token" — PARTIAL/CONFIRMED-STILL-LIVE also count, so the true
+remaining-open figure is 183, not the ~115 OPEN-only subset; (2) several drains CONVERTED
+an OPEN finding into a PARTIAL — the mechanical/tsc-verifiable part landed, an owner-design
+or sim-validation TAIL remains (e.g. F3803 entities-fixed/field-split-owner, F6402 b,c,d-fixed/
+subscription-a-owner, F6410/F6411 mechanical-fixed/memoization+contract-owner, F4940
+SQL-fixed/Cloudinary-owner, F2221 interceptor-fixed/main.ts-hooks-concurrent).
+
+DRAINED THIS PHASE (~18 P3 clusters, all mutation-proven/banking-verified + orchestrator-
+checked, committed per territory, zero regressions): reddit-collector fake-defaults;
+spec-honesty mocks x2; places/enrichment (incl. a SQL-injection fix); gate-hardening;
+llm dead-surface; hygiene dead-code; app-route type-level x5; api-search DTO-drift;
+api-observability (Sentry PII + logger cycle + workClass union); mobile token/dead-prop;
+mobile app-core type/spec; api annotation. 17 verified MOOTs closed at the reckoning.
+
+THE REMAINING 183 open-bucket concentrates in NON-pure-mechanical buckets (the tsc-verifiable
+vein is largely drained in the audited territories): **owner-design** (memoization waves,
+contract re-derivations, DTO wire/internal splits D79, teaser vocabulary, the F5421 strict
+dedup), **sim-validation** (mobile runtime timing/subscription/render — F1032, F6411(a,b),
+F6402(a)), **native** (Swift/ObjC/Java bridges F3707/09/10/12 — need an Xcode build to verify),
+**concurrent-blocked** (F6623 photos, F2042/F2207/F6552/F7903 notification-dispatcher+dirty
+api config, the tracksheet rows), and **migration-touching** (F4001 cron latch). Each carries
+its precise NEXT ACTION in FINDINGS.md. A future session continues by picking a bucket and
+providing the gate it needs (owner ruling / sim / Xcode build / concurrent release).
