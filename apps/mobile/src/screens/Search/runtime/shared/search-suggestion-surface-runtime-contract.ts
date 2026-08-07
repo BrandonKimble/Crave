@@ -49,8 +49,14 @@ export type SearchLayout = {
 //
 // Same law as F1308: state exists only if something reads it, and a setter is not state.
 
+// F4101 (2026-08-06): `searchInteractionRef` used to head this list. It was
+// declared here, supplied by the caller on every render, and read by NOTHING —
+// not the presentation plane, not one of the eight Pick<> derivations below.
+// The ref is genuinely load-bearing, but for the LAYOUT plane, which takes it
+// straight from rootSessionPrimitivesLane. TypeScript checks that a declared
+// arg is SUPPLIED, never that it is USED, so a re-list wrapper accumulates dead
+// fan-in in silence; this is the fourth instance of that shape in this family.
 export type UseSearchSuggestionSurfaceRuntimeArgs = {
-  searchInteractionRef: SearchInteractionRef;
   query: string;
   suggestions: AutocompleteMatch[];
   recentSearches: RecentSearch[];

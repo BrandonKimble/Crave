@@ -24,7 +24,6 @@ export const useSearchRootSuggestionRuntime = ({
   const shouldFreezeSuggestionDisplayForSearchSurfaceRedraw =
     rootDataPlaneRuntime.freezeGate.isResponseFrameFreezeActive;
   const suggestionPresentationPlaneRuntime = useSearchSuggestionPresentationPlaneRuntime({
-    searchInteractionRef: rootSessionPrimitivesLane.primitives.searchInteractionRef,
     query: rootPrimitivesRuntime.searchState.query,
     suggestions: rootPrimitivesRuntime.searchState.suggestions,
     recentSearches: rootDataPlaneRuntime.historyRuntime.recentSearches,
