@@ -235,12 +235,6 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     color: '#111827',
   },
-  autocompleteSecondaryText: {
-    fontSize: FONT_SIZES.body,
-    lineHeight: LINE_HEIGHTS.body,
-    color: themeColors.textBody,
-    textTransform: 'capitalize',
-  },
   recentHeaderRow: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -431,16 +425,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'flex-start',
   },
-  // The skeleton loading surface (the ONE interaction-loading visual): the white background is
-  // the skeleton's sheet plate — it hides the stale rows; the cutout holes self-frost inside.
-  // The skeleton content must FILL the loading surface (an unsized wrapper collapses to zero
-  // and only the plate paints).
-  resultsHeaderSurface: {
-    position: 'relative',
-    overflow: 'hidden',
-    backgroundColor: 'transparent',
-    paddingHorizontal: CONTENT_HORIZONTAL_PADDING,
-  },
   resultsListHeader: {
     position: 'relative',
     overflow: 'hidden',
@@ -468,15 +452,6 @@ const styles = StyleSheet.create({
   onDemandNoticeText: {
     color: themeColors.textBody,
     textAlign: 'center',
-  },
-  submittedQueryLabel: {
-    flex: 1,
-    minWidth: 0,
-    flexShrink: 1,
-    marginRight: 12,
-    color: '#0f172a',
-    marginBottom: 0,
-    paddingLeft: 0,
   },
   loadMoreSpacer: {
     minHeight: 120,
