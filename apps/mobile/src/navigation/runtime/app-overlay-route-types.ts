@@ -521,8 +521,19 @@ export type OverlayRouteParamsMap = {
     commentAnchorId?: string | null;
   };
   // ── Stub-pass scenes — param shapes only (all optional/nullable until real opens land).
-  userProfile?: {
-    userId?: string | null;
+  // F5900: NOT a stub shape. A profile route without a person is not a route, and
+  // the four consumers were enumerated to prove no null is stored or serialized:
+  // the URL codec only emits `/u/<id>` from `entity-ref-action-policy`'s already
+  // non-null `params: { userId: string }` and only parses a route when the segment
+  // is present; the equality map compares the field and does not depend on its
+  // nullability; the entry-restore path forwards `sceneParams` and has NO producer
+  // (zero call sites pass `getSceneParams` today); and every push site narrows
+  // through `isInteractableAuthor`. The optional/nullable placeholder was doing
+  // one thing only — it made F5802's proving mutation UNABLE to go red, because
+  // `pushRoute('userProfile', { userId: possiblyNull })` typechecked. It does not
+  // anymore.
+  userProfile: {
+    userId: string;
   };
   // W1 slice 4 (spec D.5 adjudication): the Desire-shaped list identity arm — listId is the
   // identity (a concrete list id OR the virtual 'all:restaurants'/'all:dishes'); shareSlug is
