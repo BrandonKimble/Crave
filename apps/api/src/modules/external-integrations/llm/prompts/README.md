@@ -10,11 +10,5 @@ Guidelines:
 - Keep one prompt family per file.
 - Prefer module-local prompt files over repo-root prompt files.
 
-Current layout:
-
-- `collection-prompt.md` — content processing system prompt
-- `query-prompt.md` — search query interpretation system prompt
-- `cuisine-prompt.md` — cuisine extraction system prompt
-- `moderation-prompt.md` — food-aware content-safety classifier system prompt
-- `restaurant-place-chooser.prompt.ts` — dynamic place chooser prompt builder
-- `llm-response-schemas.ts` — shared response JSON schema definitions for query, cuisine, moderation, and chooser flows
+The directory listing is the inventory; do not hand-maintain a file-by-file
+catalogue here — it drifts by construction (F4930).

@@ -1,8 +1,6 @@
 import { Injectable, OnModuleInit, Inject } from '@nestjs/common';
 import { LoggerService, CorrelationUtils } from '../../../shared';
-import { LLMInputDto } from './dto/llm-input.dto';
-import { LLMCommentDto } from './dto/llm-input.dto';
-import { LLMModelInput } from './llm.types';
+import { LLMModelInput, LLMComment } from './llm.types';
 
 const DEFAULT_MAX_CHUNK_COMMENTS = 80;
 const DEFAULT_MAX_CHUNK_TOKEN_ESTIMATE = 35000;
@@ -121,8 +119,8 @@ export class LLMChunkingService implements OnModuleInit {
    * @param llmInput - Multiple posts with all comments (processes all posts)
    * @returns ChunkResult with chunks and metadata
    */
-  createContextualChunks(llmInput: LLMInputDto): ChunkResult {
-    const chunks: LLMInputDto[] = [];
+  createContextualChunks(llmInput: LLMModelInput): ChunkResult {
+    const chunks: LLMModelInput[] = [];
     const chunkMetadata: ChunkMetadata[] = [];
 
     if (!llmInput.posts || llmInput.posts.length === 0) {
@@ -235,8 +233,8 @@ export class LLMChunkingService implements OnModuleInit {
         (post.title?.length || 0) + (post.content?.length || 0);
 
       type ThreadInfo = {
-        topComment: LLMCommentDto;
-        threadComments: LLMCommentDto[];
+        topComment: LLMComment;
+        threadComments: LLMComment[];
         commentCount: number;
         charLength: number;
         rootScore: number;
@@ -517,13 +515,13 @@ export class LLMChunkingService implements OnModuleInit {
   }
 
   private packChunks(
-    chunks: LLMInputDto[],
+    chunks: LLMModelInput[],
     metadata: ChunkMetadata[],
   ): ChunkResult {
     const { maxTokensPerChunk } = this.getChunkingLimits();
-    const packedChunks: LLMInputDto[] = [];
+    const packedChunks: LLMModelInput[] = [];
     const packedMetadata: ChunkMetadata[] = [];
-    let currentPosts: Map<string, LLMInputDto['posts'][number]> | null = null;
+    let currentPosts: Map<string, LLMModelInput['posts'][number]> | null = null;
     let currentTokens = 0;
     let currentMeta: ChunkMetadata | null = null;
 
@@ -605,9 +603,9 @@ export class LLMChunkingService implements OnModuleInit {
    * @returns Array of all comments in the thread (including root)
    */
   private getFullThread(
-    root: LLMCommentDto,
-    allComments: LLMCommentDto[],
-  ): LLMCommentDto[] {
+    root: LLMComment,
+    allComments: LLMComment[],
+  ): LLMComment[] {
     const thread = [root];
 
     // Find all direct replies to this comment

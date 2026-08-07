@@ -27,8 +27,6 @@ import { ConfigService } from '@nestjs/config';
 import { FinishReason } from '@google/genai';
 import { GatedGeminiClient } from './gated-gemini-client';
 import { Agent, setGlobalDispatcher, type Dispatcher } from 'undici';
-import { validate } from 'class-validator';
-import { plainToClass } from 'class-transformer';
 import { createHash } from 'crypto';
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'fs';
 import { dirname, isAbsolute, join, resolve } from 'path';
@@ -61,7 +59,6 @@ import {
   LLMRestaurantPlaceChooserDecision,
   LLMRestaurantPlaceChooserInput,
 } from './llm.types';
-import { LLMOutputDto } from './dto/llm-output.dto';
 import {
   isVendorMonthlyCapError,
   vendorCapDetectorLooksRotted,
@@ -4579,18 +4576,6 @@ export class LLMService implements OnModuleInit, OnModuleDestroy {
         retryOptions: this.llmConfig.retryOptions,
       },
     };
-  }
-
-  /**
-   * Validate LLM output structure using custom validators
-   */
-  async validateOutput(output: LLMOutputStructure): Promise<string[]> {
-    const outputDto = plainToClass(LLMOutputDto, output as object);
-    const errors = await validate(outputDto);
-
-    return errors.flatMap((error) =>
-      error.constraints ? Object.values(error.constraints) : [],
-    );
   }
 
   private recordSuccessMetrics(responseTime: number, tokensUsed: number): void {
