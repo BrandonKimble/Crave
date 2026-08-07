@@ -274,9 +274,20 @@ export const deriveToggleKindFromDesiredDelta = (
   if (!areSearchCommittedBoundsEqual(prev.committedBounds, next.committedBounds)) {
     return 'search_this_area';
   }
-  // Neither filter nor bounds moved. retoggle_reversal/variant_rerun/lens_flip are only
-  // reached with SOME delta (the classifier requires it), so this is unreachable by
-  // construction — a contract violation names the break instead of guessing a label.
+  // Neither filter nor bounds moved. F4805 — THE ENFORCER IS NOT THE ONE THIS COMMENT
+  // USED TO NAME. It said "the classifier requires SOME delta", which is true of
+  // variant_rerun and lens_flip (both sit behind `if (filtersChanged)`) but NOT of
+  // retoggle_reversal: that branch requires only `cardsKey === presentedCardsKey &&
+  // !identityChanged && !tabChanged`, and a value-equal, reference-new tuple satisfies
+  // it — `retrySearchDesiredResolution` publishes `{ ...state.desiredTuple }` precisely
+  // to bypass the tuple-equal short-circuit. What actually keeps this unreachable lives
+  // in ANOTHER FILE: the only automatic caller of that retry is the reconnect auto-retry
+  // (use-search-route-results-policy-domain-runtime.ts), gated on
+  // `shouldResumeSearchResolutionOnReconnect` — a SET failure level, which implies the
+  // desired world is not the presented one, which classifies as reassert_unresolved
+  // instead. That gate is pinned by search-desired-state-writer.spec.ts; sever it and
+  // the spec goes red. Until the toggle kind is derived from the moved axis the
+  // classifier already computed, the violation report is what names a break here.
   reportSearchFlowContractViolation('toggle_kind_unclassifiable_delta', {});
   return 'search_this_area';
 };
@@ -286,6 +297,14 @@ export const createSearchWorldReconciler = (
 ): SearchWorldReconciler => {
   let lastTuple = env.searchRuntimeBus.getState().desiredTuple;
 
+  /** ONE rerun lane, not a parameterized family. F4803: this used to declare
+   *  `presentationIntentKind?` and `onResolutionBegan?`, read them, and default them —
+   *  under a comment claiming "the kick is PARAMETERIZED, not forked — the area path
+   *  carries its own presentation intent". No caller ever passed either. The S-A collapse
+   *  (see the area_rerun arm) deleted the last supplier when it put search-this-area on
+   *  the byte-identical chip lane; the parameters outlived it, so the default WAS the
+   *  value. Every one of the four call sites resolves under 'variant_rerun', and it is
+   *  written here once. */
   const kickRerunThroughCoordinator = (args: {
     tuple: SearchDesiredTuple;
     generation: number;
@@ -299,11 +318,6 @@ export const createSearchWorldReconciler = (
       | 'retry'
       | 'search_this_area';
     decoration: SearchRequestDecoration | undefined;
-    /** S-A: the kick is PARAMETERIZED, not forked — the area path carries its own
-     *  presentation intent and keeps firing the enter foreground effects exactly as the
-     *  old direct-resolve branch did. */
-    presentationIntentKind?: 'variant_rerun' | 'search_this_area';
-    onResolutionBegan?: () => void;
   }): void => {
     const port = getSearchReconcilerPresentationPort();
     if (port == null) {
@@ -326,9 +340,8 @@ export const createSearchWorldReconciler = (
             tuple: busState.desiredTuple,
             generation: busState.desiredTupleGeneration,
             cause: busState.desiredTupleCause,
-            presentationIntentKind: args.presentationIntentKind ?? 'variant_rerun',
+            presentationIntentKind: 'variant_rerun',
             requestDecoration: args.decoration,
-            onResolutionBegan: args.onResolutionBegan,
             onResolutionFailed: (reason) => {
               // Offline = paused, not failed: keep the pending cover so the rerun's
               // loading state persists (the coordinator's settle timeout may still

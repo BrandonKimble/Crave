@@ -2,7 +2,10 @@ import React from 'react';
 import { announceFailureIfOnline } from '../../../../components/app-modal-store';
 import { unwindFailedSearchEnter } from './search-failed-enter-unwind';
 import { subscribeToReconnect } from '../../../../store/systemStatusStore';
-import { retrySearchDesiredResolution } from './search-desired-state-writer';
+import {
+  retrySearchDesiredResolution,
+  shouldResumeSearchResolutionOnReconnect,
+} from './search-desired-state-writer';
 import { selectIsSearchSessionActive } from './search-desired-tuple-selectors';
 
 import type { AppRouteSceneRuntime } from '../../../../navigation/runtime/app-route-scene-runtime';
@@ -128,13 +131,12 @@ export const useSearchRouteResultsPolicyDomainRuntime = ({
     // RECONNECT AUTO-RETRY (industry pattern; replaces hanging in a skeleton): when
     // connectivity returns with the failure level still set, re-assert the desired
     // tuple — the reconciler re-resolves and the failure surfaces drop on their own.
+    // The gate is a NAMED, TESTED predicate (F4805): besides the obvious rules — do not
+    // re-run a search that never failed; do not resume a session dismissed during the
+    // offline pause — it is what keeps deriveToggleKindFromDesiredDelta's no-delta arm
+    // unreachable, an invariant that lives in the reconciler and is held here.
     const detachReconnectRetry = subscribeToReconnect(() => {
-      const busState = searchRuntimeBus.getState();
-      if (busState.searchResolutionFailure == null) {
-        return;
-      }
-      if (busState.desiredTuple.queryIdentity.kind === 'idle') {
-        // The session was dismissed during the offline pause — nothing to resume.
+      if (!shouldResumeSearchResolutionOnReconnect(searchRuntimeBus)) {
         return;
       }
       retrySearchDesiredResolution(searchRuntimeBus);

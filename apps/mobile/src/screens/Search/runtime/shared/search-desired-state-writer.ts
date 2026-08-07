@@ -73,6 +73,23 @@ export const retrySearchDesiredResolution = (searchRuntimeBus: SearchRuntimeBus)
   }
 };
 
+/** THE GATE ON THE ONLY AUTOMATIC CALLER of retrySearchDesiredResolution (F4805).
+ *  It is load-bearing twice over. Obviously: a reconnect must not re-run a search that
+ *  never failed, and must not resume a session the user dismissed during the offline
+ *  pause. Less obviously, and the reason it is a named, tested function instead of two
+ *  inline conditions: a SET failure level implies the desired world is NOT the presented
+ *  one, so the retry's reference-new tuple classifies as `reassert_unresolved` rather
+ *  than `retoggle_reversal` — which is the whole reason
+ *  deriveToggleKindFromDesiredDelta's no-delta arm (search-world-reconciler.ts) is
+ *  unreachable. Sever the failure half and that arm becomes live: a retry with a
+ *  value-equal tuple would reach it and report `toggle_kind_unclassifiable_delta`. */
+export const shouldResumeSearchResolutionOnReconnect = (
+  searchRuntimeBus: SearchRuntimeBus
+): boolean => {
+  const state = searchRuntimeBus.getState();
+  return state.searchResolutionFailure != null && state.desiredTuple.queryIdentity.kind !== 'idle';
+};
+
 export type SearchDesiredTuplePatch = {
   queryIdentity?: SearchQueryIdentity;
   filterVariant?: Partial<SearchFilterVariant>;
