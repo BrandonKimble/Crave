@@ -10,7 +10,8 @@ import { type ResultsPresentationOwner } from './results-presentation-owner-cont
 import type { AppRouteSharedSheetRuntimeOwner } from '../../../../navigation/runtime/app-route-shared-sheet-runtime-contract';
 import type { RouteSceneVisibilityPolicyRuntime } from '../../../../navigation/runtime/app-route-scene-visibility-policy-contract';
 import type { ResultsPresentationPolicyFactsLaneChange } from './results-presentation-policy-facts-controller';
-import { useResultsPresentationOwnerStateSessionRuntime } from './use-results-presentation-owner-state-session-runtime';
+import { useResultsPresentationOwnerBridgeRuntime } from './use-results-presentation-owner-bridge-runtime';
+import { useResultsPresentationShellRuntime } from './use-results-presentation-shell-runtime';
 import { publishResultsPresentationCloseTransitionBridgeRuntime } from './publish-results-presentation-close-transition-bridge-runtime';
 import { useResultsPresentationCloseTransitionRuntime } from './use-results-presentation-close-transition-runtime';
 import { useResultsPresentationOwnerPresentationActionsRuntime } from './use-results-presentation-owner-presentation-actions-runtime';
@@ -91,9 +92,21 @@ export const useResultsPresentationOwner = ({
   routeSceneVisibilityPolicyRuntime,
   onSearchSheetContentLaneChanged,
 }: UseResultsPresentationOwnerArgs): ResultsPresentationOwner => {
-  const sessionRuntime = useResultsPresentationOwnerStateSessionRuntime({
+  // F5300: the three-file `*-owner-state-session-runtime` / `*-owner-bridge-state-runtime` /
+  // `*-owner-shell-state-runtime` layer between here and these two hooks transformed nothing —
+  // it forwarded 20 arguments unchanged and re-declared their types a fourth time. A hook that
+  // neither subscribes nor memoizes buys no render isolation (D70), so it is inlined here.
+  const bridgeStateRuntime = useResultsPresentationOwnerBridgeRuntime({
     setActiveTab,
     setActiveTabPreference,
+    searchRuntimeBus,
+    resultsPresentationAuthority,
+    resultsPresentationSurfaceAuthority,
+    searchMapSourceFramePort,
+    log,
+  });
+
+  const shellStateRuntime = useResultsPresentationShellRuntime({
     query,
     submittedQuery,
     hasActiveSearchContent,
@@ -102,14 +115,11 @@ export const useResultsPresentationOwner = ({
     isSuggestionPanelActive,
     shouldRenderSearchOverlay,
     shouldEnableShortcutInteractions,
-    resultsSheetRuntime,
     searchRuntimeBus,
     resultsPresentationAuthority,
     routeSceneSwitchAuthority,
-    resultsPresentationSurfaceAuthority,
-    searchMapSourceFramePort,
-    log,
     onSearchSheetContentLaneChanged,
+    resultsSheetRuntime,
   });
 
   // S-C.5 item 2 (wrapper collapse): the pure re-lister owner-close-state-runtime is
@@ -119,17 +129,15 @@ export const useResultsPresentationOwner = ({
   // these three inputs.
   const closeTransitionRuntime = useResultsPresentationCloseTransitionRuntime({
     clearSearchState,
-    shellLocalState: sessionRuntime.shellStateRuntime.shellLocalState,
+    shellLocalState: shellStateRuntime.shellLocalState,
     routeSceneVisibilityPolicyRuntime,
   });
 
   publishResultsPresentationCloseTransitionBridgeRuntime({
-    markSearchSheetCloseMapExitSettledRef:
-      sessionRuntime.bridgeStateRuntime.markSearchSheetCloseMapExitSettledRef,
+    markSearchSheetCloseMapExitSettledRef: bridgeStateRuntime.markSearchSheetCloseMapExitSettledRef,
     closeTransitionActions: closeTransitionRuntime.closeTransitionActions,
   });
 
-  const { bridgeStateRuntime, shellStateRuntime } = sessionRuntime;
   const { resultsRuntimeOwner, interactionModel } = bridgeStateRuntime;
   const { shellLocalState, shellModel } = shellStateRuntime;
 
