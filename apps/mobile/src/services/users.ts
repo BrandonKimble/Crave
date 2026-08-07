@@ -2,6 +2,7 @@ import type { OnboardingAnswers, UserOnboardingProfile } from '@crave-search/sha
 import type { AxiosRequestConfig } from 'axios';
 import api from './api';
 import { SILENT, type ApiRequestBehaviorConfig } from './api';
+import { expectArray, expectArrayAt } from './expect-shape';
 import type { AuthorIdentity } from './author-identity';
 
 export interface UserStats {
@@ -145,7 +146,8 @@ export const usersService = {
     const response = await api.post<{ suggestions: string[] }>('/users/username/suggest', {
       username,
     });
-    return response.data.suggestions ?? [];
+    // F3716: a broken response must throw, not silently offer zero suggestions.
+    return expectArrayAt<string>(response.data, 'suggestions', 'POST /users/username/suggest');
   },
   async getPublicProfile(userId: string): Promise<PublicUserProfile> {
     const response = await api.get<PublicUserProfile>(`/users/${userId}/profile`);
@@ -163,11 +165,11 @@ export const usersService = {
   },
   async listFollowers(userId: string): Promise<FollowListUser[]> {
     const response = await api.get<FollowListUser[]>(`/users/${userId}/followers`);
-    return response.data ?? [];
+    return expectArray<FollowListUser>(response.data, 'GET /users/:id/followers');
   },
   async listFollowing(userId: string): Promise<FollowListUser[]> {
     const response = await api.get<FollowListUser[]>(`/users/${userId}/following`);
-    return response.data ?? [];
+    return expectArray<FollowListUser>(response.data, 'GET /users/:id/following');
   },
   /** §8.6 blocking (page-registry — the Apple 1.2 UGC requirement). */
   async blockUser(userId: string): Promise<void> {
@@ -184,6 +186,8 @@ export const usersService = {
   /** W4 settings (§8.6 privacy): my own block list — Settings → Privacy rows. */
   async listMyBlocks(): Promise<FollowListUser[]> {
     const response = await api.get<FollowListUser[]>('/users/me/blocks');
-    return response.data ?? [];
+    // F3716: a PRIVACY surface — "you have blocked nobody" must not be
+    // indistinguishable from "we could not read your block list".
+    return expectArray<FollowListUser>(response.data, 'GET /users/me/blocks');
   },
 };

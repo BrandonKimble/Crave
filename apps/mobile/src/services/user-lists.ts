@@ -1,4 +1,5 @@
 import api from './api';
+import { expectArray } from './expect-shape';
 import type { Coordinate, FoodResult, RestaurantResult, SearchResponse } from '../types';
 import type { AuthorIdentity } from './author-identity';
 
@@ -178,11 +179,14 @@ export const userListsService = {
     // F836 (2026-08-03): the `'data' in response.data` unwrap branch is DELETED — it was a
     // GUARD THAT CANNOT FIRE. `listCitiesForList` (user-lists.service.ts) is typed
     // `Promise<Array<{placeId; name; restaurantCount}>>` and returns a BARE ARRAY, so
-    // `'data' in []` is always false and the branch never ran. The Array.isArray check
-    // stays: that one CAN fail (a route change), and it is the real shape assertion.
-    return Array.isArray(response.data)
-      ? (response.data as Array<{ placeId: string; name: string; restaurantCount: number }>)
-      : [];
+    // `'data' in []` is always false and the branch never ran.
+    // F3716 (2026-08-06): the old `Array.isArray(...) ? ... : []` tail was NOT an assertion —
+    // it asserted nothing and returned empty on a shape break (a route change rendered as
+    // "this list covers no cities"). expectArray IS the assertion: a non-array THROWS.
+    return expectArray<{ placeId: string; name: string; restaurantCount: number }>(
+      response.data,
+      'POST /lists/:id/cities'
+    );
   },
   async getShared(shareSlug: string): Promise<UserListDetail> {
     const response = await api.get<UserListDetail>(`/lists/share/${shareSlug}`);

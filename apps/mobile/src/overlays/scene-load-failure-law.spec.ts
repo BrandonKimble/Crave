@@ -19,6 +19,15 @@ const listPanelSources = (): string[] =>
     .map((name) => path.join(PANELS_DIR, name));
 
 describe('scene load-failure law (wave-4 §1)', () => {
+  // Liveness (mirrors linker-one-authority's "the census actually reads the
+  // harness directory" guard): both bans below assert `offenders` is empty, so
+  // an empty file list passes them forever with zero signal. If a refactor
+  // moves or renames the panels tree and the filter yields nothing, this fails
+  // instead of the bans going silently green.
+  it('the sweep actually reads the panels directory (no empty-loop green)', () => {
+    expect(listPanelSources().length).toBeGreaterThan(20);
+  });
+
   it('no panel renders a page-local load-retry control', () => {
     const offenders: string[] = [];
     for (const file of listPanelSources()) {

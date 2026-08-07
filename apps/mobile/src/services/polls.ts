@@ -441,7 +441,8 @@ export const listPollComments = async (
   const response = await api.get<PollComment[]>(`/polls/${pollId}/comments`, {
     params: { sort },
   });
-  return Array.isArray(response.data) ? response.data : [];
+  // F3716: a broken thread must not render as a poll with no discussion.
+  return expectArray<PollComment>(response.data, 'GET /polls/:id/comments');
 };
 
 export const postPollComment = async (
@@ -487,7 +488,8 @@ export const reportPollComment = async (
 
 export const fetchPollLeaderboard = async (pollId: string): Promise<PollLeaderboardEntry[]> => {
   const response = await api.get<PollLeaderboardEntry[]>(`/polls/${pollId}/leaderboard`);
-  return Array.isArray(response.data) ? response.data : [];
+  // F3716: a broken leaderboard must not render as "nobody has endorsed".
+  return expectArray<PollLeaderboardEntry>(response.data, 'GET /polls/:id/leaderboard');
 };
 
 /**

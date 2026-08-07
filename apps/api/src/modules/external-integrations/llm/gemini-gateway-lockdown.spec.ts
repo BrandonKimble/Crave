@@ -77,6 +77,10 @@ describe('Gemini gateway lockdown', () => {
     // Red team F2: the gate's caller was wrongly exempted here, which meant
     // deleting its profile kept CI green (the only guard left was a boot
     // crash). Generation callers are NEVER exempt.
+    // Liveness: an empty scan (regexes stop matching, source tree moves)
+    // would make `unprofiled` empty and pass this completeness guard blind.
+    // Assert the scan actually saw generation callers before trusting [].
+    expect(seen.size).toBeGreaterThan(0);
     const unprofiled = [...seen].filter(
       (caller) =>
         !nonGeneration.has(caller) && !(caller in GEMINI_CALLER_PROFILES),

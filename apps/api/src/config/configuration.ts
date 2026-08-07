@@ -68,10 +68,31 @@ function getDatabasePoolSize(appEnv: AppEnv): string {
  * so this is the only place the question is answerable. A caller cannot
  * forget it, because there is no other path to a database url.
  *
- * SCOPE: absence only. An explicitly-SET url is honoured verbatim in every
- * environment — this changes whether a MISSING value may pass silently, never
- * what anything connects to.
+ * SCOPE (F2100): absence. A MISSING value may not pass silently in a deployed
+ * environment.
+ *
+ * F2101 (2026-08-06): the IMPLAUSIBLE-VALUE half. An explicitly-SET but
+ * loopback DATABASE_URL (`localhost` / `127.0.0.1` / `::1`) on a deployed
+ * environment is never a real database — on Railway it points at the container
+ * itself — so it is rejected too, unless the operator opts in with
+ * `ALLOW_LOOPBACK_DATABASE_URL=true`. That flag is the named, owner-overridable
+ * answer to "may a deployed env name a loopback host at all": the legitimate
+ * cases (a sidecar, a private-network alias that resolves to loopback) are a
+ * deliberate topology choice the operator states out loud, not a silent
+ * default. A non-loopback SET url is still honoured verbatim in every
+ * environment — this never changes what a correctly-configured process
+ * connects to.
  */
+function isLoopbackDbHost(url: string): boolean {
+  try {
+    const host = new URL(url).hostname.replace(/^\[|\]$/g, '').toLowerCase();
+    return host === 'localhost' || host === '127.0.0.1' || host === '::1';
+  } catch {
+    // An unparseable url is not our concern here — the shape validator owns it.
+    return false;
+  }
+}
+
 function getDatabaseUrl(env: NodeJS.ProcessEnv = process.env): string {
   // NODE_ENV=test is a toolchain fact (is this a jest run), not an AppEnv;
   // an isolated local test database is exactly where defaulting belongs.
@@ -84,6 +105,21 @@ function getDatabaseUrl(env: NodeJS.ProcessEnv = process.env): string {
   }
 
   if (env.DATABASE_URL && env.DATABASE_URL.trim()) {
+    const url = env.DATABASE_URL.trim();
+    const appEnv = resolveAppEnv(env);
+    if (
+      isDeployedEnv(appEnv) &&
+      isLoopbackDbHost(url) &&
+      !isEnvFlagEnabled(env.ALLOW_LOOPBACK_DATABASE_URL)
+    ) {
+      throw new Error(
+        `DATABASE_URL names a loopback host (${url}) in a deployed environment ` +
+          `(APP_ENV=${appEnv}). A deployed process pointed at localhost is a ` +
+          `config error, not a database. Set a real host, or opt in explicitly ` +
+          `with ALLOW_LOOPBACK_DATABASE_URL=true if this env legitimately ` +
+          `resolves loopback to a sidecar/private-network database.`,
+      );
+    }
     return env.DATABASE_URL;
   }
 

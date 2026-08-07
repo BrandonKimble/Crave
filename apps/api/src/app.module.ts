@@ -7,6 +7,7 @@ import { BullModule } from '@nestjs/bull';
 import { DiscoveryModule } from '@nestjs/core';
 import { RedisModule } from '@liaoliaots/nestjs-redis';
 import configuration from './config/configuration';
+import { validateEnv } from './shared/config/validate-env';
 import { PrismaModule } from './prisma/prisma.module';
 import { EntityDisplayModule } from './modules/entity-display/entity-display.module';
 import { ExternalIntegrationsModule } from './modules/external-integrations/external-integrations.module';
@@ -48,6 +49,9 @@ const runtimeWithSchedulers = isSchedulerRuntime();
     ConfigModule.forRoot({
       isGlobal: true,
       envFilePath: [join(__dirname, '..', '.env'), join(process.cwd(), '.env')],
+      // F2075: fail boot CLOSED on a missing boot-critical secret in a deployed
+      // environment (dev keeps the permissive path). Runs during module init.
+      validate: validateEnv,
       load: [configuration],
     }),
     // THE CHOKEPOINT FOR "WHICH PROCESS RUNS SCHEDULED WORK". This line, and

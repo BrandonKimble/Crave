@@ -514,7 +514,15 @@ export const startBannerRecoveryProbe = (): (() => void) => {
       healthProbeTimer = null;
     }
   };
-  const unsubscribe = useSystemStatusStore.subscribe((state) => {
+  // F2805: reconcile against the CURRENT state, not only future changes.
+  // zustand does not invoke a `subscribe` listener at subscription time, so if
+  // `serviceIssue != null` already when this mounts (a remount-while-degraded,
+  // a store rehydrated with an issue set), the old subscribe-only wiring
+  // started no probe and the banner stayed stuck — the exact indefinite-hang
+  // this probe exists to prevent. Hoisted to `sync` and run once with the
+  // current state before subscribing; idempotent, since the body already
+  // guards on `healthProbeTimer == null`.
+  const sync = (state: ReturnType<typeof useSystemStatusStore.getState>) => {
     const hasIssue = state.serviceIssue != null;
     if (hasIssue && healthProbeTimer == null) {
       healthProbeTimer = setInterval(() => {
@@ -530,7 +538,9 @@ export const startBannerRecoveryProbe = (): (() => void) => {
     } else if (!hasIssue) {
       stopProbe();
     }
-  });
+  };
+  sync(useSystemStatusStore.getState());
+  const unsubscribe = useSystemStatusStore.subscribe(sync);
   return () => {
     unsubscribe();
     stopProbe();
