@@ -9,25 +9,51 @@
 --     its winner at read), plus every place-grounded restaurant
 --     (RESTAURANT LAW, owner 2026-07-30, ~$118 lesson).
 
+-- FK-POLICY LEGEND (why each anchor clause matters, verified against
+-- schema.prisma 2026-08-06). Each source table's FK to the entity/connection
+-- it references carries one of three referential actions on delete, and that
+-- action decides whether enumerating the clause here is the SOLE protection or
+-- merely a belt:
+--   `Restrict — belt`: a missed anchor ABORTS the wipe loudly (the DB refuses
+--       the delete), so user data is never destroyed even if this clause were
+--       dropped. Redundant safety, but keep it so the wipe skips cleanly
+--       instead of erroring.
+--   `Cascade — sole`: deleting the entity SILENTLY cascades the child row away,
+--       so this clause is the ONLY thing preserving that user data.
+--   `no FK — sole`: the column has no foreign key at all (bare text/json id),
+--       so nothing at the DB level protects it — this clause is the only guard.
 CREATE TEMP TABLE preserved_connections AS
 SELECT DISTINCT connection_id FROM (
+  -- user_list_items.connection FK = Restrict — belt
   SELECT connection_id FROM user_list_items WHERE connection_id IS NOT NULL
+  -- photos.connection FK = Restrict — belt
   UNION SELECT connection_id FROM photos WHERE connection_id IS NOT NULL
+  -- curated_list_items.connection FK = Cascade — sole
   UNION SELECT connection_id FROM curated_list_items WHERE connection_id IS NOT NULL
 ) c;
 
 CREATE TEMP TABLE preserved_entities AS
 SELECT DISTINCT entity_id FROM (
+  -- poll_topics.target* FKs = SetNull (Prisma default, optional relation): a
+  -- missed anchor NULLs the poll's target pointer rather than destroying the
+  -- poll row — belt-ish, the poll survives degraded. The *_entity_ids ARRAY
+  -- columns below have no FK at all (no FK — sole).
   SELECT target_dish_id AS entity_id FROM poll_topics WHERE target_dish_id IS NOT NULL
   UNION SELECT target_restaurant_id FROM poll_topics WHERE target_restaurant_id IS NOT NULL
   UNION SELECT target_food_attribute_id FROM poll_topics WHERE target_food_attribute_id IS NOT NULL
   UNION SELECT target_restaurant_attribute_id FROM poll_topics WHERE target_restaurant_attribute_id IS NOT NULL
+  -- category_entity_ids / seed_entity_ids: uuid[] arrays, no FK — sole
   UNION SELECT unnest(category_entity_ids) FROM poll_topics
   UNION SELECT unnest(seed_entity_ids) FROM poll_topics
+  -- user_list_items.restaurant FK = Restrict — belt
   UNION SELECT restaurant_id FROM user_list_items WHERE restaurant_id IS NOT NULL
+  -- photos.restaurant FK = Restrict — belt
   UNION SELECT restaurant_id FROM photos WHERE restaurant_id IS NOT NULL
+  -- curated_list_items.entity / .restaurant FKs = Cascade — sole
   UNION SELECT entity_id FROM curated_list_items WHERE entity_id IS NOT NULL
   UNION SELECT restaurant_id FROM curated_list_items WHERE restaurant_id IS NOT NULL
+  -- on_demand_requests.entity FK = SetNull (Prisma default, optional): request
+  -- row survives with a nulled ref — belt-ish
   UNION SELECT entity_id FROM collection_on_demand_requests WHERE entity_id IS NOT NULL
   -- signal acts (searches, views, favorites, poll votes) are user data.
   -- Read from BOTH the raw ledger and the DURABLE daily aggregate.
@@ -40,12 +66,14 @@ SELECT DISTINCT entity_id FROM (
   -- record of the same fact — an entity was acted on — and outlives raw by
   -- design. Keeping raw as well costs nothing while it exists and means this
   -- query never depends on the aggregate pass having caught up to today.
+  -- signals.subject_id / signal_demand_daily.subject_id: bare text ids, no FK — sole
   UNION SELECT subject_id FROM signals
     WHERE subject_type = 'entity' AND subject_id IS NOT NULL
   UNION SELECT subject_id FROM signal_demand_daily
     WHERE subject_type = 'entity' AND subject_id IS NOT NULL
   -- poll endorsements: restaurant axis is a bare uuid; dish axis is a
-  -- poll-local 'restaurantId::foodId' composite — preserve both halves
+  -- poll-local 'restaurantId::foodId' composite — preserve both halves.
+  -- poll_endorsements.subject_id is a bare text id, no FK — sole
   UNION SELECT subject_id::uuid FROM poll_endorsements
     WHERE subject_id ~ '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$'
   UNION SELECT split_part(subject_id, '::', 1)::uuid FROM poll_endorsements
@@ -85,11 +113,15 @@ SELECT DISTINCT entity_id FROM (
            THEN c.entity_spans ELSE '[]'::jsonb END
     ) span
     WHERE span->>'entityId' ~ '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$'
+  -- core_restaurant_items.restaurant/food FKs = Cascade — sole (reached
+  -- transitively via an already-preserved connection, not a user anchor itself)
   UNION SELECT ci.food_id FROM core_restaurant_items ci
     JOIN preserved_connections pc ON pc.connection_id = ci.connection_id
   UNION SELECT ci.restaurant_id FROM core_restaurant_items ci
     JOIN preserved_connections pc ON pc.connection_id = ci.connection_id
-  -- RESTAURANT LAW
+  -- RESTAURANT LAW. core_restaurant_locations.restaurant FK = Cascade — sole:
+  -- deleting a grounded restaurant cascades its locations away and forces the
+  -- ~$118 Places re-enrichment, so this clause is the only guard.
   UNION SELECT rl.restaurant_id FROM core_restaurant_locations rl
     WHERE rl.google_place_id IS NOT NULL
 ) e WHERE entity_id IS NOT NULL;
@@ -107,7 +139,10 @@ WITH RECURSIVE hops AS (
 )
 SELECT DISTINCT to_entity_id FROM hops
 WHERE to_entity_id NOT IN (SELECT entity_id FROM preserved_entities);
--- NOTE (audited 2026-08-01): live signals.subject_type values are exactly
--- {'none','entity'} — the entity filter above covers every subject-bearing
+-- NOTE (re-dated 2026-08-06, post the 2026-08-03 signals rebuild referenced at
+-- :34): the signals.subject_type domain is still exactly {'none','entity'} —
+-- the rebuild kept that domain, and the :43-46 clauses (reading subject_type =
+-- 'entity' from BOTH signals and signal_demand_daily) are the live code that
+-- depends on it, so the enumeration below still covers every subject-bearing
 -- signal. If a new subject_type is ever introduced, add its id translation
 -- here (the poll_endorsements composite handling is the template).

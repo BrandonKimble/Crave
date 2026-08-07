@@ -2301,9 +2301,13 @@ export class PollsService {
 
       // DUAL-WRITE (delete with old logging — master plan §22, one-milestone hard deletion)
       // §3 signals: an endorsement IS the poll vote act (append-only ledger —
-      // un-endorsing removes the endorsement row, never the signal). Geo =
-      // the poll PLACE's bbox for place-keyed polls, the legacy market bbox
-      // otherwise (skip-with-debug when unresolvable) — red-team 3e. Meta
+      // un-endorsing removes the endorsement row, never the signal). The
+      // poll's `placeId` anchor IS the geo key on the write path, so `geo` is
+      // passed null unconditionally and no place lookup happens here — there
+      // is no market arm (markets exterminated 2026-07-22) and no
+      // skip-with-debug. Do NOT reintroduce a centroid/bbox manufacture on
+      // this path; polls-signals-write.spec.ts asserts `place.findUnique` is
+      // never called on the write. Meta
       // carries the endorsed candidate itself: the mutable pollEndorsement
       // row can be deleted, so the ledger must hold WHAT was voted for, not
       // just which poll.
