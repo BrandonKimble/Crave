@@ -43,7 +43,7 @@ export class ViewportVerdictService {
       name: entry.place.name,
       coverageOfView: entry.coverageOfView,
       placeArea: entry.placeArea,
-      parentPlaceIds: entry.parentPlaceIds,
+      containsViewCenter: entry.containsViewCenter,
     }));
     // §4 feed half: only OVER-SCALE candidates ever need the structural
     // subdivision+ judgment (a handful of ancestors per view).

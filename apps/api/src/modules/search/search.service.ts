@@ -2594,10 +2594,9 @@ export class SearchService {
         placesInView.map((entry) => ({
           placeId: entry.place.placeId,
           name: entry.place.name,
-          bbox: entry.bbox,
           coverageOfView: entry.coverageOfView,
           placeArea: entry.placeArea,
-          parentPlaceIds: entry.parentPlaceIds,
+          containsViewCenter: entry.containsViewCenter,
         })),
       );
       if (resolution.kind === 'place') {

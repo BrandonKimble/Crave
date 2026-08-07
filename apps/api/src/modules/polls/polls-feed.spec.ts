@@ -199,6 +199,9 @@ function createHarness(options: {
           },
           coverageOfView: entry.coverageOfView,
           placeArea: entry.placeArea,
+          // Fixtures are centred by construction (bboxes around 0.5,0.5) —
+          // the header law's anchor; membership itself never reads it.
+          containsViewCenter: true,
         };
       }),
     ),

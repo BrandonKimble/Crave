@@ -1,12 +1,11 @@
 /**
- * §2.5 POLYGON-NATIVE HEADER LAW fixtures (plans/geo-demand-foundation-
- * rebuild.md §2.5, ratified 2026-07-22): the ratified set — west-Texas band
- * (polygon coverage names Texas), the Mexico-bbox lie (index rectangles
- * never judge once ground is known — AND the finest-dominator rule already
- * fixes the owner's bug pre-polygon), TX/LA straddle reservation via the
- * DAG, city zoom → city, street zoom with/without a neighborhood. Plus the
- * ground clip/area kernel and the surviving probe-anchor budget. All pure —
- * the fixtures ARE the law's spec.
+ * CENTER-ANCHORED HEADER LAW fixtures (owner-ratified 2026-08-07; supersedes
+ * the §2.5 dominator/straddle set of 2026-07-22). Each header fixture
+ * mirrors a shape MEASURED on the live catalog by header-verdict-probe.ts:
+ * the state-over-city regression, the nested-city/county false straddle,
+ * the Mexico-bbox lie, block-zoom neighborhoods, the threshold and anchor
+ * boundaries. Plus the ground clip/area kernel and the surviving
+ * probe-anchor budget. All pure — the fixtures ARE the law's spec.
  *
  * The law LIVES in @crave-search/shared (header subject-store design: the
  * client runs the same law over its sliding catalog slice). These fixtures
@@ -14,9 +13,8 @@
  * package SOURCE, so a stale dist can never green a broken law.
  */
 import {
-  ATTENTION_FRACTION,
-  COVERING_FRACTION,
   GeoBbox,
+  HEADER_ATTENTION_FRACTION,
   MAX_PROBE_ANCHORS,
   PlaceGround,
   PlaceLike,
@@ -57,6 +55,9 @@ function candidate(
     name,
     coverageOfView: coverageOfViewShare,
     placeArea: bboxArea(bbox),
+    // Hand-built candidates default to centred — the tests that exercise
+    // the anchor override this explicitly.
+    containsViewCenter: true,
     ...overrides,
   };
 }
@@ -174,44 +175,110 @@ describe('ground kernel — clip + shoelace + wrap (shared ground.ts)', () => {
   });
 });
 
-describe('resolveHeaderPlace — §2.5 finest dominator (the ratified set)', () => {
-  it('west-Texas band: Texas real ground covers ~89% of the view → "Texas"', () => {
-    // Abstract geometry, real shape of the bug: the view hangs off Texas's
-    // western edge; Texas's GROUND still covers 89% ≥ 2/3 → Texas claims it.
+describe('resolveHeaderPlace — the center-anchored law (2026-08-07)', () => {
+  // Every fixture here mirrors a MEASURED shape from the live catalog
+  // (header-verdict-probe.ts): the regressions the old dominator/straddle
+  // law actually produced, then the boundaries of the new law.
+
+  it('THE ORIGINAL BUG: a state covering 100% of a city-scale view loses to the centered city at 22%', () => {
+    // Austin at a ~55-mile view, verbatim: Texas coverage 1.000, Austin
+    // 0.216. The old law named Texas (finest DOMINATOR — nothing finer
+    // reached 2/3); the header read "Texas" from a 200-mile view down here.
     const view: GeoBbox = { minLat: 0, minLng: 0, maxLat: 3, maxLng: 3 };
     const texas = placeLike(
       'Texas',
-      { minLat: -1, minLng: 0.33, maxLat: 9, maxLng: 12 },
-      {
-        providerLevelCode: 'CountrySubdivision',
-        parentPlaceIds: ['id-United States'],
-        // Ground covers lng ∈ [0.33, 3] of the view → 2.67/3 ≈ 0.89.
-        ground: [rectRing({ minLat: -1, minLng: 0.33, maxLat: 9, maxLng: 12 })],
-      },
+      { minLat: -20, minLng: -20, maxLat: 20, maxLng: 20 },
+      { providerLevelCode: 'CountrySubdivision' },
     );
+    // A rect holding the view's centre (1.5,1.5) and ~22% of its area.
+    const austin = placeLike('Austin', {
+      minLat: 0.8,
+      minLng: 0.8,
+      maxLat: 2.2,
+      maxLng: 2.2,
+    });
     const result = resolveHeaderPlace(
       view,
-      subjectCandidatesInView(view, [texas]),
+      subjectCandidatesInView(view, [texas, austin]),
     );
     expect(result.kind).toBe('place');
     if (result.kind !== 'place') throw new Error('unreachable');
-    expect(result.place.name).toBe('Texas');
-    expect(result.reason).toBe('finest-dominator');
-    expect(result.place.coverageOfView).toBeCloseTo(0.89, 2);
+    expect(result.place.name).toBe('Austin');
+    expect(result.reason).toBe('finest-centered');
+    expect(result.subjects.map((s) => s.name)).toEqual(['Austin']);
   });
 
-  it('the Mexico-bbox lie: a bbox CONTAINING the view but with 5% real ground can NEVER win once ground is present', () => {
+  it('THE FALSE STRADDLE: nested city-in-county names the CITY, never "this area"', () => {
+    // Austin (0.378) inside Travis (0.594) inside Texas (1.0) — all three
+    // contain the centre. The old law declared a straddle between Austin
+    // and Travis (DAG siblings: 19,451 municipalities carry their STATE as
+    // parent) and degraded to «this area» at exactly the zoom where
+    // "Austin" became true. Nested places cannot straddle: the finest
+    // centred one wins.
     const view: GeoBbox = { minLat: 0, minLng: 0, maxLat: 3, maxLng: 3 };
     const texas = placeLike(
       'Texas',
-      { minLat: -1, minLng: 0.33, maxLat: 9, maxLng: 12 },
+      { minLat: -20, minLng: -20, maxLat: 20, maxLng: 20 },
+      { providerLevelCode: 'CountrySubdivision' },
+    );
+    const travis = placeLike(
+      'Travis',
+      { minLat: 0.4, minLng: 0.4, maxLat: 2.7, maxLng: 2.7 },
+      { providerLevelCode: 'CountrySecondarySubdivision' },
+    );
+    const austin = placeLike('Austin', {
+      minLat: 0.6,
+      minLng: 0.6,
+      maxLat: 2.4,
+      maxLng: 2.4,
+    });
+    const result = resolveHeaderPlace(
+      view,
+      subjectCandidatesInView(view, [texas, travis, austin]),
+    );
+    expect(result.kind).toBe('place');
+    if (result.kind !== 'place') throw new Error('unreachable');
+    expect(result.place.name).toBe('Austin');
+  });
+
+  it('two towns genuinely splitting the view: the CENTERED one wins — higher coverage on the other side does not', () => {
+    // The question the straddle reservation was invented for, answered by
+    // the anchor instead: the centre sits in the west town, so the west
+    // town names the header even though the east town holds more area.
+    const view: GeoBbox = { minLat: 0, minLng: 0, maxLat: 1, maxLng: 2 };
+    const west = placeLike('Aldertown', {
+      minLat: 0,
+      minLng: 0,
+      maxLat: 1,
+      maxLng: 1.1,
+    });
+    const east = placeLike('Birchville', {
+      minLat: 0,
+      minLng: 1.1,
+      maxLat: 1,
+      maxLng: 2,
+    });
+    const result = resolveHeaderPlace(
+      view,
+      subjectCandidatesInView(view, [west, east]),
+    );
+    expect(result.kind).toBe('place');
+    if (result.kind !== 'place') throw new Error('unreachable');
+    expect(result.place.name).toBe('Aldertown');
+  });
+
+  it('the Mexico-bbox lie stays dead: an index rectangle containing the view whose GROUND misses the centre is no candidate at all', () => {
+    const view: GeoBbox = { minLat: 0, minLng: 0, maxLat: 3, maxLng: 3 };
+    const texas = placeLike(
+      'Texas',
+      { minLat: -1, minLng: -1, maxLat: 9, maxLng: 12 },
       {
         providerLevelCode: 'CountrySubdivision',
-        ground: [rectRing({ minLat: -1, minLng: 0.33, maxLat: 9, maxLng: 12 })],
+        ground: [rectRing({ minLat: -1, minLng: -1, maxLat: 9, maxLng: 12 })],
       },
     );
-    // Mexico: index rectangle swallows the whole view (the diagonal-border
-    // lie), real ground touches a 0.45-degree² corner sliver (5%).
+    // Mexico: index bbox swallows the view; real ground is a corner sliver
+    // nowhere near the centre.
     const mexico = placeLike(
       'Mexico',
       { minLat: -20, minLng: -20, maxLat: 10, maxLng: 10 },
@@ -223,218 +290,84 @@ describe('resolveHeaderPlace — §2.5 finest dominator (the ratified set)', () 
       },
     );
     const candidates = subjectCandidatesInView(view, [mexico, texas]);
-    const mexicoCandidate = candidates.find((c) => c.name === 'Mexico');
-    expect(mexicoCandidate?.coverageOfView).toBeLessThan(ATTENTION_FRACTION);
-
+    expect(
+      candidates.find((c) => c.name === 'Mexico')?.containsViewCenter,
+    ).toBe(false);
     const result = resolveHeaderPlace(view, candidates);
     expect(result.kind).toBe('place');
     if (result.kind !== 'place') throw new Error('unreachable');
     expect(result.place.name).toBe('Texas');
   });
 
-  it('BBOX-ONLY FALLBACK already fixes the owner bug: with no polygons at all, Texas (89%, finer) beats the view-containing Mexico bbox', () => {
-    // Pre-polygon world (§2.5(f) honest fallback): Mexico's bbox coverage is
-    // 100% ≥ 2/3 — under the OLD law its containment could name it. Under
-    // §2.5 BOTH are dominators (Texas bbox coverage 89% ≥ 2/3 too) and the
-    // FINEST (smaller area) wins → Texas. The new law fixes the bug even
-    // before any polygon lands.
-    const view: GeoBbox = { minLat: 0, minLng: 0, maxLat: 3, maxLng: 3 };
-    const texasBboxOnly = placeLike('Texas', {
-      minLat: -1,
-      minLng: 0.33,
-      maxLat: 9,
-      maxLng: 12,
+  it('street zoom WITH a neighborhood: the neighborhood out-fines the city', () => {
+    // Downtown Austin at block zoom, verbatim: 0.264 of the view vs the
+    // city\'s 1.0 — both centred, the finer names it.
+    const view: GeoBbox = {
+      minLat: 1.4,
+      minLng: 1.4,
+      maxLat: 1.6,
+      maxLng: 1.6,
+    };
+    const city = placeLike('Austin', {
+      minLat: 0,
+      minLng: 0,
+      maxLat: 3,
+      maxLng: 3,
     });
-    const mexicoBboxOnly = placeLike('Mexico', {
-      minLat: -20,
-      minLng: -20,
-      maxLat: 10,
-      maxLng: 10,
-    });
-    const candidates = subjectCandidatesInView(view, [
-      mexicoBboxOnly,
-      texasBboxOnly,
-    ]);
-    const texasCandidate = candidates.find((c) => c.name === 'Texas');
-    const mexicoCandidate = candidates.find((c) => c.name === 'Mexico');
-    // Both dominate by coverage…
-    expect(texasCandidate!.coverageOfView).toBeGreaterThanOrEqual(
-      COVERING_FRACTION,
+    const neighborhood = placeLike(
+      'Downtown Austin',
+      { minLat: 1.44, minLng: 1.44, maxLat: 1.56, maxLng: 1.56 },
+      { providerLevelCode: 'Neighbourhood' },
     );
-    expect(mexicoCandidate!.coverageOfView).toBeCloseTo(1, 9);
-    // …and the finer one is named.
-    const result = resolveHeaderPlace(view, candidates);
+    const result = resolveHeaderPlace(
+      view,
+      subjectCandidatesInView(view, [city, neighborhood]),
+    );
     expect(result.kind).toBe('place');
     if (result.kind !== 'place') throw new Error('unreachable');
-    expect(result.place.name).toBe('Texas');
+    expect(result.place.name).toBe('Downtown Austin');
   });
 
-  it('TX/LA 50-50: the covering country is the dominator, but TWO of its children each hold ≥ 1/3 → straddle reservation → "this area"', () => {
-    const view: GeoBbox = { minLat: 0, minLng: 0, maxLat: 2, maxLng: 4 };
+  it('under-threshold: a centred country holding a sliver of a continental view does not name it', () => {
+    // The US at a ~2,760-mile view holds 0.19 — centred, but a sliver.
+    const view: GeoBbox = { minLat: -20, minLng: -40, maxLat: 40, maxLng: 40 };
     const us = candidate(
       'United States',
-      { minLat: -10, minLng: -20, maxLat: 20, maxLng: 20 },
-      1,
-      { placeId: 'id-US' },
+      { minLat: 25, minLng: -14, maxLat: 50, maxLng: 12 },
+      HEADER_ATTENTION_FRACTION - 0.05,
+      { containsViewCenter: true },
     );
-    const texas = candidate(
-      'Texas',
-      { minLat: -1, minLng: -3, maxLat: 3, maxLng: 2 },
-      0.5,
-      { parentPlaceIds: ['id-US'] },
-    );
-    const louisiana = candidate(
-      'Louisiana',
-      { minLat: -1, minLng: 2, maxLat: 3, maxLng: 7 },
-      0.5,
-      { parentPlaceIds: ['id-US'] },
-    );
-    const result = resolveHeaderPlace(view, [us, texas, louisiana]);
-    expect(result.kind).toBe('this-area');
-    if (result.kind !== 'this-area') throw new Error('unreachable');
-    expect(result.reason).toBe('straddle');
-    expect(result.subjects.map((s) => s.name).sort()).toEqual([
-      'Louisiana',
-      'Texas',
-    ]);
-  });
-
-  it('city zoom → city: every ancestor also covers, the FINEST dominator names the header', () => {
-    const view: GeoBbox = { minLat: 0, minLng: 0, maxLat: 0.2, maxLng: 0.2 };
-    const city = candidate(
-      'Austin',
-      { minLat: -0.1, minLng: -0.1, maxLat: 0.4, maxLng: 0.4 },
-      1,
-    );
-    const county = candidate(
-      'Travis',
-      { minLat: -0.5, minLng: -0.5, maxLat: 1, maxLng: 1 },
-      1,
-    );
-    const state = candidate(
-      'Texas',
-      { minLat: -5, minLng: -6, maxLat: 6, maxLng: 7 },
-      1,
-    );
-    const country = candidate(
-      'United States',
-      { minLat: -30, minLng: -60, maxLat: 30, maxLng: 60 },
-      1,
-    );
-    const result = resolveHeaderPlace(view, [country, state, county, city]);
-    expect(result.kind).toBe('place');
-    if (result.kind !== 'place') throw new Error('unreachable');
-    expect(result.place.name).toBe('Austin');
-    expect(result.subjects.map((s) => s.name)).toEqual(['Austin']);
-  });
-
-  it('street zoom WITH a neighborhood: the neighborhood out-fines the city (the old too-big arm is dead — descent falls out of "finest")', () => {
-    const view: GeoBbox = {
-      minLat: 0.5,
-      minLng: 0.5,
-      maxLat: 0.51,
-      maxLng: 0.51,
-    };
-    const city = candidate(
-      'Bigcity',
-      { minLat: 0, minLng: 0, maxLat: 1, maxLng: 1 },
-      1,
-      {
-        placeId: 'id-city',
-      },
-    );
-    const ward = candidate(
-      'Old Ward',
-      { minLat: 0.49, minLng: 0.49, maxLat: 0.52, maxLng: 0.52 },
-      1,
-      { parentPlaceIds: ['id-city'] },
-    );
-    const result = resolveHeaderPlace(view, [city, ward]);
-    expect(result.kind).toBe('place');
-    if (result.kind !== 'place') throw new Error('unreachable');
-    expect(result.place.name).toBe('Old Ward');
-  });
-
-  it('street zoom WITHOUT a neighborhood: the city is the finest dominator (the old containing-fallback is subsumed, not lost)', () => {
-    const view: GeoBbox = {
-      minLat: 0.5,
-      minLng: 0.5,
-      maxLat: 0.52,
-      maxLng: 0.52,
-    };
-    const city = candidate(
-      'Bigcity',
-      { minLat: 0, minLng: 0, maxLat: 1, maxLng: 1 },
-      1,
-    );
-    const county = candidate(
-      'Vast County',
-      { minLat: -1, minLng: -1, maxLat: 2, maxLng: 2 },
-      1,
-    );
-    const result = resolveHeaderPlace(view, [county, city]);
-    expect(result.kind).toBe('place');
-    if (result.kind !== 'place') throw new Error('unreachable');
-    expect(result.place.name).toBe('Bigcity');
-    expect(result.reason).toBe('finest-dominator');
-  });
-
-  it('no dominator, two attention holders → straddle "this area" (two towns at ~half the view each)', () => {
-    const view: GeoBbox = { minLat: 0, minLng: 0, maxLat: 1, maxLng: 2 };
-    const a = candidate(
-      'Aldertown',
-      { minLat: 0, minLng: 0, maxLat: 1, maxLng: 1 },
-      0.5,
-    );
-    const b = candidate(
-      'Birchville',
-      { minLat: 0, minLng: 1, maxLat: 1, maxLng: 2 },
-      0.5,
-    );
-    const result = resolveHeaderPlace(view, [a, b]);
-    expect(result.kind).toBe('this-area');
-    if (result.kind !== 'this-area') throw new Error('unreachable');
-    expect(result.reason).toBe('straddle');
-    expect(result.subjects.map((s) => s.name).sort()).toEqual([
-      'Aldertown',
-      'Birchville',
-    ]);
-  });
-
-  it('the lone-commensurate branch is DEAD: one town at 40% with unnamed remainder is "this area", not the town', () => {
-    const view: GeoBbox = { minLat: 0, minLng: 0, maxLat: 1, maxLng: 1 };
-    const town = candidate(
-      'Loneville',
-      { minLat: 0, minLng: 0, maxLat: 1, maxLng: 0.4 },
-      0.4,
-    );
-    const result = resolveHeaderPlace(view, [town]);
-    expect(result.kind).toBe('this-area');
-    if (result.kind !== 'this-area') throw new Error('unreachable');
-    expect(result.reason).toBe('unnamed-ground');
-  });
-
-  it('unnamed ground: continental view over city-scale places has no dominator and no attention holder', () => {
-    const view: GeoBbox = { minLat: 25, minLng: -125, maxLat: 50, maxLng: -65 };
-    const austin = candidate(
-      'Austin',
-      { minLat: 30.1, minLng: -97.95, maxLat: 30.52, maxLng: -97.56 },
-      0.0001,
-    );
-    const result = resolveHeaderPlace(view, [austin]);
+    const result = resolveHeaderPlace(view, [us]);
     expect(result).toEqual({
       kind: 'this-area',
-      reason: 'unnamed-ground',
+      reason: 'under-threshold',
       subjects: [],
     });
   });
 
-  it('boundary: coverage of exactly COVERING_FRACTION dominates (closed threshold, EPSILON-stable)', () => {
-    const view: GeoBbox = { minLat: 0, minLng: 0, maxLat: 1, maxLng: 3 };
+  it('nothing under the centre: open water with a coastal town in frame is "this area"', () => {
+    const view: GeoBbox = { minLat: 0, minLng: 0, maxLat: 1, maxLng: 1 };
+    const town = candidate(
+      'Port Alder',
+      { minLat: 0, minLng: 0, maxLat: 1, maxLng: 0.4 },
+      0.4,
+      { containsViewCenter: false },
+    );
+    const result = resolveHeaderPlace(view, [town]);
+    expect(result).toEqual({
+      kind: 'this-area',
+      reason: 'nothing-under-center',
+      subjects: [],
+    });
+  });
+
+  it('boundary: coverage of exactly HEADER_ATTENTION_FRACTION names the header (closed threshold, EPSILON-stable)', () => {
+    const view: GeoBbox = { minLat: 0, minLng: 0, maxLat: 1, maxLng: 1 };
     const town = candidate(
       'Edge Town',
-      { minLat: 0, minLng: 0, maxLat: 1, maxLng: 2 },
-      COVERING_FRACTION,
+      { minLat: 0.3, minLng: 0.3, maxLat: 0.75, maxLng: 0.75 },
+      HEADER_ATTENTION_FRACTION,
+      { containsViewCenter: true },
     );
     const result = resolveHeaderPlace(view, [town]);
     expect(result.kind).toBe('place');
@@ -442,7 +375,7 @@ describe('resolveHeaderPlace — §2.5 finest dominator (the ratified set)', () 
 });
 
 describe('subjectCandidatesInView — the shared slice read (both runtimes)', () => {
-  it('derives coverage + finest key + parent edges; disjoint places drop', () => {
+  it('derives coverage + finest key + centre containment; disjoint places drop', () => {
     const view: GeoBbox = { minLat: 0, minLng: 0, maxLat: 1, maxLng: 2 };
     const half = placeLike(
       'Halftown',
@@ -459,7 +392,9 @@ describe('subjectCandidatesInView — the shared slice read (both runtimes)', ()
     expect(candidates.map((c) => c.name)).toEqual(['Halftown']);
     expect(candidates[0].coverageOfView).toBeCloseTo(0.5, 6);
     expect(candidates[0].placeArea).toBeCloseTo(bboxArea(half.bbox), 9);
-    expect(candidates[0].parentPlaceIds).toEqual(['p-1']);
+    // Halftown spans lng [0,1] of a [0,2] view — the centre (lng 1) sits on
+    // its edge; containment is what resolvePlaceCoverage says it is.
+    expect(typeof candidates[0].containsViewCenter).toBe('boolean');
   });
 
   it('a grounded slice row judges by its polygon, not its bbox', () => {

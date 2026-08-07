@@ -6,8 +6,10 @@
  * stored verbatim and judged with full-detail ground at every commit, a
  * sketch-grade slice (envelope-rectangle ground — §2.6's ONE representation)
  * still resolves, the per-tick candidate hint judges the envelope-grade
- * shadow (judgment-cadence split), and the marker logs carry the §2.5
- * reason union ('finest-dominator' | 'straddle' | 'unnamed-ground').
+ * shadow (judgment-cadence split), and the marker logs carry the header
+ * law's reason union ('finest-centered' | 'nothing-under-center' |
+ * 'under-threshold'). The law itself is center-anchored (2026-08-07);
+ * apps/api subjects.spec.ts is its spec.
  */
 import {
   bboxToGround,
@@ -143,7 +145,7 @@ describe('viewport subject controller core (§2.5 polygon-native)', () => {
     jest.useRealTimers();
   });
 
-  it('commits Texas (89% real ground) over the Mexico bbox lie, reason finest-dominator', async () => {
+  it('commits Texas (89% real ground, centred) over the Mexico bbox lie, reason finest-centered', async () => {
     const harness = startController([TEXAS, MEXICO]);
     await flushMicrotasks(); // slice lands (rows stored verbatim, grounds intact)
     jest.advanceTimersByTime(VIEWPORT_SETTLE_QUIESCENCE_MS); // settle → ground-truth judgment
@@ -157,7 +159,7 @@ describe('viewport subject controller core (§2.5 polygon-native)', () => {
     const settleLogs = harness.logsFor('settle');
     expect(settleLogs[settleLogs.length - 1]).toMatchObject({
       candidate: 'place:texas',
-      reason: 'finest-dominator',
+      reason: 'finest-centered',
     });
     // F2203: the slice is fetched FOR THE VIEW ON SCREEN. Nothing else in
     // this suite looks at fetchSlice's argument (only its call counts), so
@@ -167,7 +169,7 @@ describe('viewport subject controller core (§2.5 polygon-native)', () => {
     harness.dispose();
   });
 
-  it('never lets a 5%-ground bbox-container name the header: ground truth judges the COMMIT (unnamed-ground after full dwell)', async () => {
+  it('never lets a 5%-ground bbox-container name the header: ground truth judges the COMMIT (nothing under the centre after full dwell)', async () => {
     const harness = startController([MEXICO]);
     await flushMicrotasks();
     jest.advanceTimersByTime(VIEWPORT_SETTLE_QUIESCENCE_MS);
@@ -177,7 +179,7 @@ describe('viewport subject controller core (§2.5 polygon-native)', () => {
     const settleLogs = harness.logsFor('settle');
     expect(settleLogs[settleLogs.length - 1]).toMatchObject({
       candidate: 'this-area',
-      reason: 'unnamed-ground',
+      reason: 'nothing-under-center',
     });
 
     jest.advanceTimersByTime(VIEWPORT_SUBJECT_DWELL_MS);
@@ -208,11 +210,16 @@ describe('viewport subject controller core (§2.5 polygon-native)', () => {
       placeName: 'Austin',
     });
     const settleLogs = harness.logsFor('settle');
-    expect(settleLogs[settleLogs.length - 1]).toMatchObject({ reason: 'finest-dominator' });
+    expect(settleLogs[settleLogs.length - 1]).toMatchObject({ reason: 'finest-centered' });
     harness.dispose();
   });
 
-  it('fires the straddle reservation through parentPlaceIds and logs reason straddle', async () => {
+  it('the straddle reservation is DEAD: two children of a covering county, the CENTERED one names the header', () => {
+    // Old behaviour: parentPlaceIds siblinghood declared "this area". The
+    // DAG was measurably unfit for that judgment (nested Austin/Travis read
+    // as siblings), so the law anchors on the centre instead: Round Rock's
+    // ground holds the view centre (-99.5 ∈ [-100.6, -99.45]), Austin's
+    // does not, and the county loses on fineness.
     const travis = place({
       placeId: 'travis',
       name: 'Travis County',
@@ -229,13 +236,13 @@ describe('viewport subject controller core (§2.5 polygon-native)', () => {
     const westChild = place({
       placeId: 'round-rock',
       name: 'Round Rock',
-      bbox: { minLat: 28.8, maxLat: 30.2, minLng: -100.6, maxLng: -99.55 },
+      bbox: { minLat: 28.8, maxLat: 30.2, minLng: -100.6, maxLng: -99.45 },
       parentPlaceIds: ['travis'],
       ground: [
         [
           [-100.6, 28.8],
-          [-99.55, 28.8],
-          [-99.55, 30.2],
+          [-99.45, 28.8],
+          [-99.45, 30.2],
           [-100.6, 30.2],
         ],
       ],
@@ -243,29 +250,34 @@ describe('viewport subject controller core (§2.5 polygon-native)', () => {
     const eastChild = place({
       placeId: 'austin',
       name: 'Austin',
-      bbox: { minLat: 28.8, maxLat: 30.2, minLng: -99.45, maxLng: -98.4 },
+      bbox: { minLat: 28.8, maxLat: 30.2, minLng: -99.44, maxLng: -98.4 },
       parentPlaceIds: ['travis'],
       ground: [
         [
-          [-99.45, 28.8],
+          [-99.44, 28.8],
           [-98.4, 28.8],
           [-98.4, 30.2],
-          [-99.45, 30.2],
+          [-99.44, 30.2],
         ],
       ],
     });
     const harness = startController([travis, westChild, eastChild]);
-    await flushMicrotasks();
-    jest.advanceTimersByTime(VIEWPORT_SETTLE_QUIESCENCE_MS);
+    return (async () => {
+      await flushMicrotasks();
+      jest.advanceTimersByTime(VIEWPORT_SETTLE_QUIESCENCE_MS);
 
-    const settleLogs = harness.logsFor('settle');
-    expect(settleLogs[settleLogs.length - 1]).toMatchObject({
-      candidate: 'this-area',
-      reason: 'straddle',
-    });
-    jest.advanceTimersByTime(VIEWPORT_SUBJECT_DWELL_MS);
-    expect(getViewportSubjectState().verdict).toEqual({ kind: 'this-area' });
-    harness.dispose();
+      const settleLogs = harness.logsFor('settle');
+      expect(settleLogs[settleLogs.length - 1]).toMatchObject({
+        candidate: 'place:round-rock',
+        reason: 'finest-centered',
+      });
+      expect(getViewportSubjectState().verdict).toEqual({
+        kind: 'place',
+        placeId: 'round-rock',
+        placeName: 'Round Rock',
+      });
+      harness.dispose();
+    })();
   });
 
   it('judges the per-tick candidate hint at envelope grade (cadence split) while commits stay full-detail ground', async () => {

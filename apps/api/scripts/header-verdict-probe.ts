@@ -66,6 +66,20 @@
  * "United States" at 55-138 miles — naming the country while the viewer looks
  * at a 55-mile view of New York City. The candidate law is a large
  * improvement there even with the ambiguity unresolved.
+ *
+ * LAW SHIPPED 2026-08-07: resolveHeaderPlace IS the center-anchored law now,
+ * so TODAY == PROPOSED at every rung of both ladders (verified against the
+ * live catalog immediately after the cutover). Austin: US → Texas → Austin →
+ * Downtown Austin. West Village: US → New York → ... → West Village. The
+ * PROPOSED column stays as an independent restatement (it recomputes from
+ * the raw centre chain, not from the service) — divergence means the law
+ * regressed.
+ *
+ * KNOWN ENVELOPE ARTIFACT, self-healing: Brooklyn names the 28-14mi rungs
+ * over a MANHATTAN anchor because its ground is still the sketch-grade
+ * envelope rectangle (minted 2026-08-07; real polygon arrives via the
+ * governed drain, and the envelope rectangle covers the West Village point).
+ * When the polygon lands, Brooklyn leaves that centre chain on its own.
  */
 import 'dotenv/config';
 process.env.PROCESS_ROLE ||= 'api';

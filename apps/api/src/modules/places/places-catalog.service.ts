@@ -116,7 +116,9 @@ export interface PlaceInView {
    * metric as the view's (a sketch envelope's area equals its bbox area).
    */
   placeArea: number;
-  /** Deduped DAG parent edges (placeParentIds) — the straddle reservation. */
+  /** Header anchor: does the ONE ground contain the view's centre? */
+  containsViewCenter: boolean;
+  /** Deduped DAG parent edges (placeParentIds) — §6 descendant reads. */
   parentPlaceIds: string[];
   /**
    * Simplified real ground (§2.6: ALWAYS present — sketch-grade rows carry
@@ -398,6 +400,7 @@ export class PlacesCatalogService {
         bbox,
         coverageOfView: coverage.coverageOfView,
         placeArea: coverage.placeArea,
+        containsViewCenter: coverage.containsViewCenter,
         parentPlaceIds: placeParentIds(place),
         ground,
       });

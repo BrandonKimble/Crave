@@ -1,41 +1,35 @@
 /**
- * §2.5 POLYGON-NATIVE HEADER LAW (plans/geo-demand-foundation-rebuild.md
- * §2.5, RATIFIED 2026-07-22 — supersedes §2's symmetric-commensurability
- * header arms). PURE functions — no IO, no service state; the catalog
- * service (server) or the sliding slice (client) supplies the candidates,
- * this file judges them. Naming OBSERVES at write time (sketch everything);
- * the header is judged here, at read, and is re-definable forever.
+ * THE CENTER-ANCHORED HEADER LAW (owner-ratified 2026-08-07 — supersedes the
+ * §2.5 dominator/straddle law of 2026-07-22, which itself superseded §2's
+ * symmetric-commensurability arms). PURE functions — no IO, no service
+ * state; the catalog service (server) or the sliding slice (client) supplies
+ * the candidates, this file judges them. Naming OBSERVES at write time
+ * (sketch everything); the header is judged here, at read, and is
+ * re-definable forever.
  *
- * THE LAW (owner ruling, verbatim):
- *   - The header = the FINEST place whose REAL GROUND covers
- *     ≥ COVERING_FRACTION (2/3) of the view. "Finest" = smallest place area
- *     among the covering candidates (the dominators) — descent needs no DAG
- *     walk: a covering city always out-fines its covering state.
- *   - STRADDLE RESERVATION: if ≥ 2 of that dominator's CHILDREN (DAG edges —
- *     candidates whose parentPlaceIds include it) each hold
- *     ≥ ATTENTION_FRACTION (1/3) of the view, the view genuinely straddles
- *     them → 'this area'.
- *   - Nothing covers 2/3 → 'this area' (straddle when ≥2 places each hold
- *     attention, unnamed ground otherwise).
+ * THE LAW:
+ *   The header = the FINEST place (smallest measured ground area) whose
+ *   ground CONTAINS THE VIEW'S CENTRE and which holds
+ *   ≥ HEADER_ATTENTION_FRACTION of the view. Nothing centred → 'this area'
+ *   (nothing-under-center); centred places all under the fraction →
+ *   'this area' (under-threshold).
  *
- * §2.5(c) polygon = truth, bbox = INDEX only: a candidate's coverage is the
- * POLYGON-clip share of its ONE ground (§2.6: a sketch-grade place's ground
- * is its envelope rectangle — same representation, never a separate bbox
- * arm).
- * This kills the Mexico-bbox lie: a country whose rectangular index box
- * contains the view but whose real ground touches 5% of it can never name
- * the header once its polygon is known — and even bbox-only, the FINEST
- * dominator rule already prefers the state over the country.
+ * Full derivation with the measured failures of the dominator/straddle law
+ * it replaces — Texas naming a 55-mile Austin view, the Austin/Travis
+ * nested "straddle", the NYC level-code inversion — on resolveHeaderPlace.
  *
- * DEAD (per the ratification): the too-big arm (descent-to-finest-dominator
- * does its job), the lone-commensurate branch, and the containing-fallback
- * branch (a containing place covers the view entirely, so it IS a dominator
- * — the fallback is subsumed, not lost).
+ * §2.5(c) SURVIVES UNCHANGED: polygon = truth, bbox = INDEX only. Coverage
+ * and centre-containment are judged on the ONE ground representation (§2.6:
+ * a sketch-grade place's ground is its envelope rectangle). The Mexico-bbox
+ * lie stays dead: a country whose index box contains the view but whose
+ * real ground misses the centre is never even a candidate.
  *
  * KEPT: probeAnchors / probedRegionAnswersAnchor / isTooBigForView — they
  * are about PROBE coverage (§2 sketch mechanics) and the §4
  * feed-at-that-zoom boundary, not headers; the reconciler still runs on
- * them.
+ * them. ATTENTION_FRACTION likewise remains theirs; the header has its own
+ * knob (HEADER_ATTENTION_FRACTION) because "worth probing/feeding" and
+ * "deserves to name the screen" are different judgments.
  *
  * Hysteresis (commit on settle+dwell, enter/exit asymmetry) is the CALLER's
  * concern — this function is the memoryless judgment hysteresis wraps.
@@ -61,18 +55,10 @@ import {
   pointDistanceMeters,
   pointToBboxDistance,
 } from './place-geo';
-import { PlaceGround, groundArea, groundCoverageOfView } from './ground';
+import { PlaceGround, groundArea, groundContainsPoint, groundCoverageOfView } from './ground';
 
 /** §2: "a view attends to ≤ ~3 places". */
 export const ATTENTION_FRACTION = 1 / 3;
-
-/**
- * §2.5 dominator threshold: a place claims the view when its real ground
- * covers all but a sub-attention remainder — coverage ≥ 1 − 1/3 = 2/3.
- * One-knob derivation RATIFIED 2026-07-19 (owner docket item 1) and
- * re-ratified inside the §2.5 header law 2026-07-22.
- */
-export const COVERING_FRACTION = 1 - ATTENTION_FRACTION;
 
 /** §2 probe budget: ≤ ⌊1/ATTENTION_FRACTION⌋ = 3 anchors per view. */
 export const MAX_PROBE_ANCHORS = Math.floor(1 / ATTENTION_FRACTION);
@@ -83,13 +69,34 @@ export const MAX_PROBE_ANCHORS = Math.floor(1 / ATTENTION_FRACTION);
  */
 const EPSILON = 1e-9;
 
-/** What the §2.5 judgment needs to know about a candidate place. */
+/**
+ * The coverage a place must hold of the view before it may NAME the header.
+ *
+ * §16 OWNER CHOICE, ratified 2026-08-07 ("build the header law with your
+ * recommended thresholds"). What bounds it, measured on the live catalog
+ * (header-verdict-probe.ts): Austin holds 0.216 of a ~55-mile view and 0.096
+ * of an ~82-mile one, so any T in ~[0.10, 0.216] gives the same city-band
+ * behaviour; and T also decides when a NEIGHBOURHOOD takes the header —
+ * Downtown Austin reaches 0.264 only at a ~3-mile view, so T ≤ 0.26 admits
+ * neighbourhoods at block zoom and a higher T shuts them out entirely. 0.2
+ * sits inside both bands. Change it from measurement, never from taste.
+ */
+export const HEADER_ATTENTION_FRACTION = 0.2;
+
+/** What the header judgment needs to know about a candidate place. */
 export interface SubjectCandidate {
   placeId: string;
   name: string;
-  // NO bbox (dropped 2026-07-26): the §2.5 judgment ranks ONLY on
-  // coverageOfView + placeArea, both ground-derived. Carrying a bbox here
-  // was dead payload that invited a second, weaker source of truth.
+  // NO bbox (dropped 2026-07-26): the judgment ranks ONLY on ground-derived
+  // numbers. Carrying a bbox here was dead payload that invited a second,
+  // weaker source of truth.
+  //
+  // NO parentPlaceIds either (dropped 2026-08-07 with the straddle
+  // reservation): the DAG is measurably unfit for header judgments — 19,451
+  // municipalities carry their STATE as parent and only 14 their county, so
+  // Austin and its own county Travis read as siblings, and the "straddle"
+  // the DAG detected between them was two NESTED places. Geometry answers
+  // the same question correctly via containsViewCenter.
   /**
    * §2.5/§2.6 coverage: area(ground ∩ view)/area(view) — ONE representation
    * (a sketch-grade place's ground IS its envelope rectangle; no bbox arm).
@@ -103,11 +110,12 @@ export interface SubjectCandidate {
    */
   placeArea: number;
   /**
-   * DAG parent edges (§1) — the straddle reservation reads children through
-   * these. Optional so bbox-era callers/fixtures stay valid (absent = no
-   * known children ⇒ no reservation can fire through this candidate).
+   * Does this place's ground contain the CENTER of the view? The header
+   * anchor: "what am I over" is a fact about the middle of the screen, not
+   * about coverage fractions. Computed by resolvePlaceCoverage from the same
+   * ground the coverage came from.
    */
-  parentPlaceIds?: string[];
+  containsViewCenter: boolean;
 }
 
 /**
@@ -138,10 +146,11 @@ export interface PlaceLike {
   ground: PlaceGround;
 }
 
-/** resolvePlaceCoverage result: the two §2.5 judgment inputs per candidate. */
+/** resolvePlaceCoverage result: the three header-judgment inputs per candidate. */
 export interface PlaceCoverage {
   coverageOfView: number;
   placeArea: number;
+  containsViewCenter: boolean;
 }
 
 /**
@@ -170,6 +179,7 @@ export function resolvePlaceCoverage(
   return {
     coverageOfView: coverage,
     placeArea: groundArea(place.ground),
+    containsViewCenter: groundContainsPoint(place.ground, bboxCenter(view)),
   };
 }
 
@@ -193,7 +203,7 @@ export function subjectCandidatesInView(view: GeoBbox, places: PlaceLike[]): Sub
       name: place.name,
       coverageOfView: coverage.coverageOfView,
       placeArea: coverage.placeArea,
-      parentPlaceIds: place.parentPlaceIds,
+      containsViewCenter: coverage.containsViewCenter,
     });
   }
   return candidates;
@@ -203,8 +213,8 @@ export type HeaderResolution =
   | {
       kind: 'place';
       place: SubjectCandidate;
-      /** §2.5: the finest dominator named the header (the only place arm). */
-      reason: 'finest-dominator';
+      /** The finest centered place holding ≥ HEADER_ATTENTION_FRACTION. */
+      reason: 'finest-centered';
       /**
        * The named subject — descendant expansion (§6 feed) keys off this.
        * Always exactly [place] for the place verdict.
@@ -214,16 +224,20 @@ export type HeaderResolution =
   | {
       kind: 'this-area';
       /**
-       * 'straddle'       → ≥2 places each hold ≥ ATTENTION_FRACTION of the
-       *                    view (the dominator's children reservation, or —
-       *                    with no dominator — the attention holders
-       *                    themselves);
-       * 'unnamed-ground' → nothing claims the view and at most one place
-       *                    even holds attention (sparse catalog, open
-       *                    water).
+       * 'nothing-under-center' → no candidate's ground contains the view's
+       *                          centre (open water, unmapped ground);
+       * 'under-threshold'      → centred places exist but the finest-to-
+       *                          coarsest of them all hold < the header
+       *                          fraction (continental zoom: the country is
+       *                          under the centre at a sliver of the view).
        */
-      reason: 'straddle' | 'unnamed-ground';
-      /** The places genuinely holding attention (coverage-desc). */
+      reason: 'nothing-under-center' | 'under-threshold';
+      /**
+       * Always empty. The straddle arm used to surface "attention holders"
+       * here, and the feed expanded their descendants; the straddle is gone
+       * (it fired between NESTED places — see resolveHeaderPlace) and a
+       * this-area view's feed is exactly its in-view members.
+       */
       subjects: SubjectCandidate[];
     };
 
@@ -305,57 +319,70 @@ export function probedRegionAnswersAnchor(
 }
 
 /**
- * The §2.5 header judgment. `placesInView` is EVERY candidate whose ground
- * (or fallback bbox) touches the view — including ancestors, so "finest"
- * needs no DAG traversal: a covering city simply out-fines its covering
- * state. The straddle reservation is the ONE DAG read: the dominator's
- * children are the candidates whose parentPlaceIds include it.
+ * THE HEADER LAW (rederived 2026-08-07 from measured behaviour — the probe
+ * that did it is apps/api/scripts/header-verdict-probe.ts, findings banked
+ * in its header):
+ *
+ *   The header is the FINEST place — by measured ground area — whose ground
+ *   contains the view's CENTRE and which holds at least
+ *   HEADER_ATTENTION_FRACTION of the view.
+ *
+ * Why each clause, from the failures of the law it replaced:
+ *
+ * CENTRE-ANCHORED. "What am I over" is a fact about the middle of the
+ * screen — users orient by it and pan to centre what they care about. The
+ * old law ranked by coverage alone, so Texas (coverage 1.0 at every
+ * city-scale zoom) out-claimed Austin (0.216 at a 55-mile view) and the
+ * header read "Texas" from a 200-mile view down to a 55-mile one.
+ *
+ * FINEST BY MEASURED AREA, NEVER BY LEVEL CODE. The vendor's level ladder
+ * INVERTS between cities: Austin (Municipality, 1,441 km²) sits inside its
+ * county (2,654 km²), while Manhattan (CountrySecondarySubdivision, 83 km²)
+ * sits inside the Municipality of New York (986 km²). Any rule keyed on
+ * level codes is wrong in one of those cities. Area is the one ordering
+ * that was correct everywhere measured.
+ *
+ * NO DAG, NO STRADDLE. The old straddle reservation ("≥2 of the dominator's
+ * children each hold ≥⅓") keyed on DAG siblinghood, and the DAG records
+ * 19,451 municipalities under their STATE (14 under their county) — so it
+ * fired between Austin and Travis, two places that NEST, and degraded the
+ * header to "this area" at exactly the zoom where "Austin" became true.
+ * Two towns genuinely splitting a view need no reservation here: the centre
+ * sits in one of them (that one wins) or in neither ("this area"). Anchoring
+ * answers the question the straddle was invented for.
+ *
+ * The threshold keeps a centred sliver honest: at continental zoom the
+ * country under the centre holds ~0.19 of the view and should not name it.
+ * Measured ladders under this law: Austin — US → Texas → Austin → Downtown
+ * Austin; West Village — US → New York → West Village. The old law produced
+ * "United States" over a 55-mile view of NYC and «this area» over Austin.
+ *
+ * `placesInView` is EVERY candidate whose ground touches the view —
+ * including ancestors, so "finest" needs no traversal: a centred city simply
+ * out-fines its centred state. Pure and stateless; flicker damping at a
+ * boundary pan (enter at T, leave lower) is a CLIENT concern, deliberately
+ * not built until flicker is observed on a device.
  */
 export function resolveHeaderPlace(
   view: GeoBbox,
   placesInView: SubjectCandidate[]
 ): HeaderResolution {
-  // Attention holders: places genuinely holding ≥ 1/3 of the view —
-  // straddle material and the feed's subject set. Coverage-desc, then
-  // name-stability (deterministic lexicographic close).
-  const attentionHolders = placesInView
-    .filter((candidate) => candidate.coverageOfView + EPSILON >= ATTENTION_FRACTION)
-    .sort((a, b) => b.coverageOfView - a.coverageOfView || a.name.localeCompare(b.name));
-
-  // §2.5 dominators: real ground covers ≥ 2/3 of the view. FINEST first —
-  // smallest placeArea; area ties close on name for determinism.
-  const dominators = placesInView
-    .filter((candidate) => candidate.coverageOfView + EPSILON >= COVERING_FRACTION)
-    .sort((a, b) => a.placeArea - b.placeArea || a.name.localeCompare(b.name));
-
-  if (dominators.length === 0) {
-    // Nothing claims the view. ≥2 attention holders = a genuine straddle
-    // (two towns at ~half the view each); otherwise unnamed ground.
-    return {
-      kind: 'this-area',
-      reason: attentionHolders.length >= 2 ? 'straddle' : 'unnamed-ground',
-      subjects: attentionHolders,
-    };
+  const centered = placesInView.filter((candidate) => candidate.containsViewCenter);
+  if (centered.length === 0) {
+    return { kind: 'this-area', reason: 'nothing-under-center', subjects: [] };
   }
-
-  const dominator = dominators[0];
-
-  // Straddle reservation (§2.5(b)): ≥2 of the dominator's CHILDREN each
-  // hold ≥ 1/3 of the view → the view is genuinely split between them.
-  const straddlingChildren = attentionHolders.filter(
-    (candidate) =>
-      candidate.placeId !== dominator.placeId &&
-      (candidate.parentPlaceIds ?? []).includes(dominator.placeId)
-  );
-  if (straddlingChildren.length >= 2) {
-    return { kind: 'this-area', reason: 'straddle', subjects: straddlingChildren };
+  // Finest first — smallest ground area; ties close on name for determinism.
+  const chosen = centered
+    .filter((candidate) => candidate.coverageOfView + EPSILON >= HEADER_ATTENTION_FRACTION)
+    .sort((a, b) => a.placeArea - b.placeArea || a.name.localeCompare(b.name))[0];
+  if (!chosen) {
+    return { kind: 'this-area', reason: 'under-threshold', subjects: [] };
   }
-
   return {
     kind: 'place',
-    place: dominator,
-    reason: 'finest-dominator',
-    subjects: [dominator],
+    place: chosen,
+    reason: 'finest-centered',
+    subjects: [chosen],
   };
 }
 

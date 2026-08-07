@@ -2,10 +2,10 @@
  * §6 feed membership + §2.5 header verdict for the polls surface — PURE.
  *
  * Feed = polls of places in view PLUS descendants of the header subject(s).
- * The header is the SAME §2.5 polygon-native judgment search uses
- * (resolveHeaderPlace — one law, one implementation; "Polls in this area" is
- * the client's rendering of the null verdict, exactly like search's
- * displayPlaceName).
+ * The header is the SAME center-anchored judgment search uses
+ * (resolveHeaderPlace, 2026-08-07 law — one law, one implementation; "Polls
+ * in this area" is the client's rendering of the null verdict, exactly like
+ * search's displayPlaceName).
  *
  * §4 boundary, feed half — "big-place (subdivision+) polls are
  * feed-at-that-zoom only": an in-view place that is BOTH over-scale for the
@@ -28,8 +28,8 @@ import {
 } from '@crave-search/shared';
 
 /**
- * §2.5 made placeArea/parentPlaceIds part of SubjectCandidate itself, so the
- * feed candidate IS the subject candidate. The alias survives as the polls
+ * The feed candidate IS the subject candidate (placeArea and the header
+ * anchor live on SubjectCandidate itself). The alias survives as the polls
  * module's vocabulary word.
  */
 export type FeedPlaceCandidate = SubjectCandidate;
@@ -65,11 +65,12 @@ export function resolveFeedMembership(
     )
     .map((candidate) => candidate.placeId);
 
-  // §6 "+ descendants of the subject": §2.5 subjects are the named dominator
-  // (place verdict) or the attention-holding straddle places (this-area) —
-  // their subtrees carry the ground's polls (the in-view read already
-  // carries every intersecting descendant that has a bbox; expansion adds
-  // the un-indexed/out-of-view tail).
+  // §6 "+ descendants of the subject": the subject is the header place
+  // (this-area carries none — the straddle that used to surface attention
+  // holders died with the center-anchored law). Its subtree carries the
+  // ground's polls (the in-view read already carries every intersecting
+  // descendant that has a bbox; expansion adds the un-indexed/out-of-view
+  // tail).
   const subjectPlaceIds = resolution.subjects.map((subject) => subject.placeId);
 
   return { headerPlaceName, resolution, memberPlaceIds, subjectPlaceIds };

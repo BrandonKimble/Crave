@@ -110,7 +110,7 @@ export type { PlaceGround } from './geo/ground';
 
 export {
   ATTENTION_FRACTION,
-  COVERING_FRACTION,
+  HEADER_ATTENTION_FRACTION,
   MAX_PROBE_ANCHORS,
   isTooBigForView,
   probeAnchors,

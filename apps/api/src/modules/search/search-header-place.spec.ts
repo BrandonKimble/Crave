@@ -50,6 +50,7 @@ function placeInView(
     bbox,
     coverageOfView,
     placeArea: bboxArea(bbox),
+    containsViewCenter: true,
     parentPlaceIds: [],
     // §2.6: ground is REQUIRED — sketch-grade envelope rectangle fixture.
     ground: [
@@ -204,11 +205,14 @@ describe('§2 header derivation (the catalog names the header, not the resolver)
       maxLng: -97.6,
     };
     const { service } = createHarness({
-      // Two commensurate subjects at ~half coverage each — neither covers
-      // (< 2/3) → "this area" → null on the wire.
+      // Two towns, centre over neither (the anchor decides now, not
+      // coverage fractions) → "this area" → null on the wire.
       placesInView: [
-        placeInView('Round Rock', west, 0.5),
-        placeInView('Pflugerville', east, 0.5),
+        { ...placeInView('Round Rock', west, 0.5), containsViewCenter: false },
+        {
+          ...placeInView('Pflugerville', east, 0.5),
+          containsViewCenter: false,
+        },
       ],
     });
     const response = await service.runQuery(buildRequest());

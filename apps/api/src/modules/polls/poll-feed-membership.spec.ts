@@ -23,6 +23,9 @@ function candidate(
     name,
     coverageOfView,
     placeArea,
+    // Feed fixtures are about membership, not the anchor; centred by
+    // default so the header arm behaves as each case's coverage implies.
+    containsViewCenter: true,
   };
 }
 
@@ -54,41 +57,52 @@ describe('poll-feed-membership — §6 members + §2 header + §4 feed-at-that-z
     expect(result.resolution.kind).toBe('place');
     expect(
       result.resolution.kind === 'place' ? result.resolution.reason : null,
-    ).toBe('finest-dominator');
+    ).toBe('finest-centered');
     expect(result.subjectPlaceIds).toEqual([CITY]);
   });
 
-  it('§2.5 straddle reservation: the covering dominator with TWO attention-holding CHILDREN yields "this area" with the children as subjects', () => {
+  it('a covering parent with two child towns: the CENTERED child names the header and is the sole subject (the straddle reservation is dead)', () => {
+    // The old law declared "this area" here with BOTH children as subjects.
+    // It keyed on DAG siblinghood, which fired between NESTED places
+    // (Austin/Travis — 19,451 municipalities carry their state as parent),
+    // so the reservation died with the center-anchored law: the centre sits
+    // in one child, and that child is the header and the subject.
     const cityWide = candidate(CITY, 'Metroburg', 1, 2);
-    const west = {
-      ...candidate(TOWN, 'Westside', 0.5, 0.6),
-      parentPlaceIds: [CITY],
-    };
+    const west = candidate(TOWN, 'Westside', 0.5, 0.6);
     const east = {
       ...candidate(TOWN_B, 'Eastside', 0.5, 0.6),
-      parentPlaceIds: [CITY],
+      containsViewCenter: false,
     };
     const result = resolveFeedMembership(
       VIEW,
       [cityWide, west, east],
       new Set(),
     );
-    expect(result.headerPlaceName).toBeNull();
-    expect(result.resolution.kind).toBe('this-area');
-    expect(new Set(result.subjectPlaceIds)).toEqual(new Set([TOWN, TOWN_B]));
+    expect(result.headerPlaceName).toBe('Westside');
+    expect(result.resolution.kind).toBe('place');
+    expect(result.subjectPlaceIds).toEqual([TOWN]);
     // All three stay members (none is subdivision+).
     expect(new Set(result.memberPlaceIds)).toEqual(
       new Set([CITY, TOWN, TOWN_B]),
     );
   });
 
-  it('multi-place straddle: header null ("Polls in this area"), BOTH subjects expand descendants', () => {
-    const a = candidate(TOWN, 'Cedar Park', 0.5, 1);
-    const b = candidate(TOWN_B, 'Leander', 0.5, 1);
+  it('two towns, centre over NEITHER: header null ("Polls in this area"), no subjects — members carry the feed', () => {
+    const a = {
+      ...candidate(TOWN, 'Cedar Park', 0.5, 1),
+      containsViewCenter: false,
+    };
+    const b = {
+      ...candidate(TOWN_B, 'Leander', 0.5, 1),
+      containsViewCenter: false,
+    };
     const result = resolveFeedMembership(VIEW, [a, b], new Set());
     expect(result.headerPlaceName).toBeNull();
     expect(result.resolution.kind).toBe('this-area');
-    expect(new Set(result.subjectPlaceIds)).toEqual(new Set([TOWN, TOWN_B]));
+    // Subjects are EMPTY now (the straddle used to surface both towns for
+    // descendant expansion) — a this-area view's feed is exactly its
+    // in-view members, which both towns remain.
+    expect(result.subjectPlaceIds).toEqual([]);
     expect(new Set(result.memberPlaceIds)).toEqual(new Set([TOWN, TOWN_B]));
   });
 
