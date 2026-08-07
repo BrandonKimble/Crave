@@ -153,7 +153,16 @@ declare -a CONTENT_CHECKS=(
   # freeze flags, hydration-finalize allowance) was deleted and must not return.
   "search_surface_redraw_coordinator_symbols::\\b(SearchSurfaceRedrawCoordinator|createSearchSurfaceRedrawCoordinator|searchSurfaceRedrawCoordinatorRef|SearchSurfaceRedrawOwnerRuntime|resolveSearchSurfaceRedrawAdvanceSnapshot|resolveSearchSurfaceRedrawResetSnapshot|createSearchSurfaceRedrawIdleSnapshot|SEARCH_SURFACE_REDRAW_PHASE_ORDER|isSearchSurfaceRedrawDeferredChromePhase|isSearchSurfaceRedrawVisibleAdmissionPhase)\\b::The surface-redraw coordinator was a structural fossil (F1735) and was deleted; redraw readiness is SearchSurfaceRuntime.redrawTransaction."
   "search_surface_redraw_bus_fields::\\b(searchSurfaceRedrawOperationId|isSearchSurfaceRedrawActive|isSearchSurfaceRedrawPreflightFreezeActive|isSearchSurfaceRedrawChromeFreezeActive|searchSurfaceRedrawSelectionFeedbackOperationId|searchSurfaceRedrawCommitSpanPressureActive|isSearchSurfaceRedrawChromeDeferred|isChromeDeferred|allowHydrationFinalizeCommit)\\b::The redraw-coordinator bus/policy fields were pinned at idle values by construction (F1735) and were deleted with the coordinator."
-  "search_surface_legacy_run_one_handoff_ownership::\\b(runOneHandoff|RunOneHandoff|run-one-handoff|runOne|RunOne|run-one|Run1|run1)\\b::Search redraw ownership must use SearchSurfaceRedraw/SearchSurfaceRuntime names, not run-one handoff names."
+  # F6500 (2026-08-07): this pattern used to carry the bare alternatives
+  # `runOne|RunOne|run-one`. Two of them (`runOne|RunOne`) were UNMATCHABLE against
+  # any real identifier — a trailing `\b` after `RunOne` cannot fire inside
+  # `isRunOneFreezeActive`, so they policed nothing — while `run-one` matched ENGLISH
+  # PROSE: the gate went RED on two COMMENTS narrating the F1324 consolidation
+  # (use-frozen-while.ts, search-foreground-chrome-contract.ts), i.e. it forbade
+  # DESCRIBING the deletion. The banned thing is the HANDOFF name, in code; matching
+  # it without a trailing `\b` also catches suffixed revivals like
+  # `runOneHandoffOwner`, which the old anchored form would have missed.
+  "search_surface_legacy_run_one_handoff_ownership::(?i)runonehandoff|run-one-handoff|\\b(Run1|run1)\\b::Search redraw ownership must use SearchSurfaceRedraw/SearchSurfaceRuntime names, not run-one handoff names."
   "search_surface_legacy_prepared_results_transaction::\\b(PreparedResults|preparedResults|preparedPresentationSnapshotKey|results-prepared|prepared_snapshot|prepared_staging|cards_pins_prepared|prepared_commit_gate|map_prepared_source_frame_ready_contract)\\b::Search results transactions must use SearchSurfaceResultsTransaction names."
   "search_surface_redraw_null_results_clears_transaction_key::results == null[\\s\\S]{0,260}searchSurfaceResultsTransactionKey:\\s*null::Transient null result data during redraw must not clear the active SearchSurfaceResultsTransaction key."
   "search_surface_redraw_stage_sources_ready_reset::stage: \\([\\s\\S]{0,520}publishMapSearchSurfaceResultsSourcesReady\\(false, snapshot\\.transactionId\\)::Staging a redraw transaction must not reset already-latched marker/source readiness."
@@ -303,6 +312,12 @@ declare -a CONTENT_CHECKS=(
   "scene_input_authority_dead_surface::clearAllSceneInputs|AppRouteStaticSceneInputKey::F1384 — clearAllSceneInputs was unreachable (not re-exported on RouteShellSceneInputLane) and AppRouteStaticSceneInputKey had zero referents; deleted."
   "nav_silhouette_duplicate_paint_height::expectedVisiblePaintedHeight::F1398(b) — always equal to expectedSheetMaskHeight on every path (the hideLead=1 always-green class); deleted."
   "f1033a_results_surface_policy_controller::createResultsSurfacePolicyController|ResultsSurfacePolicyController|resultsSurfacePolicyController|getSheetPolicyInputs|readReadModelPolicyDiagnostics::F1033(a): the write-only results-surface-policy-controller (constructed, fed via updateShellFacts/updatePanelInputs/reset, but never read via getSnapshot/getSheetPolicyInputs/readReadModelPolicyDiagnostics) was deleted 2026-08-05; the live panel state comes from use-search-root-search-scene-surface-panel-state-runtime.tsx. Must not return."
+  # F6500/F6202 (2026-08-07): `restoreSaveSheetState` — a close/reopen save-sheet
+  # restore lane with ZERO callers repo-wide — was deleted in 74ce55ba6. The
+  # save_list_command_opens_scoped_route_gate below had asserted its PRESENCE, so
+  # the deletion turned that gate RED; the assertion is re-expressed here in the
+  # negative form this file's header demands.
+  "save_list_restore_sheet_state_lane::\\brestoreSaveSheetState\\b::The zero-caller save-sheet restore lane was deleted (F6202); save-sheet open/restore is one setSaveSheetState path on the command controller."
   "f1033c_search_foreground_policy_readiness_flag::readyForPublication\\s*:\\s*true::F1033(c): the always-green readyForPublication:true literal on the zero-caller SearchForegroundPolicyDomainController.readDiagnostics() was deleted 2026-08-05 along with the method. Must not return."
 )
 
@@ -671,7 +686,14 @@ fi
 search_map_render_controller_file="$TARGET_PATH/screens/Search/runtime/map/search-map-render-controller.ts"
 search_map_render_controller_native_file="$REPO_ROOT/apps/mobile/ios/cravesearch/SearchMapRenderController.swift"
 search_map_render_controller_android_file="$REPO_ROOT/apps/mobile/android/app/src/main/java/com/crave/SearchMapRenderControllerModule.java"
-search_map_render_controller_ios_bridge_file="$REPO_ROOT/apps/mobile/ios/cravesearch/UIFrameSamplerBridge.m"
+# F6500 (2026-08-07): this pin used to name UIFrameSamplerBridge.m. 669640f19 split
+# that omnibus bridge into one file per Swift module and repointed
+# perf-scenario-parity-contracts.js in the same commit — but NOT this gate, which
+# went RED on the very next CI run (31063713439, 2026-08-06T01:46Z). The SUBJECT
+# moved; the law held (the other 14 clauses of the press-owner gate all still hit,
+# and the RCT_EXTERN_METHOD is byte-identical in its new home). No map production
+# code was touched.
+search_map_render_controller_ios_bridge_file="$REPO_ROOT/apps/mobile/ios/cravesearch/SearchMapRenderControllerBridge.m"
 if [[ -e "$search_map_render_controller_android_file" ]] && {
   ! rg -q --fixed-strings "didClearSettledVisibleLabelHits" "$search_map_render_controller_android_file" ||
   ! rg -q --fixed-strings "didClearVisibleLabelHits" "$search_map_render_controller_android_file" ||
@@ -925,7 +947,6 @@ fi
 if [[ -e "$app_route_overlay_command_controller_file" ]] && {
   ! rg -q --fixed-strings "routeOverlayRouteCommandRuntime.pushRoute('saveList'" "$app_route_overlay_command_controller_file" ||
   ! rg -q --fixed-strings "routeOverlayRouteCommandRuntime.closeActiveRoute()" "$app_route_overlay_command_controller_file" ||
-  ! rg -q --fixed-strings "restoreSaveSheetState" "$app_route_overlay_command_controller_file" ||
   rg -q --pcre2 "setSaveSheetState\\(\\{[\\s\\S]{0,120}visible:\\s*true" "$TARGET_PATH" --glob '!navigation/runtime/app-route-overlay-command-controller.ts'
 }; then
   echo "[app-route-runtime-delete-gate] FAIL save_list_command_opens_scoped_route_gate: Save sheet open/restore must flow through the command controller and push the scoped saveList route." >&2
