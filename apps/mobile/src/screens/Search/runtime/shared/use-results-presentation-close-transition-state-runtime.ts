@@ -56,15 +56,24 @@ type ResultsPresentationCloseTransitionStateRuntime = {
   matchesPendingCloseIntentId: (intentId: string) => boolean;
 };
 
+/**
+ * F6002: A SELECTOR'S PROJECTED SHAPE IS ITS SUBSCRIPTION CONTRACT.
+ *
+ * Every field here is a promise to re-render when it moves, so a field nobody
+ * reads is a promise to do work for nothing. This carried six fields for three
+ * values: `pollBodyReady`/`pollHeaderReady`/`pollHostReady` were written beside
+ * their own `isDockedScene*` aliases and read by nobody but the comparator,
+ * where they compared against those aliases — three conjuncts that could never
+ * change the answer. `dismissBottomBoundaryReached` was worse: unread by every
+ * consumer but able to move independently, so it defeated the equality gate,
+ * notified the subscriber and re-ran the release effect mid-dismissal, whose
+ * entire outcome was `emitReleaseReadyBottomHandoffTelemetry` early-returning on
+ * `releasedCloseIntentIdRef`. The type now names exactly what is read; a field
+ * added back to the Pick without a reader is flagged at the builder literal.
+ */
 type ReleaseReadyCloseSnapshot = Pick<
   SearchSurfaceVisualPolicySnapshot,
-  | 'canExposeDockedScene'
-  | 'canReleaseDockedScene'
-  | 'dismissBottomBoundaryReached'
-  | 'pollBodyReady'
-  | 'pollHeaderReady'
-  | 'pollHostReady'
-  | 'transactionId'
+  'canExposeDockedScene' | 'canReleaseDockedScene' | 'transactionId'
 > & {
   isDockedSceneBodyReady: boolean;
   isDockedSceneHeaderReady: boolean;
@@ -87,13 +96,9 @@ const selectReleaseReadyCloseSnapshot = (
     isDockedSceneHeaderReady: policy.pollHeaderReady,
     canExposeDockedScene: policy.canExposeDockedScene,
     canReleaseDockedScene: policy.canReleaseDockedScene,
-    dismissBottomBoundaryReached: policy.dismissBottomBoundaryReached,
     isDockedSceneHostReady: policy.pollHostReady,
     isResultsExitCollapsedSettled: isSameCloseIntent && closeTransitionState.sheetCollapsedSettled,
     isResultsExitMapSettled: isSameCloseIntent && closeTransitionState.mapExitSettled,
-    pollBodyReady: policy.pollBodyReady,
-    pollHeaderReady: policy.pollHeaderReady,
-    pollHostReady: policy.pollHostReady,
     transactionId: policy.transactionId,
   };
 };
@@ -107,13 +112,9 @@ const areReleaseReadyCloseSnapshotsEqual = (
   left?.isDockedSceneHeaderReady === right?.isDockedSceneHeaderReady &&
   left?.canExposeDockedScene === right?.canExposeDockedScene &&
   left?.canReleaseDockedScene === right?.canReleaseDockedScene &&
-  left?.dismissBottomBoundaryReached === right?.dismissBottomBoundaryReached &&
   left?.isDockedSceneHostReady === right?.isDockedSceneHostReady &&
   left?.isResultsExitCollapsedSettled === right?.isResultsExitCollapsedSettled &&
-  left?.isResultsExitMapSettled === right?.isResultsExitMapSettled &&
-  left?.pollBodyReady === right?.pollBodyReady &&
-  left?.pollHeaderReady === right?.pollHeaderReady &&
-  left?.pollHostReady === right?.pollHostReady;
+  left?.isResultsExitMapSettled === right?.isResultsExitMapSettled;
 
 export const useResultsPresentationCloseTransitionStateRuntime = ({
   clearSearchState,
@@ -361,7 +362,6 @@ export const useResultsPresentationCloseTransitionStateRuntime = ({
       }
     },
     [
-      boundaryCloseIntentIdRef,
       emitReleaseReadyBottomHandoffTelemetry,
       finalizeReleaseReadyCloseTransition,
       getActiveCloseIntentId,
@@ -375,14 +375,13 @@ export const useResultsPresentationCloseTransitionStateRuntime = ({
       if (!activeCloseIntentId || snap !== 'collapsed') {
         return;
       }
-      shellLocalState.setSearchCloseTransitionState((current) => {
-        const update = applySearchCloseSheetSettled({
+      shellLocalState.setSearchCloseTransitionState((current) =>
+        applySearchCloseSheetSettled({
           current,
           closeIntentId: activeCloseIntentId,
           snap,
-        });
-        return update.nextState;
-      });
+        })
+      );
     },
     [getActiveCloseIntentId, shellLocalState]
   );
@@ -406,7 +405,13 @@ export const useResultsPresentationCloseTransitionStateRuntime = ({
       });
       beginCloseTransitionIntent(closeIntentId);
     },
-    [beginCloseTransitionIntent, shellLocalState.searchCloseTransitionState]
+    // F6003: `shellLocalState.searchCloseTransitionState` used to sit here and the
+    // body never touched it — it changes on every mark during a dismissal, so the
+    // callback that STARTS a close transition was re-minted several times per
+    // dismissal and invalidated this hook's whole return memo with it.
+    // `react-hooks/exhaustive-deps` polices MISSING deps; an extra one is
+    // invisible to it, so the lint being green here never carried information.
+    [beginCloseTransitionIntent]
   );
 
   const releaseReadyCloseSnapshot = useSearchSurfaceRuntimeSelector(
@@ -427,6 +432,13 @@ export const useResultsPresentationCloseTransitionStateRuntime = ({
       return;
     }
     emitReleaseReadyBottomHandoffTelemetry(releaseReadyCloseSnapshot);
+    // F6001: THIS is the finalize decision — "is this close terminal?" is the
+    // question of the owner of the transition, asked where it is acted on. The
+    // close-transition-state module used to export a named predicate answering
+    // it, whose only reference was a field its one caller discarded; it could
+    // not have been right, because terminality also depends on the surface
+    // policy (phase + canReleaseDockedScene) that this snapshot carries and
+    // that module never sees.
     if (releaseReadyCloseSnapshot.isResultsExitCollapsedSettled) {
       finalizeReleaseReadyCloseTransition(releaseReadyCloseIntentId);
     }
