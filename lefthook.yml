@@ -1,6 +1,12 @@
 pre-commit:
   parallel: true
   commands:
+    # THE CONCURRENT-LANE COMMIT FENCE (F4102/D83). Opt-in per shell: a lane
+    # exports LANE_PATHS (colon-separated globs) and this refuses any commit
+    # whose staged set is not a subset. Unset = silent pass, humans unaffected.
+    # Runs FIRST-ish (parallel, but cheap) so a sweep dies before lint spends.
+    lane-pathspec:
+      run: bash scripts/check-lane-pathspec.sh
     # Package-specific linting - only runs when files in that package change
     api-lint:
       glob: 'apps/api/**/*.{ts,tsx}'
