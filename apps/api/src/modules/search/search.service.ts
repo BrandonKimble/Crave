@@ -1691,14 +1691,22 @@ export class SearchService {
       const anchorIds = this.collectEntityIds(params.request.entities.food);
       if (anchorIds.length) {
         const memberIds = new Set(constraints.ids.foodIds);
-        similarFoodIds = (
-          await this.siblingExpansion.getSiblingFoodIds(
+        const [siblings, judged] = await Promise.all([
+          this.siblingExpansion.getSiblingFoodIds(
             anchorIds,
             this.denseSiblingsCut,
-          )
-        )
-          .map((sibling) => sibling.siblingId)
-          .filter((id) => !memberIds.has(id));
+          ),
+          // Judged cousins (rung 4) belong in the ring alongside dense
+          // siblings — they are the BETTER-vetted half of "adjacent things",
+          // and the ring is what the auto-fill gate and the chip both read.
+          this.siblingExpansion.getSatisfiesFoodIds(anchorIds),
+        ]);
+        similarFoodIds = Array.from(
+          new Set([
+            ...siblings.map((sibling) => sibling.siblingId),
+            ...judged.cousin,
+          ]),
+        ).filter((id) => !memberIds.has(id));
       }
     }
 

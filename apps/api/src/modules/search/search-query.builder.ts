@@ -966,7 +966,13 @@ filtered_connections AS (
     // never on the served page — the Include-similar chip re-queries with
     // the ring as tier-1 MEMBERS instead (membership flip, not a re-run).
     const pooledGateWhereSql = pooledGate
-      ? Prisma.sql`WHERE fc.pooled_tier = 0 OR (fc.pooled_tier = 1 AND fc.pooled_full_count < ${pooledGate.threshold})`
+      ? // COUSIN AUTO-FILL (owner ruling 2026-08-06): the judged ring (tier
+        // 2) serves ONLY when everything more exact — full matches plus
+        // admitted partials — cannot fill the page. Same admission
+        // discipline as partials themselves; one list, Crave Score order.
+        // The Include-similar chip stays as the *intent* door (ring joins
+        // membership outright), independent of fill.
+        Prisma.sql`WHERE fc.pooled_tier = 0 OR (fc.pooled_tier = 1 AND fc.pooled_full_count < ${pooledGate.threshold}) OR (fc.pooled_tier = 2 AND fc.pooled_eligible_count < ${pooledGate.threshold})`
       : Prisma.sql``;
 
     // Build WITH clause
@@ -996,7 +1002,8 @@ ${withClause}
 SELECT fc.*, fc.pooled_tier AS match_tier
 FROM (
   SELECT fci.*,
-    count(*) FILTER (WHERE fci.pooled_tier = 0) OVER () AS pooled_full_count
+    count(*) FILTER (WHERE fci.pooled_tier = 0) OVER () AS pooled_full_count,
+    count(*) FILTER (WHERE fci.pooled_tier <= 1) OVER () AS pooled_eligible_count
   FROM filtered_connections fci
 ) fc
 ${pooledGateWhereSql}
@@ -1064,6 +1071,7 @@ SELECT
 FROM (
   SELECT fci.*,
     count(*) FILTER (WHERE fci.pooled_tier = 0) OVER () AS pooled_full_count,
+    count(*) FILTER (WHERE fci.pooled_tier <= 1) OVER () AS pooled_eligible_count,
     count(*) FILTER (WHERE fci.pooled_tier = 2) OVER () AS similar_count${softCountWindowsSql}
   FROM filtered_connections fci
 ) fc
