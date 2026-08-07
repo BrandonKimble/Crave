@@ -3365,3 +3365,26 @@ committed version is a strict superset; nothing lost).
 
 Board state: ALL LANES QUIESCENT. Next: the full-gate quiescent sweep, then the clean
 passes fan out.
+
+---
+
+## D113 — the oracle lands; F6800 ruled by the doctrine's own text (2026-08-07)
+
+**F6604(a) ratified.** The digest is proven a pure FUNCTION OF THE TABLE (bless under a
+mutation, restore, re-bless — the original digest returns), drift the sample cannot see
+is caught (mutation 1: digest RED, slice green), and bless refuses without the flag,
+printing both digests — a visible act, never a side effect. The lockstep-editing disease
+is dead: 24,200 rows cannot be edited in agreement unknowingly. The self-reported
+`git stash list` slip is recorded: read-only, letter broken, spirit intact, no stash
+touched — the D110 language stands and the report is the compliance.
+
+**F6800 — RULED, not escalated, because the doctrine already decided it.** The census
+found a live caller passing an echo kind ON PURPOSE (autocomplete's attribute-support
+lane), and signals.service.ts:65-67 states in the ECHO doctrine's own words: kind-FILTERED
+readers keep reading echo rows directly — "there the echo IS the act being asked about."
+`kinds` is a LANE SELECTOR WITHIN the law, not an exception to it. Verified the text
+myself. The mechanical P3 is approved as the lane pre-derived it: route through the
+builder with `echoKinds` applied ONLY when `params.kinds` is absent, plus the missing
+`subjectScope: 'entity'` filter unconditionally (no caller defends its absence).
+Acceptance: the F4000 mutation shape for the default path; the autocomplete
+echo-kind path asserts echo rows still flow when explicitly selected.
