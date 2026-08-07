@@ -3443,3 +3443,17 @@ the house pattern completes its third instance. 1471/1471 with one ts-jest load 
 
 Remaining before clean pass 1: the D114 sequence (F7200's 17-delete/10-convert/-U-prove
 + F7201's max_per_file_in_tree) and D113's F6800-mechanical. Both dispatched.
+
+---
+
+## D116 — F6800 ratified; the fifth dialect is dead (2026-08-07)
+
+Landed exactly per D113, and the conditional's spelling came from the BUILDER'S SIGNATURE
+rather than an invented flag: `echoKinds` is a kind list, so the honest form is an empty
+list when a caller selects lanes explicitly (`<> ALL('{}')` vacuously true) — the law
+carried by data shape, not by a boolean. Both mutations bracket the semantics: the
+restored hand-rolled SUM inflates the echo case +77%, and the unconditionally-applied
+exclusion ZEROES autocomplete's attribute-selection lane out of the map entirely — the
+exact harm the census-first STOP predicted and the doctrine-text ruling avoided. All five
+daily-acts dialects now route through the one builder. One P3 remains (the D114 gate
+sequence); clean pass 1 fans out on its landing.
