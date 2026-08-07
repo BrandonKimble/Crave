@@ -3228,3 +3228,37 @@ the row rather than deleted, which is the honesty norm applied to one's own fili
 Everything else in the repo is terminal or honestly PARTIAL with its gap named. The listTests
 observation (zero integration specs in the default jest run; they ride `yarn test:db`,
 which CI DOES run at ci.yml:157) is recorded as verified-fine.
+
+---
+
+## D109 — the three red checks attributed; the CI wiring was never decorative (2026-08-07)
+
+**All three: subject moved, law intact, map untouched.** And the sizing answer changes the
+finding's meaning: red for ~26 HOURS, not weeks — `no-bypass-search-runtime` was green
+through 01:23Z and first red at 01:46Z on the offending push. The F702/D37 wiring FIRED
+IMMEDIATELY. What failed was the READER: the build job was separately red on main, so the
+one job that changed state was invisible. F6552 records the real lesson — a
+permanently-red pipeline doesn't just hide its own job, it blinds every job beside it.
+The fix for that is the one already escalated: the lint file the other session holds.
+
+**Check 3's attribution found a deeper rot than the triage guessed:** the regex matched
+two COMMENTS narrating a ratified deletion (the gate forbade DESCRIBING cleanup), while
+its `runOne` alternatives were unmatchable against any identifier — trailing `\b` cannot
+fire inside `isRunOneFreezeActive`. It could catch prose but not code: the inverse of
+every scanner defect this exercise has fixed. Rewritten to match identifiers including
+suffixed revivals, RED-proven, and the re-added prose stays green — the rot is gone, not
+just the symptom.
+
+**The lane also REJECTED the row's proposed general fix with the right argument:**
+stripping comment lines gate-wide would shift the `{0,N}` proximity distances of most of
+the 203 checks — a global mutation to repair one bad regex. Local fix, global question
+left to F6406's owner scoping where it already lives.
+
+**Check 2's repair honors the gate's own doctrine:** the deleted lane's assertion moved
+to the NEGATIVE form; the two positives that remain are kept KNOWINGLY (they are the only
+enforcement of an unspecced law) and filed as F6551 rather than carried silently.
+
+**Gate state: 0 on HEAD, 203 content + 55 path checks, four planted-defect RED proofs.**
+The lane's caution stands: concurrent lanes caused one transient false-red and one
+clobbered ledger edit — a FINAL QUIESCENT GATE SWEEP runs after the three active P3s
+land, before the clean passes begin.
