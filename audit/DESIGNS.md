@@ -3034,3 +3034,47 @@ lifecycle memo and proven to survive a render.
 Remaining UNREVIEWED after this wave: ~63 mobile-search, 32 nav-overlays, ~17 api tails.
 Final P1 push next; then the CRAVE.md pass (the non-checking-positions section, the F889
 class note, this session's arcs) and the terminal report.
+
+---
+
+## D104 — P2 verdicts on the final sweep (F6200–F6212, 2026-08-06)
+
+**F6206 — APPROVED, and the arithmetic was executed, not argued.** The price clamp forces
+`high >= low+1`, so any both-handles-between-integers position mints a degenerate `n-n`
+corner the ten-entry table does not contain — and the fallback substitutes the WIDEST
+range at a fixed 0.250 weight, dragging the blended reel value (1.667 -> 2.000 measured)
+into the neighbour crossfade. The fix is free by the lane's own reading: `applyCorner`
+already divides by totalWeight, so DROPPING the illegal corner renormalises itself — the
+fallback dies rather than being corrected. No spec exists; the proving test is RED as-is.
+
+**F6209 — APPROVED, priority: a wrong search result.** The tie-plurality emit reached four
+of five linker lanes; the dense lane computes `tiedTop`, spends it on the argmax, and
+drops the plurality — under a comment claiming THE SAME PLACEMENT LAW as every other
+lane. The F6001 sibling-hunt instruction paid exactly as designed. Route the dense lane
+through the same emit; the comment becomes true.
+
+**F6201 — APPROVED.** F1389's deletion updated only the deletion site; five citations of
+the ghost fields survive, including a dev error that INSTRUCTS the reader to consult a
+field the comment above says is gone, and the scene-adding guide promoting the ghost to
+"the law" at the exact moment someone adds a scene. All five corrected against the code.
+
+**F6203/F6210 — APPROVED (the F6000 stacks):** the twice-spelled default for a parameter
+its one live caller never supplies collapses to the outer spelling; the BigInt spot map
+superseded by the sanitize edge dies with its schema-forbidden arm.
+
+**F6200/F6202/F6204/F6205/F6211/F6212 — APPROVED as smalls** per their rows: the
+single-member discriminant's constant strings; the one-field envelope + zero-caller
+restore; the two 25-line freeze mechanisms whose RULE F1324 already collapsed; the cast
+that would let [REVEALSYNC] print nil forever; the four zero-reader constructs and four
+self-refuting guards.
+
+**F6207's refutation is the standard once more:** `contentOverscroll?` looked dead and
+its comment claims "none today" — but a real omitting caller exists; only the
+parenthetical is stale. The optional stays, the comment gets the caller's name.
+
+**Vocabulary note ratified:** the lane's PROPOSED/MEASURED rows recorded under the
+existing convention rather than inventing tokens — correct; the gate's closed vocabulary
+is the mechanism and conventions bend to it, not it to them.
+
+Not reached, named honestly (F6208): the ~40 assembly hooks and the three largest files.
+That plus this batch's P3 is the remaining distance to full coverage.
