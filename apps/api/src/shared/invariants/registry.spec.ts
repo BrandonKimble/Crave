@@ -42,7 +42,11 @@ describe('the invariant registry', () => {
   it('ids are unique and dotted (they name the LAW, not the mechanism)', () => {
     const ids = INVARIANTS.map((i) => i.id);
     expect(new Set(ids).size).toBe(ids.length);
-    expect(ids.filter((id) => !/^[a-z]+\.[a-z0-9-]+$/.test(id))).toEqual([]);
+    // The family segment admits digits ('i18n' is a legitimate law family);
+    // it still must START with a letter so a bare number cannot name one.
+    expect(
+      ids.filter((id) => !/^[a-z][a-z0-9]*\.[a-z0-9-]+$/.test(id)),
+    ).toEqual([]);
   });
 
   it('the scratch probe is never committed', () => {
