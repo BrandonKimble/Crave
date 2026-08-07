@@ -4520,3 +4520,24 @@ the scope compiler must obey it. Acceptance: "erasing Alice never touches a row 
 delete_row subject is someone else" becomes a mutation-proven spec; the existing
 contradictions() detector goes to ZERO on the live corpus; wire assertNoOverbroadDeleteScope
 into the live erase+retention paths once it can pass (it becomes the permanent regression rail).
+
+## D147 — account lifecycle: OWNER RULINGS (2026-08-07)
+
+- PAUSE/DEACTIVATE: RULED OUT after full recon + design. Rationale (owner + design authority
+  concur): every real need is covered — "break from the app" = stop using it + notifications
+  toggle; "stop paying while away" = Manage subscription (cancel/resubscribe; data untouched
+  by non-use); "erase me" = Delete with 30d restore. Pause was also the most expensive state
+  (recon: exclusion has NO chokepoint — 13 scattered deletedAt sites + no notification
+  recipient gate; delete hides at the auth door, pause would be the first state needing live
+  read-path filtering). The full design + recon map live here and in the recon transcript if
+  demand ever appears. Blueprint compliance note stands: any future pause must be a standalone
+  Settings row, never a cancel/delete-time interstitial (Cal AI precedent).
+- MANAGE SUBSCRIPTION: rail-aware fix APPROVED and dispatched (existing row is a hardcoded
+  Apple URL, dead end for Stripe-web subscribers; AccessSummary gains billingRail; iOS →
+  Purchases.showManageSubscriptions() in-app sheet, web → /billing/portal-session, none →
+  paywall).
+- DELETE: unchanged (Apple 5.1.1(v): stays reachable).
+- SENTRY AUTOMATION: local scheduled task `sentry-daily-triage` created (8:05am daily) — reads
+  new Sentry issues, fixes mechanical on main w/ mutation-proofs, briefs owner in
+  ops/sentry-briefs.md. Cloud routine rejected (no Sentry connector at claude.ai level; local
+  has repo + service-access creds).

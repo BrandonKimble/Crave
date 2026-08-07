@@ -89,3 +89,10 @@ There is NO user feed (a deliberate ~50-50 call; polls are the engagement center
 ## Pause/deactivate account (vs delete)
 
 Pause/deactivate account (vs delete) — owner wants a deactivation option at delete-time (keep-everything-come-back-later); legal way to offer resurrection; relates to subscription cancel flow. 2026-08-07.
+
+**Update 2026-08-07 (owner ruling):** Pause/deactivate is RULED OUT — not building it.
+Every need it served is covered: break = stop using the app (+ notifications toggle, roadmap);
+stop paying = Manage subscription (cancel/resubscribe; non-use deletes nothing); erase =
+Delete with its 30-day restore. Full design + recon costing in audit/DESIGNS.md D147 if
+real demand ever appears. If ever revisited: standalone Settings row ONLY — never a
+cancel/delete-time interstitial (blueprint compliance, Cal AI precedent).
