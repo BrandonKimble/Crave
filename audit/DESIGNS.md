@@ -3078,3 +3078,36 @@ is the mechanism and conventions bend to it, not it to them.
 
 Not reached, named honestly (F6208): the ~40 assembly hooks and the three largest files.
 That plus this batch's P3 is the remaining distance to full coverage.
+
+---
+
+## D105 — final-sweep P3 ratified (F6200–F6212, 2026-08-06)
+
+All items landed, 98 suites / 999 mobile + 51/372 api green. Ratifications:
+
+**F6209's mutation explains its own history:** dropping the emit reds ONLY the new spec —
+every other suite stays green, which is exactly how the omission survived four sibling
+fixes. The wrong search result is fixed and the comment is finally true. The shared
+constructor extraction is deferred BY NAME in the ledger, not silently.
+
+**F6206's deviation is RATIFIED (the D103 precedent):** the reel math moved to a pure
+module because the proving test was unrunnable inside the Reanimated hook — pure math,
+byte-identical behavior, and the lane's caveat is carried forward: this is a sim-look
+change, and the OWNER'S EYE remains the oracle on reel feel (CLAUDE.md's law). Flagged on
+the owner queue as a look-check, not a decision.
+
+**F6204's shape is the ladder executed:** `useFrozenWhile` with a first-render-initialised
+ref means both `?? next` fallbacks DIE rather than go unreachable — deleting one host's
+latch was green before; deleting the hook is a compile error reaching both hosts now.
+
+**Two STOPs, both correct:** F6211(c) is a genuine owner either/or (wire the tier into
+the diagnostics its comment names, or delete member + comment and let denseTierUsed be
+the signal) — filed PARTIAL with the question, not half-decided. And `collapseActiveSheet`
+— the twin the design said to census — turned out to carry a DIFFERENT defect than the
+one approved (its default is spelled once and live), so it became F6300 rather than a
+fold-in. A design's approval covers the defect it names, not its neighbors.
+
+**Owner queue additions:** the F6206 reel look-check; F6211(c)'s either/or.
+
+Remaining to full coverage: the ~40 assembly hooks + 3 large files (F6208), this batch's
+residuals (F6300, F6211(c)), then the two consecutive clean passes.
