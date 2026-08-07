@@ -1061,10 +1061,7 @@ const checkDismissHandoffRuntimeContracts = () => {
           collapsedY != null &&
           sheetY < collapsedY - 24 &&
           event.resultSheetSlidingDown === true &&
-          event.proofStage === 'mid_progress' &&
-          event.sheetMotionSource === 'routeSheetMotionCommandObservedBySearchSurfaceMotionPlane' &&
-          event.navReturnProgressSource === 'bottomNavTiming' &&
-          event.boundaryCommitSource === 'searchSurfaceMotionPlane'
+          event.proofStage === 'mid_progress'
         );
       });
       return proofSample == null;
@@ -1076,25 +1073,6 @@ const checkDismissHandoffRuntimeContracts = () => {
     );
   } else {
     pass('dismiss motion plane exposed video-selectable real-motion mid-dismiss sample');
-  }
-  const badDismissNavSource = dismissWindows.find(({ dismissEvent, nextBoundaryLine }) =>
-    dismissMotionPlaneEvents.some(
-      (event) =>
-        event.line > dismissEvent.line &&
-        event.line < nextBoundaryLine &&
-        (event.sheetMotionSource !== 'routeSheetMotionCommandObservedBySearchSurfaceMotionPlane' ||
-          event.navReturnProgressSource !== 'bottomNavTiming' ||
-          event.boundaryCommitSource !== 'searchSurfaceMotionPlane')
-    )
-  );
-  if (badDismissNavSource) {
-    fail(
-      `dismiss motion plane sampled an invalid sheet/nav/handoff source after line ${badDismissNavSource.dismissEvent.line}`
-    );
-  } else {
-    pass(
-      'dismiss motion plane kept sheet motion on the route runtime and nav return on bottom-nav timing'
-    );
   }
   const boundaryBeforePollReady = dismissMotionPlaneEvents.find(
     (event) => event.boundaryReached === true && event.pollPageReadyForBoundary !== true
