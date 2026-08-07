@@ -438,6 +438,10 @@ describe('viewport subject controller core (§2.5 polygon-native)', () => {
       jest.advanceTimersByTime(60_000);
       await flushMicrotasks();
     }
+    // TWO-SIDED, per F6405(b): the name says BOUNDED, not ABSENT. The upper
+    // bound alone stayed green with the ladder removed entirely — a law that
+    // can only show green. The lower bound makes "it retried" a fact too.
+    expect(fetchSlice.mock.calls.length).toBeGreaterThan(1);
     expect(fetchSlice.mock.calls.length).toBeLessThanOrEqual(NETWORK_RETRY_MAX_ATTEMPTS + 1);
     dispose();
   });
