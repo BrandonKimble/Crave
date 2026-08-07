@@ -59,7 +59,6 @@ export const useRestaurantRouteContentSpecRuntime = ({
         ? null
         : {
             data: restaurantData,
-            onToggleFavorite: panel.onToggleFavorite,
             onRequestClose: panel.onRequestClose,
           },
     [panel, restaurantData]

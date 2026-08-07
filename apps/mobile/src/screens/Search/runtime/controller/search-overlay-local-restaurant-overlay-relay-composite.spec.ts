@@ -96,16 +96,10 @@ type RelayHarness = {
  */
 const dispatchLog: string[] = [];
 
-const namedToggle =
-  (name: string) =>
-  (_id: string, _locationId?: string | null): void => {
-    dispatchLog.push(`toggle:${name}`);
-  };
 const namedClose = (name: string) => (): void => {
   dispatchLog.push(`close:${name}`);
 };
 
-const NOOP_TOGGLE = namedToggle('initial');
 const NOOP_CLOSE = namedClose('initial');
 
 const buildRelay = (): RelayHarness => {
@@ -125,7 +119,6 @@ const buildRelay = (): RelayHarness => {
     shouldEnableRestaurantOverlayInteraction: false,
   } as never);
   const interaction = new SourceAuthority<never>({
-    onToggleFavorite: NOOP_TOGGLE,
     closeRestaurantProfile: NOOP_CLOSE,
   } as never);
 
@@ -157,12 +150,7 @@ const buildRelay = (): RelayHarness => {
     localRestaurantSheetVisualHostAuthority: sheetVisual.outputAuthority,
   });
 
-  const disposables = [
-    routeVisual,
-    sheetVisual,
-    controlSelection,
-    sheetHost,
-  ];
+  const disposables = [routeVisual, sheetVisual, controlSelection, sheetHost];
 
   return {
     geometry,
@@ -196,7 +184,6 @@ const projectTerminal = (
       shouldSuppressRestaurantOverlay: boolean;
       shouldFreezeRestaurantPanelContent: boolean;
       shouldEnableRestaurantOverlayInteraction: boolean;
-      onToggleFavorite: unknown;
       closeRestaurantProfile: unknown;
     };
     shouldRenderSearchOverlay: boolean;
@@ -225,7 +212,6 @@ const projectTerminal = (
         typed.restaurantControlSelectionSnapshot.shouldFreezeRestaurantPanelContent,
       shouldEnableRestaurantOverlayInteraction:
         typed.restaurantControlSelectionSnapshot.shouldEnableRestaurantOverlayInteraction,
-      onToggleFavorite: tag(typed.restaurantControlSelectionSnapshot.onToggleFavorite, 'toggle'),
       closeRestaurantProfile: tag(
         typed.restaurantControlSelectionSnapshot.closeRestaurantProfile,
         'close'
@@ -265,13 +251,11 @@ const runScript = (): Array<unknown> => {
     const control = (
       relay.terminal.getSnapshot() as {
         restaurantControlSelectionSnapshot: {
-          onToggleFavorite: (id: string) => void;
           closeRestaurantProfile: () => void;
         };
       }
     ).restaurantControlSelectionSnapshot;
     dispatchLog.length = 0;
-    control.onToggleFavorite('restaurant-1');
     control.closeRestaurantProfile();
     return [...dispatchLog];
   };
@@ -341,10 +325,9 @@ const runScript = (): Array<unknown> => {
   record('policy changed');
 
   relay.interaction.publish({
-    onToggleFavorite: namedToggle('swapped'),
     closeRestaurantProfile: namedClose('swapped'),
   } as never);
-  record('interaction handlers swapped (no re-publish; façade must dispatch to the NEW pair)');
+  record('interaction handler swapped (no re-publish; façade must dispatch to the NEW one)');
 
   relay.routeSheet.publish(null as never);
   record('route sheet cleared (route visual collapses to null)');
@@ -433,7 +416,7 @@ const RELAY_COMPOSITE_TRANSCRIPT: Array<unknown> = [
   {
     step: 'initial',
     publications: 0,
-    dispatch: ['toggle:initial', 'close:initial'],
+    dispatch: ['close:initial'],
     snapshot: {
       restaurantSessionSnapshot: 'session#1',
       restaurantControlSelectionSnapshot: {
@@ -442,8 +425,7 @@ const RELAY_COMPOSITE_TRANSCRIPT: Array<unknown> = [
         shouldSuppressRestaurantOverlay: false,
         shouldFreezeRestaurantPanelContent: false,
         shouldEnableRestaurantOverlayInteraction: false,
-        onToggleFavorite: 'toggle#2',
-        closeRestaurantProfile: 'close#3',
+        closeRestaurantProfile: 'close#2',
       },
       shouldRenderSearchOverlay: false,
       routeHostVisualSnapshot: null,
@@ -453,7 +435,7 @@ const RELAY_COMPOSITE_TRANSCRIPT: Array<unknown> = [
   {
     step: 'geometry-a (frame still incomplete)',
     publications: 0,
-    dispatch: ['toggle:initial', 'close:initial'],
+    dispatch: ['close:initial'],
     snapshot: {
       restaurantSessionSnapshot: 'session#1',
       restaurantControlSelectionSnapshot: {
@@ -462,8 +444,7 @@ const RELAY_COMPOSITE_TRANSCRIPT: Array<unknown> = [
         shouldSuppressRestaurantOverlay: false,
         shouldFreezeRestaurantPanelContent: false,
         shouldEnableRestaurantOverlayInteraction: false,
-        onToggleFavorite: 'toggle#2',
-        closeRestaurantProfile: 'close#3',
+        closeRestaurantProfile: 'close#2',
       },
       shouldRenderSearchOverlay: false,
       routeHostVisualSnapshot: null,
@@ -473,7 +454,7 @@ const RELAY_COMPOSITE_TRANSCRIPT: Array<unknown> = [
   {
     step: 'motion-a (frame still incomplete)',
     publications: 0,
-    dispatch: ['toggle:initial', 'close:initial'],
+    dispatch: ['close:initial'],
     snapshot: {
       restaurantSessionSnapshot: 'session#1',
       restaurantControlSelectionSnapshot: {
@@ -482,8 +463,7 @@ const RELAY_COMPOSITE_TRANSCRIPT: Array<unknown> = [
         shouldSuppressRestaurantOverlay: false,
         shouldFreezeRestaurantPanelContent: false,
         shouldEnableRestaurantOverlayInteraction: false,
-        onToggleFavorite: 'toggle#2',
-        closeRestaurantProfile: 'close#3',
+        closeRestaurantProfile: 'close#2',
       },
       shouldRenderSearchOverlay: false,
       routeHostVisualSnapshot: null,
@@ -493,7 +473,7 @@ const RELAY_COMPOSITE_TRANSCRIPT: Array<unknown> = [
   {
     step: 'route-sheet-a (route visual completes)',
     publications: 1,
-    dispatch: ['toggle:initial', 'close:initial'],
+    dispatch: ['close:initial'],
     snapshot: {
       restaurantSessionSnapshot: 'session#1',
       restaurantControlSelectionSnapshot: {
@@ -502,14 +482,13 @@ const RELAY_COMPOSITE_TRANSCRIPT: Array<unknown> = [
         shouldSuppressRestaurantOverlay: false,
         shouldFreezeRestaurantPanelContent: false,
         shouldEnableRestaurantOverlayInteraction: false,
-        onToggleFavorite: 'toggle#2',
-        closeRestaurantProfile: 'close#3',
+        closeRestaurantProfile: 'close#2',
       },
       shouldRenderSearchOverlay: false,
       routeHostVisualSnapshot: {
-        overlayGeometryRuntime: 'geometry#4',
-        sharedSheetRuntimeOwner: 'sheet#5',
-        visualRuntime: 'visual#6',
+        overlayGeometryRuntime: 'geometry#3',
+        sharedSheetRuntimeOwner: 'sheet#4',
+        visualRuntime: 'visual#5',
       },
       onProfilerRender: null,
     },
@@ -517,7 +496,7 @@ const RELAY_COMPOSITE_TRANSCRIPT: Array<unknown> = [
   {
     step: 'geometry-a republished (identical identity)',
     publications: 1,
-    dispatch: ['toggle:initial', 'close:initial'],
+    dispatch: ['close:initial'],
     snapshot: {
       restaurantSessionSnapshot: 'session#1',
       restaurantControlSelectionSnapshot: {
@@ -526,14 +505,13 @@ const RELAY_COMPOSITE_TRANSCRIPT: Array<unknown> = [
         shouldSuppressRestaurantOverlay: false,
         shouldFreezeRestaurantPanelContent: false,
         shouldEnableRestaurantOverlayInteraction: false,
-        onToggleFavorite: 'toggle#2',
-        closeRestaurantProfile: 'close#3',
+        closeRestaurantProfile: 'close#2',
       },
       shouldRenderSearchOverlay: false,
       routeHostVisualSnapshot: {
-        overlayGeometryRuntime: 'geometry#4',
-        sharedSheetRuntimeOwner: 'sheet#5',
-        visualRuntime: 'visual#6',
+        overlayGeometryRuntime: 'geometry#3',
+        sharedSheetRuntimeOwner: 'sheet#4',
+        visualRuntime: 'visual#5',
       },
       onProfilerRender: null,
     },
@@ -541,7 +519,7 @@ const RELAY_COMPOSITE_TRANSCRIPT: Array<unknown> = [
   {
     step: 'geometry-b (single binding-field re-mint)',
     publications: 2,
-    dispatch: ['toggle:initial', 'close:initial'],
+    dispatch: ['close:initial'],
     snapshot: {
       restaurantSessionSnapshot: 'session#1',
       restaurantControlSelectionSnapshot: {
@@ -550,14 +528,13 @@ const RELAY_COMPOSITE_TRANSCRIPT: Array<unknown> = [
         shouldSuppressRestaurantOverlay: false,
         shouldFreezeRestaurantPanelContent: false,
         shouldEnableRestaurantOverlayInteraction: false,
-        onToggleFavorite: 'toggle#2',
-        closeRestaurantProfile: 'close#3',
+        closeRestaurantProfile: 'close#2',
       },
       shouldRenderSearchOverlay: false,
       routeHostVisualSnapshot: {
-        overlayGeometryRuntime: 'geometry#7',
-        sharedSheetRuntimeOwner: 'sheet#5',
-        visualRuntime: 'visual#6',
+        overlayGeometryRuntime: 'geometry#6',
+        sharedSheetRuntimeOwner: 'sheet#4',
+        visualRuntime: 'visual#5',
       },
       onProfilerRender: null,
     },
@@ -565,7 +542,7 @@ const RELAY_COMPOSITE_TRANSCRIPT: Array<unknown> = [
   {
     step: 'visibility on',
     publications: 3,
-    dispatch: ['toggle:initial', 'close:initial'],
+    dispatch: ['close:initial'],
     snapshot: {
       restaurantSessionSnapshot: 'session#1',
       restaurantControlSelectionSnapshot: {
@@ -574,14 +551,13 @@ const RELAY_COMPOSITE_TRANSCRIPT: Array<unknown> = [
         shouldSuppressRestaurantOverlay: false,
         shouldFreezeRestaurantPanelContent: false,
         shouldEnableRestaurantOverlayInteraction: false,
-        onToggleFavorite: 'toggle#2',
-        closeRestaurantProfile: 'close#3',
+        closeRestaurantProfile: 'close#2',
       },
       shouldRenderSearchOverlay: true,
       routeHostVisualSnapshot: {
-        overlayGeometryRuntime: 'geometry#7',
-        sharedSheetRuntimeOwner: 'sheet#5',
-        visualRuntime: 'visual#6',
+        overlayGeometryRuntime: 'geometry#6',
+        sharedSheetRuntimeOwner: 'sheet#4',
+        visualRuntime: 'visual#5',
       },
       onProfilerRender: null,
     },
@@ -589,7 +565,7 @@ const RELAY_COMPOSITE_TRANSCRIPT: Array<unknown> = [
   {
     step: 'visibility re-minted, same value',
     publications: 3,
-    dispatch: ['toggle:initial', 'close:initial'],
+    dispatch: ['close:initial'],
     snapshot: {
       restaurantSessionSnapshot: 'session#1',
       restaurantControlSelectionSnapshot: {
@@ -598,14 +574,13 @@ const RELAY_COMPOSITE_TRANSCRIPT: Array<unknown> = [
         shouldSuppressRestaurantOverlay: false,
         shouldFreezeRestaurantPanelContent: false,
         shouldEnableRestaurantOverlayInteraction: false,
-        onToggleFavorite: 'toggle#2',
-        closeRestaurantProfile: 'close#3',
+        closeRestaurantProfile: 'close#2',
       },
       shouldRenderSearchOverlay: true,
       routeHostVisualSnapshot: {
-        overlayGeometryRuntime: 'geometry#7',
-        sharedSheetRuntimeOwner: 'sheet#5',
-        visualRuntime: 'visual#6',
+        overlayGeometryRuntime: 'geometry#6',
+        sharedSheetRuntimeOwner: 'sheet#4',
+        visualRuntime: 'visual#5',
       },
       onProfilerRender: null,
     },
@@ -613,7 +588,7 @@ const RELAY_COMPOSITE_TRANSCRIPT: Array<unknown> = [
   {
     step: 'profiler attached',
     publications: 4,
-    dispatch: ['toggle:initial', 'close:initial'],
+    dispatch: ['close:initial'],
     snapshot: {
       restaurantSessionSnapshot: 'session#1',
       restaurantControlSelectionSnapshot: {
@@ -622,176 +597,168 @@ const RELAY_COMPOSITE_TRANSCRIPT: Array<unknown> = [
         shouldSuppressRestaurantOverlay: false,
         shouldFreezeRestaurantPanelContent: false,
         shouldEnableRestaurantOverlayInteraction: false,
-        onToggleFavorite: 'toggle#2',
-        closeRestaurantProfile: 'close#3',
+        closeRestaurantProfile: 'close#2',
       },
       shouldRenderSearchOverlay: true,
       routeHostVisualSnapshot: {
-        overlayGeometryRuntime: 'geometry#7',
-        sharedSheetRuntimeOwner: 'sheet#5',
-        visualRuntime: 'visual#6',
+        overlayGeometryRuntime: 'geometry#6',
+        sharedSheetRuntimeOwner: 'sheet#4',
+        visualRuntime: 'visual#5',
       },
-      onProfilerRender: 'profiler#8',
+      onProfilerRender: 'profiler#7',
     },
   },
   {
     step: 'session changed',
     publications: 5,
-    dispatch: ['toggle:initial', 'close:initial'],
+    dispatch: ['close:initial'],
     snapshot: {
-      restaurantSessionSnapshot: 'session#9',
+      restaurantSessionSnapshot: 'session#8',
       restaurantControlSelectionSnapshot: {
         restaurantPanelSnapshot: null,
         suggestionProgress: null,
         shouldSuppressRestaurantOverlay: false,
         shouldFreezeRestaurantPanelContent: false,
         shouldEnableRestaurantOverlayInteraction: false,
-        onToggleFavorite: 'toggle#2',
-        closeRestaurantProfile: 'close#3',
+        closeRestaurantProfile: 'close#2',
       },
       shouldRenderSearchOverlay: true,
       routeHostVisualSnapshot: {
-        overlayGeometryRuntime: 'geometry#7',
-        sharedSheetRuntimeOwner: 'sheet#5',
-        visualRuntime: 'visual#6',
+        overlayGeometryRuntime: 'geometry#6',
+        sharedSheetRuntimeOwner: 'sheet#4',
+        visualRuntime: 'visual#5',
       },
-      onProfilerRender: 'profiler#8',
+      onProfilerRender: 'profiler#7',
     },
   },
   {
     step: 'panel content changed',
     publications: 6,
-    dispatch: ['toggle:initial', 'close:initial'],
+    dispatch: ['close:initial'],
     snapshot: {
-      restaurantSessionSnapshot: 'session#9',
+      restaurantSessionSnapshot: 'session#8',
       restaurantControlSelectionSnapshot: {
-        restaurantPanelSnapshot: 'panel#10',
-        suggestionProgress: 'progress#11',
+        restaurantPanelSnapshot: 'panel#9',
+        suggestionProgress: 'progress#10',
         shouldSuppressRestaurantOverlay: false,
         shouldFreezeRestaurantPanelContent: false,
         shouldEnableRestaurantOverlayInteraction: false,
-        onToggleFavorite: 'toggle#2',
-        closeRestaurantProfile: 'close#3',
+        closeRestaurantProfile: 'close#2',
       },
       shouldRenderSearchOverlay: true,
       routeHostVisualSnapshot: {
-        overlayGeometryRuntime: 'geometry#7',
-        sharedSheetRuntimeOwner: 'sheet#5',
-        visualRuntime: 'visual#6',
+        overlayGeometryRuntime: 'geometry#6',
+        sharedSheetRuntimeOwner: 'sheet#4',
+        visualRuntime: 'visual#5',
       },
-      onProfilerRender: 'profiler#8',
+      onProfilerRender: 'profiler#7',
     },
   },
   {
     step: 'panel content re-minted, same fields',
     publications: 6,
-    dispatch: ['toggle:initial', 'close:initial'],
+    dispatch: ['close:initial'],
     snapshot: {
-      restaurantSessionSnapshot: 'session#9',
+      restaurantSessionSnapshot: 'session#8',
       restaurantControlSelectionSnapshot: {
-        restaurantPanelSnapshot: 'panel#10',
-        suggestionProgress: 'progress#11',
+        restaurantPanelSnapshot: 'panel#9',
+        suggestionProgress: 'progress#10',
         shouldSuppressRestaurantOverlay: false,
         shouldFreezeRestaurantPanelContent: false,
         shouldEnableRestaurantOverlayInteraction: false,
-        onToggleFavorite: 'toggle#2',
-        closeRestaurantProfile: 'close#3',
+        closeRestaurantProfile: 'close#2',
       },
       shouldRenderSearchOverlay: true,
       routeHostVisualSnapshot: {
-        overlayGeometryRuntime: 'geometry#7',
-        sharedSheetRuntimeOwner: 'sheet#5',
-        visualRuntime: 'visual#6',
+        overlayGeometryRuntime: 'geometry#6',
+        sharedSheetRuntimeOwner: 'sheet#4',
+        visualRuntime: 'visual#5',
       },
-      onProfilerRender: 'profiler#8',
+      onProfilerRender: 'profiler#7',
     },
   },
   {
     step: 'policy changed',
     publications: 7,
-    dispatch: ['toggle:initial', 'close:initial'],
+    dispatch: ['close:initial'],
     snapshot: {
-      restaurantSessionSnapshot: 'session#9',
+      restaurantSessionSnapshot: 'session#8',
       restaurantControlSelectionSnapshot: {
-        restaurantPanelSnapshot: 'panel#10',
-        suggestionProgress: 'progress#11',
+        restaurantPanelSnapshot: 'panel#9',
+        suggestionProgress: 'progress#10',
         shouldSuppressRestaurantOverlay: true,
         shouldFreezeRestaurantPanelContent: false,
         shouldEnableRestaurantOverlayInteraction: true,
-        onToggleFavorite: 'toggle#2',
-        closeRestaurantProfile: 'close#3',
+        closeRestaurantProfile: 'close#2',
       },
       shouldRenderSearchOverlay: true,
       routeHostVisualSnapshot: {
-        overlayGeometryRuntime: 'geometry#7',
-        sharedSheetRuntimeOwner: 'sheet#5',
-        visualRuntime: 'visual#6',
+        overlayGeometryRuntime: 'geometry#6',
+        sharedSheetRuntimeOwner: 'sheet#4',
+        visualRuntime: 'visual#5',
       },
-      onProfilerRender: 'profiler#8',
+      onProfilerRender: 'profiler#7',
     },
   },
   {
-    step: 'interaction handlers swapped (no re-publish; fa\u00e7ade must dispatch to the NEW pair)',
+    step: 'interaction handler swapped (no re-publish; fa\u00e7ade must dispatch to the NEW one)',
     publications: 7,
-    dispatch: ['toggle:swapped', 'close:swapped'],
+    dispatch: ['close:swapped'],
     snapshot: {
-      restaurantSessionSnapshot: 'session#9',
+      restaurantSessionSnapshot: 'session#8',
       restaurantControlSelectionSnapshot: {
-        restaurantPanelSnapshot: 'panel#10',
-        suggestionProgress: 'progress#11',
+        restaurantPanelSnapshot: 'panel#9',
+        suggestionProgress: 'progress#10',
         shouldSuppressRestaurantOverlay: true,
         shouldFreezeRestaurantPanelContent: false,
         shouldEnableRestaurantOverlayInteraction: true,
-        onToggleFavorite: 'toggle#2',
-        closeRestaurantProfile: 'close#3',
+        closeRestaurantProfile: 'close#2',
       },
       shouldRenderSearchOverlay: true,
       routeHostVisualSnapshot: {
-        overlayGeometryRuntime: 'geometry#7',
-        sharedSheetRuntimeOwner: 'sheet#5',
-        visualRuntime: 'visual#6',
+        overlayGeometryRuntime: 'geometry#6',
+        sharedSheetRuntimeOwner: 'sheet#4',
+        visualRuntime: 'visual#5',
       },
-      onProfilerRender: 'profiler#8',
+      onProfilerRender: 'profiler#7',
     },
   },
   {
     step: 'route sheet cleared (route visual collapses to null)',
     publications: 8,
-    dispatch: ['toggle:swapped', 'close:swapped'],
+    dispatch: ['close:swapped'],
     snapshot: {
-      restaurantSessionSnapshot: 'session#9',
+      restaurantSessionSnapshot: 'session#8',
       restaurantControlSelectionSnapshot: {
-        restaurantPanelSnapshot: 'panel#10',
-        suggestionProgress: 'progress#11',
+        restaurantPanelSnapshot: 'panel#9',
+        suggestionProgress: 'progress#10',
         shouldSuppressRestaurantOverlay: true,
         shouldFreezeRestaurantPanelContent: false,
         shouldEnableRestaurantOverlayInteraction: true,
-        onToggleFavorite: 'toggle#2',
-        closeRestaurantProfile: 'close#3',
+        closeRestaurantProfile: 'close#2',
       },
       shouldRenderSearchOverlay: true,
       routeHostVisualSnapshot: null,
-      onProfilerRender: 'profiler#8',
+      onProfilerRender: 'profiler#7',
     },
   },
   {
     step: 'visibility off',
     publications: 9,
-    dispatch: ['toggle:swapped', 'close:swapped'],
+    dispatch: ['close:swapped'],
     snapshot: {
-      restaurantSessionSnapshot: 'session#9',
+      restaurantSessionSnapshot: 'session#8',
       restaurantControlSelectionSnapshot: {
-        restaurantPanelSnapshot: 'panel#10',
-        suggestionProgress: 'progress#11',
+        restaurantPanelSnapshot: 'panel#9',
+        suggestionProgress: 'progress#10',
         shouldSuppressRestaurantOverlay: true,
         shouldFreezeRestaurantPanelContent: false,
         shouldEnableRestaurantOverlayInteraction: true,
-        onToggleFavorite: 'toggle#2',
-        closeRestaurantProfile: 'close#3',
+        closeRestaurantProfile: 'close#2',
       },
       shouldRenderSearchOverlay: false,
       routeHostVisualSnapshot: null,
-      onProfilerRender: 'profiler#8',
+      onProfilerRender: 'profiler#7',
     },
   },
 ];

@@ -7,15 +7,18 @@ export type RestaurantOverlayData = RestaurantProfileShellData;
 
 type AnimatedStyle = ReanimatedAnimatedStyle<ViewStyle>;
 
+// F4507: both of these carried an `onToggleFavorite` slot, threaded end to end and
+// originated by nothing. The heart used to route through this lane and now calls
+// useFavoriteHeart directly (RestaurantPanel records the re-route in its own comment);
+// the slot outlived its caller and was kept alive only by a spec asserting that a dead
+// function's identity survived a swap.
 export type RestaurantRoutePanelContract = {
   data: RestaurantOverlayData | null;
   onRequestClose: () => void;
-  onToggleFavorite: (id: string, locationId?: string | null) => void;
 };
 
 export type RestaurantRoutePanelDraft = {
   data: RestaurantOverlayData | null;
-  onToggleFavorite: (id: string, locationId?: string | null) => void;
 };
 
 export type GlobalRestaurantRouteDraft = {
@@ -31,25 +34,20 @@ export type RestaurantRoutePanelHostConfig = {
 
 export const createRestaurantRoutePanelDraft = ({
   data,
-  onToggleFavorite,
 }: {
   data: RestaurantOverlayData | null;
-  onToggleFavorite: (id: string, locationId?: string | null) => void;
 }): RestaurantRoutePanelDraft => ({
   data,
-  onToggleFavorite,
 });
 
 export const createRestaurantRoutePanelContract = ({
   data,
   onRequestClose,
-  onToggleFavorite,
 }: RestaurantRoutePanelDraft & {
   onRequestClose: () => void;
 }): RestaurantRoutePanelContract => ({
   data,
   onRequestClose,
-  onToggleFavorite,
 });
 
 export const createRestaurantRoutePanelHostConfig = ({

@@ -42,7 +42,6 @@ const createParams = () =>
       shouldEnableRestaurantOverlayInteraction: false,
     }),
     routeLocalRestaurantOverlayInteractionAuthority: authority({
-      onToggleFavorite: () => undefined,
       closeRestaurantProfile: () => undefined,
     }),
     overlayGateSnapshot: { onProfilerRender: null },

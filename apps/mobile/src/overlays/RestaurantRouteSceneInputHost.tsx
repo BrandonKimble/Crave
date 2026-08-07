@@ -309,7 +309,6 @@ const RestaurantRouteSceneInputHost = ({
     data: shouldUseSearchRestaurant
       ? restaurantControlSelectionSnapshot.restaurantPanelSnapshot
       : null,
-    onToggleFavorite: restaurantControlSelectionSnapshot.onToggleFavorite,
     onRequestClose: restaurantControlSelectionSnapshot.closeRestaurantProfile,
     hostConfig: searchRestaurantHostConfig,
   });

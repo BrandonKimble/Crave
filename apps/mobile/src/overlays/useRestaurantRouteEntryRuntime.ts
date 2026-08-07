@@ -12,16 +12,8 @@ import type {
 } from './restaurantRoutePanelContract';
 
 type RestaurantRouteEntrySource =
-  | {
-      panelDraft: RestaurantRoutePanelDraft | null;
-      data?: never;
-      onToggleFavorite?: never;
-    }
-  | {
-      panelDraft?: never;
-      data: RestaurantOverlayData | null;
-      onToggleFavorite: RestaurantRoutePanelContract['onToggleFavorite'];
-    };
+  | { panelDraft: RestaurantRoutePanelDraft | null; data?: never }
+  | { panelDraft?: never; data: RestaurantOverlayData | null };
 
 type UseRestaurantRouteEntryRuntimeArgs = RestaurantRouteEntrySource & {
   hostConfig: RestaurantRoutePanelHostConfig | null;
@@ -33,10 +25,12 @@ export type RestaurantRouteEntryRuntime = {
   hostConfig: RestaurantRoutePanelHostConfig | null;
 };
 
+// F4507: the retained draft used to carry `onToggleFavorite` as a second identity axis,
+// so a re-minted handler forced a new draft. The handler was dead; the PAYLOAD signature
+// is the whole identity now.
 type RetainedRestaurantRoutePanelDraft = {
   panelDraft: RestaurantRoutePanelDraft | null;
   payloadSignature: string | null;
-  onToggleFavorite: RestaurantRoutePanelDraft['onToggleFavorite'] | null;
 };
 
 const createPanelDraftPayloadSignature = (
@@ -59,36 +53,28 @@ export const useRestaurantRouteEntryRuntime = ({
 }: UseRestaurantRouteEntryRuntimeArgs): RestaurantRouteEntryRuntime => {
   const sourcePanelDraft = 'panelDraft' in source ? source.panelDraft : undefined;
   const sourceData = 'data' in source ? source.data : undefined;
-  const sourceToggleFavorite = 'onToggleFavorite' in source ? source.onToggleFavorite : undefined;
   const stableRequestClose = useStableEvent(onRequestClose);
-  const stableToggleFavorite = useStableEvent(sourceToggleFavorite ?? (() => undefined));
   const panelDraft = React.useMemo(() => {
     if (sourcePanelDraft !== undefined) {
       return sourcePanelDraft;
     }
 
-    return createRestaurantRoutePanelDraft({
-      data: sourceData ?? null,
-      onToggleFavorite: stableToggleFavorite,
-    });
-  }, [sourceData, sourcePanelDraft, stableToggleFavorite]);
+    return createRestaurantRoutePanelDraft({ data: sourceData ?? null });
+  }, [sourceData, sourcePanelDraft]);
   const retainedPanelDraftRef = React.useRef<RetainedRestaurantRoutePanelDraft>({
     panelDraft: null,
     payloadSignature: null,
-    onToggleFavorite: null,
   });
   const nextPayloadSignature = createPanelDraftPayloadSignature(panelDraft);
   const retainedPanelDraft = retainedPanelDraftRef.current;
   const resolvedPanelDraft =
-    retainedPanelDraft.payloadSignature === nextPayloadSignature &&
-    retainedPanelDraft.onToggleFavorite === (panelDraft?.onToggleFavorite ?? null)
+    retainedPanelDraft.payloadSignature === nextPayloadSignature
       ? retainedPanelDraft.panelDraft
       : panelDraft;
   if (retainedPanelDraft.panelDraft !== resolvedPanelDraft) {
     retainedPanelDraftRef.current = {
       panelDraft: resolvedPanelDraft,
       payloadSignature: nextPayloadSignature,
-      onToggleFavorite: panelDraft?.onToggleFavorite ?? null,
     };
   }
 

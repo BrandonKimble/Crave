@@ -36,12 +36,10 @@ type InteractionSnapshot = ReturnType<
 const createControlSelectionSnapshot = ({
   panelContentSnapshot,
   policySnapshot,
-  onToggleFavorite,
   closeRestaurantProfile,
 }: {
   panelContentSnapshot: PanelContentSnapshot;
   policySnapshot: PolicySnapshot;
-  onToggleFavorite: RouteLocalRestaurantOverlayControlSelectionSnapshot['onToggleFavorite'];
   closeRestaurantProfile: RouteLocalRestaurantOverlayControlSelectionSnapshot['closeRestaurantProfile'];
 }): RouteLocalRestaurantOverlayControlSelectionSnapshot => ({
   restaurantPanelSnapshot: panelContentSnapshot.restaurantPanelSnapshot,
@@ -49,7 +47,6 @@ const createControlSelectionSnapshot = ({
   shouldSuppressRestaurantOverlay: policySnapshot.shouldSuppressRestaurantOverlay,
   shouldFreezeRestaurantPanelContent: policySnapshot.shouldFreezeRestaurantPanelContent,
   shouldEnableRestaurantOverlayInteraction: policySnapshot.shouldEnableRestaurantOverlayInteraction,
-  onToggleFavorite,
   closeRestaurantProfile,
 });
 
@@ -67,10 +64,6 @@ export class SearchOverlayLocalRestaurantSheetControlSelectionStateController {
   private readonly unsubscribers: Array<() => void> = [];
 
   public readonly outputAuthority: SearchOverlayLocalRestaurantSheetControlSelectionAuthority;
-
-  private readonly onToggleFavorite = (id: string, locationId?: string | null): void => {
-    this.interactionSnapshot.onToggleFavorite(id, locationId);
-  };
 
   private readonly closeRestaurantProfile = (): void => {
     this.interactionSnapshot.closeRestaurantProfile();
@@ -91,7 +84,6 @@ export class SearchOverlayLocalRestaurantSheetControlSelectionStateController {
     this.snapshot = createControlSelectionSnapshot({
       panelContentSnapshot: this.panelContentSnapshot,
       policySnapshot: this.policySnapshot,
-      onToggleFavorite: this.onToggleFavorite,
       closeRestaurantProfile: this.closeRestaurantProfile,
     });
     this.outputAuthority = {
@@ -145,12 +137,16 @@ export class SearchOverlayLocalRestaurantSheetControlSelectionStateController {
   /**
    * F1607: this path is a FRESHNESS WRITE, not a publication.
    *
-   * The two interaction handlers reach consumers through the stable `onToggleFavorite` /
-   * `closeRestaurantProfile` façades above, which read `this.interactionSnapshot` at call
-   * time. So the published snapshot's fields are identical no matter how often the
-   * interaction source re-mints — the recompute this used to trigger allocated a snapshot,
-   * ran the seven-field comparator, and provably could never publish. Storing the snapshot
-   * IS the whole job; the publish machinery on this path is gone.
+   * The interaction handler reaches consumers through the stable `closeRestaurantProfile`
+   * façade above, which reads `this.interactionSnapshot` at call time. So the published
+   * snapshot's fields are identical no matter how often the interaction source re-mints —
+   * the recompute this used to trigger allocated a snapshot, ran the comparator, and
+   * provably could never publish. Storing the snapshot IS the whole job; the publish
+   * machinery on this path is gone.
+   *
+   * F4507: this used to say TWO handlers. `onToggleFavorite` was the other, and it was
+   * dead the whole time — declared on ten contracts, threaded through the full relay, and
+   * never originated by any UI (the heart calls useFavoriteHeart directly).
    */
   private setInteractionSnapshot(interactionSnapshot: InteractionSnapshot): void {
     this.interactionSnapshot = interactionSnapshot;
@@ -160,7 +156,6 @@ export class SearchOverlayLocalRestaurantSheetControlSelectionStateController {
     const nextSnapshot = createControlSelectionSnapshot({
       panelContentSnapshot: this.panelContentSnapshot,
       policySnapshot: this.policySnapshot,
-      onToggleFavorite: this.onToggleFavorite,
       closeRestaurantProfile: this.closeRestaurantProfile,
     });
 

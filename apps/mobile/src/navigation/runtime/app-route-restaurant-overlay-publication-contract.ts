@@ -22,7 +22,6 @@ export type AppRouteRestaurantOverlayPolicyPublication = {
 };
 
 export type AppRouteRestaurantOverlayInteractionPublication = {
-  onToggleFavorite: AppOverlayRestaurantInputs['onToggleFavorite'];
   closeRestaurantProfile: AppOverlayRestaurantInputs['closeRestaurantProfile'];
 };
 
@@ -38,7 +37,6 @@ export const EMPTY_APP_ROUTE_RESTAURANT_OVERLAY_POLICY_PUBLICATION: AppRouteRest
 
 export const EMPTY_APP_ROUTE_RESTAURANT_OVERLAY_INTERACTION_PUBLICATION: AppRouteRestaurantOverlayInteractionPublication =
   {
-    onToggleFavorite: EMPTY_APP_OVERLAY_RESTAURANT_INPUTS.onToggleFavorite,
     closeRestaurantProfile: EMPTY_APP_OVERLAY_RESTAURANT_INPUTS.closeRestaurantProfile,
   };
 

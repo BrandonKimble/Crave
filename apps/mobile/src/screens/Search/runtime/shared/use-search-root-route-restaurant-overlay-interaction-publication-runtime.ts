@@ -21,15 +21,10 @@ export const useSearchRootRouteRestaurantOverlayInteractionPublicationRuntime = 
   const routeRestaurantOverlayInteractionPublication =
     React.useMemo<SearchRootRouteRestaurantOverlayInteractionPublication>(
       () => ({
-        onToggleFavorite:
-          rootOverlayFoundationRuntime.routeOverlayCommandActions.handleRestaurantSavePress,
         closeRestaurantProfile:
           profilePresentationControlLane.profileOwner.profileActions.closeRestaurantProfile,
       }),
-      [
-        profilePresentationControlLane.profileOwner.profileActions.closeRestaurantProfile,
-        rootOverlayFoundationRuntime.routeOverlayCommandActions.handleRestaurantSavePress,
-      ]
+      [profilePresentationControlLane.profileOwner.profileActions.closeRestaurantProfile]
     );
 
   React.useEffect(() => {

@@ -59,7 +59,6 @@ export class RouteLocalRestaurantOverlayInteractionRuntime {
 
   private recompute(): void {
     const nextSnapshot: RouteLocalRestaurantOverlayInteractionSnapshot = {
-      onToggleFavorite: this.routeRestaurantOverlayInteractionPublication.onToggleFavorite,
       closeRestaurantProfile:
         this.routeRestaurantOverlayInteractionPublication.closeRestaurantProfile,
     };
