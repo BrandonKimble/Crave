@@ -48,6 +48,10 @@ import {
   getVisibleStepPosition,
 } from './onboarding/runtime/onboarding-step-machine';
 import { useOnboardingAnimationLane } from './onboarding/runtime/use-onboarding-animation-lane';
+import {
+  CALENDAR_DAYS_PER_COLUMN,
+  generateOnboardingCalendar,
+} from './onboarding/runtime/onboarding-calendar';
 import { useAuthController } from '../hooks/use-auth-controller';
 import { getCurrentLocale } from '../i18n/current-locale';
 import {
@@ -272,14 +276,20 @@ const OnboardingScreen: React.FC<OnboardingProps> = ({ navigation: _navigation }
   const ctaPressScale = React.useRef(new Animated.Value(1)).current;
   const ctaTransitionScale = React.useRef(new Animated.Value(1)).current;
   const [isAnimating, setIsAnimating] = React.useState(false);
-  // F815: 30 is the calendar comparison graph's day count per column (see
-  // `totalDays = 30` below, "30 days (full month)") — the hook owns the
-  // Animated.Value arrays and derives their count from this, not a bare 60.
-  const { triggerCalendarAnimation, calendarDayAnims, calendarColorAnims } =
-    useOnboardingAnimationLane({
-      calendarAnimation,
-      daysPerCalendarColumn: 30,
-    });
+  // F815/F3704: CALENDAR_DAYS_PER_COLUMN is the single source of truth for the
+  // calendar comparison graph's per-column day count ("30 days, full month").
+  // The hook owns the Animated.Value arrays and derives their count from this,
+  // not a bare 60; the render arm and the second-column offsets read the same
+  // constant so changing it can never mis-index the right-hand grid.
+  const {
+    triggerCalendarAnimation,
+    disposeCalendarAnimation,
+    calendarDayAnims,
+    calendarColorAnims,
+  } = useOnboardingAnimationLane({
+    calendarAnimation,
+    daysPerCalendarColumn: CALENDAR_DAYS_PER_COLUMN,
+  });
   const {
     isSignedIn,
     oauthStatus,
@@ -782,7 +792,9 @@ const OnboardingScreen: React.FC<OnboardingProps> = ({ navigation: _navigation }
           ? Math.min(regretGraphData.craveWaste / regretGraphData.baselineWaste, 1)
           : 0;
       const craveTarget = baselineTarget * regretRatio;
-      Animated.parallel([
+      // F3704: hold a handle so re-fires (each graphTrackWidth change) and
+      // unmount can stop the running animation instead of leaving it orphaned.
+      const regretAnimation = Animated.parallel([
         Animated.timing(regretBaselineAnim, {
           toValue: baselineTarget,
           duration: 600,
@@ -796,8 +808,13 @@ const OnboardingScreen: React.FC<OnboardingProps> = ({ navigation: _navigation }
           easing: Easing.out(Easing.cubic),
           useNativeDriver: false,
         }),
-      ]).start();
+      ]);
+      regretAnimation.start();
+      return () => {
+        regretAnimation.stop();
+      };
     }
+    return undefined;
   }, [
     activeStep,
     graphTrackWidth,
@@ -811,11 +828,12 @@ const OnboardingScreen: React.FC<OnboardingProps> = ({ navigation: _navigation }
     if (activeStep.id === STEP_IDS.calendarGraph) {
       triggerCalendarAnimation();
     }
+    // F3704: dispose cancels the pending scheduling frame too, so a frame that
+    // lands after unmount can't repopulate calendarAnimation.current post-cleanup.
     return () => {
-      calendarAnimation.current?.stop();
-      calendarAnimation.current = null;
+      disposeCalendarAnimation();
     };
-  }, [activeStep.id, calendarAnimation, triggerCalendarAnimation]);
+  }, [activeStep.id, disposeCalendarAnimation, triggerCalendarAnimation]);
 
   const isStepComplete = React.useMemo(() => {
     switch (activeStep.type) {
@@ -1584,84 +1602,14 @@ const OnboardingScreen: React.FC<OnboardingProps> = ({ navigation: _navigation }
             (budgetSelection && budgetKeys[budgetSelection]) || 'onboarding.graph.budget.20to40'
           );
 
-          // Generate calendar pattern based on frequency
-          // 30 days (full month), weighted towards weekends with some clustering
-          const totalDays = 30;
-          // Calculate total meals: (meals per week) × (30 days / 7 days per week)
-          const totalMealsInMonth = Math.round(mealsPerWeek * (30 / 7));
-          const generateCalendar = (disappointmentRate: number) => {
-            // Initialize all days as 'none' (not eating out)
-            const calendar: ('none' | 'good' | 'bad')[] = Array(totalDays).fill('none');
-
-            // Define day weights (0=Sunday, 6=Saturday pattern repeating)
-            // Higher weight = more likely to eat out
-            const dayWeights = [
-              1.6, // Sun (leftmost column)
-              0.8, // Mon
-              0.7, // Tue
-              0.8, // Wed
-              1.2, // Thu
-              1.8, // Fri
-              2.0, // Sat (rightmost column)
-            ];
-
-            const eatingDays: number[] = [];
-
-            // Create weighted pool of days
-            const weightedDays: number[] = [];
-            for (let i = 0; i < totalDays; i++) {
-              const dayOfWeek = i % 7;
-              const weight = dayWeights[dayOfWeek];
-              // Add day multiple times based on weight (higher weight = more chances)
-              const copies = Math.round(weight * 10);
-              for (let j = 0; j < copies; j++) {
-                weightedDays.push(i);
-              }
-            }
-
-            // Select eating days from weighted pool
-            const selectedDays = new Set<number>();
-            while (selectedDays.size < totalMealsInMonth && selectedDays.size < totalDays) {
-              const randomIdx = Math.floor(Math.random() * weightedDays.length);
-              const day = weightedDays[randomIdx];
-              selectedDays.add(day);
-            }
-
-            eatingDays.push(...Array.from(selectedDays).sort((a, b) => a - b));
-
-            // Add some clustering (back-to-back days)
-            // ~30% chance of adding adjacent day if not already selected
-            const clusteredDays = [...eatingDays];
-            eatingDays.forEach((day) => {
-              if (Math.random() < 0.3 && clusteredDays.length < totalMealsInMonth) {
-                const nextDay = day + 1;
-                if (nextDay < totalDays && !clusteredDays.includes(nextDay)) {
-                  clusteredDays.push(nextDay);
-                }
-              }
-            });
-
-            // Trim if we added too many
-            const finalEatingDays = clusteredDays.sort((a, b) => a - b).slice(0, totalMealsInMonth);
-
-            // Determine how many should be disappointing
-            const targetBad = Math.round(finalEatingDays.length * disappointmentRate);
-
-            // Randomly select which eating days are disappointing
-            const shuffledIndices = finalEatingDays
-              .map((_, i) => i)
-              .sort(() => Math.random() - 0.5);
-
-            finalEatingDays.forEach((dayIndex, i) => {
-              const isBad = shuffledIndices.indexOf(i) < targetBad;
-              calendar[dayIndex] = isBad ? 'bad' : 'good';
-            });
-
-            return calendar;
-          };
-
-          const withoutCraveCalendar = generateCalendar(0.37); // Visual: 35-40% disappoint (copy says "1 in 3")
-          const withCraveCalendar = generateCalendar(0.08); // ~1 in 12 disappoint
+          // Generate calendar pattern based on frequency: 30 days (full month),
+          // weighted towards weekends with some clustering. F3704: the pattern is
+          // a deterministic DERIVATION of the answer set (seeded PRNG in
+          // onboarding-calendar.ts), not a per-render `Math.random()` draw — so
+          // it no longer reshuffles on every re-render while the animations hold
+          // their already-run values.
+          const withoutCraveCalendar = generateOnboardingCalendar(mealsPerWeek, 0.37); // ~1 in 3 disappoint
+          const withCraveCalendar = generateOnboardingCalendar(mealsPerWeek, 0.08); // ~1 in 12 disappoint
 
           return (
             <View style={styles.graphContainer}>
@@ -1735,8 +1683,11 @@ const OnboardingScreen: React.FC<OnboardingProps> = ({ navigation: _navigation }
                   </Text>
                   <View style={styles.calendarGrid}>
                     {withCraveCalendar.map((dayType, index) => {
-                      const appearAnim = calendarDayAnims[index + 30] || new Animated.Value(1);
-                      const colorAnim = calendarColorAnims[index + 30] || new Animated.Value(1);
+                      const appearAnim =
+                        calendarDayAnims[index + CALENDAR_DAYS_PER_COLUMN] || new Animated.Value(1);
+                      const colorAnim =
+                        calendarColorAnims[index + CALENDAR_DAYS_PER_COLUMN] ||
+                        new Animated.Value(1);
 
                       // Interpolate background color from gray to final color
                       const backgroundColor = colorAnim.interpolate({

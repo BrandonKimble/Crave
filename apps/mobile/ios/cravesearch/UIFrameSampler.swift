@@ -1,9 +1,6 @@
 import Foundation
-import CoreLocation
-import MapboxMaps
 import QuartzCore
 import React
-import Turf
 import UIKit
 
 @objc(UIFrameSampler)

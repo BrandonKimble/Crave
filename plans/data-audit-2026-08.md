@@ -9,18 +9,56 @@ should have produced; findings marked CONFIRMED (raw text proves it) or
 PLAUSIBLE. This document is the canonical record; the prompt-review cycle
 and the pre-rerun fix list derive from it.
 
-## VERDICT IN ONE LINE
+## CURRENT STATE (updated 2026-08-05) — READ THIS FIRST
+
+This file is append-only and its later sections SUPERSEDE its head. What was
+found on 2026-08-01 has since been built, red-teamed (rounds 5–9), and ruled
+on; do not act on the as-found VERDICT / P0 / P2 lists below without reading
+the resolution tag now attached to each item. Where a section is superseded
+wholesale it says so inline. Nothing here is a new measurement — every
+correction already lived further down the file and has only been surfaced to
+the top.
+
+- **The two "active structural defects" are CLOSED.** The attribute tombstone
+  leak is fixed — cuisine facet ② drained the 11k stranded backlog and junk
+  sinks now DROP at write time (see EXECUTION RECORD ②); round-9 re-measured
+  "0 stranded; 58 cross-type redirects" (RULINGS RE-ANSWERED WITH DATA). The
+  event double-count was addressed in the CLASS ②–⑤ build and proven by the
+  round-8 rebuild-idempotence + counter-invariant check (0 mismatches).
+- **The RESTAURANT hygiene + vocabulary + edge fixes SHIPPED** (EXECUTION
+  RECORD ③④⑤), deployed 2026-08-01/02.
+- **The P2 owner decisions are CLOSED**, first by the 2026-08-01 verification
+  update (three dissolved on re-checking prompt+code), then by OWNER RULINGS
+  (2026-08-05, decisions closed / round 2 opened). Only genuinely-open items:
+  P2.6 Places backfill spend (deferred by owner) and the round-2 items the
+  OWNER RULINGS section lists.
+- **Live-ops flag, current:** the `CRONS_ENABLED=false` kill-switch was
+  REMOVED 2026-08-03 ~00:35 UTC (owner authorized) — see OPERATIONAL note in
+  the adoption-ladder section; `COLLECTION_SCHEDULER_ENABLED` stays false
+  until prompt activation. The earlier in-file line describing the switch as
+  standing/armed is as-of-2026-08-02 and is superseded by that removal.
+
+## VERDICT (as found, 2026-08-01 — superseded by CURRENT STATE above)
 
 The graph's arithmetic is sound (counters reconcile 0/17,901; redirects
-flawless; menu-item projection 99.94%) but the PIPELINE has two active
-structural defects silently corrupting scores (attribute tombstone leak,
-cross-shard duplicate events), the RESTAURANT type carries ~17% junk+dupes,
-and several vocabulary/taxonomy decisions need owner rulings before the
-re-extraction prompt is final.
+flawless; menu-item projection 99.94%) but the PIPELINE had two structural
+defects then silently corrupting scores (attribute tombstone leak,
+cross-shard duplicate events — BOTH now closed, see CURRENT STATE), the
+RESTAURANT type carried ~17% junk+dupes (hygiene ③ shipped), and several
+vocabulary/taxonomy decisions needed owner rulings before the re-extraction
+prompt was final (all now ruled — see P2 tags below).
 
-## P0 — PIPELINE DEFECTS (fix before the rerun, or it all recurs)
+## P0 — PIPELINE DEFECTS (as found 2026-08-01 — see resolution tags; all closed)
 
-1. **Attribute tombstone leak** (health §4, CONFIRMED, ongoing). Archival
+> **RESOLVED (2026-08-02):** every P0 below was fixed in the CLASS ②–⑤
+> EXECUTION RECORD and proven across red-team rounds 5–9. Items 1–3 are the
+> tombstone/dedupe cluster (② + round-8/9); items 4–5 are the active-run join
+> + two-table split (round-8 #2 `activeRestaurantEventsSourceSql()`, praise
+> lane 16→16). The list is kept as the as-found record.
+
+1. **Attribute tombstone leak** (health §4, CONFIRMED). RESOLVED — cuisine
+   facet ② drained the 11k backlog; junk sinks DROP at write; round-9
+   re-measured 0 stranded. Archival
    writes redirects for restaurants ONLY. 1,766 archived attributes have
    no redirect; resolution keeps landing on them — 15,904 events (12.8%)
    sit on tombstones, 15,546 unreachable from the live graph; `mexican`
@@ -33,8 +71,10 @@ re-extraction prompt is final.
    question (P2.1) first so events land somewhere correct.
    Plus the shard race (11 events written ~70s after a merge archived
    their target — Sway/Abgb): resolver cache must invalidate on archive.
-2. **Cross-shard duplicate events** (health §3, CONFIRMED). Event
-   uniqueness is keyed on extraction_run_id, so a doc extracted by 2+
+2. **Cross-shard duplicate events** (health §3, CONFIRMED). RESOLVED —
+   addressed in the CLASS ②–⑤ build; round-8 rebuild-idempotence + counter
+   invariant verified 0 mismatches. Event
+   uniqueness was keyed on extraction_run_id, so a doc extracted by 2+
    shards double-counts: 2,509 Austin docs, 23,358 duplicate-lineage
    events (14.7% of ledger), score inflation 2-4x on affected restaurants.
    FIX: delete events whose run != the doc's active run (safe — same
@@ -105,6 +145,10 @@ owner — three of the six changed after checking prompt+code):**
   dishes. Fix = data repair aligned to the prompt design (revive or
   re-point food-side cuisine rows, delete cuisine-dishes) + rerun. NOT a
   new facet, NOT a new entity type.
+  > **SUPERSEDED 2026-08-02:** the build DID land a cuisine FACET — EXECUTION
+  > RECORD ② ships "61 canonical rows (facet='cuisine')" with cross-type
+  > redirects. Read that section, not this "no new facet" phrasing, for the
+  > shipped shape.
 - **P2.2 chains — RULED 2026-08-02 (owner agreed): METRO-AWARE
   RESOLUTION, not per-metro entities.** The shipped model is correct and
   stays: ONE brand entity, grounded once via location-biased Places,
@@ -141,7 +185,18 @@ owner — three of the six changed after checking prompt+code):**
 - P2.6 ($25 ungrounded-Places backfill inside the rerun campaign) still
   awaiting owner yes/no.
 
-1. **Cuisine gets its own slot?** 57% of restaurant_attribute evidence
+> **ALL SIX ANSWERED — do not present as open.** The VERIFICATION UPDATE
+> directly above (P2.1–P2.6) and the OWNER RULINGS (2026-08-05) below close
+> every item; the numbered list is the original as-raised phrasing, kept for
+> provenance. Tags: (1) cuisine → FACET shipped (EXECUTION RECORD ②); (2)
+> chain/branch → RULED metro-aware resolution (P2.2); (3) dietary → data fix,
+> micro-rulings stand (P2.3); (4) food→category → edges are truth, shipped
+> ⑤ (P2.4); (5) sourcing/provenance → ordinary food attributes (P2.5); (6)
+> ungrounded backfill → owner-DEFERRED, re-priced to ~$38 (see Correction
+> 2026-08-03 below).
+
+1. **Cuisine gets its own slot?** [ANSWERED — facet shipped, EXECUTION
+   RECORD ②.] 57% of restaurant_attribute evidence
    mass is cuisine/category (`mexican` 2,704, `japanese` 1,924...), and
    cuisines also minted as dishes (11) and archived food_attributes with
    stranded mass. Options: dedicated cuisine facet vs blessed
@@ -294,6 +349,11 @@ FIXED from this round (all proven by re-execution):
 - F3 Unicode-blind fold → crave_fold() DB function + byte-identical TS
   canonicalFold (migration 20260802010000, accent translate + curly-quote
   strip); all SQL sites now call the function.
+  > **SUPERSEDED 2026-08-02 (see IDENTITY redesign below):** crave_fold() and
+  > the generated column were DROPPED by migration 20260802050000 —
+  > canonicalFold (TS) is now the ONLY implementation and identity_key is
+  > app-written. The only surviving `crave_fold` mentions in src/ are
+  > epitaphs. Do not treat the DB fold as live.
 - #1 nightly merge cross-metro false positives (Gueros→Gueros Brooklyn,
   Andiamo→ANDIAMO PIZZA — would have fired at 3AM; worker taken down at
   02:58 UTC to stop it) → DOMINANT-community gate; re-run: andiamo holds,
@@ -376,7 +436,12 @@ completes in 231ms (was: permanent abort).
 Ops drift prong: RUN_LEDGER_REPAIR=1 found still armed on the prod worker
 since July — disarmed. Standing owner flags: CRONS_ENABLED=false +
 COLLECTION_SCHEDULER_ENABLED=false (the other session's kill-switches —
-nothing scheduled runs until reverted). Standing residue, deliberate:
+nothing scheduled runs until reverted).
+> **SUPERSEDED 2026-08-03:** CRONS_ENABLED was REMOVED ~00:35 UTC (owner
+> authorized) — see the OPERATIONAL note in the adoption-ladder section.
+> COLLECTION_SCHEDULER_ENABLED remains false. CRONS_ENABLED=false is NO
+> LONGER the live state; do not act on this line for prod.
+Standing residue, deliberate:
 restHeld=8, dup_identity_groups=14 incl. exact-name chain twins (Blaze
 Pizza ×2) — P2.2 metro-aware-resolution territory.
 

@@ -15,6 +15,13 @@ type UseOnboardingAnimationLaneArgs = {
 
 type UseOnboardingAnimationLaneResult = {
   triggerCalendarAnimation: () => void;
+  /**
+   * Cancels any pending scheduling frame AND stops the running sequence.
+   * F3704: the trigger schedules a `requestAnimationFrame`; without a handle a
+   * frame that lands after unmount would assign and start a new animation on an
+   * unmounted tree. The consumer's effect cleanup MUST call this.
+   */
+  disposeCalendarAnimation: () => void;
   calendarDayAnims: Animated.Value[];
   calendarColorAnims: Animated.Value[];
 };
@@ -24,6 +31,7 @@ export const useOnboardingAnimationLane = ({
   daysPerCalendarColumn,
 }: UseOnboardingAnimationLaneArgs): UseOnboardingAnimationLaneResult => {
   const totalDays = daysPerCalendarColumn * 2;
+  const scheduledFrame = React.useRef<number | null>(null);
   const calendarDayAnims = React.useRef<Animated.Value[]>([]).current;
   const calendarColorAnims = React.useRef<Animated.Value[]>([]).current;
   if (calendarDayAnims.length === 0) {
@@ -33,7 +41,20 @@ export const useOnboardingAnimationLane = ({
     }
   }
 
+  const disposeCalendarAnimation = React.useCallback(() => {
+    if (scheduledFrame.current !== null) {
+      cancelAnimationFrame(scheduledFrame.current);
+      scheduledFrame.current = null;
+    }
+    calendarAnimation.current?.stop();
+    calendarAnimation.current = null;
+  }, [calendarAnimation]);
+
   const triggerCalendarAnimation = React.useCallback(() => {
+    if (scheduledFrame.current !== null) {
+      cancelAnimationFrame(scheduledFrame.current);
+      scheduledFrame.current = null;
+    }
     calendarAnimation.current?.stop();
     calendarAnimation.current = null;
     calendarDayAnims.forEach((anim) => anim.setValue(0));
@@ -81,7 +102,8 @@ export const useOnboardingAnimationLane = ({
     ]);
 
     calendarAnimation.current = animationSequence;
-    requestAnimationFrame(() => {
+    scheduledFrame.current = requestAnimationFrame(() => {
+      scheduledFrame.current = null;
       calendarAnimation.current?.start(() => {
         calendarAnimation.current = null;
       });
@@ -90,6 +112,7 @@ export const useOnboardingAnimationLane = ({
 
   return {
     triggerCalendarAnimation,
+    disposeCalendarAnimation,
     calendarDayAnims,
     calendarColorAnims,
   };
