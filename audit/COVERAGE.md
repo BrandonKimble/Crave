@@ -4508,9 +4508,9 @@ CLEAN-PASS-1 api-core + api-search (2026-08-07, ATTEMPT 2, F8400): FRESH-EYES RE
 | apps/api/src/shared/locale/request-locale.ts | locale-i18n | IDEAL-VERIFIED | 1 | 7f4d5ffc0f8b | argued ideal. |
 | apps/api/src/shared/locale/supported-locales.ts | locale-i18n | PARTIAL | 1 | c47730ac7846 | SUPPORTED_LOCALES/DEFAULT duplicated across apps, no cross-app bind (F9370). |
 | apps/api/src/shared/testing/prisma-doubles.ts | locale-i18n | IDEAL-VERIFIED | 1 | 0058bb61a9ae | argued ideal. |
-| apps/api/src/shared/invariants/registry.ts | locale-i18n | IDEAL-VERIFIED | 1 | 3c19533716c5 | argued ideal. |
+| apps/api/src/shared/invariants/registry.ts | locale-i18n | IDEAL-VERIFIED | 1 | 694d98fddfd3 | argued ideal. |
 | apps/mobile/src/i18n/current-locale.ts | locale-i18n | IDEAL-VERIFIED | 1 | bb68770422ab | single shared locale cell read by renderer + axios. |
-| apps/mobile/src/i18n/formatting.ts | locale-i18n | PARTIAL | 1 | c298b2143821 | garbled motivating-example doc comment (F9372); code correct. |
+| apps/mobile/src/i18n/formatting.ts | locale-i18n | PARTIAL | 1 | 2ec0817e0e29 | garbled motivating-example doc comment (F9372); code correct. |
 | apps/mobile/src/i18n/index.ts | locale-i18n | IDEAL-VERIFIED | 1 | c1715304bf80 | RTL wiring intentionally inert, not dead. |
 | apps/mobile/src/i18n/locale-resolution.ts | locale-i18n | PARTIAL | 1 | 7fb37b948979 | duplicated SUPPORTED_LOCALES + second Lookup w/o macro-region table (F9370/F9371). |
 | apps/mobile/src/i18n/polyfills.ts | locale-i18n | IDEAL-VERIFIED | 1 | 668db11a2ad0 | argued ideal. |
@@ -4531,3 +4531,28 @@ CLEAN-PASS-1 api-core + api-search (2026-08-07, ATTEMPT 2, F8400): FRESH-EYES RE
 | apps/mobile/src/screens/onboarding/runtime/onboarding-calendar.ts | mobile-onboarding | REDERIVED | 1 | 6fd712708688 | F3704 seeded deterministic calendar; spec mutation-proven. |
 | apps/mobile/src/providers/auth-config-guard.ts | mobile-providers | REDERIVED | 1 | 6d8f241616a9 | F2802 pure release-guard seams routed through captureHandledError. |
 | apps/api/src/shared/config/validate-env.ts | api-config | REDERIVED | 1 | 78777b734561 | F2075 fail-closed boot validation of deployed secrets; spec mutation-proven. |
+
+| apps/api/scripts/backfill-entity-aliases.ts | api-scripts | IDEAL-VERIFIED | 1 | 254150edcdf6 | Idempotent (ON CONFLICT DO NOTHING); locale 'und' not fabricated; reconcile no-op by construction. |
+| apps/api/scripts/backfill-label-folds.ts | api-scripts | IDEAL-VERIFIED | 1 | e529f432e470 | Idempotent; UPDATEs only fold-differing rows; canonicalFold sole impl, no fabrication. |
+| apps/api/scripts/reproject-aliases.ts | api-scripts | IDEAL-VERIFIED | 1 | a4e95298563b | Dry-run default; --apply required; writes only on real diff; stopCronsForScript. |
+| apps/api/scripts/sweep-entity-labels.ts | api-scripts | IDEAL-VERIFIED | 1 | 4c755662a7ea | Dry-run=stub generator (measures only); --apply gates spend; crons stopped. |
+| apps/api/scripts/clear-coverage-gap.ts | api-scripts | IDEAL-VERIFIED | 1 | c0979b031f49 | Dry-run default, --force required, prints 'operator claim', no fabricated recovery fact. |
+| apps/api/scripts/grounding-name-probe.ts | api-scripts | IDEAL-VERIFIED | 1 | 48628013ced3 | Read-only probe; writes nothing; errors surfaced. |
+| apps/api/scripts/header-verdict-probe.ts | api-scripts | IDEAL-VERIFIED | 1 | 23071084551d | Read-only; real ViewportVerdictService; no writes. |
+| apps/api/scripts/occurred-at-timezone-proof.ts | api-scripts | IDEAL-VERIFIED | 1 | 8de4e5189d93 | Read-only diff harness over real services. |
+| apps/api/scripts/prompt-ab.ts | api-scripts | IDEAL-VERIFIED | 1 | 71a4d850b5cf | Read-only; LlmService one-gateway; FLAKY reported honestly. |
+| apps/api/scripts/prompt-corpus-ab.ts | api-scripts | IDEAL-VERIFIED | 1 | ea66773720d1 | Read-only; --community quote-stripped (operator-supplied, benign); errors tallied. |
+| apps/api/scripts/run-concept-satisfies.ts | api-scripts | IDEAL-VERIFIED | 1 | 6f6747c45019 | Dry-run default; --apply gates writes; idempotent (rejects stored). |
+| apps/api/scripts/run-demand-vocabulary.ts | api-scripts | IDEAL-VERIFIED | 1 | fea2abe9a061 | Dry-run default; --apply gates banking; crons stopped. |
+| apps/api/scripts/scanner-source.ts | api-scripts | IDEAL-VERIFIED | 1 | 855f007a5cc4 | Pure re-export of code-only stripper. |
+| apps/api/scripts/west-village-probe.ts | api-scripts | IDEAL-VERIFIED | 1 | dcf827b4b21c | Probe; writes only via the noteViewport seam under test; verdict can show negative. |
+| apps/api/scripts/check-subject-text-emission.ts | api-scripts | IDEAL-VERIFIED | 1 | a7c6cd6f6edd | Exemplary gate: closed allowlist, missing-tooling=FAIL, codeMatches-not-prose, exits non-zero. |
+| apps/api/scripts/invariants.ts | api-scripts | IDEAL-VERIFIED | 1 | 3e9abc40ee8d | Harness applies mutations, requires FAIL, hard-fails on missing anchor, restores always. |
+| apps/api/scripts/search-harness/_shared.ts | api-scripts | IDEAL-VERIFIED | 1 | 5f8b1dff68d7 | requireNonProdDatabase dual guard refuses deployed/non-local for writers. |
+| apps/api/scripts/search-harness/run-launch-gate.ts | api-scripts | IDEAL-VERIFIED | 1 | 1d359761fa86 | GATE can show RED: tri-state, N/A on empty denominator prevents false-green; recorded run 3 REDs. |
+| apps/api/scripts/search-harness/run-parity-check.ts | api-scripts | IDEAL-VERIFIED | 1 | 586939704f55 | Read-only; pairs from real data; failures listed. |
+| apps/api/scripts/search-harness/decomposed-tier-probe.ts | api-scripts | IDEAL-VERIFIED | 1 | 534f78f2919e | Probe sets exitCode=1 on failing checks; can show RED. |
+| apps/api/scripts/search-harness/multilingual-understand-probe.ts | api-scripts | IDEAL-VERIFIED | 1 | 89c78e5829a4 | Read-only; dense tier gated behind PROBE_DENSE=1; misses reported. |
+| apps/api/src/modules/content-processing/reddit-collector/test-limit.ts | api-scripts | IDEAL-VERIFIED | 1 | 0db59ec9a52d | Refuses in prod (returns null) — prevents silent truncation; clamps to cap. |
+| apps/mobile/src/screens/Search/runtime/shared/search-mounted-results-debug-flag.ts | api-scripts | IDEAL-VERIFIED | 1 | c0968dd8f9a6 | Named flag DEFAULT OFF; __DEV__ conjunction so it can't ship logging to release. |
+| apps/api/scripts/check-locale-parity.ts | api-scripts | IDEAL-VERIFIED | 1 | 336912260481 | F9370 cross-app locale-parity invariant check; reads mobile source textually; fail-closed (exit 1). |
