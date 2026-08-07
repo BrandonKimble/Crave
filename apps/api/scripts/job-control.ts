@@ -18,6 +18,7 @@
 import 'dotenv/config';
 import Redis from 'ioredis';
 import { resolveAppEnv, bullPrefixFor } from '../src/shared/config/app-env';
+import { isEnvFlagEnabled } from '../src/shared/config/env-flag';
 
 function resolveLlmRateLimiterPrefix(): string {
   const explicit = process.env.LLM_RATE_LIMIT_PREFIX;
@@ -67,7 +68,7 @@ async function jobControl() {
         break;
     }
   } finally {
-    await redis.disconnect();
+    redis.disconnect();
   }
 }
 
@@ -78,9 +79,12 @@ async function showStatus(redis: Redis) {
   const bullPrefix = bullPrefixFor(resolveAppEnv());
   const llmRateLimiterPrefix = resolveLlmRateLimiterPrefix();
 
-  // Check environment setting
-  const jobsEnabled =
-    process.env.COLLECTION_JOBS_ENABLED?.toLowerCase() === 'true';
+  // Check environment setting — through the one flag reader, not a hand-rolled
+  // `=== 'true'` (F7903): the ban exists because `COLLECTION_JOBS_ENABLED=TRUE`
+  // read the wrong way silently. This file was moved into the lint project by
+  // F420 to GAIN that enforcement and then tripped it, because F420 verified
+  // with tsc and never with lint.
+  const jobsEnabled = isEnvFlagEnabled(process.env.COLLECTION_JOBS_ENABLED);
   console.log(
     `🔧 Environment Setting: COLLECTION_JOBS_ENABLED=${
       process.env.COLLECTION_JOBS_ENABLED || 'true'
