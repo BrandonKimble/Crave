@@ -61,9 +61,19 @@ describe('SearchSurfaceRuntime sheet-motion fence (redraw-object shrink: SURFACE
     runtime.markRedrawNativeMarkerFrameReady(id);
     expect(runtime.getSnapshot().redrawTransaction?.committedAtMs ?? null).toBeNull();
     runtime.markRedrawSheetReady(id);
+    // F6405 — THE LAND HALF. This used to read
+    // `expect(stillPending == null || stillPending.committedAtMs != null).toBe(true)`,
+    // whose first arm is satisfied by the transaction having VANISHED — the opposite of
+    // landing, and a live outcome: the settle path sets
+    // `redrawTransaction: null, completedRedrawTransaction: redrawTransaction`. The test
+    // proved the DEFER half of its name and nothing at all of the LAND half.
+    // The commit moves between two snapshot fields, so NAME the handoff instead of
+    // accepting either.
     const snapshot = runtime.getSnapshot();
-    const stillPending = snapshot.redrawTransaction;
-    expect(stillPending == null || stillPending.committedAtMs != null).toBe(true);
+    expect(snapshot.redrawTransaction).toBeNull();
+    const committed = snapshot.redrawTransaction ?? snapshot.completedRedrawTransaction;
+    expect(committed?.id).toBe(id);
+    expect(committed?.committedAtMs ?? null).not.toBeNull();
   });
 });
 
@@ -121,8 +131,12 @@ describe('F2: a redraw armed MID-FLIGHT is born NOT settled (the seed asks the m
     expect(runtime.getSnapshot().redrawTransaction?.committedAtMs ?? null).toBeNull();
     getTrackMotionAuthority().dispatch({ type: 'settle' });
     runtime.markRedrawSheetReady(id);
-    const stillPending = runtime.getSnapshot().redrawTransaction;
-    expect(stillPending == null || stillPending.committedAtMs != null).toBe(true);
+    // F6405: same LAND assertion as the sibling above — the fence restore must STAMP the
+    // commit, not merely drop the transaction.
+    const snapshot = runtime.getSnapshot();
+    const committed = snapshot.redrawTransaction ?? snapshot.completedRedrawTransaction;
+    expect(committed?.id).toBe(id);
+    expect(committed?.committedAtMs ?? null).not.toBeNull();
   });
 });
 
