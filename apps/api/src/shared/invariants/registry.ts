@@ -651,6 +651,37 @@ export const INVARIANTS: readonly Invariant[] = [
     ],
   },
 
+  // ── I18N ─────────────────────────────────────────────────────────────
+  {
+    id: 'i18n.mobile-locales-are-a-subset-of-the-api',
+    statement:
+      'Every locale the mobile app supports is one the api can serve, and the two DEFAULT_LOCALEs agree.',
+    incident:
+      'SUPPORTED_LOCALES + DEFAULT_LOCALE are declared independently in api (shared/locale/supported-locales.ts) and mobile (i18n/locale-resolution.ts) with nothing binding them. The mobile client sets Accept-Language from ITS list and the api negotiates against ITS own, so a locale added to one side alone is silently served the DEFAULT — a Spanish/new-language UI answered in English. The two files live in two apps that never import each other, so no type or test spans them.',
+    level: 'behaviour',
+    mechanism:
+      'scripts/check-locale-parity.ts — imports the api set, reads the mobile file textually across the app boundary, asserts subset + default agreement',
+    check: {
+      command: 'npx ts-node -T scripts/check-locale-parity.ts',
+      reads: 'both apps’ SUPPORTED_LOCALES + DEFAULT_LOCALE, cross-app',
+    },
+    mutations: [
+      {
+        // A locale the mobile app claims to support but the api cannot serve.
+        file: '../mobile/src/i18n/locale-resolution.ts',
+        find: "export const SUPPORTED_LOCALES = ['en', 'es'] as const;",
+        replace:
+          "export const SUPPORTED_LOCALES = ['en', 'es', 'fr'] as const;",
+      },
+      {
+        // The two defaults diverging — mobile falls back to a tag the api does not.
+        file: '../mobile/src/i18n/locale-resolution.ts',
+        find: "export const DEFAULT_LOCALE: SupportedLocale = 'en';",
+        replace: "export const DEFAULT_LOCALE: SupportedLocale = 'es';",
+      },
+    ],
+  },
+
   // ── POLLS ────────────────────────────────────────────────────────────
   {
     id: 'polls.ballot-documents-are-excluded-from-source-activity',

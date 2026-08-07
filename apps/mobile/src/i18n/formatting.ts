@@ -5,9 +5,12 @@
  * WHY THIS FILE EXISTS: Onboarding pinned `new Intl.NumberFormat('en-US', {
  * currency: 'USD' })` at module scope. The pin is two mistakes wearing one coat:
  *
- *   1. The LOCALE was hardcoded. A Mexican user typing into a Spanish UI saw
- *      `$1,234` where their conventions say `$1,234` differs by separator and
- *      symbol placement. Locale must follow the user.
+ *   1. The LOCALE was hardcoded. The SAME USD amount that `Intl.NumberFormat`
+ *      renders `$1,234` under `en-US` comes out `USD 1,234` under `es-MX` —
+ *      the currency gets spelled out because a bare `$` reads as PESOS in
+ *      Mexico, so the symbol must be disambiguated. (Region also drives the
+ *      grouping/decimal separators; `es-ES` would group `1.234`.) Pinning the
+ *      locale to `en-US` erased that distinction. Locale must follow the user.
  *   2. The CURRENCY was hardcoded — and that one is CORRECT, so it stays.
  *      Crave is live in Austin and NYC; the money in these graphs is literally
  *      US dollars spent in US cities. It is a FACT about the market, not a
