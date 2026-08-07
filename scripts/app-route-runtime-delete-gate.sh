@@ -63,6 +63,18 @@ if [[ ! -e "$TARGET_PATH" ]]; then
   exit 1
 fi
 
+# TOOL PRECONDITION (F8800, 2026-08-07; mirrors no-bypass-search-runtime.sh:13-17).
+# Every negative-ban block below runs ripgrep. If rg is absent (exit 127), an
+# `if rg -q …` test is non-zero and reads as "no match → PASS" — a green that
+# verified NOTHING, exactly where a developer looks at it. The CONTENT_CHECKS
+# allowlist loop co-mitigates 127, but each ban must be sound independently:
+# missing tooling is a FAILURE, never a pass.
+if ! command -v rg >/dev/null 2>&1; then
+  echo "[app-route-runtime-delete-gate] FAIL: ripgrep (rg) is not installed — this gate cannot verify anything." >&2
+  echo "  Install it (brew install ripgrep) and re-run; refusing to report a green that means nothing." >&2
+  exit 1
+fi
+
 for root_native_project_path in "${ROOT_NATIVE_PROJECT_PATHS[@]}"; do
   if [[ -e "$root_native_project_path" ]]; then
     echo "[app-route-runtime-delete-gate] FAIL root_native_generated_project_path: root native generated projects must not return; active native projects live under apps/mobile." >&2
@@ -423,6 +435,49 @@ declare -a ROOT_CONTENT_CHECKS=(
 )
 
 failures=0
+
+# ban_absent — sound single-symbol negative ban (F8800, 2026-08-07).
+#
+# The standalone negative-ban blocks below used `if rg -q <pattern> …; then FAIL`.
+# That shape treats EVERY non-zero rg exit as "no match → PASS", so rg's exit 2
+# (invalid regex — e.g. a banned pattern that rots to an unbalanced `[`/`(`)
+# silently PASSes the ban while the gate stays green. This is the F8500/F8700
+# tool-swallow class, exit-2 branch. The CONTENT_CHECKS loop (see :~500) already
+# discriminates rg's exit codes; this helper carries the SAME discipline to the
+# standalone blocks so a rotted pattern goes RED instead of green.
+#
+# Usage:  ban_absent <id> <description> <pattern> <rg-flags-and-paths...>
+#   The trailing args are the rg flags (e.g. --pcre2, --fixed-strings, -U) and
+#   the paths to scan, passed through verbatim so each block keeps its exact
+#   flags and scan set. Exit-code contract mirrors CONTENT_CHECKS:
+#     0 → banned symbol present  → FAIL <id>: <description> (+ matches), failures++
+#     1 → banned symbol absent   → PASS <id>
+#     2 → invalid pattern        → FAIL <id>: invalid pattern (+ rg output), failures++
+#     * → any other rg error     → FAIL <id>: rg exited with status N, failures++
+ban_absent() {
+  local id="$1" description="$2" pattern="$3"
+  shift 3
+  local out status
+  set +e
+  out="$(rg -n "$@" -e "$pattern" 2>&1)"
+  status=$?
+  set -e
+  if [[ "$status" -eq 2 ]]; then
+    echo "[app-route-runtime-delete-gate] FAIL $id: invalid pattern" >&2
+    echo "$out" >&2
+    failures=$((failures + 1))
+  elif [[ "$status" -eq 0 ]]; then
+    echo "[app-route-runtime-delete-gate] FAIL $id: $description" >&2
+    echo "$out" >&2
+    failures=$((failures + 1))
+  elif [[ "$status" -eq 1 ]]; then
+    echo "[app-route-runtime-delete-gate] PASS $id"
+  else
+    echo "[app-route-runtime-delete-gate] FAIL $id: rg exited with status $status" >&2
+    echo "$out" >&2
+    failures=$((failures + 1))
+  fi
+}
 
 SEARCH_SUBMIT_DISMISS_AUTHORITY_LIFECYCLE_PATTERN='(beginResultsEnter|beginResultsExit|markResultsHeaderReady|markPollsHeaderReady|mark[A-Za-z0-9_]*Settled)'
 SEARCH_SUBMIT_DISMISS_AUTHORITY_FILE_PATTERN='(^|/)screens/Search/runtime/shared/search-submit-dismiss-transition-visual-authority\.(ts|tsx|js|jsx|d\.ts)$'
@@ -932,9 +987,11 @@ else
   echo "[app-route-runtime-delete-gate] PASS restaurant_local_sheet_runtime_deleted_gate"
 fi
 
-if [[ -e "$TARGET_PATH" ]] && rg -q --pcre2 "source\\??:\\s*'search'\\s*\\|\\s*'global'|source:\\s*'global'" "$TARGET_PATH"; then
-  echo "[app-route-runtime-delete-gate] FAIL restaurant_global_source_contract_gate: Restaurant route ownership must not use raw source:'global'; non-search restaurants must be parent-scoped children." >&2
-  failures=$((failures + 1))
+if [[ -e "$TARGET_PATH" ]]; then
+  ban_absent restaurant_global_source_contract_gate \
+    "Restaurant route ownership must not use raw source:'global'; non-search restaurants must be parent-scoped children." \
+    "source\\??:\\s*'search'\\s*\\|\\s*'global'|source:\\s*'global'" \
+    --pcre2 "$TARGET_PATH"
 else
   echo "[app-route-runtime-delete-gate] PASS restaurant_global_source_contract_gate"
 fi
@@ -952,26 +1009,32 @@ fi
 
 native_overlay_target_authorities_file="$TARGET_PATH/navigation/runtime/app-route-native-overlay-target-authorities.ts"
 app_route_scene_policy_registry_file="$TARGET_PATH/navigation/runtime/app-route-scene-policy-registry.ts"
-if [[ -e "$native_overlay_target_authorities_file" ]] && rg -q --pcre2 "restaurant[\\s\\S]{0,240}source|source[\\s\\S]{0,240}restaurant" "$native_overlay_target_authorities_file"; then
-  echo "[app-route-runtime-delete-gate] FAIL restaurant_shared_sheet_suppression_gate: Shared sheet suppression must not branch on restaurant source; only root restaurant routes stay outside the shared shell." >&2
-  failures=$((failures + 1))
+if [[ -e "$native_overlay_target_authorities_file" ]]; then
+  ban_absent restaurant_shared_sheet_suppression_gate \
+    "Shared sheet suppression must not branch on restaurant source; only root restaurant routes stay outside the shared shell." \
+    "restaurant[\\s\\S]{0,240}source|source[\\s\\S]{0,240}restaurant" \
+    --pcre2 "$native_overlay_target_authorities_file"
 else
   echo "[app-route-runtime-delete-gate] PASS restaurant_shared_sheet_suppression_gate"
 fi
 
 app_overlay_route_types_file="$TARGET_PATH/navigation/runtime/app-overlay-route-types.ts"
 app_overlay_route_command_runtime_file="$TARGET_PATH/navigation/runtime/app-overlay-route-command-runtime.ts"
-if [[ -e "$app_overlay_route_command_runtime_file" ]] && rg -q --fixed-strings "APP_ROUTE_TRANSITION_SCENE_KEYS" "$app_overlay_route_command_runtime_file"; then
-  echo "[app-route-runtime-delete-gate] FAIL app_route_command_uses_taxonomy_gate: Route command runtime must use app-overlay route taxonomy instead of a local transition-scene key list." >&2
-  failures=$((failures + 1))
+if [[ -e "$app_overlay_route_command_runtime_file" ]]; then
+  ban_absent app_route_command_uses_taxonomy_gate \
+    "Route command runtime must use app-overlay route taxonomy instead of a local transition-scene key list." \
+    "APP_ROUTE_TRANSITION_SCENE_KEYS" \
+    --fixed-strings "$app_overlay_route_command_runtime_file"
 else
   echo "[app-route-runtime-delete-gate] PASS app_route_command_uses_taxonomy_gate"
 fi
 
 poll_creation_panel_spec_file="$TARGET_PATH/overlays/useSearchRoutePollCreationPanelSpec.ts"
-if [[ -e "$poll_creation_panel_spec_file" ]] && rg -q --pcre2 "recordRouteSceneSheetSettle\\([\\s\\S]{0,160}sceneKey:\\s*'polls'" "$poll_creation_panel_spec_file"; then
-  echo "[app-route-runtime-delete-gate] FAIL poll_creation_child_snap_is_not_parent_snap_gate: Poll creation is a Polls child and must not write child settles into Polls snap memory." >&2
-  failures=$((failures + 1))
+if [[ -e "$poll_creation_panel_spec_file" ]]; then
+  ban_absent poll_creation_child_snap_is_not_parent_snap_gate \
+    "Poll creation is a Polls child and must not write child settles into Polls snap memory." \
+    "recordRouteSceneSheetSettle\\([\\s\\S]{0,160}sceneKey:\\s*'polls'" \
+    --pcre2 "$poll_creation_panel_spec_file"
 else
   echo "[app-route-runtime-delete-gate] PASS poll_creation_child_snap_is_not_parent_snap_gate"
 fi
@@ -1000,9 +1063,11 @@ else
   echo "[app-route-runtime-delete-gate] PASS save_list_command_opens_scoped_route_gate"
 fi
 
-if [[ -e "$app_route_static_scene_descriptor_file" ]] && rg -q --pcre2 "recordRouteSceneSheetSettle\\([\\s\\S]{0,180}sceneKey:\\s*'saveList'" "$app_route_static_scene_descriptor_file"; then
-  echo "[app-route-runtime-delete-gate] FAIL save_list_child_snap_is_not_parent_snap_gate: saveList uses the shared physical shell and must not keep independent scene snap memory." >&2
-  failures=$((failures + 1))
+if [[ -e "$app_route_static_scene_descriptor_file" ]]; then
+  ban_absent save_list_child_snap_is_not_parent_snap_gate \
+    "saveList uses the shared physical shell and must not keep independent scene snap memory." \
+    "recordRouteSceneSheetSettle\\([\\s\\S]{0,180}sceneKey:\\s*'saveList'" \
+    --pcre2 "$app_route_static_scene_descriptor_file"
 else
   echo "[app-route-runtime-delete-gate] PASS save_list_child_snap_is_not_parent_snap_gate"
 fi
@@ -1012,25 +1077,37 @@ favorite_list_detail_route_actions_file="$TARGET_PATH/navigation/runtime/use-fav
 favorite_list_detail_screen_file="$TARGET_PATH/screens/FavoritesListDetail.tsx"
 app_shell_main_navigator_file="$TARGET_PATH/navigation/runtime/AppShellMainNavigator.tsx"
 root_navigation_types_file="$TARGET_PATH/types/navigation.ts"
-if [[ -e "$TARGET_PATH" ]] && rg -q --fixed-strings "navigate('FavoritesListDetail'" "$TARGET_PATH"; then
-  echo "[app-route-runtime-delete-gate] FAIL favorite_list_detail_no_native_navigation_gate: Favorites list detail must open as a parent-scoped route child, not native stack navigation." >&2
-  failures=$((failures + 1))
-elif [[ -e "$TARGET_PATH" ]] && rg -q --fixed-strings 'navigate("FavoritesListDetail"' "$TARGET_PATH"; then
-  echo "[app-route-runtime-delete-gate] FAIL favorite_list_detail_no_native_navigation_gate: Favorites list detail must open as a parent-scoped route child, not native stack navigation." >&2
-  failures=$((failures + 1))
-elif [[ -e "$app_shell_main_navigator_file" ]] && rg -q --fixed-strings "FavoritesListDetail" "$app_shell_main_navigator_file"; then
-  echo "[app-route-runtime-delete-gate] FAIL favorite_list_detail_no_native_navigation_gate: FavoritesListDetail must not be registered as a native stack modal." >&2
-  failures=$((failures + 1))
-elif [[ -e "$root_navigation_types_file" ]] && rg -q --fixed-strings "FavoritesListDetail" "$root_navigation_types_file"; then
-  echo "[app-route-runtime-delete-gate] FAIL favorite_list_detail_no_native_navigation_gate: FavoritesListDetail must not be part of the native root stack params." >&2
-  failures=$((failures + 1))
-else
-  echo "[app-route-runtime-delete-gate] PASS favorite_list_detail_no_native_navigation_gate"
+# Each arm of the former if/elif chain is an independent negative ban sharing one id;
+# routing each through ban_absent (per the compound-arm guidance) gives every arm
+# exit-2 discrimination. A match on any arm fails the gate, as before.
+if [[ -e "$TARGET_PATH" ]]; then
+  ban_absent favorite_list_detail_no_native_navigation_gate \
+    "Favorites list detail must open as a parent-scoped route child, not native stack navigation." \
+    "navigate('FavoritesListDetail'" \
+    --fixed-strings "$TARGET_PATH"
+  ban_absent favorite_list_detail_no_native_navigation_gate \
+    "Favorites list detail must open as a parent-scoped route child, not native stack navigation." \
+    'navigate("FavoritesListDetail"' \
+    --fixed-strings "$TARGET_PATH"
+fi
+if [[ -e "$app_shell_main_navigator_file" ]]; then
+  ban_absent favorite_list_detail_no_native_navigation_gate \
+    "FavoritesListDetail must not be registered as a native stack modal." \
+    "FavoritesListDetail" \
+    --fixed-strings "$app_shell_main_navigator_file"
+fi
+if [[ -e "$root_navigation_types_file" ]]; then
+  ban_absent favorite_list_detail_no_native_navigation_gate \
+    "FavoritesListDetail must not be part of the native root stack params." \
+    "FavoritesListDetail" \
+    --fixed-strings "$root_navigation_types_file"
 fi
 
-if [[ -e "$favorite_list_detail_screen_file" ]] && rg -q --fixed-strings "closeRestaurantRoute(sessionToken)" "$favorite_list_detail_screen_file"; then
-  echo "[app-route-runtime-delete-gate] FAIL favorite_list_detail_hydration_failure_keeps_seed_gate: Favorites list detail restaurant hydration failures must keep the seeded restaurant route open and clear loading, not close the route." >&2
-  failures=$((failures + 1))
+if [[ -e "$favorite_list_detail_screen_file" ]]; then
+  ban_absent favorite_list_detail_hydration_failure_keeps_seed_gate \
+    "Favorites list detail restaurant hydration failures must keep the seeded restaurant route open and clear loading, not close the route." \
+    "closeRestaurantRoute(sessionToken)" \
+    --fixed-strings "$favorite_list_detail_screen_file"
 else
   echo "[app-route-runtime-delete-gate] PASS favorite_list_detail_hydration_failure_keeps_seed_gate"
 fi
@@ -1139,10 +1216,11 @@ else
   echo "[app-route-runtime-delete-gate] PASS android_native_nav_silhouette_parity_gate"
 fi
 
-if [[ -d "$android_native_root" ]] && rg -q --fixed-strings "RestaurantPanelSnapshot" "$android_native_root"; then
-  echo "[app-route-runtime-delete-gate] FAIL android_stale_restaurant_snapshot_view_deleted_gate: Android must not carry the old platform-only restaurant snapshot native view with no shared JS/iOS contract." >&2
-  rg -n --fixed-strings "RestaurantPanelSnapshot" "$android_native_root" >&2
-  failures=$((failures + 1))
+if [[ -d "$android_native_root" ]]; then
+  ban_absent android_stale_restaurant_snapshot_view_deleted_gate \
+    "Android must not carry the old platform-only restaurant snapshot native view with no shared JS/iOS contract." \
+    "RestaurantPanelSnapshot" \
+    --fixed-strings "$android_native_root"
 else
   echo "[app-route-runtime-delete-gate] PASS android_stale_restaurant_snapshot_view_deleted_gate"
 fi
@@ -1206,48 +1284,47 @@ else
 fi
 
 surface_enter_transaction_file="$TARGET_PATH/screens/Search/runtime/shared/use-search-surface-results-enter-transaction-execution-runtime.ts"
-if [[ -e "$surface_enter_transaction_file" ]] && rg -q --pcre2 '(requestLocalSheetMotion|animateSheetTo|snapSheetTo)\b' "$surface_enter_transaction_file"; then
-  echo "[app-route-runtime-delete-gate] FAIL search_results_enter_bypass_visibility_controller: Results enter must publish a SheetTransitionPlan instead of calling sheet motion directly." >&2
-  rg -n --pcre2 '(requestLocalSheetMotion|animateSheetTo|snapSheetTo)\b' "$surface_enter_transaction_file" >&2
-  failures=$((failures + 1))
+if [[ -e "$surface_enter_transaction_file" ]]; then
+  ban_absent search_results_enter_bypass_visibility_controller \
+    "Results enter must publish a SheetTransitionPlan instead of calling sheet motion directly." \
+    '(requestLocalSheetMotion|animateSheetTo|snapSheetTo)\b' \
+    --pcre2 "$surface_enter_transaction_file"
 else
   echo "[app-route-runtime-delete-gate] PASS search_results_enter_bypass_visibility_controller"
 fi
 
-if rg -q --pcre2 '\b(resultsSheetExecutionModel|ResultsSheetExecutionModel|requestResultsSheetMotion|hideResultsSheet|useResultsPresentationSheetExecutionRuntime|useResultsPresentationOwnerSheetExecutionStateRuntime)\b' "$TARGET_PATH/navigation" "$TARGET_PATH/screens" "$TARGET_PATH/overlays" 2>/dev/null; then
-  echo "[app-route-runtime-delete-gate] FAIL stale_results_sheet_execution_lane_deleted_gate: Results sheet execution lanes must not reintroduce page-owned sheet motion." >&2
-  rg -n --pcre2 '\b(resultsSheetExecutionModel|ResultsSheetExecutionModel|requestResultsSheetMotion|hideResultsSheet|useResultsPresentationSheetExecutionRuntime|useResultsPresentationOwnerSheetExecutionStateRuntime)\b' "$TARGET_PATH/navigation" "$TARGET_PATH/screens" "$TARGET_PATH/overlays" >&2
-  failures=$((failures + 1))
-else
-  echo "[app-route-runtime-delete-gate] PASS stale_results_sheet_execution_lane_deleted_gate"
-fi
+ban_absent stale_results_sheet_execution_lane_deleted_gate \
+  "Results sheet execution lanes must not reintroduce page-owned sheet motion." \
+  '\b(resultsSheetExecutionModel|ResultsSheetExecutionModel|requestResultsSheetMotion|hideResultsSheet|useResultsPresentationSheetExecutionRuntime|useResultsPresentationOwnerSheetExecutionStateRuntime)\b' \
+  --pcre2 "$TARGET_PATH/navigation" "$TARGET_PATH/screens" "$TARGET_PATH/overlays"
 
 surface_transaction_file="$TARGET_PATH/screens/Search/runtime/shared/use-results-presentation-surface-transaction-runtime.ts"
-if [[ -e "$surface_transaction_file" ]] && rg -q --pcre2 'markRedrawMarkersReady\(' "$surface_transaction_file"; then
-  echo "[app-route-runtime-delete-gate] FAIL search_results_surface_marks_marker_ready: Results surface transactions must wait for the native mounted-hidden marker acknowledgement." >&2
-  rg -n --pcre2 'markRedrawMarkersReady\(' "$surface_transaction_file" >&2
-  failures=$((failures + 1))
+if [[ -e "$surface_transaction_file" ]]; then
+  ban_absent search_results_surface_marks_marker_ready \
+    "Results surface transactions must wait for the native mounted-hidden marker acknowledgement." \
+    'markRedrawMarkersReady\(' \
+    --pcre2 "$surface_transaction_file"
 else
   echo "[app-route-runtime-delete-gate] PASS search_results_surface_marks_marker_ready"
 fi
 
-if rg -q --pcre2 '\b(requestMiddleSheetSnap|requestResultsSheetSnap|pollCreationSnapRequest|requestRouteScenePollCreationExpand|setPollCreationSnapRequest|requestRouteSceneDockedPollsRestore|restaurantSheetSnapController|resultsSheetCommand|executeAndStripNativeSheetCommands|executeAndStripNativeProfileSheetCommands)\b' "$TARGET_PATH/navigation" "$TARGET_PATH/screens" "$TARGET_PATH/overlays" 2>/dev/null; then
-  echo "[app-route-runtime-delete-gate] FAIL shared_sheet_motion_old_writers_deleted_gate: Profile/results/polls local snap writers and native sheet command lanes must not return; sheet motion is route transition-plan owned." >&2
-  rg -n --pcre2 '\b(requestMiddleSheetSnap|requestResultsSheetSnap|pollCreationSnapRequest|requestRouteScenePollCreationExpand|setPollCreationSnapRequest|requestRouteSceneDockedPollsRestore|restaurantSheetSnapController|resultsSheetCommand|executeAndStripNativeSheetCommands|executeAndStripNativeProfileSheetCommands)\b' "$TARGET_PATH/navigation" "$TARGET_PATH/screens" "$TARGET_PATH/overlays" >&2
-  failures=$((failures + 1))
-else
-  echo "[app-route-runtime-delete-gate] PASS shared_sheet_motion_old_writers_deleted_gate"
-fi
+ban_absent shared_sheet_motion_old_writers_deleted_gate \
+  "Profile/results/polls local snap writers and native sheet command lanes must not return; sheet motion is route transition-plan owned." \
+  '\b(requestMiddleSheetSnap|requestResultsSheetSnap|pollCreationSnapRequest|requestRouteScenePollCreationExpand|setPollCreationSnapRequest|requestRouteSceneDockedPollsRestore|restaurantSheetSnapController|resultsSheetCommand|executeAndStripNativeSheetCommands|executeAndStripNativeProfileSheetCommands)\b' \
+  --pcre2 "$TARGET_PATH/navigation" "$TARGET_PATH/screens" "$TARGET_PATH/overlays"
 
-if rg -q --fixed-strings "snapPersistenceKey" "$TARGET_PATH/navigation" "$TARGET_PATH/screens" "$TARGET_PATH/overlays" 2>/dev/null ||
-   rg -q -U --pcre2 "normalizeSearchRouteSceneStackShellSpec\\(\\{[\\s\\S]{0,700}\\b(initialSnapPoint|dismissThreshold|onHidden|onSnapStart|onSnapChange|preventSwipeDismiss|runtimeModel|shellSnapRequest)\\b" "$TARGET_PATH/navigation" "$TARGET_PATH/screens" "$TARGET_PATH/overlays" 2>/dev/null; then
-  echo "[app-route-runtime-delete-gate] FAIL shared_sheet_page_owned_motion_fields_deleted_gate: Scene descriptors must not publish snap persistence, initial snap, swipe-dismiss config, sheet callbacks, runtime model, or direct sheet commands; SheetScenePolicy and SheetTransitionPlan own those fields." >&2
-  rg -n --fixed-strings "snapPersistenceKey" "$TARGET_PATH/navigation" "$TARGET_PATH/screens" "$TARGET_PATH/overlays" >&2 || true
-  rg -n -U --pcre2 "normalizeSearchRouteSceneStackShellSpec\\(\\{[\\s\\S]{0,700}\\b(initialSnapPoint|dismissThreshold|onHidden|onSnapStart|onSnapChange|preventSwipeDismiss|runtimeModel|shellSnapRequest)\\b" "$TARGET_PATH/navigation" "$TARGET_PATH/screens" "$TARGET_PATH/overlays" >&2 || true
-  failures=$((failures + 1))
-else
-  echo "[app-route-runtime-delete-gate] PASS shared_sheet_page_owned_motion_fields_deleted_gate"
-fi
+# Compound OR ban: each arm has its own pattern and flags, so each is routed
+# through ban_absent separately (per the compound-arm guidance). A match on
+# EITHER arm fails the gate; an invalid regex in either arm now surfaces as a
+# FAIL instead of a silent green.
+ban_absent shared_sheet_page_owned_motion_fields_deleted_gate \
+  "Scene descriptors must not publish snap persistence, initial snap, swipe-dismiss config, sheet callbacks, runtime model, or direct sheet commands; SheetScenePolicy and SheetTransitionPlan own those fields." \
+  "snapPersistenceKey" \
+  --fixed-strings "$TARGET_PATH/navigation" "$TARGET_PATH/screens" "$TARGET_PATH/overlays"
+ban_absent shared_sheet_page_owned_motion_fields_deleted_gate \
+  "Scene descriptors must not publish snap persistence, initial snap, swipe-dismiss config, sheet callbacks, runtime model, or direct sheet commands; SheetScenePolicy and SheetTransitionPlan own those fields." \
+  "normalizeSearchRouteSceneStackShellSpec\\(\\{[\\s\\S]{0,700}\\b(initialSnapPoint|dismissThreshold|onHidden|onSnapStart|onSnapChange|preventSwipeDismiss|runtimeModel|shellSnapRequest)\\b" \
+  -U --pcre2 "$TARGET_PATH/navigation" "$TARGET_PATH/screens" "$TARGET_PATH/overlays"
 
 profile_native_sheet_transport_file="$TARGET_PATH/screens/Search/runtime/profile/profile-presentation-native-sheet-transport.ts"
 profile_owner_native_view_file="$TARGET_PATH/screens/Search/runtime/profile/profile-owner-native-view-runtime.ts"
@@ -1268,53 +1345,35 @@ else
   echo "[app-route-runtime-delete-gate] PASS profile_native_sheet_command_lane_deleted_gate"
 fi
 
-if rg -q --pcre2 "\\brequestLocalSheetMotion\\b|\\bpendingLocalSheetMotion\\b|\\breplayPendingLocalSheetMotion\\b|\\brequestBootstrapSheetMotion\\b" "$TARGET_PATH/navigation" "$TARGET_PATH/screens" "$TARGET_PATH/overlays" 2>/dev/null; then
-  echo "[app-route-runtime-delete-gate] FAIL page_local_motion_writer_deleted_gate: Sheet motion must be SheetTransitionPlan-owned; page/local and direct bootstrap sheet-motion writers must not return." >&2
-  rg -n --pcre2 "\\brequestLocalSheetMotion\\b|\\bpendingLocalSheetMotion\\b|\\breplayPendingLocalSheetMotion\\b|\\brequestBootstrapSheetMotion\\b" "$TARGET_PATH/navigation" "$TARGET_PATH/screens" "$TARGET_PATH/overlays" >&2
-  failures=$((failures + 1))
-else
-  echo "[app-route-runtime-delete-gate] PASS page_local_motion_writer_deleted_gate"
-fi
+ban_absent page_local_motion_writer_deleted_gate \
+  "Sheet motion must be SheetTransitionPlan-owned; page/local and direct bootstrap sheet-motion writers must not return." \
+  "\\brequestLocalSheetMotion\\b|\\bpendingLocalSheetMotion\\b|\\breplayPendingLocalSheetMotion\\b|\\brequestBootstrapSheetMotion\\b" \
+  --pcre2 "$TARGET_PATH/navigation" "$TARGET_PATH/screens" "$TARGET_PATH/overlays"
 
-if rg -q --pcre2 "\\bsetSheetTranslateYTo\\b|\\bsheetTranslateY\\.value\\s*=" "$TARGET_PATH/navigation/runtime" "$TARGET_PATH/screens/Search/runtime/shared" 2>/dev/null; then
-  echo "[app-route-runtime-delete-gate] FAIL route_sheet_direct_y_writer_gate: Shared sheet Y must be written by the sheet host/bottom-sheet transport, not page or visibility runtimes." >&2
-  rg -n --pcre2 "\\bsetSheetTranslateYTo\\b|\\bsheetTranslateY\\.value\\s*=" "$TARGET_PATH/navigation/runtime" "$TARGET_PATH/screens/Search/runtime/shared" >&2
-  failures=$((failures + 1))
-else
-  echo "[app-route-runtime-delete-gate] PASS route_sheet_direct_y_writer_gate"
-fi
+ban_absent route_sheet_direct_y_writer_gate \
+  "Shared sheet Y must be written by the sheet host/bottom-sheet transport, not page or visibility runtimes." \
+  "\\bsetSheetTranslateYTo\\b|\\bsheetTranslateY\\.value\\s*=" \
+  --pcre2 "$TARGET_PATH/navigation/runtime" "$TARGET_PATH/screens/Search/runtime/shared"
 
-if rg -q --pcre2 "\\b(AppRouteResultsSheet|appRouteResultsSheet|RouteResultsSheet|routeResultsSheet)\\b|app-route-results-sheet|route-results-sheet|\\b(resultsSheetRuntimeModel|resultsContainerAnimatedStyle|resultsScrollOffset|resultsMomentum|shouldRenderResultsSheetRef|resetResultsSheetToHidden|prepareShortcutSheetTransition|handleSheetSnapChange)\\b" "$TARGET_PATH/navigation/runtime" "$TARGET_PATH/screens/Search/runtime/shared" 2>/dev/null; then
-  echo "[app-route-runtime-delete-gate] FAIL shared_sheet_legacy_results_name_gate: Route-owned shared sheet runtime must not use legacy results-sheet ownership names." >&2
-  rg -n --pcre2 "\\b(AppRouteResultsSheet|appRouteResultsSheet|RouteResultsSheet|routeResultsSheet)\\b|app-route-results-sheet|route-results-sheet|\\b(resultsSheetRuntimeModel|resultsContainerAnimatedStyle|resultsScrollOffset|resultsMomentum|shouldRenderResultsSheetRef|resetResultsSheetToHidden|prepareShortcutSheetTransition|handleSheetSnapChange)\\b" "$TARGET_PATH/navigation/runtime" "$TARGET_PATH/screens/Search/runtime/shared" >&2
-  failures=$((failures + 1))
-else
-  echo "[app-route-runtime-delete-gate] PASS shared_sheet_legacy_results_name_gate"
-fi
+ban_absent shared_sheet_legacy_results_name_gate \
+  "Route-owned shared sheet runtime must not use legacy results-sheet ownership names." \
+  "\\b(AppRouteResultsSheet|appRouteResultsSheet|RouteResultsSheet|routeResultsSheet)\\b|app-route-results-sheet|route-results-sheet|\\b(resultsSheetRuntimeModel|resultsContainerAnimatedStyle|resultsScrollOffset|resultsMomentum|shouldRenderResultsSheetRef|resetResultsSheetToHidden|prepareShortcutSheetTransition|handleSheetSnapChange)\\b" \
+  --pcre2 "$TARGET_PATH/navigation/runtime" "$TARGET_PATH/screens/Search/runtime/shared"
 
-if rg -q --pcre2 "\\b(fallbackRuntimeModel|fallbackSheetY|fallbackSheetRuntimeModel|baseRuntimeModel|baseSheetY|FALLBACK_PRESENTATION_STATE|FALLBACK_CHROME_VISUAL_STATE)\\b" "$TARGET_PATH/navigation/runtime/AppRouteSheetHostRuntimeProvider.tsx" "$TARGET_PATH/navigation/runtime/use-app-route-sheet-frame-host-authority.ts" "$TARGET_PATH/navigation/runtime/app-route-sheet-frame-host-native-targets.ts" "$TARGET_PATH/navigation/runtime/app-route-sheet-host-authority-controller.ts" "$TARGET_PATH/screens/Search/runtime/shared/search-route-sheet-resolved-visual-selection-snapshot-contract.ts" 2>/dev/null; then
-  echo "[app-route-runtime-delete-gate] FAIL sheet_host_base_transport_fallback_name_gate: The sheet host must use the shared sheet runtime directly, with no compatibility fallback/base transport naming." >&2
-  rg -n --pcre2 "\\b(fallbackRuntimeModel|fallbackSheetY|fallbackSheetRuntimeModel|baseRuntimeModel|baseSheetY|FALLBACK_PRESENTATION_STATE|FALLBACK_CHROME_VISUAL_STATE)\\b" "$TARGET_PATH/navigation/runtime/AppRouteSheetHostRuntimeProvider.tsx" "$TARGET_PATH/navigation/runtime/use-app-route-sheet-frame-host-authority.ts" "$TARGET_PATH/navigation/runtime/app-route-sheet-frame-host-native-targets.ts" "$TARGET_PATH/navigation/runtime/app-route-sheet-host-authority-controller.ts" "$TARGET_PATH/screens/Search/runtime/shared/search-route-sheet-resolved-visual-selection-snapshot-contract.ts" >&2
-  failures=$((failures + 1))
-else
-  echo "[app-route-runtime-delete-gate] PASS sheet_host_base_transport_fallback_name_gate"
-fi
+ban_absent sheet_host_base_transport_fallback_name_gate \
+  "The sheet host must use the shared sheet runtime directly, with no compatibility fallback/base transport naming." \
+  "\\b(fallbackRuntimeModel|fallbackSheetY|fallbackSheetRuntimeModel|baseRuntimeModel|baseSheetY|FALLBACK_PRESENTATION_STATE|FALLBACK_CHROME_VISUAL_STATE)\\b" \
+  --pcre2 "$TARGET_PATH/navigation/runtime/AppRouteSheetHostRuntimeProvider.tsx" "$TARGET_PATH/navigation/runtime/use-app-route-sheet-frame-host-authority.ts" "$TARGET_PATH/navigation/runtime/app-route-sheet-frame-host-native-targets.ts" "$TARGET_PATH/navigation/runtime/app-route-sheet-host-authority-controller.ts" "$TARGET_PATH/screens/Search/runtime/shared/search-route-sheet-resolved-visual-selection-snapshot-contract.ts"
 
-if rg -q --pcre2 "\\bmotionCallbacksEntry\\.onSnapChange\\b|\\brecordSharedSheetSnap\\b" "$TARGET_PATH/screens/Search/runtime/shared" 2>/dev/null; then
-  echo "[app-route-runtime-delete-gate] FAIL search_runtime_sheet_snap_commit_gate: Search may observe dismiss boundaries, but shared sheet snap state must be published by the sheet host/transport." >&2
-  rg -n --pcre2 "\\bmotionCallbacksEntry\\.onSnapChange\\b|\\brecordSharedSheetSnap\\b" "$TARGET_PATH/screens/Search/runtime/shared" >&2
-  failures=$((failures + 1))
-else
-  echo "[app-route-runtime-delete-gate] PASS search_runtime_sheet_snap_commit_gate"
-fi
+ban_absent search_runtime_sheet_snap_commit_gate \
+  "Search may observe dismiss boundaries, but shared sheet snap state must be published by the sheet host/transport." \
+  "\\bmotionCallbacksEntry\\.onSnapChange\\b|\\brecordSharedSheetSnap\\b" \
+  --pcre2 "$TARGET_PATH/screens/Search/runtime/shared"
 
-if rg -q --fixed-strings "completeRouteSceneSwitchFromSettle" "$TARGET_PATH/navigation/runtime" 2>/dev/null; then
-  echo "[app-route-runtime-delete-gate] FAIL route_scene_raw_settle_finalize_gate: Raw settle callbacks must only mark transition planes ready; they must not directly finalize route switches." >&2
-  rg -n --fixed-strings "completeRouteSceneSwitchFromSettle" "$TARGET_PATH/navigation/runtime" >&2
-  failures=$((failures + 1))
-else
-  echo "[app-route-runtime-delete-gate] PASS route_scene_raw_settle_finalize_gate"
-fi
+ban_absent route_scene_raw_settle_finalize_gate \
+  "Raw settle callbacks must only mark transition planes ready; they must not directly finalize route switches." \
+  "completeRouteSceneSwitchFromSettle" \
+  --fixed-strings "$TARGET_PATH/navigation/runtime"
 
 close_transition_finalize_file="$TARGET_PATH/screens/Search/runtime/shared/use-results-presentation-close-transition-finalize-runtime.ts"
 complete_dismiss_handoff_extra_callers="$(
@@ -1334,40 +1393,37 @@ else
 fi
 
 sheet_snap_session_file="$TARGET_PATH/navigation/runtime/app-route-sheet-snap-session-runtime.ts"
-if [[ -e "$sheet_snap_session_file" ]] &&
-   rg -q --pcre2 "\\b(routeSceneSwitchActions|routeSceneTransitionAuthority|returnToDockedSearch|requestOverlaySwitch|clearDockedPollsRestoreIntent)\\b" "$sheet_snap_session_file" 2>/dev/null; then
-  echo "[app-route-runtime-delete-gate] FAIL route_sheet_snap_session_fact_only_gate: Sheet snap session may record snap facts and atomic snap-session state, but must not issue route/transition commands." >&2
-  rg -n --pcre2 "\\b(routeSceneSwitchActions|routeSceneTransitionAuthority|returnToDockedSearch|requestOverlaySwitch|clearDockedPollsRestoreIntent)\\b" "$sheet_snap_session_file" >&2
-  failures=$((failures + 1))
+if [[ -e "$sheet_snap_session_file" ]]; then
+  ban_absent route_sheet_snap_session_fact_only_gate \
+    "Sheet snap session may record snap facts and atomic snap-session state, but must not issue route/transition commands." \
+    "\\b(routeSceneSwitchActions|routeSceneTransitionAuthority|returnToDockedSearch|requestOverlaySwitch|clearDockedPollsRestoreIntent)\\b" \
+    --pcre2 "$sheet_snap_session_file"
 else
   echo "[app-route-runtime-delete-gate] PASS route_sheet_snap_session_fact_only_gate"
 fi
 
-if [[ -e "$sheet_host_authority_file" ]] &&
-   rg -q --pcre2 "recordRouteSceneSnapFact[\\s\\S]{0,1400}\\b(requestOverlaySwitch|handleCloseSaveSheet|returnAppSearchRouteToDockedSearch)\\b" "$sheet_host_authority_file" 2>/dev/null; then
-  echo "[app-route-runtime-delete-gate] FAIL route_sheet_host_snap_fact_command_gate: Host snap facts may update snap-session facts/readiness, but must not directly issue route commands from the raw snap callback." >&2
-  rg -n --pcre2 "recordRouteSceneSnapFact|requestOverlaySwitch|handleCloseSaveSheet|returnAppSearchRouteToDockedSearch" "$sheet_host_authority_file" >&2
-  failures=$((failures + 1))
+if [[ -e "$sheet_host_authority_file" ]]; then
+  ban_absent route_sheet_host_snap_fact_command_gate \
+    "Host snap facts may update snap-session facts/readiness, but must not directly issue route commands from the raw snap callback." \
+    "recordRouteSceneSnapFact[\\s\\S]{0,1400}\\b(requestOverlaySwitch|handleCloseSaveSheet|returnAppSearchRouteToDockedSearch)\\b" \
+    --pcre2 "$sheet_host_authority_file"
 else
   echo "[app-route-runtime-delete-gate] PASS route_sheet_host_snap_fact_command_gate"
 fi
 
-if [[ -d "$TARGET_PATH/overlays/panels" ]] &&
-   rg -q --pcre2 "\\brouteSceneSwitchRuntime\\.requestOverlaySwitch\\b|\\brouteOverlayTransitionActions\\.requestOverlaySwitch\\b" "$TARGET_PATH/overlays/panels" 2>/dev/null; then
-  echo "[app-route-runtime-delete-gate] FAIL panel_direct_sheet_transition_gate: Panel content must use route command actions, not direct SheetTransitionPlan dispatch." >&2
-  rg -n --pcre2 "\\brouteSceneSwitchRuntime\\.requestOverlaySwitch\\b|\\brouteOverlayTransitionActions\\.requestOverlaySwitch\\b" "$TARGET_PATH/overlays/panels" >&2
-  failures=$((failures + 1))
+if [[ -d "$TARGET_PATH/overlays/panels" ]]; then
+  ban_absent panel_direct_sheet_transition_gate \
+    "Panel content must use route command actions, not direct SheetTransitionPlan dispatch." \
+    "\\brouteSceneSwitchRuntime\\.requestOverlaySwitch\\b|\\brouteOverlayTransitionActions\\.requestOverlaySwitch\\b" \
+    --pcre2 "$TARGET_PATH/overlays/panels"
 else
   echo "[app-route-runtime-delete-gate] PASS panel_direct_sheet_transition_gate"
 fi
 
-if rg -q --pcre2 "requestOverlaySwitch\\(\\{[\\s\\S]{0,520}\\bsheetMotion\\b" "$TARGET_PATH/screens" "$TARGET_PATH/overlays" 2>/dev/null; then
-  echo "[app-route-runtime-delete-gate] FAIL page_direct_sheet_transition_plan_gate: Page/runtime code must use route command actions for transitions that move the shared sheet." >&2
-  rg -n --pcre2 "requestOverlaySwitch\\(\\{[\\s\\S]{0,520}\\bsheetMotion\\b" "$TARGET_PATH/screens" "$TARGET_PATH/overlays" >&2
-  failures=$((failures + 1))
-else
-  echo "[app-route-runtime-delete-gate] PASS page_direct_sheet_transition_plan_gate"
-fi
+ban_absent page_direct_sheet_transition_plan_gate \
+  "Page/runtime code must use route command actions for transitions that move the shared sheet." \
+  "requestOverlaySwitch\\(\\{[\\s\\S]{0,520}\\bsheetMotion\\b" \
+  --pcre2 "$TARGET_PATH/screens" "$TARGET_PATH/overlays"
 
 transition_contract_file="$TARGET_PATH/navigation/runtime/app-overlay-route-transition-contract.ts"
 transition_policy_file="$TARGET_PATH/navigation/runtime/app-route-scene-transition-policy-runtime.ts"
@@ -1384,10 +1440,11 @@ else
 fi
 
 native_render_owner_file="$TARGET_PATH/screens/Search/components/hooks/use-search-map-native-render-owner.ts"
-if [[ -e "$native_render_owner_file" ]] && rg -q --pcre2 'shouldQueueNativeEnterMountAckFrame[\\s\\S]{0,320}residentSourceDataMatchesPreparedFrame' "$native_render_owner_file"; then
-  echo "[app-route-runtime-delete-gate] FAIL search_native_enter_ack_not_bound_to_resident_cache_match: Same-data results enter must still queue a native mounted-hidden acknowledgement when resident-source metadata is stale." >&2
-  rg -n --pcre2 'shouldQueueNativeEnterMountAckFrame|residentSourceDataMatchesPreparedFrame' "$native_render_owner_file" >&2
-  failures=$((failures + 1))
+if [[ -e "$native_render_owner_file" ]]; then
+  ban_absent search_native_enter_ack_not_bound_to_resident_cache_match \
+    "Same-data results enter must still queue a native mounted-hidden acknowledgement when resident-source metadata is stale." \
+    'shouldQueueNativeEnterMountAckFrame[\\s\\S]{0,320}residentSourceDataMatchesPreparedFrame' \
+    --pcre2 "$native_render_owner_file"
 else
   echo "[app-route-runtime-delete-gate] PASS search_native_enter_ack_not_bound_to_resident_cache_match"
 fi

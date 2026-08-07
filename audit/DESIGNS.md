@@ -4040,3 +4040,71 @@ the exercise's signature, so fixed on sight. GATE is local-only; no CI wiring ch
 **Attempt 4 is NOT clean: F8700 found + fixed. api tail + mobile tail + the rest of
 the gate/shared layer returned zero. Attempt 5 is the next full pass; it must return
 zero to be the first clean pass, then a second consecutive zero for DONE.**
+
+---
+
+## D132 — F8800: app-route delete-gate standalone bans hardened; compound presence+ban arms residual (2026-08-07)
+
+P3 lane implemented; I verified. Added a `command -v rg` precondition + a
+`ban_absent` helper that captures rg status and discriminates 0→match-fail /
+1→pass / 2→invalid-pattern-fail / other→tool-broke-fail — the SAME discipline the
+file's own CONTENT_CHECKS loop (:499-513) already uses. Routed 24 standalone
+negative-ban blocks through it (32 call sites incl. multi-arm), preserving every
+id, description, scan path, pcre2/fixed-strings flag, and the `[[ -e ]]`/`[[ -d ]]`
+existence guards (target absent = ban vacuously satisfied).
+
+VERIFIED (not trusted): re-ran HEAD vs new BOTH from repo root (first attempt was
+invalid — cwd/script-dir drift made the /tmp HEAD copy resolve TARGET_PATH to /tmp
+and emit zero verdicts, the CLAUDE.md trap). Correct comparison: HEAD 322 PASS/0
+FAIL, new 326 PASS/0 FAIL, verdict-ID SET identical (the +4 are duplicate PASS
+emissions from multi-arm blocks, no id flipped, 0 FAIL both). Mutation-proven
+myself: injecting an unbalanced `[` into a routed pattern now yields
+`FAIL stale_results_sheet_execution_lane_deleted_gate: invalid pattern` exit 1
+(was a silent PASS); rg-absent → precondition FAIL exit 1.
+
+RESIDUAL (PARTIAL, honestly recorded): ~11 MIXED presence+ban compound blocks of
+the shape `{ ! rg -q <must-exist> || rg -q <must-be-absent>; }` were left as-is —
+the P3 brief scoped them out as presence-primary. Their presence arm fails CLOSED
+on exit-2 (`! rg` of a nonzero exit is true → FAIL), but their BAN arm still
+swallows exit-2 the same way the standalone blocks did. So a rotted regex in one
+of those embedded ban arms is still a silent pass. Not closed here; folded into
+the F8900 escalation below because the clean fix is the shared mechanism, not more
+per-arm hand-routing.
+
+## D133 — ESCALATION F8900: the tool-absence-swallow class has recurred in FOUR gates; the fix is a shared mechanism, which is layer-wide (2026-08-07)
+
+DEFECT (class, not instance): `if rg …; then` / `nm|strings|rg … | grep -c … ||
+true` reads a tool's exit 2 (invalid regex) or 127 (absent) as "no match → PASS."
+Found and fixed instance-by-instance: F8500 (two delete-gates), F8700 (ios-camera
+nm/strings), F8800 (app-route standalone bans) — plus the F8800 residual (compound
+presence+ban arms). Four gates, one disease.
+
+BEDROCK: a check that shells out to a tool must distinguish "tool ran, found none"
+(pass) from "tool could not run / pattern invalid" (fail). Every fix so far adds
+that discrimination LOCALLY (a per-file helper). The ladder red-team: a caller can
+still forget — the FIFTH gate author writes `if rg …; then` again and nothing
+stops them. Local helpers are convention, not a guarantee.
+
+THE MECHANISM that makes it impossible (options):
+  (a) A shared `scripts/lib/gate-scan.sh` sourced by every gate, exporting the
+      blessed `ban_absent`/`require_present`/`count_matches` helpers (which already
+      exist, copy-pasted, in 3+ gates), PLUS a conformance gate asserting no gate
+      calls `rg`/`grep -c`/`nm`/`strings` inline outside the lib. This makes the
+      swallow unrepresentable: you cannot write the bad shape because you must go
+      through the lib, and the conformance gate reds if you try.
+  (b) A source-scanner-only gate (no lib) that greps every scripts/**/*.sh for the
+      swallow signatures and requires a `command -v <tool>` precondition — cheaper,
+      but higher false-positive (must model each gate's precondition structure) and
+      it catches 127, not the per-pattern exit-2.
+COST: (a) is LAYER-WIDE — edits ~10 gate files to source the lib and delete their
+local helper copies, plus a new conformance gate; risk of collision with other
+sessions and of subtly changing a gate's behavior during the extraction. (b) is one
+new gate but weaker and noisier.
+RECOMMENDATION: (a) — it is the only shape that makes the class unrepresentable and
+it DELETES the duplicated helper bodies (a net simplification), which is the
+mandate's preferred direction. But it is layer-wide and touches CI-wired gates, so
+per the ESCALATE rule (layer-wide rewrites) it is the OWNER's call to greenlight,
+not mine to execute unilaterally. Closing the F8800 residual is subsumed by (a).
+ESCALATED — awaiting owner. Meanwhile the class is drained instance-by-instance
+(4 gates done) and no live breach exists (all patterns valid, all tools present in
+CI today; these are holes in the fence, not breaches — the F7902 framing).
