@@ -4,7 +4,6 @@ import { createAppRouteSheetHostAuthorityController } from './app-route-sheet-ho
 import type { AppRouteSheetHostRuntimeOwner } from './app-route-sheet-host-runtime-contract';
 import type { AppRouteSceneRuntime } from './app-route-scene-runtime';
 import { useAppRouteSharedSheetRuntimeOwner } from './AppRouteSharedSheetRuntimeProvider';
-import { useAppRouteSheetFrameHostAuthority } from './use-app-route-sheet-frame-host-authority';
 
 const AppRouteSheetHostRuntimeContext = React.createContext<AppRouteSheetHostRuntimeOwner | null>(
   null
@@ -28,12 +27,6 @@ const AppRouteSheetHostNativeRuntimeBinder = React.memo(
   }) {
     const sharedSheetRuntimeOwner = useAppRouteSharedSheetRuntimeOwner();
     const sharedSheetRuntimeModel = sharedSheetRuntimeOwner.sharedSheetRuntimeModel;
-    // Drives the native shared values + chrome-visual animated reactions. It publishes no
-    // snapshot lane of its own (F1371: the sheet-clip frame authority it used to return was a
-    // constant `null`, left over from the clip that 1ce800846 deleted).
-    useAppRouteSheetFrameHostAuthority({
-      nativeAdapterAuthority: routeSheetHostAuthorityRuntime.nativeAdapterAuthority,
-    });
 
     React.useLayoutEffect(() => {
       routeSheetHostAuthorityRuntime.setNativeRuntime({

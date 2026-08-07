@@ -63,11 +63,6 @@ import {
   type AppRouteSheetHostSurfaceSnapshot,
   type AppRouteSheetHostSurfaceBodySnapshot,
 } from './app-route-sheet-host-surface-runtime-contract';
-import type { SearchRouteSheetFrameHostInput } from './search-route-sheet-surface-state-runtime-contract';
-import {
-  syncSheetFrameHostNativeSharedValues,
-  type AppRouteSheetFrameHostNativeSharedValues,
-} from './app-route-sheet-frame-host-native-targets';
 import { resolveAppRouteSheetScenePolicy } from './app-route-scene-policy-registry';
 import { getSceneFoundationSpec } from './scene-foundation-spec';
 import { setOverlaySheetSceneSnapLock } from '../../overlays/overlaySheetSceneSnapLockRuntime';
@@ -88,19 +83,6 @@ type SelectorListenerRecord<TSnapshot> = {
 };
 
 type SheetRuntimeModel = BottomSheetRuntimeModel;
-
-export type AppRouteSheetHostNativeAdapterSnapshot = {
-  presentationStateOverride: BottomSheetRuntimeModel['presentationState'];
-  initialSheetY: number;
-  frameHostInput: SearchRouteSheetFrameHostInput;
-  chromeVisualState: SearchRouteSceneStackChromeVisualState | null;
-};
-
-export type AppRouteSheetHostNativeAdapterAuthority = {
-  subscribe: (listener: Listener) => () => void;
-  getSnapshot: () => AppRouteSheetHostNativeAdapterSnapshot;
-  registerSharedValues: (values: AppRouteSheetFrameHostNativeSharedValues) => () => void;
-};
 
 type AppRouteSheetHostNativeRuntimeInput = {
   sharedRuntimeModel: BottomSheetRuntimeModel;
@@ -218,7 +200,6 @@ const resolvePresentationFrameSource = (
 };
 
 export type AppRouteSheetHostAuthorityControllerRuntime = {
-  nativeAdapterAuthority: AppRouteSheetHostNativeAdapterAuthority;
   routeSheetMotionRuntimeAuthority: AppRouteSheetHostMotionRuntimeAuthority;
   routeSheetRuntimeConfigAuthority: AppRouteSheetHostRuntimeConfigAuthority;
   routeSheetSurfaceBodyAuthority: AppRouteSheetHostSurfaceBodyAuthority;
@@ -243,12 +224,6 @@ const EMPTY_ROUTE_SHEET_SHELL_SPEC: NonNullable<SearchRouteSceneStackFrameEntry[
 const EMPTY_ACTIVE_SCENE_FRAME_ENTRY: SearchRouteSceneStackFrameEntry = {
   sceneKey: 'sheetHost',
   shellSpec: EMPTY_ROUTE_SHEET_SHELL_SPEC,
-};
-
-const EMPTY_PRESENTATION_STATE: SearchRouteSceneStackPresentationState = {
-  sheetTranslateY: EMPTY_SEARCH_ROUTE_VISUAL_STATE.sheetTranslateY,
-  sheetScrollOffset: EMPTY_SEARCH_ROUTE_VISUAL_STATE.sheetScrollOffset,
-  sheetMomentum: EMPTY_SEARCH_ROUTE_VISUAL_STATE.sheetMomentum,
 };
 
 const EMPTY_RUNTIME_CONFIG_SNAPSHOT: BottomSheetSharedRuntimeConfigSnapshot = {
@@ -351,46 +326,6 @@ const resolveSharedSheetInteractionPolicy = ({
     preventSwipeDismiss: !scenePolicy.canSwipeDismiss,
   };
 };
-
-const areNativeAdapterSnapshotsEqual = (
-  left: AppRouteSheetHostNativeAdapterSnapshot,
-  right: AppRouteSheetHostNativeAdapterSnapshot
-): boolean =>
-  left.presentationStateOverride.sheetY === right.presentationStateOverride.sheetY &&
-  left.presentationStateOverride.scrollOffset === right.presentationStateOverride.scrollOffset &&
-  left.presentationStateOverride.momentumFlag === right.presentationStateOverride.momentumFlag &&
-  left.initialSheetY === right.initialSheetY &&
-  left.frameHostInput.activeSemanticOverlayKey === right.frameHostInput.activeSemanticOverlayKey &&
-  left.frameHostInput.overlaySheetPolicy === right.frameHostInput.overlaySheetPolicy &&
-  left.frameHostInput.expandedSnapPoint === right.frameHostInput.expandedSnapPoint &&
-  left.frameHostInput.middleSnapPoint === right.frameHostInput.middleSnapPoint &&
-  left.frameHostInput.collapsedSnapPoint === right.frameHostInput.collapsedSnapPoint &&
-  left.frameHostInput.sheetY === right.frameHostInput.sheetY &&
-  left.chromeVisualState === right.chromeVisualState;
-
-const shouldNotifyNativeAdapterListeners = (
-  left: AppRouteSheetHostNativeAdapterSnapshot,
-  right: AppRouteSheetHostNativeAdapterSnapshot
-): boolean =>
-  left.presentationStateOverride.sheetY !== right.presentationStateOverride.sheetY ||
-  left.presentationStateOverride.scrollOffset !== right.presentationStateOverride.scrollOffset ||
-  left.presentationStateOverride.momentumFlag !== right.presentationStateOverride.momentumFlag ||
-  left.frameHostInput.activeSemanticOverlayKey !== right.frameHostInput.activeSemanticOverlayKey ||
-  left.frameHostInput.overlaySheetPolicy !== right.frameHostInput.overlaySheetPolicy ||
-  left.frameHostInput.expandedSnapPoint !== right.frameHostInput.expandedSnapPoint ||
-  left.frameHostInput.middleSnapPoint !== right.frameHostInput.middleSnapPoint ||
-  left.frameHostInput.collapsedSnapPoint !== right.frameHostInput.collapsedSnapPoint ||
-  left.chromeVisualState !== right.chromeVisualState;
-
-const shouldSyncNativeAdapterSharedValues = (
-  left: AppRouteSheetHostNativeAdapterSnapshot,
-  right: AppRouteSheetHostNativeAdapterSnapshot
-): boolean =>
-  left.frameHostInput.overlaySheetPolicy !== right.frameHostInput.overlaySheetPolicy ||
-  left.frameHostInput.activeSemanticOverlayKey !== right.frameHostInput.activeSemanticOverlayKey ||
-  left.frameHostInput.middleSnapPoint !== right.frameHostInput.middleSnapPoint ||
-  left.frameHostInput.collapsedSnapPoint !== right.frameHostInput.collapsedSnapPoint ||
-  left.chromeVisualState !== right.chromeVisualState;
 
 const areRuntimeConfigSnapshotsEqual = (
   left: BottomSheetSharedRuntimeConfigSnapshot,
@@ -519,8 +454,6 @@ const seedSheetYOnUI = (sheetY: SharedValue<number>, value: number): void => {
 const shouldSeedPublishedSheetY = (): boolean => !getTrackFlipState().on;
 
 class AppRouteSheetHostAuthorityController {
-  private nativeAdapterSnapshot: AppRouteSheetHostNativeAdapterSnapshot;
-
   private bodySnapshot: AppRouteSheetHostSurfaceBodySnapshot =
     EMPTY_APP_ROUTE_SHEET_HOST_SURFACE_BODY_SNAPSHOT;
 
@@ -549,8 +482,6 @@ class AppRouteSheetHostAuthorityController {
 
   private pendingInitialVisibleSnapDispatchKey: string | null = null;
 
-  private readonly nativeAdapterListeners = new Set<Listener>();
-
   private readonly runtimeConfigListeners = new Set<Listener>();
 
   private readonly runtimeConfigSharedValueTargets =
@@ -568,9 +499,6 @@ class AppRouteSheetHostAuthorityController {
     Listener,
     SelectorListenerRecord<SearchRouteSheetMotionStateSnapshot>
   >();
-
-  private readonly nativeAdapterSharedValueTargets =
-    new Set<AppRouteSheetFrameHostNativeSharedValues>();
 
   private readonly bodyListeners = new Set<Listener>();
   private readonly bodySelectorListeners = new Map<
@@ -598,8 +526,6 @@ class AppRouteSheetHostAuthorityController {
 
   private readonly motionCallbacksEntry: AppRouteSheetHostSurfaceBodySnapshot['motionCallbacksEntry'];
 
-  public readonly nativeAdapterAuthority: AppRouteSheetHostAuthorityControllerRuntime['nativeAdapterAuthority'];
-
   public readonly routeSheetMotionRuntimeAuthority: AppRouteSheetHostMotionRuntimeAuthority;
 
   public readonly routeSheetRuntimeConfigAuthority: AppRouteSheetHostRuntimeConfigAuthority;
@@ -617,11 +543,6 @@ class AppRouteSheetHostAuthorityController {
       onDragStateChange: this.handleDragStateChange,
       onSettleStateChange: this.handleSettleStateChange,
       onSnapSettleComplete: this.handleSnapSettleComplete,
-    };
-    this.nativeAdapterAuthority = {
-      subscribe: (listener) => this.subscribeNativeAdapter(listener),
-      getSnapshot: () => this.nativeAdapterSnapshot,
-      registerSharedValues: (values) => this.registerNativeAdapterSharedValues(values),
     };
     this.routeSheetMotionRuntimeAuthority = {
       subscribe: (listener) => this.subscribeMotionRuntime(listener),
@@ -664,7 +585,6 @@ class AppRouteSheetHostAuthorityController {
         ),
       getSnapshot: () => this.surfaceSnapshot,
     };
-    this.nativeAdapterSnapshot = this.createNativeAdapterSnapshot();
     this.runtimeConfigSnapshot = this.createRuntimeConfigSnapshot();
     this.motionRuntimeSnapshot = this.createMotionRuntimeSnapshot();
     this.bodySnapshot = this.createBodySnapshot();
@@ -728,10 +648,7 @@ class AppRouteSheetHostAuthorityController {
           this.recomputeRuntimeReseed(true, 'searchSurfaceRuntime:runtimeReseed');
         },
         areSheetHostSearchSurfaceRuntimeReseedSnapshotsEqual
-      ),
-      input.routeSheetVisualAuthority.subscribe(() => {
-        this.recomputeVisualSelection();
-      })
+      )
     );
   }
 
@@ -761,8 +678,6 @@ class AppRouteSheetHostAuthorityController {
       unsubscribe();
     });
     this.unsubscribers.length = 0;
-    this.nativeAdapterListeners.clear();
-    this.nativeAdapterSharedValueTargets.clear();
     this.runtimeConfigSharedValueTargets.clear();
     this.runtimeConfigListeners.clear();
     this.motionRuntimeListeners.clear();
@@ -778,29 +693,6 @@ class AppRouteSheetHostAuthorityController {
     this.pendingRuntimeConfigRecompute = false;
     this.pendingRuntimeConfigRecomputeNotify = false;
     this.runtimeConfigRecomputeScheduled = false;
-  }
-
-  private subscribeNativeAdapter(listener: Listener): () => void {
-    this.nativeAdapterListeners.add(listener);
-    return () => {
-      this.nativeAdapterListeners.delete(listener);
-    };
-  }
-
-  private registerNativeAdapterSharedValues(
-    values: AppRouteSheetFrameHostNativeSharedValues
-  ): () => void {
-    this.nativeAdapterSharedValueTargets.add(values);
-    withSearchNavSwitchRuntimeAttribution(
-      'sheetHost',
-      'syncNativeAdapterSharedValues:register',
-      () => {
-        syncSheetFrameHostNativeSharedValues(values, this.nativeAdapterSnapshot);
-      }
-    );
-    return () => {
-      this.nativeAdapterSharedValueTargets.delete(values);
-    };
   }
 
   private subscribeRuntimeConfig(listener: Listener): () => void {
@@ -1085,40 +977,6 @@ class AppRouteSheetHostAuthorityController {
     };
   }
 
-  private createNativeAdapterSnapshot(
-    resolvedSurfaceInput = this.getResolvedSurfaceInput()
-  ): AppRouteSheetHostNativeAdapterSnapshot {
-    const {
-      activeSemanticOverlayKey,
-      activeShellSpec,
-      canRenderSurface,
-      chromeVisualState,
-      initialSheetY,
-      overlaySheetPolicy,
-      presentationState,
-      resolvedRuntimeModel,
-      surfaceVisualPolicy: _surfaceVisualPolicy,
-    } = resolvedSurfaceInput;
-    return {
-      presentationStateOverride: {
-        sheetY: presentationState.sheetTranslateY ?? EMPTY_PRESENTATION_STATE.sheetTranslateY,
-        scrollOffset:
-          presentationState.sheetScrollOffset ?? EMPTY_PRESENTATION_STATE.sheetScrollOffset,
-        momentumFlag: presentationState.sheetMomentum ?? EMPTY_PRESENTATION_STATE.sheetMomentum,
-      },
-      initialSheetY,
-      frameHostInput: {
-        activeSemanticOverlayKey,
-        overlaySheetPolicy: overlaySheetPolicy ?? null,
-        expandedSnapPoint: canRenderSurface ? activeShellSpec.snapPoints.expanded : 0,
-        middleSnapPoint: canRenderSurface ? activeShellSpec.snapPoints.middle : 0,
-        collapsedSnapPoint: canRenderSurface ? activeShellSpec.snapPoints.collapsed : 0,
-        sheetY: resolvedRuntimeModel?.presentationState.sheetY ?? null,
-      },
-      chromeVisualState,
-    };
-  }
-
   // F947: `createMotionPersistenceInput` is deleted with the persistence lane — its
   // only consumer was the persistence-key resolver that could only return null.
 
@@ -1250,7 +1108,6 @@ class AppRouteSheetHostAuthorityController {
       notify ? 'recomputeAll:notify' : 'recomputeAll:silent',
       () => {
         const resolvedSurfaceInput = this.getResolvedSurfaceInput();
-        this.recomputeNativeAdapter(notify, resolvedSurfaceInput);
         const runtimeConfigChanged = this.recomputeRuntimeConfig(false, resolvedSurfaceInput);
         const motionRuntimeChanged = this.recomputeMotionRuntime(false, resolvedSurfaceInput);
         const bodyChanged = this.recomputeBody(false, resolvedSurfaceInput, false, false);
@@ -1273,7 +1130,6 @@ class AppRouteSheetHostAuthorityController {
       notify ? 'recomputeRuntimeReseed:notify' : 'recomputeRuntimeReseed:silent',
       () => {
         const resolvedSurfaceInput = this.getResolvedSurfaceInput();
-        this.recomputeNativeAdapter(false, resolvedSurfaceInput);
         const runtimeConfigChanged = this.recomputeRuntimeConfig(false, resolvedSurfaceInput);
         this.recomputeMotionRuntime(false, resolvedSurfaceInput);
         this.syncSheetMotionTarget(resolvedSurfaceInput);
@@ -1288,16 +1144,9 @@ class AppRouteSheetHostAuthorityController {
     );
   }
 
-  private recomputeVisualSelection(): void {
-    withSearchNavSwitchRuntimeAttribution('sheetHost', 'recomputeVisualSelection', () => {
-      this.recomputeNativeAdapter(true, this.getResolvedSurfaceInput());
-    });
-  }
-
   private recomputeSheetPolicy(notify: boolean): void {
     withSearchNavSwitchRuntimeAttribution('sheetHost', 'recomputeSheetPolicy', () => {
       const resolvedSurfaceInput = this.getResolvedSurfaceInput();
-      this.recomputeNativeAdapter(notify, resolvedSurfaceInput);
       const runtimeConfigChanged = this.recomputeRuntimeConfig(false, resolvedSurfaceInput);
       const motionRuntimeChanged = this.recomputeMotionRuntime(false, resolvedSurfaceInput);
       const bodyChanged = this.recomputeBody(false, resolvedSurfaceInput, false, false);
@@ -1315,41 +1164,6 @@ class AppRouteSheetHostAuthorityController {
   private recomputeSurfaceVisibility(notify: boolean): void {
     withSearchNavSwitchRuntimeAttribution('sheetHost', 'recomputeSurfaceVisibility', () => {
       this.recomputeSurface(notify);
-    });
-  }
-
-  private recomputeNativeAdapter(
-    notify: boolean,
-    resolvedSurfaceInput = this.getResolvedSurfaceInput()
-  ): void {
-    withSearchNavSwitchRuntimeAttribution('sheetHost', 'recomputeNativeAdapter', () => {
-      const nextSnapshot = this.createNativeAdapterSnapshot(resolvedSurfaceInput);
-      if (areNativeAdapterSnapshotsEqual(this.nativeAdapterSnapshot, nextSnapshot)) {
-        return;
-      }
-      const shouldNotifyListeners = shouldNotifyNativeAdapterListeners(
-        this.nativeAdapterSnapshot,
-        nextSnapshot
-      );
-      const shouldSyncSharedValues = shouldSyncNativeAdapterSharedValues(
-        this.nativeAdapterSnapshot,
-        nextSnapshot
-      );
-      this.nativeAdapterSnapshot = nextSnapshot;
-      if (shouldSyncSharedValues && this.nativeAdapterSharedValueTargets.size > 0) {
-        withSearchNavSwitchRuntimeAttribution('sheetHost', 'syncNativeAdapterSharedValues', () => {
-          this.nativeAdapterSharedValueTargets.forEach((values) => {
-            syncSheetFrameHostNativeSharedValues(values, nextSnapshot);
-          });
-        });
-      }
-      if (notify && shouldNotifyListeners) {
-        withSearchNavSwitchRuntimeAttribution('sheetHost', 'notify:nativeAdapter', () => {
-          this.nativeAdapterListeners.forEach((listener) => {
-            listener();
-          });
-        });
-      }
     });
   }
 

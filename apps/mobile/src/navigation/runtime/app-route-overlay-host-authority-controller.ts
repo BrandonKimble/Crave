@@ -8,15 +8,9 @@ import type {
 import type { SearchOverlayHostGateSnapshot } from '../../screens/Search/runtime/shared/search-overlay-host-gate-snapshot-contract';
 import type { SearchOverlayLocalRestaurantSheetHostSnapshot } from '../../screens/Search/runtime/shared/search-overlay-local-restaurant-sheet-host-snapshot-contract';
 import type { SearchOverlayShellHostSnapshot } from '../../screens/Search/runtime/shared/search-overlay-shell-host-snapshot-contract';
-import {
-  areRouteLocalRestaurantOverlayControlSelectionSnapshotsEqual,
-  EMPTY_ROUTE_LOCAL_RESTAURANT_OVERLAY_CONTROL_SELECTION_SNAPSHOT,
-} from '../../screens/Search/runtime/shared/route-local-restaurant-overlay-control-selection-snapshot-contract';
+import { EMPTY_ROUTE_LOCAL_RESTAURANT_OVERLAY_CONTROL_SELECTION_SNAPSHOT } from '../../screens/Search/runtime/shared/route-local-restaurant-overlay-control-selection-snapshot-contract';
 import { EMPTY_ROUTE_LOCAL_RESTAURANT_OVERLAY_SESSION_SNAPSHOT } from './route-local-restaurant-overlay-session-snapshot-contract';
-import type { RouteLocalRestaurantOverlaySessionSnapshot } from './route-local-restaurant-overlay-session-snapshot-contract';
-import type { SearchOverlayLocalRestaurantRouteVisualSnapshot } from '../../screens/Search/runtime/shared/search-overlay-local-restaurant-sheet-visual-snapshot-contract';
 import type { SnapshotAuthority } from '../../screens/Search/runtime/shared/use-snapshot-authority';
-import { areOverlayRouteEntryValuesEqual } from './app-overlay-route-params-equality';
 import type { SearchRoutePanelInteractionRef } from '../../overlays/searchOverlayRouteHostContract';
 import type {
   AppRouteOverlayHostAuthoritySurface,
@@ -593,50 +587,6 @@ const createShellSnapshotNormalizer = (): SnapshotNormalizer<SearchOverlayShellH
   };
 };
 
-// Per-scene params equality lives in app-overlay-route-params-equality.ts: a
-// compile-exhaustive Record<OverlayKey, comparator> dispatched by the entry's key
-// (entryId + key guard + typed per-scene params compare — no shape sniffing).
-const areOverlayRouteEntriesEqual = areOverlayRouteEntryValuesEqual;
-
-const areLocalRestaurantSessionSnapshotsEqual = (
-  left: RouteLocalRestaurantOverlaySessionSnapshot,
-  right: RouteLocalRestaurantOverlaySessionSnapshot
-): boolean =>
-  left.activeOverlayRouteKey === right.activeOverlayRouteKey &&
-  left.rootOverlayKey === right.rootOverlayKey &&
-  left.overlayRouteStackLength === right.overlayRouteStackLength &&
-  areOverlayRouteEntriesEqual(left.activeOverlayRoute, right.activeOverlayRoute);
-
-const areLocalRestaurantVisualSnapshotsEqual = (
-  left: SearchOverlayLocalRestaurantRouteVisualSnapshot | null,
-  right: SearchOverlayLocalRestaurantRouteVisualSnapshot | null
-): boolean =>
-  left === right ||
-  (left != null &&
-    right != null &&
-    left.overlayGeometryRuntime === right.overlayGeometryRuntime &&
-    left.sharedSheetRuntimeOwner === right.sharedSheetRuntimeOwner &&
-    left.visualRuntime === right.visualRuntime);
-
-const areLocalRestaurantSheetHostSnapshotsEqual = (
-  left: SearchOverlayLocalRestaurantSheetHostSnapshot,
-  right: SearchOverlayLocalRestaurantSheetHostSnapshot
-): boolean =>
-  areLocalRestaurantSessionSnapshotsEqual(
-    left.restaurantSessionSnapshot,
-    right.restaurantSessionSnapshot
-  ) &&
-  areRouteLocalRestaurantOverlayControlSelectionSnapshotsEqual(
-    left.restaurantControlSelectionSnapshot,
-    right.restaurantControlSelectionSnapshot
-  ) &&
-  left.shouldRenderSearchOverlay === right.shouldRenderSearchOverlay &&
-  areLocalRestaurantVisualSnapshotsEqual(
-    left.routeHostVisualSnapshot,
-    right.routeHostVisualSnapshot
-  ) &&
-  left.onProfilerRender === right.onProfilerRender;
-
 // F5411 — `slotName` is REQUIRED and comes SECOND. It used to default to `null`, and the
 // logger early-returned on null, so of the four publication slots only the two that happened
 // to be named were attributed at all: `gateSlot` and `localRestaurantSheetSlot` were invisible
@@ -747,10 +697,14 @@ export class AppRouteOverlayHostAuthorityController {
     createShellSnapshotNormalizer()
   );
 
+  // The slot serves only the EMPTY placeholder snapshot — the live sheet authority is
+  // swapped in by reference via publishOverlayRestaurantHostAuthorities, never through this
+  // slot's setSnapshot (its sole caller, clearSearchOverlayHostPublication, always passes the
+  // same EMPTY constant). So the default shallow equality is all it ever needs; the former deep
+  // per-scene comparator + app-overlay-route-params-equality.ts were dead scaffolding (F1361).
   private readonly localRestaurantSheetSlot = createSnapshotSlot(
     EMPTY_SEARCH_OVERLAY_LOCAL_RESTAURANT_SHEET_SNAPSHOT,
-    'localRestaurantSheet',
-    areLocalRestaurantSheetHostSnapshotsEqual
+    'localRestaurantSheet'
   );
 
   private overlayLocalRestaurantSheetHostAuthority: AppRouteOverlayHostAuthoritySurface['overlayLocalRestaurantSheetHostAuthority'] =
