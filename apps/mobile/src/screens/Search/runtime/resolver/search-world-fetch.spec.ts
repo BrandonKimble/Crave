@@ -164,3 +164,80 @@ describe('search-world-fetch — an aborted request is an outcome, not a sentenc
     expect(outcome).toEqual({ kind: 'aborted' });
   });
 });
+
+// F5700: the ENTITY lane's entry-surface provenance. The trigger declares it
+// (`submissionSource: 'recent'` from a recent-search row, the user's real typed prefix)
+// and it rides the decoration exactly as the natural lane's does. Both fields used to be
+// CONSTANTS here — `'autocomplete'` and the entity's own display name — so a recent tap
+// and a deep link both reported themselves as autocomplete submissions with a "typed
+// prefix" the user never typed, and recall telemetry could not tell the surfaces apart.
+//
+// MUTATION PROOF: restore either constant (`submissionSource: 'autocomplete'`, or the
+// `?? identity.displayName` typedPrefix fallthrough) and the matching spec goes RED.
+describe('search-world-fetch — entity provenance is declared, never assumed', () => {
+  const entityTuple = (entityType: 'restaurant' | 'food'): SearchDesiredTuple => ({
+    ...listTuple(null),
+    queryIdentity: {
+      kind: 'entity',
+      entityType,
+      entityId: 'r-1',
+      displayName: 'Thai Fresh',
+    },
+  });
+
+  const captureEntityPayload = async (
+    entityType: 'restaurant' | 'food',
+    requestDecoration?: { submissionSource?: string; submissionContext?: Record<string, unknown> }
+  ) => {
+    const env = createEnv();
+    const sentPayloads: Array<{
+      submissionSource?: string;
+      submissionContext?: Record<string, unknown>;
+    }> = [];
+    env.runSearch = async (request) => {
+      sentPayloads.push(request.payload);
+      return { kind: 'response', response: RESPONSE };
+    };
+    const outcome = await createSearchWorldFetcher(env)({
+      tuple: entityTuple(entityType),
+      requestDecoration,
+    });
+    expect(outcome.kind).toBe('resolved');
+    expect(sentPayloads).toHaveLength(1);
+    return sentPayloads[0];
+  };
+
+  it('a recent-submit tap reaches the structured wire as recent, with the real typed prefix', async () => {
+    const payload = await captureEntityPayload('restaurant', {
+      submissionSource: 'recent',
+      submissionContext: { typedPrefix: 'thai' },
+    });
+    expect(payload.submissionSource).toBe('recent');
+    expect(payload.submissionContext?.typedPrefix).toBe('thai');
+    // The display name is NOT smuggled in as something the user typed.
+    expect(payload.submissionContext?.typedPrefix).not.toBe('Thai Fresh');
+  });
+
+  it('carries the same declared provenance on the food/attribute (natural) entity arm', async () => {
+    const payload = await captureEntityPayload('food', {
+      submissionSource: 'recent',
+      submissionContext: { typedPrefix: 'pad see ew' },
+    });
+    expect(payload.submissionSource).toBe('recent');
+    expect(payload.submissionContext?.typedPrefix).toBe('pad see ew');
+  });
+
+  it('an autocomplete tap still declares autocomplete — the constant was not the only truth', async () => {
+    const payload = await captureEntityPayload('restaurant', {
+      submissionSource: 'autocomplete',
+      submissionContext: { typedPrefix: 'thai f' },
+    });
+    expect(payload.submissionSource).toBe('autocomplete');
+    expect(payload.submissionContext?.typedPrefix).toBe('thai f');
+  });
+
+  it('omits typedPrefix entirely when no trigger declared one (never the display name)', async () => {
+    const payload = await captureEntityPayload('restaurant', { submissionSource: 'recent' });
+    expect(payload.submissionContext).not.toHaveProperty('typedPrefix');
+  });
+});

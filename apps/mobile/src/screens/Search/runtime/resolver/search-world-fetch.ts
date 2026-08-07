@@ -198,12 +198,18 @@ export const createSearchWorldFetcher =
       // Skip-LLM entity lane: restaurant taps are a structured single-entity request;
       // food/attribute taps ride the natural endpoint with a selected-entity context the
       // backend routes through buildSelectedEntitySearchRequest (no LLM cost).
+      // F5700 — the entry surface DECLARES its provenance and the trigger registers it on
+      // the decoration, exactly as the natural arm above does. These were constants
+      // ('autocomplete', and the entity's own display name as the "typed prefix"), so a
+      // recent-search tap and a deep link both reported themselves as autocomplete
+      // submissions and recall telemetry could not tell the surfaces apart.
+      const submissionSource = (requestDecoration?.submissionSource ??
+        'autocomplete') as NaturalSearchRequest['submissionSource'];
+      const declaredTypedPrefix = requestDecoration?.submissionContext?.typedPrefix as
+        | string
+        | undefined;
       const submissionContext = {
-        // The REAL typed prefix rides the decoration when the trigger has one (recall
-        // telemetry); the display name is the honest fallback.
-        typedPrefix:
-          (requestDecoration?.submissionContext?.typedPrefix as string | undefined) ??
-          identity.displayName,
+        ...(declaredTypedPrefix != null ? { typedPrefix: declaredTypedPrefix } : null),
         matchType: 'entity',
         selectedEntityId: identity.entityId,
         selectedEntityType: identity.entityType,
@@ -222,7 +228,7 @@ export const createSearchWorldFetcher =
           pagination: { page: 1, pageSize: DEFAULT_PAGE_SIZE },
           includeSqlPreview: false,
           sourceQuery: identity.displayName,
-          submissionSource: 'autocomplete',
+          submissionSource,
           submissionContext,
           // SEE-LOCATIONS mode: the identity's discriminator rides the SAME
           // structured wire — the server answers the lean in-view-locations
@@ -240,7 +246,7 @@ export const createSearchWorldFetcher =
           query: identity.displayName,
           pagination: { page: 1, pageSize: DEFAULT_PAGE_SIZE },
           includeSqlPreview: false,
-          submissionSource: 'autocomplete',
+          submissionSource,
           submissionContext,
         };
         attachTupleScopeToPayload(payload, tuple, userLocation);

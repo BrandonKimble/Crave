@@ -3,6 +3,10 @@ import React from 'react';
 import type { NaturalSearchRequest } from '../../../types';
 import type { UserListType } from '../../../services/user-lists';
 import type { SearchRuntimeBus } from '../runtime/shared/search-runtime-bus';
+import {
+  clearPendingSearchRequestDecoration,
+  registerPendingSearchRequestDecoration,
+} from '../runtime/reconciler/search-request-decoration-registry';
 import type { ViewportBoundsService } from '../runtime/viewport/viewport-bounds-service';
 import {
   captureCommittedBounds,
@@ -50,9 +54,23 @@ export const useSearchStructuredSubmitOwner = ({
         return;
       }
       resetMapMoveFlag();
+      // F5700 — the entry surface's PROVENANCE is trigger-known and nothing else can
+      // recover it: a recent-search tap, a deep link and an autocomplete chip all land on
+      // the same entity identity. It rides the decoration registry exactly as the natural
+      // lane's does — registered immediately before the tuple write, because the
+      // reconciler's resolve kick fires SYNCHRONOUSLY inside that write and takes it once.
+      // Before this the entity lane registered nothing, so search-world-fetch hardcoded
+      // 'autocomplete' and reported every recent tap as an autocomplete submission with
+      // the entity's own display name as the user's typed prefix.
+      registerPendingSearchRequestDecoration({
+        submissionSource: params.submissionSource,
+        ...(params.typedPrefix != null
+          ? { submissionContext: { typedPrefix: params.typedPrefix } }
+          : null),
+      });
       // S3c: a restaurant tap IS an entity-identity tuple write + resolve (skip-LLM
       // structured lane routed by the fetch table).
-      writeSearchDesiredTuple(
+      const writeResult = writeSearchDesiredTuple(
         searchRuntimeBus,
         {
           queryIdentity: {
@@ -68,6 +86,12 @@ export const useSearchStructuredSubmitOwner = ({
         },
         'entity_tap'
       );
+      if (!writeResult.changed) {
+        // RT-6, same law as the natural lane: a tuple-equal write publishes nothing and
+        // dispatches nothing, so an unclaimed decoration would sit in the single slot and
+        // ride the NEXT dispatch of any class.
+        clearPendingSearchRequestDecoration();
+      }
     },
     [resetMapMoveFlag, searchRuntimeBus, viewportBoundsService]
   );
