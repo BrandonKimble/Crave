@@ -328,18 +328,43 @@ export const areSearchLensesEqual = (a: SearchLens, b: SearchLens): boolean =>
  *  once (and `buildSearchLensKey` above stays the one key over the same
  *  fields). */
 export type SearchLensRequestFields = {
-  openNow?: boolean;
+  openNow?: SearchLens['openNow'];
   dietary?: string[];
   priceLevels?: number[];
-  rising?: boolean;
+  rising?: SearchLens['rising'];
 };
 
-export const selectLensRequestFields = (lens: SearchLens): SearchLensRequestFields => ({
-  ...(lens.openNow ? { openNow: true } : {}),
-  ...(lens.dietary.length ? { dietary: [...lens.dietary] } : {}),
-  ...(lens.priceLevels.length ? { priceLevels: [...lens.priceLevels] } : {}),
-  ...(lens.rising ? { rising: true } : {}),
-});
+/** F6409(e), the same repair as F6407 one dimension over: the projection is DERIVED FROM
+ *  `SearchLens`, not hand-listed beside it. Every lens dimension must be classified here —
+ *  either it rides the shared request projection, or it is LANE-OWNED because the shared
+ *  payload has no field for it and the one lane that can carry it passes it under its own
+ *  name. Adding a dimension to `SearchLens` without classifying it is a compile error, which
+ *  is the only thing that makes the comment above ("a new dimension lands everywhere at
+ *  once") true rather than aspirational — `listSort`/`cityPlaceId` key the slice cache via
+ *  `buildSearchLensKey` and were silently absent from this projection. */
+const LENS_REQUEST_PROJECTION: Record<
+  keyof Required<SearchLens>,
+  ((lens: SearchLens) => SearchLensRequestFields) | { readonly laneOwned: string }
+> = {
+  openNow: (lens) => (lens.openNow ? { openNow: true } : {}),
+  dietary: (lens) => (lens.dietary.length ? { dietary: [...lens.dietary] } : {}),
+  priceLevels: (lens) => (lens.priceLevels.length ? { priceLevels: [...lens.priceLevels] } : {}),
+  rising: (lens) => (lens.rising ? { rising: true } : {}),
+  listSort: {
+    laneOwned:
+      'only the list-world fetch can order results, and it sends this as `sort`; the cards and coverage endpoints take no ordering',
+  },
+  cityPlaceId: {
+    laneOwned:
+      'only the list-world fetch takes a city slice; the cards and coverage endpoints are sliced by committed bounds',
+  },
+};
+
+export const selectLensRequestFields = (lens: SearchLens): SearchLensRequestFields =>
+  Object.values(LENS_REQUEST_PROJECTION).reduce<SearchLensRequestFields>(
+    (fields, entry) => (typeof entry === 'function' ? Object.assign(fields, entry(lens)) : fields),
+    {}
+  );
 
 /** The slice key (S2: `worldCache[worldKey].slices[lensKey]`). Stable serialization —
  *  the DEFAULT lens serializes to the same token everywhere so the unlensed slice is

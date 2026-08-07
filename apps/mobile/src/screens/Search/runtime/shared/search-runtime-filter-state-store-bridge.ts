@@ -29,6 +29,29 @@ const MIRRORED_BUS_KEYS = [
   'hasActiveTabPreference',
 ] as const;
 
+// ONE comparator for the mirrored record, used by BOTH the value-guard and the dev drift
+// contract. Arrays are minted fresh per publish (priceLevels, dietary), so they compare by
+// VALUE, not reference — an equal-but-new array read as divergence false-positived this
+// contract on [[]] vs [[]] in the R1c gate, and a lying contract is the old disease.
+const isMirroredValueEqual = (a: unknown, b: unknown): boolean => {
+  if (Array.isArray(a) && Array.isArray(b)) {
+    return a.length === b.length && a.every((entry, index) => Object.is(entry, b[index]));
+  }
+  return Object.is(a, b);
+};
+
+// F6407: the value-guard is DERIVED FROM the record, never restated beside it. The old guard
+// enumerated six of the seven mirrored fields by hand and omitted `dietary`, so a dietary-only
+// toggle returned `unchanged` and never reached zustand — dietary filters did not survive a
+// relaunch. Enumerating the keys of the record makes omitting a field unwritable.
+const diffMirroredFields = (
+  a: SearchRuntimeMirroredState,
+  b: SearchRuntimeMirroredState
+): Array<keyof SearchRuntimeMirroredState> =>
+  (Object.keys(a) as Array<keyof SearchRuntimeMirroredState>).filter(
+    (key) => !isMirroredValueEqual(a[key], b[key])
+  );
+
 const readMirroredStateFromStore = (): SearchRuntimeMirroredState => {
   const storeState = useSearchStore.getState();
   return {
@@ -91,22 +114,7 @@ export const attachSearchStoreRuntimeStateMirror = (
   const writeMirror = () => {
     if (__DEV__) {
       const storeNow = readMirroredStateFromStore();
-      const driftedFields = (
-        Object.keys(lastMirrored) as Array<keyof SearchRuntimeMirroredState>
-      ).filter((key) => {
-        const storeValue = storeNow[key];
-        const mirroredValue = lastMirrored[key];
-        // priceLevels is an array minted fresh per publish — compare by VALUE, not reference,
-        // or an equal-but-new array reads as divergence (this contract false-positived on
-        // [[]] vs [[]] in the R1c gate — a lying contract is the old disease, R0 rules apply).
-        if (Array.isArray(storeValue) && Array.isArray(mirroredValue)) {
-          return (
-            storeValue.length !== mirroredValue.length ||
-            storeValue.some((entry, index) => !Object.is(entry, mirroredValue[index]))
-          );
-        }
-        return !Object.is(storeValue, mirroredValue);
-      });
+      const driftedFields = diffMirroredFields(storeNow, lastMirrored);
       if (driftedFields.length > 0) {
         reportSearchFlowContractViolation('filter_state_divergence', {
           driftedFields,
@@ -120,18 +128,18 @@ export const attachSearchStoreRuntimeStateMirror = (
     // (bounds commits, identity writes), not just mirrored-field changes like the old
     // per-key publishes. Value-guard before the zustand write or every gesture would
     // serialize the whole persisted state to AsyncStorage.
-    const unchanged =
-      next.openNow === lastMirrored.openNow &&
-      next.risingActive === lastMirrored.risingActive &&
-      next.activeTab === lastMirrored.activeTab &&
-      next.preferredActiveTab === lastMirrored.preferredActiveTab &&
-      next.hasActiveTabPreference === lastMirrored.hasActiveTabPreference &&
-      next.priceLevels.length === lastMirrored.priceLevels.length &&
-      next.priceLevels.every((value, index) => value === lastMirrored.priceLevels[index]);
+    const unchanged = diffMirroredFields(next, lastMirrored).length === 0;
+    // THE BASELINE ADVANCES UNCONDITIONALLY, and that is what makes the drift contract above
+    // able to show RED. `lastMirrored` is what the mirror INTENDS the store to hold; when it
+    // was only advanced alongside the write, a guard that wrongly said `unchanged` froze BOTH
+    // sides together and the two values the contract compares stayed in perfect agreement
+    // while both went stale against the bus — green precisely because the bug happened.
+    // Advancing here means any field the guard fails to write shows up as store-vs-intent
+    // drift on the very next publish.
+    lastMirrored = next;
     if (unchanged) {
       return;
     }
-    lastMirrored = next;
     useSearchStore.getState().applySearchRuntimeStateMirror(next);
   };
 
