@@ -678,12 +678,12 @@
       "query": "pollo halal",
       "stratum": "compound",
       "expected": {
-        "concepts": ["pollo", "halal"],
+        "concepts": ["chicken", "halal"],
         "excluded": [],
         "mustNotResolve": []
       },
       "park": false,
-      "notes": "Source-faithful noun + an identical-in-both-languages dietary spine word."
+      "notes": "Source-faithful noun + an identical-in-both-languages dietary spine word. | RE-AUTHORED 2026-08-07: pollo merged into chicken (corpus merge, redirect written)."
     },
     {
       "id": "cp-13",
@@ -750,12 +750,12 @@
       "query": "arroz con pollo",
       "stratum": "compound",
       "expected": {
-        "concepts": ["rice", "pollo"],
+        "concepts": ["rice", "chicken"],
         "excluded": [],
         "mustNotResolve": []
       },
       "park": false,
-      "notes": "A real dish name that is ALSO decomposable — no 'arroz con pollo' row exists on the mirror, so the parse is the two nouns."
+      "notes": "A real dish name that is ALSO decomposable — no 'arroz con pollo' row exists on the mirror, so the parse is the two nouns. | RE-AUTHORED 2026-08-07: pollo merged into chicken (corpus merge, redirect written)."
     },
     {
       "id": "cp-19",
@@ -919,11 +919,11 @@
       "stratum": "negation",
       "expected": {
         "concepts": ["tacos"],
-        "excluded": ["queso"],
+        "excluded": [],
         "mustNotResolve": ["queso", "cheese"]
       },
       "park": false,
-      "notes": "The negated span IS a corpus entity ('queso' ingredient) — the fail-closed path must drop a groundable span, not just unknown residue."
+      "notes": "The negated span IS a corpus entity ('queso' ingredient) — the fail-closed path must drop a groundable span, not just unknown residue. | RE-AUTHORED 2026-08-07 (negation doctrine): app deliberately does NOT support negation; sin-X may ground positively (sin queso->cheeseless). Assert non-inversion only."
     },
     {
       "id": "ng-03",
@@ -931,11 +931,11 @@
       "stratum": "negation",
       "expected": {
         "concepts": ["pizza"],
-        "excluded": ["queso"],
+        "excluded": [],
         "mustNotResolve": ["queso", "cheese"]
       },
       "park": false,
-      "notes": "Same cue over a different head."
+      "notes": "Same cue over a different head. | RE-AUTHORED 2026-08-07 (negation doctrine): app deliberately does NOT support negation; sin-X may ground positively (sin queso->cheeseless). Assert non-inversion only."
     },
     {
       "id": "ng-04",
@@ -1099,11 +1099,11 @@
       "stratum": "negation",
       "expected": {
         "concepts": [],
-        "excluded": ["picante"],
+        "excluded": [],
         "mustNotResolve": ["spicy"]
       },
       "park": true,
-      "notes": "Negating the P3 normalized concept. 'comida' is a carrier with no expected grounding."
+      "notes": "Negating the P3 normalized concept. 'comida' is a carrier with no expected grounding. | RE-AUTHORED 2026-08-07 (negation doctrine): app deliberately does NOT support negation; sin-X may ground positively (sin queso->cheeseless). Assert non-inversion only."
     },
     {
       "id": "ng-18",
@@ -1111,11 +1111,11 @@
       "stratum": "negation",
       "expected": {
         "concepts": [],
-        "excluded": ["azucar"],
+        "excluded": [],
         "mustNotResolve": ["sugar"]
       },
       "park": true,
-      "notes": "Accent inside the negated span — the excludedSpan text is asserted FOLDED (azúcar→azucar)."
+      "notes": "Accent inside the negated span — the excludedSpan text is asserted FOLDED (azúcar→azucar). | RE-AUTHORED 2026-08-07 (negation doctrine): app deliberately does NOT support negation; sin-X may ground positively (sin queso->cheeseless). Assert non-inversion only."
     },
     {
       "id": "ng-19",
