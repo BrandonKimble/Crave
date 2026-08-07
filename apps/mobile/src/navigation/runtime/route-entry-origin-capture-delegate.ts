@@ -50,7 +50,6 @@ export const captureRouteEntryOrigin = (departingSceneKey: OverlayKey): OriginSn
     detent: 'collapsed',
     segment: null,
     scroll: [],
-    anchor: null,
   };
 };
 

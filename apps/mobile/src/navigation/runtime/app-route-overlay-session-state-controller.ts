@@ -51,7 +51,7 @@ type AppRouteOverlaySessionStateControllerArgs = {
 
 // Return-to-origin foundation (plans/return-to-origin-foundation-design.md §Capture).
 // The degenerate snapshot is the minimal origin: a scene identity + its LIVE detent, with
-// empty scroll/segment/anchor. The home roots capture EXACTLY this (see
+// empty scroll/segment. The home roots capture EXACTLY this (see
 // buildDockedRootOriginSnapshot); rich capture merges published live state onto it.
 // D56: `camera` is null HERE by construction. The camera is attached ONLY by the push-commit
 // capturer (below), never by the degenerate base and never by the dismiss-time origin build —
@@ -62,7 +62,6 @@ const degenerateSnapshot = (sceneKey: OverlayKey, detent: TabOverlaySnap): Origi
   detent,
   segment: null,
   scroll: [],
-  anchor: null,
   camera: null,
 });
 
@@ -103,7 +102,6 @@ const resolveRestoreRootOverlay = (snapshot: OriginSnapshot): OverlayKey =>
 // camera-bearing origin cannot flip this predicate or that emission).
 const isDegenerateHomeOrigin = (snapshot: OriginSnapshot): boolean =>
   (snapshot.scroll == null || snapshot.scroll.length === 0) &&
-  (snapshot.anchor ?? null) == null &&
   snapshot.sceneParams == null &&
   (snapshot.sceneKey === 'search' || snapshot.sceneKey === DOCKED_SCENE_KEY) &&
   snapshot.detent === 'collapsed';
@@ -352,8 +350,7 @@ export class AppRouteOverlaySessionStateController {
   // root-seat resolution, byte-identical to the pre-rederivation fallback.
   private resolveLiveSceneDetent(sceneKey: OverlayKey, dockedRootKey: OverlayKey): TabOverlaySnap {
     if (getAppOverlayRouteMetadata(sceneKey).role === 'child') {
-      const childSnap =
-        this.routeSheetSnapSessionActions.getRouteSceneSwitchSceneSnap(sceneKey);
+      const childSnap = this.routeSheetSnapSessionActions.getRouteSceneSwitchSceneSnap(sceneKey);
       if (childSnap != null && childSnap !== 'hidden') {
         return childSnap;
       }
@@ -432,7 +429,6 @@ export class AppRouteOverlaySessionStateController {
         : this.captureRichSceneOrigin(dockedRootKey);
     return {
       ...captured,
-      anchor: captured.anchor ?? null,
       // D56 — THE FOURTH CAMERA LANE IS CLOSED HERE. This builder runs at DISMISS time
       // (captureSearchCloseOrigin, F1508): a camera on it would fly the map to the world the
       // user is dismissing. The return address for the camera is the one captured at PUSH
@@ -523,11 +519,11 @@ export class AppRouteOverlaySessionStateController {
   // Return-to-origin foundation (plans/return-to-origin-foundation-design.md §Restore §2/§3) —
   // ONE richness-gated restore path (the SOLE dismiss restore; the call-site fork is gone). The
   // outer discriminant is snapshot RICHNESS, not source:
-  //   DEGENERATE = scroll empty/absent && anchor==null && sceneParams==null &&
+  //   DEGENERATE = scroll empty/absent && sceneParams==null &&
   //                sceneKey ∈ {search,polls} && detent==='collapsed'.
   // A DEGENERATE snapshot short-circuits to the EXACT existing home switch (the
   // {polls,search}@collapsed deadlock seam's home-restore — byte-identical, golden-guarded)
-  // and RETURNS; no rich/scroll/anchor stage runs. Everything else is RICH:
+  // and RETURNS; no rich/scroll stage runs. Everything else is RICH:
   //   - RICH (a non-collapsed top-level origin, e.g. polls@middle): emit the plain
   //     root restore with ONE `snapTo:detent` (the CAPTURED detent is authoritative; never
   //     `promoteAtLeast`) — BYTE-IDENTICAL to the pre-P1 home branch for any non-collapsed
@@ -535,20 +531,22 @@ export class AppRouteOverlaySessionStateController {
   //     detent, never collapsed here, so it isn't the deadlock-seam home case).
   private restorePendingOrigin(snapshot: OriginSnapshot): void {
     const resolvedRootOverlay = resolveRestoreRootOverlay(snapshot);
-    // RICHNESS gate (design §Restore step 2). A home snapshot carries NO scroll, NO anchor,
-    // NO sceneParams, a root sceneKey, and a collapsed detent — exactly what the degenerate
-    // providers capture. Anything richer (a child anchor, a non-root scene, a non-collapsed
-    // detent, a scrolled lane) routes to the rich branch.
+    // RICHNESS gate (design §Restore step 2). A home snapshot carries NO scroll, NO
+    // sceneParams, a root sceneKey, and a collapsed detent — exactly what the degenerate
+    // providers capture. Anything richer (a non-root scene, a non-collapsed detent, a scrolled
+    // lane, captured sceneParams) routes to the rich branch. Those FOUR axes are the whole gate;
+    // there is no fifth (F5407 deleted an unwritten `anchor` conjunct that could never fire).
     if (isDegenerateHomeOrigin(snapshot)) {
       // DEGENERATE short-circuit — UNCHANGED byte-identical home restore, then RETURN.
       this.emitDegenerateHomeRestore(resolvedRootOverlay, snapshot.detent);
       return;
     }
-    // RICH restore. The structural discriminant for the ROOT sheet motion is whether the captured
-    // origin carries a re-pushable CHILD (resolved generically from the anchor), NOT a literal
-    // scene-key test.
+    // RICH restore. The structural discriminant for the ROOT sheet motion is the resolved root
+    // overlay: the docked scene restores its own detent, every other root does not.
     // S-C.3-B step 3b: the child re-push machinery is DELETED — a search launched from a
-    // child PUSHES over it now, so the child ENTRY survives and dismissal pops back to it.
+    // child PUSHES over it now, so the child ENTRY survives and dismissal pops back to it. The
+    // one axis a RICH restore additionally consults is SEEDED_TOP_LEVEL_RESTORE_TARGETS (below),
+    // which decides the content handoff — that set is the discriminant, not any anchor.
     const shouldRestoreDockedScene = resolvedRootOverlay === 'search';
     // P3 SCROLL + P5 SEGMENT restore (design §Restore step 5/6). SEED the captured scroll
     // lane(s) AND the active SEGMENT for the origin scene BEFORE the re-root commits, so the

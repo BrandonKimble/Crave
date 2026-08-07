@@ -14,8 +14,7 @@ export type TabOverlaySnap = Exclude<SearchOverlaySheetSnap, 'hidden'>;
 // indices) so restore can RECONSTRUCT a cold panel (skeleton-first, anchor resolves
 // to index POST-fetch).
 //
-// P3+ generalized scroll/anchor shapes. Defined now (the type), wired in later
-// phases (P3 scroll, P4 anchor). For P0 these are forward-looking only.
+// P3 generalized scroll shape.
 export type OriginScrollLane = {
   laneKey: string;
   /** offset = hint; the anchor wins. NEVER an index. */
@@ -26,14 +25,10 @@ export type OriginScrollLane = {
 // childAnchor?}). The field rename is a WIDENING, not a semantic change:
 //   rootOverlay  → sceneKey
 //   tabSnap      → detent
-//   childAnchor  → anchor
+// The old `childAnchor` has NO successor here — see the note below the fields.
 //
-// P0 is pure scaffolding: every current consumer reads the mapped field under its new
-// name and the captured origin is byte-equivalent to what createCurrentOriginContext
-// produced before. The RICH per-scene providers (real scroll/segment/anchor capture)
-// arrive in later phases; for P0 the `anchor` payload is still the existing launch
-// child anchor (the only non-null anchor any current path produces), and `scroll` /
-// `segment` / `sceneParams` are degenerate.
+// `scroll`, `segment` and `sceneParams` each have a real publisher today; every field on
+// this type is one a producer can write.
 export type OriginSnapshot = {
   /** TRUE scene identity (search|polls|pollDetail|lists|profile) — NOT root-collapsed. */
   sceneKey: OverlayKey;
@@ -45,12 +40,13 @@ export type OriginSnapshot = {
   segment?: string | null;
   /** nested-aware; EMPTY for home. Degenerate ([]) in P0. */
   scroll?: OriginScrollLane[];
-  // Origin-anchor SEAM (currently unwritten): the exact item a departure anchored on — e.g.
-  // the comment a cross-surface reveal launched from. The old childAnchor slot-threading died
-  // with the re-push machinery (entries survive pops now); a future anchor PUBLICATION (the
-  // departing scene publishes its own anchor via the origin live-state registry, like scroll/
-  // segment) writes this when a scene wants sub-scroll anchoring on return. S-D/EntityLink.
-  anchor?: { sceneKey: string; pollId?: string; commentId?: string } | null;
+  // NO origin-anchor field. The old childAnchor slot-threading died with the re-push machinery
+  // (entries survive pops now), and the replacement — a departing scene PUBLISHING its own anchor
+  // via the origin live-state registry, the way `scroll` and `segment` do — has not landed. The
+  // axis lives in the design doc (S-D/EntityLink) until it has a publisher: an optional field with
+  // zero writers sat inside the dismiss RICHNESS gate, where any future producer setting it would
+  // have silently flipped the golden-guarded degenerate home restore into the rich branch (F5407).
+  // Re-add it WITH its publisher and WITH a richness-gate case, never ahead of them.
   // D56 — THE SEVENTH FIELD (findings F1500-F1516). "The map returns to the EXACT position
   // where the search flow was triggered" is the same law as "the sheet returns to the exact
   // presentation it departed from", one plane over — so it is the same snapshot, taken at the

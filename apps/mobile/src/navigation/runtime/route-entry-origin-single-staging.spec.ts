@@ -41,7 +41,6 @@ const buildOrigin = (departingSceneKey: OverlayKey): OriginSnapshot => ({
   detent: 'collapsed',
   segment: null,
   scroll: [],
-  anchor: null,
 });
 
 describe('F1715 — one pop stages the origin restore exactly once', () => {
@@ -116,7 +115,6 @@ describe('F2402 — an unregistered origin restorer barks', () => {
     detent: 'collapsed',
     segment: null,
     scroll: [],
-    anchor: null,
   };
 
   it('staging with no restorer registered reports the wiring defect', () => {

@@ -345,7 +345,6 @@ describe('D56 return-to-origin camera', () => {
         detent: 'collapsed',
         segment: null,
         scroll: [],
-        anchor: null,
         camera: HOME_CAMERA,
       });
       expect(emissions).toHaveLength(1);
@@ -372,7 +371,6 @@ describe('D56 return-to-origin camera', () => {
         detent: 'collapsed',
         segment: null,
         scroll: [],
-        anchor: null,
         camera: HOME_CAMERA,
       });
       expect(consumePendingOriginSceneSegmentRestore('search')).toBe('contributed');
@@ -386,7 +384,6 @@ describe('D56 return-to-origin camera', () => {
         detent: 'collapsed',
         segment: null,
         scroll: [],
-        anchor: null,
         camera: PROFILE_CAMERA,
       });
       const withoutCamera = createHarness();
@@ -396,7 +393,6 @@ describe('D56 return-to-origin camera', () => {
         detent: 'collapsed',
         segment: null,
         scroll: [],
-        anchor: null,
         camera: null,
       });
       expect(withCamera.recorded.requestOverlaySwitch).toEqual(
@@ -404,6 +400,61 @@ describe('D56 return-to-origin camera', () => {
       );
       withCamera.dispose();
       withoutCamera.dispose();
+    });
+  });
+
+  // F5407 — the dismiss RICHNESS gate has exactly FOUR axes, and every one of them is REACHABLE.
+  //
+  // The gate used to carry a fifth conjunct reading `OriginSnapshot.anchor`, a field with zero
+  // writers whose own type comment conceded it was unwritten — a permanently-true conjunct inside
+  // the {polls,search}@collapsed deadlock seam. The golden assertion could not see it: it guards
+  // the EMISSION, not the branch CHOICE, so a future producer writing an anchor would have flipped
+  // a home restore into the rich branch in silence. The field is gone; these cases pin that the
+  // gate's remaining axes are the whole gate and each can actually fire.
+  describe('the richness gate: four axes, all reachable, no unwritable fifth', () => {
+    const feedThrough = (origin: OriginSnapshot) => {
+      harness.controller.actions.restoreSearchCloseOrigin(origin);
+      return harness.recorded.requestOverlaySwitch;
+    };
+
+    // EVERY axis OriginSnapshot carries, stated exhaustively. `Required<>` is the tripwire: add a
+    // field to the type (re-add `anchor`, say) and this constant fails tsc until the new axis is
+    // named here AND given a reachability case below.
+    const EVERY_ORIGIN_AXIS: Required<OriginSnapshot> = {
+      sceneKey: 'search',
+      sceneParams: null,
+      detent: 'collapsed',
+      segment: null,
+      scroll: [],
+      camera: null,
+    };
+
+    // The rich branch SEEDS scene-restore state (clearing the pending segment); the degenerate
+    // short-circuit RETURNS before it. So a surviving pending segment == the degenerate branch ran.
+    // (Staged under the ORIGIN's own scene key, because that is the key the rich branch seeds.)
+    const ranDegenerateBranch = (origin: OriginSnapshot): boolean => {
+      stageOriginSceneSegmentRestore(origin.sceneKey, 'contributed');
+      feedThrough(origin);
+      return consumePendingOriginSceneSegmentRestore(origin.sceneKey) === 'contributed';
+    };
+
+    it('the fully-degenerate origin — every axis at its degenerate value — takes the home restore', () => {
+      expect(ranDegenerateBranch({ ...EVERY_ORIGIN_AXIS })).toBe(true);
+    });
+
+    it.each([
+      ['a scrolled lane', { scroll: [{ laneKey: 'search', offset: 240 }] }],
+      ['captured sceneParams', { sceneParams: { pollId: 'poll-1' } as never }],
+      ['a non-root scene', { sceneKey: 'lists' as const }],
+      ['a non-collapsed detent', { detent: 'middle' as const }],
+    ])('%s routes to the RICH branch', (_label, richAxis) => {
+      expect(ranDegenerateBranch({ ...EVERY_ORIGIN_AXIS, ...richAxis })).toBe(false);
+    });
+
+    it('the `segment` and `camera` axes are deliberately NOT richness axes', () => {
+      // Both are restored on their OWN lanes; neither may flip the deadlock-seam home emission.
+      expect(ranDegenerateBranch({ ...EVERY_ORIGIN_AXIS, segment: 'contributed' })).toBe(true);
+      expect(ranDegenerateBranch({ ...EVERY_ORIGIN_AXIS, camera: HOME_CAMERA })).toBe(true);
     });
   });
 

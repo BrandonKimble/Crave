@@ -96,7 +96,6 @@ const origin = (partial: Partial<OriginSnapshot> & Pick<OriginSnapshot, 'sceneKe
     detent: 'middle',
     segment: null,
     scroll: [],
-    anchor: null,
     camera: null,
     ...partial,
   }) as OriginSnapshot;
@@ -224,7 +223,6 @@ describe('F1509 uncollapsed live-identity resolver', () => {
         detent: 'collapsed',
         segment: null,
         scroll: [],
-        anchor: null,
         camera: null,
       });
     });
