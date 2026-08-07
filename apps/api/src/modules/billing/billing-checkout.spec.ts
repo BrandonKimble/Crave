@@ -36,6 +36,10 @@ const billingModule: BillingModule = require('./billing.service');
 const { BillingService, ANNUAL_TRIAL_PERIOD_DAYS } = billingModule;
 
 const MONTHLY = 'price_premium_monthly';
+/** The one event id the webhook fixtures replay (see completedEvent). */
+const PROCESSED_EVENT_ID = 'evt_checkout_1';
+/** The Clerk id every webhook fixture names in client_reference_id/metadata. */
+const AUTH_ID = 'user_clerk_1';
 const ANNUAL = 'price_premium_annual';
 
 // The service takes a full `User` row; only these four fields are read on
@@ -43,7 +47,7 @@ const ANNUAL = 'price_premium_annual';
 // fifteen irrelevant columns.
 const USER = {
   userId: '11111111-1111-4111-8111-111111111111',
-  authProviderUserId: 'user_clerk_1',
+  authProviderUserId: AUTH_ID,
   email: 'a@example.com',
   stripeCustomerId: null as string | null,
 } as unknown as import('@prisma/client').User;
@@ -51,7 +55,9 @@ const USER = {
 function makeService(
   overrides: {
     config?: Record<string, unknown>;
-    user?: Record<string, unknown> | null;
+    /** The account behind `user_clerk_1` is soft-deleted (deletedAt set). */
+    userDeleted?: boolean;
+    /** Status already recorded for `evt_checkout_1`, keyed by event id. */
     priorEventStatus?: string | null;
   } = {},
 ) {
@@ -76,22 +82,81 @@ function makeService(
     },
     billingEventLog: {
       upsert: jest.fn().mockResolvedValue({}),
-      findUnique: jest
-        .fn()
-        .mockResolvedValue(
-          overrides.priorEventStatus
-            ? { status: overrides.priorEventStatus }
-            : null,
-        ),
+      // KEYED ON THE COMPOUND EVENT KEY (F4921). This used to answer any
+      // argument from `priorEventStatus`, so the replay test's own comment
+      // ("the SAME event id the test above processed") was a claim the fake
+      // never checked. Replacing `externalEventId: event.id` with a constant
+      // — or flipping `source` to 'revenuecat' — left all 55 billing specs
+      // green while, in production, every distinct Stripe event after the
+      // first would be swallowed as a replay and NO grant would ever be
+      // written again. The double now holds the log the way the unique index
+      // does: one row per (source, externalEventId).
+      findUnique: jest.fn(
+        ({
+          where,
+        }: {
+          where: {
+            source_externalEventId?: {
+              source?: string;
+              externalEventId?: string;
+            };
+          };
+        }) => {
+          const key = where.source_externalEventId;
+          if (!key) {
+            throw new Error(
+              'billingEventLog.findUnique double: expected ' +
+                'where.source_externalEventId, got ' +
+                JSON.stringify(where),
+            );
+          }
+          const seen =
+            overrides.priorEventStatus &&
+            key.source === 'stripe' &&
+            key.externalEventId === PROCESSED_EVENT_ID;
+          return Promise.resolve(
+            seen ? { status: overrides.priorEventStatus } : null,
+          );
+        },
+      ),
     },
     subscription: { upsert: jest.fn().mockResolvedValue({}) },
     user: {
       update: jest.fn().mockResolvedValue({}),
-      findFirst: jest
-        .fn()
-        .mockResolvedValue(
-          overrides.user === undefined ? USER : overrides.user,
-        ),
+      // KEYED ON THE WHERE (F4920), in the shape of
+      // identity/user-profile-stats.spec.ts. The webhook resolves its user
+      // through a findFirst carrying `deletedAt: null`, whose comment names
+      // the exact attack: a late webhook (the subscription update fired by
+      // deletion's own cancel call) resurrecting a deleted account with a
+      // premium grant. With a mockResolvedValue, deleting that clause left
+      // all 55 specs green. This double models the soft-delete predicate the
+      // way Postgres does: a query that omits it SEES the deleted row.
+      findFirst: jest.fn(
+        ({
+          where,
+        }: {
+          where: {
+            deletedAt?: Date | null;
+            OR?: Array<Record<string, string>>;
+          };
+        }) => {
+          const identifiers = (where.OR ?? []).flatMap((clause) =>
+            Object.values(clause),
+          );
+          if (!identifiers.includes(AUTH_ID)) {
+            return Promise.resolve(null);
+          }
+          const filtersDeleted = where.deletedAt === null;
+          if (overrides.userDeleted && filtersDeleted) {
+            return Promise.resolve(null);
+          }
+          return Promise.resolve(
+            overrides.userDeleted
+              ? { ...USER, deletedAt: new Date('2026-08-01T00:00:00Z') }
+              : USER,
+          );
+        },
+      ),
     },
   };
   const logger = {
@@ -296,7 +361,7 @@ describe('createPortalSession', () => {
 
 describe('checkout.session.completed -> the access-grant ledger', () => {
   const completedEvent = {
-    id: 'evt_checkout_1',
+    id: PROCESSED_EVENT_ID,
     type: 'checkout.session.completed',
     data: {
       object: {
@@ -394,6 +459,44 @@ describe('checkout.session.completed -> the access-grant ledger', () => {
     expect(entitlements.syncSubscriptionGrant).not.toHaveBeenCalled();
     expect(prisma.checkoutSession.updateMany).not.toHaveBeenCalled();
     expect(stripeMock.subscriptions.retrieve).not.toHaveBeenCalled();
+  });
+
+  it('A DELETED ACCOUNT RECEIVES NOTHING — a late webhook must not resurrect it (F4920)', async () => {
+    // The deletion flow revokes everything and cancels the subscription;
+    // Stripe answers that cancel with a webhook. If the user lookup stops
+    // filtering `deletedAt: null`, that webhook writes a premium grant onto
+    // an account the user asked us to delete. Dropping the clause used to
+    // leave every billing spec green.
+    const { service, prisma, entitlements } = makeService({
+      userDeleted: true,
+    });
+
+    await service.handleStripeWebhook('sig', Buffer.from('{}'));
+
+    expect(entitlements.syncSubscriptionGrant).not.toHaveBeenCalled();
+    expect(prisma.user.update).not.toHaveBeenCalled();
+    // And the lookup DID carry the predicate — otherwise the double above
+    // would have served the deleted row and this test would be asserting
+    // the absence of a grant for the wrong reason.
+    expect(prisma.user.findFirst.mock.calls[0][0].where.deletedAt).toBeNull();
+  });
+
+  it('a DIFFERENT event id is NOT a replay — the idempotency key is the event, not "any event" (F4921)', async () => {
+    // The replay case below is only meaningful if a non-replay is admitted:
+    // with an unkeyed findUnique, keying production on a constant (or on the
+    // wrong source) swallowed every subsequent event as a replay — a silent,
+    // total revenue-recognition outage with a green suite.
+    stripeMock.webhooks.constructEvent.mockReturnValue({
+      ...completedEvent,
+      id: 'evt_checkout_2',
+    });
+    const { service, entitlements } = makeService({
+      priorEventStatus: 'processed',
+    });
+
+    await service.handleStripeWebhook('sig', Buffer.from('{}'));
+
+    expect(entitlements.syncSubscriptionGrant).toHaveBeenCalledTimes(1);
   });
 
   it('grants nothing when a completed session carries no subscription', async () => {
