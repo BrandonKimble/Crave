@@ -2766,3 +2766,40 @@ with a MEASURED zero cascade rather than a guessed one.
 callers, so the frozen region was never written and the leak had no state to leak — the
 fix was correct and free, but the real question (freeze the overlap region per search, or
 recompute per source build) is a product behavior choice. Options on the row.
+
+---
+
+## D97 — authority-controllers P3 ratified (2026-08-06)
+
+8 of 9 landed, 46 suites / 655 tests green, and the batch closed three long-running arcs:
+
+**The flake is dead, at the bar D95 set:** `virtual: true` on a REAL module keyed the mock
+factory by literal specifier, so a successful resolution loaded untransformed
+react-native and killed the suite wholesale. The fix is the sibling pattern (drop the
+third argument), proven by TWENTY consecutive non-silent green runs at 45/650. A green
+run of this territory is trustworthy again.
+
+**The tripwire/trace split landed with a claim withdrawn:** F5417's secondary assertion
+(a docblock describing "an ungated path that does not exist") was FALSE — the ungated
+path exists, it just does not route through the logger the grep searched. Claim withdrawn
+in the ledger, docblock untouched. Meanwhile the tripwire now spans the whole seam
+(armed by the pop verb, disarmed at the restore's camera commit) and its spec's FIRST
+assertion is that the debug flag is off.
+
+**F5405's unreachable-state spec was DELETED, not rewritten** — with the constructor
+private, "two live transactions coexist" asserts a state production cannot mint, the
+F4507 shape, exactly as D95 pre-authorized. And the lane held the line on scope:
+`markTransitionJoinInput` stays exported because un-exporting it would delete three live
+contract assertions to remove one test import — a deviation argued, not slipped.
+
+**F5418 STOPPED, and the stop is worth more than the fix would have been:** the weak
+fallback (delete the guards, rely on types) is DISPROVEN — with guards gone and a second
+scene added, tsc is CLEAN because the controller's state is two search singletons; a
+second scene would silently ALIAS onto search state, worse than being dropped. My row's
+"per-scene state fails to compile" did not hold. The strong shape needs two one-line
+producer edits in screens/Search (now a free territory); the row carries the exact fix
+and acceptance, queued for the next lane in.
+
+**F5411's ruling paid twice:** the consumer READ decided measure-over-delete (a constant
+zero pinned the owner to the bottom of worstByDuration forever), and the fix
+incidentally made the uninstrumented path cheaper.
