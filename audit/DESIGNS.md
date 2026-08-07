@@ -3816,3 +3816,34 @@ together so a fresh DB is consistent).
 
 F7500's guard-half is FIXED; its semantics + live-path decision remain the owner's — the
 single most serious item in the escalation queue.
+
+---
+
+## D125 — mobile remediation ratified; the recovery timer holds through a re-render (2026-08-07)
+
+**F7700 ratified — the fix is at the right rung and the proof is real.** The registration
+effect no longer churns on callback identity: a stable observation identity (empty-dep
+useCallback wrappers reading the live callbacks through refs) means re-registration no
+longer HAPPENS on a re-render, so cleanup runs only on unmount and the timers arm on
+transaction start / clear on transaction end. The spec drives the REAL hook through an
+effect-committing harness with fake timers — test 2 reds on the pre-fix churning-deps
+wiring (notifyCollapsed called 0x) and greens after (1x), while test 1 proves the F1041
+1200ms recovery STILL fires (the fix did not break recovery to fix re-arm). Verified
+myself: 2/2. The worklet boundary-commit correctly stays with the perf harness; the
+recovery deadline is a plain setTimeout and is fully driven here — the exact mechanism.
+
+**F7702 resolved to COLLAPSE on maestro evidence** — a prior pass already removed AND
+forbade a distinct commit-lead boundary (the parity pin's negative lookahead bans
+SEARCH_DISMISS_BOUNDARY_COMMIT_LEAD_PT/pre_handoff), so manufacturing a distinct boundaryY
+would fabricate a threshold with no producer. One geometric boundary, the +8 slop stays on
+it. The lane READ whether the band was real before collapsing — the D102 instruction
+honored.
+
+**F7801 ratified** — the F5000 collapse residual: seven dead panel-null guards removed by
+narrowing the type to non-null, with `panel.data?.restaurant` correctly KEPT (it guards
+nullable data, not the impossible panel-null). Re-adding `| null` flags all seven RED via
+tsc.
+
+Three of four remediation lanes ratified. Only the api-search service/backfill lane
+remains in flight; its schema landed atomically (ae466c0d5), so it commits service code
+only.
