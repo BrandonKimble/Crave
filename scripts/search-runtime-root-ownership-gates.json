@@ -1,7 +1,7 @@
 {
   "schemaVersion": "runtime-root-ownership-gates.v1",
   "generatedAt": "2026-02-13T23:30:00Z",
-  "description": "Root-ownership checks for the search runtime. RELOCATED 2026-08-04 (F1654) from plans/perf-baselines/ — CI rule DATA lives next to its runner in scripts/, never up in plans/, which is exactly how the two rotted apart. RETIRED IN THE SAME PASS: slices S9A, S9D, S9E, S9F and S10, whose checks named 9 files that later refactors legitimately deleted, so every one of them had been exiting 1 unread for weeks. Kept slices are exactly those whose every declared path resolves against the live tree.",
+  "description": "Root-ownership checks for the search runtime. RELOCATED 2026-08-04 (F1654) from plans/perf-baselines/ \u2014 CI rule DATA lives next to its runner in scripts/, never up in plans/, which is exactly how the two rotted apart. RETIRED IN THE SAME PASS: slices S9A, S9D, S9E, S9F and S10, whose checks named 9 files that later refactors legitimately deleted, so every one of them had been exiting 1 unread for weeks. Kept slices are exactly those whose every declared path resolves against the live tree.",
   "enforcedSliceIds": ["S7", "S8", "S9B", "S9C", "S11"],
   "slices": {
     "S7": [
@@ -66,20 +66,6 @@
     ],
     "S9B": [
       {
-        "id": "s9b_root_effect_hook_budget",
-        "path": "apps/mobile/src/screens/Search/index.tsx",
-        "pattern": "\\bReact\\.use(?:LayoutEffect|Effect)\\(",
-        "maxCount": 101,
-        "description": "S9B complexity budget: root lifecycle hook pressure should step down."
-      },
-      {
-        "id": "s9b_root_derivation_hook_budget",
-        "path": "apps/mobile/src/screens/Search/index.tsx",
-        "pattern": "\\bReact\\.use(?:Callback|Memo)\\(",
-        "maxCount": 238,
-        "description": "S9B complexity budget: root derivation hook pressure should step down."
-      },
-      {
         "id": "s9b_owner_module_list_read_model_builder_exists",
         "kind": "path_exists",
         "path": "apps/mobile/src/screens/Search/runtime/read-models/list-read-model-builder.ts",
@@ -95,7 +81,7 @@
         "id": "s9b_owner_module_chip_read_model_exists",
         "kind": "path_exists",
         "path": "apps/mobile/src/screens/Search/runtime/read-models/search-filter-chip-state.ts",
-        "description": "S9B requires the chip read-model owner module to exist. RENAMED 2026-08-07 (F6619): chip-read-model-builder.ts was deliberately deleted by F3900/D78 — it was an identity function behind a memo — and search-filter-chip-state.ts is the ratified successor that owns chip projection. The rules data was not updated with the module, so this check exited 1 on HEAD and reddened the whole search-runtime-contract-tests job for a rename."
+        "description": "S9B requires the chip read-model owner module to exist. RENAMED 2026-08-07 (F6619): chip-read-model-builder.ts was deliberately deleted by F3900/D78 \u2014 it was an identity function behind a memo \u2014 and search-filter-chip-state.ts is the ratified successor that owns chip projection. The rules data was not updated with the module, so this check exited 1 on HEAD and reddened the whole search-runtime-contract-tests job for a rename."
       },
       {
         "id": "s9b_owner_module_read_model_selectors_exists",
@@ -124,20 +110,6 @@
     ],
     "S9C": [
       {
-        "id": "s9c_root_effect_hook_budget",
-        "path": "apps/mobile/src/screens/Search/index.tsx",
-        "pattern": "\\bReact\\.use(?:LayoutEffect|Effect)\\(",
-        "maxCount": 97,
-        "description": "S9C complexity budget: root lifecycle hook pressure should continue downward."
-      },
-      {
-        "id": "s9c_root_derivation_hook_budget",
-        "path": "apps/mobile/src/screens/Search/index.tsx",
-        "pattern": "\\bReact\\.use(?:Callback|Memo)\\(",
-        "maxCount": 228,
-        "description": "S9C complexity budget: root derivation hook pressure should continue downward."
-      },
-      {
         "id": "s9c_owner_module_query_mutation_orchestrator_exists",
         "kind": "path_exists",
         "path": "apps/mobile/src/screens/Search/runtime/mutations/query-mutation-orchestrator.ts",
@@ -161,18 +133,22 @@
     ],
     "S11": [
       {
-        "id": "s11_root_effect_hook_budget",
-        "path": "apps/mobile/src/screens/Search/index.tsx",
-        "pattern": "\\bReact\\.use(?:LayoutEffect|Effect)\\(",
-        "maxCount": 70,
-        "description": "S11 end-state budget: root lifecycle hook pressure must converge to composition-shell levels."
+        "id": "s11_runtime_tree_effect_concentration",
+        "kind": "max_per_file_in_tree",
+        "dir": "apps/mobile/src/screens/Search/runtime",
+        "excludeGlobs": ["**/*.spec.ts", "**/*.spec.tsx"],
+        "pattern": "\\b(?:React\\.)?use(?:LayoutEffect|Effect)\\(",
+        "maxPerFile": 6,
+        "description": "No single module may own the search runtime's lifecycle. Budget is the MEASURED ACTUAL with ZERO headroom (2026-08-07: 82 files, 132 effect call sites, max 6 in runtime/shared/use-search-foreground-interaction-effects-runtime.ts). A ratchet with headroom is the defect F7201 fixed. Lower it in the commit that lowers the worst offender; raise it only with the reason recorded."
       },
       {
-        "id": "s11_root_derivation_hook_budget",
-        "path": "apps/mobile/src/screens/Search/index.tsx",
-        "pattern": "\\bReact\\.use(?:Callback|Memo)\\(",
-        "maxCount": 150,
-        "description": "S11 end-state budget: root derivation hook pressure must converge to composition-shell levels."
+        "id": "s11_runtime_tree_derivation_concentration",
+        "kind": "max_per_file_in_tree",
+        "dir": "apps/mobile/src/screens/Search/runtime",
+        "excludeGlobs": ["**/*.spec.ts", "**/*.spec.tsx"],
+        "pattern": "\\b(?:React\\.)?use(?:Callback|Memo)\\(",
+        "maxPerFile": 16,
+        "description": "No single module may own the search runtime's derivations. Budget is the MEASURED ACTUAL with ZERO headroom (2026-08-07: 245 files, 563 derivation call sites, max 16 in runtime/shared/use-results-presentation-close-transition-state-runtime.ts). Same ratchet discipline as the effect check above."
       },
       {
         "id": "s11_no_root_runtime_owner_constructors",
@@ -217,5 +193,44 @@
         "description": "S11 requires removal of submit-runtime console logging debug probes."
       }
     ]
-  }
+  },
+  "retiredChecks": [
+    {
+      "retired": "2026-08-07 (audit F7201/D114)",
+      "checks": [
+        {
+          "sliceId": "S9B",
+          "id": "s9b_root_effect_hook_budget",
+          "maxCount": 101
+        },
+        {
+          "sliceId": "S9B",
+          "id": "s9b_root_derivation_hook_budget",
+          "maxCount": 238
+        },
+        {
+          "sliceId": "S9C",
+          "id": "s9c_root_effect_hook_budget",
+          "maxCount": 97
+        },
+        {
+          "sliceId": "S9C",
+          "id": "s9c_root_derivation_hook_budget",
+          "maxCount": 228
+        },
+        {
+          "sliceId": "S11",
+          "id": "s11_root_effect_hook_budget",
+          "maxCount": 70
+        },
+        {
+          "sliceId": "S11",
+          "id": "s11_root_derivation_hook_budget",
+          "maxCount": 150
+        }
+      ],
+      "subject": "apps/mobile/src/screens/Search/index.tsx",
+      "history": "THE RATCHET NEVER RATCHETED. Born at 034ad4adc (2026-02-16) against a 6,211-line screens/Search/index.tsx holding 71 useEffect/useLayoutEffect and 114 useCallback/useMemo call sites, in a screens/Search/ tree of 115 files. The concentration law WON: that root is now 87 lines with 0 effects and 0 derivations, and screens/Search/ is 689 files (runtime/ alone is 615). But measured against the BIRTH actuals, the S9B and S9C effect budgets (101, 97) were already slack by 30 and 26 the day they were committed, and both derivation budgets (238, 228) were slack by more than 100. Only S11's 70 was ever binding, by one, and it stopped being binding the moment the decomposition started. Five of six were never in their lives capable of failing; the 101 -> 97 -> 70 descent was a ceiling drawn above the ceiling. Retiring them is proven safe by that same measurement: nothing green becomes greener. They are replaced by the two max_per_file_in_tree checks in S11, which re-derive the SUBJECT \u2014 a concentration law names a TREE, not a file, and the quantity is a MAXIMUM OVER FILES."
+    }
+  ]
 }

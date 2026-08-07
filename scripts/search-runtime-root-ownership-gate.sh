@@ -2,6 +2,15 @@
 # @script-class: gate
 # @run-by: .github/workflows/ci.yml (job search-runtime-contract-tests,
 #     enforced slice S7).
+#
+# F7201/D114 (2026-08-07): the six index.tsx hook BUDGETS are retired (their
+# history is in `retiredChecks` in the rules file — five of the six were slack
+# on the day they were written and never once capable of failing). The
+# concentration law they encoded now lives in the `max_per_file_in_tree` kind
+# below, aimed at the TREE with the quantity as a MAXIMUM OVER FILES, and it
+# carries a two-part non-zero witness so an evaporated subject goes RED. The 16
+# absence checks and the submit-hook bans are UNCHANGED — maxCount 0 on a named
+# killed symbol is the delete-gate's blessed negative class and ages well.
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -137,6 +146,39 @@ if (!Array.isArray(sliceChecks) || sliceChecks.length === 0) {
   fail(`No root ownership checks configured for enforced slice ${sliceId}.`);
 }
 
+// F7201/D114: glob -> RegExp for excludeGlobs. Deliberately small — `**/` and
+// `*` are the only wildcards the rules use, and a matcher that quietly accepts
+// syntax it does not implement is how an exclusion silently stops excluding.
+const globToRegExp = (glob) => {
+  let out = '';
+  for (let i = 0; i < glob.length; i += 1) {
+    if (glob.startsWith('**/', i)) {
+      out += '(?:.*/)?';
+      i += 2;
+      continue;
+    }
+    const ch = glob[i];
+    out += ch === '*' ? '[^/]*' : escapeRegExp(ch);
+  }
+  return new RegExp(`^${out}$`);
+};
+
+const listFilesRecursive = (dir) => {
+  const found = [];
+  const walk = (current) => {
+    for (const entry of fs.readdirSync(current, { withFileTypes: true })) {
+      const full = path.join(current, entry.name);
+      if (entry.isDirectory()) {
+        walk(full);
+      } else if (entry.isFile()) {
+        found.push(full);
+      }
+    }
+  };
+  walk(dir);
+  return found;
+};
+
 const failures = [];
 const checks = [];
 
@@ -147,6 +189,146 @@ for (const check of sliceChecks) {
   const patternSource = typeof check?.pattern === 'string' ? check.pattern : null;
   const maxCount = safeInteger(check?.maxCount);
   const description = typeof check?.description === 'string' ? check.description : '';
+
+  // F7201/D114 (2026-08-07): THE CONCENTRATION LAW NAMES A TREE, NOT A FILE.
+  //
+  // The six budget checks this kind replaces were born at 034ad4adc against a
+  // 6,211-line screens/Search/index.tsx holding 71 effects. The law they
+  // encoded — no single module may own the search runtime's state — WON: that
+  // root is 87 lines with 0 effects, and screens/Search/runtime/ is 615 files.
+  // But the checks had been derived from the INCIDENT rather than from the
+  // invariant, so relocation silently emptied them: three of the six were
+  // already ABOVE the actual on the day they were committed (101 and 97
+  // against 71; 238 and 228 against 114), and the famous 101 -> 97 -> 70
+  // descent was a ceiling drawn above the ceiling, never once capable of
+  // failing.
+  //
+  // The subject is the TREE and the quantity is a MAXIMUM OVER FILES, so a
+  // failure can name its own culprit — the argmax file, not a slice id.
+  //
+  // THE TWO-PART NON-ZERO WITNESS (generalizing F2510 and the closing line of
+  // check-search-runtime-hook-names.mjs, "Zero files scanned is a FAILURE,
+  // never a pass"): this check must scan at least one file (else the dir
+  // moved) AND observe at least one non-zero count (else the subject evaporated
+  // — which is PRECISELY how the six retired budgets reported a perfect score
+  // for months). A gate whose subject has evaporated goes RED, not green.
+  //
+  // Budgets carry ZERO HEADROOM by construction: they are the measured actual.
+  // This WILL red on legitimate growth. That is what a ratchet is; the honest
+  // response is to raise it in the same commit with the reason recorded, which
+  // is a review conversation the retired shape could never trigger.
+  if (kind === 'max_per_file_in_tree') {
+    const relDir = typeof check?.dir === 'string' ? check.dir : null;
+    const maxPerFile = safeInteger(check?.maxPerFile);
+    const excludeGlobs = Array.isArray(check?.excludeGlobs)
+      ? check.excludeGlobs.filter((entry) => typeof entry === 'string')
+      : [];
+    const push = (extra) =>
+      checks.push({ id, kind, dir: relDir, pattern: patternSource, maxPerFile, ...extra });
+
+    if (!relDir) {
+      failures.push(`Check ${id} missing dir.`);
+      push({ pass: false, error: 'missing dir' });
+      continue;
+    }
+    if (!patternSource) {
+      failures.push(`Check ${id} missing pattern.`);
+      push({ pass: false, error: 'missing pattern' });
+      continue;
+    }
+    if (maxPerFile == null || maxPerFile < 0) {
+      failures.push(`Check ${id} has invalid maxPerFile.`);
+      push({ pass: false, error: 'invalid maxPerFile' });
+      continue;
+    }
+
+    const absoluteDir = path.isAbsolute(relDir) ? relDir : path.join(repoRoot, relDir);
+    if (!fs.existsSync(absoluteDir) || !fs.statSync(absoluteDir).isDirectory()) {
+      failures.push(
+        `Check ${id} dir does not exist: ${relDir}. The tree this law is about has moved; ` +
+          `re-aim the check rather than deleting it.`
+      );
+      push({ pass: false, error: 'dir missing' });
+      continue;
+    }
+
+    let treePattern;
+    try {
+      treePattern = new RegExp(patternSource, 'gm');
+    } catch (error) {
+      failures.push(`Check ${id} has invalid pattern: ${patternSource}`);
+      push({ pass: false, error: error instanceof Error ? error.message : String(error) });
+      continue;
+    }
+
+    const excludeMatchers = excludeGlobs.map(globToRegExp);
+    let filesScanned = 0;
+    let nonZeroFiles = 0;
+    let argmaxFile = null;
+    let argmaxCount = 0;
+    const overBudget = [];
+
+    for (const absoluteFile of listFilesRecursive(absoluteDir)) {
+      const relFile = path.relative(repoRoot, absoluteFile);
+      const relToDir = path.relative(absoluteDir, absoluteFile);
+      if (excludeMatchers.some((matcher) => matcher.test(relToDir) || matcher.test(relFile))) {
+        continue;
+      }
+      filesScanned += 1;
+      treePattern.lastIndex = 0;
+      const count = (fs.readFileSync(absoluteFile, 'utf8').match(treePattern) ?? []).length;
+      if (count > 0) {
+        nonZeroFiles += 1;
+      }
+      if (count > argmaxCount) {
+        argmaxCount = count;
+        argmaxFile = relFile;
+      }
+      if (count > maxPerFile) {
+        overBudget.push({ file: relFile, count });
+      }
+    }
+
+    if (filesScanned === 0) {
+      failures.push(
+        `Check ${id} scanned ZERO files under ${relDir} — the subject moved, and a gate with ` +
+          `nothing to measure cannot report a pass.`
+      );
+      push({ pass: false, filesScanned, nonZeroFiles, error: 'zero files scanned' });
+      continue;
+    }
+    if (nonZeroFiles === 0) {
+      failures.push(
+        `Check ${id} observed ZERO matches of /${patternSource}/ across ${filesScanned} files ` +
+          `under ${relDir} — the subject of this concentration law has evaporated. That is the ` +
+          `exact failure mode this kind was built to make visible; re-aim the check.`
+      );
+      push({ pass: false, filesScanned, nonZeroFiles, error: 'zero non-zero counts' });
+      continue;
+    }
+
+    const pass = overBudget.length === 0;
+    if (!pass) {
+      overBudget.sort((a, b) => b.count - a.count);
+      failures.push(
+        `Check ${id} exceeded maxPerFile (${overBudget[0].count} > ${maxPerFile}) in ` +
+          `${overBudget[0].file}${
+            overBudget.length > 1 ? ` (and ${overBudget.length - 1} more file(s))` : ''
+          }${description ? `: ${description}` : ''}.`
+      );
+    }
+    push({
+      pass,
+      excludeGlobs,
+      filesScanned,
+      nonZeroFiles,
+      argmaxFile,
+      argmaxCount,
+      overBudget: overBudget.slice(0, 10),
+      description,
+    });
+    continue;
+  }
 
   if (!relPath) {
     failures.push(`Check ${id} missing path.`);
