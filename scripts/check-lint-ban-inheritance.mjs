@@ -61,6 +61,8 @@ const PROBES = [
   'src/screens/Search/utils/quality.ts',
   'src/screens/Search/utils/marker-lod.ts',
   'src/utils/quality-color.ts',
+  // F7200/D114: the search-dismiss motion plane's dependency-rule override.
+  'src/screens/Search/runtime/shared/use-search-dismiss-motion-plane-runtime.ts',
 ];
 
 /**

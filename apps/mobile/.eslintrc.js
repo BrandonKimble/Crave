@@ -147,6 +147,66 @@ module.exports = {
       },
     },
     {
+      // F7200/D114 (2026-08-07): THE SEARCH-DISMISS MOTION PLANE IS AN OBSERVER, NOT A DRIVER.
+      // Three checks in scripts/app-route-runtime-delete-gate.sh
+      // (search_dismiss_motion_plane_sheet_y_writer, search_dismiss_motion_plane_sheet_command_writer,
+      // search_surface_motion_plane_runonui_start) were written as
+      // `useSearchDismissMotionPlaneRuntime[\s\S]*<forbidden symbol>` — an UNBOUNDED proximity
+      // regex, which under `rg -U` says exactly "these two symbols must not appear in the same
+      // file". That is not a proximity law, it is a DEPENDENCY law, and a scanner is the wrong
+      // home for it: `runOnUI` in particular is legitimate in seven other modules, so no
+      // tree-wide ban can express it and only a file-scoped rule can. The three scanner checks
+      // are deleted with a pointer here.
+      //
+      // The law: this runtime OBSERVES real sheet Y and derives dismiss progress from it. It
+      // must not acquire the ability to WRITE the sheet (the shared-sheet values runtime owns
+      // `sheetTranslateY`), to COMMAND the sheet (the sheet host authority controller / shared
+      // sheet runtime), or to hand its shared-value writes off through a `runOnUI` boundary —
+      // the motion-plane command target assigns shared values directly, and a runOnUI handoff
+      // is the frame of latency this design bought its way out of. Banning the IMPORT is
+      // strictly stronger than banning the call: the capability cannot be acquired at all.
+      files: ['src/screens/Search/runtime/shared/use-search-dismiss-motion-plane-runtime.ts'],
+      rules: {
+        // F2050 (the one-block law): ESLint REPLACES a rule's options, it never merges them.
+        // The base `no-restricted-imports` ban on the native `Modal` is RESTATED here because
+        // this block would otherwise delete it for this file.
+        // scripts/check-lint-ban-inheritance.mjs proves that, and its PROBES list carries this
+        // file so the next override cannot drop a ban silently either.
+        'no-restricted-imports': [
+          'error',
+          {
+            paths: [
+              {
+                name: 'react-native',
+                importNames: ['Modal'],
+                message:
+                  'Use OverlayModalSheet (the standard modal surface) instead of the native Modal.',
+              },
+              {
+                name: 'react-native-reanimated',
+                importNames: ['runOnUI'],
+                message:
+                  'The search dismiss motion plane must assign shared-value animations directly; ' +
+                  'it must not wait on a runOnUI handoff (F7200/D114).',
+              },
+            ],
+            patterns: [
+              {
+                group: [
+                  '**/navigation/runtime/use-app-route-shared-sheet-values-runtime',
+                  '**/navigation/runtime/use-app-route-shared-sheet-runtime',
+                  '**/navigation/runtime/app-route-sheet-host-authority-controller',
+                ],
+                message:
+                  'The search dismiss motion plane OBSERVES real sheet Y; it must not import the ' +
+                  'sheet write/command API. Close press-up uses the real sheet transport (F7200/D114).',
+              },
+            ],
+          },
+        ],
+      },
+    },
+    {
       // THE SKELETON LAW's RED contract (leg 6 — child-transition primitive §2.2 / wave-2
       // charter §5): sheet-scene bodies render their DECLARED foundation skeleton while
       // pending (SceneBodyReadyGate) and the shared Button primitive owns the squircle

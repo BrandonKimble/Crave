@@ -222,8 +222,16 @@ declare -a CONTENT_CHECKS=(
   # DELETED F7200/D114 (2026-08-07) — search_suggestion_exit_ease_in ROTTED: its first anchor is a FILE NAME matched against file CONTENT — unfireable by construction. It could not fire even with rg -U; a check that cannot fire defends nothing.
   "search_mode_shortcut_frozen_interaction_boolean::\\bshortcutsInteractionEnabled\\b(?!Ref)::Search-mode shortcut submit must read live interaction through a ref, not a frozen boolean captured by the overlay chrome host."
   "search_submit_dismiss_legacy_lifecycle_methods::\\.(beginResultsEnter|beginResultsExit|markResultsHeaderReady|markPollsHeaderReady|markDockedSceneHeaderReady|markDockedSceneBodyReady|markResultsExitMapSettled|markResultsExitCollapsedSettled|markDockedSceneRestoreRequested)\\(::Submit/dismiss result lifecycle marks must update route-scene transaction readiness."
-  "search_dismiss_motion_plane_sheet_y_writer::useSearchDismissMotionPlaneRuntime[\\s\\S]*sheetTranslateY\\.value\\s*=::Search dismiss motion plane must observe real sheet Y, not write sheetTranslateY."
-  "search_dismiss_motion_plane_sheet_command_writer::useSearchDismissMotionPlaneRuntime[\\s\\S]*(requestSheetMotionSnap|requestSnap\\('collapsed'|animateSheetTo\\('collapsed')::Search dismiss motion plane must not command sheet collapse; close press-up uses the real sheet transport."
+  # MOVED F7200/D114 (2026-08-07) — search_dismiss_motion_plane_sheet_y_writer was an UNBOUNDED `useSearchDismissMotionPlaneRuntime[\s\S]*X`
+  # proximity regex, i.e. under rg -U a DEPENDENCY rule ("must not share a file"), not a proximity law.
+  # It now lives as a no-restricted-imports rule in apps/mobile/.eslintrc.js scoped to
+  # src/screens/Search/runtime/shared/use-search-dismiss-motion-plane-runtime.ts, which bans acquiring
+  # the capability rather than calling it. The sheet-write API (the shared-sheet values runtime that owns sheetTranslateY) is import-banned there.
+  # MOVED F7200/D114 (2026-08-07) — search_dismiss_motion_plane_sheet_command_writer was an UNBOUNDED `useSearchDismissMotionPlaneRuntime[\s\S]*X`
+  # proximity regex, i.e. under rg -U a DEPENDENCY rule ("must not share a file"), not a proximity law.
+  # It now lives as a no-restricted-imports rule in apps/mobile/.eslintrc.js scoped to
+  # src/screens/Search/runtime/shared/use-search-dismiss-motion-plane-runtime.ts, which bans acquiring
+  # the capability rather than calling it. The sheet command API (shared sheet runtime / sheet host authority controller) is import-banned there.
   "search_nav_cutout_frame_bucket_proof::\\bnavCutoutProofBucket\\b::Nav/cutout lockstep proof must be edge-triggered, not per-frame progress bucket logging."
   "search_dismiss_motion_dense_progress_proof::\\blate_progress\\b::F6400(a/b): the 'late_progress' proof stage was UNEMITTABLE (shouldEmitProofEdge admits only boundaryReached/early/mid) and was deleted 2026-08-07. This check used to pair the event literal with the stage name inside 260 characters; in the only file that contained both they sat 77 lines apart, so it had been green-forever since it was written and policed nothing. Now negative-only, per this file's own header rule: the stage name is gone and must not return."
   "search_submit_dismiss_command_target_names::\\b(SearchSurfaceMotionPlaneCommandTarget|registerMotionPlaneCommandTarget|motionPlaneCommandTarget)\\b::Search motion-plane adapter observes sheet Y; command-target naming must not return."
@@ -279,7 +287,11 @@ declare -a CONTENT_CHECKS=(
   "search_dismiss_main_host_preboundary_poll_substrate::\\bisSearchDismissPollSubstratePrewarmed\\b|shouldKeepSearchSheetHostForPollRestore[\\s\\S]{0,220}\\bcanDisplayDockedSceneSubstrate\\b::The moving Search sheet host must not switch to polls before the collapsed boundary; poll substrate renders as a separate layer behind it."
   "search_dismiss_substrate_ready_logical_snap::canDisplayDockedSceneSubstrate[\\s\\S]{0,180}return 'collapsed'::Poll substrate readiness must not collapse the outgoing Search sheet host logical snap before boundary release."
   "search_surface_motion_plane_request_shared_values::\\b(dismissMotionRequest|openMotionRequest|requestDismissMotionStart|openRequestSeqRef|requestSearchDismissMotionPlaneImmediateStart)\\b::Search submit/dismiss motion must start from SearchSurfaceRuntime command target, not React/subscription request shared values."
-  "search_surface_motion_plane_runonui_start::useSearchDismissMotionPlaneRuntime[\\s\\S]*\\brunOnUI\\b::Search submit/dismiss motion-plane command target must assign shared-value animations directly, not wait on a runOnUI handoff."
+  # MOVED F7200/D114 (2026-08-07) — search_surface_motion_plane_runonui_start was an UNBOUNDED `useSearchDismissMotionPlaneRuntime[\s\S]*X`
+  # proximity regex, i.e. under rg -U a DEPENDENCY rule ("must not share a file"), not a proximity law.
+  # It now lives as a no-restricted-imports rule in apps/mobile/.eslintrc.js scoped to
+  # src/screens/Search/runtime/shared/use-search-dismiss-motion-plane-runtime.ts, which bans acquiring
+  # the capability rather than calling it. `runOnUI` is legitimate in seven other modules, so no tree-wide ban could ever express this; only the file-scoped import ban can.
   "search_dismiss_press_up_full_snapshot_before_motion_arm::beginDismissTransaction\\(closeIntentId\\)|beginCloseTransition[\\s\\S]{0,260}getSearchSurfaceRuntime\\(\\)\\.beginDismissTransaction::Search dismiss press-up must arm the UI motion plane first; full SearchSurfaceRuntime publish/fanout belongs at the collapsed boundary."
   "search_surface_dismiss_full_publish_start_method::\\bbeginDismissTransaction\\b|\\bpublishArmedDismissTransaction\\b::Search dismiss start must use armDismissMotion plus commitDismissBoundary, not a during-motion full-publish path."
   "search_dismiss_motion_started_js_fanout::onMotionStarted|prewarmDockedLane|markPollPagePrewarmedForDismiss::Search dismiss must not publish route/surface/poll prewarm work from a motion-start callback during the visible movie."
