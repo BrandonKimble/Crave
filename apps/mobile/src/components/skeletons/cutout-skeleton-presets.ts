@@ -10,6 +10,7 @@ import {
   RESULT_DETAILS_INDENT,
 } from '../../screens/Search/constants/search';
 import { PHOTO_STRIP_TILE_GAP, PHOTO_STRIP_TILE_RADIUS } from '../photos/photo-strip-metrics';
+import { CONTROL_RADIUS } from '../../screens/Search/constants/ui';
 import {
   RESULT_CARD_GALLERY_HEIGHT,
   RESULT_CARD_GALLERY_TILE_ASPECT,
@@ -380,7 +381,7 @@ const ROW_BUILDERS: Record<CutoutSkeletonRowType, { build: RowBuilder; stride: n
 // strip's cutouts, since the real strip is hidden during initial loading; the interaction
 // skeleton omits them because the live strip is visible above it) ───────────────────────
 const STRIP_PILL_HEIGHT = TOGGLE_STRIP_BAND_HEIGHT; // the declared band height — never a re-listed number
-const STRIP_PILL_RADIUS = 8; // CONTROL_RADIUS
+const STRIP_PILL_RADIUS = CONTROL_RADIUS; // the shared control corner radius — never a re-listed number
 const STRIP_PILL_GAP = 8;
 const STRIP_PILL_WIDTHS = [104, 72, 88];
 // The block's bottom gap = the ONE band-block seam (strip-band seam law §1).

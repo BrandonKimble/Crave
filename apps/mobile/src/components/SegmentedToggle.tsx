@@ -16,6 +16,11 @@ import {
 } from '../toggles/toggle-strip-warm-restore-context';
 import { Text } from './ui/Text';
 import { colors as themeColors } from '../constants/theme';
+import {
+  CONTROL_HEIGHT,
+  CONTROL_RADIUS,
+  CONTROL_VERTICAL_PADDING,
+} from '../screens/Search/constants/ui';
 
 /**
  * N-position sliding-pill segmented toggle — THE house toggle primitive, a
@@ -45,10 +50,7 @@ const SEGMENT_TRAVEL_MIN_MS = 34;
 const SEGMENT_TRAVEL_FULL_MS = 150;
 const SEGMENT_TRAVEL_EASING = Easing.linear;
 
-const TOGGLE_BORDER_RADIUS = 8;
-const TOGGLE_MIN_HEIGHT = 32;
 const TOGGLE_HORIZONTAL_PADDING = 12;
-const TOGGLE_VERTICAL_PADDING = 5;
 
 const INACTIVE_LABEL_COLOR = '#111827';
 const ACTIVE_LABEL_COLOR = '#ffffff';
@@ -408,7 +410,7 @@ const styles = StyleSheet.create({
   control: {
     flexDirection: 'row',
     alignItems: 'center',
-    borderRadius: TOGGLE_BORDER_RADIUS,
+    borderRadius: CONTROL_RADIUS,
     // Transparent track — matches the search segmented control exactly. The frosted
     // cutout window behind the pill is the backdrop; a tinted track here reads as a
     // dark/shadowed box (which search does NOT have).
@@ -421,10 +423,10 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    borderRadius: TOGGLE_BORDER_RADIUS,
-    height: TOGGLE_MIN_HEIGHT,
+    borderRadius: CONTROL_RADIUS,
+    height: CONTROL_HEIGHT,
     paddingHorizontal: TOGGLE_HORIZONTAL_PADDING,
-    paddingVertical: TOGGLE_VERTICAL_PADDING,
+    paddingVertical: CONTROL_VERTICAL_PADDING,
     minWidth: 0,
     flexGrow: 0,
     flexShrink: 1,
@@ -434,7 +436,7 @@ const styles = StyleSheet.create({
     top: 0,
     bottom: 0,
     left: 0,
-    borderRadius: TOGGLE_BORDER_RADIUS,
+    borderRadius: CONTROL_RADIUS,
   },
   // The layout-first pill: same row geometry as the labels, so flex puts it
   // exactly where the animated pill will land — no measurement required.
@@ -457,7 +459,7 @@ const styles = StyleSheet.create({
     bottom: 0,
     left: 0,
     right: 0,
-    borderRadius: TOGGLE_BORDER_RADIUS,
+    borderRadius: CONTROL_RADIUS,
   },
   labelStack: {
     position: 'relative',

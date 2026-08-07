@@ -2,6 +2,7 @@ import React from 'react';
 import { Pressable, StyleSheet, type StyleProp, type ViewStyle } from 'react-native';
 import { Text } from './ui/Text';
 import { colors as themeColors } from '../constants/theme';
+import { CONTROL_HEIGHT, CONTROL_RADIUS } from '../screens/Search/constants/ui';
 
 /**
  * THE house filter chip — the shared pill for every strip (search results, polls
@@ -80,9 +81,9 @@ const styles = StyleSheet.create({
   chip: {
     // No border — search's filter buttons are borderless; the inactive chip is just a
     // dark label sitting over its frosted cutout window, the accent fills only when active.
-    height: 32,
+    height: CONTROL_HEIGHT,
     paddingHorizontal: 12,
-    borderRadius: 8,
+    borderRadius: CONTROL_RADIUS,
     backgroundColor: 'transparent',
     flexDirection: 'row',
     alignItems: 'center',

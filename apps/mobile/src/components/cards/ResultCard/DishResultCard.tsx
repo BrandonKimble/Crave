@@ -6,7 +6,7 @@ import { HandPlatter } from 'lucide-react-native';
 
 // ─── ResultCard PRIMITIVE, dish shape (leg 11, listdetail-ideal §2d) ────────────────────────
 // Extracted from screens/Search/components (literal move — results byte-parity). Variation =
-// the declared slots (note · footerSlot · onAddPhoto), same law as RestaurantResultCard.
+// the declared slots (note · onAddPhoto), same law as RestaurantResultCard.
 import { Text } from '../..';
 import { showShareModal } from '../../share-modal-store';
 import { CardPhotoStrip } from '../../photos/CardPhotoStrip';
@@ -70,12 +70,8 @@ type DishResultCardProps = {
   openScoreInfo: (payload: ScoreInfoPayload) => void;
   /** Slot (listDetail/read-only variants): the saver's note, under the gallery row (§8.1). */
   note?: string | null;
-  /** Slot (listDetail variant): edit footer (ellipsis↔handle crossfade seat). */
-  footerSlot?: React.ReactNode;
   /** Slot: own-list surfaces pass the photo-funnel opener → gallery grows the plus lead tile. */
   onAddPhoto?: () => void;
-  /** Gallery row height override (results = 72). */
-  galleryHeight?: number;
 };
 
 const DishResultCard: React.FC<DishResultCardProps> = ({
@@ -88,9 +84,7 @@ const DishResultCard: React.FC<DishResultCardProps> = ({
   openRestaurantProfile,
   openScoreInfo,
   note = null,
-  footerSlot = null,
   onAddPhoto,
-  galleryHeight = RESULT_CARD_GALLERY_HEIGHT,
 }) => {
   const rank = index + 1;
   // Live saved-anywhere state (batched /lists/memberships read + optimistic
@@ -261,7 +255,7 @@ const DishResultCard: React.FC<DishResultCardProps> = ({
         <CardPhotoStrip
           restaurantId={item.restaurantId}
           connectionId={item.connectionId}
-          height={galleryHeight}
+          height={RESULT_CARD_GALLERY_HEIGHT}
           tileAspect={RESULT_CARD_GALLERY_TILE_ASPECT}
           contentInset={RESULT_CARD_GUTTER}
           leadTile={onAddPhoto ? 'add' : undefined}
@@ -292,7 +286,6 @@ const DishResultCard: React.FC<DishResultCardProps> = ({
         }
         testID={`result-card-pills-${item.connectionId}`}
       />
-      {footerSlot}
     </View>
   );
 };

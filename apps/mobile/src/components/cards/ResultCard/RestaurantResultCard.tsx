@@ -7,9 +7,9 @@ import { Store } from 'lucide-react-native';
 // ─── ResultCard PRIMITIVE (leg 11, listdetail-ideal §2d) ────────────────────────────────────
 // The ONE restaurant card, extracted from screens/Search/components (literal move — the
 // results surface must not change visually). Per-surface variation = the declared SLOTS
-// below (note · footerSlot · onAddPhoto), never forks:
+// below (note · onAddPhoto), never forks:
 //   results        — no slot props passed (byte-parity with the pre-extraction card).
-//   listDetail     — note + onAddPhoto (+ footerSlot when the edit footer lands).
+//   listDetail     — note + onAddPhoto.
 //   read-only list — note only (viewer role: no add tile, no edit footer).
 // The search-side helper modules (styles, descriptor cache, top-food measurement) still
 // live under screens/Search — they are the results surface's prepared-render machinery and
@@ -97,12 +97,8 @@ type RestaurantResultCardProps = {
   primaryFoodTerm: string | null;
   /** Slot (listDetail/read-only variants): the saver's note, under the gallery row (§8.1). */
   note?: string | null;
-  /** Slot (listDetail variant): edit footer (ellipsis↔handle crossfade seat). */
-  footerSlot?: React.ReactNode;
   /** Slot: own-list surfaces pass the photo-funnel opener → gallery grows the plus lead tile. */
   onAddPhoto?: () => void;
-  /** Gallery row height override (wave-3 §3.3 default = 96). */
-  galleryHeight?: number;
 };
 
 const RestaurantResultCard: React.FC<RestaurantResultCardProps> = ({
@@ -117,9 +113,7 @@ const RestaurantResultCard: React.FC<RestaurantResultCardProps> = ({
   openScoreInfo,
   primaryFoodTerm: _primaryFoodTerm,
   note = null,
-  footerSlot = null,
   onAddPhoto,
-  galleryHeight = RESULT_CARD_GALLERY_HEIGHT,
 }) => {
   // Live saved-anywhere state (batched /lists/memberships read + optimistic
   // mutation marks) — the plus/saved pill design's single source of truth.
@@ -558,7 +552,7 @@ const RestaurantResultCard: React.FC<RestaurantResultCardProps> = ({
       <View style={[styles.cardPhotoStripSection, resultCardSlotStyles.galleryBleed]}>
         <CardPhotoStrip
           restaurantId={restaurant.restaurantId}
-          height={galleryHeight}
+          height={RESULT_CARD_GALLERY_HEIGHT}
           tileAspect={RESULT_CARD_GALLERY_TILE_ASPECT}
           contentInset={RESULT_CARD_GUTTER}
           leadTile={onAddPhoto ? 'add' : undefined}
@@ -589,7 +583,6 @@ const RestaurantResultCard: React.FC<RestaurantResultCardProps> = ({
         onDishes={handleRestaurantPress}
         testID={`result-card-pills-${restaurant.restaurantId}`}
       />
-      {footerSlot}
     </View>
   );
 };

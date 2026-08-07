@@ -11,7 +11,12 @@ export const CONTENT_HORIZONTAL_PADDING = OVERLAY_HORIZONTAL_PADDING;
 export const SEARCH_HORIZONTAL_PADDING = CONTENT_HORIZONTAL_PADDING;
 export const SEARCH_CONTAINER_PADDING_TOP = 8;
 export const SEARCH_HEADER_HEIGHT = 50;
-// Near-expanded zone where visible search chrome scales down and the map scrim strengthens.
+// Near-expanded zone (in px above the expanded snap) where visible search chrome scales
+// down and the map scrim strengthens: use-app-route-scene-chrome-transition-runtime.ts
+// clamps its response end to `expandedY + this`. Owner-chosen feel threshold, not a
+// derivation — DERIVATION NOT RECORDED (the repo's honest form for a tuned visual constant,
+// see overlays/sheetUtils.ts): it does not compute from any other metric, and no rationale
+// for 220 specifically is on record. Do not fabricate one; re-tune by feel if it changes.
 export const SEARCH_CHROME_SHEET_RESPONSE_ZONE_PX = 220;
 export const SEARCH_CHROME_SCALE_TRANSFORM_ORIGIN = 'center bottom';
 // F2311: CARD_GAP -> SHARED_SECTION_GAP -> SECTION_GAP were three exported names

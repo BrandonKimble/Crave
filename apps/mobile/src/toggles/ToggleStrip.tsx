@@ -21,6 +21,7 @@ import Reanimated, {
 
 import { STRIP_CITIZEN_GAP, TOGGLE_STRIP_BAND_HEIGHT } from './toggle-strip-metrics';
 import { OVERLAY_HORIZONTAL_PADDING } from '../overlays/overlay-chrome-metrics';
+import { CONTROL_RADIUS } from '../screens/Search/constants/ui';
 import MaskedHoleOverlay from '../components/MaskedHoleOverlay';
 import CutoutBandMaterial from '../components/CutoutBandMaterial';
 import {
@@ -93,7 +94,10 @@ import {
  * `strip:` declaration is load-bearing here via `useSceneStripLawAssert`.
  */
 
-const STRIP_HOLE_BORDER_RADIUS = 8;
+// The cutout windows must round to the SAME radius as the pills they cut out — derived
+// from the shared control-radius token, never a hand-listed 8 (change CONTROL_RADIUS and
+// the holes move with the controls, by construction).
+const STRIP_HOLE_BORDER_RADIUS = CONTROL_RADIUS;
 // F859 (2026-08-03): these two used to be hardcoded literals under comments ASSERTING a
 // coupling neither of them had. The inset said "Matches search: CONTENT_HORIZONTAL_PADDING"
 // while hardcoding 20 — the constant is importable, so it is imported and the claim is now
@@ -369,7 +373,7 @@ export type ToggleStripProps = {
   backdrop: ToggleStripBackdrop;
   /** Solid color painted over the frost outside the control windows. */
   surfaceColor?: string;
-  /** Per-control corner radius for the cutouts (default 8, matching the controls). */
+  /** Per-control corner radius for the cutouts (defaults to CONTROL_RADIUS, matching the controls). */
   holeBorderRadius?: number;
   /** Horizontal SCROLLABLE inset so the first control lines up with page content. */
   contentInset?: number;
