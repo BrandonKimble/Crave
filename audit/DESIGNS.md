@@ -2049,3 +2049,51 @@ that is the ladder's target state, found in the wild.
 this territory — no body-spec hooks exist there, so every useEffect fires. A law correctly
 returning zero is evidence the law's scope is understood, and writing that down prevents
 the next lane from re-hunting it.
+
+---
+
+## D79 — P2 verdicts on api-search/user-surfaces remainder (F3800–F3807, 2026-08-06)
+
+**F3800 — APPROVED, the user-facing headliner.** "What can a search be about" is stated
+THREE times in hand-copied four-arm lists, all missing the `ingredients` arm the
+interpreter emits — so TYPING "burrata" returns the adjust-your-search empty state while
+TAPPING it in autocomplete works, and the entire ingredient SQL lane (six passing specs)
+is unreachable from the query that produces it. The fix is the repo's own strongest
+pattern (the array IS the type): ONE exhaustive group vocabulary the interpreter and all
+three orchestrator sites derive from, so a missing arm is a compile error, not an empty
+state. The service has NO spec — the P3 adds the natural-query-for-each-group spec, RED
+today for ingredients.
+
+**F3801 — APPROVED, proven against the real DB before I ruled.** `DISTINCT ON (entity_id)
+... ORDER BY entity_id ... LIMIT n` slices a UUID-ordered set: exact_available 1,
+exact_returned 0, 20 prefix-extensions returned instead. Dedup order and relevance order
+are different questions — dedup in a subquery (or ranked DISTINCT ON), relevance ORDER BY
+outside, LIMIT last. Live on 14,615 active `es` aliases. Acceptance is the lane's own
+repro: exact match at 1.0 must come back first.
+
+**F3802 — APPROVED as a batch.** Five more non-unique ORDER BYs under LIMIT, the F1902
+family; apply the module's established tiebreak idiom to each, one spec per site with tied
+inputs. The "looks unique but rows are per-location" catch is exactly why these get read,
+not grepped.
+
+**F3803 — STARTER APPROVED, MIGRATION STAGED.** The mirror census (four pairs, one
+drifted, mobile erasing QueryEntityDto to unknown[]) supersedes F842/F843, and the
+diagnosis of WHY it stalled — a Nest DTO fuses wire shape + validation decorators +
+internal post-interpretation shape — is the design insight. Approved now: single-source
+`RestaurantStatusPreview` (byte-identical both sides, already imports from shared).
+The three-way split for the rest is a layer-spanning design: write it as a full proposal
+against the drifted `NaturalSearchRequestDto` FIRST, back to P2 before any mass migration.
+
+**F3805 — APPROVED.** The second arg-blind mock cluster, on owner-scoping `where`s. Same
+treatment as F2210: an input-keyed double (or explicit toHaveBeenCalledWith on the scope),
+and the delete-list owner guard — which IS correct — becomes provable. Credit where due:
+the lane's delegated reader claimed "a stranger can delete any list," and the lane RE-READ
+the code itself and corrected the claim before filing. That is the reading law working.
+
+**F3806/F3807 — APPROVED.** Curated lists: truncated sorts over unordered feeder queries
+(nondeterministic curation), five silent skips, a dead LEFT JOIN; coverage: an unbounded
+query, a whole-lane swallow, and a vacuous spec hiding an unpinned cross-user read scope.
+The cross-user read scope spec is the priority item of the batch.
+
+**F3804 — accepted terminal.** F2040 verified intact by exhaustive enumeration: five
+producers, one chokepoint, no new peer path.
