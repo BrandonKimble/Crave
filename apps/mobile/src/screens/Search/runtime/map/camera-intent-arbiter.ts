@@ -239,6 +239,13 @@ export class CameraIntentArbiter {
         );
       }
       const animationMode = intent.animationMode ?? 'none';
+      // F5703 — a watchdog retry is the SAME episode, not a new one: same intent, same
+      // armed id. Minting a fresh id here would strand every consumer that armed on the
+      // original (they key on the id/token pair and evict only on a matching completion),
+      // so the retry re-issues the CameraStop under the id already in flight.
+      const retriedCompletionId = isWatchdogRetry
+        ? this.pendingProgrammaticCameraCompletionId
+        : null;
       const animation = {
         mode: animationMode,
         durationMs:
@@ -249,7 +256,8 @@ export class CameraIntentArbiter {
         completionId:
           animationMode === 'none'
             ? null
-            : `camera-animation:${(this.nextProgrammaticCameraCompletionSeq += 1)}`,
+            : (retriedCompletionId ??
+              `camera-animation:${(this.nextProgrammaticCameraCompletionSeq += 1)}`),
       };
       const completionId = animation.completionId;
       const shouldSyncPadding = Object.prototype.hasOwnProperty.call(intent, 'padding');
@@ -265,7 +273,14 @@ export class CameraIntentArbiter {
       // scene-switch settle. `setGestureActive` has always notified 'cancelled' here; a
       // commit-side supersede owes exactly the same notification. One law, both paths:
       // an armed completion resolves EXACTLY ONCE — finished, or cancelled.
-      if (this.pendingProgrammaticCameraCompletionId != null) {
+      //
+      // F5703 EXCEPTION — a watchdog retry is NOT a supersede. It re-commits the same
+      // intent under the same completion id, so the episode CONTINUES and the id is still
+      // owed exactly one terminal resolution (the retry's own settle, or the bounded
+      // surrender below). Cancelling here would resolve the wrong once: a successful
+      // rescue reported downstream as a failure, tearing down the scene-switch settle the
+      // watchdog just saved.
+      if (!isWatchdogRetry && this.pendingProgrammaticCameraCompletionId != null) {
         const supersededCompletionId = this.pendingProgrammaticCameraCompletionId;
         const supersededRequestToken = this.pendingProgrammaticCameraRequestToken;
         this.pendingProgrammaticCameraCompletionId = null;
@@ -294,6 +309,14 @@ export class CameraIntentArbiter {
           // then wrote the controlled JS state anyway, claiming a success it never had. Now
           // the intent waits, whole, and NOTHING downstream is told a lie: no controlled
           // state write, no pending completion, no deferred sync.
+          //
+          // F5703 — one path reaches here still HOLDING an armed completion: a watchdog
+          // retry, whose supersede cancel is suppressed above because the episode was
+          // continuing. Parking ends that episode (the host is gone), so the id resolves
+          // here — exactly once, as cancelled. On every other path the supersede block
+          // already resolved it and this is null.
+          const strandedCompletionId = this.pendingProgrammaticCameraCompletionId;
+          const strandedRequestToken = this.pendingProgrammaticCameraRequestToken;
           this.parkedIntent = intent;
           this.pendingProgrammaticCameraCompletionId = null;
           this.pendingProgrammaticCameraRequestToken = null;
@@ -303,6 +326,13 @@ export class CameraIntentArbiter {
             zoom: intent.zoom,
             mode: animationMode,
           });
+          if (strandedCompletionId != null) {
+            this.notifyProgrammaticCameraAnimationCompletion({
+              animationCompletionId: strandedCompletionId,
+              status: 'cancelled',
+              requestToken: strandedRequestToken,
+            });
+          }
           return true;
         }
         this.pendingProgrammaticCameraCompletionId = completionId;

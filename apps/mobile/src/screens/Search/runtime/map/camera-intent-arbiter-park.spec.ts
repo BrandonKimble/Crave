@@ -24,6 +24,10 @@ import {
  *  - Loosen the watchdog epsilon to always-pass: spec 3's wrong-region arm RED (it would
  *    settle 'finished' at the wrong region — the always-green lie the epsilon exists to
  *    prevent).
+ *  - Make the watchdog retry supersede itself again (mint a fresh completion id / let the
+ *    F1374 cancel fire on `isWatchdogRetry`): spec 3's retry-identity arm and the
+ *    successful-rescue spec both go RED — the retry would cancel the very completion it is
+ *    rescuing and continue under an id nobody armed on (F5703).
  */
 
 type RecordedCommand = { center: [number, number]; zoom: number; completionId: string | null };
@@ -65,7 +69,8 @@ const createHarness = (): Harness => {
       setMapZoom: (zoom) => stateWrites.push({ kind: 'zoom', value: zoom }),
       setMapBearing: (bearing) => stateWrites.push({ kind: 'bearing', value: bearing }),
       setMapPitch: (pitch) => stateWrites.push({ kind: 'pitch', value: pitch }),
-      setMapCameraAnimation: (animation) => stateWrites.push({ kind: 'animation', value: animation }),
+      setMapCameraAnimation: (animation) =>
+        stateWrites.push({ kind: 'animation', value: animation }),
     },
     {
       getObservedCamera: () => observedCamera,
@@ -259,7 +264,21 @@ describe('D61 camera intent park-and-replay (F1716)', () => {
     expect(harness.executedCommands).toHaveLength(2);
     expect(harness.executedCommands[1].center).toEqual(METRO_OVERVIEW.center);
     expect(harness.commitPathLegs).toContain('watchdogRecommit');
-    expect(harness.completions.filter((completion) => completion.status === 'finished')).toHaveLength(0);
+    expect(
+      harness.completions.filter((completion) => completion.status === 'finished')
+    ).toHaveLength(0);
+
+    // F5703 — the retry is the SAME EPISODE. It re-issues the stop under the id already
+    // armed, and resolves NOTHING yet: a rescue in progress is not a cancellation. Under
+    // the reverted defect the retry emitted 'cancelled' for the original id and continued
+    // under a fresh one nobody held — a successful rescue reported as a failure.
+    expect(harness.executedCommands[1].completionId).toBe(harness.executedCommands[0].completionId);
+    expect(
+      harness.completions.filter(
+        (completion) =>
+          completion.animationCompletionId === harness.executedCommands[0].completionId
+      )
+    ).toHaveLength(0);
 
     // Still off-target after the retry → surrender: loud, deferred sync DISCARDED (syncing
     // JS state to a target the map is not at would lie), arbiter freed for the next intent.
@@ -272,6 +291,34 @@ describe('D61 camera intent park-and-replay (F1716)', () => {
     expect(harness.arbiter.hasPendingProgrammaticCameraCompletion()).toBe(false);
     expect(harness.arbiter.commit(DOWNTOWN)).toBe(true);
     expect(harness.executedCommands).toHaveLength(3);
+  });
+
+  it('a successful watchdog rescue resolves the ORIGINAL armed id exactly once, as finished', () => {
+    const harness = createHarness();
+    harness.arbiter.commit(METRO_OVERVIEW);
+    const armedCompletionId = harness.executedCommands[0].completionId;
+
+    harness.setObservedCamera({ center: [-97.79, 30.44], zoom: 10.6 });
+    harness.fireWatchdogs();
+    expect(harness.executedCommands).toHaveLength(2);
+
+    // The re-issued stop DOES complete natively — on the id the consumer armed on.
+    expect(
+      harness.arbiter.handleProgrammaticCameraAnimationCompletion({
+        animationCompletionId: armedCompletionId,
+        status: 'finished',
+      })
+    ).toBe(true);
+    const forArmed = harness.completions.filter(
+      (completion) => completion.animationCompletionId === armedCompletionId
+    );
+    expect(forArmed).toHaveLength(1);
+    expect(forArmed[0].status).toBe('finished');
+    expect(harness.surrenders).toHaveLength(0);
+    // The deferred controlled-state sync flushed instead of being discarded.
+    expect(harness.stateWrites.find((write) => write.kind === 'zoom')?.value).toBe(
+      METRO_OVERVIEW.zoom
+    );
   });
 
   it('a real completion disarms the watchdog — no retry, no surrender', () => {
