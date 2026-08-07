@@ -1,5 +1,5 @@
 import 'reflect-metadata';
-import { PollTopicType } from '@prisma/client';
+import { PollLeaderboardSubjectType, PollTopicType } from '@prisma/client';
 import { PollsService } from './polls.service';
 import { PollWeeklyRitualService } from './supply/poll-weekly-ritual.service';
 import { entityRedirectDouble } from '../../shared/testing/prisma-doubles';
@@ -41,8 +41,12 @@ function commentFor(subjectId: string, i: number) {
   };
 }
 
+/** A tap-to-endorse row on the bars, as the rebuild reads it. */
+type DirectEndorsement = { subjectId: string; userId: string };
+
 async function rebuildWithCommentOrder(
   order: string[],
+  directEndorsements: DirectEndorsement[] = [],
 ): Promise<LeaderboardRow[]> {
   let written: LeaderboardRow[] = [];
   const tx = {
@@ -77,7 +81,27 @@ async function rebuildWithCommentOrder(
       findMany: () => Promise.resolve(order.map((id, i) => commentFor(id, i))),
     },
     pollCommentLike: { findMany: () => Promise.resolve([]) },
-    pollEndorsement: { findMany: () => Promise.resolve([]) },
+    // KEYED ON THE WHERE, the seam BESIDE the keyed entityRedirect double
+    // (F2200 family). This answered any argument with `[]`, so it could
+    // neither serve a tap-to-endorse nor notice one being asked for under
+    // the wrong poll — the direct-endorsement axis of the leaderboard was
+    // simply absent from this file. It now models the composite predicate
+    // the query states: this poll, this subject kind.
+    pollEndorsement: {
+      findMany: ({
+        where,
+      }: {
+        where: { pollId?: string; subjectType?: string };
+      }) => {
+        if (
+          where.pollId !== POLL ||
+          where.subjectType !== PollLeaderboardSubjectType.entity
+        ) {
+          return Promise.resolve([]);
+        }
+        return Promise.resolve(directEndorsements);
+      },
+    },
     entityRedirect: entityRedirectDouble([]),
     pollLeaderboardEntry: { deleteMany: () => Promise.resolve({ count: 0 }) },
     $transaction: (fn: (t: unknown) => Promise<void>) => fn(tx),
@@ -121,6 +145,28 @@ describe('the poll leaderboard rank does not depend on row arrival order', () =>
       ALPHA,
       BRAVO,
       CHARLIE,
+    ]);
+  });
+
+  it('a direct tap-to-endorse counts toward the subject it names, on THIS poll', async () => {
+    // The endorsement axis the `[]` double erased. CHARLIE is last on the
+    // comment-derived tie above; one tap from a distinct user must lift it
+    // to rank 1, in either arrival order. A rebuild that asked for the wrong
+    // poll (or the wrong subject kind) gets nothing back and the tie stands.
+    const endorsement = [{ subjectId: CHARLIE, userId: 'endorser-1' }];
+    const forwards = await rebuildWithCommentOrder(
+      [ALPHA, BRAVO, CHARLIE],
+      endorsement,
+    );
+    const backwards = await rebuildWithCommentOrder(
+      [CHARLIE, BRAVO, ALPHA],
+      endorsement,
+    );
+    expect(forwards).toEqual(backwards);
+    expect(forwards.map((row) => row.subjectId)).toEqual([
+      CHARLIE,
+      ALPHA,
+      BRAVO,
     ]);
   });
 });

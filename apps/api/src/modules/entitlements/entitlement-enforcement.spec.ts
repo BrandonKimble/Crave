@@ -1,7 +1,10 @@
 import 'reflect-metadata';
 import { ForbiddenException, type ExecutionContext } from '@nestjs/common';
 import { firstValueFrom, of } from 'rxjs';
-import { EntitlementEnforcementInterceptor } from './entitlement-enforcement.interceptor';
+import {
+  ALLOW_UNENTITLED_KEY,
+  EntitlementEnforcementInterceptor,
+} from './entitlement-enforcement.interceptor';
 
 // PUBLICNESS IS DECLARED, NEVER INFERRED FROM ABSENCE.
 //
@@ -51,9 +54,30 @@ function build(options: {
       return of('body');
     },
   };
+  // THE EXEMPTION VOCABULARY IS THE ARGUMENT UNDER TEST (F4922). This used
+  // to be `getAllAndOverride: () => options.exempt`, answering ANY metadata
+  // key and ANY target list. `@AllowUnentitled` is the entire exemption
+  // mechanism, so decoupling the interceptor's lookup key from the
+  // decorator's left all 41 specs green while, in production, EVERY exempt
+  // route starts 403ing — including billing, which the interceptor's own
+  // comment says a user must reach while unentitled in order to pay. A
+  // lapsed subscriber could then never resubscribe. This reflector answers
+  // only for the real key, and only when the lookup includes the route
+  // handler (a class-only lookup would miss method-level decorators).
+  const reflectorLookups: Array<{ key: string; targets: unknown[] }> = [];
+  const getAllAndOverride = jest.fn((key: string, targets: unknown[]) => {
+    reflectorLookups.push({ key, targets });
+    if (key !== ALLOW_UNENTITLED_KEY) {
+      return undefined;
+    }
+    if (!targets.includes(HANDLER)) {
+      return undefined;
+    }
+    return options.exempt;
+  });
   const interceptor = new EntitlementEnforcementInterceptor(
     {
-      getAllAndOverride: () => options.exempt,
+      getAllAndOverride,
     } as never,
     {
       accessVerdict,
@@ -67,7 +91,14 @@ function build(options: {
       }),
     } as never,
   );
-  return { interceptor, next, handled, accessVerdict };
+  return {
+    interceptor,
+    next,
+    handled,
+    accessVerdict,
+    getAllAndOverride,
+    reflectorLookups,
+  };
 }
 
 describe('paywall: enforce mode', () => {
@@ -89,6 +120,24 @@ describe('paywall: enforce mode', () => {
       interceptor.intercept(contextFor(undefined), next as never),
     ).rejects.toBeInstanceOf(ForbiddenException);
     expect(handled.called).toBe(false);
+  });
+
+  it("the exemption is looked up under @AllowUnentitled's OWN key, against handler AND class", async () => {
+    // The decorator and the interceptor read one exported symbol
+    // (ALLOW_UNENTITLED_KEY), so the failure mode that remains is a wrong
+    // lookup: a different key, or a target list that omits the handler and
+    // therefore misses every method-level decorator. Both are asserted here
+    // because both silently 403 the whole exempt surface, billing included.
+    const { interceptor, next, reflectorLookups, getAllAndOverride } = build({
+      exempt: true,
+      entitled: false,
+    });
+    await interceptor.intercept(contextFor(undefined), next as never);
+    expect(getAllAndOverride).toHaveBeenCalledTimes(1);
+    expect(reflectorLookups[0].key).toBe(ALLOW_UNENTITLED_KEY);
+    expect(ALLOW_UNENTITLED_KEY).toBe('allow_unentitled');
+    expect(reflectorLookups[0].targets).toContain(HANDLER);
+    expect(reflectorLookups[0].targets).toHaveLength(2);
   });
 
   it('allows an anonymous caller on a route that DECLARES itself public', async () => {

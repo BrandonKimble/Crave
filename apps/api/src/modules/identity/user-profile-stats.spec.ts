@@ -38,9 +38,28 @@ const makeService = (opts: {
     stats: { pollsCreatedCount: opts.statsCounter },
   };
   const prisma = {
-    $queryRaw: jest
-      .fn()
-      .mockResolvedValue([{ count: BigInt(opts.contributed ?? 0) }]),
+    // KEYED ON THE BOUND VALUES (F4922 family), the seam BESIDE the keyed
+    // findUnique below. `countContributedPolls` is raw SQL whose only input
+    // is the viewer's id; an unconditional mockResolvedValue answered a
+    // query bound to ANY id, so replacing `${userId}::uuid` with a foreign
+    // uuid — a contributed count computed from somebody else's rows — left
+    // all 69 identity specs green. This double answers only the query that
+    // actually asked about USER.
+    $queryRaw: jest.fn((...args: unknown[]) => {
+      // A tagged-template call arrives as (strings, ...values); a
+      // `Prisma.sql` object arrives as a single arg carrying `.values`.
+      // (TemplateStringsArray also HAS a `values` — the array iterator — so
+      // the shape check must be Array.isArray, not truthiness.)
+      const first = args[0] as { values?: unknown } | undefined;
+      const values: unknown[] = Array.isArray(first?.values)
+        ? (first.values as unknown[])
+        : args.slice(1);
+      return Promise.resolve(
+        values.includes(USER)
+          ? [{ count: BigInt(opts.contributed ?? 0) }]
+          : [{ count: BigInt(0) }],
+      );
+    }),
     user: {
       // KEYED ON THE WHERE (F2184). A findUnique that answers ANY where
       // identically cannot see the difference between "the live user asked
@@ -162,13 +181,26 @@ describe('UserService profile stats == live counts (W4 pattern, all stats)', () 
     await expect(service.getPublicProfile(USER)).rejects.toThrow(/not found/i);
   });
 
-  it('pollsContributedCount is a live endorsed-or-commented distinct count', async () => {
-    const { service } = makeService({
+  it('pollsContributedCount is a live endorsed-or-commented distinct count FOR THE VIEWER', async () => {
+    const { service, prisma } = makeService({
       pollCount: 1,
       statsCounter: 9,
       contributed: 4,
     });
     const profile = await service.getPublicProfile(USER);
     expect(profile.stats.pollsContributedCount).toBe(4);
+    // The count came back non-zero, which the keyed double only does when
+    // the raw query was bound to THIS user's id — the claim "live count over
+    // the user's own rows" now has an argument behind it.
+    const contributedCall = prisma.$queryRaw.mock.calls.find(
+      (call: unknown[]) => {
+        const first = call[0] as { values?: unknown } | undefined;
+        const values: unknown[] = Array.isArray(first?.values)
+          ? (first.values as unknown[])
+          : call.slice(1);
+        return values.includes(USER);
+      },
+    );
+    expect(contributedCall).toBeDefined();
   });
 });
