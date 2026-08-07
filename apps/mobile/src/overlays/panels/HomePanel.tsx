@@ -97,6 +97,12 @@ const HOME_WELL_RADIUS_BOOST = 1;
 // rowHeight + STRIP_GAP lesson).
 const HOME_MASK_OVERSHOOT = 8;
 
+/** Cards mounted with the switch, per shelf; the tail follows one beat later. */
+const HOME_SHELF_STAGE_HEAD_COUNT = 3;
+/** How long that beat is. See the staging block in HomeShelfRowView before changing
+ *  either of these — both are un-measured today (F4512). */
+const HOME_SHELF_STAGE_DELAY_MS = 160;
+
 type HomeWellRect = { x: number; y: number; width: number; height: number };
 
 /** One card cell: the cutout WELL (icon centered, title bottom-left INSIDE) +
@@ -121,39 +127,64 @@ const HomeCutoutCard = React.memo(
     testID: string;
     onPress: () => void;
     onWellLayout: (key: string, rect: HomeWellRect) => void;
-  }) => (
-    <View
-      style={styles.cardCell}
-      onLayout={(event) => {
-        const { x, y } = event.nativeEvent.layout;
-        // The well sits at the cell's top; fixed geometry, measured x/y.
-        onWellLayout(wellKey, {
-          x,
-          y,
-          width: HOME_CARD_WIDTH,
-          height: HOME_CARD_WELL_HEIGHT,
-        });
-      }}
-    >
-      <Pressable
-        style={({ pressed }) => [styles.cardWell, pressed && styles.cardPressed]}
-        onPress={onPress}
-        accessibilityRole="button"
-        accessibilityLabel={accessibilityLabel}
-        testID={testID}
+  }) => {
+    // F4512: THE RECT IS MEASURED NOW, ALL FOUR FIELDS. It used to report `x`/`y`
+    // from the real layout event beside `width`/`height` from the style constants —
+    // half instrument, half assertion, in one object. The mask punched from it is a
+    // hole in a real material: if the rendered well ever diverged from the constant
+    // (a style edit, a font/scale change, a platform rounding), the hole misaligned
+    // on screen and nothing in code or test objected. Both boxes are read from their
+    // own onLayout and composed: the cell gives the origin in content coordinates,
+    // the well gives its offset and its true size.
+    const cellOriginRef = React.useRef<{ x: number; y: number } | null>(null);
+    const wellBoxRef = React.useRef<HomeWellRect | null>(null);
+    const publishWellRect = React.useCallback(() => {
+      const origin = cellOriginRef.current;
+      const well = wellBoxRef.current;
+      if (origin == null || well == null) {
+        return;
+      }
+      onWellLayout(wellKey, {
+        x: origin.x + well.x,
+        y: origin.y + well.y,
+        width: well.width,
+        height: well.height,
+      });
+    }, [onWellLayout, wellKey]);
+    return (
+      <View
+        style={styles.cardCell}
+        onLayout={(event) => {
+          const { x, y } = event.nativeEvent.layout;
+          cellOriginRef.current = { x, y };
+          publishWellRect();
+        }}
       >
-        <View style={styles.cardWellIcon}>{icon}</View>
-        <Text variant="subtitle" weight="semibold" style={styles.cardTitle} numberOfLines={2}>
-          {title}
-        </Text>
-      </Pressable>
-      {subline ? (
-        <Text variant="caption" style={styles.cardSubline} numberOfLines={1}>
-          {subline}
-        </Text>
-      ) : null}
-    </View>
-  )
+        <Pressable
+          style={({ pressed }) => [styles.cardWell, pressed && styles.cardPressed]}
+          onPress={onPress}
+          onLayout={(event) => {
+            const { x, y, width, height } = event.nativeEvent.layout;
+            wellBoxRef.current = { x, y, width, height };
+            publishWellRect();
+          }}
+          accessibilityRole="button"
+          accessibilityLabel={accessibilityLabel}
+          testID={testID}
+        >
+          <View style={styles.cardWellIcon}>{icon}</View>
+          <Text variant="subtitle" weight="semibold" style={styles.cardTitle} numberOfLines={2}>
+            {title}
+          </Text>
+        </Pressable>
+        {subline ? (
+          <Text variant="caption" style={styles.cardSubline} numberOfLines={1}>
+            {subline}
+          </Text>
+        ) : null}
+      </View>
+    );
+  }
 );
 HomeCutoutCard.displayName = 'HomeCutoutCard';
 
@@ -179,12 +210,27 @@ const HomeShelfRowView = React.memo(
     // transition's critical frames. Card count, not a redesign — the shelf
     // composition (wells, cutouts, seam) is untouched and re-measures as the
     // tail lands via the existing rAF-collapsed sweep.
+    //
+    // F4512, HONEST ACCOUNTING: the ~500ms figure above was a real attribution on
+    // 2026-07-31, but nothing MEASURES it now — there is no live sampler that would
+    // fire if the stall came back, so neither the claim nor the remedy can currently
+    // show RED. The two magic numbers are NAMED below (step 1 of the row's three),
+    // which is the precondition for the rest and is free. Step 2 — re-measuring the
+    // switch-to-home stall with the samplers under src/perf/ — needs a running app
+    // and is NOT done here. Under the no-fake-estimates law that means: do NOT
+    // re-tune either value until that measurement exists. Naming them is not
+    // permission to guess at them.
+    //
+    // KNOWN AND UNADDRESSED: this timer is per-HomeShelfRowView INSTANCE, so N
+    // shelves arm N independent unsynchronized delays — not the single "one beat
+    // later" the comment above describes. Left alone deliberately; changing the
+    // staging shape is exactly the change that needs step 2 first.
     const [shelvesWarm, setShelvesWarm] = React.useState(false);
     React.useEffect(() => {
-      const timer = setTimeout(() => setShelvesWarm(true), 160);
+      const timer = setTimeout(() => setShelvesWarm(true), HOME_SHELF_STAGE_DELAY_MS);
       return () => clearTimeout(timer);
     }, []);
-    const stageLimit = shelvesWarm ? undefined : 3;
+    const stageLimit = shelvesWarm ? undefined : HOME_SHELF_STAGE_HEAD_COUNT;
     const handleWellLayout = React.useCallback((key: string, rect: HomeWellRect) => {
       setWellMap((prev) => {
         const existing = prev[key];
