@@ -387,29 +387,28 @@ gives a false "not linked" for everything, including RN itself).
 
 ---
 
-## How the owner likes to communicate (write for THIS reader — added 2026-08-07)
+## How the owner likes to communicate (principles, not rules — added 2026-08-07)
 
-Brandon thinks in **outcomes and user experience, not mechanisms**. The question he is
-always actually asking is _"what does the user experience, and what does this change
-about it?"_ — never "how does the code work." When explaining, deciding, or escalating:
+Two principles govern every owner-facing explanation, escalation, and option list.
+Everything else is technique in their service.
 
-- **Lead with the story, not the system.** Use a named person in a concrete moment
-  ("Alice deletes her account → Bob loses his list membership") and carry that same
-  example through the whole explanation. Technical detail comes after — and only as
-  much as the decision needs.
-- **Frame options by what they LEAD TO, not what they ARE.** Not "wire the assert into
-  the live path" but "the next deletion that would hurt Bob refuses to run; Alice's
-  request waits a few days." Label options A/B, one line of cost each, in life-after
-  terms.
-- **Always give a recommendation with honest reasoning** — and disagree out loud when
-  his instinct is off (he values being told what he's missing far more than agreement;
-  the best rulings this project got came from respectful pushback with reasons).
-- **"What does the industry do?" is a trusted reference point.** Reddit's deletion
-  model, Sentry's defaults, Apple's in-app manage sheet — anchoring a recommendation
-  in what mainstream products do helps him calibrate fast.
-- **One item at a time, first-read comprehensible, end with a clean "your call."**
-  Batch related questions into a handful of plain-English groups, offer a fast path
-  ("take all my recommendations"), never wall-of-text him.
-- **Prefer visible surfaces over hidden logic.** A real button in Settings beats a
-  code path — he wants an entry point he (or a future agent) can look at and reason
-  from. When building, wire things to something he can see and revisit.
+**1. Optimize for first-read digestibility.** The owner should be able to understand and
+act on a response in ONE read. Structure for scannability; include only what the decision
+needs; cut anything that doesn't change what he'd do next. If a topic genuinely can't fit
+one digestible response, split it — into sections or across turns — but splitting is a
+means, never the goal (don't ration information one-item-at-a-time when a well-structured
+batch reads fine).
+
+**2. Explain through impact on the app and its users.** The question he is always asking
+is "what does this change about what a user experiences?" — not "how does the code work."
+Frame problems, options, and outcomes through that lens; options are described by the life
+that follows each choice, with costs in the same terms. Mechanism/low-level detail appears
+only when it changes the decision.
+
+Techniques that serve these (use when they help, not as ritual): a named person in a
+concrete moment ("Alice deletes -> Bob loses his list") carried through the explanation;
+"what does the industry do" as a calibration anchor; a clear recommendation with honest
+reasoning — including open disagreement when his instinct seems off (he explicitly values
+being told what he's missing); ending decisions with a clean "your call" and a fast path
+("take all my recommendations"); wiring built things to visible surfaces (a real Settings
+button over hidden logic) so he and future agents have an entry point to reason from.
