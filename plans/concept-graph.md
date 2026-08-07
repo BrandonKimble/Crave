@@ -376,11 +376,16 @@ surface-coverage watermark (open).
 
 ## 9. IDEAL-SHAPE CLOSURE PLAN (2026-08-06 — everything open, one list)
 
-1. **Negation family → constraint class.** Sweep banked correct negatives
-   (`sin queso`→cheeseless) that ground as SOFT attributes — pooled fill can
-   serve queso to "sin queso". Flag the without-X family like `gluten free`
-   (constraint_class hard wall); re-author ng-02/03/18 to expect the positive
-   hard grounding. No alias deletions.
+1. **Negation: doctrine reasserted (owner, 2026-08-06).** The app does NOT
+   support query negation, deliberately — dietary toggles are the ONLY walls;
+   "sin queso" showing queso is intended teaching (Google-like). R5-3 records
+   and never enforces; the sweep's sin-X aliases (sin queso→cheeseless) are
+   KEPT — grounding them as soft attributes is better-than-required under the
+   doctrine. Work: re-author ng-02/03/18 to assert non-inversion only (the
+   'constraint recorded' clause is stale for grounded sin-X spans); decide if
+   a grounded sin-X span should still emit the demand record it used to. The
+   earlier 'constraint inversion / hard wall' framing here was WRONG and is
+   withdrawn.
 2. **Sweep watermark → surface coverage.** Label-existence watermark means
    pre-prompt-fix entities (mexican/japanese/peruvian/coffee) never re-offer;
    gender forms missing on real corpus (89.3 vs 98.0 sim). Re-offer when
