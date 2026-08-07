@@ -200,6 +200,19 @@ effects never commit. So a fix here must be **render-time** (compute a value, se
 DEAD CODE. Put effect-based logic in the feed runtime / controller instead, whose
 effects do fire.
 
+REFINED 2026-08-07 (attempt-3 hunt): this is NOT a blanket property of every hook that
+returns a spec — it depends on the CALLER'S FIBER, not the hook's shape. The reliable
+structural test: a `use*SceneParts`/`use*PanelSpec` reached ONLY through a render-phase
+measurement path (e.g. `useTrackLegResolver`, which invokes the hook just to price it)
+gets its effects dropped; the SAME hook reached through a mounted writer-runtime host
+(`AppRouteSceneInputWritersRuntimeHost` → `use*SceneInputWriterRuntime`) commits them
+normally. So before calling an effect in a spec hook "dead," trace the caller: is the
+owning component actually mounted? `useBottomSheetSceneStackBodyContentRuntime` looks
+like a spec hook but is a MOUNTED consumer (`SceneStackBodyContentHost` is real JSX) —
+its effects commit. The polls/home list-parts hooks currently carry ZERO effects (all
+moved to the feed runtime), so nothing is stranded today; the trap is only the false
+POSITIVE now — don't delete a committing effect thinking it's dead.
+
 ---
 
 ## Memory: The map is SHIPPED — and the old `[lodev]` LOD harness is GONE
