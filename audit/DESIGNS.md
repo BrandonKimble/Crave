@@ -3741,3 +3741,36 @@ F7600 schema, F7700 timer, F7800 reopened-flake, F7801 collapse-residual, F7901 
 F7903 CI-root, plus the smalls). This is the loop's verdict that the tree was not yet
 clean — exactly what the pass is for. Next: batch the approved P3s (grouped by territory),
 land them, and PASS 1 RESTARTS against the repaired tree.
+
+---
+
+## D123 — flake+gate remediation ratified; F4700 truly closed this time (2026-08-07)
+
+**F7800 ratified, and the lane corrected the DESIGN.** "Drop all four virtual mocks" was
+wrong for one: `scene-load-failure-policy.spec.ts` targets a `.tsx` the hermetic node
+lane's moduleFileExtensions deliberately excludes, so it is UNRESOLVABLE by design and
+virtual is the CORRECT tool (no ESM-load flake is possible for a module that cannot
+resolve) — proven by `Cannot find module` on the drop. The design delegated "read each to
+decide"; the lane did. The real fix is config-level: a `^react-native$` -> stub mapper so
+a transitive RN import from any directory resolves to a union stub, not untransformed ESM.
+The GATE is the part that makes F4700 stay closed: `yarn test:inband` (jest --runInBand)
+as a CI step, because the parallel run CANNOT catch a worker-order regression. Verified
+MYSELF: in-band trio green, 3/3 parallel green here (lane reported 6/6 on the 1-in-6
+flake), and the gate RED-proven — the disease reds the in-band run while the parallel run
+stays green, the exact contrast that motivates it. F4700 was closed on a partial fix once;
+this time the close-condition is a gate that can show RED on the load-order axis, not
+twenty greens that a load-order flake can slip through.
+
+**F7901 ratified.** A frozen `SCOPED_FLOORS` requires BOTH F2050 door-lock bans over the
+panel + Button scope, asserted directly rather than derived from a live config a later
+override could shrink in lockstep — the fix for a gate whose baseline was a subset of what
+it guards. Both bans RED-proven; dropping ActivityIndicator stayed green BEFORE (the
+defect) and reds now. Gate green on HEAD.
+
+**F7701 correctly STOPPED on the overlap the brief anticipated** (its file is F7700's), with
+the recommendation recorded: the TYPE branch — one producer exists, no second-producer
+disagreement is representable, so the four literals become const types and the unfailable
+check is deleted. It lands with F7700's lane or after.
+
+Three of four remediation lanes' territories now clean; F4700 no longer reopenable on its
+own axis.
