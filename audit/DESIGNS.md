@@ -2950,3 +2950,49 @@ pointer; 19/19 both suites; main green.
 
 F5850's non-checking-positions class and F5851's gate widening remain queued; F5900 joins
 the P2 queue as a small design (param requires userId; four consumers).
+
+---
+
+## D102 — P2 verdicts on the mobile-search last block (F6000–F6005, 2026-08-06)
+
+**F6000 — APPROVED with its honest cost carried into the P3.** Three mechanisms guard one
+suppression, and the render body unconditionally erases the third whenever the first is
+false — so the three call sites that suppress WITHOUT setting state have their suppression
+undone on the next render, while the two that set state make the ref redundant. The
+rederivation deletes the ref and its no-op partner (threaded through four repack memos,
+two contract types, two live spec assertions), forcing the three orphan sites to set the
+state the lifecycle memo can SEE. The row's caveat is the P3's instruction: this is a real
+behavior change on those three paths — the acceptance includes exercising them, and the
+sequence-bump remains the actual late-response guard (the lane traced this; the P3
+re-verifies it).
+
+**F6001 — APPROVED, unrepresentable rung.** The F1033(b) comment defines the disease and
+the fix landed on ONE of two identical siblings; 23 lines below, the other still returns
+the discarded field — computed from a state built with `sheetCollapsedSettled: true`
+hardcoded on the only reaching branch, making the exported readiness predicate dead while
+the real decision lives elsewhere. Apply the same fix; the predicate dies or finds its
+real caller; tsc is the proof.
+
+**F6002/F6003/F6004/F6005 — APPROVED.** The six-field snapshot shrinks to its three read
+values (three tautological equality conjuncts die with it, plus the unread field whose
+only effect is a wake-up that early-returns); the extra dep is deleted with the note that
+exhaustive-deps polices MISSING deps only — extra ones are invisible to it (a lesson for
+the ledger, not a new gate); the autocomplete cache gets scoped BY ITS KEY (including the
+userLocation the request carries) instead of by a clearing effect that is right only
+after commit; and the five-storey tower loses its two transform-nothing storeys with the
+verbatim-x5 signature getting one home.
+
+**The refutations are the model again, one in each direction:** a five-literal-false
+silhouette that is NOT a constant-emitter (live producers found by reading the map
+controller), and a frame-budget file that is the COUNTER-exhibit — its header records
+deleting a tautological headroom model. Both recorded whole.
+
+**F5851's sweep already ran: zero orphans in styles.ts** — so the queued gate widening is
+regression prevention, not a backlog, and its priority drops accordingly. The third
+frozen-Dimensions importer instance (SCREEN_WIDTH seeding trackWidth) joins the F2306
+escalation's instance list.
+
+**F5900 rides along as READ-ONLY:** the P3 reads the userProfile param's four consumers
+(route stack, equality map, URL codec, entry-restore) and reports whether requiring
+`userId: string` is mechanical or a design — implementing only if mechanical, else the
+report becomes the P2 input.
