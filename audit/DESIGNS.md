@@ -1945,3 +1945,40 @@ curated-list-adapter edit was swept into the stage-1 lane's commit via the worki
 pathspec. Content verified correct on main; the hazard is now recorded in CRAVE.md's
 rules and every brief. Stage 2 of F2900 (51-file inline) stays queued until the MVCP
 lane exits runtime/shared.
+
+---
+
+## D76 — P2 verdicts on F3500–F3505 (api-polls/signals/core/content, 2026-08-06)
+
+**F3501 — VERIFIED BY EXECUTION, APPROVED, first in line (money).** I ran the SQL shape
+against Postgres myself: `x IN (...)::uuid[]` errors on EVERY input ("cannot cast type
+boolean to uuid[]" — the cast binds after the IN evaluates), and the `= ANY(...::uuid[])`
+form the same module already uses two files over works. The catch converts the crash into
+vendor fallthrough, so the "ask ourselves first" free path has been dead since it landed
+and every poll restaurant creation has paid Google. One-line fix to the form
+`polls.service.ts:286` already uses, plus the seeded-nearby integration spec that fails
+today. This is also a HUNT LEAD for a later sweep: grep every `Prisma.join` adjacent to a
+cast — the same mis-binding may exist elsewhere.
+
+**F3500 — APPROVED.** A third hand-rolled daily-acts dialect twenty lines below the builder
+whose header documents that exact disease: route it through the builder; the two-kinds-sum
+mutation (8 vs today's 5) is the acceptance.
+
+**F3502 — APPROVED.** The F1902 determinism family again — persisted `rank` and the weekly
+subject cut sorting nondeterministic input with no tiebreak, so tied bars visibly reshuffle
+per rebuild. Tiebreak both, and give the comment read an orderBy.
+
+**F3503 — APPROVED.** The weekly-ritual cron logs failures while its sibling ops-alerts
+(F205 doctrine): a missed Sunday is silently a lost week. Wire the same alert; parity with
+the sibling is the whole design.
+
+**F3504 — APPROVED, low.** Move the taste-profile rebuild inside the watermark's
+transactional scope or correct the comment to state the real staleness window; the current
+text promises a recovery cadence the code does not have.
+
+**F3505 clean bill — ACCEPTED.** The signals ingest helper layer is argued at
+abstraction grade: wrong spellings inexpressible or build-failing. This is the standard.
+
+Also accepted from the report: the ts-jest concurrent-compile flake (TS2304 on a
+same-file symbol, isolated rerun green) is recorded as an infrastructure fact, not chased
+as a code defect.
