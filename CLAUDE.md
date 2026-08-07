@@ -178,6 +178,18 @@ on the wrong one. Its own comment ends: "the poll-detail thread is not an append
 feed, so nothing else wants MVCP." No list in this repo currently opts back in. A design
 verdict repeated the stale claim from here before anyone checked the code.
 
+## Memory: gesture math NEVER assumes 60Hz — measure the interval (F889, then F5806)
+
+F889 (2026-08-04) converted `reorder-drag-math`'s auto-scroll from a px-per-FRAME constant
+to px/SECOND after showing 120Hz silently DOUBLED the speed; the frame pump now scales by
+`frameInfo.timeSincePreviousFrame`. Found again at a second site (F5806, 2026-08-06): the
+bottom-sheet momentum-rebound spring multiplied a pt/frame delta by a literal
+`FRAMES_PER_SECOND = 60`, so ProMotion got HALF the impulse and its per-frame gate dropped
+real arrivals entirely — fixed by measuring the interval between consecutive scroll events
+(`performance.now()` is available on the UI runtime). **Grep `FRAMES_PER_SECOND` and any
+per-frame constant whenever you touch gesture/scroll math** — the fleet is 120Hz, and a
+per-frame number is a refresh-rate bug waiting for a device.
+
 ## Memory: Effects DON'T fire in the scene body-spec hooks (e.g. usePollsPanelListSceneParts)
 
 Proven 2026-06-22: a render-body `console.log` in `usePollsPanelListSceneParts` fired
