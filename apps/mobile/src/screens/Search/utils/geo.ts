@@ -1,7 +1,7 @@
 import type { MapState as MapboxMapState } from '@rnmapbox/maps';
 
 import type { Coordinate, MapBounds } from '../../../types';
-import { MAP_MOVE_DISTANCE_RATIO, MAP_MOVE_MIN_DISTANCE_MILES } from '../constants/search';
+import { MAP_MOVE_DISTANCE_RATIO, MAP_MOVE_MIN_DISTANCE_MILES } from '../constants/map-movement';
 
 export const isLngLatTuple = (value: unknown): value is [number, number] =>
   Array.isArray(value) &&

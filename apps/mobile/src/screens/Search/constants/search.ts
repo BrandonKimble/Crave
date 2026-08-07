@@ -110,8 +110,10 @@ export const AUTOCOMPLETE_CACHE_TTL_MS = 5 * 60 * 1000;
 // cache runtime.
 export const MAX_AUTOCOMPLETE_CACHE_ENTRIES = 64;
 export const SEARCH_THIS_AREA_COLOR = '#0ea5e9';
-export const MAP_MOVE_MIN_DISTANCE_MILES = 0.1;
-export const MAP_MOVE_DISTANCE_RATIO = 0.08;
+// MAP_MOVE_MIN_DISTANCE_MILES / MAP_MOVE_DISTANCE_RATIO moved to
+// constants/map-movement.ts (F3906): this module imports react-native at the top,
+// which made the whole geo + map-movement decision layer unloadable in the
+// hermetic node test lane. Import them from there.
 
 export const NAV_TOP_PADDING = 8;
 export const NAV_BOTTOM_PADDING = 0;

@@ -14,14 +14,13 @@ import {
 } from '../runtime/map/map-motion-pressure';
 import type { ViewportBoundsService } from '../runtime/viewport/viewport-bounds-service';
 import type { SearchRuntimeBus } from '../runtime/shared/search-runtime-bus';
-import { MAP_MOVE_MIN_DISTANCE_MILES } from '../constants/search';
+import { boundsFromCoordinates, isLngLatTuple } from '../utils/geo';
+// F3906: the two pure decisions this hook makes live in a module the hermetic
+// node lane can load — this file imports react-native, which it cannot.
 import {
-  boundsFromCoordinates,
-  getBoundsCenter,
-  hasBoundsMovedSignificantly,
-  haversineDistanceMiles,
-  isLngLatTuple,
-} from '../utils/geo';
+  resolveMapMovedEnterAdmission,
+  shouldMarkMapMovedForBounds,
+} from './search-map-movement-decisions';
 import type { LngLat } from '../utils/overlap-region';
 
 type SearchInteractionState = {
@@ -53,63 +52,6 @@ type UseSearchMapMovementStateResult = {
   flushDeferredMapMovementState: () => void;
 };
 
-const shouldMarkMapMovedForBounds = ({
-  fallbackBaselineBounds,
-  nextBounds,
-  searchBaselineBounds,
-  hasMapMovedSinceSearch,
-}: {
-  fallbackBaselineBounds: MapBounds | null;
-  nextBounds: MapBounds;
-  searchBaselineBounds: MapBounds | null;
-  hasMapMovedSinceSearch: boolean;
-}): boolean => {
-  if (hasMapMovedSinceSearch) {
-    return true;
-  }
-  if (
-    searchBaselineBounds != null &&
-    hasBoundsMovedSignificantly(searchBaselineBounds, nextBounds)
-  ) {
-    return true;
-  }
-  if (
-    fallbackBaselineBounds != null &&
-    haversineDistanceMiles(getBoundsCenter(fallbackBaselineBounds), getBoundsCenter(nextBounds)) >=
-      MAP_MOVE_MIN_DISTANCE_MILES
-  ) {
-    return true;
-  }
-  return false;
-};
-
-const resolveMapMovedEnterAdmission = ({
-  hasMapMovedSinceSearch,
-  isMapGestureActive,
-  isSearchInteracting,
-  isAnySheetDragging,
-  shouldDeferMapFromPressure,
-}: {
-  hasMapMovedSinceSearch: boolean;
-  isMapGestureActive: boolean;
-  isSearchInteracting: boolean;
-  isAnySheetDragging: boolean;
-  shouldDeferMapFromPressure: boolean;
-}): 'publish_now' | 'defer_until_idle' | 'skip_no_move' => {
-  if (!hasMapMovedSinceSearch) {
-    return 'skip_no_move';
-  }
-  if (
-    shouldDeferMapFromPressure ||
-    isMapGestureActive ||
-    isSearchInteracting ||
-    isAnySheetDragging
-  ) {
-    return 'defer_until_idle';
-  }
-  return 'publish_now';
-};
-
 export const useSearchMapMovementState = ({
   startupPollBounds,
   latestBoundsRef,
@@ -125,7 +67,6 @@ export const useSearchMapMovementState = ({
   const mapMovedSinceSearchRef = React.useRef(false);
   const pendingMapMovedEnterRef = React.useRef(false);
   const mapGestureActiveRef = React.useRef(false);
-
 
   // Startup viewport seed: before the first native camera event, the bootstrap
   // camera's derived bounds fill the ViewportBoundsService so every settled-
@@ -299,11 +240,7 @@ export const useSearchMapMovementState = ({
         setMapMovedSinceSearch(true);
       }
     },
-    [
-      anySheetDraggingRef,
-      mapMotionPressureController,
-      searchInteractionRef,
-    ]
+    [anySheetDraggingRef, mapMotionPressureController, searchInteractionRef]
   );
 
   const flushPendingMapMovedEnter = React.useCallback(() => {

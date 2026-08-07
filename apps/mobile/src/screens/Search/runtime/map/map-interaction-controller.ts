@@ -3,7 +3,7 @@ import type { MapState as MapboxMapState } from '@rnmapbox/maps';
 
 import type { AutocompleteMatch } from '../../../../services/autocomplete';
 import type { MapBounds } from '../../../../types';
-import { MAP_MOVE_MIN_DISTANCE_MILES } from '../../constants/search';
+import { MAP_MOVE_MIN_DISTANCE_MILES } from '../../constants/map-movement';
 import {
   getBoundsCenter,
   hasBoundsMovedSignificantly,
