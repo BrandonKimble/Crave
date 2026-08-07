@@ -6,6 +6,7 @@ import type { Coordinate, MapBounds } from '../../../../types';
 import {
   normalizeAutocompleteQuery,
   writeAutocompleteSuggestions,
+  type RunAutocomplete,
 } from './search-autocomplete-request-runtime';
 import type { useSearchAutocompleteRequestStateRuntime } from './use-search-autocomplete-request-state-runtime';
 
@@ -43,14 +44,7 @@ export const useSearchAutocompleteRequestExecutionRuntime = ({
 }: {
   trimmed: string;
   shouldRequest: boolean;
-  runAutocomplete: (
-    value: string,
-    options?: {
-      debounceMs?: number;
-      bounds?: MapBounds | null;
-      userLocation?: Coordinate | null;
-    }
-  ) => Promise<AutocompleteMatch[]>;
+  runAutocomplete: RunAutocomplete;
   cancelAutocomplete: () => void;
   setSuggestions: React.Dispatch<React.SetStateAction<AutocompleteMatch[]>>;
   writeAutocompleteCache: (rawQuery: string, matches: AutocompleteMatch[]) => void;
