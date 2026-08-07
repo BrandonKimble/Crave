@@ -313,7 +313,14 @@ const requireDismissFanout = (dismissEvent, nextBoundaryEvent, label) => {
         travelPx >= 8 &&
         event.resultSheetSlidingDown === true &&
         event.sheetMotionSource === 'routeSheetMotionCommandObservedBySearchSurfaceMotionPlane' &&
-        event.navReturnProgressSource === 'searchSurfaceMotionPlane' &&
+        // F6401: this was 'searchSurfaceMotionPlane' — the value of the OTHER two source
+        // fields, never of this one. Both producers of navReturnProgressSource
+        // (use-search-dismiss-motion-plane-runtime, use-search-foreground-bottom-nav-visual-runtime)
+        // hardcode 'bottomNavTiming', as do all three sibling checks
+        // (perf-scenario-visual-contracts.js:1066/:2331, perf-scenario-ios.sh:551). The conjunct
+        // was unsatisfiable, so the sample was ALWAYS null and the surviving arm printed
+        // "proved shared sheet/nav motion-plane descent" having observed nothing.
+        event.navReturnProgressSource === 'bottomNavTiming' &&
         event.boundaryCommitSource === 'searchSurfaceMotionPlane'
       );
     }
