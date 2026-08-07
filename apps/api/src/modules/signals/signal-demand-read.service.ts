@@ -1067,21 +1067,51 @@ export class SignalDemandReadService {
     const rows = await this.prisma.$queryRaw<
       { entity_id: string; demand_score: number }[]
     >`
-      WITH by_actor AS (
-        SELECT
-          ${resolvedSubjectSql('a')} AS entity_id,
-          a.actor_id,
-          SUM(
-            a.signal_count * ${dayRecencySql(Prisma.sql`(${todayKey}::date - a.day)`)}
-          )::float8 AS acts
-        FROM signal_demand_daily a
-        ${redirectJoinSql('a')}
-        WHERE a.place_id IS NULL
+      -- THE §4 daily-acts statement (act-identity.ts), same as the territory
+      -- arm two hundred lines above. F4000: this was a FOURTH hand-rolled
+      -- dialect — a flat SUM(a.signal_count) straight against the daily table.
+      -- Its kind arithmetic happened to be right (a flat SUM over the per-kind
+      -- rows already sums them), which is why it survived; its ECHO exclusion
+      -- and its entity-subject filter were simply absent, so an on_demand_ask
+      -- echo of the system's own asking inflated the local-specialization
+      -- factor this map feeds (measured: 4.0875 -> 5.8329 on one echo row).
+      -- One law, one spelling: the builder cannot be half-adopted.
+      WITH agg AS (${dailyActsCteSql({
+        dimensions: [
+          {
+            expr: resolvedSubjectSql('a'),
+            as: 'entity_id',
+          },
+        ],
+        from: Prisma.sql`signal_demand_daily a
+          ${redirectJoinSql('a')}`,
+        where: Prisma.sql`a.place_id IS NULL
           AND a.subject_id = ANY(${expandedIds}::uuid[])
-          -- Docket #6: the aggregate INCLUDES today (15-min cadence = freshness);
-          -- the fresh ledger arm — the law's second dialect — is deleted.
-          AND a.day >= ${sinceDayKey}::date
-          AND ${resolvedSubjectSql('a')} = ANY(${params.entityIds}::uuid[])
+          AND ${resolvedSubjectSql('a')} = ANY(${params.entityIds}::uuid[])`,
+        actsAlias: 'day_acts',
+        echoKinds: ECHO_SIGNAL_KINDS,
+        sinceDayKey,
+        subjectScope: 'entity',
+      })}),
+      -- The agg CTE is per-KIND, so a day's acts SUM across kinds before the
+      -- recency weight is applied — two kinds on one day are two acts.
+      by_day AS (
+        SELECT
+          entity_id,
+          actor_id,
+          day,
+          SUM(day_acts)::float8 AS day_acts
+        FROM agg
+        GROUP BY 1, 2, 3
+      ),
+      by_actor AS (
+        SELECT
+          entity_id,
+          actor_id,
+          SUM(
+            day_acts * ${dayRecencySql(Prisma.sql`(${todayKey}::date - day)`)}
+          )::float8 AS acts
+        FROM by_day
         GROUP BY 1, 2
       )
       SELECT entity_id, SUM(LN(1 + acts) / LN(2))::float8 AS demand_score
