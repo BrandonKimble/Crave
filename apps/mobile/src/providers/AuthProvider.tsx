@@ -256,6 +256,13 @@ const PushNotificationRegistrar: React.FC = () => {
   }, []);
 
   React.useEffect(() => {
+    // F9421: this effect fires a network write (registerDevice). It awaits twice
+    // before that POST, and its deps (userId, nonces) can change mid-flight. Without
+    // cancellation a superseded run would still POST — a double-register window, and
+    // with a changed userId, TWO different writes. `cancelled` (set by the cleanup)
+    // makes a superseded run bail before every side effect. This is the required
+    // shape for an async effect, not a guard over a missing constraint.
+    let cancelled = false;
     const register = async () => {
       try {
         if (!Constants.isDevice) {
@@ -288,6 +295,7 @@ const PushNotificationRegistrar: React.FC = () => {
         await reportPushEnvironmentClassification();
 
         const token = (await Notifications.getExpoPushTokenAsync({ projectId })).data;
+        if (cancelled) return;
         if (!token) {
           setPushToken(null);
           return;
@@ -307,6 +315,8 @@ const PushNotificationRegistrar: React.FC = () => {
         // §4 home-place v1: current location at registration ≈ home (see
         // resolveHomeLocationSignal above for the reading + signal states).
         const homeSignal = await resolveHomeLocationSignal();
+        // The one write. A run superseded during the awaits above must NOT POST.
+        if (cancelled) return;
         await notificationsService.registerDevice({
           token,
           userId: userId ?? undefined,
@@ -319,6 +329,7 @@ const PushNotificationRegistrar: React.FC = () => {
               ? { homeLocation: null }
               : {}),
         });
+        if (cancelled) return;
         if (homeSignal.kind === 'coordinate') {
           homeSentAtMsRef.current = Date.now();
         }
@@ -329,6 +340,7 @@ const PushNotificationRegistrar: React.FC = () => {
         };
         setPushToken(token);
       } catch (error) {
+        if (cancelled) return;
         // F2802: a failed push registration means the user receives zero push
         // notifications forever with nothing saying why — a bare console.warn
         // dies in production. Route through the seam; keep the dev console line.
@@ -339,6 +351,9 @@ const PushNotificationRegistrar: React.FC = () => {
     };
 
     void register();
+    return () => {
+      cancelled = true;
+    };
   }, [homeRefreshNonce, pushPermissionGrantVersion, setPushToken, userId]);
 
   return null;

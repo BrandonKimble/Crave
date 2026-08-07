@@ -4434,3 +4434,24 @@ This is one strong ZERO-new-finding pass (the strongest kind — adversarial). C
 evidence: the session did not over-claim IDEAL-VERIFIED on this sample. A second adversarial
 pass over the load-bearing core (search gate, entitlements, invariants harness, map authority,
 gesture runtime, billing meter) is running to establish the second consecutive zero-finding pass.
+
+## D143 — adversarial verify #3 (data core) + #4 (runtime core), 2026-08-07
+
+Two more VERIFY-DON'T-TRUST passes over fresh high-value territory.
+- **Pass #3 (data-processing core): 0 findings.** entity-identity (keys written atomically
+  with the row, order-invariant probe closes the reorder blind spot), the F9201 recency
+  sentinel (de-weights not inflates, bounded by the observedDays clamp), unified-processing
+  metrics (DB-truth not seeded), places SQL (all Prisma.sql bind params — 0 injection surface),
+  the cuisine once-ever gate (genuinely re-triable — no record on no-evidence), attribute-
+  ontology rename (identity follows name in one UPDATE). All UPHELD with constructed breaks.
+- **Pass #4 (runtime/reconciler core): 3 findings, all now FIXED.** The headline guarantees
+  held (F9200 presentationFrameSource is a real type guarantee; the reconciler classifier is
+  genuinely total with a loud contract-violation fallthrough; the transaction runtime single-
+  flights). But it caught: F9421 (push double-register — fixed with effect cancellation),
+  F9423 (single-writer was convention-in-costume — now compiler-enforced via a narrowed publish
+  + dedicated publishDesiredTuple, mutation-proven TS2353), F9422 (selector stale-snapshot trap —
+  precondition documented at the API; a code fix would regress the version-gate).
+
+Pass tally toward "two consecutive zero-finding passes": #1=0, #2=1(fixed), #3=0, #4=3(fixed).
+The verification is still earning its keep (pass #4 found a real convention-in-costume in code
+marked IDEAL-VERIFIED) — exactly why the mandate requires it. Continuing.

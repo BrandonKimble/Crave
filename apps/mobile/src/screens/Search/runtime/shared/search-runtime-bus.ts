@@ -109,6 +109,21 @@ export type SearchRuntimeProfileShellState = {
 
 export type SearchRuntimeBusKey = keyof SearchRuntimeBusState;
 
+/** The three keys that ARE the desired tuple — writable only via publishDesiredTuple. */
+type SearchRuntimeBusTupleKey = 'desiredTuple' | 'desiredTupleGeneration' | 'desiredTupleCause';
+
+/** F9423: what the general `publish` door accepts — every bus key EXCEPT the tuple.
+ *  Writing the tuple through `publish` is a compile error; the map cannot go
+ *  out-of-model by accident. */
+export type SearchRuntimeBusPublicPatch = Partial<
+  Omit<SearchRuntimeBusState, SearchRuntimeBusTupleKey>
+>;
+
+/** What `publishDesiredTuple` accepts — the tuple keys are REQUIRED (this is the tuple
+ *  commit), plus any companion keys (e.g. activeTab) to land atomically in one publish. */
+export type SearchDesiredTupleCommit = Partial<SearchRuntimeBusState> &
+  Pick<SearchRuntimeBusState, SearchRuntimeBusTupleKey>;
+
 type SearchRuntimeBusListener = () => void;
 
 type SearchRuntimeBusListenerRecord = {
@@ -252,7 +267,24 @@ export class SearchRuntimeBus {
     this.bump(new Set(Object.keys(INITIAL_STATE) as SearchRuntimeBusKey[]));
   }
 
-  public publish(patch: Partial<SearchRuntimeBusState>): void {
+  /** THE GENERAL PUBLISH DOOR — everything EXCEPT the desired tuple. F9423: the
+   *  three tuple keys are excluded from this type, so an out-of-model map write via
+   *  the door most callers reach for is now a COMPILE ERROR, not a convention nobody
+   *  can see. The tuple is writable ONLY through `publishDesiredTuple` below (whose
+   *  sole caller is the one tuple writer, search-desired-state-writer). */
+  public publish(patch: SearchRuntimeBusPublicPatch): void {
+    this.applyPatch(patch);
+  }
+
+  /** THE ONLY tuple-writing door. Requires the tuple keys (and may atomically co-write
+   *  other keys, e.g. activeTab, in the same publish so the reconciler never sees a
+   *  tuple without its companion). Single-writer is now enforced by the type, not by
+   *  discipline: reach for `publish` with a `desiredTuple` and tsc refuses. */
+  public publishDesiredTuple(patch: SearchDesiredTupleCommit): void {
+    this.applyPatch(patch);
+  }
+
+  private applyPatch(patch: Partial<SearchRuntimeBusState>): void {
     const startedAt = resolveSearchRuntimeBusPerfNow();
     let hasChange = false;
     const changedKeys = new Set<SearchRuntimeBusKey>();

@@ -9,6 +9,19 @@ import type {
 
 type EqualityFn<T> = (left: T, right: T) => boolean;
 
+/**
+ * `selector` MUST be a PURE function of the bus state — it may read ONLY its
+ * `state` argument, never captured props/refs/other-store values (F9422). The
+ * snapshot cache is VERSION-GATED (it recomputes only when `bus.getVersion()`
+ * advances), which is the whole optimization: bus state changes iff the version
+ * bumps. A selector that folds in EXTERNAL state breaks that premise — when the
+ * external value changes without a bus publish, this hook keeps serving the last
+ * computed value until an unrelated publish happens to bump the version. This is
+ * not fixable by invalidating on selector identity: callers pass inline selectors
+ * (a fresh identity every render), so identity-gating would recompute on every
+ * render and defeat the cache. The contract lives here because the optimization
+ * depends on it. All current callers are pure; keep it that way.
+ */
 export const useSearchRuntimeBusSelector = <T>(
   bus: SearchRuntimeBus,
   selector: (state: SearchRuntimeBusState) => T,

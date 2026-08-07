@@ -60,7 +60,7 @@ export const captureCommittedBounds = (
 export const retrySearchDesiredResolution = (searchRuntimeBus: SearchRuntimeBus): void => {
   const state = searchRuntimeBus.getState();
   const generation = state.desiredTupleGeneration + 1;
-  searchRuntimeBus.publish({
+  searchRuntimeBus.publishDesiredTuple({
     desiredTuple: { ...state.desiredTuple },
     desiredTupleGeneration: generation,
     desiredTupleCause: 'retry',
@@ -125,7 +125,7 @@ export const writeSearchDesiredTuple = (
   const identityChanged =
     patch.queryIdentity != null &&
     !areSearchQueryIdentitiesEqual(prev.queryIdentity, next.queryIdentity);
-  searchRuntimeBus.publish({
+  searchRuntimeBus.publishDesiredTuple({
     desiredTuple: next,
     desiredTupleGeneration: generation,
     desiredTupleCause: cause,
