@@ -101,9 +101,12 @@ export class EntitlementEnforcementInterceptor implements NestInterceptor {
     // DECISION AT A CALL SITE rather than a lie forced by a boolean return,
     // and it is one line to change per surface.
     //
-    // Anything that SPENDS (vendor calls, LLM search) must choose `deny`
-    // instead — money is not availability. resolveVerdict makes each surface
-    // say which it is.
+    // `resolveVerdict` leaves the door open for a spend surface to pass `deny`
+    // instead (money is not availability), but NO surface does so today — this
+    // wall uniformly resolves `allow`. Spend is not protected here: unbounded
+    // vendor/LLM cost on an unverified account is guarded by the governance-pool
+    // catastrophe backstops in the usage ledger, not by a per-surface `deny` at
+    // this layer. If that ever moves here, this is the one line that changes.
     if (resolveVerdict(verdict, 'allow')) {
       return next.handle();
     }
