@@ -235,8 +235,6 @@ export const useBottomSheetSharedRuntime = ({
   // F973(d): an `isSearchResultsSheet = testID === 'search-results-flatlist'` was computed
   // here, threaded through two runtimes, and ended its life at `void isSearchResultsSheet;`
   // — a magic testID string made load-bearing for nothing. Deleted at all four sites.
-  const expandedSnap = snapPoints.expanded;
-  const middleSnap = snapPoints.middle;
   const collapsedSnap = snapPoints.collapsed;
   const hiddenSnap = snapPoints.hidden;
   const initialSnapValue = snapPoints[initialSnapPoint];

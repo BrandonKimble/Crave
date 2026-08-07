@@ -1,9 +1,5 @@
-import React from 'react';
-
 import type { OverlayRouteEntry } from '../navigation/runtime/app-overlay-route-types';
 import type { AppOverlayRouteCommandRuntime } from '../navigation/runtime/app-overlay-route-command-runtime';
-import { useAppRouteSceneRuntime } from '../navigation/runtime/AppRouteSceneRuntimeProvider';
-import type { RouteOverlayNavigationSnapshot } from '../navigation/runtime/route-overlay-navigation-snapshot-contract';
 
 export type SearchRestaurantRouteCommand =
   | {

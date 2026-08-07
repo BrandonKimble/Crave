@@ -2,11 +2,7 @@ import React from 'react';
 
 import { type SharedValue, useSharedValue } from 'react-native-reanimated';
 
-import type {
-  BottomSheetSnap,
-  BottomSheetSnapChangeSource,
-  BottomSheetMotionCommand,
-} from './bottomSheetMotionTypes';
+import type { BottomSheetSnap, BottomSheetMotionCommand } from './bottomSheetMotionTypes';
 
 type BottomSheetPresentationState = {
   sheetY: SharedValue<number>;

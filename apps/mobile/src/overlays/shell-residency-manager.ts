@@ -1,7 +1,6 @@
 import { InteractionManager } from 'react-native';
 
 import type { OverlayKey } from '../navigation/runtime/app-overlay-route-types';
-import type { SheetSceneKey } from '../navigation/runtime/scene-foundation-spec';
 import type { ResidencyManagedSceneKey } from './shell-residency-registry';
 import { isResidencyManagedScene, RESIDENCY_MANAGED_SCENES } from './shell-residency-registry';
 

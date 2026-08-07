@@ -374,7 +374,7 @@ export default tseslint.config(
     },
   },
   {
-    files: ['scripts/**/*.ts', 'prisma/**/*.ts', 'test-pipeline.ts'],
+    files: ['scripts/**/*.ts'],
     languageOptions: {
       parserOptions: {
         projectService: {
