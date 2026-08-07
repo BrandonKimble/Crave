@@ -3847,3 +3847,36 @@ tsc.
 Three of four remediation lanes ratified. Only the api-search service/backfill lane
 remains in flight; its schema landed atomically (ae466c0d5), so it commits service code
 only.
+
+---
+
+## D126 — api-search fold remediation ratified; ALL pass-1 findings terminal (2026-08-07)
+
+**F7600 ratified — the lane went past the query to the real defect.** Fixing only the
+WHERE would have left the acceptance ("es label reachable") FAILING, because the labels arm
+surfaced no folded label into matchedFormsSelect — so even a WHERE-matched label produced
+NO SPAN. The lane added the foldedLabels SELECT + attribution loop so the arm actually
+emits, which is the honest rederivation. The fold-in-SQL-vs-script call is correct and
+matches the alias precedent: canonicalFold is NFKD + Unicode-class regex, not
+platform-stable in SQL (glibc vs mac), so the backfill is a TS script — run once, 11,068
+rows re-folded, 0 unfoldable, re-run touched 0 (idempotent proven), accented rows now
+correct. Both accent tests red on the LOWER(el.form) revert, green after. The 20%-label
+recall defect is closed at the schema level: form_folded is NOT NULL, app-written, so a
+label without a folded form cannot be written — unrepresentable, not patched.
+
+**F7602's mutation gate is the D-note worth keeping:** the DB run alone COULD NOT gate the
+tiebreak (Postgres sorted the small tie stably regardless), so the reliable gate reads the
+RENDERED SQL for the ORDER BY, with the DB run as a correctness smoke. A determinism fix
+whose only witness is a stable-by-luck DB sort is exactly the always-green trap; the
+rendered-SQL assertion is the one that can fail.
+
+**F7601** — the constant-zero instrument deleted (its only consumer was the log).
+
+**ALL TWELVE PASS-1 FINDINGS ARE NOW TERMINAL OR OWNER-ESCALATED:**
+F7500 (guard FIXED / semantics ESCALATED), F7501/02/03 FIXED, F7600/01/02 FIXED,
+F7700/02/801 FIXED, F7701 (recommendation recorded, lands with F7700's file — verify),
+F7800 FIXED (F4700 folded), F7901 FIXED, F7900/7902 FIXED, F7903 (job-control FIXED /
+notification-dispatcher held by another session). Pass 1's remediation is complete.
+
+**NEXT: the quiescent re-sweep, then PASS 1 RESTARTS (attempt 2).** The two-consecutive-
+clean counter is at zero and stays there until a full re-hunt returns empty twice.
