@@ -16,10 +16,7 @@ import {
   RedditNetworkError,
 } from './reddit.exceptions';
 
-import {
-  RetryOptions,
-  RateLimitResponse,
-} from '../shared/external-integrations.types';
+import { RateLimitResponse } from '../shared/external-integrations.types';
 import { GovernanceService } from '../governance/governance.service';
 import type { PoolDenial } from '../governance/pool-registry';
 import { isEnvFlagEnabled } from '../../../shared/config/env-flag';
@@ -38,8 +35,6 @@ export interface RedditConfig {
   username: string;
   password: string;
   userAgent: string;
-  timeout: number;
-  retryOptions: RetryOptions;
 }
 
 export interface RedditTokenResponse {
@@ -47,15 +42,6 @@ export interface RedditTokenResponse {
   token_type: string;
   expires_in: number;
   scope: string;
-}
-
-export interface ConnectionStabilityMetrics {
-  totalRequests: number;
-  successfulRequests: number;
-  failedRequests: number;
-  averageResponseTime: number;
-  lastConnectionCheck: Date;
-  connectionStatus: 'healthy' | 'degraded' | 'failed';
 }
 
 export interface RedditPost {
@@ -137,14 +123,6 @@ export interface BatchKeywordSearchResponse {
     totalApiCalls: number;
     rateLimitStatus: RateLimitResponse;
   };
-}
-
-export interface PerformanceMetrics {
-  requestCount: number;
-  totalResponseTime: number;
-  averageResponseTime: number;
-  lastReset: Date;
-  rateLimitHits: number;
 }
 
 export interface HistoricalDataParams {
@@ -286,21 +264,6 @@ export class RedditService implements OnModuleInit {
   private tokenExpiresAt: Date | null = null;
   private redditConfig!: RedditConfig;
   private enabled = true;
-  private performanceMetrics: PerformanceMetrics = {
-    requestCount: 0,
-    totalResponseTime: 0,
-    averageResponseTime: 0,
-    lastReset: new Date(),
-    rateLimitHits: 0,
-  };
-  private connectionMetrics: ConnectionStabilityMetrics = {
-    totalRequests: 0,
-    successfulRequests: 0,
-    failedRequests: 0,
-    averageResponseTime: 0,
-    lastConnectionCheck: new Date(),
-    connectionStatus: 'healthy',
-  };
 
   constructor(
     @Inject(HttpService) private readonly httpService: HttpService,
@@ -320,18 +283,6 @@ export class RedditService implements OnModuleInit {
       userAgent:
         this.configService.get<string>('reddit.userAgent') ||
         'CraveSearch/1.0.0',
-      timeout: this.configService.get<number>('reddit.timeout') || 10000,
-      retryOptions: {
-        maxRetries:
-          this.configService.get<number>('reddit.retryOptions.maxRetries') || 3,
-        retryDelay:
-          this.configService.get<number>('reddit.retryOptions.retryDelay') ||
-          1000,
-        retryBackoffFactor:
-          this.configService.get<number>(
-            'reddit.retryOptions.retryBackoffFactor',
-          ) || 2.0,
-      },
     };
 
     this.validateConfig();
@@ -568,87 +519,6 @@ export class RedditService implements OnModuleInit {
     };
   }
 
-  getRedditConfig(): Omit<RedditConfig, 'clientSecret' | 'password'> {
-    return {
-      clientId: this.redditConfig.clientId,
-      username: this.redditConfig.username,
-      userAgent: this.redditConfig.userAgent,
-      timeout: this.redditConfig.timeout,
-      retryOptions: this.redditConfig.retryOptions,
-    };
-  }
-
-  async performHealthCheck(): Promise<{
-    status: string;
-    details: ConnectionStabilityMetrics;
-  }> {
-    this.assertEnabled();
-    const startTime = Date.now();
-    let status = 'healthy';
-
-    try {
-      const isValid = await this.validateAuthentication();
-      const responseTime = Date.now() - startTime;
-
-      this.connectionMetrics = {
-        totalRequests: this.connectionMetrics.totalRequests + 1,
-        successfulRequests: isValid
-          ? this.connectionMetrics.successfulRequests + 1
-          : this.connectionMetrics.successfulRequests,
-        failedRequests: isValid
-          ? this.connectionMetrics.failedRequests
-          : this.connectionMetrics.failedRequests + 1,
-        averageResponseTime: responseTime,
-        lastConnectionCheck: new Date(),
-        connectionStatus: isValid ? 'healthy' : 'failed',
-      };
-
-      status = isValid ? 'healthy' : 'failed';
-    } catch (error) {
-      this.logger.error('Health check failed', error);
-      this.connectionMetrics.failedRequests++;
-      this.connectionMetrics.connectionStatus = 'failed';
-      status = 'failed';
-    }
-
-    return {
-      status,
-      details: this.connectionMetrics,
-    };
-  }
-
-  getPerformanceMetrics(): PerformanceMetrics {
-    return {
-      ...this.performanceMetrics,
-    };
-  }
-
-  getConnectionMetrics(): ConnectionStabilityMetrics {
-    return {
-      ...this.connectionMetrics,
-    };
-  }
-
-  resetPerformanceMetrics(): void {
-    this.performanceMetrics = {
-      requestCount: 0,
-      totalResponseTime: 0,
-      averageResponseTime: 0,
-      lastReset: new Date(),
-      rateLimitHits: 0,
-    };
-  }
-
-  private updateRateLimitMetrics(retryAfter?: number): void {
-    this.performanceMetrics.rateLimitHits++;
-
-    this.logger.warn(`Rate limit hit for Reddit API`, {
-      service: 'reddit',
-      rateLimitHits: this.performanceMetrics.rateLimitHits,
-      retryAfter,
-    });
-  }
-
   async getRateLimitStatus(): Promise<RateLimitResponse> {
     // ONE window: the governor's reddit.requests pool (§14.8). This is a
     // read-only snapshot — admission happens per request inside makeRequest.
@@ -664,42 +534,6 @@ export class RedditService implements OnModuleInit {
       limit: status.limit,
       resetTime: new Date(Date.now() + resetMs),
     });
-  }
-
-  /**
-   * Get service health status
-   */
-  getHealthStatus() {
-    const successRate =
-      this.performanceMetrics.requestCount > 0
-        ? Math.round(
-            ((this.performanceMetrics.requestCount - 0) /
-              this.performanceMetrics.requestCount) *
-              100,
-          )
-        : 100;
-
-    const status: 'healthy' | 'degraded' | 'unhealthy' =
-      successRate > 80 ? 'healthy' : 'degraded';
-
-    return {
-      service: 'reddit',
-      status,
-      uptime: Date.now() - this.performanceMetrics.lastReset.getTime(),
-      metrics: {
-        requestCount: this.performanceMetrics.requestCount,
-        totalResponseTime: this.performanceMetrics.totalResponseTime,
-        averageResponseTime: this.performanceMetrics.averageResponseTime,
-        lastReset: this.performanceMetrics.lastReset,
-        errorCount: 0, // Reddit service doesn't track this separately
-        successRate: successRate,
-        rateLimitHits: 0, // Reddit service doesn't track this separately
-      },
-      configuration: {
-        timeout: this.redditConfig.timeout,
-        retryOptions: this.redditConfig.retryOptions,
-      },
-    };
   }
 
   /**
@@ -727,15 +561,6 @@ export class RedditService implements OnModuleInit {
       Number.isFinite(resetSeconds) && resetSeconds > 0
         ? resetSeconds * 1000
         : null,
-    );
-  }
-
-  private recordPerformanceMetrics(responseTime: number): void {
-    this.performanceMetrics.requestCount++;
-    this.performanceMetrics.totalResponseTime += responseTime;
-    this.performanceMetrics.averageResponseTime = Math.round(
-      this.performanceMetrics.totalResponseTime /
-        this.performanceMetrics.requestCount,
     );
   }
 
@@ -782,6 +607,20 @@ export class RedditService implements OnModuleInit {
     );
   }
 
+  /**
+   * §12.3 fail-closed: a post-comments endpoint always answers with a
+   * two-element listing `[postListing, commentListing]`. Any other shape is a
+   * vendor/transport fault, NOT "no comments" — both `getRawPostWithComments`
+   * and `fetchRecentCommentIds` route through this ONE assertion so a malformed
+   * response can never read as an empty success in one caller while throwing in
+   * the other (they used to disagree).
+   */
+  private assertPostCommentsListing(response: unknown): void {
+    if (!Array.isArray(response) || response.length < 2) {
+      throw new RedditApiError('Invalid response format for post retrieval');
+    }
+  }
+
   private async makeRequest<T>(
     method: 'GET' | 'POST',
     url: string,
@@ -796,7 +635,6 @@ export class RedditService implements OnModuleInit {
     // The ONE chokepoint (§12.5): per-request admission + actuals recording
     // happen inside this governed draw — no second window exists (§14.8).
     return this.governedAct(operation, async () => {
-      const startTime = Date.now();
       try {
         const response = await firstValueFrom(
           method === 'GET'
@@ -804,15 +642,9 @@ export class RedditService implements OnModuleInit {
             : this.httpService.post(url, data, { headers: requestHeaders }),
         );
 
-        const responseTime = Date.now() - startTime;
-        this.recordPerformanceMetrics(responseTime);
-
         this.alignPoolToVendorHeaders(response.headers);
         return response.data as T;
       } catch (error) {
-        const responseTime = Date.now() - startTime;
-        this.recordPerformanceMetrics(responseTime);
-
         const axiosError = error as AxiosError;
         this.alignPoolToVendorHeaders(axiosError.response?.headers);
         if (axiosError.response?.status === 429) {
@@ -828,7 +660,10 @@ export class RedditService implements OnModuleInit {
             retryAfter * 1000,
           );
 
-          this.updateRateLimitMetrics(retryAfter);
+          this.logger.warn('Rate limit hit for Reddit API', {
+            service: 'reddit',
+            retryAfter,
+          });
           throw new RedditRateLimitError(
             'Rate limited by Reddit API',
             retryAfter,
@@ -1121,9 +956,7 @@ export class RedditService implements OnModuleInit {
       'get_raw_post_with_comments',
     );
 
-    if (!response || !Array.isArray(response) || response.length < 2) {
-      throw new RedditApiError('Invalid response format for post retrieval');
-    }
+    this.assertPostCommentsListing(response);
 
     const responseTime = Date.now() - startTime;
 
@@ -1211,9 +1044,7 @@ export class RedditService implements OnModuleInit {
         'fetch_recent_comment_ids',
       );
 
-      if (!Array.isArray(response) || response.length < 2) {
-        return [];
-      }
+      this.assertPostCommentsListing(response);
 
       const commentListing = response[1]?.data?.children ?? [];
       const collected: string[] = [];
@@ -1597,7 +1428,15 @@ export class RedditService implements OnModuleInit {
           batchDuration: duration,
           averageSearchTime:
             successfulSearches > 0 ? duration / successfulSearches : 0,
-          totalApiCalls: successfulSearches, // Approximate
+          // Derived, not approximated (no-fake-estimates law): every
+          // searchEntityKeywords spends exactly one vendor call, and a FAILED
+          // search consumed its call too — the true total is the sum of the
+          // per-search calls plus one per failed attempt.
+          totalApiCalls:
+            Object.values(results).reduce(
+              (sum, result) => sum + result.performance.apiCallsUsed,
+              0,
+            ) + failedSearches,
           rateLimitStatus: await this.getRateLimitStatus(),
         },
       };

@@ -561,14 +561,14 @@ export class ReplayService implements OnModuleInit {
         ...post,
         comments: [...(commentsByPostId.get(post.id) ?? [])].sort(
           (left, right) =>
-            new Date(left.created_at).getTime() -
-            new Date(right.created_at).getTime(),
+            new Date(left.created_at ?? 0).getTime() -
+            new Date(right.created_at ?? 0).getTime(),
         ),
       }))
       .sort(
         (left, right) =>
-          new Date(left.created_at).getTime() -
-          new Date(right.created_at).getTime(),
+          new Date(left.created_at ?? 0).getTime() -
+          new Date(right.created_at ?? 0).getTime(),
       );
   }
 

@@ -365,18 +365,10 @@ export default () => {
       userAgent:
         process.env.REDDIT_USER_AGENT ||
         `web:threadsift:v1.0.0 (by /u/${process.env.REDDIT_USERNAME || 'threadsift'})`,
-      timeout: parseInt(process.env.REDDIT_TIMEOUT || '10000', 10),
       requestsPerMinute: parseInt(
         process.env.REDDIT_REQUESTS_PER_MINUTE || '100',
         10,
       ),
-      retryOptions: {
-        maxRetries: parseInt(process.env.REDDIT_MAX_RETRIES || '3', 10),
-        retryDelay: parseInt(process.env.REDDIT_RETRY_DELAY || '1000', 10),
-        retryBackoffFactor: parseFloat(
-          process.env.REDDIT_RETRY_BACKOFF_FACTOR || '2.0',
-        ),
-      },
     },
     llm: {
       apiKey: resolveSecretEnv('LLM_API_KEY'),

@@ -999,7 +999,7 @@ export class CollectionEvidenceService implements OnModuleInit {
     return links;
   }
 
-  private parseDate(value: string | undefined, fallback: Date): Date {
+  private parseDate(value: string | null | undefined, fallback: Date): Date {
     const parsed = value ? new Date(value) : fallback;
     return Number.isNaN(parsed.getTime()) ? fallback : parsed;
   }

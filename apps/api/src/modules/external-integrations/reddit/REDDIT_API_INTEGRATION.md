@@ -1,60 +1,41 @@
 # Reddit API Integration
 
-## Overview
+Reddit API client implementing PRD Section 5.1.2 collection. It reads public
+listings only, through one governed rate-limit pool.
 
-This module provides comprehensive Reddit API integration for the Crave Search application, implementing the requirements from PRD Section 5.1.2. The integration includes OAuth2 authentication, rate limiting (100 requests/minute), cost monitoring, and real-time collection methods.
+> **`reddit.service.ts` is the surface of record.** This document intentionally
+> does not reproduce method signatures or an inventory of methods — a prior
+> version listed seven methods that never existed (`batchCollectFromSubreddits`,
+> `getCostMetrics`, `getHistoricalPosts`, `getHistoricalComments`,
+> `getCommentStreamPage`, `streamSubredditComments`, `testApiEndpoints`) and a
+> per-service metrics/health surface that has since been deleted. Read the
+> service for what exists; only non-rotting facts live here.
 
-## Features
+## Authentication — `client_credentials`, not password grant
 
-### 🔐 Authentication
-
-- **OAuth2 Flow**: Secure authentication using client credentials and user account
-- **Token Management**: Automatic token refresh with buffer time for safety
-- **Error Handling**: Comprehensive error handling for authentication failures
-
-### ⚡ Rate Limiting
-
-- **100 requests/minute limit**: Enforced through the governor's `reddit.requests` pool (GovernanceService) — RateLimitCoordinatorService has zero reddit admission authority (§12.5/§14.8, one pool, one ledger)
-- **Proactive checking**: Rate limit validation before making API calls
-- **Graceful degradation**: Handles rate limit errors with appropriate retry-after delays
-
-### 💰 Cost Monitoring
-
-- **Free tier tracking**: Monitors usage within Reddit's free tier limits
-- **Daily/monthly metrics**: Tracks request counts and estimated costs
-- **Budget alerts**: Provides cost metrics and warnings
-
-### 📊 Real-Time Collection Methods
-
-- **Chronological Collection**: Fetch recent posts using `/r/subreddit/new`
-- **Keyword Entity Search**: Search for specific entities using `/r/subreddit/search`
-- **Batch Operations**: Collect from multiple subreddits efficiently
+The service uses the OAuth2 **`client_credentials`** (app-only) grant. It needs
+only a client id + secret — **no** account username/password. The password
+grant it previously used had started returning `HTTP 200` +
+`{"error":"invalid_grant"}` and silently killed all collection; it was replaced
+on 2026-07-24 and must not return. See `authenticate()` in `reddit.service.ts`
+for the full history and the `200`-is-not-success check.
 
 ## Configuration
 
-### Environment Variables
-
 ```bash
-# Required - Reddit API Credentials
+# Required
 REDDIT_CLIENT_ID=your_client_id
 REDDIT_CLIENT_SECRET=your_client_secret
-REDDIT_USERNAME=your_bot_username
-REDDIT_PASSWORD=your_bot_password
 
-# Optional - Service Configuration
-REDDIT_USER_AGENT=CraveSearch/1.0.0
-REDDIT_TIMEOUT=10000
-REDDIT_REQUESTS_PER_MINUTE=100
-
-# Optional - Retry Configuration
-REDDIT_MAX_RETRIES=3
-REDDIT_RETRY_DELAY=1000
-REDDIT_RETRY_BACKOFF_FACTOR=2.0
+# Optional — User-Agent attribution (Reddit's anti-abuse layer wants a
+# distinctive, stable UA; see configuration.ts for the exact format)
+REDDIT_USER_AGENT="web:threadsift:v1.0.0 (by /u/threadsift)"
+REDDIT_USERNAME=your_bot_username   # UA attribution only; not an auth credential
 ```
 
-### Configuration Object
-
-The service uses the following configuration structure:
+The request timeout is set once, on the `HttpModule` registration in
+`reddit.module.ts` (10s). Retry/pacing bounds live where they are enforced —
+the through-the-governor draw loop in `governedAct` — not as separate env vars.
 
 ```typescript
 interface RedditConfig {
@@ -63,268 +44,55 @@ interface RedditConfig {
   username: string;
   password: string;
   userAgent: string;
-  timeout: number;
-  retryOptions: RetryOptions;
 }
 ```
 
-## Usage
+## Rate limiting — one governed pool (§12.5 / §14.8)
 
-### Basic Service Injection
+- Every vendor call (auth, `/api/v1/me`, listings, search) is exactly one
+  governed draw on the `reddit.requests` pool via `GovernanceService`. There is
+  no second window; `RateLimitCoordinatorService` has zero reddit admission
+  authority.
+- The 100 requests/minute ceiling is the pool's limit. Admission is per-request
+  at the `makeRequest` chokepoint; a denial is retried through the governor and,
+  when exhausted, surfaces as the typed `RedditGovernanceDenialError`.
+- An upstream `429` poisons the pool's current window (`poisonWindow`) so the
+  ceiling is honored governor-wide, and each response's `x-ratelimit-*` headers
+  tighten the pool estimate toward the vendor's own ledger.
+- A rate limit or governance denial **propagates** (§12.3). It is never
+  rebranded as a generic API error and never swallowed into an empty success —
+  an empty success would let a rate limit brand a window as covered.
 
-```typescript
-import { RedditService } from './reddit.service';
+## Live collection entry points
 
-@Injectable()
-export class YourService {
-  constructor(private readonly redditService: RedditService) {}
-}
-```
+Read the signatures in `reddit.service.ts`; the four production entry points
+are:
 
-### Authentication
+- `getChronologicalPosts(subreddit, lastProcessedTimestamp?, limit?)` — recent
+  posts via `/r/{subreddit}/new`, with the §10 overlap detector.
+- `batchEntityKeywordSearch(subreddit, entityNames, options?)` — keyword entity
+  search via `/r/{subreddit}/search`.
+- `getCompletePostWithComments(subreddit, postId, options?)` — a post and its
+  comment thread (raw, for single-pass transform).
+- `fetchRecentCommentIds(subreddit, postId, limit)` — a new-comments probe. A
+  malformed listing throws (shared `assertPostCommentsListing`), never "no
+  comments".
 
-Authentication is handled automatically, but you can manually trigger it:
+## Error handling
 
-```typescript
-// Manual authentication (usually not needed)
-await this.redditService.authenticate();
-
-// Validate current authentication
-const isValid = await this.redditService.validateAuthentication();
-
-// Get authenticated headers for custom requests
-const headers = await this.redditService.getAuthenticatedHeaders();
-```
-
-### Real-Time Collection Methods
-
-#### Chronological Collection
-
-Fetch recent posts chronologically (PRD Section 5.1.2):
-
-```typescript
-const result = await this.redditService.getChronologicalPosts(
-  'austinfood', // subreddit
-  1640995200, // lastProcessedTimestamp (optional)
-  100, // limit (optional, max 100)
-);
-
-console.log(result);
-// {
-//   data: [...posts],
-//   metadata: {
-//     totalRetrieved: 25,
-//     rateLimitStatus: {...},
-//     costIncurred: 0,
-//     completenessRatio: 1.0
-//   },
-//   performance: {
-//     responseTime: 450,
-//     apiCallsUsed: 1,
-//     rateLimitHit: false
-//   }
-// }
-```
-
-#### Keyword Entity Search
-
-Search for specific entities (PRD Section 5.1.2):
-
-```typescript
-const result = await this.redditService.searchByKeyword(
-  'austinfood', // subreddit
-  'tacos', // keyword
-  {
-    sort: 'relevance', // 'relevance' | 'new' | 'top'
-    limit: 100, // max 100
-    timeframe: 'month', // 'hour' | 'day' | 'week' | 'month' | 'year' | 'all'
-  },
-);
-```
-
-#### Batch Collection
-
-Collect from multiple subreddits efficiently:
-
-```typescript
-const results = await this.redditService.batchCollectFromSubreddits(
-  ['austinfood', 'FoodNYC'], // subreddits
-  'chronological', // 'chronological' | 'keyword'
-  {
-    keyword: 'pizza', // required for keyword method
-    lastProcessedTimestamp: 1640995200,
-    limit: 25,
-  },
-);
-
-// Returns: { [subreddit: string]: CollectionMethodResult }
-```
-
-### Monitoring and Metrics
-
-#### Cost Metrics
-
-```typescript
-const costMetrics = this.redditService.getCostMetrics();
-console.log(costMetrics);
-// {
-//   totalRequestsThisMonth: 1250,
-//   totalRequestsToday: 85,
-//   estimatedMonthlyCost: 0,     // Reddit is free within rate limits
-//   freeQuotaRemaining: 143915,
-//   costPerThousandRequests: 0.60,
-//   lastReset: Date,
-//   isWithinFreeTier: true
-// }
-```
-
-#### Rate Limit Status
-
-```typescript
-const rateLimitStatus = this.redditService.getRateLimitStatus();
-console.log(rateLimitStatus);
-// {
-//   allowed: true,
-//   currentUsage: 45,
-//   limit: 100,
-//   resetTime: Date
-// }
-```
-
-#### Performance Metrics
-
-```typescript
-const performanceMetrics = this.redditService.getPerformanceMetrics();
-const connectionMetrics = this.redditService.getConnectionMetrics();
-```
-
-### Health Checks
-
-```typescript
-// Service health status
-const healthStatus = this.redditService.getHealthStatus();
-
-// Comprehensive health check
-const healthCheck = await this.redditService.performHealthCheck();
-
-// Test API connectivity
-const connectivityTest = await this.redditService.testApiEndpoints();
-```
-
-## Error Handling
-
-The service provides specific error types for different failure scenarios:
-
-```typescript
-import {
-  RedditApiError,
-  RedditAuthenticationError,
-  RedditConfigurationError,
-  RedditRateLimitError,
-  RedditNetworkError,
-} from './reddit.exceptions';
-
-try {
-  await this.redditService.getChronologicalPosts('austinfood');
-} catch (error) {
-  if (error instanceof RedditRateLimitError) {
-    console.log(`Rate limited. Retry after: ${error.retryAfter} seconds`);
-  } else if (error instanceof RedditAuthenticationError) {
-    console.log('Authentication failed. Check credentials.');
-  } else if (error instanceof RedditNetworkError) {
-    console.log('Network error. Check connectivity.');
-  }
-}
-```
-
-## Rate Limiting Details
-
-### How It Works
-
-1. **Pre-request Admission**: Before each API call, the service draws from the governor's single `reddit.requests` pool (`GovernanceService.drawWithOutcome`), retried through the governor on denial — never a second rate-limit window
-2. **100 requests/minute limit**: Configured as per Reddit API limits and PRD requirements
-3. **Graceful Handling**: If rate limited, the service either throws an error or returns empty results with rate limit metadata
-4. **Vendor Feedback**: An upstream 429 poisons the pool's current window (`poisonWindow`) so the ceiling is honored governor-wide, not just in this process
-
-### Rate Limit Response Handling
-
-```typescript
-// When rate limited by coordinator
-const result = await this.redditService.getChronologicalPosts('austinfood');
-if (result.performance.rateLimitHit) {
-  console.log('Rate limited - returned empty results');
-  console.log(
-    `Retry after: ${result.metadata.rateLimitStatus.retryAfter} seconds`,
-  );
-}
-```
+Specific exception types live in `reddit.exceptions.ts`: `RedditApiError`,
+`RedditAuthenticationError`, `RedditConfigurationError`, `RedditRateLimitError`
+(carries `retryAfter`), `RedditNetworkError`, `RedditGovernanceDenialError`.
 
 ## Testing
-
-The service includes comprehensive test coverage for:
-
-- Authentication flows and error scenarios
-- Rate limiting integration with coordinator service
-- Cost monitoring and metrics tracking
-- Real-time collection methods
-- Batch operations and error handling
-- Network error scenarios
-
-Run tests:
 
 ```bash
 npm test reddit.service.spec.ts
 ```
 
-## Architecture Integration
+## Architecture integration
 
-### Module Dependencies
-
-- **GovernanceService**: For the `reddit.requests` admission pool (rate limiting)
-- **LoggerService**: For structured logging with correlation IDs
-- **ConfigService**: For environment-based configuration
-- **HttpService**: For HTTP requests with Axios
-
-### PRD Compliance
-
-This implementation fully satisfies PRD Section 5.1.2 requirements:
-
-- ✅ **Authentication**: OAuth2 with secure credential management
-- ✅ **Rate Limiting**: 100 requests/minute hard constraint enforcement
-- ✅ **Cost Management**: Free tier monitoring and cost tracking
-- ✅ **Real-time Collection**: Chronological and keyword search methods
-- ✅ **Error Handling**: Comprehensive error scenarios with proper retry logic
-- ✅ **Performance Monitoring**: Request tracking and health monitoring
-
-### Future Enhancements
-
-- **Webhook Integration**: Real-time notifications from Reddit
-- **Advanced Caching**: Response caching for frequently accessed data
-- **Analytics Dashboard**: Visual monitoring of API usage and costs
-- **Auto-scaling**: Dynamic rate limit adjustment based on usage patterns
-
-## Troubleshooting
-
-### Common Issues
-
-1. **Authentication Failures**
-   - Check Reddit API credentials in environment variables
-   - Ensure bot account has proper permissions
-   - Verify user agent string is set correctly
-
-2. **Rate Limit Errors**
-   - Monitor daily usage with `getCostMetrics()`
-   - Check `getRateLimitStatus()` for current limits
-   - Implement exponential backoff for retries
-
-3. **Network Timeouts**
-   - Increase `REDDIT_TIMEOUT` environment variable
-   - Check network connectivity to reddit.com
-   - Review retry configuration settings
-
-4. **Empty Results**
-   - Verify subreddit names are correct and accessible
-   - Check if subreddits have recent posts
-   - Ensure search keywords are not too restrictive
-
-For additional support, check the service health endpoints and review the comprehensive logging output with correlation IDs for debugging.
+- **GovernanceService** — the `reddit.requests` admission pool.
+- **LoggerService** — structured logging with correlation ids.
+- **ConfigService** — environment-based configuration.
+- **HttpService** — Axios HTTP requests.

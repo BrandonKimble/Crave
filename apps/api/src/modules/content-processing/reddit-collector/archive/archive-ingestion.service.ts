@@ -786,7 +786,8 @@ export class ArchiveIngestionService implements OnModuleInit {
 
     posts.sort(
       (a, b) =>
-        new Date(a.created_at).getTime() - new Date(b.created_at).getTime(),
+        new Date(a.created_at ?? 0).getTime() -
+        new Date(b.created_at ?? 0).getTime(),
     );
 
     this.logger.info('Archive posts prepared for batch queueing', {
@@ -913,7 +914,7 @@ export class ArchiveIngestionService implements OnModuleInit {
 
     const timestamps = posts
       .map((post) => {
-        const time = Date.parse(post.created_at);
+        const time = post.created_at ? Date.parse(post.created_at) : NaN;
         return Number.isNaN(time) ? undefined : time;
       })
       .filter((value): value is number => typeof value === 'number');

@@ -1998,6 +1998,9 @@ export class ExtractionPipelineService implements OnModuleInit {
         post.created_at,
         ...(post.comments ?? []).map((comment) => comment.created_at),
       ])
+      // Undated items (F4905: created_at can be null) are excluded from the
+      // temporal range rather than fabricated to a spurious timestamp.
+      .filter((value): value is string => value !== null)
       .map((value) => new Date(value).getTime())
       .filter((value) => Number.isFinite(value));
 

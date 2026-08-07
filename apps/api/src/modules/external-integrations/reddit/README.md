@@ -1,202 +1,77 @@
 # Reddit API Integration Module
 
-This module provides Reddit API integration with OAuth2 authentication for the Crave Search application. It includes core functionality for data collection and streaming.
+Reddit API client for the Crave Search application. It reads **public listings
+only** (posts, comments, keyword search) and does not act on behalf of any
+account.
 
-## Overview
+> This file deliberately does NOT enumerate the service's methods or copy their
+> signatures — a method census rots the moment the code changes (an earlier
+> version of this README documented seven methods that no longer existed and an
+> auth grant that had caused a production outage). **`reddit.service.ts` is the
+> source of truth for the surface; read it.** Only facts that cannot rot live
+> here.
 
-The Reddit module implements a production-ready Reddit API client with:
+## Authentication — `client_credentials` (app-only), NOT password grant
 
-- OAuth2 password grant authentication
-- Comprehensive error handling
-- Automatic token management and refresh
-- Rate limiting awareness
-- Secure configuration management
-- Health monitoring and metrics
+The service authenticates with the OAuth2 **`client_credentials`** grant
+(installed/app-only). It needs a client id and secret; it does **not** need a
+Reddit account username or password.
 
-## Module Structure
+This is load-bearing history, not trivia (see the long comment at
+`reddit.service.ts` `authenticate()`): the module previously used the
+**password grant**, which had started returning `HTTP 200` with
+`{"error":"invalid_grant"}` from every network. The missing error check stamped
+that "authentication successful" and all downstream collection died with
+generic failures. It was replaced with `client_credentials` on 2026-07-24. Do
+not reintroduce the password grant. Reddit answers grant failures with `200` +
+`{"error": …}`, so a `200` is only success once a token actually exists —
+`authenticate()` enforces exactly that.
 
-```
-reddit/
-├── reddit.module.ts         # NestJS module definition
-├── reddit.service.ts        # Core Reddit API service
-├── reddit.exceptions.ts     # Custom exception classes
-├── reddit.service.spec.ts   # Unit tests
-├── reddit-data-filter.ts    # Single-pass Reddit listing filter/transform to LLM format
-└── README.md               # This documentation
-```
-
-## Configuration
-
-The service requires the following environment variables:
+Required configuration (via NestJS `ConfigService`, defined in
+`src/config/configuration.ts`):
 
 ```env
 REDDIT_CLIENT_ID=your_reddit_app_client_id
 REDDIT_CLIENT_SECRET=your_reddit_app_client_secret
-REDDIT_USERNAME=your_reddit_username
-REDDIT_PASSWORD=your_reddit_password
-REDDIT_USER_AGENT=CraveSearch/1.0.0
+REDDIT_USER_AGENT=web:threadsift:v1.0.0 (by /u/threadsift)
 ```
 
-Configuration is managed through NestJS ConfigService and defined in `src/config/configuration.ts`.
+`REDDIT_USERNAME` survives only as User-Agent attribution; `validateConfig`
+does not require username/password.
 
-## Core Methods
+## The one governed pool (§12.5 / §14.8)
 
-### Authentication
+Every vendor HTTP call — auth, `/api/v1/me`, every listing/search — is exactly
+**one governed draw** on the `reddit.requests` pool through the single
+`makeRequest` chokepoint. There is no second rate-limit window in this module;
+admission, the vendor-header alignment (`x-ratelimit-*`), and 429 poisoning all
+happen at that chokepoint. A governance denial surfaces as the typed not-now
+(`RedditGovernanceDenialError`) and is never rebranded as an API error or
+swallowed into an empty success (§12.3).
 
-- `authenticate()` - Perform OAuth2 authentication
-- `validateAuthentication()` - Validate current authentication status
-- `getAuthenticatedHeaders()` - Get headers for authenticated requests
+## Error handling
 
-### Data Collection
+Failures surface as specific exception types (see `reddit.exceptions.ts`):
+`RedditAuthenticationError`, `RedditRateLimitError` (carries `retryAfter`),
+`RedditNetworkError`, `RedditConfigurationError`,
+`RedditGovernanceDenialError`, and the generic `RedditApiError`. A malformed
+post-comments listing is a fault, not "no comments" — it throws `RedditApiError`
+via the shared `assertPostCommentsListing` guard.
 
-- `getHistoricalPosts(timeDepth)` - Retrieve historical posts for specified time period
-- `getHistoricalComments(postId, timeDepth)` - Get comments for specific post
-- `getCommentStreamPage(after?, limit?)` - Get paginated comment stream
-- `streamSubredditComments(options)` - Stream comments with configuration options
+## Module structure
 
-### Monitoring
-
-- `performHealthCheck()` - Check API connection health
-- `getPerformanceMetrics()` - Get performance statistics
-- `getConnectionMetrics()` - Get connection stability metrics
-
-## Usage
-
-### Basic Setup
-
-```typescript
-import { Injectable } from '@nestjs/common';
-import { RedditService } from './modules/external-integrations/reddit/reddit.service';
-
-@Injectable()
-export class YourService {
-  constructor(private readonly redditService: RedditService) {}
-
-  async collectData() {
-    // Get recent posts
-    const posts = await this.redditService.getHistoricalPosts('1w');
-
-    // Stream comments
-    const comments = await this.redditService.streamSubredditComments({
-      limit: 50,
-      maxPages: 5,
-    });
-
-    return { posts, comments };
-  }
-}
 ```
-
-### Error Handling
-
-The module provides comprehensive error handling with specific exception types:
-
-```typescript
-try {
-  await redditService.authenticate();
-} catch (error) {
-  if (error instanceof RedditAuthenticationError) {
-    // Handle authentication failures
-  } else if (error instanceof RedditRateLimitError) {
-    // Handle rate limiting
-  } else if (error instanceof RedditNetworkError) {
-    // Handle network issues
-  }
-}
+reddit/
+├── reddit.module.ts         # NestJS module definition
+├── reddit.service.ts        # Core Reddit API service (the surface of record)
+├── reddit.exceptions.ts     # Custom exception classes
+├── reddit-data-filter.ts    # Single-pass Reddit listing → LLM-format transform
+├── reddit.service.spec.ts   # Unit tests
+└── README.md                # This documentation
 ```
-
-### Health Monitoring
-
-```typescript
-const health = await redditService.performHealthCheck();
-const metrics = redditService.getPerformanceMetrics();
-```
-
-## API Endpoints
-
-The service integrates with these Reddit API endpoints:
-
-- `POST /api/v1/access_token` - OAuth2 authentication
-- `GET /api/v1/me` - Authentication validation
-- `GET /r/austinfood/hot` - Hot posts
-- `GET /r/austinfood/new` - New posts
-- `GET /r/austinfood/top` - Top posts with time filtering
-- `GET /r/austinfood/comments` - Comment stream
-- `GET /r/austinfood/comments/{id}` - Specific post comments
-
-## Features
-
-### Automatic Token Management
-
-- Tokens are automatically refreshed when expired
-- 1-minute buffer for token expiration
-- Automatic cleanup of invalid tokens
-
-### Rate Limiting
-
-- Detects and handles 429 rate limit responses
-- Provides retry-after information
-- Performance metrics tracking
-
-### Data Processing
-
-- Handles Reddit API pagination
-- Processes comment threads recursively
-- Analyzes data quality and completeness
-- Tracks performance metrics
-
-## Security Considerations
-
-- Credentials stored in environment variables only
-- Tokens kept in memory (not persisted)
-- Sensitive data excluded from logs
-- Proper User-Agent identification
 
 ## Testing
-
-### Unit Tests
 
 ```bash
 npm run test -- reddit.service.spec.ts
 ```
-
-### Integration Tests
-
-```bash
-npm run test:e2e -- reddit-integration.spec.ts
-```
-
-## Troubleshooting
-
-### Common Issues
-
-1. **Authentication Failures**
-   - Verify Reddit app credentials
-   - Check username/password
-   - Ensure app is configured for password grant
-
-2. **Rate Limiting**
-   - Monitor request frequency
-   - Implement proper delays between requests
-   - Check retry-after headers
-
-3. **Network Issues**
-   - Verify internet connectivity
-   - Check firewall/proxy settings
-
-### Debug Logging
-
-Enable debug logging in development:
-
-```typescript
-process.env.LOG_LEVEL = 'debug';
-```
-
-## Production Considerations
-
-- Monitor rate limit usage
-- Implement exponential backoff
-- Cache frequently accessed data
-- Set up health check alerts
-- Track performance metrics
-- Handle network failures gracefully

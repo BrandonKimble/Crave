@@ -74,10 +74,12 @@ export interface LLMPost {
   title: string;
   content: string;
   subreddit: string;
-  author: string;
+  // null = author unobserved (deleted/absent); never a fabricated sentinel (F4906).
+  author: string | null;
   url: string;
   score: number;
-  created_at: string;
+  // null = creation time unknown; never NOW-as-a-fact (F4905).
+  created_at: string | null;
   comments: LLMComment[];
   extract_from_post?: boolean;
 }
@@ -85,9 +87,9 @@ export interface LLMPost {
 export interface LLMComment {
   id: string;
   content: string;
-  author: string;
+  author: string | null;
   score: number;
-  created_at: string;
+  created_at: string | null;
   parent_id: string | null;
   url: string;
 }

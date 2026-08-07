@@ -8,14 +8,6 @@ import type { PlacesOperation } from './vendor-pricing';
  */
 
 /**
- * Base configuration for external API services
- */
-export interface BaseApiConfig {
-  timeout: number;
-  retryOptions: RetryOptions;
-}
-
-/**
  * Retry configuration with exponential backoff
  * Implements PRD section 9.2.2: "proper retry logic"
  */
@@ -23,19 +15,6 @@ export interface RetryOptions {
   maxRetries: number;
   retryDelay: number;
   retryBackoffFactor: number;
-}
-
-/**
- * Base performance metrics for external API services
- */
-export interface BasePerformanceMetrics {
-  requestCount: number;
-  totalResponseTime: number;
-  averageResponseTime: number;
-  lastReset: Date;
-  errorCount: number;
-  successRate: number;
-  rateLimitHits: number;
 }
 
 /**
@@ -57,25 +36,6 @@ export interface RateLimitStatus {
   resetTime: Date;
   isAtLimit: boolean;
   retryAfter?: number;
-}
-
-/**
- * Health status for external API services
- */
-export interface ApiHealthStatus {
-  service: string;
-  status: 'healthy' | 'degraded' | 'unhealthy';
-  uptime: number;
-  metrics: BasePerformanceMetrics;
-  configuration: {
-    timeout: number;
-    retryOptions: RetryOptions;
-  };
-  lastError?: {
-    message: string;
-    timestamp: Date;
-    count: number;
-  };
 }
 
 /**

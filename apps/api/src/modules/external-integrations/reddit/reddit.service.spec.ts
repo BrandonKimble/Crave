@@ -1,6 +1,7 @@
 import { of, throwError } from 'rxjs';
 import { RedditService, REDDIT_REQUESTS_POOL } from './reddit.service';
 import {
+  RedditApiError,
   RedditGovernanceDenialError,
   RedditRateLimitError,
 } from './reddit.exceptions';
@@ -173,6 +174,39 @@ describe('RedditService (§12.5 per-request governed draws)', () => {
       1000,
     );
     expect(result.metadata.overlapConfirmed).toBe(false);
+  });
+
+  it('F4903: a malformed comments listing THROWS in fetchRecentCommentIds — never an empty success (same verdict as its sibling)', async () => {
+    const h = buildService();
+    // Length-1 body: a vendor/transport fault, not "no new comments". Both the
+    // probe and getRawPostWithComments route through assertPostCommentsListing,
+    // so neither can read this as an empty success.
+    h.httpService.get.mockReturnValue(of({ data: [{}] }));
+    await expect(
+      h.service.fetchRecentCommentIds('austinfood', 'abc123', 25),
+    ).rejects.toBeInstanceOf(RedditApiError);
+    await expect(
+      h.service.getRawPostWithComments('austinfood', 'abc123'),
+    ).rejects.toBeInstanceOf(RedditApiError);
+  });
+
+  it('F4904: batch totalApiCalls is DERIVED — successes plus failed attempts, not the success count', async () => {
+    const h = buildService();
+    // Two entities: first search succeeds, second throws a non-governance
+    // vendor error → 1 success + 1 failure = 2 vendor calls, not 1.
+    h.httpService.get
+      .mockReturnValueOnce(of({ data: { children: [{ data: { id: 'p1' } }] } }))
+      .mockReturnValueOnce(
+        throwError(() => ({ response: { status: 500, data: {} } })),
+      );
+    const result = await h.service.batchEntityKeywordSearch(
+      'austinfood',
+      ['brisket', 'tacos'],
+      { batchDelay: 0 },
+    );
+    expect(result.metadata.successfulSearches).toBe(1);
+    expect(result.metadata.failedSearches).toBe(1);
+    expect(result.performance.totalApiCalls).toBe(2);
   });
 
   it('getRateLimitStatus reads the governor pool — no second window', async () => {

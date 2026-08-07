@@ -789,15 +789,15 @@ export class RedditBatchProcessingService implements OnModuleInit {
     id: string;
     title: string;
     subreddit: string;
-    author: string;
+    author: string | null;
     score: number;
-    created_at: string;
+    created_at: string | null;
     commentCount: number;
     sampleComments: Array<{
       id: string;
-      author: string;
+      author: string | null;
       score: number;
-      created_at: string;
+      created_at: string | null;
       contentSnippet: string;
     }>;
   }> {

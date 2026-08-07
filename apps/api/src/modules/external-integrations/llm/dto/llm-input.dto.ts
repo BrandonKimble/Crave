@@ -27,16 +27,20 @@ export class LLMCommentDto {
   @IsSafeString()
   content: string;
 
+  // null = author unobserved (F4906); @IsOptional lets null pass validation.
   @IsString()
   @IsSafeString()
-  author: string;
+  @IsOptional()
+  author: string | null;
 
   @IsNumber()
   @Min(0)
   score: number;
 
+  // null = creation time unknown (F4905); @IsOptional lets null pass.
   @IsDateString()
-  created_at: string;
+  @IsOptional()
+  created_at: string | null;
 
   @IsString({ message: 'parent_id must be a string when provided' })
   @IsSafeString()
@@ -67,9 +71,11 @@ export class LLMPostDto {
   @IsSafeString()
   subreddit: string;
 
+  // null = author unobserved (F4906); @IsOptional lets null pass validation.
   @IsString()
   @IsSafeString()
-  author: string;
+  @IsOptional()
+  author: string | null;
 
   @IsUrl()
   url: string;
@@ -78,8 +84,10 @@ export class LLMPostDto {
   @Min(0)
   score: number;
 
+  // null = creation time unknown (F4905); @IsOptional lets null pass.
   @IsDateString()
-  created_at: string;
+  @IsOptional()
+  created_at: string | null;
 
   @IsArray()
   @ValidateNested({ each: true })

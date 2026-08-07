@@ -68,6 +68,8 @@ export function filterAndTransformToLLM(
     postData && isRedditPostData(postData)
       ? transformPostDirectly(postData, postUrl)
       : null;
+  // transformPostDirectly returns null for an idless post — the same honest
+  // "unknown, so drop it" the comment path takes (F4906).
 
   const commentListing = extractListing(response[1]);
   const rawComments = Array.isArray(commentListing?.data?.children)
@@ -101,15 +103,20 @@ function isRedditPostData(value: unknown): value is RedditPostData {
 function transformPostDirectly(
   postData: RedditPostData,
   postUrl: string,
-): LLMPost {
-  const rawId =
-    (typeof postData.name === 'string' && postData.name.length > 0
+): LLMPost | null {
+  // F4906: no synthetic 't3_unknown'. An idless post is unidentifiable — two
+  // would collide on one id — so drop it, exactly as transformComment drops an
+  // idless comment. Absence is representable (filterAndTransformToLLM already
+  // models `post: null`); a fabricated id is not.
+  const id =
+    typeof postData.name === 'string' && postData.name.length > 0
       ? postData.name
-      : null) ||
-    (typeof postData.id === 'string' && postData.id.length > 0
-      ? `t3_${postData.id}`
-      : null) ||
-    't3_unknown';
+      : typeof postData.id === 'string' && postData.id.length > 0
+        ? `t3_${postData.id}`
+        : null;
+  if (!id) {
+    return null;
+  }
 
   const title =
     typeof postData.title === 'string' && postData.title.length > 0
@@ -123,17 +130,21 @@ function transformPostDirectly(
     typeof postData.subreddit === 'string' && postData.subreddit.length > 0
       ? postData.subreddit
       : '';
+  // F4906: one representation of an absent author — null, never a sentinel we
+  // did not observe ('unknown'/'[deleted]' both asserted facts we don't know).
   const author =
     typeof postData.author === 'string' && postData.author.length > 0
       ? postData.author
-      : 'unknown';
+      : null;
+  // F4906: no Math.max(0, …) clamp — Reddit scores are genuinely signed and the
+  // sign is the strongest quality signal; clamping destroys it at ingest.
   const score =
     typeof postData.score === 'number' && Number.isFinite(postData.score)
-      ? Math.max(0, postData.score)
+      ? postData.score
       : 0;
 
   return {
-    id: rawId,
+    id,
     title,
     content,
     subreddit,
@@ -211,14 +222,17 @@ function transformComment(comment: RedditCommentListing): LLMComment | null {
     return null;
   }
 
+  // F4906: absent author is null, not the '[deleted]' sentinel — '[deleted]' is
+  // Reddit's specific claim the account was removed, which we do not know here.
   const author =
     typeof data.author === 'string' && data.author.length > 0
       ? data.author
-      : '[deleted]';
+      : null;
 
+  // F4906: no clamp — a −50 comment must stay distinguishable from a 0 comment.
   const score =
     typeof data.score === 'number' && Number.isFinite(data.score)
-      ? Math.max(0, data.score)
+      ? data.score
       : 0;
 
   const url =
@@ -265,34 +279,31 @@ function isListingChild(value: unknown): value is RedditListingChild {
 /**
  * Helper functions for single-pass processing
  */
-function formatTimestamp(timestamp: unknown): string {
-  try {
-    if (timestamp instanceof Date) {
-      return Number.isNaN(timestamp.getTime())
-        ? new Date().toISOString()
-        : timestamp.toISOString();
-    }
-
-    const numericValue =
-      typeof timestamp === 'number'
-        ? timestamp
-        : typeof timestamp === 'string'
-          ? parseFloat(timestamp)
-          : null;
-
-    if (numericValue === null || Number.isNaN(numericValue)) {
-      return new Date().toISOString();
-    }
-
-    const milliseconds =
-      numericValue > 10_000_000_000 ? numericValue : numericValue * 1000;
-    const date = new Date(milliseconds);
-    return Number.isNaN(date.getTime())
-      ? new Date().toISOString()
-      : date.toISOString();
-  } catch {
-    return new Date().toISOString();
+// F4905: an unparseable timestamp is UNKNOWN, never NOW. Returning `new Date()`
+// stamped every undated item with the collection time — a fabricated, maximally
+// recent fact feeding a recency-weighted pipeline. Return null instead; the
+// nullable `created_at` makes the absence expressible and forces each consumer
+// to decide what an undated item means.
+function formatTimestamp(timestamp: unknown): string | null {
+  if (timestamp instanceof Date) {
+    return Number.isNaN(timestamp.getTime()) ? null : timestamp.toISOString();
   }
+
+  const numericValue =
+    typeof timestamp === 'number'
+      ? timestamp
+      : typeof timestamp === 'string'
+        ? parseFloat(timestamp)
+        : null;
+
+  if (numericValue === null || Number.isNaN(numericValue)) {
+    return null;
+  }
+
+  const milliseconds =
+    numericValue > 10_000_000_000 ? numericValue : numericValue * 1000;
+  const date = new Date(milliseconds);
+  return Number.isNaN(date.getTime()) ? null : date.toISOString();
 }
 
 function extractParentId(parentId: unknown): string | null {
