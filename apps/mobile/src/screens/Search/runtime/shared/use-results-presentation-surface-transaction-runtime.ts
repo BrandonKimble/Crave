@@ -11,7 +11,6 @@ import {
   createSearchSurfaceResultsEnterTransaction,
   createSearchSurfaceResultsTransactionCoordinator,
   type SearchSurfaceResultsEnterTransaction,
-  type SearchSurfaceResultsTransactionGateInputs,
   type SearchSurfaceResultsTransactionCoordinator,
 } from './search-surface-results-transaction';
 import type { SearchRuntimeBus } from './search-runtime-bus';
@@ -116,9 +115,6 @@ export const useResultsPresentationSurfaceTransactionRuntime = ({
           resultsPresentationTransport:
             searchSurfaceResultsPresentationTransactionInput.resultsPresentationTransport,
         }),
-      resultsSnapshotKey:
-        resultsPresentationSurfaceAuthority.getSnapshot().resultsIdentityKey ??
-        resultsPresentationSurfaceAuthority.getSnapshot().resultsRequestKey,
     }),
     [
       searchSurfaceResultsPresentationTransactionInput.resultsPresentationTransport,
@@ -201,10 +197,7 @@ export const useResultsPresentationSurfaceTransactionRuntime = ({
   );
 
   const armSearchSurfaceResultsPending = React.useCallback(
-    (
-      snapshot: SearchSurfaceResultsEnterTransaction,
-      _stagingInputs: SearchSurfaceResultsTransactionGateInputs
-    ) => {
+    (snapshot: SearchSurfaceResultsEnterTransaction) => {
       getSearchSurfaceRuntime().beginRedrawTransaction({
         reason:
           snapshot.mutationKind === 'search_this_area'
@@ -505,7 +498,7 @@ export const useResultsPresentationSurfaceTransactionRuntime = ({
             stagingInputs.mapSearchSurfaceResultsSourcesReadyKey,
         });
       }
-      armSearchSurfaceResultsPending(transactionSnapshot, stagingInputs);
+      armSearchSurfaceResultsPending(transactionSnapshot);
       let didCancelDeferredStage = false;
       const cancelers: Array<() => void> = [];
       cancelDeferredStageRef.current = () => {
@@ -589,9 +582,6 @@ export const useResultsPresentationSurfaceTransactionRuntime = ({
       armSearchSurfaceResultsPending,
       maybeCommitStagedSearchSurfaceResultsTransaction,
       readSearchSurfaceResultsTransactionGateInputs,
-      resultsPresentationSurfaceAuthority,
-      runtimeMachineRef,
-      searchMapSourceFramePort,
     ]
   );
   const handlePageOneResultsCommitted = React.useCallback(
