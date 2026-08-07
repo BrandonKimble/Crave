@@ -407,3 +407,12 @@ surface-coverage watermark (open).
 6. **Batch rail + prompt registry** for vocabulary/satisfies passes (50% off,
    shadow-replayable); script-shell dedupe; writeLabels N+1.
 7. **Deploy** staging→prod after 1–3 land; re-run gate + parity on staging.
+
+8. **Language rollout (ruled set: es, vi, zh, ko).** Only es is seeded
+   (15,046 aliases); vi/zh/ko are not in SUPPORTED_LOCALES at all. Per
+   language: add to roster → author gold corpus (the real work — es's 150
+   strata entries are the falsifiability engine) → run v2 sweep (~$5) →
+   gate. PRE-FLIGHT for zh: verify the analyzer tokenizes unspaced CJK so
+   the gazetteer can match what the sweep banks — measure before spending.
+   The es p95 984ms tail is the cost of missing vocabulary (miss → live
+   dense probe); each seeded language collapses its own tail the same way.
