@@ -1768,6 +1768,13 @@ export class PollsService {
         deletedAt: null,
         moderationStatus: PollCommentModerationStatus.approved,
       },
+      // F3502: an unordered findMany returns Postgres HEAP order, which moves
+      // with updates and vacuum. This read seeds the endorser Map, and Map
+      // insertion order was the leaderboard's only tiebreak — so a rank could
+      // change with no data change at all. The final sort now carries its own
+      // tiebreak (below), but a read whose order is undefined has no business
+      // being undefined.
+      orderBy: { commentId: 'asc' },
       select: { commentId: true, userId: true, entitySpans: true },
     });
     const likes = await this.prisma.pollCommentLike.findMany({
@@ -1950,7 +1957,18 @@ export class PollsService {
         subjectId,
         distinctEndorsers: users.size,
       }))
-      .sort((a, b) => b.distinctEndorsers - a.distinctEndorsers);
+      // F3502 (the F1902 determinism family): `rank` is PERSISTED and rendered
+      // — top-4 bars on every card, full standings on the sheet — and the
+      // rebuild runs on every comment, like and endorsement. Ties are the
+      // COMMON case in a young poll (a crowd of 1-endorser subjects), so
+      // without a second key the bars visibly swapped places between two taps
+      // that touched neither. subjectId is unique per (poll, subjectType) and
+      // stable across rebuilds, which is exactly what a tiebreak must be.
+      .sort(
+        (a, b) =>
+          b.distinctEndorsers - a.distinctEndorsers ||
+          a.subjectId.localeCompare(b.subjectId),
+      );
 
     await this.prisma.$transaction(async (tx) => {
       // Serialize rebuilds PER POLL (2026-07-13): delete+createMany is not safe under

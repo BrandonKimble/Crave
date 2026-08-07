@@ -122,15 +122,25 @@ function createHarness(options: HarnessOptions = {}) {
     enqueue: jest.fn().mockResolvedValue(undefined),
     noteHeaderAnswer: jest.fn(),
   };
+  const opsAlerts = { emit: jest.fn() };
   const service = new PollWeeklyRitualService(
     prisma as never,
     demandMass as never,
     new PollSupplyEstimators(),
     notifications as never,
+    opsAlerts as never,
     createLogger() as never,
   );
   service.sleep = jest.fn().mockResolvedValue(undefined);
-  return { service, prisma, tx, demandMass, notifications, placesPromotions };
+  return {
+    service,
+    prisma,
+    tx,
+    demandMass,
+    notifications,
+    placesPromotions,
+    opsAlerts,
+  };
 }
 
 function topicCreateManyRows(
@@ -552,5 +562,63 @@ describe('PollWeeklyRitualService — the §4 weekly ritual', () => {
       expect(topics).toHaveLength(1);
       expect(topics[0].topicType).toBe('best_restaurants');
     });
+  });
+});
+
+/**
+ * SWALLOW AND TELL SOMEONE (F3503 / D76, the F205 doctrine).
+ *
+ * The sibling scheduled path — SignalDemandAggregateService.refreshFromWatermark
+ * — both logs AND ops-alerts on failure, on the argument that a silently frozen
+ * derived model corrupts downstream spend decisions. The weekly ritual is the
+ * same class of cron with a WORSE user-visible failure: the (place, weekOf) tick
+ * row means a fully missed Sunday is not retried within the week, so a single
+ * throw costs every due place a whole drop — credit sits, notifications never
+ * queue — and both catches here were logger.error only.
+ *
+ * Parity with the sibling IS the design, so these specs assert the alert, not
+ * the log line: a log nobody watches is what the finding is about.
+ */
+describe('PollWeeklyRitualService — a failed Sunday reaches an operator', () => {
+  it('ops-alerts when the tick itself throws', async () => {
+    const { service, demandMass, opsAlerts } = createHarness({});
+    demandMass.placesWithAnySignal.mockRejectedValue(new Error('db down'));
+
+    await service.tick(SUNDAY_0930_LOCAL);
+
+    expect(opsAlerts.emit).toHaveBeenCalledTimes(1);
+    const [alert] = opsAlerts.emit.mock.calls[0] as [
+      { kind: string; dedupeKey: string; body: string },
+    ];
+    expect(alert.kind).toBe('poll_weekly_ritual_tick_failed');
+    // Per-DAY dedupe: an hourly cron in a wide outage must not page 24 times.
+    expect(alert.dedupeKey).toBe('poll_weekly_ritual_tick_failed:2026-07-19');
+    expect(alert.body).toContain('db down');
+  });
+
+  it('ops-alerts ONCE for a run in which places failed to publish', async () => {
+    const { service, prisma, opsAlerts } = createHarness({
+      subjects: [SUBJECT],
+    });
+    prisma.$transaction.mockRejectedValue(new Error('publish exploded'));
+
+    await service.runTick(SUNDAY_0930_LOCAL);
+
+    expect(opsAlerts.emit).toHaveBeenCalledTimes(1);
+    const [alert] = opsAlerts.emit.mock.calls[0] as [{ kind: string }];
+    expect(alert.kind).toBe('poll_weekly_ritual_publish_failed');
+  });
+
+  it('stays SILENT on the idempotency race — another tick already published', async () => {
+    const { service, prisma, opsAlerts } = createHarness({
+      subjects: [SUBJECT],
+    });
+    prisma.$transaction.mockRejectedValue(uniqueViolation());
+
+    await service.runTick(SUNDAY_0930_LOCAL);
+
+    // A P2002 here is the atomic key doing its job, not an outage. An alert
+    // that fires on healthy behavior trains the operator to ignore it.
+    expect(opsAlerts.emit).not.toHaveBeenCalled();
   });
 });

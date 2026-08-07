@@ -54,6 +54,7 @@ import {
 import { PrismaService } from '../../../prisma/prisma.service';
 import { LoggerService } from '../../../shared';
 import { NotificationsService } from '../../notifications/notifications.service';
+import { OpsAlertsService } from '../../external-integrations/shared/ops-alerts.service';
 import { gaussianRamp } from '../../analytics/demand-scoring/curves';
 import { DemandMassReader, SubjectDemandMass } from './demand-mass.reader';
 import { PollSupplyEstimators, CohortOutcome } from './poll-supply-estimators';
@@ -132,6 +133,7 @@ export class PollWeeklyRitualService {
     private readonly demandMass: DemandMassReader,
     private readonly estimators: PollSupplyEstimators,
     private readonly notifications: NotificationsService,
+    private readonly opsAlerts: OpsAlertsService,
     loggerService: LoggerService,
   ) {
     this.logger = loggerService.setContext('PollWeeklyRitualService');
@@ -142,8 +144,26 @@ export class PollWeeklyRitualService {
     try {
       await this.runTick(now);
     } catch (error) {
+      // SWALLOW AND TELL SOMEONE (F205 doctrine, F3503/D76). This is the same
+      // class of scheduled path as SignalDemandAggregateService's watermark
+      // refresh — which both logs AND alerts — with a WORSE failure mode: the
+      // tick row means a fully missed Sunday is not retried within the week,
+      // so one throw silently costs every due place a whole week's drop.
+      // Parity with the sibling IS the design; the alert shape is copied.
+      const message = error instanceof Error ? error.message : String(error);
       this.logger.error('Weekly poll ritual tick failed', {
         error: error instanceof Error ? error.message : String(error),
+      });
+      this.opsAlerts.emit({
+        severity: 'warn',
+        kind: 'poll_weekly_ritual_tick_failed',
+        title: 'Weekly poll ritual tick failed',
+        body: [
+          'The hourly ritual tick threw before it could publish.',
+          `Error: ${message}`,
+          'Downstream: every place whose local Sunday window is open right now misses its drop — credit sits, notifications never queue, and the week is NOT retried once the Sunday passes.',
+        ].join('\n'),
+        dedupeKey: `poll_weekly_ritual_tick_failed:${now.toISOString().slice(0, 10)}`,
       });
     }
   }
@@ -298,6 +318,9 @@ export class PollWeeklyRitualService {
       (a, b) => ritualJitterMs(a.placeId) - ritualJitterMs(b.placeId),
     );
     let elapsed = 0;
+    // F3503: counted, then reported ONCE. A per-place emit would spam an alert
+    // per town during exactly the wide outage the alert exists to surface.
+    const publishFailures: string[] = [];
     for (const entry of ordered) {
       const jitter = ritualJitterMs(entry.placeId);
       if (jitter > elapsed) {
@@ -330,7 +353,22 @@ export class PollWeeklyRitualService {
           placeId: entry.placeId,
           error: error instanceof Error ? error.message : String(error),
         });
+        publishFailures.push(entry.placeId);
       }
+    }
+
+    if (publishFailures.length) {
+      this.opsAlerts.emit({
+        severity: 'warn',
+        kind: 'poll_weekly_ritual_publish_failed',
+        title: 'Weekly poll ritual publish failed for some places',
+        body: [
+          `${publishFailures.length} of ${ordered.length} due places did not publish their Sunday drop.`,
+          `Places: ${publishFailures.slice(0, 20).join(', ')}`,
+          'Downstream: those places keep their credit but lose the week — the tick row is per (place, weekOf) and a passed Sunday is not retried.',
+        ].join('\n'),
+        dedupeKey: `poll_weekly_ritual_publish_failed:${now.toISOString().slice(0, 10)}`,
+      });
     }
   }
 
@@ -567,44 +605,54 @@ export class PollWeeklyRitualService {
     subjects: SubjectDemandMass[];
     cooldowns: Map<string, string>;
   }): RankedSubject[] {
-    return params.subjects
-      .map((subject) => {
-        const lastWeekOf = params.cooldowns.get(
-          `${params.placeId}:${subject.subjectId}`,
-        );
-        const sinceDays = lastWeekOf
-          ? labelDayDiff(params.weekOf, lastWeekOf)
-          : null;
-        // THE GATE (red-team 2d): a just-polled subject is structurally
-        // unavailable — not merely down-ranked — until the ramp recovers
-        // (see rampRecovered). With alternatives it loses to them anyway;
-        // WITHOUT alternatives (subject pool of 1) the gate is what stops
-        // the same subject re-polling the very next week.
-        if (sinceDays !== null && !rampRecovered(sinceDays)) {
-          return null;
-        }
-        const cooldownAvailability =
-          sinceDays !== null
-            ? gaussianRamp(sinceDays, COOLDOWN_GAUSSIAN_DAYS)
-            : 1;
-        // Surge-over-baseline as a multiplicative boost; max(1, ·) is
-        // definitional — a "boost" never penalizes (§16).
-        const resurgenceBoost =
-          subject.baselineWeeklyMass > 0
-            ? Math.max(1, subject.currentMass / subject.baselineWeeklyMass)
-            : 1;
-        return {
-          subject,
-          cooldownAvailability,
-          resurgenceBoost,
-          score: subject.mass * cooldownAvailability * resurgenceBoost,
-        };
-      })
-      .filter(
-        (ranked): ranked is RankedSubject =>
-          ranked !== null && ranked.score > 0,
-      )
-      .sort((a, b) => b.score - a.score);
+    return (
+      params.subjects
+        .map((subject) => {
+          const lastWeekOf = params.cooldowns.get(
+            `${params.placeId}:${subject.subjectId}`,
+          );
+          const sinceDays = lastWeekOf
+            ? labelDayDiff(params.weekOf, lastWeekOf)
+            : null;
+          // THE GATE (red-team 2d): a just-polled subject is structurally
+          // unavailable — not merely down-ranked — until the ramp recovers
+          // (see rampRecovered). With alternatives it loses to them anyway;
+          // WITHOUT alternatives (subject pool of 1) the gate is what stops
+          // the same subject re-polling the very next week.
+          if (sinceDays !== null && !rampRecovered(sinceDays)) {
+            return null;
+          }
+          const cooldownAvailability =
+            sinceDays !== null
+              ? gaussianRamp(sinceDays, COOLDOWN_GAUSSIAN_DAYS)
+              : 1;
+          // Surge-over-baseline as a multiplicative boost; max(1, ·) is
+          // definitional — a "boost" never penalizes (§16).
+          const resurgenceBoost =
+            subject.baselineWeeklyMass > 0
+              ? Math.max(1, subject.currentMass / subject.baselineWeeklyMass)
+              : 1;
+          return {
+            subject,
+            cooldownAvailability,
+            resurgenceBoost,
+            score: subject.mass * cooldownAvailability * resurgenceBoost,
+          };
+        })
+        .filter(
+          (ranked): ranked is RankedSubject =>
+            ranked !== null && ranked.score > 0,
+        )
+        // F3502: the same law, one cut sharper. Under a cohortTarget cap this
+        // ordering decides WHICH SUBJECT GETS A POLL THIS WEEK, and a float-score
+        // tie at the cut was resolved by SQL row arrival order — the week's drop
+        // turning on heap layout. subjectId is the unique, stable second key.
+        .sort(
+          (a, b) =>
+            b.score - a.score ||
+            a.subject.subjectId.localeCompare(b.subject.subjectId),
+        )
+    );
   }
 
   private async publishForPlace(params: {

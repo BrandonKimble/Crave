@@ -215,6 +215,25 @@ export class SignalDemandAggregateService {
       // caught below with the rest of the pass — a stale profile is a stale
       // read model, not a reason to lose the watermark advance (which already
       // committed).
+      //
+      // KNOW WHAT "STALE" MEANS HERE (F3504 / D76). This text used to imply a
+      // recovery cadence the code does not have. There is no retry: the
+      // watermark advanced above, so the NEXT pass derives its day list from
+      // rows RECORDED after it — the days whose profile rebuild just failed
+      // are not in that list. They come back only when fresh signals happen to
+      // land on those same OCCURRED-AT days, which for backfilled or old days
+      // may be never. So the real window is "stale until new signals touch
+      // those days", not "stale until the next pass".
+      //
+      // WHY IT STAYS THIS WAY (ratified, low severity). The aggregate has a
+      // crash-safe re-request latch for exactly this shape (rebuild_floor +
+      // floor_seq); the profile leg has no equivalent, and giving it one is
+      // the only real fix. Moving this call ABOVE the advance is NOT that fix
+      // — there is no transaction here to move inside, and a profile throw
+      // would then freeze the AGGREGATE (and the collector spend decisions
+      // read from it) to protect a ranking prior, inverting the priority this
+      // comment correctly states. The failure still raises the shared catch's
+      // ops alert, so it is visible, not silent.
       await this.tasteProfile.rebuildForDays(dayRows.map((row) => row.day));
     } catch (error) {
       // Swallow AND tell someone (audit 2026-08-02, F205). A silently frozen

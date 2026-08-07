@@ -176,7 +176,7 @@ export class PollEntitySeedService {
         SELECT e.entity_id, e.name
         FROM core_entities e
         JOIN core_restaurant_locations rl ON rl.restaurant_id = e.entity_id
-        WHERE e.entity_id IN (${Prisma.join(strong.map((c) => c.entityId))}::uuid[])
+        WHERE e.entity_id = ANY(${strong.map((c) => c.entityId)}::uuid[])
           AND rl.latitude IS NOT NULL AND rl.longitude IS NOT NULL
           AND ST_DWithin(
                 ST_SetSRID(ST_MakePoint(rl.longitude::float8, rl.latitude::float8), 4326)::geography,
@@ -197,13 +197,19 @@ export class PollEntitySeedService {
       );
       return { entityId: near.entity_id, name: near.name, created: false };
     } catch (error) {
-      // A local-check failure must never block creation — fall through to
-      // the vendor exactly as before.
-      this.logger.warn(
-        'Local restaurant match failed; falling through to vendor',
-        {
-          detail: error instanceof Error ? error.message : String(error),
-        },
+      // Fail-open BY POLICY (F3501, D76: instrumentation only). A local-check
+      // failure must never block creation — but it is NOT the same fact as
+      // "no local match", and for the whole life of this method it was logged
+      // as if it were: the geographic-confirmation query threw on EVERY input
+      // (`IN (...)::uuid[]` casts the IN's boolean, not the list), the warn
+      // scrolled past, and every poll restaurant creation paid the vendor for
+      // a name we already had. ERROR grade with a named policy so the rate is
+      // countable, per the F3104/D73 instrumentation ruling — a free path that
+      // silently stops being free must be visible in the logs.
+      this.logger.error(
+        'Local restaurant match failed; falling through to the paid vendor',
+        error,
+        { policy: 'poll-local-restaurant-match-fail-open' },
       );
       return null;
     }

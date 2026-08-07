@@ -994,18 +994,40 @@ export class SignalDemandReadService {
     const rows = await this.prisma.$queryRaw<
       { entity_id: string; current_acts: number; previous_acts: number }[]
     >`
-      WITH deduped AS (
-        SELECT
-          ${resolvedSubjectSql('a')} AS entity_id,
-          a.actor_id,
-          a.day,
-          MAX(a.signal_count)::float8 AS day_acts
-        FROM signal_demand_daily a
-        ${redirectJoinSql('a')}
-        WHERE a.place_id = ANY(${aggPlaceIds}::uuid[])
+      -- THE §4 daily-acts statement (act-identity.ts), same as the demand arm
+      -- twenty lines above. F3500: this was a THIRD hand-rolled dialect of the
+      -- law the builder exists to make unspellable — no kind in the grain (so a
+      -- search and an entity_view by one actor on one day collapsed to the
+      -- LARGER of the two instead of summing), no echo exclusion (an
+      -- on_demand_ask echo moved the trend), no entity-subject filter. The
+      -- trend feeds explore's surge factor, so the same entity could read
+      -- "flat" here while demand mass said it had doubled.
+      WITH agg AS (${dailyActsCteSql({
+        dimensions: [
+          {
+            expr: resolvedSubjectSql('a'),
+            as: 'entity_id',
+          },
+        ],
+        from: Prisma.sql`signal_demand_daily a
+          ${redirectJoinSql('a')}`,
+        where: Prisma.sql`a.place_id = ANY(${aggPlaceIds}::uuid[])
           AND a.subject_id = ANY(${expandedIds}::uuid[])
-          AND a.day >= ${previousKey}::date
-          AND ${resolvedSubjectSql('a')} = ANY(${params.entityIds}::uuid[])
+          AND ${resolvedSubjectSql('a')} = ANY(${params.entityIds}::uuid[])`,
+        actsAlias: 'day_acts',
+        echoKinds: ECHO_SIGNAL_KINDS,
+        sinceDayKey: previousKey,
+        subjectScope: 'entity',
+      })}),
+      -- The agg CTE is per-KIND, so a day's acts SUM across kinds before the
+      -- two-window split — two kinds on one day are two acts.
+      by_day AS (
+        SELECT
+          entity_id,
+          actor_id,
+          day,
+          SUM(day_acts)::float8 AS day_acts
+        FROM agg
         GROUP BY 1, 2, 3
       )
       SELECT
@@ -1014,7 +1036,7 @@ export class SignalDemandReadService {
           AS current_acts,
         COALESCE(SUM(day_acts) FILTER (WHERE day < ${currentKey}::date), 0)::float8
           AS previous_acts
-      FROM deduped
+      FROM by_day
       GROUP BY entity_id
     `;
     return new Map(
