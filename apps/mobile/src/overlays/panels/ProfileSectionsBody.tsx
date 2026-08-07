@@ -21,6 +21,7 @@ import { userListsService, type UserListSummary } from '../../services/user-list
 import { deriveListDetailVerbs } from './list-detail-verbs';
 import { userListKeys } from '../../hooks/use-user-lists';
 import { profileKeys } from '../../hooks/profile-query-keys';
+import { resolveProfileSectionBodyState } from './profile-section-body-state';
 import { photosService, type FoodLogGroupDto } from '../../services/photos';
 import { openPostPhotosFunnel } from '../PostPhotosFunnelHost';
 import { useAppOverlayRouteController } from '../useAppOverlayRouteController';
@@ -357,17 +358,37 @@ export const ProfileSectionsBody = React.memo(
       });
     };
 
+    // F4509: every section resolves its state through ONE function that knows a gated
+    // query is not a loading one (profile-section-body-state.ts explains the hang this
+    // removes). `enabled` here is the section's own gate — the same expression its
+    // useQuery takes.
+    const sectionState = (
+      query: { isPending: boolean; isError: boolean },
+      sectionKey: ProfileSectionKey,
+      rowCount: number
+    ) =>
+      resolveProfileSectionBodyState({
+        enabled: enabled && activeSection === sectionKey,
+        isPending: query.isPending,
+        isError: query.isError,
+        rowCount,
+      });
+
     const renderSectionBody = () => {
       switch (activeSection) {
         case 'polls': {
-          if (pollsQuery.isPending) return <SectionLoading />;
           const rows = pollsQuery.data ?? [];
-          if (pollsQuery.isError) {
+          const state = sectionState(pollsQuery, 'polls', rows.length);
+          if (state === 'gated') {
+            return <SectionEmpty text="Not loaded yet." testID="user-profile-polls-gated" />;
+          }
+          if (state === 'loading') return <SectionLoading />;
+          if (state === 'failed') {
             return (
               <SectionEmpty text="Couldn’t load their polls." testID="user-profile-polls-failed" />
             );
           }
-          if (rows.length === 0) {
+          if (state === 'empty') {
             return <SectionEmpty text="No polls yet." testID="user-profile-polls-empty" />;
           }
           return rows.map((poll: UserProfilePollRow) => (
@@ -390,8 +411,13 @@ export const ProfileSectionsBody = React.memo(
           ));
         }
         case 'comments': {
-          if (commentsQuery.isPending) return <SectionLoading />;
-          if (commentsQuery.isError) {
+          const rows = commentsQuery.data ?? [];
+          const state = sectionState(commentsQuery, 'comments', rows.length);
+          if (state === 'gated') {
+            return <SectionEmpty text="Not loaded yet." testID="user-profile-comments-gated" />;
+          }
+          if (state === 'loading') return <SectionLoading />;
+          if (state === 'failed') {
             return (
               <SectionEmpty
                 text="Couldn’t load their comments."
@@ -399,8 +425,7 @@ export const ProfileSectionsBody = React.memo(
               />
             );
           }
-          const rows = commentsQuery.data ?? [];
-          if (rows.length === 0) {
+          if (state === 'empty') {
             return <SectionEmpty text="No comments yet." testID="user-profile-comments-empty" />;
           }
           return rows.map((comment: UserProfileCommentRow) => (
@@ -428,14 +453,18 @@ export const ProfileSectionsBody = React.memo(
           ));
         }
         case 'lists': {
-          if (listsQuery.isPending) return <SectionLoading />;
-          if (listsQuery.isError) {
+          const lists = listsQuery.data ?? [];
+          const state = sectionState(listsQuery, 'lists', lists.length);
+          if (state === 'gated') {
+            return <SectionEmpty text="Not loaded yet." testID="user-profile-lists-gated" />;
+          }
+          if (state === 'loading') return <SectionLoading />;
+          if (state === 'failed') {
             return (
               <SectionEmpty text="Couldn’t load their lists." testID="user-profile-lists-failed" />
             );
           }
-          const lists = listsQuery.data ?? [];
-          if (lists.length === 0) {
+          if (state === 'empty') {
             return <SectionEmpty text="No public lists yet." testID="user-profile-lists-empty" />;
           }
           const gallery = buildListsGallery(lists);
@@ -507,8 +536,15 @@ export const ProfileSectionsBody = React.memo(
               {content}
             </View>
           );
-          if (photosQuery.isPending) return withAdd(<SectionLoading />);
-          if (photosQuery.isError) {
+          const groups = photosQuery.data ?? [];
+          const state = sectionState(photosQuery, 'photos', groups.length);
+          if (state === 'gated') {
+            return withAdd(
+              <SectionEmpty text="Not loaded yet." testID="user-profile-photos-gated" />
+            );
+          }
+          if (state === 'loading') return withAdd(<SectionLoading />);
+          if (state === 'failed') {
             return withAdd(
               <SectionEmpty
                 text="Couldn’t load their photos."
@@ -516,8 +552,7 @@ export const ProfileSectionsBody = React.memo(
               />
             );
           }
-          const groups = photosQuery.data ?? [];
-          if (groups.length === 0) {
+          if (state === 'empty') {
             return withAdd(
               <SectionEmpty text="No photos yet." testID="user-profile-photos-empty" />
             );
