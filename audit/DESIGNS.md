@@ -2262,3 +2262,39 @@ to knip, per the workspace bug's history), and a parameter typed, passed every r
 never destructured — the third instance of "TypeScript checks supplied, never used" in
 this family. The hook-name guard MAY grow a zero-importer check; design it as part of the
 fix, not as a bolt-on.
+
+---
+
+## D84 — search/user-lists P3 ratified (F3800–F3807, 2026-08-06)
+
+All seven landed; three outcomes worth the record:
+
+**F3800 exceeded the design.** I asked for one vocabulary the sites derive from so a
+missing arm is a compile error. The lane added the REVERSE bind too —
+`AssertNoUnenumeratedGroup<Exclude<keyof QueryEntityGroupDto, QueryEntityGroupKey>>` — so
+a stray arm AND a dropped arm both fail tsc, proven in both directions (TS2344 on drop;
+2/12 RED on the restored hand-copied sum). The interpreter's own emission switch stayed
+un-pointed because that file was DIRTY under another session the whole pass — deferred and
+recorded, not worked around: the gates that were the defect are derived, the emitter is a
+follow-up.
+
+**F3807's cap is a derivation, not a guess.** `COVERAGE_MAX_ROWS = 15_000` justified by
+MEASUREMENT (11,141 = every eligible location with no viewport filter at all — the true
+worst case), with a +1 sentinel and rank-ordered truncation. That is the no-fake-estimates
+law executed correctly: measure the worst case, derive the bound, log the policy.
+
+**F3802's honest accounting stands.** One representative spec where a spec could go RED;
+four sites fix-only and RECORDED as such — a padded spec that cannot fail is worse than a
+row that says "fix-only".
+
+Also: the lane hit CLAUDE.md's backtick-in-Prisma.sql trap VERBATIM while writing a SQL
+comment (tsc pointing a function away) — live confirmation, mid-exercise, of why the
+F2161 gate names what tsc cannot, and of F3912's honestly-scoped-subset ruling.
+
+F3803's starter is proven bidirectionally (deleting a field from the shared type now reds
+BOTH tsc runs; before, it failed nothing); the migration stays owed to P2. F3805 pinned
+the owner scope twice with the production mutation honestly blocked by the dirty file.
+
+**Sixth sweep instance** (commit 50383e655 took this lane's staged index) — occurred in a
+lane launched BEFORE the fence existed. Every brief from D83 forward sets LANE_PATHS; the
+pre-fence lanes age out as they land.
