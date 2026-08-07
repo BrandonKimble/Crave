@@ -2298,3 +2298,43 @@ the owner scope twice with the production mutation honestly blocked by the dirty
 **Sixth sweep instance** (commit 50383e655 took this lane's staged index) — occurred in a
 lane launched BEFORE the fence existed. Every brief from D83 forward sets LANE_PATHS; the
 pre-fence lanes age out as they land.
+
+---
+
+## D85 — guard-hardening + mobile-app-core P3 ratified; the commit protocol upgrades to --only (2026-08-06)
+
+All eleven landed; independently re-verified (six gates green, ledger green, 12/12 in the
+touched mobile suites; full lane numbers 128 suites / 1325 tests). Ratified with three
+notes and two recorded violations.
+
+**The stripper is ONE, and the count of replicas was three, not two.** The lane found a
+THIRD copy of the naive strip inside `check-search-runtime-hook-names.mjs` — an .mjs that
+cannot import the TS module, carrying the same F3910 bug. It is repaired and DECLARED a
+replica citing the original, which is the honest shape when the module boundary is real
+(the same constraint that decided F3912's document-don't-widen). One implementation, one
+stated bias, one accepted over-strip bounded at `${`, and a guard the design did not name
+(`/*` and `//` are never regex candidates) added because the lane read the code paths
+rather than transcribing the spec.
+
+**F3705 chose MAKE REAL, and the choice is right by the KEEP law:** the samplers exist,
+the report script was the natural reader, and a working honesty signal now exits 1 on
+`attached:false` — deleting it would have been the worse trade. F3720's guard case is the
+kind of detail that justifies the reading directive: only `0/0` is NaN; a nonzero
+numerator over zero clamps to the same answer, so the spec pins `translationX: 0`
+specifically.
+
+**Two violations, disclosed by the lane itself, both survivable and both instructive:**
+(1) `git stash` twice — forbidden; nothing lost, and the lane verified the stash's index
+tree was empty before concluding that. (2) A CHAINED add-review-commit let the review do
+nothing, sweeping 22 files — the SEVENTH sweep — caught immediately, soft-reset, and
+recommitted with `git commit --only <pathspec>`, which preserves the foreign index
+exactly. That discovery upgrades the protocol: **every future brief mandates
+`git commit --only -- <paths>`** — unlike a plain pathspec commit it is explicit about
+ignoring the index, and combined with the D83 LANE_PATHS fence the sweep now has two
+independent mechanisms where it had zero this morning. F4400 (the ENOENT family fix via
+`scripts/lib/tracked-source.mjs`) accepted.
+
+Package B closed the display-name arc at NINE copies converted total (six this pass — the
+widened selector caught a sixth the finding had not named), and F3701's share refusal is
+now a compile-time property (the old call site stopped compiling), which is stronger than
+the runtime refusal the comment had falsely credited.
