@@ -55,15 +55,21 @@ export const planTrackMotionCommand = ({
   return { postureTau, willMove: Math.abs(currentPosture - postureTau) >= 0.5 };
 };
 
-/** THE DETENT CLASSIFIER: which seat a GESTURE-born rest landed on. ±2pt is
- *  the detent epsilon the posture-memory writer has always used. */
+/** THE detent epsilon (pt): how close to a detent τ a rest must be to count as
+ *  seated there. Single-sourced here (the detent classifier's home) and consumed
+ *  by the interrupt axis's resting-posture read (track-entry-interrupt.ts) so the
+ *  gesture-settle classifier and the promoteAtLeast read can never disagree about
+ *  the same physical rest. F9400. */
+export const TRACK_DETENT_EPSILON_PX = 2;
+
+/** THE DETENT CLASSIFIER: which seat a GESTURE-born rest landed on. */
 export const classifyTrackSettleDetent = (
   detentTau: number,
   trackH: number,
   middleTau: number
 ): TrackSnapDetent =>
-  Math.abs(detentTau - trackH) <= 2
+  Math.abs(detentTau - trackH) <= TRACK_DETENT_EPSILON_PX
     ? 'expanded'
-    : Math.abs(detentTau - middleTau) <= 2
+    : Math.abs(detentTau - middleTau) <= TRACK_DETENT_EPSILON_PX
       ? 'middle'
       : 'collapsed';

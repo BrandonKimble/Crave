@@ -18,6 +18,8 @@
 //     original read, so promoteAtLeast still promotes from an indeterminate
 //     posture rather than refusing).
 
+import { TRACK_DETENT_EPSILON_PX } from './track-motion-plan';
+
 export type TrackSnapTargetRead = 'expanded' | 'middle' | 'collapsed';
 
 export const classifyRestingPosture = (args: {
@@ -26,7 +28,9 @@ export const classifyRestingPosture = (args: {
   middleTau: number;
   epsilon?: number;
 }): TrackSnapTargetRead => {
-  const epsilon = args.epsilon ?? 2;
+  // F9400: same detent epsilon as the gesture-settle classifier (single-sourced
+  // in track-motion-plan) — the two reads must agree about one physical rest.
+  const epsilon = args.epsilon ?? TRACK_DETENT_EPSILON_PX;
   if (Math.abs(args.posture - args.trackH) <= epsilon) {
     return 'expanded';
   }
