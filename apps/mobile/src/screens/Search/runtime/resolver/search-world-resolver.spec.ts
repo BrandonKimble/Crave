@@ -85,11 +85,13 @@ describe('search-world-resolver resolveNextPage', () => {
       searchRuntimeBus: h.searchRuntimeBus as never,
       seam: h.seam as never,
       fetchWorldForTuple: async () => ({
+        kind: 'resolved' as const,
         value: makeValue(),
         dataReadyFrom: 'network',
         searchInputKey: null,
       }),
       fetchNextPageForTuple: async ({ targetPage }) => ({
+        kind: 'resolved' as const,
         value: makeValue({
           paginationMeta: {
             ...makeValue().paginationMeta,
@@ -122,6 +124,7 @@ describe('search-world-resolver resolveNextPage', () => {
       searchRuntimeBus: h.searchRuntimeBus as never,
       seam: h.seam as never,
       fetchWorldForTuple: async () => ({
+        kind: 'resolved' as const,
         value: makeValue(),
         dataReadyFrom: 'network',
         searchInputKey: null,
@@ -129,7 +132,12 @@ describe('search-world-resolver resolveNextPage', () => {
       fetchNextPageForTuple: () =>
         new Promise((resolve) => {
           releaseFetch = () =>
-            resolve({ value: makeValue(), dataReadyFrom: 'network', searchInputKey: null });
+            resolve({
+              kind: 'resolved',
+              value: makeValue(),
+              dataReadyFrom: 'network',
+              searchInputKey: null,
+            });
         }),
       now: () => 0,
     });
@@ -155,6 +163,7 @@ describe('search-world-resolver resolveNextPage', () => {
       searchRuntimeBus: h.searchRuntimeBus as never,
       seam: h.seam as never,
       fetchWorldForTuple: async () => ({
+        kind: 'resolved' as const,
         value: makeValue({
           paginationMeta: {
             ...makeValue().paginationMeta,
@@ -182,6 +191,7 @@ describe('search-world-resolver resolveNextPage', () => {
       searchRuntimeBus: h.searchRuntimeBus as never,
       seam: h.seam as never,
       fetchWorldForTuple: async () => ({
+        kind: 'resolved' as const,
         value: makeValue(),
         dataReadyFrom: 'network',
         searchInputKey: null,
@@ -190,7 +200,12 @@ describe('search-world-resolver resolveNextPage', () => {
         fetchCount += 1;
         return new Promise((resolve) => {
           releaseFetch = () =>
-            resolve({ value: makeValue(), dataReadyFrom: 'network', searchInputKey: null });
+            resolve({
+              kind: 'resolved',
+              value: makeValue(),
+              dataReadyFrom: 'network',
+              searchInputKey: null,
+            });
         });
       },
       now: () => 0,
@@ -201,5 +216,56 @@ describe('search-world-resolver resolveNextPage', () => {
     releaseFetch();
     await Promise.all([first, second]);
     expect(fetchCount).toBe(1);
+  });
+});
+
+// F4800: the abort verdict is CARRIED from where it is observed, never reconstructed
+// from an error message. These pin both halves of that: an aborted fetch classifies as
+// 'canceled' with no message in play, and a thrown failure whose message contains the
+// word "canceled" is still a FAILURE — the arm that used to demote it is gone.
+describe('search-world-resolver cancellation classification', () => {
+  const makeAbortHarnessResolver = (
+    tuple: SearchDesiredTuple,
+    h: ReturnType<typeof makeHarness>,
+    fetchWorldForTuple: () => Promise<unknown>
+  ) =>
+    createSearchWorldResolver({
+      searchRuntimeBus: h.searchRuntimeBus as never,
+      seam: h.seam as never,
+      fetchWorldForTuple: fetchWorldForTuple as never,
+      now: () => 0,
+    });
+
+  it('an ABORTED fetch classifies as canceled — no failure level, no message inspected', async () => {
+    const tuple = makeTuple();
+    const h = makeHarness(tuple);
+    const failures: Array<{ kind: string; message: string }> = [];
+    const resolver = makeAbortHarnessResolver(tuple, h, async () => ({ kind: 'aborted' }));
+    await resolver.resolve({
+      tuple,
+      generation: 1,
+      cause: 'initial_submit',
+      onResolutionFailed: (reason) => failures.push(reason),
+    });
+    expect(failures).toEqual([{ kind: 'canceled', message: expect.any(String) }]);
+    expect(h.seam.failResolution).not.toHaveBeenCalled();
+    expect(h.commits).toHaveLength(0);
+  });
+
+  it('a REAL failure whose message contains "canceled" is a failure, not a cancellation', async () => {
+    const tuple = makeTuple();
+    const h = makeHarness(tuple);
+    const failures: Array<{ kind: string; message: string }> = [];
+    const resolver = makeAbortHarnessResolver(tuple, h, async () => {
+      throw new Error('upstream job canceled');
+    });
+    await resolver.resolve({
+      tuple,
+      generation: 1,
+      cause: 'initial_submit',
+      onResolutionFailed: (reason) => failures.push(reason),
+    });
+    expect(failures).toEqual([{ kind: 'failed', message: 'upstream job canceled' }]);
+    expect(h.seam.failResolution).toHaveBeenCalledTimes(1);
   });
 });

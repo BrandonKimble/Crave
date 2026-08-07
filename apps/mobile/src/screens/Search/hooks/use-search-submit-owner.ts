@@ -437,11 +437,12 @@ const useSearchSubmitOwner = ({
           logger.info('Search resolution paused offline', { message: reason.message });
           return;
         }
-        // F1050/F1005: the resolver classifies cancellation ONCE (it's the only side
-        // that can actually observe the abort) and hands the verdict down as
-        // `reason.kind` — no more re-deriving it here via the same string match the
-        // resolver already ran, which risked demoting a genuine failure that happened
-        // to contain "canceled" in BOTH places.
+        // F4800: `reason.kind` is CARRIED, not re-derived. The abort is observed exactly
+        // once — useSearchRequests reads `controller.signal.aborted` — and rides down as
+        // a typed fetch outcome. (The comment this replaces credited the RESOLVER with
+        // observing the abort; the resolver never sees the AbortController.) Nothing on
+        // this path inspects a message, so a genuine failure containing the word
+        // "canceled" can no longer be demoted into a cancellation.
         if (reason.kind === 'canceled') {
           logger.info('Search resolution superseded/canceled', { message: reason.message });
         } else {

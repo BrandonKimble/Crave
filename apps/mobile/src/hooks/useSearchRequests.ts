@@ -43,6 +43,14 @@ type RunSearchParams =
       onCacheStatus?: (status: SearchRequestCacheStatus) => void;
     };
 
+/** F4800: the abort verdict is OBSERVED here (`controller.signal.aborted`) and CARRIED,
+ *  not discarded. runSearch used to return `SearchResponse | null`, the fetch layer turned
+ *  the null into `throw new Error('… returned no response')`, and the resolver
+ *  reconstructed the boolean by string-matching that sentence — three lossy hops to
+ *  recover a fact that was in hand at the top, with a `.includes('canceled')` arm that
+ *  silently demoted any real backend failure whose message contained the word. */
+export type RunSearchOutcome = { kind: 'response'; response: SearchResponse } | { kind: 'aborted' };
+
 const getPerfNow = () => {
   if (typeof performance !== 'undefined' && typeof performance.now === 'function') {
     return performance.now();
@@ -294,7 +302,7 @@ export const useSearchRequests = () => {
   );
 
   const runSearch = React.useCallback(
-    async (request: RunSearchParams): Promise<SearchResponse | null> => {
+    async (request: RunSearchParams): Promise<RunSearchOutcome> => {
       const requestAttemptId = ++searchAttemptSeqRef.current;
       const startedAtMs = getPerfNow();
       const now = Date.now();
@@ -338,12 +346,12 @@ export const useSearchRequests = () => {
               });
 
         if (controller.signal.aborted) {
-          logRunSearchLifecycle('null_return', requestAttemptId, request, {
+          logRunSearchLifecycle('aborted_return', requestAttemptId, request, {
             reason: 'aborted_after_response',
             durationMs: Number((getPerfNow() - startedAtMs).toFixed(3)),
             responseSearchRequestId: response.metadata?.searchRequestId ?? null,
           });
-          return null;
+          return { kind: 'aborted' };
         }
 
         logRunSearchLifecycle('response', requestAttemptId, request, {
@@ -359,15 +367,15 @@ export const useSearchRequests = () => {
           responseEngineCoverageShare: response.metadata?.engineCoverageShare ?? null,
           responseEngineCount: response.metadata?.engineCoverage?.length ?? 0,
         });
-        return response;
+        return { kind: 'response', response };
       } catch (error) {
         if (controller.signal.aborted) {
-          logRunSearchLifecycle('null_return', requestAttemptId, request, {
+          logRunSearchLifecycle('aborted_return', requestAttemptId, request, {
             reason: 'aborted_catch',
             durationMs: Number((getPerfNow() - startedAtMs).toFixed(3)),
             ...getSearchLifecycleErrorFields(error),
           });
-          return null;
+          return { kind: 'aborted' };
         }
         logRunSearchLifecycle('error', requestAttemptId, request, {
           durationMs: Number((getPerfNow() - startedAtMs).toFixed(3)),

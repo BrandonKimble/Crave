@@ -52,6 +52,15 @@ export type SearchWorldNetworkFetchResult = {
   provisional?: boolean;
 };
 
+/** F4800: an in-flight fetch that the request layer ABORTED is an OUTCOME of the fetch,
+ *  not an exception. The abort is observed once (useSearchRequests reads
+ *  `controller.signal.aborted`) and travels as data all the way to the classifier below,
+ *  so cancellation is a field read — there is no message to string-match, and a genuine
+ *  backend failure can never be demoted into it. */
+export type SearchWorldFetchOutcome =
+  | ({ kind: 'resolved' } & SearchWorldNetworkFetchResult)
+  | { kind: 'aborted' };
+
 export type SearchWorldResolverEnv = {
   searchRuntimeBus: SearchRuntimeBus;
   seam: SearchWorldPresentationSeam;
@@ -63,7 +72,7 @@ export type SearchWorldResolverEnv = {
     generation: number;
     cause: SearchTupleWriteCause | null;
     requestDecoration?: SearchWorldResolveArgs['requestDecoration'];
-  }) => Promise<SearchWorldNetworkFetchResult>;
+  }) => Promise<SearchWorldFetchOutcome>;
   /** Derivation tier (optional per sub-stage): serve the requested tuple by recomposing
    *  an already-resolved world (tab-only change; page-1 includeSimilar swap). Returns
    *  null when no derivation applies and the ladder falls through to network. */
@@ -78,7 +87,7 @@ export type SearchWorldResolverEnv = {
     tuple: SearchDesiredTuple;
     baseValue: SearchWorldValue;
     targetPage: number;
-  }) => Promise<SearchWorldNetworkFetchResult>;
+  }) => Promise<SearchWorldFetchOutcome>;
   /** Post-present side effects keyed to the DESIRE (history push, single-restaurant
    *  sheet collapse) — strangler home until S4's reconciler owns them. */
   onWorldPresented?: (args: {
@@ -89,13 +98,15 @@ export type SearchWorldResolverEnv = {
   }) => void;
 };
 
-// F1050/F1005: a plain string reason forced BOTH the resolver and the submit owner
-// to independently string-match `.includes('canceled')` to tell a canceled-by-exit
-// supersession from a real failure — two classifiers that had to agree, and a genuine
-// failure whose message happened to contain "canceled" would be silently demoted in
-// BOTH places. Classify ONCE, here, where the cancellation is actually detected, and
-// carry the verdict as data so downstream consumers switch on `kind` instead of
-// re-deriving it.
+// F1050/F1005 deduplicated the classifier into ONE place; F4800 removed the fragile
+// mechanism it left behind. The verdict is no longer DERIVED here at all — the request
+// layer observes `controller.signal.aborted` and the abort travels down as a typed
+// fetch outcome (`{kind:'aborted'}`), so this file reads a field instead of
+// string-matching a sentence. Two magic strings (`.includes('canceled')` and
+// `.includes('runSearch returned no response')`) died with it, and with them the trap
+// that silently demoted any genuine failure whose message contained the word "canceled".
+// The comment this replaces claimed the cancellation was "actually detected" HERE; the
+// resolver never sees the AbortController and never did.
 export type SearchWorldResolutionFailureReason = {
   kind: 'canceled' | 'failed';
   message: string;
@@ -246,7 +257,7 @@ export const createSearchWorldResolver = (env: SearchWorldResolverEnv): SearchWo
         searchInputKey: derived.searchInputKey,
         presentationIntentKind,
       });
-      if (derived.provisional && env.fetchWorldForTuple != null) {
+      if (derived.provisional) {
         // Background TRUE-UP: fetch the network truth for the same world and commit it
         // as a VERSION UPDATE of the presented world — rows/coverage/totals correct
         // themselves in place, no second reveal choreography. Superseded landings still
@@ -254,6 +265,11 @@ export const createSearchWorldResolver = (env: SearchWorldResolverEnv): SearchWo
         void (async () => {
           try {
             const fetched = await env.fetchWorldForTuple({ tuple, generation, cause });
+            if (fetched.kind === 'aborted') {
+              // The true-up rode an aborted request: the provisional world is already
+              // presented and stays. Nothing to commit, nothing to announce.
+              return;
+            }
             const trueEntry = cache.commit({
               worldKey: sliceKey,
               status: { kind: 'ready' },
@@ -311,6 +327,21 @@ export const createSearchWorldResolver = (env: SearchWorldResolverEnv): SearchWo
         cause,
         requestDecoration: args.requestDecoration,
       });
+      if (fetched.kind === 'aborted') {
+        // Cancellation (session exit aborts the in-flight fetch) is expected lifecycle,
+        // not a failure — no failure level, no announcement. It arrives as the fetch's
+        // own verdict; nothing here re-derives it. The currency gate still applies: a
+        // superseded episode never touches presentation state.
+        core.fail({ generation, worldKey: sliceKey });
+        if (!isTupleStillDesired(tuple)) {
+          if (__DEV__) {
+            logger.info('[RESOLVE] superseded abort dropped', { generation, sliceKey });
+          }
+          return;
+        }
+        args.onResolutionFailed?.({ kind: 'canceled', message: 'search resolution aborted' });
+        return;
+      }
       const entry = cache.commit({
         worldKey: sliceKey,
         status: { kind: 'ready' },
@@ -359,15 +390,11 @@ export const createSearchWorldResolver = (env: SearchWorldResolverEnv): SearchWo
         }
         return;
       }
-      // Cancellation (session exit aborts the in-flight fetch) is expected lifecycle,
-      // not a failure — no failure level, no announcement. Classified HERE, once; the
-      // submit owner's handler only decides logging/abort.
-      const isCanceled =
-        reason.includes('canceled') || reason.includes('runSearch returned no response');
-      if (!isCanceled) {
-        env.seam.failResolution({ generation, reason });
-      }
-      args.onResolutionFailed?.({ kind: isCanceled ? 'canceled' : 'failed', message: reason });
+      // A thrown error is a FAILURE, full stop. Cancellation cannot arrive here — it is
+      // the fetch's typed 'aborted' outcome, handled above — so there is no message to
+      // inspect and no way for a real failure to be demoted into a cancellation.
+      env.seam.failResolution({ generation, reason });
+      args.onResolutionFailed?.({ kind: 'failed', message: reason });
     }
   };
 
@@ -399,6 +426,13 @@ export const createSearchWorldResolver = (env: SearchWorldResolverEnv): SearchWo
         baseValue: entry.value,
         targetPage: meta.page + 1,
       });
+      if (fetched.kind === 'aborted') {
+        // The append rode an aborted request: release the in-flight key and drop the
+        // load-more level. The presented world is untouched (appends never re-reveal).
+        core.fail({ generation: state.desiredTupleGeneration, worldKey: appendKey });
+        env.searchRuntimeBus.publish({ isLoadingMore: false });
+        return;
+      }
       const nextEntry = cache.commit({
         worldKey: sliceKey,
         status: { kind: 'ready' },
@@ -410,8 +444,9 @@ export const createSearchWorldResolver = (env: SearchWorldResolverEnv): SearchWo
       // so passing a real predicate here costs nothing and removes the doubly-stated check
       // this used to have (a vacuous `() => true` here, plus a real isTupleStillDesired(tuple)
       // check immediately below). Matches the page-one path's shape at L315-318.
-      const disposition = core.land({ generation: state.desiredTupleGeneration, worldKey: appendKey }, () =>
-        isTupleStillDesired(tuple)
+      const disposition = core.land(
+        { generation: state.desiredTupleGeneration, worldKey: appendKey },
+        () => isTupleStillDesired(tuple)
       );
       if (disposition === 'present') {
         env.seam.commitWorldToMountedState({

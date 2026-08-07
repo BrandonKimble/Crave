@@ -9,6 +9,7 @@
 // until then an unrouted kind throws LOUDLY — the legacy lane still owns it.
 
 import type { Coordinate, NaturalSearchRequest, SearchResponse } from '../../../../types';
+import type { RunSearchOutcome } from '../../../../hooks/useSearchRequests';
 import type {
   SearchRequestCacheStatus,
   StructuredSearchRequest,
@@ -17,7 +18,7 @@ import { DEFAULT_PAGE_SIZE } from '../../constants/search';
 import type { SearchDesiredTuple } from '../shared/search-desired-state-contract';
 import { selectLensRequestFields, selectSearchLens } from '../shared/search-desired-state-contract';
 import { constructSearchWorldValue } from './search-world-value-constructor';
-import type { SearchWorldNetworkFetchResult } from './search-world-resolver';
+import type { SearchWorldFetchOutcome } from './search-world-resolver';
 import {
   fetchShortcutCoverageWorldEntry,
   type ShortcutCoverageService,
@@ -40,7 +41,7 @@ export type SearchWorldRunSearch = (
         payload: StructuredSearchRequest;
         onCacheStatus?: (status: SearchRequestCacheStatus) => void;
       }
-) => Promise<SearchResponse | null>;
+) => Promise<RunSearchOutcome>;
 
 export type SearchWorldFetchEnv = {
   runSearch: SearchWorldRunSearch;
@@ -116,7 +117,7 @@ export const createSearchWorldFetcher =
       submissionSource?: string;
       submissionContext?: Record<string, unknown>;
     };
-  }): Promise<SearchWorldNetworkFetchResult> => {
+  }): Promise<SearchWorldFetchOutcome> => {
     const { tuple, requestDecoration } = args;
     const identity = tuple.queryIdentity;
     const userLocation = env.userLocationRef.current;
@@ -154,7 +155,10 @@ export const createSearchWorldFetcher =
           tab: 'dishes',
         }),
       ]);
-      response = cardsResponse;
+      if (cardsResponse.kind === 'aborted') {
+        return { kind: 'aborted' };
+      }
+      response = cardsResponse.response;
       coverageByTab = { restaurants: restaurantsCoverage, dishes: dishesCoverage };
     } else if (identity.kind === 'natural') {
       const payload: NaturalSearchRequest = {
@@ -168,7 +172,11 @@ export const createSearchWorldFetcher =
         payload.submissionContext = requestDecoration.submissionContext;
       }
       attachTupleScopeToPayload(payload, tuple, userLocation);
-      response = await env.runSearch({ kind: 'natural', payload, onCacheStatus });
+      const outcome = await env.runSearch({ kind: 'natural', payload, onCacheStatus });
+      if (outcome.kind === 'aborted') {
+        return { kind: 'aborted' };
+      }
+      response = outcome.response;
     } else if (identity.kind === 'list' && identity.source === 'curated') {
       // Curated lists ride the IDENTICAL list-world lane (plot + fitAll + reveal);
       // only the fetch seam differs. The curated read takes no slice params.
@@ -222,7 +230,11 @@ export const createSearchWorldFetcher =
           ...(identity.seeLocations ? { seeLocations: true } : null),
         };
         attachTupleScopeToPayload(payload, tuple, userLocation);
-        response = await env.runSearch({ kind: 'structured', payload, onCacheStatus });
+        const outcome = await env.runSearch({ kind: 'structured', payload, onCacheStatus });
+        if (outcome.kind === 'aborted') {
+          return { kind: 'aborted' };
+        }
+        response = outcome.response;
       } else {
         const payload: NaturalSearchRequest = {
           query: identity.displayName,
@@ -232,14 +244,21 @@ export const createSearchWorldFetcher =
           submissionContext,
         };
         attachTupleScopeToPayload(payload, tuple, userLocation);
-        response = await env.runSearch({ kind: 'natural', payload, onCacheStatus });
+        const outcome = await env.runSearch({ kind: 'natural', payload, onCacheStatus });
+        if (outcome.kind === 'aborted') {
+          return { kind: 'aborted' };
+        }
+        response = outcome.response;
       }
     } else {
       // Loud by design: this identity kind has not been routed to the resolver yet.
       throw new Error(`search-world-fetch: unrouted identity kind '${identity.kind}'`);
     }
     if (response == null) {
-      throw new Error('search-world-fetch: runSearch returned no response');
+      // Only the LIST reads can land here now — runSearch's abort is a typed outcome
+      // returned above, never a null this has to re-narrate. A list read that answers
+      // nothing is a real failure and says so.
+      throw new Error(`search-world-fetch: list read returned no response ('${identity.kind}')`);
     }
     // Natural/entity presentation facts derive from the RESPONSE (world metadata): the
     // adopted tab (marker projections must be computed for it) and the single-restaurant
@@ -284,6 +303,7 @@ export const createSearchWorldFetcher =
     value.coverageByTab = coverageByTab;
     value.singleRestaurantCandidate = singleRestaurantCandidate;
     return {
+      kind: 'resolved',
       value,
       adoptedTab,
       dataReadyFrom: cacheStatusRef.current?.dataReadyFrom ?? 'network',
@@ -301,7 +321,7 @@ export const createSearchWorldNextPageFetcher =
     tuple: SearchDesiredTuple;
     baseValue: import('./search-world-presentation-seam').SearchWorldValue;
     targetPage: number;
-  }): Promise<SearchWorldNetworkFetchResult> => {
+  }): Promise<SearchWorldFetchOutcome> => {
     const { tuple, baseValue, targetPage } = args;
     const identity = tuple.queryIdentity;
     const userLocation = env.userLocationRef.current;
@@ -309,7 +329,9 @@ export const createSearchWorldNextPageFetcher =
     const onCacheStatus = (status: SearchRequestCacheStatus): void => {
       cacheStatusRef.current = status;
     };
-    let response: SearchResponse | null = null;
+    // No `| null`: every arm below either lands a response, returns the aborted outcome,
+    // or throws. The page-N lane has no list reads, so nothing else can answer nothing.
+    let response: SearchResponse;
     if (
       identity.kind === 'shortcut' ||
       (identity.kind === 'entity' && identity.entityType === 'restaurant')
@@ -336,7 +358,11 @@ export const createSearchWorldNextPageFetcher =
         ...(identity.kind === 'entity' && identity.seeLocations ? { seeLocations: true } : null),
       };
       attachTupleScopeToPayload(payload, tuple, userLocation);
-      response = await env.runSearch({ kind: 'structured', payload, onCacheStatus });
+      const outcome = await env.runSearch({ kind: 'structured', payload, onCacheStatus });
+      if (outcome.kind === 'aborted') {
+        return { kind: 'aborted' };
+      }
+      response = outcome.response;
     } else if (identity.kind === 'natural' || identity.kind === 'entity') {
       const payload: NaturalSearchRequest = {
         query: identity.kind === 'natural' ? identity.query : identity.displayName,
@@ -345,13 +371,14 @@ export const createSearchWorldNextPageFetcher =
         searchRequestId: baseValue.searchRequestId,
       };
       attachTupleScopeToPayload(payload, tuple, userLocation);
-      response = await env.runSearch({ kind: 'natural', payload, onCacheStatus });
+      const outcome = await env.runSearch({ kind: 'natural', payload, onCacheStatus });
+      if (outcome.kind === 'aborted') {
+        return { kind: 'aborted' };
+      }
+      response = outcome.response;
     } else {
       // entities (favorites) return the whole list at once; profileSeed never paginates.
       throw new Error(`search-world-fetch: identity kind '${identity.kind}' cannot paginate`);
-    }
-    if (response == null) {
-      throw new Error('search-world-fetch: next-page runSearch returned no response');
     }
     const value = constructSearchWorldValue({
       response,
@@ -371,6 +398,7 @@ export const createSearchWorldNextPageFetcher =
     value.coverageByTab = baseValue.coverageByTab;
     value.singleRestaurantCandidate = baseValue.singleRestaurantCandidate;
     return {
+      kind: 'resolved',
       value,
       dataReadyFrom: cacheStatusRef.current?.dataReadyFrom ?? 'network',
       searchInputKey: cacheStatusRef.current?.searchInputKey ?? null,

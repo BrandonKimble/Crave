@@ -97,11 +97,23 @@ const createEnv = (): SearchWorldFetchEnv & {
   getCuratedListResults: jest.fn(async () => RESPONSE),
 });
 
+/** The fetch answers an OUTCOME (F4800): callers narrow, they never assume. */
+const resolvedWorld = async (
+  fetcher: ReturnType<typeof createSearchWorldFetcher>,
+  tuple: SearchDesiredTuple
+) => {
+  const outcome = await fetcher({ tuple });
+  if (outcome.kind !== 'resolved') {
+    throw new Error(`expected a resolved world, got '${outcome.kind}'`);
+  }
+  return outcome;
+};
+
 describe('search-world-fetch — the ONE list-world lane, source-routed fetch seam', () => {
   it('a favorites list identity fetches through getFavoritesListResults (never the curated read)', async () => {
     const env = createEnv();
     const fetcher = createSearchWorldFetcher(env);
-    const result = await fetcher({ tuple: listTuple(null) });
+    const result = await resolvedWorld(fetcher, listTuple(null));
     expect(env.getFavoritesListResults).toHaveBeenCalledWith('list-1', expect.any(Object));
     expect(env.getCuratedListResults).not.toHaveBeenCalled();
     expect(result.value.committedResponse).toBe(RESPONSE);
@@ -110,7 +122,7 @@ describe('search-world-fetch — the ONE list-world lane, source-routed fetch se
   it('a curated list identity fetches through getCuratedListResults (never the favorites read)', async () => {
     const env = createEnv();
     const fetcher = createSearchWorldFetcher(env);
-    const result = await fetcher({ tuple: listTuple('curated') });
+    const result = await resolvedWorld(fetcher, listTuple('curated'));
     expect(env.getCuratedListResults).toHaveBeenCalledWith('list-1');
     expect(env.getFavoritesListResults).not.toHaveBeenCalled();
     expect(result.value.committedResponse).toBe(RESPONSE);
@@ -119,8 +131,8 @@ describe('search-world-fetch — the ONE list-world lane, source-routed fetch se
   it('both sources produce the SAME world session payload (source-agnostic choreography input)', async () => {
     const env = createEnv();
     const fetcher = createSearchWorldFetcher(env);
-    const favorites = await fetcher({ tuple: listTuple(null) });
-    const curated = await fetcher({ tuple: listTuple('curated') });
+    const favorites = await resolvedWorld(fetcher, listTuple(null));
+    const curated = await resolvedWorld(fetcher, listTuple('curated'));
     // The list-axis tab adopt runs for BOTH (same presentation rule)…
     expect(curated.adoptedTab).toBe(favorites.adoptedTab);
     // …and the fitAll members derive from committedResponse rows — identical
@@ -133,5 +145,22 @@ describe('search-world-fetch — the ONE list-world lane, source-routed fetch se
     // list+toggle surface).
     expect(favorites.value.singleRestaurantCandidate).toBeNull();
     expect(curated.value.singleRestaurantCandidate).toBeNull();
+  });
+});
+
+// F4800: the abort observed by the request layer PROPAGATES as the fetch's own outcome.
+// It used to be a `null` this file re-narrated into `throw new Error('… returned no
+// response')` for the resolver to string-match back into a boolean.
+describe('search-world-fetch — an aborted request is an outcome, not a sentence', () => {
+  const naturalTuple: SearchDesiredTuple = {
+    ...listTuple(null),
+    queryIdentity: { kind: 'natural', query: 'tacos' },
+  };
+
+  it('propagates the aborted arm instead of throwing', async () => {
+    const env = createEnv();
+    env.runSearch = jest.fn(async () => ({ kind: 'aborted' }) as const);
+    const outcome = await createSearchWorldFetcher(env)({ tuple: naturalTuple });
+    expect(outcome).toEqual({ kind: 'aborted' });
   });
 });
