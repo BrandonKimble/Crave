@@ -4164,3 +4164,44 @@ FIXED (contained, mutation-proven, my remit):
   a bad type in place-geo.test.ts now errors TS2322 — was uncheckable before.
 
 ESCALATED (CI-lint POLICY, layer-wide, owner's call — see D136).
+
+## D136 — ESCALATION F9100/F9101: the CI Lint gate does not enforce four safety rules, and apps/site is linted by nothing (2026-08-07)
+
+Two coupled findings from attempt 6, both the signature disease at CI-config level.
+Both are POLICY/layer-wide, so escalated per the mandate (not flipped unilaterally —
+turning either into a hard gate reds CI against an existing backlog and could block
+every merge until it is drained).
+
+**F9100 (was F-A) — four safety rules are `warn`, and nothing enforces warnings.**
+Root .eslintrc.js sets `@typescript-eslint/no-explicit-any`, `no-unused-vars`,
+`no-unsafe-call`, and `no-floating-promises` to `'warn'`. Every workspace `lint`
+script is `eslint … --fix` with NO `--max-warnings`, and CI runs `yarn lint`
+(= turbo run lint). So: (a) a violation of those four rules prints a warning and
+exits 0 — CI stays green; (b) `--fix` in the ephemeral CI checkout auto-repairs the
+whole auto-fixable class before exit — a verifier that repairs what it should catch.
+NOTE the gate is not entirely toothless: ERROR-level rules DO fail (verified — the
+notification-dispatcher no-unsafe-return errors red the build today). It is
+specifically these four `warn` rules + the `--fix` behavior that are decorative.
+MEASURED BACKLOG (the cost of making it real): apps/api src = 21 warn-level
+violations; apps/mobile = large (eslint over full src timed out at 200s, uncounted);
+packages/shared = 0. So `--max-warnings=0` today reds CI mostly on mobile.
+RECOMMENDATION: add a `lint:ci` script per workspace = `eslint <globs> --max-warnings=0`
+WITHOUT `--fix` (keep `--fix` on the local/lefthook path only), point CI's Lint step
+at it, and promote `no-floating-promises` + `no-unsafe-call` to `'error'` — AFTER
+draining the backlog (api's 21 first, then a measured mobile pass). Sequence it so
+main is never left red. OWNER's call: whether/when to absorb the mobile backlog.
+
+**F9101 (was F-B) — apps/site is outside ESLint entirely.**
+apps/site/package.json has `test` + `type-check` but NO `lint` task, so
+`turbo run lint` silently skips the workspace (turbo runs only tasks that exist),
+and lefthook's pre-commit lints api/mobile/shared explicitly with no site block. So
+apps/site/src — including the ~110-line inline browser checkout script in
+premium-page.ts (Clerk token handling, fetch to the billing endpoint, a redirect)
+that lives as a template STRING and is therefore also invisible to tsc — is seen by
+no linter. RECOMMENDATION: add an eslint config + `"lint": "eslint src test
+--max-warnings=0"` to apps/site (it is already in the `apps/*` workspace glob, so
+turbo/lefthook pick it up once the task exists); measure and drain whatever it
+surfaces. COST: one new config + a first-lint backlog of unknown size in site.
+Coupled to F9100's policy decision (does the repo want the lint gate to be a hard
+CI gate). ESCALATED — awaiting owner. These are holes-in-the-fence (no live breach:
+tsc + error-level lint + the type-check gates still run), not a shipping bug.
