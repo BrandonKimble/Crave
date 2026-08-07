@@ -4137,3 +4137,30 @@ F8800 is now FIXED end to end (standalone bans in D132 + compound blocks here). 
 narrows to PURELY the layer-wide make-it-impossible mechanism (a shared gate-scan
 lib + conformance gate to stop the FIFTH gate author reintroducing the shape) —
 the residual it used to also cover is gone.
+
+---
+
+## D135 — attempt-6 found real defects in NEVER-AUDITED territory (root config + apps/site); F9102/F9103 fixed, F9100/F9101 escalated (2026-08-07)
+
+Attempt 6's packages+site+root hunter found FOUR findings in territory no prior pass
+had touched — proof the exercise had NOT converged (I had been treating "api+mobile
+clean" as near-done; a whole workspace and the root lint policy were unswept).
+
+FIXED (contained, mutation-proven, my remit):
+- **F9103 (was F-D)** — apps/site/src/premium-page.ts cast `config.clerkPublishableKey
+  as string` / `apiOrigin as string` laundered `string | null` past tsc; non-null-ness
+  held only by a runtime guard in router.ts the type system didn't connect, so deleting
+  that guard shipped `null` credentials into the checkout boot script and compiled clean.
+  REDERIVED to make it unrepresentable: a `ReadyCheckoutConfig` type + a `checkoutConfig()`
+  discriminated result that is the ONE narrowing point (one guarded cast, justified in
+  place); renderPremium now accepts only ReadyCheckoutConfig, casts deleted.
+  missingCheckoutConfig delegates to it (server.ts boot log unchanged). MUTATION-PROVEN:
+  removing the router ready-branch now errors TS2345 (SiteConfig not assignable to
+  ReadyCheckoutConfig) — was a silent compile before.
+- **F9102 (was F-C)** — packages/shared/tsconfig.json EXCLUDED src/**/*.test.ts and the
+  runner strips types, so the shared package's own verifiers got ZERO type-checking.
+  Added tsconfig.test.json (overrides the inherited exclude, noEmit) and made `type-check`
+  run it too. Confirmed the tests type-check clean today (safe to wire). MUTATION-PROVEN:
+  a bad type in place-geo.test.ts now errors TS2322 — was uncheckable before.
+
+ESCALATED (CI-lint POLICY, layer-wide, owner's call — see D136).

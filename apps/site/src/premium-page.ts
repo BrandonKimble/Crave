@@ -1,4 +1,4 @@
-import type { SiteConfig } from './config';
+import type { ReadyCheckoutConfig } from './config';
 import { clerkBrowserScriptUrl } from './clerk-frontend-api';
 
 /**
@@ -134,9 +134,9 @@ export function renderPremiumUnconfigured(missing: string[]): string {
   );
 }
 
-export function renderPremium(config: SiteConfig): string {
-  const publishableKey = config.clerkPublishableKey as string;
-  const apiOrigin = config.apiOrigin as string;
+export function renderPremium(config: ReadyCheckoutConfig): string {
+  const publishableKey = config.clerkPublishableKey;
+  const apiOrigin = config.apiOrigin;
   const scriptUrl = clerkBrowserScriptUrl(publishableKey);
 
   // Injected as JSON literals, never interpolated bare into JS.

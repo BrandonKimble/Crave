@@ -1,0 +1,20 @@
+{
+  // F-C (2026-08-07): the base tsconfig EXCLUDES `src/**/*.test.ts`, and the test
+  // runner is `node --experimental-strip-types`, which strips types WITHOUT
+  // checking them — so this package's own verifiers (export-surface.test.ts,
+  // geo/place-geo.test.ts) received ZERO type checking. A type-level regression
+  // in a test (asserting against a renamed exported type, calling a shared fn
+  // with wrong-typed args) compiled away. This config type-checks the tests
+  // themselves. It overrides the base `exclude` (which would otherwise be
+  // INHERITED and re-drop the tests) and disables emit/composite so it is a pure
+  // no-emit check alongside the base `type-check`.
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "noEmit": true,
+    "composite": false,
+    "declaration": false,
+    "emitDeclarationOnly": false
+  },
+  "include": ["src/**/*.ts"],
+  "exclude": ["node_modules", "dist"]
+}

@@ -55,10 +55,44 @@ export function readConfig(env: Record<string, string | undefined>): SiteConfig 
   };
 }
 
-/** The env var names missing for `/premium` to work — empty means ready. */
-export function missingCheckoutConfig(config: SiteConfig): string[] {
-  return [
+/**
+ * A `SiteConfig` proven to have the two fields `/premium` cannot render without.
+ * Carrying the narrowing in the TYPE (not just a runtime check) is what lets
+ * `renderPremium` drop its `as string` casts: the only way to obtain this type is
+ * through `checkoutConfig`, which cannot return it without both fields present.
+ */
+export type ReadyCheckoutConfig = SiteConfig & {
+  apiOrigin: string;
+  clerkPublishableKey: string;
+};
+
+/**
+ * The single narrowing point for `/premium`. Either the config is ready (and the
+ * caller gets a `ReadyCheckoutConfig` it can hand straight to `renderPremium`), or
+ * it names what is missing (for the 503 page). Removing the ready-branch guard at
+ * a caller now fails tsc — `renderPremium` no longer accepts a raw `SiteConfig` —
+ * where the old `as string` casts let a null sail through to the boot script.
+ */
+export type CheckoutConfigResult =
+  | { ready: true; config: ReadyCheckoutConfig }
+  | { ready: false; missing: string[] };
+
+export function checkoutConfig(config: SiteConfig): CheckoutConfigResult {
+  const missing = [
     config.apiOrigin ? null : 'API_ORIGIN',
     config.clerkPublishableKey ? null : 'CLERK_PUBLISHABLE_KEY',
   ].filter((name): name is string => name !== null);
+  if (missing.length > 0) {
+    return { ready: false, missing };
+  }
+  // The filter above proves both fields are non-null; TS cannot narrow object
+  // fields from an array result, so this is the ONE guarded cast — justified in
+  // place, rather than two unguarded casts at the far-away use site.
+  return { ready: true, config: config as ReadyCheckoutConfig };
+}
+
+/** The env var names missing for `/premium` to work — empty means ready. */
+export function missingCheckoutConfig(config: SiteConfig): string[] {
+  const result = checkoutConfig(config);
+  return result.ready ? [] : result.missing;
 }

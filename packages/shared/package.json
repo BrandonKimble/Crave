@@ -14,7 +14,7 @@
     "clean": "rm -rf dist tsconfig.tsbuildinfo",
     "lint": "eslint src --fix",
     "test": "node --experimental-strip-types --test --disable-warning=MODULE_TYPELESS_PACKAGE_JSON 'src/**/*.test.ts'",
-    "type-check": "tsc --noEmit -p tsconfig.json",
+    "type-check": "tsc --noEmit -p tsconfig.json && tsc --noEmit -p tsconfig.test.json",
     "clean:incremental": "rm -f tsconfig.tsbuildinfo"
   },
   "devDependencies": {

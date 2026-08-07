@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import type { SiteConfig } from './config';
-import { missingCheckoutConfig } from './config';
+import { checkoutConfig } from './config';
 import {
   renderPremium,
   renderPremiumCancelled,
@@ -89,13 +89,13 @@ export function handle(pathname: string, config: SiteConfig): SiteResponse {
   if (staticName) return html(readPage(staticName));
 
   if (path === '/premium') {
-    const missing = missingCheckoutConfig(config);
-    if (missing.length > 0) {
+    const result = checkoutConfig(config);
+    if (!result.ready) {
       // 503, not 200: an unconfigured checkout is an outage, and a monitor
       // must be able to see it. See premium-page.ts.
-      return html(renderPremiumUnconfigured(missing), 503);
+      return html(renderPremiumUnconfigured(result.missing), 503);
     }
-    return html(renderPremium(config));
+    return html(renderPremium(result.config));
   }
   if (path === '/premium/success') return html(renderPremiumSuccess());
   if (path === '/premium/cancelled') return html(renderPremiumCancelled());
