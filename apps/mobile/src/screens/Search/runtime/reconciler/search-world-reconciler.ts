@@ -27,7 +27,13 @@ import {
 } from '../shared/search-desired-state-contract';
 import type { SearchWorldResolutionFailureReason } from '../resolver/search-world-resolver';
 
-export type SearchWorldTransitionClass =
+/** F4804: the classifier is TOTAL and deterministic about which classes carry a derived
+ *  intent, so the type says so. Seven classes always build one; three never do. Flattened
+ *  to `intent: SearchWorldDerivedIntent | null` across all ten, the consumer had to
+ *  re-ask a question the producer had already settled — `intent?.presentationIntentKind`,
+ *  `if (intent != null)` twice, and a `?.` on the reassert arm. Those guards are gone and
+ *  cannot be re-earned: an intent-bearing class cannot be built with a null intent. */
+export type SearchWorldIntentBearingTransitionClass =
   | 'session_enter'
   | 'session_replace'
   /** IDENTITY revise within a session: includeSimilar (retrieval-semantic). */
@@ -38,13 +44,21 @@ export type SearchWorldTransitionClass =
   | 'lens_flip'
   | 'area_rerun'
   | 'tab_switch'
-  | 'retoggle_reversal'
-  | 'session_exit'
-  | 'boot_noop'
   /** No tuple delta, but the desire is NOT what's presented — a re-assertion of an
    *  unresolved desire (the failure retry). Presented content reruns in place; a bare
    *  session re-enters. */
   | 'reassert_unresolved';
+
+/** The three classes that resolve nothing: a reversal onto the world already on screen,
+ *  a session teardown, and the no-op. None of them has a presentation to intend. */
+export type SearchWorldIntentFreeTransitionClass =
+  | 'retoggle_reversal'
+  | 'session_exit'
+  | 'boot_noop';
+
+export type SearchWorldTransitionClass =
+  | SearchWorldIntentBearingTransitionClass
+  | SearchWorldIntentFreeTransitionClass;
 
 export type SearchWorldDerivedIntent = {
   /** The kind the legacy triggers pass to resolve() today. */
@@ -53,11 +67,13 @@ export type SearchWorldDerivedIntent = {
   entrySurface: 'home' | 'search_mode' | 'results' | 'profile' | null;
 };
 
-export type SearchWorldTransition = {
-  class: SearchWorldTransitionClass;
-  intent: SearchWorldDerivedIntent | null;
-  cardsKey: string;
-};
+export type SearchWorldTransition =
+  | {
+      class: SearchWorldIntentBearingTransitionClass;
+      intent: SearchWorldDerivedIntent;
+      cardsKey: string;
+    }
+  | { class: SearchWorldIntentFreeTransitionClass; intent: null; cardsKey: string };
 
 const deriveEntrySurface = (
   tuple: SearchDesiredTuple
@@ -376,12 +392,10 @@ export const createSearchWorldReconciler = (
             tuple: next,
             generation,
             cause,
-            presentationIntentKind: intent?.presentationIntentKind,
+            presentationIntentKind: intent.presentationIntentKind,
             requestDecoration: decoration,
             onResolutionBegan: () => {
-              if (intent != null) {
-                env.runEnterForegroundEffects({ intent, tuple: next, generation });
-              }
+              env.runEnterForegroundEffects({ intent, tuple: next, generation });
             },
             onResolutionFailed: env.onResolveFailed,
           })
@@ -430,7 +444,7 @@ export const createSearchWorldReconciler = (
         return;
       }
       case 'reassert_unresolved': {
-        if (transition.intent?.presentationIntentKind === 'variant_rerun') {
+        if (transition.intent.presentationIntentKind === 'variant_rerun') {
           // Stale content on screen: the retry reruns in place with the standard
           // interaction cover + reveal (the chip-rerun choreography).
           kickRerunThroughCoordinator({
@@ -452,9 +466,7 @@ export const createSearchWorldReconciler = (
             presentationIntentKind: undefined,
             requestDecoration: decoration,
             onResolutionBegan: () => {
-              if (intent != null) {
-                env.runEnterForegroundEffects({ intent, tuple: next, generation });
-              }
+              env.runEnterForegroundEffects({ intent, tuple: next, generation });
             },
             onResolutionFailed: env.onResolveFailed,
           })
@@ -496,6 +508,10 @@ export const createSearchWorldReconciler = (
           presentedCardsKey: env.getPresentedCardsKey(),
         });
         if (__DEV__) {
+          // These three defaults ARE reachable and are not defensive: the trace runs
+          // before dispatch, on the un-narrowed transition, and the intent-free classes
+          // (retoggle_reversal / session_exit / boot_noop) genuinely have no intent to
+          // print. Every SITE THAT ACTS on an intent narrows first and reads it directly.
           logger.info('[RECONCILE]', {
             generation: state.desiredTupleGeneration,
             cause: state.desiredTupleCause,
