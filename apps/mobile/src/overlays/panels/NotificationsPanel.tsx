@@ -75,7 +75,7 @@ const NotificationRow = React.memo(({ item }: { item: NotificationFeedItem }) =>
     // A notification outlives the account that caused it; a follow from an
     // account that has since been deleted has no profile to open.
     if (item.type === 'follower_added' && isInteractableAuthor(item.actor)) {
-      pushRoute('userProfile', { userId: item.actor?.userId as string });
+      pushRoute('userProfile', { userId: item.actor.userId });
     }
   }, [item, pushRoute]);
   return (

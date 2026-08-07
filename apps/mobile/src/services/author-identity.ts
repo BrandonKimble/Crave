@@ -43,10 +43,19 @@ export interface AuthorIdentity {
  *
  * Defensive on `userId` too — an author with no id cannot be navigated to
  * regardless of why.
+ *
+ * IT IS A TYPE PREDICATE, and that is load-bearing (F5802). The body always established
+ * `userId != null`; the `boolean` return threw that away, so every navigation caller wrote
+ * `isInteractableAuthor(x) && push({ userId: x.userId as string })`. Those assertions were
+ * correct only because the guard happened to sit in the same expression — nothing type-level
+ * tied them, and deleting a guard left a COMPILING call that pushed `null` as a route param.
+ * Now the guard is what produces the non-null id, so the two cannot be separated. Non-narrowing
+ * callers (`disabled={!isInteractableAuthor(user)}`) are unaffected: a type predicate is a
+ * boolean everywhere it is not narrowing.
  */
-export function isInteractableAuthor(
-  author: Pick<AuthorIdentity, 'isDeleted' | 'userId'> | null | undefined
-): boolean {
+export function isInteractableAuthor<T extends Pick<AuthorIdentity, 'isDeleted' | 'userId'>>(
+  author: T | null | undefined
+): author is T & { userId: string } {
   return Boolean(author && !author.isDeleted && author.userId);
 }
 

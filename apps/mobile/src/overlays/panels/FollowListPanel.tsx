@@ -93,8 +93,7 @@ export const FollowListPanelBody = React.memo(({ entry }: MountedSceneBodyProps)
             // A deleted account has no profile page — the API's public read
             // filters deletedAt, so this push would land on a 404. Inert row.
             onPress={() =>
-              isInteractableAuthor(user) &&
-              pushRoute('userProfile', { userId: user.userId as string })
+              isInteractableAuthor(user) && pushRoute('userProfile', { userId: user.userId })
             }
             disabled={!isInteractableAuthor(user)}
             accessibilityRole="button"

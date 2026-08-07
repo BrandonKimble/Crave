@@ -58,7 +58,7 @@ const CollaboratorPersonRow = ({
           read filters deletedAt), so the row is inert rather than a tap that
           404s. `disabled` also drops it from the accessibility tap order. */}
       <Pressable
-        onPress={() => isInteractableAuthor(person) && onOpenProfile(person.userId as string)}
+        onPress={() => isInteractableAuthor(person) && onOpenProfile(person.userId)}
         disabled={!isInteractableAuthor(person)}
         accessibilityRole="button"
         accessibilityLabel={

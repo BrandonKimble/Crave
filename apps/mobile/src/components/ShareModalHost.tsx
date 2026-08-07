@@ -403,9 +403,9 @@ const ShareModalContent = ({ config }: { config: ShareModalConfig }) => {
             >
               {targets.filter(isInteractableAuthor).map((peer) => (
                 <TargetAvatar
-                  key={peer.userId ?? ''}
+                  key={peer.userId}
                   peer={peer}
-                  selected={selectedIds.has(peer.userId ?? '')}
+                  selected={selectedIds.has(peer.userId)}
                   onToggle={toggleTarget}
                 />
               ))}
