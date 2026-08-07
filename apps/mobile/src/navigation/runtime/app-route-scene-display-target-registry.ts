@@ -1,11 +1,7 @@
 import { makeMutable, type SharedValue } from 'react-native-reanimated';
 
 import type { RouteOverlayDisplaySnapshot } from './route-overlay-display-snapshot-contract';
-import {
-  resolveRouteOverlayBottomNavIndex,
-  syncRouteOverlayDisplaySharedValues,
-  type RouteOverlayDisplaySharedValueTargets,
-} from './route-overlay-display-shared-values';
+import { type RouteOverlayDisplaySharedValueTargets } from './route-overlay-display-shared-values';
 
 export type AppRouteSceneDisplayTargetRegistry = {
   activeTabIndexValue: SharedValue<number>;
@@ -23,16 +19,16 @@ class AppRouteSceneDisplayTargetRegistryController implements AppRouteSceneDispl
   private readonly unsubscribeDisplayTargets: () => void;
 
   constructor(routeOverlayDisplayAuthority: RouteOverlayDisplayAuthority) {
-    const initialSnapshot = routeOverlayDisplayAuthority.getSnapshot();
+    // F5400: the seed is the authority's published index — this site used to re-derive it
+    // from `displayedRootOverlayKey` (the second of three copies of one formula) and then
+    // write the SAME value a third time, with an explicit sync call after
+    // `registerSharedValues` had already synced it.
     this.activeTabIndexValue = makeMutable(
-      resolveRouteOverlayBottomNavIndex(initialSnapshot.displayedRootOverlayKey)
+      routeOverlayDisplayAuthority.getSnapshot().activeTabIndex
     );
-    const sharedValueTargets: RouteOverlayDisplaySharedValueTargets = {
+    this.unsubscribeDisplayTargets = routeOverlayDisplayAuthority.registerSharedValues({
       activeTabIndexValue: this.activeTabIndexValue,
-    };
-    this.unsubscribeDisplayTargets =
-      routeOverlayDisplayAuthority.registerSharedValues(sharedValueTargets);
-    syncRouteOverlayDisplaySharedValues(sharedValueTargets, initialSnapshot);
+    });
   }
 
   public dispose(): void {

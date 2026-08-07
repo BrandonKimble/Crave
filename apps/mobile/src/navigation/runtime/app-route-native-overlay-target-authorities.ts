@@ -26,8 +26,8 @@ import type {
   AppRouteSheetSnapSessionAuthority,
   AppRouteSheetSnapSessionSnapshot,
 } from './app-route-sheet-snap-session-runtime';
+import { resolveRouteOverlayBottomNavIndex } from './route-overlay-bottom-nav-index';
 import {
-  resolveRouteOverlayBottomNavIndex,
   syncRouteOverlayDisplaySharedValues,
   type RouteOverlayDisplaySharedValueTargets,
 } from './route-overlay-display-shared-values';
@@ -85,7 +85,6 @@ type PollsVisibilityTarget = {
 
 type DisplaySharedValueTarget = {
   values: RouteOverlayDisplaySharedValueTargets;
-  activeTabIndex: number | null;
 };
 
 type IdentityTarget = {
@@ -195,9 +194,11 @@ const POLICY_NATIVE_OVERLAY_TARGET_LANES: readonly NativeOverlayTargetLaneKey[] 
 // changes without a switch; a switch the native dispatch selector dedupes) still lands here.
 // Frame reads are ordering-safe regardless: the controller COMMITS the frame in the same atomic
 // setTransitionState before any listener runs, and flushes the PF dispatch FIRST (§9.1 R7).
+// F5400: 'display' LEFT this list. Its whole output is a bottom-nav tab index, which cannot
+// depend on the presented scene — it belonged here only because the snapshot used to carry a
+// `displayedSceneKey` nothing read.
 const PRESENTATION_FRAME_NATIVE_OVERLAY_TARGET_LANES: readonly NativeOverlayTargetLaneKey[] = [
   'navigation',
-  'display',
   'pollsVisibility',
   'sheetPolicy',
   'visibility',
@@ -269,16 +270,6 @@ const areRootSnapshotsEqual = (
   right: RouteOverlayRootSnapshot
 ): boolean =>
   left.rootOverlayKey === right.rootOverlayKey && left.isSearchOverlay === right.isSearchOverlay;
-
-const areDisplaySnapshotsEqual = (
-  left: RouteOverlayDisplaySnapshot,
-  right: RouteOverlayDisplaySnapshot
-): boolean =>
-  left.rootOverlayKey === right.rootOverlayKey &&
-  left.displayedRootOverlayKey === right.displayedRootOverlayKey &&
-  left.displayedSceneKey === right.displayedSceneKey &&
-  left.isSearchOverlay === right.isSearchOverlay &&
-  left.isDockedLane === right.isDockedLane;
 
 const arePollsVisibilitySnapshotsEqual = (
   left: RouteOverlayDockedSceneVisibilitySnapshot,
@@ -436,22 +427,6 @@ export const createAppRouteNativeOverlayTargetAuthorities = ({
     return [routeState.rootOverlayKey];
   };
 
-  const resolveDisplaySignature = (
-    sourceSnapshot: NativeOverlayTargetSourceSnapshot
-  ): NativeOverlayOutputSignature => {
-    const { routeSceneSwitchSnapshot } = sourceSnapshot;
-    const routeState = routeSceneSwitchSnapshot.routeState;
-    const transitionContract = routeSceneSwitchSnapshot.transitionContract;
-    return [
-      routeState.rootOverlayKey,
-      transitionContract?.committedRootRouteKey ?? null,
-      // The frame fields the display snapshot renders — keyed directly (not their upstream
-      // transition-state inputs) so a frame publish can never be masked by an equal signature.
-      sourceSnapshot.presentationFrame?.presentedSceneKey ?? null,
-      resolveIsDockedLane(sourceSnapshot),
-    ];
-  };
-
   const resolvePollsVisibilitySignature = (
     sourceSnapshot: NativeOverlayTargetSourceSnapshot
   ): NativeOverlayOutputSignature => {
@@ -541,23 +516,22 @@ export const createAppRouteNativeOverlayTargetAuthorities = ({
     };
   };
 
+  // F5400 — THE ONE DERIVATION HOME for the bottom-nav tab index. It was computed at three
+  // sites (here for the lane dedupe, again in the shared-value writer, again as the registry's
+  // seed) off the same `displayedRootOverlayKey`, three copies of one formula free to diverge.
+  // The lane resolves it once and publishes the integer; nobody downstream re-derives.
+  //
+  // The DISPLAYED root is the committed one when a transition is in flight, the route's
+  // otherwise — the tab must follow what is on screen, not what was requested.
   const resolveDisplaySnapshot = (
     sourceSnapshot: NativeOverlayTargetSourceSnapshot
   ): RouteOverlayDisplaySnapshot => {
-    const { routeSceneSwitchSnapshot, presentationFrame } = sourceSnapshot;
-    const routeState = routeSceneSwitchSnapshot.routeState;
+    const { routeSceneSwitchSnapshot } = sourceSnapshot;
     return {
-      rootOverlayKey: routeState.rootOverlayKey,
-      displayedRootOverlayKey:
+      activeTabIndex: resolveRouteOverlayBottomNavIndex(
         routeSceneSwitchSnapshot.transitionContract?.committedRootRouteKey ??
-        routeState.rootOverlayKey,
-      // The leg that PAINTS — read straight off the committed frame. The old local DOCKED_SCENE_KEY
-      // forcing (+ its child-scene exception) is structural in presentedSceneKey: a child
-      // target resolves laneKind 'child', so only the one legal steady divergence
-      // (docked under the search root) presents DOCKED_SCENE_KEY (§9.2 site 4).
-      displayedSceneKey: presentationFrame.presentedSceneKey,
-      isSearchOverlay: routeState.rootOverlayKey === 'search',
-      isDockedLane: resolveIsDockedLane(sourceSnapshot),
+          routeSceneSwitchSnapshot.routeState.rootOverlayKey
+      ),
     };
   };
 
@@ -664,7 +638,6 @@ export const createAppRouteNativeOverlayTargetAuthorities = ({
   let navigationSignature = resolveNavigationSignature(initialSourceSnapshot);
   let identitySignature = resolveIdentitySignature(initialSourceSnapshot);
   let rootSignature = resolveRootSignature(initialSourceSnapshot);
-  let displaySignature = resolveDisplaySignature(initialSourceSnapshot);
   let pollsVisibilitySignature = resolvePollsVisibilitySignature(initialSourceSnapshot);
   let sheetHostSurfaceSignature = resolveSheetHostSurfaceSignature(initialSourceSnapshot);
   let chromeModeSignature = resolveChromeModeSignature(initialSourceSnapshot);
@@ -711,17 +684,13 @@ export const createAppRouteNativeOverlayTargetAuthorities = ({
     if (displaySharedValueTargets.size === 0) {
       return;
     }
-    const activeTabIndex = resolveRouteOverlayBottomNavIndex(snapshot.displayedRootOverlayKey);
-    const targetsToSync = [...displaySharedValueTargets].filter(
-      (target) => target.activeTabIndex !== activeTabIndex
-    );
-    if (targetsToSync.length === 0) {
-      return;
-    }
+    // F5400: the per-target `activeTabIndex` ledger is gone with the four dead fields. The
+    // lane's own dedupe (one Object.is on the number, at the recompute) already means this
+    // runs only when the index actually changed; the second ledger existed to filter a
+    // five-field snapshot whose other four fields moved without moving the index.
     withSearchNavSwitchRuntimeAttribution('nativeOverlayTargets', operation, () => {
-      targetsToSync.forEach((target) => {
+      displaySharedValueTargets.forEach((target) => {
         syncRouteOverlayDisplaySharedValues(target.values, snapshot);
-        target.activeTabIndex = activeTabIndex;
       });
     });
   };
@@ -911,16 +880,16 @@ export const createAppRouteNativeOverlayTargetAuthorities = ({
             return;
           }
           case 'display': {
-            const nextSignature = resolveDisplaySignature(sourceSnapshot);
-            if (areOutputSignaturesEqual(displaySignature, nextSignature)) {
+            // F5400: one integer, one comparison. The signature layer (a four-element tuple,
+            // three of whose elements fed fields nobody read) and the five-field snapshot
+            // comparator behind it both deleted — they were two dedupe stages guarding a
+            // single number.
+            const nextSnapshot = resolveDisplaySnapshot(sourceSnapshot);
+            if (Object.is(displaySnapshot.activeTabIndex, nextSnapshot.activeTabIndex)) {
               return;
             }
-            const nextSnapshot = resolveDisplaySnapshot(sourceSnapshot);
-            displaySignature = nextSignature;
-            if (!areDisplaySnapshotsEqual(displaySnapshot, nextSnapshot)) {
-              displaySnapshot = nextSnapshot;
-              syncDisplaySharedValueTargets(nextSnapshot, `syncDisplaySharedValues:${source}`);
-            }
+            displaySnapshot = nextSnapshot;
+            syncDisplaySharedValueTargets(nextSnapshot, `syncDisplaySharedValues:${source}`);
             return;
           }
           case 'pollsVisibility': {
@@ -1108,10 +1077,7 @@ export const createAppRouteNativeOverlayTargetAuthorities = ({
     routeOverlayDisplayAuthority: {
       getSnapshot: () => displaySnapshot,
       registerSharedValues: (values) => {
-        const target: DisplaySharedValueTarget = {
-          values,
-          activeTabIndex: null,
-        };
+        const target: DisplaySharedValueTarget = { values };
         displaySharedValueTargets.add(target);
         syncDisplaySharedValueTargets(displaySnapshot, 'syncDisplaySharedValues:register');
         return () => {
