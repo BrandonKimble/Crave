@@ -3111,3 +3111,47 @@ fold-in. A design's approval covers the defect it names, not its neighbors.
 
 Remaining to full coverage: the ~40 assembly hooks + 3 large files (F6208), this batch's
 residuals (F6300, F6211(c)), then the two consecutive clean passes.
+
+---
+
+## D106 — P2 verdicts on the last-coverage P1 (F6400–F6409, 2026-08-07)
+
+**F6407 — APPROVED, JUMPS THE QUEUE. Dietary filters do not survive a relaunch, and the
+drift instrument is blind by construction.** The mirror's value-guard enumerates six of
+seven fields, omitting `dietary`; the one write site sits behind that guard; and the
+`__DEV__` drift contract cannot report it because the early return skips BOTH the store
+write and the `lastMirrored` baseline — the two values it compares stay in perfect
+agreement while both go stale. Green precisely because the bug happened: the purest
+specimen of this exercise's thesis, found on the final coverage lane. The rederivation is
+the D93/F6407-stated one: the guard is DERIVED FROM the record type (keyof enumeration),
+so omitting a field is unwritable — and F6409(e)'s sibling (`selectLensRequestFields`,
+same disease one dimension over) lands in the same commit. Note for the ledger: this is
+CLIENT persistence, engineering — distinct from the F2601 server-policy escalation, which
+stays with the owner.
+
+**F6401 — APPROVED.** An unsatisfiable predicate whose `pass("proved shared sheet/nav
+motion-plane descent")` has NEVER been earned — both producers hardcode the other
+literal, three sibling sites have the correct one. Fix the literal, and the contract must
+then actually run RED-able (prove it can fail before trusting its pass).
+
+**F6400/F6406 — APPROVED TOGETHER: the delete-gate's own rot.** An unemittable union
+member policed by a 260-char proximity pattern spanning 77 lines, green since written —
+inside a gate whose header says proximity assertions are "what rotted." F6400(b) proves
+one already retired silently. The fix honors the header: unemittable member deleted with
+its four payload restatements (two byte-identical under different names); the proximity
+CONTENT_CHECKS convert to the negative-only form the gate's own doctrine demands, or die.
+
+**F6404/F6405 — APPROVED.** Six styles whose whole body sets a default and three
+expressing a distinction that does not render — deleted (the "does it do anything" question
+now joins the orphan question in future sweeps); the mid-slide law's LAND half gets its
+assertion (the defer half alone is half a law), with the `stillPending == null` arm
+exercised.
+
+**F6408 — held to its own NEXT ACTION:** the delegated map-controller claims are filed,
+NOT attributed; the 2,764-line file gets a first-hand read before any edit. CLAUDE.md's
+attribution law, applied by the lane to its own delegates.
+
+**The honest remainder is accepted as the coverage map's final state before residuals:**
+62 UNREVIEWED with reasons (25 of them a nav-overlays block never assigned to any lane —
+the LAST P1 dispatch), 916 PARTIAL (61 deliberately marking delegated breadth as
+unattributed), 34 NEEDS-TRIAGE, 5 OWNER-DECISION.
