@@ -1,6 +1,15 @@
 import React from 'react';
 import { unstable_batchedUpdates } from 'react-native';
 
+// LEG-4 NOTE (plans/toggle-strip-rebuild-ledger.md §Leg 4): the close-SEARCH-CLEANUP
+// runtime that used to be composed here was DELETED as dead code. Its schedule entry
+// point lost its last caller in 9fa642d7 (the S-C.5 close rebuild): every dismissal
+// shape now reaches `clearSearchState` — a strict superset of the old cleanup body —
+// either directly (motionless pop exits) or via `finalizeCloseSearch` (terminal home
+// dismissals). A cleanup hook that can never fire is a latent-bug factory, not a
+// safety net. (F5303: the comment moved here from the deleted
+// use-results-presentation-close-transition-runtime wrapper, which composed it.)
+
 import {
   isPerfScenarioAttributionActive,
   logPerfScenarioAttributionEvent,

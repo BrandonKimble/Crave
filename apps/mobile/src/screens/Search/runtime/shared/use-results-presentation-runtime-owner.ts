@@ -13,7 +13,7 @@ import type { ResultsPresentationPolicyFactsLaneChange } from './results-present
 import { useResultsPresentationOwnerBridgeRuntime } from './use-results-presentation-owner-bridge-runtime';
 import { useResultsPresentationShellRuntime } from './use-results-presentation-shell-runtime';
 import { publishResultsPresentationCloseTransitionBridgeRuntime } from './publish-results-presentation-close-transition-bridge-runtime';
-import { useResultsPresentationCloseTransitionRuntime } from './use-results-presentation-close-transition-runtime';
+import { useResultsPresentationCloseTransitionStateRuntime } from './use-results-presentation-close-transition-state-runtime';
 import { useResultsPresentationOwnerPresentationActionsRuntime } from './use-results-presentation-owner-presentation-actions-runtime';
 import { createResultsPresentationOwnerValue } from '../controller/results-presentation-owner-runtime';
 export type {
@@ -123,7 +123,7 @@ export const useResultsPresentationOwner = ({
   // Leg 4: the dead close-search-cleanup runtime's arg fan (bus, request/autocomplete
   // cancels, input setters, inputRef) is gone with it — the close chain needs exactly
   // these three inputs.
-  const closeTransitionRuntime = useResultsPresentationCloseTransitionRuntime({
+  const closeTransitionRuntime = useResultsPresentationCloseTransitionStateRuntime({
     clearSearchState,
     shellLocalState: shellStateRuntime.shellLocalState,
     routeSceneVisibilityPolicyRuntime,
