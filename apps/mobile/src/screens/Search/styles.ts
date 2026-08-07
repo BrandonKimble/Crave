@@ -214,10 +214,6 @@ const styles = StyleSheet.create({
     right: 0,
     backgroundColor: '#ffffff',
   },
-  searchSurfaceContent: {
-    paddingHorizontal: 0,
-    paddingVertical: 0,
-  },
   autocompleteSectionSurface: {
     paddingHorizontal: 14,
     paddingVertical: 10,
@@ -334,9 +330,6 @@ const styles = StyleSheet.create({
   },
   navLabelActive: {
     color: ACTIVE_TAB_COLOR,
-  },
-  scoreInfoIconButton: {
-    padding: 0,
   },
   scoreInfoContent: {
     gap: 12,
@@ -653,9 +646,6 @@ const styles = StyleSheet.create({
     gap: CARD_LINE_GAP,
     maxWidth: '100%',
   },
-  titleRowWithActions: {
-    paddingRight: 0,
-  },
   rankBadge: {
     width: RANK_BADGE_WIDTH,
     height: 30,
@@ -683,12 +673,6 @@ const styles = StyleSheet.create({
     color: '#9ca3af',
     letterSpacing: 0.2,
   },
-  resultMetaLine: {
-    marginTop: 0,
-  },
-  dishMetaLineFirst: {
-    marginTop: 0,
-  },
   metricBlock: {
     marginTop: 0,
     marginBottom: 0,
@@ -715,9 +699,6 @@ const styles = StyleSheet.create({
   },
   metricValue: {
     color: themeColors.textPrimary,
-  },
-  metricSupportRow: {
-    marginTop: 0,
   },
   restaurantMetricRow: {
     flexDirection: 'row',

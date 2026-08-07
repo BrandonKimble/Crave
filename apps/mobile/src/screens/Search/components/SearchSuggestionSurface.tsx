@@ -139,7 +139,6 @@ const SearchSuggestionSurface = ({
             : null,
         ]}
         contentContainerStyle={[
-          styles.searchSurfaceContent,
           {
             paddingTop: shouldDriveSuggestionLayout ? 0 : searchLayoutTop + searchLayoutHeight + 8,
             paddingBottom: shouldDriveSuggestionLayout

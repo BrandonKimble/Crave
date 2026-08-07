@@ -193,7 +193,7 @@ const DishResultCard: React.FC<DishResultCardProps> = ({
       >
         <View style={styles.resultHeader}>
           <View style={styles.resultTitleContainer}>
-            <View style={[styles.titleRow, styles.titleRowWithActions]}>
+            <View style={styles.titleRow}>
               <View style={[styles.rankBadge, { backgroundColor: qualityColor }]}>
                 <Text
                   variant="body"
@@ -235,7 +235,6 @@ const DishResultCard: React.FC<DishResultCardProps> = ({
                   ) : null}
                   <TouchableOpacity
                     onPress={handleDishInfoPress}
-                    style={styles.scoreInfoIconButton}
                     hitSlop={8}
                     accessibilityRole="button"
                     accessibilityLabel="How dish ratings are calculated"
@@ -244,14 +243,8 @@ const DishResultCard: React.FC<DishResultCardProps> = ({
                   </TouchableOpacity>
                 </View>
               </View>
-              {dishMetaPrimaryLine ? (
-                <View style={styles.resultMetaLine}>{dishMetaPrimaryLine}</View>
-              ) : null}
-              {dishStatusLine ? (
-                <View style={[styles.resultMetaLine, styles.dishMetaLineFirst]}>
-                  {dishStatusLine}
-                </View>
-              ) : null}
+              {dishMetaPrimaryLine ? <View>{dishMetaPrimaryLine}</View> : null}
+              {dishStatusLine ? <View>{dishStatusLine}</View> : null}
               {item.exactMatch === false ? (
                 <Text variant="caption" style={styles.similarMatchLabel}>
                   Similar match

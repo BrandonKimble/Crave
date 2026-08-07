@@ -374,7 +374,7 @@ const RestaurantResultCard: React.FC<RestaurantResultCardProps> = ({
       >
         <View style={styles.resultHeader}>
           <View style={styles.resultTitleContainer}>
-            <View style={[styles.titleRow, styles.titleRowWithActions]}>
+            <View style={styles.titleRow}>
               <View style={[styles.rankBadge, { backgroundColor: qualityColor }]}>
                 <Text variant="body" style={[styles.rankBadgeText, { fontSize: rankFontSize }]}>
                   {rankLabel}
@@ -403,7 +403,7 @@ const RestaurantResultCard: React.FC<RestaurantResultCardProps> = ({
               ) : null}
               {craveScoreValue !== null && craveScoreValue !== undefined ? (
                 <View style={styles.metricBlock}>
-                  <View style={[styles.restaurantMetricRow, styles.metricSupportRow]}>
+                  <View style={styles.restaurantMetricRow}>
                     <View style={styles.restaurantMetricLeft}>
                       {STORE_ICON}
                       <CraveScoreText
@@ -423,7 +423,6 @@ const RestaurantResultCard: React.FC<RestaurantResultCardProps> = ({
                       ) : null}
                       <TouchableOpacity
                         onPress={handleRestaurantInfoPress}
-                        style={styles.scoreInfoIconButton}
                         hitSlop={8}
                         accessibilityRole="button"
                         accessibilityLabel="How restaurant ratings are calculated"
@@ -546,9 +545,7 @@ const RestaurantResultCard: React.FC<RestaurantResultCardProps> = ({
                   </View>
                 </View>
               ) : null}
-              {restaurantStatusLine ? (
-                <View style={styles.resultMetaLine}>{restaurantStatusLine}</View>
-              ) : null}
+              {restaurantStatusLine ? <View>{restaurantStatusLine}</View> : null}
             </View>
           </View>
         </View>
