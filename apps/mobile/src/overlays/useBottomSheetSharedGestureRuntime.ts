@@ -44,7 +44,6 @@ type GestureStateManagerLike = {
 export const OVERSCROLL_REBOUND_SPRING = { mass: 1, stiffness: 170, damping: 26 } as const;
 
 type UseBottomSheetSharedGestureRuntimeArgs = {
-  gestureEnabled: boolean;
   /** Boundary-physics law: the runtime-owned overscroll value + the active list's max
    *  interior offset (the atBottom fact). */
   contentOverscroll: SharedValue<number>;
@@ -94,7 +93,6 @@ type UseBottomSheetSharedGestureRuntimeArgs = {
 };
 
 export const useBottomSheetSharedGestureRuntime = ({
-  gestureEnabled,
   contentOverscroll,
   maxScrollOffset,
   scrollViewportHeight,
@@ -135,7 +133,17 @@ export const useBottomSheetSharedGestureRuntime = ({
   startSpring,
   runtimeConfigValues,
 }: UseBottomSheetSharedGestureRuntimeArgs) => {
-  const ownedGestureEnabledValue = useSharedValue(gestureEnabled ? 1 : 0);
+  // F4505: seeded from the AUTHORITY, like its five siblings below. It used to seed
+  // from a raw `gestureEnabled` prop computed in JS as `visible && interactionEnabled`
+  // from the CALLER's props, while `runtimeConfigValues.gestureEnabled` is seeded from
+  // `runtimeConfigAuthority.getSnapshot()` — and the search route ALWAYS supplies an
+  // authority. Two sources computed from different snapshots can disagree at mount, and
+  // every pan worklet gates on this mirror, so a disagreement meant the pans were
+  // enabled or disabled against the wrong snapshot until the animated reaction's first
+  // callback corrected it. The prop is DELETED, not just bypassed: with no second source
+  // left to reach for, seeding this from the wrong one is inexpressible here — the same
+  // closure F1476b achieved for the other five.
+  const ownedGestureEnabledValue = useSharedValue(runtimeConfigValues.gestureEnabled.value);
   // Immutable-pan law: the pans read ONLY the owned SV; config syncs into it below.
   const gestureEnabledValue = ownedGestureEnabledValue;
   // MOUNT-STABLE PANS (red team 2 root-cause fix): the snap-number props change per

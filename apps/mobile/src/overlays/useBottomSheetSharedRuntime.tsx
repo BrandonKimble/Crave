@@ -258,7 +258,6 @@ export const useBottomSheetSharedRuntime = ({
   const currentSnapKeyRef = React.useRef<BottomSheetSnap>(
     visible ? initialSnapPoint : hiddenSnap !== undefined ? 'hidden' : 'collapsed'
   );
-  const gestureEnabled = visible && interactionEnabled;
   const expandTouchInHeader = useSharedValue(false);
   const expandGestureOwner = useSharedValue(0);
   const expandHandoffLocked = useSharedValue(false);
@@ -387,7 +386,6 @@ export const useBottomSheetSharedRuntime = ({
   });
 
   const gestures = useBottomSheetSharedGestureRuntime({
-    gestureEnabled,
     contentOverscroll,
     maxScrollOffset,
     scrollViewportHeight,
