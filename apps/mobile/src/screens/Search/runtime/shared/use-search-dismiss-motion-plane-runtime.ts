@@ -37,7 +37,6 @@ const SEARCH_DISMISS_PROOF_EARLY_PROGRESS_MAX = 0.4;
 const SEARCH_DISMISS_PROOF_MID_PROGRESS_MIN = 0.4;
 const SEARCH_DISMISS_PROOF_MID_PROGRESS_MAX = 0.7;
 const SEARCH_DISMISS_COLLAPSED_BOUNDARY_EPSILON_PT = 1;
-const SEARCH_DISMISS_VISUAL_HANDOFF_PROGRESS_MIN = 0.8;
 const SEARCH_DISMISS_MOTION_BOUNDARY_TIMEOUT_MS = 420;
 
 const clamp01 = (value: number): number => {
@@ -93,13 +92,15 @@ type SearchSurfaceMotionPlaneSample = {
   sheetY: number;
   startSource: 'sharedValue' | 'visibleSnap' | 'cachedVisible';
   startY: number;
-  visualOwnerReleasedForBoundary: boolean;
-  visualHandoffThresholdProgress: number;
-  waitingForPollOwnerAtBoundary: boolean;
   waitingForPollPageAtBoundary: boolean;
 };
 
-type SearchDismissMotionProofStage = 'early_progress' | 'mid_progress' | 'late_progress' | 'motion';
+// F6400(a): a fourth member (the dense post-mid stage) was UNEMITTABLE and was deleted.
+// `shouldEmitProofEdge` admits only boundaryReached || early_progress || mid_progress, and
+// the resolver returns 'motion' whenever boundaryReached — so the attainable set is exactly
+// these three. A stage the instrument cannot emit is a claim about observations that never
+// happen. The delete gate now bans the old stage name outright.
+type SearchDismissMotionProofStage = 'early_progress' | 'mid_progress' | 'motion';
 
 type UseSearchDismissMotionPlaneRuntimeArgs = {
   sheetTranslateY: SharedValue<number>;
@@ -134,9 +135,6 @@ const resolveSearchDismissMotionProofStage = (
     progress <= SEARCH_DISMISS_PROOF_MID_PROGRESS_MAX
   ) {
     return 'mid_progress';
-  }
-  if (progress > SEARCH_DISMISS_PROOF_MID_PROGRESS_MAX) {
-    return 'late_progress';
   }
   return 'motion';
 };
@@ -228,7 +226,6 @@ export const useSearchDismissMotionPlaneRuntime = ({
         pollPageReadyForBoundary: sample.pollPageReadyForBoundary,
         pollPageReleasedForBoundary: sample.pollPageReleasedForBoundary,
         proofStage: sample.proofStage,
-        resultPageBundleFrozenUntilBoundary: !sample.boundaryReached,
         resultSheetSlidingDown: sample.progress > 0 && sample.progress < 1,
         sampleBucket: sample.sampleBucket,
         sheetMotionSource: 'routeSheetMotionCommandObservedBySearchSurfaceMotionPlane',
@@ -238,9 +235,6 @@ export const useSearchDismissMotionPlaneRuntime = ({
         startSource: sample.startSource,
         startY: sample.startY,
         transactionId: activeDismissTransactionIdRef.current,
-        visualOwnerReleasedForBoundary: sample.visualOwnerReleasedForBoundary,
-        visualHandoffThresholdProgress: sample.visualHandoffThresholdProgress,
-        waitingForPollOwnerAtBoundary: sample.waitingForPollOwnerAtBoundary,
         waitingForPollPageAtBoundary: sample.waitingForPollPageAtBoundary,
       });
       logPerfScenarioWorkSpan({
@@ -853,9 +847,6 @@ export const useSearchDismissMotionPlaneRuntime = ({
               ? ('visibleSnap' as const)
               : ('sharedValue' as const),
         startY: dismissMotionStartY.value,
-        visualOwnerReleasedForBoundary: boundaryReached,
-        visualHandoffThresholdProgress: SEARCH_DISMISS_VISUAL_HANDOFF_PROGRESS_MIN,
-        waitingForPollOwnerAtBoundary: dismissMotionWaitingForPollPageAtBoundary.value >= 0.5,
         waitingForPollPageAtBoundary: dismissMotionWaitingForPollPageAtBoundary.value >= 0.5,
       };
     },
@@ -869,7 +860,7 @@ export const useSearchDismissMotionPlaneRuntime = ({
         nextSample.pollPageReadyForBoundary === previousSample.pollPageReadyForBoundary &&
         nextSample.pollPageReleasedForBoundary === previousSample.pollPageReleasedForBoundary &&
         nextSample.proofStage === previousSample.proofStage &&
-        nextSample.waitingForPollOwnerAtBoundary === previousSample.waitingForPollOwnerAtBoundary
+        nextSample.waitingForPollPageAtBoundary === previousSample.waitingForPollPageAtBoundary
       ) {
         return;
       }
