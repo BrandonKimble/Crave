@@ -39,9 +39,7 @@ const SCENE_BODY_DATA_ACTIVITY_KEYS = new Set<AppRouteSceneInputKey>([
   'saveList',
 ]);
 
-export const isSceneBodyDataActivityKey = (
-  sceneKey: OverlayKey | null | undefined
-): boolean =>
+export const isSceneBodyDataActivityKey = (sceneKey: OverlayKey | null | undefined): boolean =>
   sceneKey != null && SCENE_BODY_DATA_ACTIVITY_KEYS.has(sceneKey as AppRouteSceneInputKey);
 
 export type AppRouteSceneInputSnapshot = {
@@ -103,6 +101,16 @@ export type AppRouteSceneInputActions = {
      * Omitted = preserve the previous stamp; explicit null = unstamp. */
     sceneBodyForEntryId?: string | null;
   }) => void;
+  // OMISSION SEMANTICS, stated once for the whole surface (F5410). `publishSceneBody` and
+  // `publishSceneDescriptor` take the same optional `sceneBodyAdmissionPolicy` and give
+  // omission OPPOSITE meanings, deliberately:
+  //   • publishSceneBody     — omitted PRESERVES, explicit null CLEARS (same as the stamp).
+  //     A body publish is a partial update; it must be able to leave the policy alone.
+  //   • publishSceneDescriptor — omitted RESETS to null. A descriptor publish is a WHOLE
+  //     descriptor, so anything the caller did not state is genuinely absent (it resets the
+  //     entry stamp for the same reason).
+  // Only the descriptor's stamp reset used to be documented; the policy reset was not, and
+  // publishSceneBody's preserve arm did not actually work.
   clearSceneShell: (sceneKey: AppRouteSceneInputKey) => void;
   clearSceneChrome: (sceneKey: AppRouteSceneInputKey) => void;
   clearSceneBody: (sceneKey: AppRouteSceneInputKey) => void;
@@ -286,7 +294,9 @@ export class AppRouteSceneInputController {
 
     // Descriptor publishes are UNSTAMPED (whole-descriptor writers predate the
     // entry stamp); a leftover stamp from an earlier stamped body publish must
-    // not outlive the body it stamped.
+    // not outlive the body it stamped. The `= null` default on
+    // `sceneBodyAdmissionPolicy` above resets the policy for the same reason — a whole
+    // descriptor states everything it wants, so an unstated policy is an absent one.
     const didStampReset = previousSceneInput.sceneBodyForEntryId != null;
 
     if (
@@ -395,8 +405,17 @@ export class AppRouteSceneInputController {
       previousSceneInput.sceneBodyTransport,
       sceneBodyTransport
     );
+    // F5410 — `=== undefined`, not `??`. This read `sceneBodyAdmissionPolicy ?? previous`,
+    // which cannot answer the question a preserve-or-clear API asks: `??` answers "is this
+    // nullish", and `null ?? previous` IS `previous`. So a caller could not CLEAR the
+    // admission policy through this verb — an explicit null was indistinguishable from
+    // omission, and the policy survived every subsequent body publish until clearSceneBody /
+    // clearSceneInput ran. The correct discrimination sat eight lines below, on the entry
+    // stamp, with a comment explaining exactly why it matters.
     const nextBodyAdmissionPolicy =
-      sceneBodyAdmissionPolicy ?? previousSceneInput.sceneBodyAdmissionPolicy;
+      sceneBodyAdmissionPolicy === undefined
+        ? previousSceneInput.sceneBodyAdmissionPolicy
+        : sceneBodyAdmissionPolicy;
     const didBodyAdmissionPolicyChange = !areAppRouteSceneBodyAdmissionPoliciesEqual(
       previousSceneInput.sceneBodyAdmissionPolicy,
       nextBodyAdmissionPolicy
@@ -518,7 +537,6 @@ export class AppRouteSceneInputController {
     this.notifySceneLane(sceneKey, 'chrome');
     this.notifySceneLane(sceneKey, 'body');
   }
-
 }
 
 export const createAppRouteSceneInputController = (): AppRouteSceneInputController =>
