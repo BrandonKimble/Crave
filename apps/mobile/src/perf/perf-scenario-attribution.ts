@@ -67,6 +67,19 @@ export const clearActivePerfScenarioSearchThisAreaSubmitId = (submitId: string):
   }
 };
 
+/**
+ * The keys `withPerfScenarioMetadata` injects into EVERY payload. They are the
+ * line's identity — which run, which request, when — and they are named here
+ * because the quiet projection has to know not to treat them as payload (F3705).
+ */
+const PERF_SCENARIO_METADATA_KEYS = [
+  'emittedAtMs',
+  'scenarioName',
+  'scenarioRunId',
+  'requestId',
+  'signature',
+] as const;
+
 export const withPerfScenarioMetadata = (
   config: RuntimePerfScenarioConfig,
   payload: Record<string, unknown>
@@ -869,6 +882,23 @@ const pickPayloadFields = (
 ): Record<string, unknown> => {
   const next: Record<string, unknown> = {};
   const unlisted: string[] = [];
+  // F3705 (2026-08-06): THE PROMISE ABOVE WAS FALSE FOR EVERY LINE EVER EMITTED.
+  // `logPerfScenarioAttributionEvent` calls `withPerfScenarioMetadata` FIRST, so
+  // compaction runs over an already-enriched payload — and not one of the ~50
+  // allowlists contains `emittedAtMs`/`scenarioName`/`scenarioRunId`/`requestId`/
+  // `signature`. So `quietDroppedFields` fired on EVERY quiet line with the same
+  // five names, which is a noise FLOOR: a genuinely dropped field was
+  // indistinguishable from the permanent hum, and the "a healthy line is
+  // byte-identical to before" claim was never true. Worse, the compacted buffered
+  // lines LOST their scenarioRunId and signature and could not be correlated to a
+  // run at all, while the aggregate path re-attached metadata — the two flush paths
+  // disagreed. Metadata is the line's IDENTITY, not payload: it is kept implicitly,
+  // and an allowlist never has to list it.
+  PERF_SCENARIO_METADATA_KEYS.forEach((key) => {
+    if (key in payload) {
+      next[key] = payload[key];
+    }
+  });
   fields.forEach((field) => {
     if (field in payload) {
       next[field] = payload[field];
@@ -1163,7 +1193,11 @@ export const flushPerfScenarioStackAttributionAggregates = (
     event: 'scenario_work_span',
     owner: 'quiet_measured_loop_stack_attribution_summary',
     path: reason,
-    durationMs: 0,
+    // F3705: `durationMs: 0` was hardcoded here and below — a duration that can
+    // only ever be zero is not a measurement, and it POISONED the aggregate:
+    // `durationMs >= current.maxDurationMs` against an initial 0 let a span that
+    // measured nothing claim the "worst sample" slot. A span with no duration now
+    // says so by omitting the field, which the aggregator already reads as absent.
     aggregateCount: aggregates.length,
     aggregates,
   });
@@ -1191,7 +1225,7 @@ export const logPerfScenarioStackAttribution = ({
     event: 'scenario_work_span',
     owner,
     path,
-    durationMs: 0,
+    // F3705: see above — a stack attribution has no duration; it had a zero.
     stack: capturePerfScenarioStack(),
     ...(details ?? null),
   });

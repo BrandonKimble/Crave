@@ -1015,6 +1015,19 @@ export const PerfScenarioCoordinator: React.FC = () => {
     }
 
     const timeoutHandle = setTimeout(() => {
+      // F3706 (2026-08-06): AN ARM AND ITS DISARM BELONG TO THE SAME LIFETIME.
+      // The Hermes profiler was armed on ONE path (`measured_repeat_loop_start`)
+      // and disarmed on two hand-picked verbs, NEITHER of which is a default
+      // exit. The default scenario duration is 60s, so THIS — the ordinary end of
+      // a run — was the path that leaked, and it LATCHED: `activeSession` stayed
+      // non-null, every later start took the `already_active` branch, and the
+      // instrument silently stopped instrumenting after the first timed-out
+      // scenario. Every path that ends a scenario disarms it now.
+      stopPerfScenarioHermesSamplingProfiler({
+        config: activeConfig,
+        reason: 'scenario_sampling_duration_elapsed',
+        logEvent: (payload) => logScenarioEvent(withScenarioMetadata(activeConfig, payload)),
+      });
       flushPerfScenarioStackAttributionAggregates(
         activeConfig,
         'scenario_sampling_duration_elapsed'
@@ -1033,6 +1046,18 @@ export const PerfScenarioCoordinator: React.FC = () => {
 
     return () => {
       clearTimeout(timeoutHandle);
+      // F3706: the other default exit — unmount, or the config being replaced.
+      // The three samplers were already stopped here via `stopCallbacks`; the
+      // profiler was not, because it is started from a deep-link handler outside
+      // this effect and so never joined that array. It joins the same LIFETIME
+      // instead, which is the property that actually matters. (Stopping a
+      // profiler that is not running is a logged no-op, so the double-stop when a
+      // scenario ends by `scenario_clear` costs one status line.)
+      stopPerfScenarioHermesSamplingProfiler({
+        config: activeConfig,
+        reason: 'scenario_sampling_stopped',
+        logEvent: (payload) => logScenarioEvent(withScenarioMetadata(activeConfig, payload)),
+      });
       flushPerfScenarioStackAttributionAggregates(activeConfig, 'scenario_sampling_stopped');
       flushPerfScenarioAttributionEventBuffer(activeConfig, 'scenario_sampling_stopped');
       flushBufferedSamplerEvents(activeConfig, 'scenario_sampling_stopped');

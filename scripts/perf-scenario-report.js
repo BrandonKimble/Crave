@@ -1751,6 +1751,66 @@ if (measuredRepeatLoopRange) {
     : null;
 }
 
+/**
+ * F3705 (2026-08-06) — THE HONESTY FIELDS FINALLY HAVE A READER.
+ *
+ * F850/F852 taught the emitter to say whether the UI frame sampler actually
+ * ATTACHED and whether the JS frame sampler's rAF loop ever produced a window.
+ * The values became honest and nothing on earth compared them to anything:
+ * `grep -rl` for each of `uiFrameSamplerAttached`, `uiFrameSamplerAttachFailure`
+ * and `jsFrameSamplerLiveness` returned exactly two files — the emitting source,
+ * and the findings ledger. Not this script, not the parity contracts, not the
+ * visual contracts, not a maestro contract. So a run with `attached:false` and
+ * `windowsObserved:0` produced the same verdict as a perfect one, which is this
+ * repo's own "an always-green metric is lying" law half-executed: the emitter
+ * was fixed because the emitter was the file being looked at.
+ *
+ * The rule is the narrow one the fields state, and no wider. A sampler that was
+ * never REQUESTED is not a violation — it was off on purpose. A sampler that was
+ * requested and did not attach, or attached and observed nothing, means the
+ * numbers below are missing a channel, and a report that stays quiet about that
+ * is the instrument lying.
+ */
+const evaluateSamplerHonesty = (runScenarios) => {
+  const violations = [];
+  const started = runScenarios.filter((event) => event.event === 'scenario_sampling_started');
+  const stopped = runScenarios.filter((event) => event.event === 'scenario_sampling_stopped');
+
+  started.forEach((event) => {
+    if (event.uiFrameSamplerRequested === true && event.uiFrameSamplerAttached !== true) {
+      violations.push(
+        `line ${event.line}: the UI frame sampler was REQUESTED and did not attach ` +
+          `(uiFrameSamplerAttachFailure=${JSON.stringify(
+            event.uiFrameSamplerAttachFailure ?? null
+          )}, detail=${JSON.stringify(event.uiFrameSamplerAttachDetail ?? null)}). ` +
+          `Every uiFrame number in this report is missing that channel.`
+      );
+    }
+  });
+  stopped.forEach((event) => {
+    const liveness = event.jsFrameSamplerLiveness;
+    // null is the DISABLED fact, not a failure — F852 chose it deliberately.
+    if (liveness && Number(liveness.windowsObserved ?? 0) === 0) {
+      violations.push(
+        `line ${event.line}: the JS frame sampler was enabled and its rAF loop produced ` +
+          `ZERO windows (${JSON.stringify(liveness)}). This is the world the RED-only ` +
+          `channel cannot tell apart from "everything was perfect".`
+      );
+    }
+  });
+
+  return {
+    startedCount: started.length,
+    stoppedCount: stopped.length,
+    // NO-EMPTY-LOOP GREEN: a run that emitted neither event proves nothing, and
+    // saying "0 violations" about it would be the disease this check exists for.
+    evaluated: started.length > 0 || stopped.length > 0,
+    violations,
+  };
+};
+
+report.samplerHonesty = evaluateSamplerHonesty(currentRunScenarios);
+
 const serialized = `${JSON.stringify(report, null, 2)}\n`;
 if (outputPath) {
   fs.mkdirSync(path.dirname(outputPath), { recursive: true });
@@ -1771,4 +1831,20 @@ console.log(
 );
 if (outputPath) {
   console.log(`[perf-scenario-report] wrote ${outputPath}`);
+}
+
+if (report.samplerHonesty.violations.length > 0) {
+  // The report JSON is already written: the failure must not cost the artifact.
+  console.error(
+    '[perf-scenario-report] SAMPLER HONESTY FAILED — the samplers this report ' +
+      'summarises did not all run:\n' +
+      report.samplerHonesty.violations.map((v) => `  - ${v}`).join('\n')
+  );
+  process.exit(1);
+}
+if (!report.samplerHonesty.evaluated) {
+  console.log(
+    '[perf-scenario-report] samplerHonesty: NOT EVALUATED — this log carries no ' +
+      'scenario_sampling_started/stopped event, so nothing here asserts the samplers ran.'
+  );
 }

@@ -41,6 +41,16 @@ export const startPerfScenarioHermesSamplingProfiler = ({
   logEvent: (payload: Record<string, unknown>) => void;
 }): void => {
   if (!HERMES_PROFILE_ENABLED) {
+    // F3706: this used to return in silence, so an operator who mistyped
+    // EXPO_PUBLIC_PERF_SCENARIO_HERMES_PROFILE got a run indistinguishable from
+    // one that profiled — while every OTHER early return in this file logs a
+    // named status. Absence of a profile is a fact worth stating.
+    logEvent({
+      event: 'hermes_sampling_profile_disabled',
+      reason,
+      status: 'env_disabled',
+      envVar: 'EXPO_PUBLIC_PERF_SCENARIO_HERMES_PROFILE',
+    });
     return;
   }
   if (activeSession != null) {
@@ -104,6 +114,13 @@ export const stopPerfScenarioHermesSamplingProfiler = ({
   logEvent: (payload: Record<string, unknown>) => void;
 }): void => {
   if (!HERMES_PROFILE_ENABLED) {
+    // Symmetric with the start path (F3706): a named status, not silence.
+    logEvent({
+      event: 'hermes_sampling_profile_disabled',
+      reason,
+      status: 'env_disabled',
+      envVar: 'EXPO_PUBLIC_PERF_SCENARIO_HERMES_PROFILE',
+    });
     return;
   }
   const session = activeSession;
@@ -116,6 +133,20 @@ export const stopPerfScenarioHermesSamplingProfiler = ({
     return;
   }
   if (session.runId !== config.runId) {
+    // F3706: this used to return with the profiler STILL SAMPLING and
+    // `activeSession` still set — so every later start took the `already_active`
+    // branch and no subsequent run was ever profiled. A stale session from
+    // another run is not a reason to keep sampling for the process lifetime; it
+    // is a reason to disarm and say so. A profiler is not a passive probe: left
+    // on, it is a real cost paid by the thing being measured.
+    const staleHermesInternal = resolveHermesInternal();
+    let disarmError: string | null = null;
+    try {
+      staleHermesInternal?.disableSamplingProfiler?.();
+    } catch (error) {
+      disarmError = error instanceof Error ? error.message : String(error);
+    }
+    activeSession = null;
     logEvent({
       event: 'hermes_sampling_profile_stop_skipped',
       reason,
@@ -123,6 +154,8 @@ export const stopPerfScenarioHermesSamplingProfiler = ({
       activeRunId: session.runId,
       requestedRunId: config.runId,
       filePath: session.filePath,
+      disarmed: disarmError == null,
+      disarmError,
     });
     return;
   }
@@ -139,12 +172,19 @@ export const stopPerfScenarioHermesSamplingProfiler = ({
       filePath: session.filePath,
       durationMs,
       hasDisableApi: typeof hermesInternal?.disableSamplingProfiler === 'function',
+      // F3706: the dump is guarded by TWO optional chains, so a vanished API is a
+      // silent no-op and this line then reports a `filePath` that does not exist.
+      // The one API whose absence destroys the artifact was the one not reported.
+      hasDumpApi: typeof hermesInternal?.dumpSampledTraceToFile === 'function',
     });
   } catch (error) {
+    // F3706: this catch was EMPTY, so a throw here left the profiler ON and said
+    // nothing — the failure that matters most, reported least.
+    let disarmError: string | null = null;
     try {
       hermesInternal?.disableSamplingProfiler?.();
-    } catch {
-      // Best effort: keep the failure focused on the dump path.
+    } catch (disarmFailure) {
+      disarmError = disarmFailure instanceof Error ? disarmFailure.message : String(disarmFailure);
     }
     activeSession = null;
     logEvent({
@@ -153,6 +193,9 @@ export const stopPerfScenarioHermesSamplingProfiler = ({
       filePath: session.filePath,
       durationMs,
       message: error instanceof Error ? error.message : String(error),
+      disarmed: disarmError == null,
+      disarmError,
+      hasDumpApi: typeof hermesInternal?.dumpSampledTraceToFile === 'function',
       availableKeys: resolveHermesKeys(hermesInternal),
     });
   }
