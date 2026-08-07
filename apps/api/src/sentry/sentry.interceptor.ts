@@ -27,6 +27,14 @@ export class SentryInterceptor implements NestInterceptor {
     const request = context.switchToHttp().getRequest<AuthenticatedRequest>();
     const { method, url } = request;
 
+    // F2221: NEVER ship the raw url — it carries the query string (and thus any
+    // `?token=…`/free-text params) into Sentry as a span attribute and an error
+    // breadcrumb, the one place the deliberate `normalizeUrl` query-strip is
+    // bypassed. Normalize ONCE here and use it everywhere below. (Defense in
+    // depth on the tracing path — `beforeSendTransaction`/`beforeSendSpan` in
+    // main.ts's Sentry.init — is the belt to this suspenders.)
+    const safeUrl = this.normalizeUrl(url);
+
     // User context = the opaque userId ONLY (support lookup key) — never
     // email or any other PII.
     if (request.user) {
@@ -36,11 +44,11 @@ export class SentryInterceptor implements NestInterceptor {
     // Start a span for this request
     return Sentry.startSpan(
       {
-        name: `${method} ${this.normalizeUrl(url)}`,
+        name: `${method} ${safeUrl}`,
         op: 'http.server',
         attributes: {
           'http.method': method,
-          'http.url': url,
+          'http.url': safeUrl,
         },
       },
       () => {
@@ -50,7 +58,7 @@ export class SentryInterceptor implements NestInterceptor {
               // Errors are captured by the filter, but we can add breadcrumbs
               Sentry.addBreadcrumb({
                 category: 'http',
-                message: `${method} ${url} failed`,
+                message: `${method} ${safeUrl} failed`,
                 level: 'error',
                 data: {
                   error:

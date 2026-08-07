@@ -226,10 +226,12 @@ describe('SpendAnalyticsService.refreshUnitCosts (§24.2 Leg A)', () => {
 
     // No fabricated $-per-call rate for vendors with no price table.
     expect(
-      rows.find((r) => r.workClass === 'unattributed.tomtom'),
+      rows.find((r) => (r.workClass as string) === 'unattributed.tomtom'),
     ).toBeUndefined();
     expect(
-      rows.find((r) => r.workClass === 'unattributed.google_places'),
+      rows.find(
+        (r) => (r.workClass as string) === 'unattributed.google_places',
+      ),
     ).toBeUndefined();
   });
 
@@ -300,7 +302,9 @@ describe('SpendAnalyticsService.refreshUnitCosts (§24.2 Leg A)', () => {
     expect(tomtomRow).toBeDefined();
     expect(tomtomRow!.sampleUnits).toBe(12);
     expect(tomtomRow!.microUsdPerUnit).toBe(3_240);
-    expect(rows.some((r) => r.workClass === 'tomtom.searchFamily')).toBe(false);
+    expect(
+      rows.some((r) => (r.workClass as string) === 'tomtom.searchFamily'),
+    ).toBe(false);
 
     const essentialsRow = rows.find(
       (r) => r.workClass === 'google_places.essentials',
@@ -332,10 +336,12 @@ describe('SpendAnalyticsService.refreshUnitCosts (§24.2 Leg A)', () => {
 
     // The old zero-priced unattributed rows are gone.
     expect(
-      rows.find((r) => r.workClass === 'unattributed.tomtom'),
+      rows.find((r) => (r.workClass as string) === 'unattributed.tomtom'),
     ).toBeUndefined();
     expect(
-      rows.find((r) => r.workClass === 'unattributed.google_places'),
+      rows.find(
+        (r) => (r.workClass as string) === 'unattributed.google_places',
+      ),
     ).toBeUndefined();
   });
 

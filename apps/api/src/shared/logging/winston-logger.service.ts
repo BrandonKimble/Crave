@@ -9,7 +9,7 @@ import {
 } from '../types/error-interfaces';
 import { LoggerService, LogMetadata } from './logger.interface';
 import { createWinstonConfig } from './winston.config';
-import { isSensitiveKey } from './redaction';
+import { redactSensitiveDeep } from './redaction';
 
 @Injectable()
 export class WinstonLoggerService extends LoggerService {
@@ -258,64 +258,27 @@ export class WinstonLoggerService extends LoggerService {
       merged.context = this.contextName;
     }
 
-    // F416: was an EXACT-key-match denylist (`password`/`token`/`secret`/
-    // `key`/`authorization`/`cookie`/`session`) — `apiKey`, `accessToken`,
-    // `clientSecret`, `sessionId` etc. all passed through verbatim.
-    // Case-insensitive substring match catches the whole family.
-    Object.keys(merged).forEach((field) => {
-      if (isSensitiveKey(field)) {
-        merged[field] = '[REDACTED]';
-      }
-    });
+    // F2603: was a hand-rolled recursion (`sanitizeNestedObject`) with NO
+    // depth/cycle guard — a self-referential or deep object (a Fastify
+    // request/reply, a Prisma client, an Axios error passed as `{ context }`)
+    // stack-overflowed OUT of the logger into the caller, aborting the very
+    // request the log line was describing. `redactSensitiveDeep` (F416) is the
+    // one shared redactor and is depth-limited (32) precisely so "logging must
+    // never be the reason a request hangs". Same key vocabulary
+    // (`isSensitiveKey` substring match: `apiKey`/`accessToken`/`clientSecret`/
+    // `sessionId` …) — this just adopts the bounded implementation.
+    const redacted = redactSensitiveDeep(merged) as Record<string, unknown>;
 
-    Object.keys(merged).forEach((key) => {
-      const value = merged[key];
+    // Winston's historical null/undefined TOP-LEVEL key-drop, kept as a thin
+    // post-pass: nested nulls are preserved by redactSensitiveDeep, but the
+    // top-level metadata bag stays free of empty keys as before.
+    for (const key of Object.keys(redacted)) {
+      const value = redacted[key];
       if (value === undefined || value === null) {
-        delete merged[key];
-        return;
+        delete redacted[key];
       }
-
-      if (typeof value === 'object') {
-        merged[key] = this.sanitizeNestedObject(value);
-      }
-    });
-
-    return Object.keys(merged).length > 0 ? merged : undefined;
-  }
-
-  private sanitizeNestedObject(obj: unknown): unknown {
-    if (Array.isArray(obj)) {
-      return obj.map((item): unknown =>
-        typeof item === 'object' && item !== null
-          ? this.sanitizeNestedObject(item)
-          : item,
-      );
     }
 
-    if (typeof obj !== 'object' || obj === null) {
-      return obj;
-    }
-
-    const sanitized = { ...(obj as Record<string, unknown>) };
-
-    Object.keys(sanitized).forEach((field) => {
-      if (isSensitiveKey(field)) {
-        sanitized[field] = '[REDACTED]';
-      }
-    });
-
-    Object.keys(sanitized).forEach((key) => {
-      const value = sanitized[key];
-      if (value === undefined || value === null) {
-        delete sanitized[key];
-        return;
-      }
-
-      if (typeof value === 'object') {
-        sanitized[key] = this.sanitizeNestedObject(value);
-      }
-    });
-
-    return sanitized as Record<string, unknown>;
+    return Object.keys(redacted).length > 0 ? redacted : undefined;
   }
 }

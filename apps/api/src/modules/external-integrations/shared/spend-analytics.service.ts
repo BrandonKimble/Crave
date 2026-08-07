@@ -27,8 +27,35 @@ import { ReconciliationMultiplierService } from './reconciliation-multiplier.ser
  * (work_class 'unattributed.<service>') so spend is never silently lost —
  * mirroring gemini-pricing's unknown-model rule.
  */
+/**
+ * F2077: `workClass` is the DB compound key (`spend_unit_costs.workClass_unit`)
+ * that ops-summary reads back by exact literal — a bare `string` let a typo in
+ * a produced literal compile to a silently-orphaned ledger row (no match, no
+ * error, WRONG money — the "$118 summed the wrong column" class, one level up).
+ * The STATIC work classes are enumerated so a typo now reds tsc. The two tails
+ * fed straight from DB `string` columns — the tomtom `operation` column and the
+ * places `skuTier` column — are honest `${string}` template families: their
+ * vocabulary is not a closed source-of-truth union (no `TomtomOperation` type
+ * exists; skuTier is a nullable text column), so asserting a closed union there
+ * would require an unsafe cast that fakes a guarantee the schema doesn't give.
+ * The prefix vocabulary is still enforced for them.
+ */
+export type WorkClass =
+  | 'gemini.reddit_extraction'
+  | 'gemini.relevance_gate'
+  | 'gemini.embedding'
+  | 'gemini.interactive_pipeline'
+  | 'unattributed.gemini'
+  | 'pipeline.entities_per_kilodoc'
+  | 'google_places.enrichment'
+  | 'google_places.regrounding'
+  | 'backstop.gemini'
+  // DB-sourced tails (see note above): skuTier / operation are text columns.
+  | `google_places.${string}`
+  | `tomtomDraw.${string}`;
+
 export interface UnitCostRow {
-  workClass: string;
+  workClass: WorkClass;
   unit: string;
   microUsdPerUnit: number;
   sampleUnits: number;
@@ -73,7 +100,7 @@ const BACKSTOP_MULTIPLE = 3;
 
 /** work_class the derived gemini backstop is written under (spend_unit_costs,
  *  unit='month') — governance.service.ts reads this exact pair at boot. */
-const GEMINI_BACKSTOP_WORK_CLASS = 'backstop.gemini';
+const GEMINI_BACKSTOP_WORK_CLASS: WorkClass = 'backstop.gemini';
 
 /**
  * §24.4 item 6 replacement for the removed 80%-of-cap warn: warn when
