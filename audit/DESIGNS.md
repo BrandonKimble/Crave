@@ -2338,3 +2338,25 @@ Package B closed the display-name arc at NINE copies converted total (six this p
 widened selector caught a sixth the finding had not named), and F3701's share refusal is
 now a compile-time property (the old call site stopped compiling), which is stronger than
 the runtime refusal the comment had falsely credited.
+
+---
+
+## D86 — api P3 (F3000–F3003) ratified; wave complete (2026-08-06)
+
+Landed exactly per D71 under the new protocol (LANE_PATHS + `git commit --only`), and
+independently re-verified: places suite 167/167, invariants 20/39 all rejecting, both
+ledger gates green. The antimeridian parsers now preserve provider edge order with the
+consumer sweep done (places-catalog splits envelopes at the seam; the reconciler has
+crossesSeam — no min<=max assumption anywhere downstream); the throttled arm books the
+minute it lands in, with cascading holds; the fail-closed parse refuses boot naming the
+token and vocabulary; and the outage-guard scanner is dead, replaced by behavior proofs
+that hold the sleep accountable. Every mutation ran both directions, grep-confirmed.
+
+The interim places/ commits were ANOTHER session's work in unrelated regions; the lane
+verified its parser fix sat cleanly atop them and re-ran the suite after — the right
+paranoia. One owed item recorded on F3001's row: a DB audit for stored near-world-wide
+sub-country bboxes (data written while the parser was wrong) — an owner data check, since
+re-deriving stored rows touches data.
+
+Three entity-resolver COVERAGE rows went stale under that other session's commits and are
+reverted to UNREVIEWED — their re-review rides the next api wave.
