@@ -64,23 +64,43 @@ export class SearchQuerySuggestionService {
 
     const safeLimit = Math.max(1, Math.min(limit, 10));
 
-    try {
+    {
       const suggestionTextByKey = new Map<string, string>();
       const suggestionSourceByKey = new Map<string, QuerySuggestionSource>();
 
+      // F3807: THE CATCH IS PER-READ, NOT WHOLE-LANE. This method used to wrap
+      // its ENTIRE body in one `catch { return [] }`, so a bug anywhere in the
+      // selection or hydration logic degraded to a permanently-empty panel
+      // that is indistinguishable from "no matches" — and the service has no
+      // consumer that would notice (its only caller stubs it out in tests).
+      // Now each substrate READ degrades its own lane under a NAMED POLICY
+      // (the territory-scoping-fail-open shape), and a defect in the pure
+      // logic below throws honestly instead of being laundered into silence.
       const [personalRows, globalDemandRows] = await Promise.all([
         userId
-          ? this.loadPersonalQueryRows(
-              userId,
-              trimmed,
-              Math.max(safeLimit * 20, 100),
+          ? this.readLane(
+              'query-suggestion-personal-lane-fail-open',
+              prefix,
+              () =>
+                this.loadPersonalQueryRows(
+                  userId,
+                  trimmed,
+                  Math.max(safeLimit * 20, 100),
+                ),
             )
           : Promise.resolve([] as QuerySuggestionRow[]),
-        this.signalDemandRead.queryDemand({
-          prefix: trimmed,
-          windowDays: this.windowDays(),
-          limit: Math.max(safeLimit * 20, 100),
-        }),
+        this.readLane(
+          'query-suggestion-global-lane-fail-open',
+          prefix,
+          async () =>
+            (
+              await this.signalDemandRead.queryDemand({
+                prefix: trimmed,
+                windowDays: this.windowDays(),
+                limit: Math.max(safeLimit * 20, 100),
+              })
+            ).map((row) => this.toSuggestionRow(row)),
+        ),
       ]);
 
       const sortedPersonalRows = personalRows.sort((left, right) =>
@@ -93,9 +113,9 @@ export class SearchQuerySuggestionService {
       // (signals/subject-text-floor.ts), so a below-floor term never reaches
       // any caller. Re-adding a filter here would just be a second opinion
       // about a rule that has one home.
-      const sortedGlobalRows = globalDemandRows
-        .map((row) => this.toSuggestionRow(row))
-        .sort((left, right) => this.compareGlobalRows(left, right));
+      const sortedGlobalRows = globalDemandRows.sort((left, right) =>
+        this.compareGlobalRows(left, right),
+      );
 
       const selectedKeys: string[] = [];
       const selectedKeySet = new Set<string>();
@@ -108,7 +128,14 @@ export class SearchQuerySuggestionService {
         source: QuerySuggestionSource,
       ): boolean => {
         const value = row.query?.trim();
-        const key = row.queryKey?.trim();
+        // F3807 (latent silent zero): keys are selected HERE and looked up in
+        // `hydrateCounts`, whose map is built under `.trim().toLowerCase()`.
+        // Selecting without the lowercase agreed only because the signal
+        // ledger happens to lowercase subjectText at WRITE — an invariant
+        // living in a different module. If that ever changes, globalCount
+        // silently becomes 0 and `source` flips off `userCount > 0` instead
+        // of the recorded source. Both ends now normalize identically.
+        const key = row.queryKey?.trim().toLowerCase();
         if (!value || !key || selectedKeySet.has(key)) {
           return false;
         }
@@ -158,15 +185,36 @@ export class SearchQuerySuggestionService {
         suggestionSourceByKey,
         userId,
       );
+    }
+  }
+
+  /**
+   * ONE SUBSTRATE READ, DEGRADED UNDER A NAMED POLICY (F3807). A read outage
+   * costs its own lane and nothing else: the other lane still fills the panel,
+   * and the degradation is a countable event carrying `policy`, not an
+   * anonymous empty array. Same shape as `territory-scoping-fail-open`.
+   */
+  private async readLane<T>(
+    policy: string,
+    prefix: string,
+    read: () => Promise<T>,
+    fallback: T = [] as unknown as T,
+  ): Promise<T> {
+    try {
+      return await read();
     } catch (error) {
-      this.logger.warn('Failed to load query suggestions', {
-        prefix,
-        error:
-          error instanceof Error
-            ? { message: error.message, stack: error.stack }
-            : { message: String(error) },
-      });
-      return [];
+      this.logger.warn(
+        'Query-suggestion lane read failed; suggestions degraded to the surviving lane (failing open)',
+        {
+          policy,
+          prefix,
+          error:
+            error instanceof Error
+              ? { message: error.message, stack: error.stack }
+              : { message: String(error) },
+        },
+      );
+      return fallback;
     }
   }
 
@@ -180,17 +228,32 @@ export class SearchQuerySuggestionService {
       return [];
     }
 
+    // F3807: the hydration reads are guarded per-read too. A count outage
+    // costs the COUNTS (which degrade to 0 and are already optional to the
+    // panel), not the whole suggestion list.
     const [globalRows, userCountByKey] = await Promise.all([
-      this.signalDemandRead.queryDemand({
-        keys,
-        windowDays: this.windowDays(),
-        limit: Math.max(keys.length * 5, 50),
-      }),
-      userId
-        ? this.signalDemandRead.personalQueryCounts(
-            userId,
+      this.readLane(
+        'query-suggestion-global-count-fail-open',
+        '',
+        () =>
+          this.signalDemandRead.queryDemand({
             keys,
-            this.windowDays(),
+            windowDays: this.windowDays(),
+            limit: Math.max(keys.length * 5, 50),
+          }),
+        [] as QueryDemandRow[],
+      ),
+      userId
+        ? this.readLane(
+            'query-suggestion-personal-count-fail-open',
+            '',
+            () =>
+              this.signalDemandRead.personalQueryCounts(
+                userId,
+                keys,
+                this.windowDays(),
+              ),
+            new Map<string, number>(),
           )
         : Promise.resolve(new Map<string, number>()),
     ]);

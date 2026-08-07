@@ -30,17 +30,30 @@ const logger: any = {
 };
 
 describe('UserListProvisioningService.ensureDefaultLists', () => {
-  function makeHarness(existingKinds: string[]) {
+  // F3805: the fixture is OWNED. The old double resolved the same kinds
+  // whatever `where` it was handed, so `ownerUserId: userId` in
+  // user-list-provisioning.service.ts was pinned by NOTHING — dropping it
+  // would make ANY user's existing `been` list suppress provisioning for
+  // every new signup, and `missing.length === 0` returns with no log.
+  function makeHarness(
+    existingKinds: string[],
+    ownerOfExisting: string = OWNER,
+  ) {
     const createMany = jest
       .fn()
       .mockImplementation((args: any) =>
         Promise.resolve({ count: args.data.length }),
       );
+    const findMany = jest.fn((args: any) =>
+      Promise.resolve(
+        args?.where?.ownerUserId === ownerOfExisting
+          ? existingKinds.map((kind) => ({ kind }))
+          : [],
+      ),
+    );
     const prisma: any = {
       userList: {
-        findMany: jest
-          .fn()
-          .mockResolvedValue(existingKinds.map((kind) => ({ kind }))),
+        findMany,
         createMany,
       },
     };
@@ -48,7 +61,7 @@ describe('UserListProvisioningService.ensureDefaultLists', () => {
       prisma as never,
       logger as never,
     );
-    return { service, createMany };
+    return { service, createMany, findMany };
   }
 
   it('creates all four defaults for a fresh user (skipDuplicates backstop)', async () => {
@@ -80,6 +93,28 @@ describe('UserListProvisioningService.ensureDefaultLists', () => {
     expect(createMany).not.toHaveBeenCalled();
   });
 
+  it('ANOTHER user’s lists never suppress provisioning (the owner scope is in the where)', async () => {
+    // The only existing rows on the table belong to STRANGER; OWNER is a
+    // fresh signup and must still get all four defaults.
+    const STRANGER = '99999999-9999-9999-9999-999999999999';
+    const { service, createMany, findMany } = makeHarness(
+      SYSTEM_DEFAULT_LISTS.map((entry) => entry.kind),
+      STRANGER,
+    );
+
+    await service.ensureDefaultLists(OWNER);
+
+    expect(createMany).toHaveBeenCalledTimes(1);
+    expect(createMany.mock.calls[0][0].data).toHaveLength(
+      SYSTEM_DEFAULT_LISTS.length,
+    );
+    // Pinned directly too, so the scope stays observable even if the double
+    // is ever loosened again.
+    expect(findMany.mock.calls[0][0].where).toMatchObject({
+      ownerUserId: OWNER,
+    });
+  });
+
   it('backfills only the missing kinds', async () => {
     const { service, createMany } = makeHarness(['been', 'tried']);
     await service.ensureDefaultLists(OWNER);
@@ -103,10 +138,19 @@ describe('system-default guards + home ordering (UserListsService)', () => {
       );
     const prisma: any = {
       userList: {
+        // F3805: OWNER-KEYED, not just id-keyed. The old double matched on
+        // `args.where.listId` ALONE, so deleting `ownerUserId: userId` from
+        // deleteList / updateList / updateListPosition
+        // (user-lists.service.ts) turned NOTHING red anywhere in the module —
+        // the guard IS correct in production, it was simply unprovable, and
+        // there was no "a stranger cannot delete my list" test at all.
         findFirst: jest.fn((args: any) =>
           Promise.resolve(
             (overrides.lists ?? []).find(
-              (l) => l.listId === args.where.listId,
+              (l) =>
+                l.listId === args.where.listId &&
+                (args.where.ownerUserId === undefined ||
+                  l.ownerUserId === args.where.ownerUserId),
             ) ?? null,
           ),
         ),
@@ -202,6 +246,51 @@ describe('system-default guards + home ordering (UserListsService)', () => {
     const { service, prisma } = makeService({ lists: [baseList()] });
     await service.deleteList(OWNER, LIST_ID);
     expect(prisma.userList.delete).toHaveBeenCalled();
+  });
+
+  it('a STRANGER cannot delete another user’s list', async () => {
+    const STRANGER = '99999999-9999-9999-9999-999999999999';
+    const { service, prisma } = makeService({ lists: [baseList()] });
+
+    await expect(service.deleteList(STRANGER, LIST_ID)).rejects.toThrow(
+      NotFoundException,
+    );
+    expect(prisma.userList.delete).not.toHaveBeenCalled();
+  });
+
+  it('deleteList carries the acting user into the lookup where', async () => {
+    // Direct pin (the memberships.spec.ts idiom): the scope lives in the
+    // QUERY, not in the caller. NOTE (honest accounting): the production
+    // mutation for this row — deleting `ownerUserId: userId` from
+    // user-lists.service.ts:741 — could NOT be run in this session because
+    // that file was dirty under another session. The scope is pinned two
+    // ways here instead: an owner-keyed double (the case above) and this
+    // direct assertion on the emitted args.
+    const { service, prisma } = makeService({ lists: [baseList()] });
+
+    await service.deleteList(OWNER, LIST_ID);
+
+    expect(prisma.userList.findFirst).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          listId: LIST_ID,
+          ownerUserId: OWNER,
+        }),
+      }),
+    );
+  });
+
+  it('a STRANGER cannot rename or reposition another user’s list', async () => {
+    const STRANGER = '99999999-9999-9999-9999-999999999999';
+    const { service, prisma } = makeService({ lists: [baseList()] });
+
+    await expect(
+      service.updateList(STRANGER, LIST_ID, { name: 'mine now' } as any),
+    ).rejects.toThrow(NotFoundException);
+    await expect(
+      service.updateListPosition(STRANGER, LIST_ID, 1),
+    ).rejects.toThrow(NotFoundException);
+    expect(prisma.userList.update).not.toHaveBeenCalled();
   });
 
   it('listForUser has NO pinned system prefix (wave-2 §2): recently-updated across ALL lists when no custom order', async () => {

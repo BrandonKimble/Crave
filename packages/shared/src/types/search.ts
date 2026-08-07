@@ -428,3 +428,26 @@ export interface NaturalSearchRequest {
   includeSqlPreview?: boolean;
   userLocation?: Coordinate;
 }
+
+/**
+ * THE STATUS PREVIEW WIRE SHAPE — one type, both sides (F3803 starter, D79).
+ *
+ * The api `RestaurantStatusPreviewDto` and the mobile `RestaurantStatusPreview`
+ * were BYTE-FOR-BYTE identical four-field mirrors that both already imported
+ * `OperatingStatus` from this package — a mirror maintained by memory, with
+ * nothing to catch a field added on one side only (which is exactly how the
+ * adjacent history-row mirror drifted to `Date` vs `string`). Both sides now
+ * derive from here, so deleting a field fails to compile on the server AND on
+ * the client.
+ *
+ * This is the seam-establishing first step ONLY. The wider request-DTO
+ * migration is a layer-spanning design (a Nest DTO fuses wire shape,
+ * class-validator decorators, and the server's internal post-interpretation
+ * shape) and is deliberately NOT attempted here.
+ */
+export interface RestaurantStatusPreview {
+  restaurantId: string;
+  operatingStatus: OperatingStatus | null;
+  distanceMiles: number | null;
+  locationCount: number | null;
+}

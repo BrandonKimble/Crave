@@ -91,6 +91,20 @@ interface ListDraft {
   }>;
 }
 
+/** Named skip counters for the five GLOBAL recipes (F3806) — the same
+ *  always-green defence buildPersonalWeekly already carried. */
+type GlobalRecipeSkips = {
+  noScoredRestaurants: number;
+  cuisineTooFewMembers: number;
+  cuisineAttributeMissing: number;
+  dishTooFewMembers: number;
+  trendingTooFewItems: number;
+  hiddenGemsNoCredibleMedian: number;
+  hiddenGemsTooFewItems: number;
+  contextNoMatchingAttributes: number;
+  contextTooFewMembers: number;
+};
+
 @Injectable()
 export class CuratedListBuilderService {
   private readonly logger: LoggerService;
@@ -167,8 +181,27 @@ export class CuratedListBuilderService {
 
   /** One city pass: fetch candidates once, run every global recipe in TS. */
   async buildCity(city: LiveCity, now: Date): Promise<number> {
+    // F3806: THE FIVE GLOBAL RECIPES GET buildPersonalWeekly'S NAMED-SKIP
+    // DISCIPLINE. `buildCity` returned `drafts.length` and nothing else, so
+    // "this city built 3 lists" could not distinguish a thin corpus from a
+    // broken recipe — and the worst case, an ARCHIVED cuisine attribute
+    // silently deleting a whole shelf, was invisible. The pattern was already
+    // in this file; it just was not applied here.
+    const skips: GlobalRecipeSkips = {
+      noScoredRestaurants: 0,
+      cuisineTooFewMembers: 0,
+      cuisineAttributeMissing: 0,
+      dishTooFewMembers: 0,
+      trendingTooFewItems: 0,
+      hiddenGemsNoCredibleMedian: 0,
+      hiddenGemsTooFewItems: 0,
+      contextNoMatchingAttributes: 0,
+      contextTooFewMembers: 0,
+    };
     const restaurants = await this.cityRestaurants(city.placeId);
     if (!restaurants.length) {
+      skips.noScoredRestaurants += 1;
+      this.logGlobalRecipeSkips(city, 0, skips);
       return 0;
     }
     const dishes = await this.cityDishes(
@@ -184,17 +217,35 @@ export class CuratedListBuilderService {
         cuisineAttributeIds,
         attributeNames,
         now,
+        skips,
       ),
-      ...this.buildDishLists(city, dishes, now),
-      ...this.buildTrendingList(city, restaurants, now),
-      ...this.buildHiddenGemsList(city, restaurants, now),
-      ...this.buildContextLists(city, restaurants, attributeNames, now),
+      ...this.buildDishLists(city, dishes, now, skips),
+      ...this.buildTrendingList(city, restaurants, now, skips),
+      ...this.buildHiddenGemsList(city, restaurants, now, skips),
+      ...this.buildContextLists(city, restaurants, attributeNames, now, skips),
     ];
 
     for (const draft of drafts) {
       await this.persistList(city.placeId, draft, now);
     }
+    this.logGlobalRecipeSkips(city, drafts.length, skips);
     return drafts.length;
+  }
+
+  /** The metric that can show RED (F3806). Archive the attribute entity a
+   *  cuisine shelf is built from and `cuisineAttributeMissing` moves; break
+   *  the context vocabulary bridge and `contextNoMatchingAttributes` moves. */
+  private logGlobalRecipeSkips(
+    city: LiveCity,
+    built: number,
+    skips: GlobalRecipeSkips,
+  ): void {
+    this.logger.info('Curated global recipes built', {
+      cityPlaceId: city.placeId,
+      cityName: city.name,
+      built,
+      skips,
+    });
   }
 
   // ---------- global recipes (pure functions over the candidate rows) ----------
@@ -213,6 +264,7 @@ export class CuratedListBuilderService {
     cuisineAttributeIds: Set<string>,
     attributeNames: Map<string, { name: string; aliases: string[] }>,
     now: Date,
+    skips: GlobalRecipeSkips,
   ): ListDraft[] {
     const byCuisine = new Map<string, CityRestaurantRow[]>();
     for (const row of restaurants) {
@@ -234,13 +286,23 @@ export class CuratedListBuilderService {
         members,
         volume: members.reduce((sum, row) => sum + row.mention_volume, 0),
       }))
-      .filter(({ members }) => members.length >= MIN_VIABLE_LIST_ITEMS)
+      .filter(({ members }) => {
+        if (members.length >= MIN_VIABLE_LIST_ITEMS) {
+          return true;
+        }
+        skips.cuisineTooFewMembers += 1;
+        return false;
+      })
       // UNCAPPED (owner-ratified 2026-07-26): every cuisine that clears the
       // min-viable gate earns its list; volume order is presentation only.
       .sort((a, b) => b.volume - a.volume);
     return ranked.flatMap(({ attrId, members }) => {
       const attribute = attributeNames.get(attrId);
       if (!attribute) {
+        // The attribute entity was archived (attributeNameMap filters
+        // status:'active'), which DELETES an entire cuisine shelf. Silent
+        // before F3806.
+        skips.cuisineAttributeMissing += 1;
         return [];
       }
       const items = this.rankByScore(members);
@@ -271,6 +333,7 @@ export class CuratedListBuilderService {
     city: LiveCity,
     dishes: CityDishRow[],
     now: Date,
+    skips: GlobalRecipeSkips,
   ): ListDraft[] {
     const byFood = new Map<string, CityDishRow[]>();
     for (const row of dishes) {
@@ -286,13 +349,26 @@ export class CuratedListBuilderService {
         rows,
         volume: rows.reduce((sum, row) => sum + row.mention_count, 0),
       }))
-      .filter(({ rows }) => rows.length >= MIN_VIABLE_LIST_ITEMS)
+      .filter(({ rows }) => {
+        if (rows.length >= MIN_VIABLE_LIST_ITEMS) {
+          return true;
+        }
+        skips.dishTooFewMembers += 1;
+        return false;
+      })
       // UNCAPPED (owner-ratified 2026-07-26): every dish that clears the
       // min-viable gate earns its monthly list.
       .sort((a, b) => b.volume - a.volume);
     return ranked.map(({ rows }) => {
       const sorted = [...rows]
-        .sort((a, b) => b.percentile_rank - a.percentile_rank)
+        // F3806/F1902: a TRUNCATED ranking needs a total order, or the
+        // truncation is a sample. percentile_rank is bucketed and ties
+        // constantly at the low end.
+        .sort(
+          (a, b) =>
+            b.percentile_rank - a.percentile_rank ||
+            a.connection_id.localeCompare(b.connection_id),
+        )
         .slice(0, MAX_LIST_ITEMS);
       const foodName = titleCase(sorted[0].food_name);
       return {
@@ -323,12 +399,19 @@ export class CuratedListBuilderService {
     city: LiveCity,
     restaurants: CityRestaurantRow[],
     now: Date,
+    skips: GlobalRecipeSkips,
   ): ListDraft[] {
     const rising = restaurants
       .filter((row) => row.rising !== null && row.rising > 0)
-      .sort((a, b) => (b.rising ?? 0) - (a.rising ?? 0))
+      // F3806/F1902: unique tiebreak under the truncation.
+      .sort(
+        (a, b) =>
+          (b.rising ?? 0) - (a.rising ?? 0) ||
+          a.entity_id.localeCompare(b.entity_id),
+      )
       .slice(0, MAX_LIST_ITEMS);
     if (rising.length < MIN_VIABLE_LIST_ITEMS) {
+      skips.trendingTooFewItems += 1;
       return [];
     }
     return [
@@ -364,12 +447,14 @@ export class CuratedListBuilderService {
     city: LiveCity,
     restaurants: CityRestaurantRow[],
     now: Date,
+    skips: GlobalRecipeSkips,
   ): ListDraft[] {
     const credible = restaurants.filter(
       (row) => row.mention_volume >= HIDDEN_GEMS_EVIDENCE_FLOOR,
     );
     const median = medianOf(credible.map((row) => row.mention_volume));
     if (median === null) {
+      skips.hiddenGemsNoCredibleMedian += 1;
       return [];
     }
     const gems = credible
@@ -377,10 +462,13 @@ export class CuratedListBuilderService {
       .sort(
         (a, b) =>
           b.display_score - a.display_score ||
-          b.percentile_rank - a.percentile_rank,
+          b.percentile_rank - a.percentile_rank ||
+          // F3806/F1902: unique tiebreak under the truncation.
+          a.entity_id.localeCompare(b.entity_id),
       )
       .slice(0, MAX_LIST_ITEMS);
     if (gems.length < MIN_VIABLE_LIST_ITEMS) {
+      skips.hiddenGemsTooFewItems += 1;
       return [];
     }
     return [
@@ -413,6 +501,7 @@ export class CuratedListBuilderService {
     restaurants: CityRestaurantRow[],
     attributeNames: Map<string, { name: string; aliases: string[] }>,
     now: Date,
+    skips: GlobalRecipeSkips,
   ): ListDraft[] {
     const drafts: ListDraft[] = [];
     for (const recipe of CONTEXT_RECIPES) {
@@ -429,12 +518,16 @@ export class CuratedListBuilderService {
         }
       }
       if (!matchingAttrIds.size) {
+        // Vocabulary drift — precisely what curated-lists.constants.ts flags
+        // as K1-UNRATIFIED. Silent before F3806.
+        skips.contextNoMatchingAttributes += 1;
         continue;
       }
       const members = restaurants.filter((row) =>
         row.restaurant_attributes.some((attrId) => matchingAttrIds.has(attrId)),
       );
       if (members.length < MIN_VIABLE_LIST_ITEMS) {
+        skips.contextTooFewMembers += 1;
         continue;
       }
       drafts.push({
@@ -632,7 +725,12 @@ export class CuratedListBuilderService {
         continue;
       }
       const sorted = [...untried]
-        .sort((a, b) => b.percentile_rank - a.percentile_rank)
+        // F3806/F1902: unique tiebreak under the truncation.
+        .sort(
+          (a, b) =>
+            b.percentile_rank - a.percentile_rank ||
+            a.connection_id.localeCompare(b.connection_id),
+        )
         .slice(0, MAX_LIST_ITEMS);
       await this.persistList(
         city.placeId,
@@ -732,7 +830,6 @@ export class CuratedListBuilderService {
       JOIN core_public_entity_scores pes
         ON pes.subject_type = 'restaurant' AND pes.subject_id = e.entity_id
       JOIN place_geometries pg ON pg.place_id = ${cityPlaceId}::uuid
-      LEFT JOIN core_restaurant_items c ON c.restaurant_id = e.entity_id
       WHERE e.type = 'restaurant'
         AND e.status = 'active'
         AND e.latitude IS NOT NULL
@@ -743,6 +840,12 @@ export class CuratedListBuilderService {
             )
       GROUP BY e.entity_id, e.name, e.restaurant_attributes,
                pes.display_score, pes.percentile_rank, pes.rising
+      -- F3806: the feeder was UNORDERED, so every downstream sort-then-slice
+      -- resolved its ties (Array#sort is stable) to POSTGRES ROW-ARRIVAL
+      -- ORDER — which changes with plan, vacuum, or a concurrent write. A
+      -- cron-built artifact freezes that arbitrary choice and serves it to
+      -- everyone until the next build.
+      ORDER BY e.entity_id ASC
     `);
   }
 
@@ -774,6 +877,9 @@ export class CuratedListBuilderService {
         -- children at the same restaurant; a curated pick is a dish, never
         -- the rollup above it.
         AND NOT c.is_category_item
+      -- F3806: same reason as cityRestaurants — a deterministic input is
+      -- half of a deterministic truncation.
+      ORDER BY c.connection_id ASC
     `);
   }
 
@@ -940,7 +1046,9 @@ export class CuratedListBuilderService {
       .sort(
         (a, b) =>
           b.percentile_rank - a.percentile_rank ||
-          b.display_score - a.display_score,
+          b.display_score - a.display_score ||
+          // F3806/F1902: unique tiebreak under the truncation.
+          a.entity_id.localeCompare(b.entity_id),
       )
       .slice(0, MAX_LIST_ITEMS)
       .map((row) => ({

@@ -2,11 +2,13 @@ import { isEnvFlagEnabled } from '../../shared/config/env-flag';
 import { Inject, Injectable } from '@nestjs/common';
 import { SearchService } from './search.service';
 import {
+  countQueryEntityGroupEntries,
   NaturalSearchRequestDto,
   QueryEntityDto,
   QueryEntityGroupDto,
   SearchQueryRequestDto,
   SearchResponseDto,
+  summarizeQueryEntityGroupCounts,
 } from './dto/search-query.dto';
 import { SearchQueryInterpretationService } from './search-query-interpretation.service';
 import { LoggerService } from '../../shared';
@@ -154,13 +156,14 @@ export class SearchOrchestrationService {
             this.debugMode === 'verbose'
               ? (interpretation.analysisMetadata ?? null)
               : undefined,
-          interpretationCounts: {
-            restaurants: interpretation.analysis.restaurants.length,
-            foods: interpretation.analysis.foods.length,
-            foodAttributes: interpretation.analysis.foodAttributes.length,
-            restaurantAttributes:
-              interpretation.analysis.restaurantAttributes.length,
-          },
+          // F3800: derived from the ONE group vocabulary, and read off the
+          // STRUCTURED request (what the gate consults) rather than the
+          // legacy `analysis` block, whose four arrays are hard-coded empty
+          // on the gazetteer path — so this counter reported all-zeros and
+          // could not have counted ingredients even if it had an arm.
+          interpretationCounts: summarizeQueryEntityGroupCounts(
+            interpretation.structuredRequest.entities,
+          ),
           unresolved: summarizeUnresolvedEntities(interpretation.unresolved),
           structuredEntities:
             this.debugMode === 'verbose'
@@ -246,11 +249,12 @@ export class SearchOrchestrationService {
 
     const totalResults =
       (response.dishes?.length ?? 0) + (response.restaurants?.length ?? 0);
-    const hasQueryTargets = Boolean(
-      interpretation.structuredRequest.entities.food?.length ||
-        interpretation.structuredRequest.entities.foodAttributes?.length ||
-        interpretation.structuredRequest.entities.restaurants?.length ||
-        interpretation.structuredRequest.entities.restaurantAttributes?.length,
+    // F3800: same derived vocabulary as the entry gate. The hand-copied
+    // four-arm version reported an ingredient-only search that returned
+    // nothing as coverage 'full' — an honest gap laundered into "nothing
+    // matched".
+    const hasQueryTargets = this.hasStructuredSearchTargets(
+      interpretation.structuredRequest.entities,
     );
 
     if (interpretation.unresolved.length) {
@@ -288,14 +292,11 @@ export class SearchOrchestrationService {
     });
   }
 
+  /** F3800: derived from QUERY_ENTITY_GROUP_KEYS, never hand-copied — the
+   *  hand-copied four-arm version omitted `ingredients` and gated the whole
+   *  ingredient lane off the natural path. */
   private hasStructuredSearchTargets(entities: QueryEntityGroupDto): boolean {
-    return (
-      (entities.restaurants?.length ?? 0) +
-        (entities.food?.length ?? 0) +
-        (entities.foodAttributes?.length ?? 0) +
-        (entities.restaurantAttributes?.length ?? 0) >
-      0
-    );
+    return countQueryEntityGroupEntries(entities) > 0;
   }
 
   private buildSelectedEntitySearchRequest(

@@ -269,6 +269,7 @@ function createHarness(options: {
     ),
   };
 
+  const logger = createLogger();
   const service = new CuratedListBuilderService(
     prisma as never,
     {
@@ -277,9 +278,9 @@ function createHarness(options: {
       ),
       resolvePlaceIdByName: jest.fn(() => Promise.resolve(CITY)),
     } as never,
-    createLogger() as never,
+    logger as never,
   );
-  return { service, prisma, store, txAtomicity };
+  return { service, prisma, store, txAtomicity, logger };
 }
 
 /** Five viable dishes at one restaurant — the minimum a list can be built
@@ -616,5 +617,88 @@ describe('CuratedListBuilderService — recipe laws', () => {
     expect(
       store.filter((row) => row.recipeKey === RECIPE_WEEKLY_TASTING),
     ).toHaveLength(1);
+  });
+});
+
+describe('CuratedListBuilderService — determinism and named skips (F3806)', () => {
+  /**
+   * EVERY CURATED LIST IS A TOP-N OVER A SORT, AND THE SORTS HAD NO UNIQUE
+   * TIEBREAK. `Array#sort` is stable, so ties resolved to POSTGRES ROW-ARRIVAL
+   * ORDER — which changes with plan, vacuum, or a concurrent write. A cron
+   * artifact then FREEZES that arbitrary choice and serves it to everyone
+   * until the next build. Every pre-existing spec in this file uses DISTINCT
+   * scores, so no mutation to the tiebreak logic turned anything red.
+   *
+   * MUTATION: delete `|| a.entity_id.localeCompare(b.entity_id)` from
+   * buildTrendingList (or the equivalent tail from rankByScore) and the
+   * reversed-fixture case goes RED — the emitted order follows the fixture.
+   */
+  async function trendingOrderFor(
+    fixtures: RestaurantFixture[],
+  ): Promise<string[]> {
+    const { service, store } = createHarness({ restaurants: fixtures });
+    await service.buildAll(NOW);
+    const trending = store.filter((row) => row.recipeKey === RECIPE_TRENDING);
+    expect(trending).toHaveLength(1);
+    return trending[0].items.map((item) => item.entityId);
+  }
+
+  it('fully-tied candidates emit the SAME order regardless of fixture order', async () => {
+    // Identical `rising` on every row: tied on the only key the sort reads.
+    const tied = Array.from({ length: MIN_VIABLE_LIST_ITEMS }, (_unused, i) =>
+      restaurant(i + 1, { rising: 5 }),
+    );
+
+    const forward = await trendingOrderFor(tied);
+    const reversed = await trendingOrderFor([...tied].reverse());
+
+    expect(reversed).toEqual(forward);
+    // And the order is the entity-id tail, not an accident of arrival.
+    expect(forward).toEqual([...forward].sort());
+  });
+
+  it('logs a NAMED skip counter when a cuisine shelf loses its attribute entity', async () => {
+    // The attribute entity is absent from `attributeEntities` (the map filters
+    // status:'active'), which DELETES the whole cuisine shelf. Silent before.
+    const { service, logger } = createHarness({
+      restaurants: Array.from({ length: MIN_VIABLE_LIST_ITEMS }, (_unused, i) =>
+        restaurant(i + 1, { restaurant_attributes: [MEX_ATTR] }),
+      ),
+      cuisineAttributeIds: [MEX_ATTR],
+      attributeEntities: [],
+    });
+
+    await service.buildAll(NOW);
+
+    const skipLogs = logger.info.mock.calls
+      .map(
+        (call: unknown[]) =>
+          call[1] as { skips?: Record<string, number> } | undefined,
+      )
+      .filter((meta) => meta?.skips);
+    expect(skipLogs.length).toBeGreaterThan(0);
+    const cuisineMisses = skipLogs.reduce(
+      (total, meta) => total + (meta?.skips?.cuisineAttributeMissing ?? 0),
+      0,
+    );
+    expect(cuisineMisses).toBeGreaterThan(0);
+  });
+
+  it('reports ZERO skips on a healthy build (the counter can show green too)', async () => {
+    const { service, logger } = createHarness({
+      restaurants: Array.from({ length: MIN_VIABLE_LIST_ITEMS }, (_unused, i) =>
+        restaurant(i + 1, { rising: 1 + i }),
+      ),
+    });
+
+    await service.buildAll(NOW);
+
+    const globalSkips = logger.info.mock.calls
+      .map(
+        (call: unknown[]) =>
+          call[1] as { skips?: Record<string, number> } | undefined,
+      )
+      .find((meta) => meta?.skips?.cuisineAttributeMissing !== undefined);
+    expect(globalSkips?.skips?.cuisineAttributeMissing).toBe(0);
   });
 });

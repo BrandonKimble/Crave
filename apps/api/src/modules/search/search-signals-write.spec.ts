@@ -57,8 +57,12 @@ function createHarness(
   options: {
     revealRows?: unknown[];
     originalRows?: unknown[];
+    /** Who OWNS the seeded original act on the ledger. Defaults to the user
+     *  doing the reveal, i.e. the ordinary same-user case. */
+    originalActOwnerUserId?: string;
   } = {},
 ) {
+  const originalActOwnerUserId = options.originalActOwnerUserId ?? USER_ID;
   const signalsPrisma = {
     signal: {
       create: jest
@@ -73,16 +77,40 @@ function createHarness(
     signalsPrisma as never,
     createLogger() as never,
   );
+  const originalActProbeValues: unknown[][] = [];
   const searchPrisma = {
     // recordCacheAttribution probes the LEDGER: the reveal-exists check and
     // the original-act lookup (identified by its signal_actors join).
-    $queryRaw: jest.fn((strings: TemplateStringsArray) => {
-      const sql = strings.join('?');
-      if (sql.includes('signal_actors')) {
-        return Promise.resolve(options.originalRows ?? []);
-      }
-      return Promise.resolve(options.revealRows ?? []);
-    }),
+    //
+    // F3807 — THIS DOUBLE IS INPUT-KEYED, NOT ARG-BLIND. It used to branch on
+    // the substring 'signal_actors' and IGNORE EVERY BOUND VALUE, so the
+    // production probe's user scope (`AND a.user_id = ${normalizedUserId}`)
+    // was pinned by NOTHING: deleting it left all four reveal tests green,
+    // while the real behaviour became a CROSS-USER CLONE — user B posts user
+    // A's searchRequestId and gets A's subject, bbox and result counts copied
+    // into B's ledger as B's own act.
+    //
+    // The honest double models the ledger instead: the seeded original act is
+    // OWNED by `originalActOwnerUserId`, and the probe only sees it when the
+    // query's BOUND VALUES carry both the request id it asks for AND that
+    // owner's user id. An unscoped probe (no user id bound) therefore returns
+    // nothing here, which is what makes the scope mutable-and-observable.
+    $queryRaw: jest.fn(
+      (strings: TemplateStringsArray, ...values: unknown[]) => {
+        const sql = strings.join('?');
+        if (sql.includes('signal_actors')) {
+          originalActProbeValues.push(values);
+          const asksForTheOriginalAct = values.includes(SEARCH_REQUEST_ID);
+          const scopedToTheOwner = values.includes(originalActOwnerUserId);
+          return Promise.resolve(
+            asksForTheOriginalAct && scopedToTheOwner
+              ? (options.originalRows ?? [])
+              : [],
+          );
+        }
+        return Promise.resolve(options.revealRows ?? []);
+      },
+    ),
   };
   const service = new SearchService(
     createLogger() as never, // loggerService
@@ -112,7 +140,13 @@ function createHarness(
       noteHeaderAnswer: jest.fn(),
     } as never, // placesPromotions
   );
-  return { service, signals, signalsPrisma, searchPrisma };
+  return {
+    service,
+    signals,
+    signalsPrisma,
+    searchPrisma,
+    originalActProbeValues,
+  };
 }
 
 function buildRequest() {
@@ -295,5 +329,51 @@ describe('cache reveal (§3: the ledger clones its OWN original act)', () => {
 
     expect(result).toEqual({ inserted: 0 });
     expect(signalsPrisma.signal.create).not.toHaveBeenCalled();
+  });
+
+  // ── F3807: THE CROSS-USER READ SCOPE, PINNED ──────────────────────────
+  // The original-act probe is user-scoped in production
+  // (search.service.ts: `AND a.user_id = ${normalizedUserId}::uuid`). Nothing
+  // observed that scope: the old arg-blind double handed the row back
+  // whatever was bound, so deleting the line stayed green while the behaviour
+  // became a cross-user clone. These two cases are the observation.
+
+  it('a stranger CANNOT clone another user’s search act', async () => {
+    const STRANGER_ID = '77777777-7777-7777-7777-777777777777';
+    // The act on the ledger belongs to USER_ID; the reveal is posted by
+    // someone else carrying USER_ID's searchRequestId — the exact hostile
+    // input. The probe must not see the row.
+    const { service, signalsPrisma } = createHarness({
+      originalRows: [buildOriginalSignalRow()],
+      originalActOwnerUserId: USER_ID,
+    });
+
+    const result = await service.recordCacheAttribution(
+      revealDto(),
+      STRANGER_ID,
+    );
+    await flush();
+
+    expect(result).toEqual({ inserted: 0 });
+    // Nothing of the owner's act (subject, bbox, counts) reaches the
+    // stranger's ledger.
+    expect(signalsPrisma.signal.create).not.toHaveBeenCalled();
+  });
+
+  it('binds the revealing user into the original-act probe (the scope is in the query, not in the caller)', async () => {
+    // Directly pins the clause the case above depends on, so the scope stays
+    // observable even if the double is ever loosened again. Written against
+    // the BOUND VALUES, not the SQL text — the text-matching assertion is the
+    // vacuity this row is about.
+    const { service, originalActProbeValues } = createHarness({
+      originalRows: [buildOriginalSignalRow()],
+    });
+
+    await service.recordCacheAttribution(revealDto(), USER_ID);
+    await flush();
+
+    expect(originalActProbeValues).toHaveLength(1);
+    expect(originalActProbeValues[0]).toContain(USER_ID);
+    expect(originalActProbeValues[0]).toContain(SEARCH_REQUEST_ID);
   });
 });

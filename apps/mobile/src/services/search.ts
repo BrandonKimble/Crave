@@ -12,9 +12,9 @@ import type {
   FoodResult,
   MapBounds,
   NaturalSearchRequest,
-  OperatingStatus,
   Pagination,
   RestaurantProfile,
+  RestaurantStatusPreview,
   SearchResponse,
 } from '../types';
 import type { FeatureCollection, Point } from 'geojson';
@@ -95,12 +95,12 @@ export type RecentlyViewedFood = {
   statusPreview?: RestaurantStatusPreview | null;
 };
 
-export type RestaurantStatusPreview = {
-  restaurantId: string;
-  operatingStatus: OperatingStatus | null;
-  distanceMiles: number | null;
-  locationCount: number | null;
-};
+/** F3803 (D79 starter): SINGLE-SOURCED. This was a byte-for-byte twin of the
+ *  api's RestaurantStatusPreviewDto; both now derive from the one shared wire
+ *  shape, so a field added or removed on the server fails to compile here.
+ *  Re-exported (not just imported) because `./autocomplete` and the search
+ *  result types below already consume it from this module. */
+export type { RestaurantStatusPreview };
 
 type RequestOptions = {
   signal?: AbortSignal;

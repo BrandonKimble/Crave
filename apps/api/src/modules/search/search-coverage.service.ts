@@ -34,6 +34,24 @@ type CoverageRestaurantRow = {
   top_food_rising?: unknown;
 };
 
+/**
+ * SAFETY BOUND ON THE COVERAGE READ (F3807), not a ranking cut.
+ *
+ * DERIVATION, measured 2026-08-06 against the local corpus: the number of
+ * locations that satisfy EVERY coverage eligibility predicate (coordinates,
+ * google_place_id, address, active entity, public restaurant score) with NO
+ * viewport filter at all — i.e. the absolute worst case a maximally
+ * zoomed-out request can produce — is 11,141. This cap sits above that, so it
+ * cannot truncate any viewport the corpus can currently express; what it
+ * bounds is the growth the old unbounded query had no answer to (a second and
+ * third city land on the same table, and the bbox is client-supplied).
+ *
+ * Truncation is never silent: rows are ordered by rank BEFORE the cut, so the
+ * dropped dots are the lowest-ranked ones, and the event is logged under the
+ * named policy `coverage-row-cap-truncation`.
+ */
+export const COVERAGE_MAX_ROWS = 15_000;
+
 @Injectable()
 export class SearchCoverageService {
   private readonly logger: LoggerService;
@@ -239,13 +257,23 @@ export class SearchCoverageService {
     // HIGH-PRECISION coverage order: percentile_rank leads so the dots/markers match the pin+list order.
     // TR5-N: rising is a SORT (matches the ranked lane): rising leads, score breaks ties.
     const risingActive = request.rising === true;
+    // F3802/F1902: `e.entity_id ASC` LOOKS unique but the rows are PER
+    // LOCATION — `selected_locations` emits one row per
+    // core_restaurant_locations row and the join is on
+    // `pl.restaurant_id = e.entity_id`, so a multi-location restaurant yields
+    // N rows sharing entity_id AND every score value. `rank: index + 1` and
+    // the mobile LOD group budget (pin-vs-dot) are computed off this order,
+    // so the arbitrary one was user-visible. `pl.location_id ASC` is the
+    // unique tail (the same file's lateral already tiebreaks on
+    // `c.connection_id ASC`, which marks this as an oversight, not a choice).
+    const locationTiebreakSql = Prisma.sql`e.entity_id ASC, pl.location_id ASC`;
     const coverageOrderSql = includeTopDish
       ? risingActive
-        ? Prisma.sql`td.rising DESC NULLS LAST, td.crave_score_exact DESC, td.crave_score DESC, e.entity_id ASC`
-        : Prisma.sql`td.crave_score_exact DESC, td.crave_score DESC, e.entity_id ASC`
+        ? Prisma.sql`td.rising DESC NULLS LAST, td.crave_score_exact DESC, td.crave_score DESC, ${locationTiebreakSql}`
+        : Prisma.sql`td.crave_score_exact DESC, td.crave_score DESC, ${locationTiebreakSql}`
       : risingActive
-        ? Prisma.sql`prs.rising DESC NULLS LAST, prs.percentile_rank DESC, prs.display_score DESC, e.entity_id ASC`
-        : Prisma.sql`prs.percentile_rank DESC, prs.display_score DESC, e.entity_id ASC`;
+        ? Prisma.sql`prs.rising DESC NULLS LAST, prs.percentile_rank DESC, prs.display_score DESC, ${locationTiebreakSql}`
+        : Prisma.sql`prs.percentile_rank DESC, prs.display_score DESC, ${locationTiebreakSql}`;
     const startedAt = Date.now();
     const rows = await this.prisma.$queryRaw<
       CoverageRestaurantRow[]
@@ -321,8 +349,26 @@ export class SearchCoverageService {
         ON prs.subject_id = e.entity_id
       ${topDishJoinSql}
       WHERE ${Prisma.join(conditions, ' AND ')}
-      ORDER BY ${coverageOrderSql};
+      ORDER BY ${coverageOrderSql}
+      -- F3807: THE COVERAGE READ IS BOUNDED. It had no LIMIT at all: every
+      -- eligible in-view location was materialized into JS and mapped to a
+      -- GeoJSON feature, bounded only by the client-supplied bbox — so a
+      -- zoomed-out viewport read whatever the corpus happened to hold. One
+      -- extra row is requested as a TRUNCATION SENTINEL (see below).
+      LIMIT ${COVERAGE_MAX_ROWS + 1};
     `);
+    // The sentinel row is never emitted; it only tells us the cap bit.
+    const coverageTruncated = rows.length > COVERAGE_MAX_ROWS;
+    if (coverageTruncated) {
+      rows.length = COVERAGE_MAX_ROWS;
+      this.logger.warn(
+        'Shortcut coverage hit the row cap; the lowest-ranked in-view dots were dropped',
+        {
+          policy: 'coverage-row-cap-truncation',
+          cap: COVERAGE_MAX_ROWS,
+        },
+      );
+    }
 
     // TR5-N: open-now post-filter — the exact machinery the ranked lane uses
     // (evaluateOperatingStatus over the location's hours/timezone). Rows WITHOUT hours data

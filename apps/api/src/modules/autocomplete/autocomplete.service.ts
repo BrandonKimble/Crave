@@ -1100,7 +1100,10 @@ export class AutocompleteService {
           p.question ILIKE ${likePattern}
           OR word_similarity(${normalizedQuery}, p.question) > 0
         )
-      ORDER BY is_prefix DESC, sim DESC, launched_at DESC NULLS LAST
+      -- F3802/F1902: NULLS LAST leaves EVERY unlaunched poll fully tied, so
+      -- the 8-row panel was a nondeterministic sample of them, reshuffling
+      -- between keystrokes. poll_id is the unique tail.
+      ORDER BY is_prefix DESC, sim DESC, launched_at DESC NULLS LAST, p.poll_id ASC
       LIMIT ${take}
     `);
     return (
@@ -1179,7 +1182,9 @@ export class AutocompleteService {
         WHERE username IS NOT NULL OR display_name IS NOT NULL
       ) candidates
       WHERE is_prefix OR sim > 0
-      ORDER BY is_prefix DESC, sim DESC
+      -- F3802/F1902: two coarse keys and no unique tail — users tying on both
+      -- flapped in and out of the mention panel between keystrokes.
+      ORDER BY is_prefix DESC, sim DESC, user_id ASC
       LIMIT ${take}
     `);
     return (

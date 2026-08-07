@@ -14,7 +14,6 @@
  * count-only assertion would not catch.
  */
 import 'reflect-metadata';
-import { CraveScoreSubjectType } from '@prisma/client';
 import { UserListMapper, type UserListItemDetail } from './user-list.mappers';
 
 function createLogger() {
@@ -142,9 +141,5 @@ describe('UserListMapper.mapRestaurantResults batching (F1910)', () => {
     expect(rest2!.topFood).toHaveLength(1);
     expect(rest2!.topFood[0].connectionId).toBe('conn-2');
     expect(rest2!.topFood[0].foodName).toBe('Rest2 Dish');
-  });
-
-  it('sanity: CraveScoreSubjectType import unused directly, kept for prisma typing parity', () => {
-    expect(CraveScoreSubjectType.restaurant).toBeDefined();
   });
 });

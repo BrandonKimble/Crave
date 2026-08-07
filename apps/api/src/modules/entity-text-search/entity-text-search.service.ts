@@ -251,18 +251,33 @@ export class EntityTextSearchService {
     const rows = await this.prisma.$queryRaw<
       { entityId: string; name: string; type: EntityType; exact: boolean }[]
     >(Prisma.sql`
-      SELECT DISTINCT ON (e.entity_id)
-             e.entity_id AS "entityId", e.name, e.type,
-             (ea.form_folded = ${folded}) AS "exact"
-        FROM entity_alias ea
-        JOIN core_entities e ON e.entity_id = ea.entity_id
-       WHERE ea.status = 'active'
-         AND LOWER(ea.locale) = ANY(${chain}::text[])
-         AND (ea.form_folded = ${folded}
-              OR ea.form_folded LIKE ${folded + '%'})
-         AND e.status = 'active'::entity_status
-         AND e.type = ANY(${typeArray})
-       ORDER BY e.entity_id, (ea.form_folded = ${folded}) DESC
+      -- F3801: DEDUP ORDER AND RELEVANCE ORDER ARE DIFFERENT QUESTIONS.
+      -- DISTINCT ON REQUIRES its key to lead the ORDER BY, so the old
+      -- single-level shape ordered by entity_id (a UUID) and the LIMIT then
+      -- sliced a UUID-sorted set: measured against the local corpus with
+      -- term 'taco', chain ['es','und'], the one exact match at 1.0 was
+      -- dropped and 20 prefix-extensions at 0.94 came back instead. The
+      -- exact DESC key only ever picked the best ALIAS ROW WITHIN an entity.
+      -- Now: dedup inner (unbounded), rank outer, LIMIT last. The trailing
+      -- entity_id ASC is the unique tiebreak the F1902 determinism law
+      -- requires — name is NOT unique (duplicate (lower(name), type) groups
+      -- exist in a single-city corpus, and same-name restaurants across
+      -- cities are the norm the moment a second city lands).
+      SELECT * FROM (
+        SELECT DISTINCT ON (e.entity_id)
+               e.entity_id AS "entityId", e.name, e.type,
+               (ea.form_folded = ${folded}) AS "exact"
+          FROM entity_alias ea
+          JOIN core_entities e ON e.entity_id = ea.entity_id
+         WHERE ea.status = 'active'
+           AND LOWER(ea.locale) = ANY(${chain}::text[])
+           AND (ea.form_folded = ${folded}
+                OR ea.form_folded LIKE ${folded + '%'})
+           AND e.status = 'active'::entity_status
+           AND e.type = ANY(${typeArray})
+         ORDER BY e.entity_id, (ea.form_folded = ${folded}) DESC
+      ) deduped
+       ORDER BY deduped."exact" DESC, deduped.name ASC, deduped."entityId" ASC
        LIMIT ${Math.max(1, Math.min(limit, this.maxLimit))}
     `);
     // Tiered exactly like the sparse lane so downstream confidence bands and
@@ -878,7 +893,12 @@ export class EntityTextSearchService {
           scored."prefixHit" DESC,
           COALESCE(scored."publicCraveScore", 0) DESC,
           COALESCE(scored."generalPraiseUpvotes", 0) DESC,
-          scored."name" ASC
+          scored."name" ASC,
+          -- F3802/F1902: "name" is NOT unique (same-name entities exist in a
+          -- single-city corpus, and same-name restaurants across cities are
+          -- the norm), so without this the perTermLimit cut admitted/dropped
+          -- fully-tied entities arbitrarily. entityId is already selected.
+          scored."entityId" ASC
         LIMIT ${options.perTermLimit}
       ) r
       ORDER BY v.term_index ASC;
@@ -1157,7 +1177,12 @@ export class EntityTextSearchService {
           ) DESC,
           COALESCE(scored."publicCraveScore", 0) DESC,
           COALESCE(scored."generalPraiseUpvotes", 0) DESC,
-          scored."name" ASC
+          scored."name" ASC,
+          -- F3802/F1902: "name" is NOT unique (same-name entities exist in a
+          -- single-city corpus, and same-name restaurants across cities are
+          -- the norm), so without this the perTermLimit cut admitted/dropped
+          -- fully-tied entities arbitrarily. entityId is already selected.
+          scored."entityId" ASC
         LIMIT ${options.perTermLimit}
       ) r
       ORDER BY v.term_index ASC;

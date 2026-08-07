@@ -17,6 +17,7 @@ export type {
   RestaurantProfile,
   RestaurantResult,
   RestaurantResultScorePreview,
+  RestaurantStatusPreview,
   ScoreInfoSummary,
   SearchResponse,
   SearchResponseMetadata,
