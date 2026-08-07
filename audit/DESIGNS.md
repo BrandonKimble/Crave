@@ -3427,3 +3427,19 @@ continues from a functioning rung.
 
 **F6406 closes into F7200's sequence. The owner's scoping question is WITHDRAWN from the
 escalation queue** — the evidence made the decision mechanical.
+
+---
+
+## D115 — F6900 ratified; two P3s remain before the clean passes (2026-08-07)
+
+**F6900 landed at the standard.** The re-derived candidate list matched D111's eleven
+exactly (the tree had not moved — stated, not assumed). The deletions cascaded UPWARD
+correctly: a forwarded-only ref died at its leaf and took the type member, the runtime,
+and the supply site with it; the F1064 `Omit` that stopped two keys short of its own
+comment's claim became a `Pick` with the comment recording the correction. The scanner's
+--check is wired with the full earn-then-drain-then-wire history in its CI comment, and
+the house pattern completes its third instance. 1471/1471 with one ts-jest load flake
+(green on rerun, no assertion failed — the D76-documented shape).
+
+Remaining before clean pass 1: the D114 sequence (F7200's 17-delete/10-convert/-U-prove
++ F7201's max_per_file_in_tree) and D113's F6800-mechanical. Both dispatched.
