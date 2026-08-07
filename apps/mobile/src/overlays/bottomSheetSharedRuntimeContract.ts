@@ -97,12 +97,20 @@ export type BottomSheetSharedRuntimeConfigSharedValues = {
 export type BottomSheetSharedGestureRuntime = {
   gestures: {
     sheet: ReturnType<typeof Gesture.Simultaneous>;
-    // The two pans, exposed so BottomSheetScrollContainer can mint a PER-INSTANCE native scroll
-    // gesture with native-side relations (requireExternalGestureToFail(expandPan) +
+    // The arbitration pair, exposed so BottomSheetScrollContainer can mint a PER-INSTANCE
+    // native scroll gesture with native-side relations (requireExternalGestureToFail(expandPan) +
     // simultaneousWithExternalGesture(collapsePan)) — RNGH OR's relation declarations across the
     // pair, so any number of co-mounted scroll containers arbitrate correctly.
     expandPan: ReturnType<typeof Gesture.Pan>;
     collapsePan: ReturnType<typeof Gesture.Pan>;
+    /**
+     * The THIRD pan, and the one carrying boundary-physics law §3 (bottom overscroll +
+     * rubber band + rebound). It was returned by the runtime and consumed by
+     * useBottomSheetSharedRuntime for a long time while this contract declared only two
+     * (F4502) — the read compiled against the hook's inferred type, before the narrowing.
+     * The runtime's return is annotated with this type now, so the count cannot drift again.
+     */
+    overscrollPan: ReturnType<typeof Gesture.Pan>;
   };
   touchBlockingEnabled: boolean;
   touchBlockingAuthority: BottomSheetSharedTouchBlockingAuthority;

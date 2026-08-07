@@ -9,7 +9,10 @@ import {
 } from 'react-native-reanimated';
 
 import type { BottomSheetSnapChangeSource } from './bottomSheetMotionTypes';
-import type { BottomSheetSharedRuntimeConfigSharedValues } from './bottomSheetSharedRuntimeContract';
+import type {
+  BottomSheetSharedGestureRuntime,
+  BottomSheetSharedRuntimeConfigSharedValues,
+} from './bottomSheetSharedRuntimeContract';
 import { overlaySheetEditLockValue } from './overlaySheetEditLockRuntime';
 import { overlaySheetSceneSnapLockValue } from './overlaySheetSceneSnapLockRuntime';
 import {
@@ -239,7 +242,13 @@ export const useBottomSheetSharedGestureRuntime = ({
     [resolveDestination, startSpring]
   );
 
-  return React.useMemo(() => {
+  // F4502: the return is ANNOTATED with the contract's own gestures type, so the
+  // contract is the authority on this hook's shape rather than merely coexisting
+  // with it. An undeclared returned key is an excess-property error here; a
+  // declared-but-unreturned key is a missing-property error here — either way the
+  // drift fails at THIS return statement, naming the key, instead of compiling by
+  // an accident of read order at the consumer.
+  return React.useMemo((): BottomSheetSharedGestureRuntime['gestures'] => {
     const resolveRuntimeSnapValues = () => {
       'worklet';
       const runtimeExpandedSnap = expandedSnapValue.value;
