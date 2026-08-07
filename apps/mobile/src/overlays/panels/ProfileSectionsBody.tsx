@@ -20,6 +20,7 @@ import {
 import { userListsService, type UserListSummary } from '../../services/user-lists';
 import { deriveListDetailVerbs } from './list-detail-verbs';
 import { userListKeys } from '../../hooks/use-user-lists';
+import { profileKeys } from '../../hooks/profile-query-keys';
 import { photosService, type FoodLogGroupDto } from '../../services/photos';
 import { openPostPhotosFunnel } from '../PostPhotosFunnelHost';
 import { useAppOverlayRouteController } from '../useAppOverlayRouteController';
@@ -206,7 +207,7 @@ export const ProfileSectionsBody = React.memo(
       queryFn: () => fetchUserComments(userId),
     });
     const listsQuery = useQuery({
-      queryKey: ['userProfileLists', userId],
+      queryKey: profileKeys.lists(userId),
       enabled: enabled && activeSection === 'lists',
       staleTime: 60_000,
       queryFn: () => userListsService.listPublic({ userId }),
@@ -220,7 +221,7 @@ export const ProfileSectionsBody = React.memo(
 
     // ── §8.14 owner long-press modal (Pin / Share / Delete) — OWN profile only.
     const invalidateListSurfaces = React.useCallback(() => {
-      void queryClient.invalidateQueries({ queryKey: ['userProfileLists', userId] });
+      void queryClient.invalidateQueries({ queryKey: profileKeys.lists(userId) });
       // The home lists surface shares the rows (pinned/share/existence changed).
       void queryClient.invalidateQueries({ queryKey: userListKeys.all });
     }, [queryClient, userId]);
@@ -230,13 +231,13 @@ export const ProfileSectionsBody = React.memo(
         const next = list.pinned !== true;
         // Optimistic flip in the profile-gallery cache; the refetch re-sorts
         // (server order = pins first) and is the settled truth.
-        queryClient.setQueryData<UserListSummary[]>(['userProfileLists', userId], (rows) =>
+        queryClient.setQueryData<UserListSummary[]>(profileKeys.lists(userId), (rows) =>
           rows?.map((row) => (row.listId === list.listId ? { ...row, pinned: next } : row))
         );
         userListsService
           .update(list.listId, { pinned: next })
           .catch(() => {
-            queryClient.setQueryData<UserListSummary[]>(['userProfileLists', userId], (rows) =>
+            queryClient.setQueryData<UserListSummary[]>(profileKeys.lists(userId), (rows) =>
               rows?.map((row) =>
                 row.listId === list.listId ? { ...row, pinned: list.pinned === true } : row
               )
@@ -280,7 +281,7 @@ export const ProfileSectionsBody = React.memo(
                   .then(() => {
                     invalidateListSurfaces();
                     // Stats row (list count) lives on the profile read.
-                    void queryClient.invalidateQueries({ queryKey: ['userProfile', userId] });
+                    void queryClient.invalidateQueries({ queryKey: profileKeys.profile(userId) });
                   })
                   .catch(() => {
                     announceFailureIfOnline();

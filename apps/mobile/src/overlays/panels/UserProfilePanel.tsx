@@ -21,6 +21,7 @@ import {
 } from './ProfileSectionsBody';
 import { resolveUserDisplayName } from '../../utils/user-display-name';
 import { AVATAR_SIZES } from '../../constants/avatar-sizes';
+import { profileKeys } from '../../hooks/profile-query-keys';
 
 // ─── userProfile — the REAL page body (trigger-nav pages; plans/page-registry.md) ───────────
 // W3: the §7.3 dynamic single-page shape — persistent identity header + the FOUR-section body
@@ -151,7 +152,7 @@ const UserProfileContent = React.memo(({ data }: { data: UserProfilePageData }) 
     void (next ? usersService.followUser(userId) : usersService.unfollowUser(userId))
       .then(() => {
         void queryClient.invalidateQueries({ queryKey: ['followList'] });
-        void queryClient.invalidateQueries({ queryKey: ['userProfile', userId] });
+        void queryClient.invalidateQueries({ queryKey: profileKeys.profile(userId) });
       })
       .catch(() => {
         setFollowOverride({ value: !next });
@@ -197,7 +198,7 @@ const UserProfileContent = React.memo(({ data }: { data: UserProfilePageData }) 
       void (block ? usersService.blockUser(userId) : usersService.unblockUser(userId))
         .then(() => {
           // The edge + every follow surface changed (block severs follows).
-          void queryClient.invalidateQueries({ queryKey: ['userProfile', userId] });
+          void queryClient.invalidateQueries({ queryKey: profileKeys.profile(userId) });
           void queryClient.invalidateQueries({ queryKey: ['followList'] });
         })
         .catch(() => {
@@ -463,7 +464,7 @@ export const UserProfilePanelBody = React.memo(({ entry }: MountedSceneBodyProps
   // must not re-render on cache events. Resubscribe refetches when >60s stale.
   const userProfileLive = useShellLiveness();
   const profileQuery = useQuery({
-    queryKey: ['userProfile', userId],
+    queryKey: profileKeys.profile(userId),
     enabled: userId != null,
     subscribed: userProfileLive,
     staleTime: 60_000,
