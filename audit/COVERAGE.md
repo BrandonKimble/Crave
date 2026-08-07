@@ -4556,3 +4556,30 @@ CLEAN-PASS-1 api-core + api-search (2026-08-07, ATTEMPT 2, F8400): FRESH-EYES RE
 | apps/api/src/modules/content-processing/reddit-collector/test-limit.ts | api-scripts | IDEAL-VERIFIED | 1 | 0db59ec9a52d | Refuses in prod (returns null) — prevents silent truncation; clamps to cap. |
 | apps/mobile/src/screens/Search/runtime/shared/search-mounted-results-debug-flag.ts | api-scripts | IDEAL-VERIFIED | 1 | c0968dd8f9a6 | Named flag DEFAULT OFF; __DEV__ conjunction so it can't ship logging to release. |
 | apps/api/scripts/check-locale-parity.ts | api-scripts | IDEAL-VERIFIED | 1 | 336912260481 | F9370 cross-app locale-parity invariant check; reads mobile source textually; fail-closed (exit 1). |
+
+| apps/mobile/src/tracksheet/track-a11y-plan.ts | mobile-tracksheet | IDEAL-VERIFIED | 1 | 4eb5d2789c56 | pure decision + latch; announce-lie classes designed out; falsifiable. |
+| apps/mobile/src/tracksheet/track-entry-activity.ts | mobile-tracksheet | IDEAL-VERIFIED | 1 | af3e84247d9d | pure derivation, no all-true; hasActivated stays true by design. |
+| apps/mobile/src/tracksheet/track-entry-handoff.ts | mobile-tracksheet | IDEAL-VERIFIED | 1 | ab81cee29de6 | ordered total decision, every 'direct' a stated reason; residency-not-history verified. |
+| apps/mobile/src/tracksheet/track-entry-hidden.ts | mobile-tracksheet | IDEAL-VERIFIED | 1 | 85a532dd6733 | depth+edge fact native; JS holds intent only; resolveHiddenPresentation pure+total. |
+| apps/mobile/src/tracksheet/track-entry-identity.ts | mobile-tracksheet | IDEAL-VERIFIED | 1 | 05560bd92c8b | derived ids, root-singleton stated; unstamped-passes adoption gate. |
+| apps/mobile/src/tracksheet/track-entry-interrupt.ts | mobile-tracksheet | PARTIAL | 1 | 6552809f4525 | F9400 (±2pt epsilon duplicated with track-motion-plan). |
+| apps/mobile/src/tracksheet/track-entry-liveness.ts | mobile-tracksheet | PARTIAL | 1 | eeaefdbff032 | F9403 (presented-suspended structurally green for list-lane scenes — documented scope). |
+| apps/mobile/src/tracksheet/track-entry-prewarm.ts | mobile-tracksheet | IDEAL-VERIFIED | 1 | 13eb1e0c3176 | host-owned data-driven decision; TTL-lazy span; anchor shared with phase probe. |
+| apps/mobile/src/tracksheet/track-entry-readiness.ts | mobile-tracksheet | PARTIAL | 1 | 14af86f6901d | F9402 (hasShownContent exported, spec-only consumer). |
+| apps/mobile/src/tracksheet/track-entry-retention.ts | mobile-tracksheet | IDEAL-VERIFIED | 1 | 3bdc02a7f1f6 | bounded LRU, scroll-memory-survives-eviction stated. |
+| apps/mobile/src/tracksheet/track-entry-scroll-memory.ts | mobile-tracksheet | IDEAL-VERIFIED | 1 | bd31167554d1 | null-vs-0 distinction is the point; pure outgoing-scroll term. |
+| apps/mobile/src/tracksheet/track-entry-skeleton.ts | mobile-tracksheet | IDEAL-VERIFIED | 1 | 8b934ab555a9 | variant-as-data via one resolver; fallback only for spec-excluded scenes (total). |
+| apps/mobile/src/tracksheet/track-entry-switch.ts | mobile-tracksheet | IDEAL-VERIFIED | 1 | 24c881716003 | order law + hidden-domain no-write + immediateRestore all pure/falsifiable. |
+| apps/mobile/src/tracksheet/track-leg-plan.ts | mobile-tracksheet | IDEAL-VERIFIED | 1 | bb1588eb0041 | one branch order stated once; deliberate stamp-gate asymmetry documented. |
+| apps/mobile/src/tracksheet/track-list-window.ts | mobile-tracksheet | IDEAL-VERIFIED | 1 | 6443ae8204be | overscan from FlashList's own formula (restated to disagree w/ device); ratio/floor/cap reasoned. |
+| apps/mobile/src/tracksheet/track-motion-authority.ts | mobile-tracksheet | IDEAL-VERIFIED | 1 | b9e88da84fa2 | one episode store, identity-stamped facts, snap-retry deleted with its premise; pure reducer. |
+| apps/mobile/src/tracksheet/track-motion-deadline.ts | mobile-tracksheet | PARTIAL | 1 | 2f9a2f97d6f1 | F9402 (two selectors spec-only); backstop law verified; 700ms a stated deadline not a fake duration. |
+| apps/mobile/src/tracksheet/track-motion-plan.ts | mobile-tracksheet | PARTIAL | 1 | 5ab1e1f7506b | F9400 (±2pt), F9401 (0.5pt mirrors native). |
+| apps/mobile/src/tracksheet/track-native-contract.ts | mobile-tracksheet | IDEAL-VERIFIED | 1 | de43c33b65ad | version+capability handshake wired; native header matches (v2, all 5 caps). No silent shim. |
+| apps/mobile/src/tracksheet/track-press-phase-probe.ts | mobile-tracksheet | IDEAL-VERIFIED | 1 | 4137f69e9fd4 | '?' vs '0.0ms' honesty, first-write-wins, row-window outlives phase-span. CONCURRENT-dirty. |
+| apps/mobile/src/tracksheet/track-settle-fact.ts | mobile-tracksheet | IDEAL-VERIFIED | 1 | e450fb40a0b4 | rest!=detent split; generation stale-guard; hiddenEngaged never writes memory. |
+| apps/mobile/src/tracksheet/track-sheet-chrome-parts.tsx | mobile-tracksheet | IDEAL-VERIFIED | 1 | aabcc30834b7 | two shared primitives in a no-cycle home; error boundary surfaces host-context misuse. |
+| apps/mobile/src/tracksheet/track-txn-bridge.ts | mobile-tracksheet | IDEAL-VERIFIED | 1 | 535d03f681f0 | order law as pure step-list + falsifier; hidden-family routing stated (dies with freezeUntilSnap). |
+| apps/mobile/src/tracksheet/use-track-a11y-announcer.ts | mobile-tracksheet | IDEAL-VERIFIED | 1 | dec62c33bc94 | no-dep effect on purpose (latch is where RED lands); no capability gate to go stale. |
+| apps/mobile/src/tracksheet/use-track-leg-resolver.tsx | mobile-tracksheet | IDEAL-VERIFIED | 1 | 95c4af08b174 | mounted via TrackSheetRouteHost:508 so its own effects commit; no stranded effect. |
+| apps/mobile/src/tracksheet/use-track-motion-controller.ts | mobile-tracksheet | IDEAL-VERIFIED | 1 | ee6785e894b3 | thin adapter over authority+deadline reducers; one OS timer, scheduleId rejects resume-stampede; degrade barks. |
