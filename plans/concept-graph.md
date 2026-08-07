@@ -348,3 +348,28 @@ dishes` (4) junk; rates `birria pizza` (2), `chocolate chip pancakes` (4),
 - **Design bug caught by testing:** 1-token residue records a signal and `continue`s
   — it never reaches the residue table, so a cron over that table would never see
   single foreign words. Hence build-order step 6 reads the signals ledger.
+
+### 8.1 QUERY-SIDE MAXIMAL LINKING (2026-08-06, committed e76ae45bc)
+
+The consume rule ("a compound span replaces its parts") was never a decision —
+it rode in with the typo-join work and cost 17/38 missed concepts on the es
+gate. Now a compound emits BOTH readings, and RUNG 2 (name containment) is the
+query-side guard: a part only counts when the compound concept's own name
+contains it (`vegetarian taco` ⊇ taco ✓; `pan dulce` ⊉ bread ✗). Same law,
+both sides of the system.
+
+OWNER RULING (supersedes the tier-0/tier-1 proposal): ONE list, Crave Score
+order, NO decomposed section. Precision comes from reading parts as
+MODIFIERS — attribute → soft conjunct (pooled gate), ingredient → hard
+conjunct, food only as fallback (`DECOMPOSED_PLACEMENT_ORDER`). "arroz con
+pollo" = the dish OR rice∧chicken, never "any rice dish".
+
+Measured (sim corpus, audit fixes + completed vocab): es gate 86.7 → 98.0;
+compound 50 → 93.3. The audit data fixes ALONE were +0.0 — decisive proof the
+algorithm, not the data, was the blocker. Probe:
+`scripts/search-harness/decomposed-tier-probe.ts`.
+
+Residual owed: pollo/fideo/lima-class corpus merges (data session); the
+sweep's watermark is label-existence, so entities labeled BEFORE the
+gender-complete prompt never re-offer — inflection completeness needs a
+surface-coverage watermark (open).

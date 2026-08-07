@@ -35,7 +35,15 @@ import {
  */
 
 /** Concept types that HAVE display labels. Restaurants never do (proper nouns). */
-const LABELED_ENTITY_TYPES = ['restaurant_attribute', 'food', 'ingredient'];
+// food_attribute added 2026-08-06: its absence left `spicy` (and every
+// dish-side attribute) with zero es surfaces — found by the launch-gate
+// residual, fixed the compound stratum when simulated.
+const LABELED_ENTITY_TYPES = [
+  'restaurant_attribute',
+  'food_attribute',
+  'food',
+  'ingredient',
+];
 
 export interface SweepBatch {
   locale: string;
