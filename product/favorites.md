@@ -15,7 +15,7 @@ Favorites is the user's personal save layer: restaurant and dish lists, public/p
 A parent toggle splits **Restaurants | Dishes**, mirroring the result-sheet split. A list is one type or the other — no mixed lists.
 
 - **Restaurant lists (free):** lists that contain only restaurants — the normal saved-list behavior every app has.
-- **Dish lists (Crave+):** lists of dishes, where a dish is always saved as a restaurant+dish pairing. This is "save your favorite dishes." The entire dish-list-creation side is gated behind Crave+ — free users make restaurant lists like a normal app. This is consistent with dishes being the paid hero across Crave (see `business/monetization-and-gating.md` — **CORRECTION 2026-08-04 (Phase-3 doc-territory drain, audit F751): this file was deleted 2026-07-12 and superseded wholesale; the current canon is `business/signal/blueprint.md` §2, "The wall — price, staging, spec"**).
+- **Dish lists (Crave+):** lists of dishes, where a dish is always saved as a restaurant+dish pairing. This is "save your favorite dishes." The entire dish-list-creation side is gated behind Crave+ — free users make restaurant lists like a normal app. This is consistent with dishes being the paid hero across Crave (the gating canon is `business/signal/blueprint.md` §2, "The wall — price, staging, spec").
 
 The save flow is locked to content type: a restaurant card saves only into restaurant lists, a dish result only into dish lists. Every entity surface — search results, restaurant detail, dish rows — has a save/unsave affordance with a clear saved indicator.
 
@@ -25,13 +25,15 @@ The Favorites screen is all-white, a 2-column grid of cutout tiles. Each tile is
 
 Tapping a list opens a detail screen that reuses the Search Results renderer (same rows, meta lines, frost background). List detail runs the list's items through the search query executor, so it inherits open-now and price filtering plumbing for free, and produces map-ready entities. Item rows carry the shared **FriendCluster** (stacked avatars + "Saved by {name} and others") when people you follow have also saved that spot/dish — same overlay as the result sheet (see `profile.md`).
 
-Lists, items, reordering, sharing, and list detail are built — and the registry run (W1, 2026-07-11) shipped the rest of the core: the real listDetail page (owner + viewer roles), custom drag ranking with edit mode on both surfaces, the auto-"All" list (home + tiles), save sheet v2, system default lists, and collaborators. The remaining frontier is cross-list intelligence (compare, best-saved, map-all) and the dormant Crave+ filter layer.
+The core is built: the listDetail page (owner + viewer roles), custom drag ranking with edit mode on both surfaces, the auto-"All" list (home + tiles), the save sheet, system default lists, and collaborators. The remaining frontier is cross-list intelligence (compare, best-saved, map-all) and the dormant Crave+ filter layer.
 
 ## Save flow & list management
 
-- **Save Sheet** — a bottom sheet showing a list grid plus a "New list" placeholder tile that expands into a name / description / public-private / create panel. The same panel is reused for editing a list from the per-list ellipsis menu (Edit, Share, Make Private/Public, Delete).
-- **List configuration (the ⋯ ellipsis, Spotify-playlist-like)** — inside a list, an ellipsis opens the list's configuration surface: make public/private, edit name/details, share, and (future) download for offline. Modeled on Spotify's playlist config, collapsed to ONE visibility toggle (ratified 2026-07-12): our _private_ IS Spotify's "remove from profile" — unlisted but still viewable by link holders and invitees; a true lock is revoking those grants individually. Expect this cluster to grow; the list page is the app's most involved surface.
-- **Add places from inside a list** — an "add places" button opens search mode in **pick mode**: selecting a result adds it to the list and returns you to the list — no search flow, no page switch. Same search UI, different selection consequence.
+- **Save Sheet** — a bottom sheet showing list ROWS (not grid tiles), opening on the side matching the trigger (restaurant vs. dish) with a segmented switch to the other side; row order follows the user's custom home order, else Recently updated. A "New list" row expands into a name / description / public-private / create panel; the same panel is reused for editing a list from the per-list ellipsis menu (Edit, Share, Make Private/Public, Delete). The per-row toolkit is a NOTE field under the selected row — no tags (the concept is dropped; there is no `FavoriteListItem.tags` column) and no add-photo on the save sheet (photos enter via the card "+" tile on own-list cards).
+- **Auto-created default lists at signup** — four empty lists pinned to the top: Been + Want to go (restaurants); Tried + Want to try (dishes). Copy TBD.
+- **List configuration (the ⋯ ellipsis, Spotify-playlist-like)** — inside a list, an ellipsis opens the list's configuration surface: make public/private, edit name/details, share, and (future) download for offline. Modeled on Spotify's playlist config, collapsed to ONE visibility toggle: our _private_ IS Spotify's "remove from profile" — unlisted but still viewable by link holders and invitees; a true lock is revoking those grants individually. Expect this cluster to grow; the list page is the app's most involved surface.
+- **Add places from inside a list** — an "add places" button (restaurant lists) / "Add dish" button (dish lists, copy TBD) opens search mode in **pick mode**: selecting a result adds it to the list immediately and returns you to the list — no search flow, no page switch, no toolkit detour. Same search UI, different selection consequence. The dish-add search shape (dish-scoped vs. restaurant-first) is an A/B at build.
+- **List-card photo strips** — scrollable L-R on list cards; owner and collaborators see a "+" add tile prepended to the strip, plain viewers never do.
 - **Offline lists (future)** — download a list (and its map region — see `map.md`) for offline use, e.g. travel.
 - **Reordering** — both lists and items within a list are manually reorderable by position.
 - **Per-item personal notes** — users can attach a note to a saved dish or restaurant ("get the spicy version", "great for groups").
@@ -48,6 +50,8 @@ The home favorites page is built on the shared toggle-strip primitive (the same 
 
 **Custom (drag) ordering works on the home too**, identical to within a list — you drag your lists into the order you want, and that becomes the **sticky default** once set, so the home stops reshuffling. "Recently updated" is just the churn-y starting default for someone who hasn't ordered yet: a list jumps to the top each time you save into it, so the home reshuffles under you until you impose a custom order.
 
+The Bookmarks home arrangement is the user's private workspace — free-form reorder ("moving apps around your phone"), no pinning — and is intentionally independent from the Profile's public Lists presentation, where pinning curates what floats first. The two arrangement rule-sets are independently controlled by design; any shared-helper extraction between them is a deliberate product decision, not a cleanup.
+
 ## The "All" list + cross-list intelligence
 
 These are the prominent directions on top of the core.
@@ -57,6 +61,7 @@ These are the prominent directions on top of the core.
 - **Your best saved spot** — surface the single highest-Crave-Score saved restaurant (and top dish) spanning every list.
 - **Compare lists** — side-by-side or overlay comparison of two lists (e.g. "Date Night" vs "Business Lunch") by score, overlap, neighborhood.
 - **Map all saved at once** — plot every saved restaurant (across all lists, or the All view) on the map in one pass. This is the personal food map, grounded in real lists. Since list detail already produces map-ready entities, this is mostly aggregation.
+- **"For You" automated lists are on hold** — the by-market/cuisine/price automated lists are not built; the same slicing is reachable as the All list + filters instead, with a MARKET toggle added to the All list's strip.
 
 ## Per-list controls: sort (free) vs filters (Crave+)
 
@@ -78,6 +83,8 @@ Every list has a **sort dropdown** (a dropdown toggle, like the result-sheet pri
 
 Filtering a _saved set_ is gated even though open-now and price are free on the main search — that's intentional: we match Google on search (free), and the part Google can't do (filter your saved lists) is the Crave+ layer. Dish-list depth (dish-level scores/evidence inside a list) is also Crave+, since dishes are the paid hero. A plain saved list — its creation, sorting, and sharing — stays free.
 
+This free-vs-Crave+ split (dish lists gated, filters gated) is dormant freemium-pivot framing: at launch everyone in-app is entitled, so do not build per-feature gates into new surfaces.
+
 **Custom ranking (the reorder).** Picking _Custom_ turns on an edit mode that orders items into the user's own order, persisted (the `position` column already backs it). Reorder is **drag-and-drop**, made safe against the movable sheet by the mode itself: entering edit **locks the sheet to full height** (its pan is disabled) and a drag _handle_ is the sole activator, so the sheet and list-scroll yield to the drag. The home's 2-column grid **linearizes to a single column in edit mode**, so it's the same simple 1-D drag as a list. The identical mechanism powers both within-a-list (rank your spots/dishes) and the home (order your lists). A non-drag path (move up/down · move-to-top) ships alongside — an accessibility requirement (WCAG 2.2 §2.5.7), not optional. Custom stays free — it's the personalization/shareability engine (below), not a power filter.
 
 ## Sharing, virality & social
@@ -86,7 +93,7 @@ Lists are a primary growth surface. A public list with a slug is a shareable art
 
 **Custom ranking is the social/personalization axis.** The Crave Score is crowd consensus; a user's _custom-ranked_ list is their personal opinion laid over it — the second axis the app otherwise lacks, and the seed of the friend graph. A ranked "my top 10 tacos in Austin" is a far more shareable artifact than an unordered save pile, and following a friend means browsing their ranked lists for trusted, taste-curated picks rather than only the crowd. When viewing anyone's custom-ranked list, the _order_ is their opinion while each row still shows the objective Crave Score dot — "their take vs. the canonical truth," side by side — and personal rank is always visually distinct from the Crave Score so the two never blur. (Friend-graph features — following, friends' picks on a place, your-circle's-consensus — live in `profile.md`.)
 
-- **Public / private visibility — OWNER CANON (ratified 2026-07-12)**: **visibility controls
+- **Public / private visibility — OWNER CANON**: **visibility controls
   DISCOVERY, never ACCESS.** One binary: PUBLIC = on the owner's profile "Lists" tab,
   discoverable; PRIVATE = off the profile, unlisted. Access is a separate ledger entirely:
   anyone holding the share link or a collaborator seat keeps access across visibility flips,
@@ -95,14 +102,14 @@ Lists are a primary growth surface. A public list with a slug is a shareable art
   true lock = revoking everyone in the modal. Sharing never mutates visibility (`enableShare`
   only mints/returns the link); flipping private only removes the list from the profile.
   Visibility is a per-list SETTING, not a consumption slice (no Bookmarks visibility filter
-  chip). Lists are the user's curatorial identity. API conforms as of 2026-07-12 (leg 6):
-  profile auto-appear/disappear via `listPublicForUser`; access paths never consult
+  chip). Lists are the user's curatorial identity. The API conforms: profile
+  auto-appear/disappear via `listPublicForUser`; access paths never consult
   visibility.
 - **Shareable via slug** — a short URL-safe slug per list with a share toggle and rotate/revoke. App deep link plus universal link; if the app isn't installed, a web landing with a CTA.
 - **Share-event tracking** — created/opened/copied/revoked events to measure list virality.
 - **"Share your bookmarks" infographic** — a branded infographic of a user's top 5–10 saved dish/restaurant pairs for social posting.
 - **Share to community** — a pre-filled post template referencing the saved item and community.
-- **Collaborative lists (SHIPPED W1, registry run — invite v1 = copy-link, upgraded to the universal share modal in W3)** — collaborators have full owner parity (add/remove/reorder/invite); invite rides the universal share modal ("invite as collaborator" checkbox); collaborators can Leave; owner can kick (swipe/ellipsis in the collaborator modal); visibility flips never touch collaborator seats or share links — revocation is individual (kick per seat, turn sharing off per link; a revoked link shows the "no longer shared" state). The list's stacked-avatars chip leads with a plus-circle add tile.
+- **Collaborative lists** — collaborators have full owner parity (add/remove/reorder/invite); invite rides the universal share modal ("invite as collaborator" checkbox); collaborators can Leave; owner can kick (swipe/ellipsis in the collaborator modal); visibility flips never touch collaborator seats or share links — revocation is individual (kick per seat, turn sharing off per link; a revoked link shows the "no longer shared" state). The list's stacked-avatars chip leads with a plus-circle add tile.
 
 ## Alerts on saved items
 
@@ -121,37 +128,3 @@ The area is "Favorites," not "Bookmarks." Screen title leans on the list framing
 - For dish-list items saved without an existing connection: create a connection or block the save?
 - Do per-item notes get shared when a public list is shared?
 - Is "map all saved" its own entry point or a mode of the All list?
-
-## Save sheet toolkit + auto-created lists (current — SHIPPED W1, registry run)
-
-- Save sheet = list ROWS (not grid tiles), opening on the side matching
-  the trigger with a segmented switch to the other side; row order = the
-  user's custom home order, else Recently updated. Toolkit = a NOTE field
-  under the selected row. NO tags (concept killed 2026-07-11 — drop the
-  FavoriteListItem.tags column), NO add-photo on the save sheet (photos
-  enter via the card "+" tile on own-list cards).
-- AUTO-CREATED default lists at signup (empty, pinned top): Been +
-  Want to go (restaurants); Tried + Want to try (dishes). Copy TBD.
-- The "For You" automated lists (by market/cuisine/price) are ON HOLD —
-  reachable as All + filters instead; add a MARKET toggle to the All
-  list's strip.
-- NOTE (hard paywall): the free-vs-Crave+ split below (dish lists gated,
-  filters gated) is dormant freemium-pivot framing — at launch everyone
-  in-app is entitled; do not build per-feature gates into new surfaces.
-
-## listDetail add buttons (registry §7.6 — not yet built)
-
-- List-card photo strips: scrollable L-R; owner/COLLABORATORS see a "+" add
-  tile prepended to the strip; plain viewers never do (strips SHIPPED W2).
-- listDetail: "Add places" (restaurant lists) / "Add dish" (dish lists,
-  copy TBD) → search mode → immediate add, no toolkit detour. Dish-add
-  search shape (dish-scoped vs restaurant-first) = A/B at build.
-
-## Gallery arrangement: Bookmarks home vs Profile are INTENTIONALLY independent (owner, 2026-07-25)
-
-Bookmarks home = the user's private workspace: free-form reorder ("moving
-apps around your phone"), no pinning. Profile = the public presentation:
-pinning curates what floats first. A red team flagged the two arrangement
-rule-sets as duplicated code to unify — owner ruled the surfaces are
-independently controlled BY DESIGN; any shared-helper extraction is a
-product decision to revisit deliberately, not a cleanup.

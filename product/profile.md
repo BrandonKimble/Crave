@@ -16,13 +16,13 @@ Every user has an `@handle`: case-insensitive unique, 3–20 chars, lowercase le
 
 Users get one free initial set, then a 30-day edit cooldown. Every handle a user has ever held is kept for anti-squatting and uniqueness. A post-auth onboarding step lets users pick their handle with live debounced availability and suggestions when a name is taken ("Pick your username. This is how people find you. You can change it later.").
 
-Display name and avatar resolve from the session JWT and gap-backfill, never overwriting a user's own edits. The in-app avatar picker/upload is built (registry run W3: editProfile → tap picture → shared camera/library modal, Cloudinary path).
+Display name and avatar resolve from the session JWT and gap-backfill, never overwriting a user's own edits. The in-app avatar picker/upload rides the SAME Cloudinary machinery as UGC photos (signed ticket, Rekognition safety moderation, CDN delivery) — one asset per user (overwrite), square delivery variants — and renders on the profile page, in poll discussions, and on future friend-presence chips. Entry: Edit Profile → tap the picture → a shared camera/library modal.
 
 ## Profile screen
 
-The profile is a top-level nav scene with the app nav bar retained. The header shows avatar (or initials fallback), display name, @username, and settings. A four-stat row — Polls created, Polls contributed, Followers, Following — is tappable to jump to each section, with counts denormalized per user and kept fresh by service hooks on polls, votes/endorsements, list changes, and follows. A segmented control swaps four sections (the dynamic single-page anatomy below — Polls / Comments / Lists / Photos).
+The profile is ONE dynamic single page (the Google-Maps-profile pattern), a top-level nav scene with the app nav bar retained. A persistent top shows avatar (or initials fallback), display name, @username, and a four-stat row — Polls created, Polls contributed, Followers, Following — tappable to jump to each section, with counts denormalized per user and kept fresh by service hooks on polls, votes/endorsements, list changes, and follows. Below the top, a segmented control swaps sections in place: Polls / Comments / Lists / Photos (owner wants 3 — merging Polls + Comments into a single "Posts" section is the open idea). Others' Lists section is the Spotify-playlists analog: chronological first, with toggle-strip filters likely.
 
-The primary action is context-dependent: **Edit profile** on your own profile, **Follow + Message** when viewing someone else's. Viewing another user's profile shows their public profile and public lists only.
+The primary action is context-dependent: on your own profile the top carries **Edit Profile** plus messages-inbox and settings entries; viewing someone else's it carries a **Follow + Message** pair (Instagram-style). Viewing another user's profile shows their public profile and public lists only. (Messaging is IN — see product/messaging.md.) Avatar change: Edit Profile → tap the picture → a shared 2-option modal (camera / library).
 
 ## Friend graph & friends' picks
 
@@ -39,6 +39,8 @@ The friend graph is the trust axis. The Crave Score is crowd consensus; the frie
 
 **Who gets named:** the single named friend is the highest **friend-affinity** one (a tunable score — profile-view frequency is the v1 input, with room to fold in interaction count and recency); everyone else collapses into "and others." Tapping the cluster expands the full list.
 
+**Friend-presence chips on cards.** A related future signal: small avatar chips on restaurant/dish cards showing friends who've been / tried / photographed the same thing. It needs the follow graph plus tried/been data, and is a card-design decision (card real estate + which signals qualify); noted here so the card design pass accounts for the slot.
+
 **Integrity — this is not the banned personalization.** Friend signals are an explicit, visually-distinct _overlay_. They never silently re-rank the objective Crave Score: the default order stays objective. It's a social signal you read, not inferred-taste re-ranking — which keeps the Score pure. (Restaurant-level clusters are free; dish-level ones ride with the Crave+ dish layer.)
 
 **Friends lens (exploring — not committed).** A possible opt-in toggle that filters results to _only_ what friends have saved/ranked — the active "show me only my friends' sushi picks" view. The ambient cluster above may already cover most of this need, so this is a maybe to validate against real usage, not a decided feature.
@@ -47,15 +49,7 @@ The friend graph is the trust axis. The Crave Score is crowd consensus; the frie
 
 ## Shareable lists (virality)
 
-List-sharing is our primary intended virality surface; a public ranked list is a far more compelling shareable artifact than an unordered pile, and it's the acquisition hook in a no-ad-budget model. Each list carries a short share slug and a share toggle; sharing creates or rotates the slug, revoking disables sharing while retaining the slug as inactive, and a public read endpoint serves the list by slug. Lists open via app deep links (`crave-search://favorites/lists/{slug}`) and web universal links (`https://<domain>/l/{slug}`) with an install CTA when the app isn't present.
-
-> **CORRECTION 2026-08-04 (Phase-3 doc-territory drain, audit F747) —
-> wrong deep-link scheme.** The app's URL scheme is `crave`
-> (`apps/mobile/app.json:5`); `crave-search` is only the app name/slug
-> (lines 3-4). The real deep link is `crave://l/<slug>`
-> (`ListDetailPanel.tsx:120,1456`; `desire-url-codec.spec.ts`), with the
-> invite variant `crave://l/{slug}?join=1`. The web universal link
-> `https://<domain>/l/{slug}` above is correct as written. Share events (created/opened/copied/revoked) are tracked to analytics.
+List-sharing is our primary intended virality surface; a public ranked list is a far more compelling shareable artifact than an unordered pile, and it's the acquisition hook in a no-ad-budget model. Each list carries a short share slug and a share toggle; sharing creates or rotates the slug, revoking disables sharing while retaining the slug as inactive, and a public read endpoint serves the list by slug. Lists open via app deep links (`crave://l/{slug}`, with the invite variant `crave://l/{slug}?join=1`) and web universal links (`https://<domain>/l/{slug}`) with an install CTA when the app isn't present. Share events (created/opened/copied/revoked) are tracked to analytics.
 
 A branded **"Share your bookmarks" infographic** generates a shareable image of a user's top 5–10 saved dish/restaurant pairs ("found through community recommendations using Crave").
 
@@ -67,7 +61,23 @@ A **referral-unlock escape hatch** lets users invite N friends to unlock as a no
 
 ## Recognition (decoupled from ranking)
 
-Light social recognition lives on the profile: discoverer/contributor badges for users who surface trending dishes early or contribute heavily, optional top-local-contributor leaderboards, and a "Track your impact" stat showing a user's influence (polls that graduated, dishes they helped surface). The framing is profile identity as a "local food discoverer" — a retention lever. **None of this may touch the Crave Score ranking**, which is objective and global; recognition is a social flourish only and must never read as pay- or clout-to-rank.
+Light social recognition lives on the profile: discoverer/contributor badges for users who surface trending dishes early or contribute heavily, and a "Track your impact" stat showing a user's influence (polls that graduated, dishes they helped surface). The framing is profile identity as a "local food discoverer" — a retention lever. **None of this may touch the Crave Score ranking**, which is objective and global; recognition is a social flourish only and must never read as pay- or clout-to-rank.
+
+Engagement is recognized, never PAID — there are no monetary rewards for engagement (the reward-days machinery for photos/referrals is gone; days can't stop Apple's billing clock, so they were a non-reward for subscribers anyway). The shape:
+
+- **One universal recognition mechanic** across ALL engagement types (photos, poll posts, comments, votes, and maybe lists — though list-count is trivially gameable): Reddit-style badges or a "verified contributor" mark, not per-feature one-offs.
+- **Photo credits are definite** — contributors get visible attribution on the photos they add.
+- **No top-contributor leaderboard surface** (a Beli anti-pattern: an aura of unattainability, wrong vibes). If a competitive layer ever ships it is friends-scoped and designed from engagement data (likes, contribution metrics) so it motivates rather than demotivates — a much later, deliberate design pass.
+- **Referral incentives, when they come, ride App Store OFFER CODES** (real billing value), not ledger days.
+- Launch will likely ship SOME engagement incentive (especially for images); that design belongs to the screens/product thread, and the backend hookups are trivial once the mechanic is chosen (recognition is user-data + UI, not billing).
+
+## The food-log gallery
+
+The profile auto-aggregates every photo the user adds anywhere in the app — grouped by restaurant, dishes within, takenAt (EXIF) kept for a later timeline. The vision is the place people keep ALL their food photos (replacing the camera-roll habit), seeded via the "archaeology" import entry (pick photos → "where is this?" → optional dish link; own lists + recents boosted in that search). Photo credits render here (see Recognition above). Gallery presentation/organization is a parked profile design pass. Photo impressions/taps are tracked from day one and may later drive sorting here.
+
+## Ambient social (considered, deferred)
+
+There is NO user feed (a deliberate ~50-50 call; polls are the engagement center). If ambient social ever ships, it is the Spotify-peek analog ("X added 3 places to Want to Go"), not a posting feed. Do not relitigate without the owner.
 
 ## Still to decide
 
@@ -75,69 +85,3 @@ Light social recognition lives on the profile: discoverer/contributor badges for
 - **Friends lens default** — is the lens always opt-in per session, or can a user set it sticky? And does the friend chip show on results by default for everyone, or is it itself opt-in?
 - **Your-circle's-consensus scope** — what's the minimum follow count before "your people's top X" is meaningful, and how do we present it so it never blurs with the global Score?
 - **Stat integrity** — are the user-stats counters guaranteed in lockstep by service hooks, or do we need a periodic reconciler to catch drift?
-
-## Recognition mechanics (replaces monetary engagement incentives — owner, 2026-07-09)
-
-Decision: NO monetary rewards for engagement (the reward-days machinery for
-photos/referrals was deleted with the hard-paywall lock-in — days can't stop
-Apple's billing clock, so they were a non-reward for subscribers anyway).
-Engagement is recognized, not paid:
-
-- **Universal recognition mechanic** — one system that applies across ALL
-  engagement types (photos, poll posts, comments, votes, maybe lists —
-  though list-count is trivially gameable). Think Reddit-style badges or a
-  "verified contributor" mark, not per-feature one-offs.
-- **Photo credits are definite**: contributors get visible attribution on
-  the photos they add.
-- **NO top-contributor leaderboard surface** (Beli anti-pattern: an aura of
-  unattainability, wrong vibes). If a competitive layer ever ships, it's
-  friends-scoped and designed from engagement data (likes, contribution
-  metrics) so it motivates rather than demotivates — much later, deliberate
-  design pass.
-- Referral incentives, when they come, ride App Store OFFER CODES (real
-  billing value) — not ledger days.
-- Launch will likely ship SOME engagement incentive (esp. images) — design
-  belongs to the screens/product thread; backend hookups are trivial once
-  the mechanic is chosen (recognition is user-data + UI, not billing).
-
-## The food-log gallery (owner, 2026-07-09)
-
-The profile auto-aggregates every photo the user adds anywhere in the app —
-grouped by restaurant, dishes within, takenAt (EXIF) kept for a later
-timeline. Vision: the place people keep ALL their food photos (replacing the
-camera-roll habit), seeded via the "archaeology" import entry (pick photos →
-"where is this?" → optional dish link; own lists + recents boosted in that
-search). Photo credits render here (recognition mechanics above). Gallery
-presentation/organization = profile design pass (parked). Photo
-impressions/taps are tracked from day one and may later drive sorting here.
-
-## Ambient social: considered, deferred (owner, 2026-07-09)
-
-NO user feed (deliberate ~50-50 call; polls are the engagement center). If
-ambient social ever ships, it's the Spotify-peek analog ("X added 3 places
-to Want to Go"), not a posting feed. Do not relitigate without the owner.
-
-## Avatars + friend-presence chips (owner, 2026-07-10)
-
-- **Avatar upload** rides the SAME Cloudinary machinery as UGC photos
-  (signed ticket, Rekognition safety moderation, CDN delivery) — one asset
-  per user (overwrite), square delivery variants. Renders: profile page,
-  poll discussions (already wired), and future friend-presence chips.
-  BUILT server-side with the photo foundation.
-- **Friend-presence chips on cards**: small avatar chips on restaurant/dish
-  cards showing friends who've been/tried/photographed the same thing —
-  needs the follow graph + tried/been data; REGISTRY-PHASE product design
-  (card real estate + which signals qualify). Recorded here so the card
-  design pass accounts for the slot.
-
-## Profile page anatomy locked (owner, 2026-07-10 — registry §7.3; SHIPPED W3, registry run: 4 sections, Follow+Message pair, public Lists view w/ pins + city grouping, blocking, avatar picker; messaging M1/M2 live)
-
-ONE dynamic single page (Google-Maps-profile pattern): persistent top
-(avatar/stats; others' profiles get Follow + Message buttons Instagram-
-style; own profile gets Edit Profile + messages-inbox + settings entries)
-over SEGMENTED sections that swap in place: Polls / Comments / Lists /
-Photos (owner wants 3 — merging Polls+Comments into "Posts" is the open
-idea). Others' Lists section = Spotify-playlists analog; chronological
-first, toggle-strip filters likely. Avatar change: Edit Profile → tap
-picture → shared 2-option modal (camera/library). MESSAGING IS IN — see
-product/messaging.md.

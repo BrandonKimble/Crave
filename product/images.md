@@ -1,8 +1,8 @@
 # Images — UGC photos (canonical product spec)
 
-Owner discussion locked 2026-07-09 (payments session). This file is the
-design of record for the photo system; plans/page-registry.md §6 carries the
-page/funnel entries. The app launches with ZERO images — every photo is UGC.
+This file is the design of record for the photo system; plans/page-registry.md
+§7 is the authority on the photo UI surfaces (page/funnel entries). The app
+launches with ZERO images — every photo is UGC.
 
 ## The model (one sentence)
 
@@ -30,13 +30,14 @@ contribution-nagging apparatus.
      button row.
 2. **Just ate (minutes-hours later)**
    - Search → restaurant profile → chip (same as above).
-   - THE SAVE FUNNEL TOOLKIT: saving = curating. The save sheet (pick list /
-     create list) and the create-list page carry a quiet "Add photo" button
-     — an affordance, NEVER a prompt/interrupt. Discovery-savers ignore it;
-     just-ate-savers self-select. Toolkit = photo + note (+ tags, schema now
-     / UI fast-follow). Notes make shared lists feel authored (lists are a
-     virality surface). Dish-save → photo pre-linked to the dish;
-     restaurant-save → dish list offered, skippable.
+   - THE SAVE FUNNEL: saving = curating. The save sheet (pick list / create
+     list) and the create-list page carry a quiet NOTE field (+ tags at the
+     schema level, UI fast-follow) — inline, Google-style, an affordance and
+     NEVER a prompt/interrupt. The save sheet does NOT carry an add-photo
+     button; photos enter a list via the card "+" tile on the owner's own
+     list cards (dish-save pre-links the photo to the dish; restaurant-save
+     offers the dish list, skippable). Notes make shared lists feel authored
+     (lists are a virality surface).
 3. **Archaeology (photos already in the camera roll)**
    - Profile food-log gallery has its own add entry: flow INVERTS —
      pick photos first, then "where is this?" (search screen with the
@@ -49,11 +50,16 @@ contribution-nagging apparatus.
    a DISPLAY state (attractive placeholder, NO button). A photo prompt at a
    non-eater invites junk.
 
-## The ONE reusable Add Photos screen
+## The ONE reusable Add Photos screen — THE POST PAGE
 
-All funnels converge on a single screen taking context `(restaurant?,
-dish?)` and rendering only the unanswered questions:
+All funnels converge on a single screen — the POST PAGE (registry §7.4): a
+universal composer taking context `(restaurant?, dish?)` and rendering only
+the unanswered questions, with per-photo dish assignment via an inline
+ranked dish list, a public/private control, multi-restaurant sections when
+entered from the profile, and a Post action that collapses the funnel:
 
+- STANDARD FIRST STEP everywhere: a shared 2-option modal (Take photo /
+  Choose from library) → the iOS PHPicker or our custom camera page.
 - Media picker: iOS PHPicker (ZERO photo-library permission needed — the
   system picker is out-of-process and returns only what the user selects).
   In-app camera capture also available. PHOTOS ONLY at launch (owner rec:
@@ -76,8 +82,12 @@ dish?)` and rendering only the unanswered questions:
 - **Restaurant profile**: gallery preview strip (scrollable L-R) above a
   full gallery. Organization = "By dish" (rows ordered by DISH RANK — the
   thing Google cannot do: top dishes, in order, in pictures) + "All
-  photos". Skip Google's menu/vibe ML categories at launch; a cheap async
-  classifier can later split the general bucket (food/drink/interior).
+  photos". The gallery copies Google's pattern: a horizontal-scrolling
+  SELECTOR mini-row at the top (sections as tappable thumbnails/chips —
+  "All photos" first, then the dishes RANKED left-to-right); tapping a chip
+  swaps the gallery grid below. Skip Google's menu/vibe ML categories at
+  launch; a cheap async classifier can later split the general bucket
+  (food/drink/interior).
 - **User profile (the food log)**: auto-aggregates every photo the user
   adds anywhere. Grouped by restaurant (self-organizing), dishes within.
   takenAt (EXIF) stored from day one so a timeline view needs no schema
@@ -87,9 +97,9 @@ dish?)` and rendering only the unanswered questions:
 - Cards everywhere (restaurant + dish cards in results, favorites lists —
   yours, friends', anyone's): photo strip scrollable L-R, Google-style.
 
-## Strip ordering (owner correction 2026-07-10: cards NEVER show a single
+## Strip ordering
 
-## photo — every card carries a horizontal photo strip)
+Cards NEVER show a single photo — every card carries a horizontal photo strip.
 
 - Every restaurant/dish card renders a horizontally scrollable STRIP
   (~3-4 photos visible, more on scroll). There is NO single-thumbnail slot
@@ -126,21 +136,14 @@ upload unlimited photos per dish/restaurant.
 
 ## Data model (one entity, everything else is a query)
 
-Photo: photoId, userId (owner/credit), restaurantId (REQUIRED), dishId?,
-storageKey/publicId, mediaType ('photo' now), caption?, takenAt (EXIF),
-uploadedAt, status (pending|live|hidden|removed), qualityScore,
-width/height. Plus photo_events (impression|tap, batched). List-item note +
-tags live on the favorites side (see product/favorites.md), not on Photo.
-
-> **CORRECTION 2026-08-04 (Phase-3 doc-territory drain, audit F748) —
-> field names drifted from the as-built model** (`schema.prisma:1580`,
-> `model Photo`). The dish link is `connectionId`, not `dishId`. The
-> quality field is `focusScore` (Cloudinary quality_analysis focus,
-> 0..1), not `qualityScore`. There is no `storageKey` field. Fields ADDED
-> since and not listed above: `visibility` (`PhotoVisibility`
-> public/private), `reportCount`, `pendingDishName`, `bytes`,
-> `moderatedAt`. `PhotoEvent`/`PhotoEventType` are correct as claimed
-> above.
+Photo (`schema.prisma`, `model Photo`): photoId, userId (owner/credit),
+restaurantId (REQUIRED), connectionId? (the dish link), publicId, mediaType
+('photo' now), caption?, takenAt (EXIF), uploadedAt, status
+(pending|live|hidden|removed), focusScore (Cloudinary `quality_analysis`
+focus, 0..1), width/height, visibility (`PhotoVisibility` public/private),
+reportCount, pendingDishName, bytes, moderatedAt. Plus `PhotoEvent`
+(impression|tap, batched). List-item note + tags live on the favorites side
+(see product/favorites.md), not on Photo.
 
 ## Considered and DEFERRED (do not relitigate without the owner)
 
@@ -150,27 +153,6 @@ tags live on the favorites side (see product/favorites.md), not on Photo.
 - Video uploads; tags UI (schema first); AI dish-suggestion (cheap async
   batch pass post-launch — never blocking, never at capture time); gallery
   ML categories; likes on photos (metrics only, no like button).
-
-## Gallery UI note (owner, 2026-07-09)
-
-Copy Google's pattern: a horizontal-scrolling SELECTOR mini-row at the top
-of the gallery (sections as tappable thumbnails/chips — "All photos" first,
-then the dishes RANKED left-to-right); tapping swaps the gallery grid below.
-
-## SUPERSEDED + concretized by registry §7 (owner, 2026-07-10)
-
-Registry plans/page-registry.md §7 is now the authority on the photo UI
-surfaces. Corrections to THIS file's earlier sections:
-
-- The save-sheet toolkit does NOT carry an add-photo button (note + tags
-  only, inline, Google-copy). Photos enter lists via the card "+" tile on
-  the owner's own list cards. (§7.5)
-- The "addPhotos screen" is concretized as THE POST PAGE: universal
-  composer, per-photo dish assignment via inline ranked dish list,
-  public/private control, multi-restaurant sections from the profile
-  entry, Post → funnel collapse. (§7.4)
-- STANDARD FIRST STEP everywhere: shared 2-option modal (Take photo /
-  Choose from library) → PHPicker or our custom camera page.
-- v2 enhancer flagged: transient client-side EXIF-GPS read to suggest the
-  restaurant (never uploaded/persisted — compatible with the GPS privacy
-  rule).
+- **v2 restaurant-suggest enhancer**: a transient client-side EXIF-GPS read
+  to suggest the restaurant (never uploaded/persisted — compatible with the
+  GPS privacy rule).
