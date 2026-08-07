@@ -110,7 +110,16 @@ const UserProfileContent = React.memo(({ data }: { data: UserProfilePageData }) 
   const [blockBusy, setBlockBusy] = React.useState(false);
   const [activeSection, setActiveSection] =
     React.useState<ProfileSectionKey>(PROFILE_DEFAULT_SECTION);
-  const serverFollowed = edge.isFollowedByMe ?? false;
+  // F4508: GUARD THE OPTIONAL FIELDS, NEVER THE REQUIRED ONES — the distinction the
+  // F931(a) note above records an instance of but never states as a rule, which is
+  // why the same shape came back twelve lines below it. `FollowEdge` (services/users)
+  // declares `isFollowedByMe` and `isMe` as REQUIRED booleans and `getFollowEdge`
+  // returns a non-nullable `FollowEdge`, so a `??` or `?.` on them has an unreachable
+  // arm: it is not caution, it is a second and wrong source of truth about the payload,
+  // and it teaches the next reader that `edge` might be absent. `isBlockedByMe` and
+  // `hasBlockedMe` ARE optional (the anonymous profile GET cannot carry them), so the
+  // `=== true` checks below are exactly right for those two and stay.
+  const serverFollowed = edge.isFollowedByMe;
   React.useEffect(() => {
     if (followOverride != null && followOverride.value === serverFollowed) {
       setFollowOverride(null);
@@ -130,7 +139,7 @@ const UserProfileContent = React.memo(({ data }: { data: UserProfilePageData }) 
 
   // ── §8.14 owner long-press modal + §7.4 add-photos live inside ProfileSectionsBody now;
   //    isOwnProfile unlocks them there.
-  const isOwnProfile = edge?.isMe === true;
+  const isOwnProfile = edge.isMe;
 
   const handleToggleFollow = React.useCallback(() => {
     if (!userId || followBusy) {
