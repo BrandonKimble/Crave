@@ -714,7 +714,6 @@ const checkMapInteractionContracts = () => {
     const y = Number(event.buttonY);
     return (
       event.visible === true &&
-      event.enabled === true &&
       width >= minWidth &&
       height >= minHeight &&
       y >= minY &&
@@ -737,7 +736,6 @@ const checkMapInteractionContracts = () => {
         latest.line
       }: ${JSON.stringify({
         visible: latest.visible,
-        enabled: latest.enabled,
         buttonWidth: latest.buttonWidth,
         buttonHeight: latest.buttonHeight,
         buttonY: latest.buttonY,

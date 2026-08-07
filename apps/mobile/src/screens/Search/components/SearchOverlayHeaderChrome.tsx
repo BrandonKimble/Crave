@@ -129,8 +129,14 @@ const SearchOverlayHeaderChrome = ({
         event: 'search_this_area_visibility_geometry_contract',
         source: 'react_layout',
         controlId: 'search_this_area',
+        // F5705 — `visible` and `enabled` were the SAME identifier on consecutive lines,
+        // so "rendered but inert" was unrepresentable in the telemetry. It is also
+        // unrepresentable in the COMPONENT, which is why the second field is gone rather
+        // than re-derived: the Reanimated.View below is always mounted and its
+        // pointerEvents is a pure function of `shouldShowSearchThisArea`, the Pressable
+        // has no disabled state, and no in-flight gate sits between them. One fact, one
+        // field. `hasUsableGeometry` is the derived predicate here that CAN be false.
         visible: shouldShowSearchThisArea,
-        enabled: shouldShowSearchThisArea,
         buttonX,
         buttonY,
         buttonWidth,
