@@ -30,9 +30,9 @@ export const executeProfileCloseAction = ({
   // only other writer is resetProfileTransitionState (→ 'idle'). So the hydration-commit
   // preparation ALWAYS ran; the code merely claimed otherwise. (Same rot the RT-2 note at
   // profile-owner-presentation-view-runtime.ts:31-35 already caught once for
-  // isTransitionAnimating.) The `ProfileTransitionStatus` union still declares all four
-  // states — narrowing it to 'idle' | 'open' is a typed sweep across every switch on it,
-  // recorded as owed rather than smuggled in here.
+  // isTransitionAnimating.) The `ProfileTransitionStatus` union is now NARROWED to
+  // 'idle' | 'open' (F9430, done 2026-08-07) — the phantom 'opening'/'closing' states
+  // are unrepresentable, so a stray write can no longer slip past this === 'idle' gate.
   if (!hasPanelSnapshot && transitionStatus === 'idle') {
     return;
   }

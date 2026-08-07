@@ -1,6 +1,13 @@
 import type { FoodResult, RestaurantResult, RestaurantResultScorePreview } from '../../types';
 
-export type ProfileTransitionStatus = 'idle' | 'opening' | 'open' | 'closing';
+// F9430 (owed as F1058/RT-2): this used to declare 'idle'|'opening'|'open'|'closing',
+// but since the L3 transition-machine deletion the ONLY writers are
+// setProfileTransitionStatus('open') (profile-direct-presentation-runtime) and the
+// reset/initial 'idle'. 'opening'/'closing' had no writer — a boolean wearing a
+// 4-state costume, where a future stray write of a phantom state would slip past the
+// single-edge gates (=== 'idle', === 'open') with no total handling. Narrowed to the
+// two reachable states so the phantom states are UNREPRESENTABLE, not merely unwritten.
+export type ProfileTransitionStatus = 'idle' | 'open';
 
 type MapCameraPadding = {
   paddingTop: number;
