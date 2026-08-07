@@ -1,4 +1,8 @@
-import { PERSON_DATA_RULES, type PersonDataRule } from './person-data-class';
+import {
+  PERSON_DATA_RULES,
+  type PersonDataDisposition,
+  type PersonDataRule,
+} from './person-data-class';
 
 /**
  * THE COMPILER: declaration → SQL predicate. One home for "where are this
@@ -182,24 +186,7 @@ export function subjectRows(
     return declared[0];
   }
 
-  const naming = rules.filter((r) => {
-    // ONLY COLUMNS THAT LOCATE A PERSON. This used to accept any scoping
-    // disposition, which swept in the classify-only secondaries — and then
-    // ORed `residue_text = <uuid>` and `device_key = <uuid>` into the
-    // predicate. Those name person data; they do not identify a person, and
-    // comparing one to a user id matches nothing. It was the same incoherence
-    // ruleScope had been fixed for, still living in the other function.
-    if (r.personKey) return true;
-    // `anonymized_by_shell` NAMES the person — the column keeps pointing at
-    // their (anonymized) users row, which is exactly how authorship survives.
-    // Omitting it silently dropped `photos` from the subject-access export:
-    // the person's own uploaded photos, the most obviously-theirs data in the
-    // system. Caught by diffing an export against the previous run, not by
-    // reading this list.
-    if (r.disposition === 'anonymized_by_shell') return true;
-    if (options.includeRetained && r.disposition === 'retain') return true;
-    return false;
-  });
+  const naming = personNamingRules(table, options);
   if (naming.length === 0) return null;
 
   const columns = [...new Set(naming.map((r) => r.column))];
@@ -213,6 +200,163 @@ export function subjectRows(
   // file exists to prevent.
   const predicate = rules.find((r) => r.rowPredicate)?.rowPredicate;
   return predicate ? `(${or}) AND (${predicate})` : or;
+}
+
+/**
+ * THE RULES WHOSE COLUMNS `subjectRows` ORs TOGETHER for this table+options.
+ *
+ * This is the exact set the OR is built from — the columns a scope built here
+ * will locate. Exposed as its own function so a guard can inspect what a scope
+ * would REACH without re-deriving the filter (the re-derivation-drift this file
+ * exists to end). Returns `[]` when the table reaches its person through a
+ * DECLARED scope (a join): there is no per-column OR then, so nothing to widen.
+ */
+export function personNamingRules(
+  table: string,
+  options: { includeRetained: boolean },
+): PersonDataRule[] {
+  const rules = PERSON_DATA_RULES.filter((r) => r.table === table);
+  // A declared scope replaces the OR entirely (see subjectRows) — no columns
+  // are ORed, so this set is empty.
+  if (rules.some((r) => r.personScopeSql)) return [];
+  return rules.filter((r) => {
+    // ONLY COLUMNS THAT LOCATE A PERSON. `residue_text`/`device_key` name
+    // person data but do not identify a person; comparing one to a user id
+    // matches nothing, so they are never ORed in.
+    if (r.personKey) return true;
+    // `anonymized_by_shell` NAMES the person — the column keeps pointing at
+    // their (anonymized) users row, which is how authorship survives, and how
+    // photos stay in the subject-access export.
+    if (r.disposition === 'anonymized_by_shell') return true;
+    if (options.includeRetained && r.disposition === 'retain') return true;
+    return false;
+  });
+}
+
+/**
+ * A COLUMN OR'd INTO A ROW-DELETE SCOPE WHOSE DISPOSITION SAYS THE ROW SURVIVES.
+ *
+ * `subjectRows` ORs every person-bearing column of a table — correct for
+ * access/export, where every naming role is the person's. But two consumers
+ * hand that OR to a DELETE:
+ *
+ *   - the eraser's `delete_row` branch  (subjectRows, includeRetained:false)
+ *   - the retention sweep's horizon DELETE (subjectRows, includeRetained:true)
+ *
+ * and a DELETE destroys the WHOLE row. So when the OR includes a column whose
+ * disposition is not the verb that warrants the deletion — a `sever`/
+ * `anonymized_by_shell` column on a `delete_row` scope, or any non-`retain`
+ * column on a horizon scope — the delete removes rows the declaration said
+ * survive. Both live instances are of exactly this shape:
+ *
+ *   - user_list_collaborators.invited_by_user_id is `sever` ("the invite
+ *     survives on someone else's list; who sent it does not") yet is ORed into
+ *     the delete_row scope, so erasing the inviter deletes THIRD PARTIES'
+ *     memberships on other people's lists.
+ *   - user_reports.reporter_user_id is `anonymized_by_shell` yet is ORed into
+ *     the 2555-day horizon scope enforcing reported_user_id, so a reporter's
+ *     purge deletes the safety record ABOUT a still-live third party.
+ *
+ * This computes those contradictions from the declaration, so the silent
+ * over-deletion is a fact anything can assert on rather than a surprise a
+ * regulator finds. It does NOT change what any scope emits — the per-column
+ * re-scoping that ends the over-deletion is a change to real user data on a
+ * legal-compliance surface, and is the OWNER's ruling to make (see D118 / the
+ * escalation on F7500).
+ */
+export interface DeleteScopeContradiction {
+  /** Which DELETE construction over-reaches. */
+  scope: 'erasure' | 'retention-horizon';
+  table: string;
+  /** The `table.column` rule whose scope this DELETE is (the verb it serves). */
+  onBehalfOf: string;
+  /** The column wrongly ORed into that DELETE. */
+  offendingColumn: string;
+  /** Why that column's row was supposed to survive. */
+  offendingDisposition: PersonDataDisposition;
+}
+
+export function deleteScopeContradictions(): DeleteScopeContradiction[] {
+  const out: DeleteScopeContradiction[] = [];
+
+  // 1. ERASURE. A `delete_row` rule hands subjectRows(includeRetained:false) to
+  //    DELETE. Any ORed column that is not itself `delete_row` names a row the
+  //    declaration keeps.
+  const deleteRowTables = [
+    ...new Set(
+      PERSON_DATA_RULES.filter(
+        (r) => r.disposition === 'delete_row' && !r.personScopeSql,
+      ).map((r) => r.table),
+    ),
+  ];
+  for (const table of deleteRowTables) {
+    const key =
+      PERSON_DATA_RULES.find(
+        (r) =>
+          r.table === table && r.disposition === 'delete_row' && r.personKey,
+      )?.column ?? '(no declared key)';
+    for (const r of personNamingRules(table, { includeRetained: false })) {
+      if (r.disposition !== 'delete_row') {
+        out.push({
+          scope: 'erasure',
+          table,
+          onBehalfOf: `${table}.${key}`,
+          offendingColumn: r.column,
+          offendingDisposition: r.disposition,
+        });
+      }
+    }
+  }
+
+  // 2. RETENTION HORIZON. A `retain` rule with a numeric horizon hands
+  //    subjectRows(includeRetained:true) to a DELETE. Any ORed column that is
+  //    not `retain` names a row governed by a different fate, deleted at this
+  //    horizon.
+  for (const rule of PERSON_DATA_RULES) {
+    if (rule.disposition !== 'retain' || typeof rule.horizon !== 'number') {
+      continue;
+    }
+    if (rule.personScopeSql) continue;
+    for (const r of personNamingRules(rule.table, { includeRetained: true })) {
+      if (r.disposition !== 'retain') {
+        out.push({
+          scope: 'retention-horizon',
+          table: rule.table,
+          onBehalfOf: `${rule.table}.${rule.column}`,
+          offendingColumn: r.column,
+          offendingDisposition: r.disposition,
+        });
+      }
+    }
+  }
+
+  return out;
+}
+
+/**
+ * THE LOUD-FAIL GUARD (D118, F7500). Throws if any DELETE scope would OR in a
+ * surviving-data column, naming every offending (table, column). Approved as
+ * engineering — it makes the current silent over-deletion impossible to run
+ * unnoticed — while the erasure SEMANTICS (per-column re-scoping) stay the
+ * owner's ruling. Fail-open vs fail-closed on the LIVE erase/sweep path is a
+ * compliance decision escalated to the owner and is NOT wired here; this
+ * assertion is the non-production proof (specs + a dev/startup check may call
+ * it) that the defect is real and named.
+ */
+export function assertNoOverbroadDeleteScope(): void {
+  const contradictions = deleteScopeContradictions();
+  if (contradictions.length === 0) return;
+  const lines = contradictions.map(
+    (c) =>
+      `  [${c.scope}] ${c.onBehalfOf}: DELETE scope ORs ` +
+      `${c.table}.${c.offendingColumn} (${c.offendingDisposition}) — that row ` +
+      `was declared to SURVIVE, and the delete destroys it.`,
+  );
+  throw new Error(
+    'person-data: a row-DELETE scope would erase columns the declaration keeps ' +
+      `(${contradictions.length}). Scope by disposition, not by every person ` +
+      `column:\n${lines.join('\n')}`,
+  );
 }
 
 /** Every table the declaration governs. */

@@ -40,7 +40,15 @@ export class UserNotificationFeedService {
     const [rows, unreadCount] = await Promise.all([
       this.prisma.userNotification.findMany({
         where: { userId },
-        orderBy: { createdAt: 'desc' },
+        // A UNIQUE TIEBREAK MAKES THE ORDER TOTAL (F7502). createdAt alone is
+        // non-unique — Timestamptz(3), and the plan is free to order ties any
+        // way, differently between the page-1 and page-2 queries, so a row can
+        // land on both pages or neither. Two follows of the same user in one
+        // millisecond do it today; a batch producer (createMany / one txn)
+        // gives every row the SAME created_at (Postgres now() is txn-stable)
+        // and makes the tie the normal case. The id tiebreak is free: the
+        // covering index carries it (see schema.prisma).
+        orderBy: [{ createdAt: 'desc' }, { userNotificationId: 'desc' }],
         skip: offset,
         take: limit,
       }),

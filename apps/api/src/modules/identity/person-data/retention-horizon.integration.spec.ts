@@ -77,11 +77,25 @@ describe('retention horizon — the promise has a mechanism', () => {
     expect(unexplained).toEqual([]);
   });
 
-  it('no rule both retains-with-a-horizon and is erased at the deadline', () => {
-    // A contradiction: the row would be destroyed at the purge and could never
-    // reach the horizon that justifies keeping it. Declaring both means one of
-    // the two statements is false.
-    expect(RetentionHorizonService.contradictions()).toEqual([]);
+  it('SEES the horizon-sweep contradiction it is named to catch (RED on user_reports today)', () => {
+    // The old assertion here was `toEqual([])`, guarding a check that could
+    // NEVER return anything else (its filter required `ruleWhere` to be
+    // non-null for a `retain` rule, which is impossible — `retain` is not an
+    // acting disposition). A green light wired to nothing.
+    //
+    // The rederived check reads the compiler's disposition contradictions. On
+    // the live declaration it is NON-EMPTY, because the 2555-day sweep for
+    // `user_reports.reported_user_id` runs a DELETE whose scope also matches
+    // `reporter_user_id` (`anonymized_by_shell`) — deleting the safety record
+    // about a still-live third party at a horizon that was never its own. If
+    // the declaration ever carried no such conflict this list would be `[]`;
+    // today it must NOT be, and it must name that pair.
+    const contradictions = RetentionHorizonService.contradictions();
+    expect(contradictions.length).toBeGreaterThan(0);
+    expect(contradictions.join('\n')).toContain(
+      'user_reports.reported_user_id',
+    );
+    expect(contradictions.join('\n')).toContain('reporter_user_id');
   });
 
   it('the sweep runs against the real schema and reports honestly', async () => {

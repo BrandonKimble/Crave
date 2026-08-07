@@ -75,6 +75,16 @@ function build(options: {
     }
     return options.exempt;
   });
+  // THE LOGGER IS THE ARGUMENT UNDER TEST IN LOG MODE (F7503). Log mode's ONLY
+  // product is the record — the pass-through is incidental — yet the double
+  // here used to return a FRESH object from setContext() on every call, so no
+  // handle survived to assert on and deleting the interceptor's logger.info
+  // left the suite green (a silent log mode is indistinguishable from off). The
+  // sink is hoisted and stable so the record it emits can be observed, exactly
+  // as the reflector and verdict doubles were made non-uniform for the same
+  // reason.
+  const loggerInfo = jest.fn();
+  const logger = { info: loggerInfo, warn: jest.fn(), error: jest.fn() };
   const interceptor = new EntitlementEnforcementInterceptor(
     {
       getAllAndOverride,
@@ -84,11 +94,7 @@ function build(options: {
       defaultCode: 'crave_plus',
     } as never,
     {
-      setContext: () => ({
-        info: jest.fn(),
-        warn: jest.fn(),
-        error: jest.fn(),
-      }),
+      setContext: () => logger,
     } as never,
   );
   return {
@@ -98,6 +104,7 @@ function build(options: {
     accessVerdict,
     getAllAndOverride,
     reflectorLookups,
+    loggerInfo,
   };
 }
 
@@ -219,7 +226,7 @@ describe('paywall: log mode reports what enforce WOULD do', () => {
   it('an anonymous caller passes through but is REPORTED — otherwise log mode', async () => {
     // ...cannot be used to validate the exempt set before flipping to
     // enforce, which is the only reason log mode exists.
-    const { interceptor, next, handled } = build({
+    const { interceptor, next, handled, loggerInfo } = build({
       exempt: false,
       entitled: true,
     });
@@ -229,6 +236,21 @@ describe('paywall: log mode reports what enforce WOULD do', () => {
     );
     await expect(firstValueFrom(result)).resolves.toBe('body');
     expect(handled.called).toBe(true);
+
+    // THE RECORD IS THE FEATURE. Deleting the interceptor's logger.info must go
+    // RED here — a silent log mode is indistinguishable from off, which is the
+    // exact state the flip to enforce is supposed to be validated against. The
+    // url and handler are asserted too: they are the two fields that make the
+    // record usable for exempt-set validation.
+    expect(loggerInfo).toHaveBeenCalledTimes(1);
+    expect(loggerInfo).toHaveBeenCalledWith(
+      'Paywall WOULD block (log mode)',
+      expect.objectContaining({
+        reason: 'unauthenticated',
+        url: '/api/v1/thing',
+        handler: 'getThing',
+      }),
+    );
   });
 });
 

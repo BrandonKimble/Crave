@@ -3,7 +3,7 @@ import { Cron, CronExpression } from '@nestjs/schedule';
 import { PrismaService } from '../../../prisma/prisma.service';
 import { LoggerService } from '../../../shared';
 import { PERSON_DATA_RULES } from './person-data-class';
-import { ruleWhere, subjectRows } from './person-data-scope';
+import { deleteScopeContradictions, subjectRows } from './person-data-scope';
 
 /**
  * THE HORIZON, ENFORCED.
@@ -132,14 +132,34 @@ export class RetentionHorizonService {
     ).map((rule) => `${rule.table}.${rule.column}`);
   }
 
-  /** A retained rule must not ALSO be an acting rule — it would be erased at
-   *  the deadline and never reach its horizon. */
+  /**
+   * A RETAINED HORIZON MUST NOT BE ENFORCED BY A SCOPE THAT DELETES OTHER ROWS.
+   *
+   * The old body was structurally `[]` and could not be otherwise: it filtered
+   * for `retain` rules where `ruleWhere(rule) !== null`, but `ruleWhere` returns
+   * null for every non-acting disposition (`retain` is not in ACTING), so the
+   * second conjunct was false for every candidate — a green light wired to
+   * nothing, in the file whose own header argues against promises with no
+   * mechanism. The question has content only at the TABLE level, and there it is
+   * currently VIOLATED: the 2555-day sweep for `user_reports.reported_user_id`
+   * runs a DELETE whose scope also matches `reporter_user_id`
+   * (`anonymized_by_shell`), so a reporter's purge deletes the safety record
+   * about a still-live third party at a horizon that was never its own.
+   *
+   * Rederived at the grain the question has: the disposition contradictions the
+   * compiler now computes, restricted to the horizon sweep — a retained rule
+   * whose DELETE scope reaches rows the declaration keeps for a different
+   * reason. Non-empty on the live corpus (`user_reports`); `[]` only for a
+   * declaration with no such conflict. This is the same predicate F7500's guard
+   * asserts, read from the one place it is derived.
+   */
   static contradictions(): string[] {
-    return PERSON_DATA_RULES.filter(
-      (rule) =>
-        rule.disposition === 'retain' &&
-        typeof rule.horizon === 'number' &&
-        ruleWhere(rule) !== null,
-    ).map((rule) => `${rule.table}.${rule.column}`);
+    return deleteScopeContradictions()
+      .filter((c) => c.scope === 'retention-horizon')
+      .map(
+        (c) =>
+          `${c.onBehalfOf}: horizon DELETE also removes ` +
+          `${c.table}.${c.offendingColumn} (${c.offendingDisposition})`,
+      );
   }
 }
