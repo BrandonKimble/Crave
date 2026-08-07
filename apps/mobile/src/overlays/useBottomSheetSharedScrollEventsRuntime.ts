@@ -10,6 +10,10 @@ import {
 import type { ReanimatedScrollEvent } from 'react-native-reanimated/lib/typescript/hook/commonTypes';
 import type { SharedValue } from 'react-native-reanimated';
 
+import {
+  MOMENTUM_EDGE_MIN_SPEED_PT_PER_SEC,
+  deriveMomentumArrivalSpeedsPtPerSec,
+} from './bottomSheetMomentumReboundMath';
 import { getScrollTopOffset } from './bottomSheetSharedRuntimeUtils';
 import { OVERSCROLL_REBOUND_SPRING } from './useBottomSheetSharedGestureRuntime';
 
@@ -43,10 +47,9 @@ type UseBottomSheetSharedScrollEventsRuntimeArgs = {
 // Local note that is NOT duplicated knowledge: here the impulse's DEPTH comes from the
 // carried arrival velocity — the spring only shapes the return.
 // Arrival speed is DERIVED from momentum offset deltas (probe-proven 2026-07-23:
-// event.velocity is null in these Reanimated scroll events; the deltas are the
-// velocity — ~1 event/frame at 60Hz, so pt/frame × 60 = pt/s).
-const MOMENTUM_EDGE_MIN_DELTA_PT_PER_FRAME = 4;
-const FRAMES_PER_SECOND = 60;
+// event.velocity is null in these Reanimated scroll events; the deltas are the velocity) —
+// divided by the MEASURED interval between consecutive events, never by an assumed frame
+// rate. The gate and the conversion both live in bottomSheetMomentumReboundMath (F5806).
 
 type UseBottomSheetSharedScrollEventsRuntimeResult = {
   primaryListOnScroll: FlashListProps<unknown>['onScroll'];
@@ -70,9 +73,12 @@ export const useBottomSheetSharedScrollEventsRuntime = ({
 }: UseBottomSheetSharedScrollEventsRuntimeArgs): UseBottomSheetSharedScrollEventsRuntimeResult => {
   // One impulse per momentum episode (reset when a new drag begins).
   const topReboundFired = useSharedValue(false);
-  // The previous momentum event's offset + step — the derived arrival velocity's inputs.
+  // The previous momentum event's offset, timestamp, and derived speed — the arrival
+  // velocity's inputs. The timestamp is what makes the conversion refresh-rate independent:
+  // 0 means "no predecessor yet" (first event of the episode).
   const momentumPrevOffset = useSharedValue(0);
-  const momentumPrevDelta = useSharedValue(0);
+  const momentumPrevAtMs = useSharedValue(0);
+  const momentumPrevSpeed = useSharedValue(0);
 
   // ─── ONE HANDLER FACTORY (red-team ledger: the config was hand-copied three times —
   // the drift disease). Each list role differs by exactly two facts: which per-list
@@ -116,20 +122,27 @@ export const useBottomSheetSharedScrollEventsRuntime = ({
         // pan against the native scroll (the polls double-motion). The container's
         // layout/content-size publication is THE one writer of max/viewport/known.
         if (isInMomentum.value) {
-          const stepDelta = Math.abs(event.contentOffset.y - momentumPrevOffset.value);
-          const arrivalDelta = Math.max(stepDelta, momentumPrevDelta.value);
+          const nowMs = performance.now();
+          const { stepSpeedPtPerSec, arrivalSpeedPtPerSec } = deriveMomentumArrivalSpeedsPtPerSec({
+            deltaPt: event.contentOffset.y - momentumPrevOffset.value,
+            intervalMs: momentumPrevAtMs.value === 0 ? 0 : nowMs - momentumPrevAtMs.value,
+            previousSpeedPtPerSec: momentumPrevSpeed.value,
+          });
           if (
             !topReboundFired.value &&
             event.contentOffset.y <= scrollTopOffset.value + 0.5 &&
-            arrivalDelta >= MOMENTUM_EDGE_MIN_DELTA_PT_PER_FRAME
+            arrivalSpeedPtPerSec >= MOMENTUM_EDGE_MIN_SPEED_PT_PER_SEC
           ) {
             topReboundFired.value = true;
             contentOverscroll.value = withSpring(0, {
               ...OVERSCROLL_REBOUND_SPRING,
-              velocity: -arrivalDelta * FRAMES_PER_SECOND,
+              velocity: -arrivalSpeedPtPerSec,
             });
           }
-          momentumPrevDelta.value = stepDelta;
+          // The carry is THIS event's own speed, not the running max — the max belongs to the
+          // arrival reading, not to the history.
+          momentumPrevSpeed.value = stepSpeedPtPerSec;
+          momentumPrevAtMs.value = nowMs;
           momentumPrevOffset.value = event.contentOffset.y;
         }
       },
@@ -140,7 +153,8 @@ export const useBottomSheetSharedScrollEventsRuntime = ({
         }
         isInMomentum.value = false;
         topReboundFired.value = false;
-        momentumPrevDelta.value = 0;
+        momentumPrevSpeed.value = 0;
+        momentumPrevAtMs.value = 0;
         momentumPrevOffset.value = scrollOffset.value;
       },
       onMomentumBegin: () => {
