@@ -4306,3 +4306,51 @@ findings need gates an autonomous orchestrator cannot supply (owner decisions, s
 Xcode native builds, concurrent-session releases — the concurrent files are STILL dirty now), and
 those gated findings are the "escalations awaiting you" the DONE state contemplates, plus a
 sim/native/concurrent tail that needs a runner. See the DONE-status report.
+
+## D140 — mechanical-drain + F967 coverage close (2026-08-07)
+
+This turn drained every autonomously-fixable finding and closed the last COVERAGE gap.
+
+**Committed (11 commits, all green through the full hook chain; every behavioral fix
+mutation-proven, every deletion banking-verified):**
+- Mechanical clusters A/B/C: F1454, F1483, F2950, F5421, F6605, F2075, F2101, F3716,
+  F2802, F2805, F2126, F2127, F2703, F3704, F3707(del), F1707(imports), F6620.
+- 72-triage mechanical: F6409(c), F2053, F6621.
+- F967 pass-2 re-hunt: closed the overlays-root priority coverage, surfaced F9300-F9309;
+  drained F9300, F9301(del field), F9302(del export), F9303(del prop), F9304, F9306,
+  F9307, F9309.
+
+**Two design refusals worth recording (design-authority, NOT rubber-stamped):**
+- F6409(d): the triage called the freezeClassification equality conjunct a tautology
+  ("no spec moves" — absence-based proof). REJECTED: freezeClassification is read from
+  getPolicyFactsSnapshot() whose type admits 'close-handoff' (a separate resolver
+  independent of the observed boolean), so dropping the conjunct is an unproven
+  render-correctness change → escalated to SIM. The mandate's "a verifier must show RED"
+  bar caught a plausible-but-wrong triage disposition.
+- F458: the "delete all four dead metrics" premise was STALE — 2 of 4 are live (red-team
+  round-13 repopulated reusedEntitySummaries). Refused the blind delete → owner re-triage.
+
+**F9306/F9307 — the model unrepresentable-state win:** PageBodyShell's silent band
+fallbacks were fixed NOT with a runtime bark (guard-in-costume, rejected) but by
+parametrizing PageListBodySpec<TBandKey> so a forgotten/typo'd band is a tsc error
+(TS2741). This is the mandate's ideal: make the bad state unrepresentable.
+
+**HONEST DONE ASSESSMENT — NOT satisfied, and why that's correct:**
+- Ledger: 0 NEEDS-TRIAGE, 0 bare OPEN. Every row is terminal (FIXED/DELETED/MOOT) or a
+  named escalation (ESCALATED/OWNER-DECISION) or a PARTIAL/CONFIRMED whose NEXT ACTION
+  names its gate. COVERAGE 0-stale / 4076 reviewed.
+- The mandate's "two consecutive passes, zero new findings" is NOT met: the F967 pass just
+  surfaced 10 new findings. That is the exercise working as intended (an exhaustive re-hunt
+  SHOULD find residual signal), not a failure to paper over.
+- What remains is genuinely NOT autonomously closable this turn:
+  * OWNER (81) + measurement (F9305/F9308): product/money/data-lifetime/taste/scheduling
+    or no-fake-estimates measurement calls — await the user.
+  * ESCALATED runner-gated (46 + 2 concurrent): need a live simulator + human oracle (SIM),
+    an Xcode/device build (NATIVE), or the concurrent sessions' dirty files to land
+    (CONCURRENT: tracksheet/*, database-validation, main.ts, photos, api user-lists,
+    notification-dispatcher).
+  * PARTIAL (54) / CONFIRMED-STILL-LIVE (9): mechanical half landed in prior passes;
+    documented remainder is design-scale or runner-gated (independently triage-verified).
+- Next honest step toward full convergence is either owner rulings on the escalation queue
+  or a fresh P1 pass on an un-hunted territory — not more autonomous drain, which is
+  exhausted.
