@@ -48,6 +48,7 @@ import NetworkStatusListener from './src/providers/NetworkStatusListener';
 import { PurchasesProvider } from './src/providers/PurchasesProvider';
 import { PaywallDevPreview } from './src/screens/PaywallDevPreview';
 import { EntitlementLapseHost } from './src/screens/EntitlementLapseHost';
+import { PaywallPresentationHost } from './src/screens/PaywallPresentationHost';
 import { CameraCaptureHost } from './src/screens/CameraCaptureHost';
 import { PostPhotosFunnelHost } from './src/overlays/PostPhotosFunnelHost';
 import PollNotificationListener from './src/providers/PollNotificationListener';
@@ -165,6 +166,9 @@ function App() {
                     {__DEV__ ? <LifecycleHarnessBridge /> : null}
                     <PurchasesProvider />
                     <EntitlementLapseHost />
+                    {/* The paywall a user ASKED for (dismissible) — settings' rail-aware
+                        "Manage subscription" opens it when there is no live subscription. */}
+                    <PaywallPresentationHost />
                     {/* W2 photo funnel (page-registry §7.4): the app-wide 2-option modal host
                         + the full-screen custom camera (outside the sheet system, §9a). */}
                     <PostPhotosFunnelHost />

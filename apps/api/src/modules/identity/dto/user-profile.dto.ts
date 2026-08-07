@@ -4,6 +4,7 @@ import {
   UsernameStatus,
 } from '@prisma/client';
 import type { UserOnboardingProfile } from '@crave-search/shared';
+import type { BillingRail } from '../billing-rail';
 
 export interface ActiveSubscriptionDto {
   provider: SubscriptionProvider;
@@ -51,6 +52,12 @@ export interface UserProfileDto {
     /** True when the app-wide paywall is enforcing (server-owned rollout
      *  switch) — the client's paywall routing axis keys off this. */
     enforced: boolean;
+    /** WHICH RAIL bills this subscriber, derived from the live subscription
+     *  row (see billing-rail.ts). `null` = nothing to manage (no live sub, or
+     *  a comp). The client's "Manage subscription" row dispatches on this;
+     *  without it every subscriber was sent to Apple, which is a dead end for
+     *  a Stripe-web subscriber. */
+    billingRail: BillingRail | null;
   };
 }
 

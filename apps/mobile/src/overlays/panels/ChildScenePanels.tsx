@@ -6,7 +6,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 
 import { Text } from '../../components';
 import { announceFailureIfOnline } from '../../components/app-modal-store';
-import { MANAGE_SUBSCRIPTIONS_URL, PRIVACY_URL, TERMS_URL } from '../../constants/legalLinks';
+import { PRIVACY_URL, TERMS_URL } from '../../constants/legalLinks';
 import { registerPersistentHeaderDescriptor } from '../../navigation/runtime/app-route-persistent-header-registry';
 import { useAppRouteSceneRuntime } from '../../navigation/runtime/AppRouteSceneRuntimeProvider';
 import { useRouteAuthoritySelector } from '../../navigation/runtime/use-route-authority-selector';
@@ -18,6 +18,7 @@ import type {
 import type { RouteOverlayNavigationSnapshot } from '../../navigation/runtime/route-overlay-navigation-snapshot-contract';
 import { useAppOverlayRouteController } from '../useAppOverlayRouteController';
 import { useAccountActionsRuntime } from './runtime/use-account-actions-runtime';
+import { useManageSubscriptionAction } from './runtime/use-manage-subscription-action';
 import { createProfileQueryOptions } from './profileSceneQueryOptions';
 import { usersService, type FollowListUser } from '../../services/users';
 import { UserProfilePanelBody } from './UserProfilePanel';
@@ -265,8 +266,7 @@ const BlockedUsersSection = () => {
   );
 };
 
-// Subscription status line — server-truth access block (usersService.getMe().access);
-// manage/cancel rides the MANAGE_IN_APP_STORE path (App Store subs are managed in iOS).
+// Subscription status line — server-truth access block (usersService.getMe().access).
 const SubscriptionStatusLine = () => {
   // A#9 (residency): quiet while the hosting shell is hidden.
   const subscriptionLive = useShellLiveness();
@@ -287,6 +287,25 @@ const SubscriptionStatusLine = () => {
         {statusText}
       </Text>
     </View>
+  );
+};
+
+// RAIL-AWARE "Manage subscription": where this row LANDS depends on who bills the user
+// (access.billingRail — server-derived from the live subscription row). See
+// runtime/use-manage-subscription-action.ts for the dispatch and why a single hardcoded
+// Apple URL was a dead end for the web rail.
+const ManageSubscriptionRow = () => {
+  const subscriptionLive = useShellLiveness();
+  const profileQuery = useQuery({ ...createProfileQueryOptions(), subscribed: subscriptionLive });
+  const handleManageSubscription = useManageSubscriptionAction(
+    profileQuery.data?.access?.billingRail
+  );
+  return (
+    <DrillInRow
+      label="Manage subscription"
+      testID="settings-manage-subscription"
+      onPress={handleManageSubscription}
+    />
   );
 };
 
@@ -317,11 +336,7 @@ const SettingsContent = React.memo(() => {
 
       <SectionHeader label="Subscription" />
       <SubscriptionStatusLine />
-      <DrillInRow
-        label="Manage subscription"
-        testID="settings-manage-subscription"
-        onPress={() => void Linking.openURL(MANAGE_SUBSCRIPTIONS_URL)}
-      />
+      <ManageSubscriptionRow />
 
       <SectionHeader label="Appearance" />
       {/* §7.7: dark/light mode is a named future placeholder. */}

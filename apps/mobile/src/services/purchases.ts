@@ -164,6 +164,28 @@ export async function purchasePackage(
   }
 }
 
+/**
+ * Apple's OWN manage-subscriptions sheet, presented in-app (StoreKit 2 via
+ * RevenueCat). This is the APP STORE rail's management surface — the
+ * https://apps.apple.com/account/subscriptions URL is the out-of-app
+ * fallback, not this.
+ *
+ * Returns false when it could not be shown (SDK unlinked/unconfigured, or
+ * the sheet threw) so the caller can say so instead of no-opping silently.
+ */
+export async function showManageSubscriptions(): Promise<boolean> {
+  await identityQueue;
+  const Purchases = loadModule();
+  if (!Purchases || !isPurchasesAvailable()) return false;
+  try {
+    await Purchases.showManageSubscriptions();
+    return true;
+  } catch (error) {
+    captureHandledError(error, { seam: 'purchases:manage-subscriptions' });
+    return false;
+  }
+}
+
 export async function restorePurchases(): Promise<CustomerInfo | null> {
   await identityQueue;
   const Purchases = loadModule();

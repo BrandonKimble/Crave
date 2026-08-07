@@ -29,6 +29,16 @@ export interface AccessSummary {
   /** True when the app-wide paywall is enforcing (server-owned rollout
    *  switch) — the paywall routing axis keys off this. */
   enforced?: boolean;
+  /**
+   * WHICH RAIL BILLS THIS USER — server-derived from the live subscription
+   * row (api: identity/billing-rail.ts). `'app_store'` = Apple's own
+   * subscription sheet, `'web'` = the Stripe billing portal, `null` = there
+   * is nothing to manage (no live subscription, or a comp).
+   *
+   * The client CANNOT derive this: `source` above says why access exists,
+   * never who takes the money. "Manage subscription" dispatches on it.
+   */
+  billingRail?: 'app_store' | 'web' | null;
 }
 
 export interface UserProfile {

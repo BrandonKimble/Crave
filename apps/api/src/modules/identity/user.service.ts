@@ -19,6 +19,7 @@ import {
 } from './auth/clerk-auth.service';
 import { EntitlementService } from '../entitlements/entitlement.service';
 import { UserProfileDto } from './dto/user-profile.dto';
+import { deriveBillingRail } from './billing-rail';
 import { UserStatsService } from './user-stats.service';
 import { UpdateUserProfileDto } from './dto/update-user-profile.dto';
 import { UpdateUserOnboardingDto } from './dto/update-user-onboarding.dto';
@@ -222,7 +223,15 @@ export class UserService {
       // enforced tells the client whether the app-wide wall is LIVE — the
       // paywall routing axis keys off this, so the rollout stays a single
       // server-side switch.
-      access: { ...summary, enforced: readGatingMode() === 'enforce' },
+      access: {
+        ...summary,
+        enforced: readGatingMode() === 'enforce',
+        // WHICH RAIL, derived from the subscription row that is already
+        // loaded above — the settings "Manage subscription" row is rail-aware
+        // because of this field, and it is the ONLY thing that can tell it
+        // (grant `source` is why access exists, not who bills for it).
+        billingRail: deriveBillingRail(activeSubscription),
+      },
       userId: user.userId,
       email: user.email,
       username: user.username,
