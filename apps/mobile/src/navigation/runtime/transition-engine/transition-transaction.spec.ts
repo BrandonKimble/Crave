@@ -1,7 +1,6 @@
 import {
   amendTransitionTxnJoinInputs,
   commitTransitionTxn,
-  createTransitionTxn,
   getLiveTransitionTxn,
   markTransitionJoinInput,
   offerTransitionJoinInput,
@@ -52,7 +51,7 @@ describe('TransitionTransaction (§Q redo, T0)', () => {
   });
 
   it('runs the full joined lifecycle: staged → committed → (seal) → joining → revealed → settled', () => {
-    const txn = createTransitionTxn(MUTATION, JOINED_PLAN);
+    const txn = stageTransitionTxn(MUTATION, JOINED_PLAN);
     expect(txn.phase).toBe('staged');
     commitTransitionTxn(txn);
     expect(txn.phase).toBe('committed'); // holds for the arm-time amendment window
@@ -69,7 +68,7 @@ describe('TransitionTransaction (§Q redo, T0)', () => {
   });
 
   it('Q-4: the DEGENERATE plan (no join inputs) reveals at SEAL — the zero-plane class is an output, not an exception', () => {
-    const txn = createTransitionTxn(MUTATION, DEGENERATE_PLAN);
+    const txn = stageTransitionTxn(MUTATION, DEGENERATE_PLAN);
     commitTransitionTxn(txn);
     expect(txn.phase).toBe('committed');
     sealTransitionTxnJoin(txn);
@@ -77,17 +76,23 @@ describe('TransitionTransaction (§Q redo, T0)', () => {
     expect(violations).toHaveLength(0);
   });
 
+  // F5404: this case used to offer `'camera'` — a member that existed on
+  // `TransitionJoinInput` for no other reason than to give this line something invalid to
+  // pass. No plan declared it and no source offered it, so the union promised a producer
+  // that never existed. The member is deleted; the case offers a REAL input absent from
+  // THIS plan, which is both a genuinely invalid value and the shape the violation
+  // actually fires on in production.
   it('barks on an undeclared join input and does NOT advance', () => {
-    const txn = createTransitionTxn(MUTATION, DEGENERATE_PLAN);
+    const txn = stageTransitionTxn(MUTATION, DEGENERATE_PLAN);
     commitTransitionTxn(txn);
     sealTransitionTxnJoin(txn);
-    markTransitionJoinInput(txn, 'camera');
+    markTransitionJoinInput(txn, 'mapFrame');
     expect(violations.map((violation) => violation.reason)).toContain('unknown_join_input');
     expect(txn.phase).toBe('revealed');
   });
 
   it('barks on a duplicate join input (each input lands exactly once)', () => {
-    const txn = createTransitionTxn(MUTATION, JOINED_PLAN);
+    const txn = stageTransitionTxn(MUTATION, JOINED_PLAN);
     commitTransitionTxn(txn);
     sealTransitionTxnJoin(txn);
     markTransitionJoinInput(txn, 'paint');
@@ -97,7 +102,7 @@ describe('TransitionTransaction (§Q redo, T0)', () => {
   });
 
   it('barks on an illegal phase edge (settle before reveal) and refuses it', () => {
-    const txn = createTransitionTxn(MUTATION, JOINED_PLAN);
+    const txn = stageTransitionTxn(MUTATION, JOINED_PLAN);
     commitTransitionTxn(txn);
     sealTransitionTxnJoin(txn);
     settleTransitionTxn(txn);
@@ -120,7 +125,7 @@ describe('TransitionTransaction (§Q redo, T0)', () => {
   });
 
   it('a settled txn is terminal — no further edges', () => {
-    const txn = createTransitionTxn(MUTATION, DEGENERATE_PLAN);
+    const txn = stageTransitionTxn(MUTATION, DEGENERATE_PLAN);
     commitTransitionTxn(txn);
     sealTransitionTxnJoin(txn);
     settleTransitionTxn(txn);
@@ -133,7 +138,7 @@ describe('TransitionTransaction (§Q redo, T0)', () => {
   // the old world's shape — provably leaks the prior transaction's state.
   it('T5 join liveness: a joining txn whose offers never arrive force-reveals after the degrade window WITH the loud violation', () => {
     jest.useFakeTimers();
-    const txn = createTransitionTxn(MUTATION, JOINED_PLAN);
+    const txn = stageTransitionTxn(MUTATION, JOINED_PLAN);
     commitTransitionTxn(txn);
     sealTransitionTxnJoin(txn);
     expect(txn.phase).toBe('joining');
@@ -148,14 +153,14 @@ describe('TransitionTransaction (§Q redo, T0)', () => {
 
   it('T5 join liveness: a healthy join never fires the watchdog; a freeze plan (user-paced boundary) is exempt', () => {
     jest.useFakeTimers();
-    const healthy = createTransitionTxn(MUTATION, JOINED_PLAN);
+    const healthy = stageTransitionTxn(MUTATION, JOINED_PLAN);
     commitTransitionTxn(healthy);
     sealTransitionTxnJoin(healthy);
     markTransitionJoinInput(healthy, 'paint');
     markTransitionJoinInput(healthy, 'chrome');
     markTransitionJoinInput(healthy, 'mapFrame');
     expect(healthy.phase).toBe('revealed');
-    const freeze = createTransitionTxn(MUTATION, {
+    const freeze = stageTransitionTxn(MUTATION, {
       content: { kind: 'freezeUntilSnap' as const },
       joinInputs: ['boundary'] as const,
       movesSheet: true,
@@ -169,19 +174,16 @@ describe('TransitionTransaction (§Q redo, T0)', () => {
     jest.useRealTimers();
   });
 
-  it('RED backstop: without staging-supersession, two "live" transitions coexist (the old disease)', () => {
-    const first = createTransitionTxn(MUTATION, JOINED_PLAN);
-    const second = createTransitionTxn(MUTATION, JOINED_PLAN);
-    commitTransitionTxn(first);
-    sealTransitionTxnJoin(first);
-    commitTransitionTxn(second);
-    sealTransitionTxnJoin(second);
-    // Both accept marks — the ambiguity the HOLDER exists to kill:
-    markTransitionJoinInput(first, 'paint');
-    markTransitionJoinInput(second, 'paint');
-    expect(first.phase).toBe('joining');
-    expect(second.phase).toBe('joining'); // two clocks, no owner — the §Q-1 smell
-  });
+  // F5405 — THE 'TWO LIVE TRANSITIONS COEXIST' RED BACKSTOP IS DELETED, NOT REWRITTEN.
+  //
+  // It minted two transactions directly and drove both to 'joining' to demonstrate "the old
+  // disease": two clocks, no owner. It could only do that because `createTransitionTxn` was
+  // exported — the very escape hatch that made the holder's guarantees conditional. With the
+  // constructor module-private the state it asserted is UNREACHABLE, and a spec of an
+  // unreachable state is a green test of code nothing can run. The property it was reaching
+  // for is covered, positively, by the SUPERSESSION case above: staging a second transaction
+  // terminates the first and its late marks bark as stale. The compiler is the backstop now —
+  // there is no way to write the two-live-txn shape at all.
   // ── F901/F902: THE ARM WINDOW ────────────────────────────────────────────────
   //
   // The scene-stack host arms every page switch from BottomSheetSceneStackHost's

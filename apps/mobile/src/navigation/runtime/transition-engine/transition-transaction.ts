@@ -40,7 +40,6 @@ export type TransitionJoinInput =
   | 'paint'
   | 'chrome'
   | 'mapFrame'
-  | 'camera'
   | 'boundary'
   // Q-2: the sheet-motion readiness axis (the redraw family's sheetReady — "the sheet is
   // not physically moving for this transition"). Declared by in-place world revises whose
@@ -100,11 +99,17 @@ export type TransitionTxn = {
 /** The watchdog is a safety net for a stuck join; once the join is over it has
  *  nothing to watch. Leaving it armed kept a timer (and the whole txn) alive for
  *  its full window after every single transition — invisible in the app, and the
- *  reason the jest run force-killed a worker (F830). */
-const armedJoinLivenessWatchdogs = new Set<TransitionTxn>();
-
+ *  reason the jest run force-killed a worker (F830).
+ *
+ *  F5405: the timer field is the ONE ledger of "is this txn's watchdog armed". A
+ *  module-global `Set<TransitionTxn>` used to be maintained alongside it — two ledgers
+ *  for one fact, kept in step by hand at four sites — and it existed for exactly one
+ *  reason, stated in its own comment: the test reset had to disarm txns "the spec created
+ *  directly", which "were never in the holder to begin with". Those txns existed because
+ *  `createTransitionTxn` was exported. It is not, now: every transaction is minted through
+ *  the holder, so every armed txn is either LIVE or superseded-and-disarmed, and the
+ *  second ledger (with its desynchronisation hazard) is gone. */
 const disarmJoinLivenessWatchdog = (txn: TransitionTxn): void => {
-  armedJoinLivenessWatchdogs.delete(txn);
   if (txn.joinLivenessTimer != null) {
     clearTimeout(txn.joinLivenessTimer);
     txn.joinLivenessTimer = null;
@@ -202,7 +207,13 @@ const emitTrace = (txn: TransitionTxn, edge: string): void => {
 
 // ── Pure constructors / transitions ────────────────────────────────────────────
 
-export const createTransitionTxn = (
+/** MODULE-PRIVATE BY DESIGN (F5405). The holder is the arbitration point (design §4.6):
+ *  every guarantee it provides — "its gates become unreachable", "stale writes are
+ *  identifiable", "ONE live transaction (Q-5: keyed, not ambient)" — is conditional on
+ *  nobody being able to mint a transaction outside it. This used to be exported for the
+ *  spec's convenience, and the spec used it 14 times, against the architecture the same
+ *  file's header declares. Stage through `stageTransitionTxn`. */
+const createTransitionTxn = (
   mutation: TransitionMutation,
   plan: TransitionTxnPlan
 ): TransitionTxn => {
@@ -308,7 +319,7 @@ export const sealTransitionTxnJoin = (txn: TransitionTxn): void => {
 
 // ── Join liveness (T5): the ENGINE owns the degrade clock, not any host ceremony ──
 //
-// A joining transaction whose machine-paced offers (paint/chrome/mapFrame/camera) never
+// A joining transaction whose machine-paced offers (paint/chrome/mapFrame) never
 // arrive would park the visible-commit gate forever — the app sticks on the outgoing
 // content with no bark. The engine force-reveals after JOIN_LIVENESS_MS with a LOUD
 // violation naming the missing inputs: a fire means a source is broken (a header that
@@ -333,9 +344,7 @@ const armJoinLivenessWatchdog = (txn: TransitionTxn): void => {
     return;
   }
   const windowMs = txn.plan.joinLivenessMs ?? JOIN_LIVENESS_MS;
-  armedJoinLivenessWatchdogs.add(txn);
   txn.joinLivenessTimer = setTimeout(() => {
-    armedJoinLivenessWatchdogs.delete(txn);
     txn.joinLivenessTimer = null;
     if (txn.phase !== 'joining') {
       return;
@@ -600,14 +609,15 @@ export const subscribeTransitionTxn = (listener: Listener): (() => void) => {
 
 /** Test-only: reset the holder between specs.
  *
- *  Also DISARMS every armed join-liveness watchdog. A txn left mid-'joining' at
- *  the end of a spec used to fire its 600ms degrade AFTER teardown, logging into
- *  a torn-down console — the leak class that let the run print green while a
- *  worker was force-killed (F830). Dropping the holder is not enough: a txn the
- *  spec created directly was never in the holder to begin with. */
+ *  Also DISARMS the live transaction's join-liveness watchdog. A txn left mid-'joining'
+ *  at the end of a spec used to fire its 600ms degrade AFTER teardown, logging into a
+ *  torn-down console — the leak class that let the run print green while a worker was
+ *  force-killed (F830). The LIVE txn is the only one that can still hold a timer:
+ *  supersession disarms whatever it replaces, and nothing can mint a transaction outside
+ *  the holder (F5405). */
 export const resetTransitionTxnHolderForTest = (): void => {
-  for (const txn of [...armedJoinLivenessWatchdogs]) {
-    disarmJoinLivenessWatchdog(txn);
+  if (liveTxn != null) {
+    disarmJoinLivenessWatchdog(liveTxn);
   }
   liveTxn = null;
   listeners.clear();
