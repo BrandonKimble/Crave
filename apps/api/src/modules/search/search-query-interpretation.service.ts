@@ -248,7 +248,7 @@ export class SearchQueryInterpretationService {
       const last = residueRuns[residueRuns.length - 1];
       if (last && tokens.some((t) => t.start > last.end && t.end < token.start))
         residueRuns.push({ ...token });
-      else if (last && last.end < token.start && !covered(token)) {
+      else if (last && last.end < token.start) {
         // extend the current run only across directly adjacent residue
         const between = tokens.filter(
           (t) => t.start >= last.end && t.end <= token.start,
@@ -693,7 +693,7 @@ export class SearchQueryInterpretationService {
       denseTier?: { locale: string | null };
     } = {},
   ): Promise<EntityResolutionResult> {
-    const term = input.normalizedName?.trim().toLowerCase() ?? '';
+    const term = input.normalizedName.trim().toLowerCase();
     const unmatched: EntityResolutionResult = {
       tempId: input.tempId,
       entityId: null,
@@ -909,12 +909,19 @@ export class SearchQueryInterpretationService {
       rrfRank: rrfRank === -1 ? Number.MAX_SAFE_INTEGER : rrfRank,
       candidateType: top.type,
       spanTypeAffinity: attributeNear ? 'attribute' : null,
-      inputType: input.entityType ?? 'food',
+      inputType: input.entityType,
     });
     if (!admitted) return unmatched;
+    // The tie plurality the law above computed: same-placement candidates
+    // within epsilon are one answer, revealed as the OR-group rather than
+    // laundered into a silent argmax (EntityResolutionInput's contract).
+    const tiedIds = tiedTop
+      .filter((c) => c.type === top.type)
+      .map((c) => c.entityId);
     return {
       tempId: input.tempId,
       entityId: top.entityId,
+      entityIds: tiedIds.length > 1 ? tiedIds : undefined,
       confidence: top.denseCosine ?? 0,
       resolutionTier: 'dense',
       matchedName: top.name,
