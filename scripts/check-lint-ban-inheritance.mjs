@@ -32,12 +32,18 @@
  * the RIGHT ban — only that no file quietly has fewer than the baseline.
  */
 import { execFileSync } from 'child_process';
-import { existsSync, readFileSync } from 'fs';
-import { dirname, join, resolve } from 'path';
+import { existsSync, readdirSync, readFileSync, statSync } from 'fs';
+import { createRequire } from 'module';
+import { dirname, join, relative, resolve } from 'path';
 import { fileURLToPath } from 'url';
 
 const REPO_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const PKG = join(REPO_ROOT, 'apps/mobile');
+
+// minimatch lives in apps/mobile's dependency tree; resolve it from there so
+// the glob semantics match the ones ESLint itself uses for `files`/`excludedFiles`.
+const pkgRequire = createRequire(join(PKG, 'package.json'));
+const { minimatch } = pkgRequire('minimatch');
 
 /** Rules whose options are a SET of bans that an override must not shrink. */
 const RESTRICTED_RULES = [
@@ -53,19 +59,96 @@ const RESTRICTED_RULES = [
 const BASELINE_FILE = 'src/utils/user-display-name.ts';
 
 /**
- * Representative files, one per override scope that configures a restricted
- * rule. Keeping this list explicit (rather than globbing) means adding an
- * override without adding a probe is itself visible in review.
+ * PROBES — one representative file per override scope that configures a
+ * restricted rule.
+ *
+ * F3708 (2026-08-07): this used to be a hand-maintained list, justified as
+ * "adding an override without adding a probe is visible in review." Review is a
+ * human, which is the exact standard this mandate rejects — if a caller can
+ * still forget, it is convention, not abstraction. The near-miss was already in
+ * the tree: the tracksheet `__render__` override was added with no probe, and
+ * was harmless ONLY because it happens to configure no restricted rule. Nothing
+ * checked that.
+ *
+ * So the probe set is DERIVED from the config ESLint actually loads: parse
+ * `.eslintrc.js`'s `overrides` for every block that configures a rule in
+ * RESTRICTED_RULES, and resolve one representative on-disk file from its `files`
+ * globs (honouring `excludedFiles`). Then an override that configures a
+ * restricted rule is COVERED the moment it exists, and one that does not is
+ * correctly ignored. A block whose globs match no file on disk is itself a
+ * failure — the same dead-scope defect the stale-target check already names.
+ *
+ * KNOWN LIMIT (worth stating rather than glossing, per the finding's red-team):
+ * this trusts `.eslintrc.js` is the relevant config layer. The root
+ * `../../.eslintrc.js` it extends is not walked here; a restricted-rule override
+ * added THERE would be missed. The measured config (`--print-config`) each probe
+ * is compared against is still the fully-merged one, so a ban lost via the root
+ * would still show up on any derived probe — only a NEW root override scope with
+ * no mobile-side representative would be invisible.
  */
-const PROBES = [
-  'src/overlays/panels/ListDetailPanel.tsx',
-  'src/components/ui/Button.tsx',
-  'src/screens/Search/utils/quality.ts',
-  'src/screens/Search/utils/marker-lod.ts',
-  'src/utils/quality-color.ts',
-  // F7200/D114: the search-dismiss motion plane's dependency-rule override.
-  'src/screens/Search/runtime/shared/use-search-dismiss-motion-plane-runtime.ts',
-];
+const isGlob = (p) => /[*?[\]{}]/.test(p);
+const toArray = (v) => (Array.isArray(v) ? v : v == null ? [] : [v]);
+
+/** Every file under apps/mobile/src, as PKG-relative POSIX paths. */
+function listSrcFiles() {
+  const out = [];
+  const walk = (absDir) => {
+    for (const entry of readdirSync(absDir, { withFileTypes: true })) {
+      const abs = join(absDir, entry.name);
+      if (entry.isDirectory()) walk(abs);
+      else if (entry.isFile()) out.push(relative(PKG, abs).split('\\').join('/'));
+    }
+  };
+  walk(join(PKG, 'src'));
+  return out;
+}
+
+/**
+ * Derive the probe set from the overrides that configure a restricted rule.
+ * Returns { probes, failures } — a block that matches no file becomes a failure
+ * (dead scope reading as protection), never a silently-dropped probe.
+ */
+function deriveProbes() {
+  const cfg = pkgRequire(join(PKG, '.eslintrc.js'));
+  const overrides = Array.isArray(cfg.overrides) ? cfg.overrides : [];
+  const srcFiles = listSrcFiles();
+  const probes = new Set();
+  const failures = [];
+  for (const ov of overrides) {
+    const rules = ov?.rules ?? {};
+    if (!RESTRICTED_RULES.some((r) => r in rules)) continue;
+    const files = toArray(ov.files);
+    const excluded = toArray(ov.excludedFiles);
+    // A literal (non-glob) target that exists is the most stable representative.
+    let rep = files.find((f) => !isGlob(f) && existsSync(join(PKG, f)));
+    if (!rep) {
+      rep = srcFiles.find(
+        (f) =>
+          files.some((g) => minimatch(f, g)) && !excluded.some((g) => minimatch(f, g)),
+      );
+    }
+    if (!rep) {
+      failures.push(
+        `.eslintrc.js has an override scoped to ${JSON.stringify(files)} that ` +
+          `configures a restricted rule but matches NO file on disk — it reads as ` +
+          `protection and guards nothing. Fix the globs or delete the block.`,
+      );
+      continue;
+    }
+    probes.add(rep);
+  }
+  return { probes: [...probes], failures };
+}
+
+const { probes: PROBES, failures: probeDerivationFailures } = deriveProbes();
+if (PROBES.length === 0) {
+  console.error(
+    'FAIL: derived ZERO probe scopes from .eslintrc.js overrides. Either no ' +
+      'override configures a restricted rule (the bans were deleted), or the ' +
+      'config could not be parsed — a gate with nothing to probe measures nothing.',
+  );
+  process.exit(1);
+}
 
 /**
  * SCOPED FLOORS (F7901/D122 — the gate that covered half its mandate).
@@ -188,7 +271,7 @@ if (totalBaseline === 0) {
   process.exit(1);
 }
 
-const failures = [];
+const failures = [...probeDerivationFailures];
 
 for (const stale of staleOverrideTargets()) {
   failures.push(
