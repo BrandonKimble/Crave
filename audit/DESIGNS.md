@@ -3325,3 +3325,43 @@ the move). Regression-prevention tooling that pays for itself on day one.
 **F6405(b)** landed with the demonstration the old assertion could only show green.
 
 F6900 (drain the 11, wire --check) and F6901 (pre-existing styles warnings) queued.
+
+---
+
+## D112 — final residual rulings; the board is quiescent (2026-08-07)
+
+**The api lane's landing is ratified**, including three judgment calls that were each
+correct: the second-copy alert over the unapproved shared writer (a money path takes the
+approved shape, with the remaining debt stated); the F4000 triage that SPLIT (kind-grain
+already correct — the measured reason the dialect survived three audits — echo leg
+inflating scores 43%, fixed through the builder); and the F6609 deviation (the prescribed
+vacuous throw would have relocated vacuity into a permanently-red case — the spec mints
+its own witness instead).
+
+**F6604(a) — RULED: frozen DIGEST plus frozen readable SAMPLE.** The lane's numbers
+(24,200-row domain, 1.78MB artifact) rule out both the full frozen golden and any shrink
+that re-derives the implementation. The design: freeze a content hash of the complete
+derivation output (drift of ANY row fails, nothing re-derived) plus a small frozen
+human-readable slice for debuggability. Queued as a P3.
+
+**F6800 — census-first P3:** if no caller passes echo kinds, route the fifth dialect
+through the builder plainly (the tension is theoretical); if one does, the semantic
+question escalates with that caller as the evidence.
+
+**F6801 — recorded as an understood limitation, not fixed:** the DATABASE_URL guards are
+dormant wherever `.env` exists because @prisma/client injects it at import — the guard's
+real population is a machine with neither `.env` nor env var (fresh clone, misconfigured
+CI), which is exactly the case it was written for. The four rows gain that sentence so
+nobody re-audits a guard as dead that is merely rarely-armed.
+
+**F6802 was the mechanism working:** a prose toucher awaiting its classification — the
+scanner's failure IS the design review, and the review is now written.
+
+**Two incidents on the record:** the hard reset (ANOTHER session's, destroying uncommitted
+work across lanes mid-flight; this lane's backups saved its items, and no fence of ours
+can guard against another session's reset — recorded as an environmental hazard, not a
+process gap of this exercise), and the F6609 stash-file merge resolved cleanly (the
+committed version is a strict superset; nothing lost).
+
+Board state: ALL LANES QUIESCENT. Next: the full-gate quiescent sweep, then the clean
+passes fan out.
