@@ -3155,3 +3155,35 @@ attribution law, applied by the lane to its own delegates.
 62 UNREVIEWED with reasons (25 of them a nav-overlays block never assigned to any lane —
 the LAST P1 dispatch), 916 PARTIAL (61 deliberately marking delegated breadth as
 unattributed), 34 NEEDS-TRIAGE, 5 OWNER-DECISION.
+
+---
+
+## D107 — D106 P3 ratified; the delete gate is red on main and CI knew (2026-08-07)
+
+**F6407 landed with the vacuity MEASURED as a three-row table** — shipped guard: store
+stale, drift contract green-because-the-bug-happened; baseline advanced alone: drift RED;
+fixed: correct and silent. The baseline now advances unconditionally because it is the
+INTENT record, so a field the guard fails to write surfaces as store-vs-intent drift on
+the next publish. F6409(e) landed as compile-time totality (every lens dimension projected
+or explicitly LANE-OWNED with its reason) rather than inventing wire fields — the honest
+repair when payloads are already byte-identical.
+
+**F6401's fix was proven failable before its pass was trusted** — a fully conforming
+sample previously printed "did not prove" (the predicate was unsatisfiable), and a
+violating one now FAILS. **F6400's converted check RED-proved itself on the lane's own
+deletion comment** — the first time that check has ever been able to fail, firing on the
+banned name in prose the moment it existed.
+
+**F6406's STOP is accepted and re-scoped:** the census found 51 proximity checks, not ~5,
+and ~35 are pure co-location claims with NO bannable residue — "convert or die" would
+delete 35 design laws unrehomed, which the row itself forbids. Owner scoping question
+now properly sized, with the forcing-function shape specified (an F1792/F1793 sibling
+that cannot land until the population drains).
+
+**F6500 escalated to a live investigation:** the delete gate is RED on main for three
+checks and CI's no-bypass-search-runtime job IS failing — masked by the separately-red
+build job, which means a second red job drew no eyes. Verified myself without the pipe
+trap (real exit 1). The attribution lane is answering, per check: did the SUBJECT move
+(this exercise's renames) or did the LAW break (a runtime regression) — with the map
+check under the owner lock if its law looks broken, and the red-duration answer sizing
+the finding.
