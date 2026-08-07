@@ -124,3 +124,44 @@ F6402(a)), **native** (Swift/ObjC/Java bridges F3707/09/10/12 — need an Xcode 
 api config, the tracksheet rows), and **migration-touching** (F4001 cron latch). Each carries
 its precise NEXT ACTION in FINDINGS.md. A future session continues by picking a bucket and
 providing the gate it needs (owner ruling / sim / Xcode build / concurrent release).
+
+---
+
+## DRAIN STATE (2026-08-07, ~26 P3 clusters — mechanical vein essentially drained)
+
+Accurate recount: \*\*893 FIXED, 163 open-bucket (98 OPEN + 54 PARTIAL + 8 CONFIRMED-STILL-LIVE
+
+- 3 NEEDS-TRIAGE), 51 owner (29 OWNER-DECISION + 22 ESCALATED), 154 MOOT, 11 DELETED.\*\* The
+  drain phase raised FIXED 816→893 (+77 net-new fully-fixed) plus many reclassifications
+  (dead-finding premises → MOOT/NOT-DEAD, mechanical-part-done → PARTIAL with an owner/sim tail).
+
+WHAT'S DRAINED: the pure-mechanical, tsc/mutation-verifiable subset across the audited
+territories — every fix mutation-proven or banking-verified and orchestrator-checked
+(verify-don't-trust caught a wrong deletion (mountedChromeKey), a flawed no-op mutation, and
+a protected-doc content-loss scare, all corrected). Committed per territory, zero regressions,
+CI-green every time. Highlights: the whole tool-absence-swallow gate class (5 gates + residual);
+the signature useMemo-non-checking-position class (F5850); a SQL-injection fix (F4940); Sentry
+PII scrub (F2221); the reddit/places/llm/attribution honesty sweeps; ~40 dead-code/type-drift
+deletions.
+
+WHAT REMAINS (163 open-bucket + 51 owner) — precise scans confirm the remainder is almost
+entirely GATED, not mechanical:
+
+- **OWNER (51 + the OWNER-DECISION'd)** — the critical path, the user's alone: DTO wire/internal
+  splits (D79: F3803/F842/F843), the CI-lint enable-vs-allow (F9100/F2052/F6617-b), memoization-
+  wave designs (F6411 a/b), the excludedSurfaces staged feature (F1491), teaser vocabulary
+  (F4909), spend/Cloudinary/vendor-cap policy (F4904/F4932/F4934/F4940-3/F1810), the gate-scan
+  lib (F8900), the GDPR erasure fail-mode (F7500), the camera-executor asymmetry (F9000), F1301,
+  F1019, F6615/F6616/F6618, F2800, F6801, etc.
+- **SIM-VALIDATION (mobile runtime)** — F1032, F1471, F1454, F1480, F1498, F1483, F6402(a),
+  F6411(a,b), F2306, F1009, F1026, F1305 (many marked CONFIRMED-STILL-LIVE/STOPPED-RUNTIME): a
+  running app + human oracle, per the attribute-before-ideate + map laws.
+- **NATIVE (needs Xcode build)** — F3707/F3709/F3710/F3712, F1707, F1702, F817.
+- **CONCURRENT-BLOCKED (other sessions own the file)** — F6552/F7903/F2042/F2207 (notification-
+  dispatcher + dirty api config), F6623 (photos), F856/F862/F869/F2803/F1556/F1118 (tracksheet).
+- **MIGRATION** — F4001 (a cron-latch column).
+
+A future session continues by choosing a bucket and supplying its gate: the user answers the
+owner queue; a sim session drives the runtime findings; an Xcode session does the native
+bridges; the concurrent findings unblock when their owning sessions land. Each carries its
+exact NEXT ACTION in FINDINGS.md.
