@@ -13,17 +13,29 @@
  */
 const logEvent = jest.fn();
 
-jest.mock(
-  'react-native',
-  () => ({
-    NativeModules: {
-      UIFrameSampler: {
-        logEvent: (line: string) => logEvent(line),
-      },
+// F4700/F5416 — THE PACK FLAKE, and why the third argument is gone.
+//
+// This mock carried `{ virtual: true }`. `react-native` is a REAL module, and `virtual` is
+// for modules that do not exist: it registers the factory under the LITERAL specifier
+// instead of the resolved path. When resolution of 'react-native' succeeded, the registry
+// lookup went to the resolved path, missed the virtual entry, and loaded the real
+// untransformed `node_modules/react-native/index.js` — which this hermetic node lane never
+// transforms. The suite then died WHOLESALE ("Cannot use import statement outside a
+// module"), losing all three tests with no assertion failing, at roughly 1 in 7 runs.
+// That is the signature F4700 filed and F5416 quantified.
+//
+// Non-virtual is the fix and the sibling pattern: three other specs in this lane
+// (route-entry-origin-single-staging, presentation-frame-chrome-clock,
+// route-entry-origin-half-pop-tripwire) mock 'react-native' exactly this way and have never
+// flaked. The factory fully replaces the module, so the real file is resolved but never
+// executed.
+jest.mock('react-native', () => ({
+  NativeModules: {
+    UIFrameSampler: {
+      logEvent: (line: string) => logEvent(line),
     },
-  }),
-  { virtual: true }
-);
+  },
+}));
 
 jest.mock('../../observability/crash-reporting', () => ({
   captureHandledError: jest.fn(),
