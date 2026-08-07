@@ -35,9 +35,12 @@ const APPENDING_TAIL_ROWS = 2;
 // sites below share this so the fallback rule can only change in one place.
 function resolveActiveBand<TBand extends { key: string }>(
   bands: readonly TBand[],
-  activeBandKey: string | undefined,
+  activeBandKey: string | undefined
 ): TBand {
-  return (activeBandKey != null ? bands.find((candidate) => candidate.key === activeBandKey) : null) ?? bands[0];
+  return (
+    (activeBandKey != null ? bands.find((candidate) => candidate.key === activeBandKey) : null) ??
+    bands[0]
+  );
 }
 
 // A list body is an ordered band set with ONE ACTIVE (L1 A#14/B#15) — the shell
@@ -66,7 +69,11 @@ const PageListBody = ({
       return null;
     }
     return (
-      <View pointerEvents="none" style={pendingSurfaceStyle} testID={`page-body-pending-${spec.scene}`}>
+      <View
+        pointerEvents="none"
+        style={pendingSurfaceStyle}
+        testID={`page-body-pending-${spec.scene}`}
+      >
         <SceneLoadingSurface
           rowType={band.materialRowType ?? material.rowType}
           count={band.placeholder.count}
@@ -113,11 +120,15 @@ const pendingMaterialFillStyle = {
  *  one — every mismatch is a compile error, not a runtime surprise. List bodies carry
  *  PER-BAND states keyed by band key (one band = one entry) plus the active-band
  *  input (omitted = the first declared band). */
-export type PageBodyShellProps<TItem> =
+export type PageBodyShellProps<TItem, TBandKey extends string = string> =
   | {
-      spec: PageListBodySpec;
-      bandStates: Readonly<Record<string, PageBodyState<unknown>>>;
-      activeBandKey?: string;
+      spec: PageListBodySpec<TBandKey>;
+      /** TOTAL over the spec's declared band keys: an omitted band is a compile error
+       *  (Record demands every TBandKey), and a key outside them is rejected — the type
+       *  totality is what makes resolveActiveBand's fallback structurally dead, so no
+       *  runtime bark sits on top of it. */
+      bandStates: Readonly<Record<TBandKey, PageBodyState<unknown>>>;
+      activeBandKey?: TBandKey;
       state?: undefined;
     }
   | { spec: PageCollectionBodySpec<TItem>; state: PageBodyState<TItem> }
@@ -137,7 +148,11 @@ const PageCollectionBody = <TItem,>({
       return null;
     }
     return (
-      <View pointerEvents="none" style={pendingSurfaceStyle} testID={`page-body-pending-${spec.scene}`}>
+      <View
+        pointerEvents="none"
+        style={pendingSurfaceStyle}
+        testID={`page-body-pending-${spec.scene}`}
+      >
         <SceneLoadingSurface
           rowType={material.rowType}
           count={spec.placeholder.count}
@@ -181,7 +196,11 @@ const PageContentBody = <TData,>({
     return null;
   }
   return (
-    <View pointerEvents="none" style={pendingSurfaceStyle} testID={`page-body-pending-${spec.scene}`}>
+    <View
+      pointerEvents="none"
+      style={pendingSurfaceStyle}
+      testID={`page-body-pending-${spec.scene}`}
+    >
       <SceneLoadingSurface
         rowType={material.rowType}
         withFilterStripHoles={material.withStripHoles}
@@ -191,8 +210,8 @@ const PageContentBody = <TData,>({
   );
 };
 
-export const PageBodyShell = <TItem,>(
-  props: PageBodyShellProps<TItem>
+export const PageBodyShell = <TItem, TBandKey extends string = string>(
+  props: PageBodyShellProps<TItem, TBandKey>
 ): React.ReactElement | null => {
   // TS cannot narrow a union by a NESTED discriminant (spec.kind), so the split is
   // localized to these casts; the union type keeps call sites honest.

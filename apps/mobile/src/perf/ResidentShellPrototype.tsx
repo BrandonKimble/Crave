@@ -5,7 +5,7 @@ import React from 'react';
 import { NativeModules, StyleSheet, Text, View } from 'react-native';
 
 import { PageBodyShell } from '../overlays/PageBodyShell';
-import { defineListBand, type PageListBodySpec } from '../overlays/page-body-contract';
+import { defineListBand, defineListBody } from '../overlays/page-body-contract';
 
 // ─── THE L3 RESIDENCY PROTOTYPE (measurement harness, not product code) ─────────────
 //
@@ -94,13 +94,12 @@ const SyntheticShellRow = ({ item }: { item: SyntheticRow }) => (
 
 const SyntheticEmpty = () => <View style={styles.emptyBlock} />;
 
-const PROTOTYPE_SHELL_SPEC: PageListBodySpec = {
-  kind: 'list',
+const PROTOTYPE_SHELL_SPEC = defineListBody({
   // Any registered scene works: the material derivation is only consulted for
   // pending/error, which this harness never renders (empty/present only).
   scene: 'notifications',
   bands: [
-    defineListBand<SyntheticRow>({
+    defineListBand({
       key: 'main',
       keyOf: (item) => item.id,
       row: { Component: SyntheticShellRow },
@@ -108,7 +107,7 @@ const PROTOTYPE_SHELL_SPEC: PageListBodySpec = {
       Empty: SyntheticEmpty,
     }),
   ],
-};
+});
 
 const buildSyntheticRows = (shellIndex: number, rowsPerShell: number): SyntheticRow[] =>
   Array.from({ length: rowsPerShell }, (_, rowIndex) => ({

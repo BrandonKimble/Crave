@@ -11,9 +11,9 @@ import { PageBodyShell } from '../PageBodyShell';
 import { useShellLiveness } from '../ShellVisibilityBoundary';
 import {
   defineListBand,
+  defineListBody,
   resolvePageBodyListState,
   type PageBodyState,
-  type PageListBodySpec,
 } from '../page-body-contract';
 import { resolveUserDisplayName } from '../../utils/user-display-name';
 import { AVATAR_SIZES } from '../../constants/avatar-sizes';
@@ -168,12 +168,11 @@ const useNotificationsPageBody = (): PageBodyState<NotificationFeedItem> => {
 
 // THE DECLARATION — immutable module-scope spec with its slots inline (no registry to
 // disagree with; "declared but not registered" is unconstructable).
-const NOTIFICATIONS_PAGE_BODY: PageListBodySpec = {
-  kind: 'list',
+const NOTIFICATIONS_PAGE_BODY = defineListBody({
   scene: 'notifications',
   // The one-band trivial case of the band law (A#14/B#15).
   bands: [
-    defineListBand<NotificationFeedItem>({
+    defineListBand({
       key: 'all',
       keyOf: (item) => item.userNotificationId,
       row: { Component: NotificationRow },
@@ -181,7 +180,7 @@ const NOTIFICATIONS_PAGE_BODY: PageListBodySpec = {
       Empty: NotificationsEmpty,
     }),
   ],
-};
+});
 
 export const NotificationsPanelBody = React.memo((_props: MountedSceneBodyProps) => {
   useOriginSceneScrollPublication('notifications');

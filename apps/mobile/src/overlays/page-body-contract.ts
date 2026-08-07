@@ -61,8 +61,12 @@ export type PageBandTemplate = {
 };
 
 /** A SHELL-interpreted band: the template plus the inline row slot and the required
- *  empty view — everything PageBodyShell renders is declared here. */
-export type PageListBandSpec = PageBandTemplate & {
+ *  empty view — everything PageBodyShell renders is declared here. TKey captures the
+ *  band's literal identity so the body spec below can make its bandStates map TOTAL
+ *  over exactly the declared keys — a missing/typo'd band key is a compile error, not
+ *  a runtime fallback. */
+export type PageListBandSpec<TKey extends string = string> = Omit<PageBandTemplate, 'key'> & {
+  key: TKey;
   row: {
     /** The row slot — receives a resolved item, nothing else. */
     Component: React.ComponentType<{ item: never }>;
@@ -72,16 +76,19 @@ export type PageListBandSpec = PageBandTemplate & {
 
 /** THE legal shell-band constructor: checks Component/keyOf against the band's item
  *  type at the declaration site, then erases — a band whose row component disagrees
- *  with its keyOf is a compile error where the band is written. */
-export const defineListBand = <TItem>(band: {
-  key: string;
+ *  with its keyOf is a compile error where the band is written. Both TItem (from the
+ *  row Component) and the LITERAL key TKey are inferred: `const TKey` keeps 'all'
+ *  narrow (not widened to string) so PageListBodySpec below can thread it into a
+ *  total bandStates map. */
+export const defineListBand = <TItem, const TKey extends string>(band: {
+  key: TKey;
   keyOf: (item: TItem, index: number) => string;
   estimatedRowHeight?: number;
   materialRowType?: SceneLoadingRowType;
   placeholder: { count: number; insetX?: number };
   row: { Component: React.ComponentType<{ item: TItem }> };
   Empty: React.ComponentType;
-}): PageListBandSpec => band as unknown as PageListBandSpec;
+}): PageListBandSpec<TKey> => band as unknown as PageListBandSpec<TKey>;
 
 /** THE legal transport-band-template constructor (FlashList bodies hosted by the
  *  scene transport — the search family): declares the template facts; the row render
@@ -101,16 +108,26 @@ type PageBandTemplateInput = {
 
 export const defineBandTemplate = <TBand extends PageBandTemplateInput>(band: TBand): TBand => band;
 
-export type PageListBodySpec = {
+export type PageListBodySpec<TBandKey extends string = string> = {
   kind: 'list';
   scene: SheetSceneKey;
   /** ORDERED BODY BANDS, exactly one active at a time (A#14/B#15 — decided): the
    *  search results dual-tab body is two bands in one shell; a tab toggle is
    *  intra-shell band visibility, never a scene transition. One band is the trivial
    *  case (most pages). Each band carries its OWN closed PageBodyState — restaurants
-   *  can be present while dishes is still pending. */
-  bands: readonly [PageListBandSpec, ...PageListBandSpec[]];
+   *  can be present while dishes is still pending. The band keys union to TBandKey so
+   *  the shell's bandStates map is TOTAL over exactly them. */
+  bands: readonly [PageListBandSpec<TBandKey>, ...PageListBandSpec<TBandKey>[]];
 };
+
+/** THE legal list-body constructor: infers TBandKey (the union of the declared band
+ *  keys) from the bands tuple so the resulting spec carries the narrow key set — the
+ *  contextual anchor that lets PageBodyShell demand a bandStates entry for every
+ *  declared band and reject any key outside them, both as compile errors. */
+export const defineListBody = <const TBandKey extends string>(spec: {
+  scene: SheetSceneKey;
+  bands: readonly [PageListBandSpec<TBandKey>, ...PageListBandSpec<TBandKey>[]];
+}): PageListBodySpec<TBandKey> => ({ kind: 'list', scene: spec.scene, bands: spec.bands });
 
 /** A COLLECTION body (lists): the full closed enum over one resolved collection,
  *  but the present face is a COMPOSITION (tile grid, edit-mode reorder, interleaved
