@@ -553,11 +553,6 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'flex-start',
   },
-  autocompleteSecondaryText: {
-    fontSize: FONT_SIZES.subtitle,
-    lineHeight: LINE_HEIGHTS.subtitle,
-    color: themeColors.textBody,
-  },
   autocompleteBadges: {
     flexDirection: 'row',
     alignItems: 'center',

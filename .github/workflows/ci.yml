@@ -139,6 +139,18 @@ jobs:
       - name: 'Static guard: a use-* file in Search runtime/shared calls a hook'
         run: node scripts/check-search-runtime-hook-names.mjs
 
+      # The gate above asks whether a MODULE is reached; this one asks whether
+      # a MEMBER of a stylesheet is. F5706 found three dead keys in a 932-line
+      # sheet BY HAND — the sheet has sixteen importers, so it is maximally
+      # alive at file granularity while carrying dead weight at key
+      # granularity. First run of this gate found TWENTY more (fossil keys
+      # shadowed by same-named keys on component-local sheets, which is
+      # exactly why it matches `<binding>.<key>` and not the bare name, and
+      # why it strips comments first — two of F5706's three survived only in
+      # prose). All twenty verified by hand and deleted; it is green now.
+      - name: 'Static guard: no orphan StyleSheet key under screens/Search'
+        run: node scripts/check-search-styles-orphan-keys.mjs
+
       - name: Build
         run: yarn build
 

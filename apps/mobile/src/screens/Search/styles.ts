@@ -142,28 +142,6 @@ const styles = StyleSheet.create({
     // Matches the SegmentedToggle inactive label color.
     color: '#111827',
   },
-  promptCard: {
-    borderRadius: 16,
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    backgroundColor: '#ffffff',
-    borderWidth: 1,
-    borderColor: '#e5e7eb',
-    minHeight: 52,
-  },
-  promptRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    minHeight: 40,
-  },
-  promptInner: {
-    flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 4,
-    paddingVertical: 2,
-    gap: 8,
-  },
   searchSurface: {
     ...StyleSheet.absoluteFillObject,
     backgroundColor: 'transparent',
@@ -213,84 +191,6 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
     backgroundColor: '#ffffff',
-  },
-  autocompleteSectionSurface: {
-    paddingHorizontal: 14,
-    paddingVertical: 10,
-    borderRadius: 14,
-    backgroundColor: 'rgba(255, 255, 255, 0.6)',
-    borderWidth: 1,
-    borderColor: 'rgba(241, 245, 249, 0.8)',
-  },
-  autocompleteItemLast: {
-    borderBottomWidth: 0,
-  },
-  autocompletePrimaryText: {
-    fontSize: FONT_SIZES.subtitle,
-    lineHeight: LINE_HEIGHTS.subtitle,
-    fontWeight: '600',
-    color: '#111827',
-  },
-  recentHeaderRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    marginBottom: 4,
-  },
-  recentHeaderText: {
-    fontSize: FONT_SIZES.body,
-    lineHeight: LINE_HEIGHTS.body,
-    fontWeight: '600',
-    color: '#0f172a',
-    letterSpacing: 0.4,
-    textTransform: 'uppercase',
-  },
-  recentRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingVertical: 8,
-    borderTopWidth: 1,
-    borderTopColor: '#f1f5f9',
-  },
-  recentRowFirst: {
-    borderTopWidth: 0,
-  },
-  recentIcon: {
-    marginRight: 10,
-  },
-  recentText: {
-    fontSize: FONT_SIZES.body,
-    lineHeight: LINE_HEIGHTS.body,
-    color: themeColors.textPrimary,
-    flex: 1,
-  },
-  searchIcon: {
-    marginRight: 12,
-  },
-  promptInput: {
-    flex: 1,
-    fontSize: FONT_SIZES.subtitle,
-    lineHeight: LINE_HEIGHTS.subtitle,
-    color: themeColors.textPrimary,
-    textAlign: 'left',
-    paddingVertical: 0,
-    height: '100%',
-  },
-  trailingContainer: {
-    marginLeft: 'auto',
-    minWidth: 24,
-    alignItems: 'flex-end',
-    justifyContent: 'center',
-  },
-  trailingButton: {
-    width: 24,
-    height: 24,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  trailingPlaceholder: {
-    width: 24,
-    height: 24,
   },
   bottomNavWrapper: {
     ...StyleSheet.absoluteFillObject,
@@ -756,10 +656,6 @@ const styles = StyleSheet.create({
   resultMetaDistance: {
     color: themeColors.textBody,
   },
-  likeButton: {
-    padding: 4,
-    borderRadius: 999,
-  },
   resultContent: {
     marginLeft: 0,
     marginTop: 0,
@@ -876,12 +772,6 @@ const styles = StyleSheet.create({
   },
   topFoodMeasureText: {
     color: themeColors.textBody,
-  },
-  loadingText: {
-    marginTop: 16,
-    fontSize: FONT_SIZES.subtitle,
-    lineHeight: LINE_HEIGHTS.subtitle,
-    textAlign: 'center',
   },
 });
 
