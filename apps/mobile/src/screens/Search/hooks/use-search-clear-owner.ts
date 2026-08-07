@@ -30,7 +30,6 @@ export type UseSearchClearOwnerArgs<Suggestion> = {
   hasResults: boolean;
   submittedQuery: string;
   captureSearchCloseOrigin: (options?: {
-    allowFallback?: boolean;
     searchRootRestoreSnap?: 'expanded' | 'middle' | 'collapsed';
   }) => import('../../../overlays/searchRouteSessionTypes').OriginSnapshot | null;
   restoreSearchCloseOrigin: (
@@ -112,12 +111,12 @@ export const useSearchClearOwner = <Suggestion>({
     }: ClearSearchStateOptions = {}) => {
       // S-C.4 item 3 step 2: the origin is a local VALUE — captured here (pre-teardown state),
       // restored at the same point in the sequence the old flush ran. No store ledger.
-      const closeRestoreOrigin = skipPostSearchRestore
-        ? null
-        : captureSearchCloseOrigin({
-            allowFallback: isSearchSessionActive || hasResults || submittedQuery.length > 0,
-            searchRootRestoreSnap: 'collapsed',
-          });
+      const closeRestoreOrigin =
+        skipPostSearchRestore || !(isSearchSessionActive || hasResults || submittedQuery.length > 0)
+          ? null
+          : captureSearchCloseOrigin({
+              searchRootRestoreSnap: 'collapsed',
+            });
       isClearingSearchRef.current = true;
       cancelActiveSearchRequest();
       cancelAutocomplete();

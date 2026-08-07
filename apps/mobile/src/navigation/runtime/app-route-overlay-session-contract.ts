@@ -1,7 +1,6 @@
 import type { TabOverlaySnap } from '../../overlays/searchRouteSessionTypes';
 
 export type AppRouteSearchCloseRestoreOptions = {
-  allowFallback?: boolean;
   searchRootRestoreSnap?: TabOverlaySnap;
 };
 

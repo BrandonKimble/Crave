@@ -261,7 +261,7 @@ const advance = (txn: TransitionTxn, nextPhase: TransitionTxnPhase): boolean => 
       const joinWaitMs = revealedAt - committedAt;
       // eslint-disable-next-line no-console
       console.log(
-        `[L4STAMP] target=${txn.mutation.targetSceneKey ?? 'none'} kind=${txn.mutation.kind} joinWaitMs=${joinWaitMs.toFixed(1)} windowMs=${windowMs} windowOverridden=${txn.plan.joinLivenessMs != null} headroom=${(joinWaitMs / windowMs).toFixed(3)}`
+        `[L4STAMP] target=${txn.mutation.targetSceneKey} kind=${txn.mutation.kind} joinWaitMs=${joinWaitMs.toFixed(1)} windowMs=${windowMs} windowOverridden=${txn.plan.joinLivenessMs != null} headroom=${(joinWaitMs / windowMs).toFixed(3)}`
       );
     }
   }

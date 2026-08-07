@@ -462,7 +462,6 @@ describe('D56 return-to-origin camera', () => {
     it('captureSearchCloseOrigin never captures a camera, however live the map is', () => {
       harness.setLiveCamera(PROFILE_CAMERA);
       const closeOrigin = harness.controller.actions.captureSearchCloseOrigin({
-        allowFallback: true,
         searchRootRestoreSnap: 'collapsed',
       });
       // An origin is captured at DEPARTURE, never at RETURN: a camera here would fly the map to

@@ -177,7 +177,6 @@ describe('F1509 uncollapsed live-identity resolver', () => {
       publish('lists', [{ laneKey: 'lists', offset: 999 }]);
 
       const closeOrigin = harness.controller.actions.captureSearchCloseOrigin({
-        allowFallback: true,
         searchRootRestoreSnap: 'collapsed',
       });
       // RED under the reverted live-snapshot dismiss capture (offset 999 / detent 'expanded').
@@ -202,9 +201,7 @@ describe('F1509 uncollapsed live-identity resolver', () => {
         )
       );
       harness.setIdentity('search', 'lists');
-      const closeOrigin = harness.controller.actions.captureSearchCloseOrigin({
-        allowFallback: true,
-      });
+      const closeOrigin = harness.controller.actions.captureSearchCloseOrigin({});
       expect(closeOrigin?.sceneKey).toBe('lists');
       expect(closeOrigin?.camera ?? null).toBeNull();
     });
@@ -214,7 +211,6 @@ describe('F1509 uncollapsed live-identity resolver', () => {
       // scene IS the docked root and the degenerate home origin is the genuinely wanted answer.
       harness.setIdentity('search', 'search');
       const closeOrigin = harness.controller.actions.captureSearchCloseOrigin({
-        allowFallback: true,
         searchRootRestoreSnap: 'collapsed',
       });
       expect(closeOrigin).toEqual({
@@ -243,9 +239,7 @@ describe('F1509 uncollapsed live-identity resolver', () => {
       );
       harness.setIdentity('search', 'polls');
       harness.setSnap('lists', 'middle'); // root 'polls'… routes to the home seat, not this
-      const closeOrigin = harness.controller.actions.captureSearchCloseOrigin({
-        allowFallback: true,
-      });
+      const closeOrigin = harness.controller.actions.captureSearchCloseOrigin({});
       expect(closeOrigin?.sceneKey).toBe('polls');
     });
   });

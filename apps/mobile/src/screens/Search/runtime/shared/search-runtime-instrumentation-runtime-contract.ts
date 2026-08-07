@@ -1,6 +1,5 @@
 import type React from 'react';
 
-import type { MapBounds } from '../../../../types';
 import type { CameraIntentArbiter } from '../map/camera-intent-arbiter';
 import type { ViewportBoundsService } from '../viewport/viewport-bounds-service';
 import type {
@@ -73,11 +72,6 @@ export type UseSearchRuntimeInstrumentationRuntimeArgs = {
   activeOverlayKey: string;
   cameraIntentArbiter: CameraIntentArbiter;
   viewportBoundsService: ViewportBoundsService;
-  markMapMovedIfNeeded: (
-    bounds: MapBounds,
-    options?: { fallbackBaselineBounds?: MapBounds | null }
-  ) => boolean;
-  scheduleMapIdleEnter: (options?: { releaseGestureGate?: boolean }) => void;
   ensureInitialCameraReady: () => void;
   isSearchOverlay: boolean;
   resultsPage: number | null;

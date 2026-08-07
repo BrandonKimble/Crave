@@ -110,8 +110,6 @@ export const useSearchRuntimeInstrumentationRuntime = ({
   activeOverlayKey,
   cameraIntentArbiter,
   viewportBoundsService,
-  markMapMovedIfNeeded,
-  scheduleMapIdleEnter,
   ensureInitialCameraReady,
   isSearchOverlay,
   resultsPage,

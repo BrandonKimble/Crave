@@ -115,8 +115,6 @@ export const useSearchRootOverlayFoundationRuntime = ({
     activeOverlayKey: rootOverlayStoreRuntime.activeOverlayKey,
     cameraIntentArbiter: sessionCoreLane.cameraIntentArbiter,
     viewportBoundsService: sessionCoreLane.viewportBoundsService,
-    markMapMovedIfNeeded: rootSharedSheetRuntimeLane.markMapMovedIfNeeded,
-    scheduleMapIdleEnter: rootSharedSheetRuntimeLane.scheduleMapIdleEnter,
     ensureInitialCameraReady: sessionCoreLane.mapBootstrapRuntime.ensureInitialCameraReady,
     isSearchOverlay: rootOverlayStoreRuntime.isSearchOverlay,
     resultsPage: rootDataPlaneRuntime.resultsArrivalState.resultsPage,

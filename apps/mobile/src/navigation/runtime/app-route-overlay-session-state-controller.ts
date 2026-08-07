@@ -236,7 +236,7 @@ export class AppRouteOverlaySessionStateController {
     // one-boolean output, so it no longer subscribes to either).
     this.unsubscribers.push(
       routeSheetSnapSessionAuthority.subscribe(() => {
-        this.recompute(true);
+        this.recompute();
       }),
       // computeSnapshot PULL-reads getPresentationFrame().laneKind (the docked formula),
       // so this controller must also recompute on frame PUBLICATIONS — a results_dismissing
@@ -244,7 +244,7 @@ export class AppRouteOverlaySessionStateController {
       // otherwise left shouldShowDockedScene* stale until an unrelated poke. Disposal rides
       // the shared unsubscribers sweep.
       routeSceneSwitchActions.subscribePresentationFrame(() => {
-        this.recompute(true);
+        this.recompute();
       })
     );
     this.unsubscribers.push(
@@ -318,17 +318,15 @@ export class AppRouteOverlaySessionStateController {
     return this.snapshot;
   }
 
-  private recompute(notify: boolean): void {
+  private recompute(): void {
     const nextSnapshot = this.computeSnapshot();
     if (areAppRouteOverlaySessionSnapshotsEqual(this.snapshot, nextSnapshot)) {
       return;
     }
     this.snapshot = nextSnapshot;
-    if (notify) {
-      this.listeners.forEach((listener) => {
-        listener();
-      });
-    }
+    this.listeners.forEach((listener) => {
+      listener();
+    });
   }
 
   // F1509 — THE uncollapsed live-identity resolver. "Which scene is live" has one answer, and
@@ -469,16 +467,14 @@ export class AppRouteOverlaySessionStateController {
   // dance, whose restore now rides the dismiss verb's ONE terminalDismiss switch; the clear
   // lanes capture and restore synchronously within one call chain.
   private captureSearchCloseOrigin({
-    allowFallback = false,
     searchRootRestoreSnap,
   }: AppRouteSearchCloseRestoreOptions = {}): OriginSnapshot | null {
     // F1508: the per-entry origin (captured at DEPARTURE, at push commit) is the return
     // address; the docked-root live build is only the fallback for the lanes that never
     // pushed a session entry (search live on the docked root) — where the live scene IS the
     // docked root, so the collapsed answer is correct by construction, not by accident.
-    const resolvedOriginContext = allowFallback
-      ? (this.resolveSearchSessionEntryOrigin() ?? this.buildDockedRootOriginSnapshot())
-      : null;
+    const resolvedOriginContext =
+      this.resolveSearchSessionEntryOrigin() ?? this.buildDockedRootOriginSnapshot();
     return resolvedOriginContext?.sceneKey === 'search' && searchRootRestoreSnap
       ? {
           ...resolvedOriginContext,
