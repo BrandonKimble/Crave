@@ -4354,3 +4354,58 @@ parametrizing PageListBodySpec<TBandKey> so a forgotten/typo'd band is a tsc err
 - Next honest step toward full convergence is either owner rulings on the escalation queue
   or a fresh P1 pass on an un-hunted territory — not more autonomous drain, which is
   exhausted.
+
+## D141 — un-hunted-territory P1 hunt + the GDPR over-deletion escalation (2026-08-07)
+
+Hunted the 108 files never entered into COVERAGE. Result: the drainable surface is
+essentially exhausted — findings are overwhelmingly owner/compliance-escalations or
+minor-latent, not fresh mechanical defects. Un-hunted 108 → ~51 (remainder: api
+operator-scripts + the 26 concurrent-blocked tracksheet files + trivial .d.ts).
+
+### THE owner escalation — GDPR over-deletion (F9313/F9314 = F7500/D118, CONFIRMED STILL LIVE)
+
+**Defect.** The person-data erasure/retention compiler (`person-data-scope.ts`) has a
+`deleteScopeContradictions()` / `assertNoOverbroadDeleteScope()` check that detects
+over-broad OR-scoped deletes — but it is wired ONLY into a spec, NOT the live path.
+So in production:
+- `person-data-eraser.erase()` runs `DELETE ... WHERE user_id=$1 OR invited_by_user_id=$1`
+  on `user_list_collaborators`, destroying THIRD PARTIES' memberships on other people's
+  lists when person A is erased (F9313, `person-data-eraser.service.ts:143-153`).
+- The weekly `retention-horizon` `@Cron` runs the same OR-over-reach: a 2555-day sweep
+  keyed on `reported_user_id` also ORs `reporter_user_id`, deleting a departed reporter's
+  safety records ABOUT a still-live third party (F9314, `retention-horizon.service.ts:95-125`).
+  Latent only because no account is 7 years deleted yet — a time-bomb.
+
+**Bedrock.** The declaration (`PERSON_DATA_RULES`) is per-COLUMN, but `subjectRows()`
+collapses to a per-TABLE OR of every person-column. The contradiction detector already
+knows the right per-column scope — it just isn't enforced live.
+
+**Evidence it's real (not theory).** `retention-horizon.integration.spec.ts:93` ALREADY
+asserts `contradictions()` is non-empty on the live corpus. That RED exists and the live
+sweep ignores it.
+
+**Options.** (a) Wire `assertNoOverbroadDeleteScope` into the live erase + sweep so an
+over-broad scope THROWS before running (fail-closed; a legally-wrong delete can't execute).
+(b) Re-derive `ruleWhere` to emit per-column scopes so delete_row only deletes rows where
+THIS person is the delete_row-column subject, sparing sever/retain columns. (b) is the
+real fix; (a) is the immediate safety rail.
+
+**Recommendation.** Ship (a) now (turn the spec-only guard into a live fail-closed
+assertion), then (b) as the rederivation. Both change which user rows survive a deletion
+on a compliance surface → **OWNER decision required** (user-data deletion semantics, D118).
+
+**Cost.** (a) is small (call the existing detector in the live path, throw on non-empty).
+(b) is a scope-compiler rederivation + a migration-safety review.
+
+### Other escalations from this hunt (owner)
+- F9310 — the PII census misses free-text/contact columns (bio/email/phone/address on a
+  user are invisible → never erased). Recommendation: INVERT to total classification
+  (every column classified or the census fails). Owner: approve the inversion vs the
+  pattern-detector; any newly-surfaced column needs a disposition.
+- F9311 — a permanently-failing account purge retries forever, log-only. Needs an
+  alerting/dead-letter mechanism (owner picks the channel).
+- F9315 — log redaction has no PII vocabulary (email/phone/ip pass to winston). Policy:
+  should logs scrub PII?
+- F9340 — query-analyzer's isNonEnglish detector runs on 4 placeholder thresholds that
+  gate PAID embeddings; owner-tracked to the D3 gold-corpus calibration sweep.
+- F9341 — demand-vocabulary MIN_ASKS=1 is an inert gate; owner sets the real floor or deletes it.
