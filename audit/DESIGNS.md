@@ -3912,3 +3912,30 @@ visible in the SHAPE of what each pass finds: pass 1 found 12 (structural defect
 every territory); attempt 2 found 1 (a single sibling-twin the prior sweep missed by one
 file). The findings are getting smaller and more peripheral — which is what approaching a
 fixed point looks like — but "smaller" is not "zero," and the mandate is zero, twice.
+
+---
+
+## D128 — F7701 ratified; the brief was wrong twice and the lane read past it (2026-08-07)
+
+Landed as the TYPE branch, with two of my brief's claims corrected by reading:
+1. "Delete the four literal fields" would have been WRONG — the lane read the consumers and
+   found the literals are legitimate POSITIVE selectors (visual-contracts.js:883 selects the
+   DIFFERENT value 'routeSheetMotion' to distinguish producers; interrupt/extract-video
+   contracts filter on them). So the emit stays; only the tautological `badDismissNavSource`
+   check + its unreachable if/else and the three narrow-nothing conjuncts in
+   missingRealMotionProgressProofWindow were deleted — the check keeps its real narrowing
+   (progress band, sheetY, proofStage) and remains failable.
+2. "Byte-identical block in parity-contracts.js:3420-3500" was INACCURATE — grep-verified
+   zero occurrences there; that block mirrors other checks. Nothing to delete. The maestro
+   pin references the emit source text (kept), not the deleted logic — left as-is.
+Banking law satisfied: the check's name + both strings exist only in the one file.
+Stated limit honestly: no fixture perf-log in the repo, so the script can't run
+end-to-end, and the proving mutation is UNREPRESENTABLE today (single producer) — which
+is exactly why the check was unearnable and deleted.
+
+F8600 flagged (not this row's): the redundant source-literal conjuncts survive in sibling
+POSITIVE filters (instantCollapseWindow, etc.) — redundant but not unearnable, so a scoped
+cleanup, not a can't-fail defect. Queued.
+
+**F7701 was pass 1's last unlanded item. Attempt-2 remediation (F8400 + F7701) is complete.
+ATTEMPT 3 is the next full pass** — it must return zero to be the first clean pass.
