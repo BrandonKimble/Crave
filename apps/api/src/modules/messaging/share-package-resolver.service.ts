@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { SharedEntityKind } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
+import { DELETED_AUTHOR_LABEL } from '../identity/public-author-identity';
 import { UserBlockService } from '../identity/user-block.service';
 import { UserListAccessPolicy } from '../user-lists/user-list-access.policy';
 import { SharePackagePreviewDto } from './dto/messaging.dto';
@@ -186,15 +187,21 @@ export class SharePackageResolverService {
             deletedAt: true,
             userId: true,
             pollId: true,
-            user: { select: { username: true, displayName: true } },
+            user: {
+              select: { username: true, displayName: true, deletedAt: true },
+            },
           },
         });
         if (!comment || comment.deletedAt) return unavailable;
         if (await this.blockedByAuthorGate(viewerUserId, comment.userId)) {
           return unavailable;
         }
-        const author =
-          comment.user.displayName ?? comment.user.username ?? 'Someone';
+        // A grace-deleted author's REAL name must never render (the row still
+        // holds it until purge). The contribution itself stays shareable per
+        // the Reddit-model ruling — only the byline goes anonymous.
+        const author = comment.user.deletedAt
+          ? DELETED_AUTHOR_LABEL
+          : (comment.user.displayName ?? comment.user.username ?? 'Someone');
         // pollId rides the preview so the client can push
         // pollDetail{pollId, commentAnchorId: id} — a shared comment is a
         // destination, not a dead-end card (registry §8.2).
