@@ -2560,3 +2560,56 @@ return true); username normalization has one home (services/username-draft.ts, t
 server's regex is the rule); notification types cross the wire as a shared union with a
 `satisfies` pin at the API write (F5803); the camera watchdog retry preserves its
 completion id (F5703 — including the failed-retry branch).
+
+---
+
+## Territories mapped 2026-08-07 (un-hunted-territory + subsystem P1 sweep)
+
+**api-identity-persondata (PII/erasure/export/retention).** All hangs off ONE declaration
+`PERSON_DATA_RULES` (person-data-class.ts): one row per person-shaped (table,column) with a
+disposition (delete_row/sever/null_column/retain/anonymized_by_shell/not_person) + mandatory
+basis+horizon for keepers. `person-data-scope.ts` is THE COMPILER — `subjectRows(table)` ORs
+every person-bearing column; three consumers (eraser, exporter, retention sweep) ask it rather
+than re-derive. Eraser runs inside purgeAccount (called only by the deletion-purge @Cron after
+the 30-day window); users-row identity is anonymized by HAND then assertShellIsAnonymous verifies.
+⚠️ Totality rests on TWO incomplete guards: the census (over-broad regex, misses free-text PII
+— F9310) and check-author-identity (anchored on `username:true` — F9312). ⚠️ **The known
+over-deletion (F7500/D118) is STILL LIVE**: deleteScopeContradictions() is spec-only; the live
+erase() (F9313) and retention @Cron (F9314) run OR-scoped DELETEs that kill third-party rows.
+OWNER-escalated (see DESIGNS D141, memory gdpr-overdeletion-still-live).
+
+**api-entity-display-search.** An exceptionally disciplined territory — several reference-grade
+anti-drift examples: enrichment-failure-counter (increment-only fn + eslint selector),
+ballot-document-marker (one exported literal makes drift inexpressible), gemini-billable-surfaces
+(billing split re-derived from the BigQuery bill, boot-enforced both directions via
+undeclaredSurfaces at gated-gemini-client:94). Display boundary = clean batch-load/pure-render
+split with total fallback to canonical name; label/vocabulary generators ABSTAIN not fabricate.
+Soft spot: query-analyzer's isNonEnglish runs on 4 placeholder thresholds gating PAID embeddings
+(F9340, owner-tracked to the D3 calibration sweep); demand-vocabulary MIN_ASKS=1 is inert (F9341).
+
+**locale-i18n (api shared/locale + mobile i18n).** Two mirror halves sharing an RFC-4647-Lookup
+DESIGN but not CODE: api owns server negotiation + the SQL match chain + a MACRO_REGION_FALLBACKS
+table; mobile owns device→bundle/formatting split + one shared locale cell read by renderer AND
+axios. The two open seams are CROSS-APP: SUPPORTED_LOCALES/DEFAULT declared independently in both
+(F9370) and the Lookup exists twice with only the api copy carrying the fallback table (F9371) —
+both now caught by a new invariant `i18n.mobile-locales-are-a-subset-of-the-api` (check-locale-parity.ts
+reads the mobile source textually across the app boundary; drift fails CI). Dietary controls conform
+to the negation-doctrine walls-only law.
+
+**mobile-tracksheet.** ONE persistent native UIScrollView (TrackScrollKit) whose data is swapped
+not pushed; τ=contentOffset is both sheet travel and list scroll. Four cooperating axes, each a
+pure reducer + jest falsifier + thin adapter: MOTION owned by a single episode store
+(track-motion-authority) — four proven facts dispatch in, every consumer reads ONE at-rest
+definition; a suspend-aware backstop (track-motion-deadline) DEGRADES-and-barks rather than
+inventing a settle. ENTRY LIFECYCLE keys on sceneKey#entryId (retention LRU, scroll memory,
+readiness content|skeleton|frozen, press-up handoff). LEGS assembled by use-track-leg-resolver
+(the one mounted host-render; its own effects commit). NATIVE bridge is version+capability
+handshaked (v2, 5 caps) so a stale binary is a loud bark. Verdict: exceptionally clean,
+deliberately rederived — NO 60Hz constant, NO guard-that-cannot-fail, NO swallowed error.
+4 LOW findings (F9400-F9403), all CONCURRENT-gated.
+
+**api-scripts.** One-off operator tooling (backfills, probes, AB harnesses, CI gates) — all
+IDEAL-VERIFIED, zero findings. Mutating scripts uniformly dry-run/--apply/--force + idempotent;
+probes surface (never swallow) failure; requireNonProdDatabase refuses deployed hosts for writers;
+the CI gates (invariants.ts, check-subject-text-emission.ts) and run-launch-gate are fail-closed
+with missing-tooling=FAIL and explicit N/A-not-GREEN branches.
