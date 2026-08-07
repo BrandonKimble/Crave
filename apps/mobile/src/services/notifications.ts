@@ -1,3 +1,5 @@
+import type { NotificationTypeName } from '@crave-search/shared';
+
 import api from './api';
 import type { AuthorIdentity } from './author-identity';
 
@@ -40,7 +42,9 @@ export type NotificationFeedActor = AuthorIdentity;
 
 export interface NotificationFeedItem {
   userNotificationId: string;
-  type: string;
+  /** The closed server vocabulary (F5803) — NOT `string`. Pinned to the Prisma enum on the
+   *  API side; see @crave-search/shared's types/notifications for the chain. */
+  type: NotificationTypeName;
   payload: Record<string, unknown> | null;
   readAt: string | null;
   createdAt: string;

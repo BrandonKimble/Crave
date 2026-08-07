@@ -18,6 +18,9 @@ export type {
   UserOnboardingProfile,
 } from './types';
 
+export { NOTIFICATION_TYPES } from './types/notifications';
+export type { NotificationTypeName } from './types/notifications';
+
 export type {
   Coordinate,
   DishRestaurantData,

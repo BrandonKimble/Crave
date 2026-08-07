@@ -1,5 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { NotificationType, Prisma } from '@prisma/client';
+import type { NotificationTypeName } from '@crave-search/shared';
 import { PrismaService } from '../../prisma/prisma.service';
 import { UserBlockService } from '../identity/user-block.service';
 import {
@@ -85,6 +86,14 @@ export class UserNotificationFeedService {
           : null;
       return {
         ...row,
+        // F5803 — THE PIN. The client restates this vocabulary as a closed union
+        // (@crave-search/shared, types/notifications) because mobile cannot import
+        // @prisma/client. `satisfies` is what stops the two from drifting: add a member to
+        // the NotificationType enum and this line stops compiling, HERE, before the new
+        // value can reach a client switch that has no sentence for it. Widening the shared
+        // union to admit it then breaks that switch's exhaustiveness check, which is where
+        // someone has to decide what the user reads.
+        type: row.type satisfies NotificationTypeName,
         // A notification outlives the account that caused it.
         actor: followerUserId
           ? publicAuthorIdentity(actorById.get(followerUserId))

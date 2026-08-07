@@ -44,8 +44,14 @@ const resolveRowText = (item: NotificationFeedItem): string => {
       return `${resolveActorTitle(item)} started following you`;
     case 'poll_release':
       return 'New polls just dropped in your city';
-    default:
-      return 'Something happened';
+    default: {
+      // Exhaustiveness (F5803). The type is the closed server vocabulary, so a new member
+      // fails HERE at compile time rather than shipping 'Something happened' to a user.
+      // The server's own switch over this enum does exactly this — the copy decision is
+      // a decision, not a fallback.
+      const exhaustive: never = item.type;
+      return exhaustive;
+    }
   }
 };
 
