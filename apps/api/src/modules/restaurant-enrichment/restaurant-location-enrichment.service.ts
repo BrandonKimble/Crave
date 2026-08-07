@@ -1,4 +1,9 @@
 import { countEnrichmentFailure } from './enrichment-failure-counter';
+import {
+  classifyEnrichmentError,
+  classifyNoMatchReason,
+  type EnrichmentFailureVerdict,
+} from './enrichment-failure-taxonomy';
 import { identityInsertData } from '../content-processing/entity-resolver/entity-identity';
 import {
   addAliases,
@@ -803,6 +808,11 @@ export class RestaurantLocationEnrichmentService {
           latitude: this.toNumberValue(entity.latitude) ?? undefined,
           longitude: this.toNumberValue(entity.longitude) ?? undefined,
         },
+        // DEFINITIVE: no vendor was ever called. The row itself has nothing to
+        // search with, and it will have nothing tomorrow either.
+        classifyNoMatchReason(
+          'insufficient location context for enrichment query',
+        ),
       );
       return {
         entityId: entity.entityId,
@@ -1202,17 +1212,29 @@ export class RestaurantLocationEnrichmentService {
       };
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
+      // A 429, a socket timeout and a closed budget are not evidence that this
+      // restaurant does not exist — and three of them used to archive it
+      // permanently. classifyEnrichmentError decides whether this attempt
+      // spends a strike.
+      const verdict = classifyEnrichmentError(error);
       this.logger.error('Failed to enrich restaurant', {
         entityId: entity.entityId,
         error: message,
+        failureClass: verdict.failureClass,
+        failureReasonCode: verdict.failureReasonCode,
       });
 
-      await this.recordEnrichmentFailure(entity, message, {
-        placeId: latestDetails?.place?.id,
-        targetName: targetNameForUpdate ?? undefined,
-        score: enrichmentScore || undefined,
-        matchMetadata: latestMatchMetadata ?? undefined,
-      });
+      await this.recordEnrichmentFailure(
+        entity,
+        message,
+        {
+          placeId: latestDetails?.place?.id,
+          targetName: targetNameForUpdate ?? undefined,
+          score: enrichmentScore || undefined,
+          matchMetadata: latestMatchMetadata ?? undefined,
+        },
+        verdict,
+      );
 
       return {
         entityId: entity.entityId,
@@ -4012,6 +4034,10 @@ export class RestaurantLocationEnrichmentService {
     reason: string,
     metadata: Record<string, unknown>,
   ): Promise<void> {
+    // Every no-match path reached a VERDICT, so all of them are definitive;
+    // the taxonomy is consulted for the stable reason CODE that lands in the
+    // breadcrumb.
+    const verdict = classifyNoMatchReason(reason);
     try {
       const emptyHours: NormalizedOpeningHours = {};
       const mergedMetadata = this.mergeRestaurantMetadata(
@@ -4021,6 +4047,7 @@ export class RestaurantLocationEnrichmentService {
         {
           status: 'no_match',
           reason,
+          ...this.buildFailureBreadcrumb(verdict),
           ...metadata,
         },
       );
@@ -4034,7 +4061,13 @@ export class RestaurantLocationEnrichmentService {
           // metadata.lastEnrichmentAttempt.count, whose only writer set it to
           // the number of Google CANDIDATES — so the restaurants with the most
           // evidence got archived. See the migration for the full account.
-          ...countEnrichmentFailure(),
+          //
+          // Counted only when the failure is DEFINITIVE — the janitor's third
+          // strike is a PERMANENT archive, so only evidence about the
+          // restaurant may spend a strike. See enrichment-failure-taxonomy.
+          ...(verdict.failureClass === 'definitive'
+            ? countEnrichmentFailure()
+            : {}),
           lastUpdated: new Date(),
         },
       });
@@ -4075,10 +4108,39 @@ export class RestaurantLocationEnrichmentService {
     }
   }
 
+  /**
+   * The queryable half of the failure record. It rides in
+   * `restaurant_metadata->'lastEnrichmentAttempt'` — an existing JSONB column
+   * the janitor already reads — so the ungrounded backlog's CAUSES can be
+   * counted with one query and no schema change:
+   *
+   *   SELECT restaurant_metadata->'lastEnrichmentAttempt'->>'failureReasonCode',
+   *          restaurant_metadata->'lastEnrichmentAttempt'->>'failureClass',
+   *          count(*)
+   *   FROM core_entities WHERE type='restaurant' GROUP BY 1,2;
+   */
+  private buildFailureBreadcrumb(
+    verdict: EnrichmentFailureVerdict,
+  ): Record<string, unknown> {
+    return {
+      failureClass: verdict.failureClass,
+      failureReasonCode: verdict.failureReasonCode,
+      failureAt: new Date().toISOString(),
+    };
+  }
+
   private async recordEnrichmentFailure(
     entity: RestaurantEntity,
     reason: string,
     extras: Record<string, unknown> = {},
+    // A caller that did not classify has, by definition, no evidence about
+    // the restaurant — and the strike it would spend is permanent. Unclassified
+    // defaults to TRANSIENT for the same reason the taxonomy's own fallback
+    // does.
+    verdict: EnrichmentFailureVerdict = {
+      failureClass: 'transient',
+      failureReasonCode: 'unclassified',
+    },
   ): Promise<void> {
     try {
       const emptyHours: NormalizedOpeningHours = {};
@@ -4090,11 +4152,23 @@ export class RestaurantLocationEnrichmentService {
           status: 'error',
           reason,
           attemptedAt: new Date().toISOString(),
+          ...this.buildFailureBreadcrumb(verdict),
           ...Object.fromEntries(
             Object.entries(extras).filter(([, value]) => value !== undefined),
           ),
         },
       );
+
+      // THE BREADCRUMB IS ALSO AN EVENT, not only a column read. The 1,552
+      // ungrounded placeholders accumulated with no way to ask WHY; a
+      // structured line per failure lets the cause distribution be read from
+      // logs even for entities whose row is later archived or merged away.
+      this.logger.info('Enrichment failure classified', {
+        entityId: entity.entityId,
+        failureClass: verdict.failureClass,
+        failureReasonCode: verdict.failureReasonCode,
+        reason,
+      });
 
       await this.prisma.entity.update({
         where: { entityId: entity.entityId },
@@ -4102,7 +4176,14 @@ export class RestaurantLocationEnrichmentService {
           restaurantMetadata: mergedMetadata,
           // The `error` path wrote NO count at all, so these placeholders sat
           // at 0 forever and were re-enriched every week at real Places spend.
-          ...countEnrichmentFailure(),
+          //
+          // And then it counted EVERYTHING, which was the opposite defect:
+          // three Google 429s archived a real restaurant permanently. Only a
+          // DEFINITIVE outcome spends a strike; a transient one leaves the
+          // count where it is and the entity retry-eligible.
+          ...(verdict.failureClass === 'definitive'
+            ? countEnrichmentFailure()
+            : {}),
           lastUpdated: new Date(),
         },
       });

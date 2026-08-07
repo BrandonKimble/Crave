@@ -3384,7 +3384,19 @@ export class UnifiedProcessingService implements OnModuleInit {
     // Audit item 6: enrichment rides BullMQ (like cuisine/secondary passes)
     // instead of blocking ingest on Google's API. Job id = restaurantId, so
     // duplicate enqueues collapse; the worker is idempotent via the
-    // hasPlaceId guard. Failures retry with backoff inside the queue.
+    // hasPlaceId guard.
+    //
+    // THIS COMMENT USED TO CLAIM "failures retry with backoff inside the
+    // queue". It does not. `enrichRestaurantEntity` CATCHES its own errors and
+    // RETURNS `{ status: 'error' }`
+    // (restaurant-location-enrichment.service.ts, the outer try/catch), so the
+    // Bull job resolves successfully and BullMQ has nothing to retry — a
+    // failed enrichment is dropped here, permanently, from this lane's point
+    // of view. The only thing that ever tries again is the janitor's retry arm
+    // (restaurant-janitor.service.ts §2), which is weekly, capped at
+    // `retryLimit`, and gated OFF by default
+    // (LOCATION_LIFECYCLE_CRON_ENABLED=false). Plan accordingly: what is
+    // enqueued here gets exactly one attempt.
     for (const entityId of restaurantIds) {
       await this.restaurantEnrichmentQueue.queueEnrichment(entityId, {
         sourceLocale: enrichmentContext.sourceLocale ?? null,
