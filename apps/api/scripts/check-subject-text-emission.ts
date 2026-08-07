@@ -33,6 +33,10 @@ type Classification =
   | 'declaration';
 
 const ALLOWED: Record<string, { class: Classification; why: string }> = {
+  'src/modules/search/search-query-suggestion-lane-failure.spec.ts': {
+    class: 'declaration',
+    why: 'One COMMENT (line ~139) noting the ledger lowercases subjectText at write — prose about a fact proven elsewhere, no query, no read. Pulled in because file DISCOVERY is a raw grep (by design: prose touchers must be classified, and this classification is that review).',
+  },
   'scripts/scanner-source.spec.ts': {
     class: 'declaration',
     why: 'Names the column inside a fixture STRING that proves the comment-stripper keeps SQL in a template literal — precisely so this guard is not blinded by the strip. No query, no read.',
