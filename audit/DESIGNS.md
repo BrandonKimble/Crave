@@ -3187,3 +3187,44 @@ trap (real exit 1). The attribution lane is answering, per check: did the SUBJEC
 (this exercise's renames) or did the LAW break (a runtime regression) — with the map
 check under the owner lock if its law looks broken, and the red-duration answer sizing
 the finding.
+
+---
+
+## D108 — P2 verdicts on the truly-final coverage lane (F6600–F6623, 2026-08-07)
+
+**F6619 — VERIFIED MYSELF, APPROVED IN TWO PARTS, and the defect is MINE to own.** The
+root-ownership gate — whose invocation and exit codes I hardened twice in F2510 — exits 1
+on HEAD because a check asserts the EXISTENCE of chip-read-model-builder.ts, which D78/F3900
+deliberately deleted; and its six budgets (max 70–238) all aim at index.tsx, measured at
+87 lines, while the hook mass lives in 689 files next door. I re-checked the mechanism
+twice and never re-checked the AIM. Part 1 (now): remove/update the stale-path check so
+the gate runs — the deletion it fails on was ratified, so the check updates to the
+successor shape (search-filter-chip-state.ts) or dies with a reason. Part 2 (design): the
+budgets' aim is a real question — retarget at the layer that actually holds the mass, or
+retire the ratchet with its history recorded. That is a design against the 689-file
+reality, not a patch; it returns to P2 with the lane's own measurements as its input.
+
+**F6601 — APPROVED.** The profiler's off-switch computes the right predicate one layer too
+late: `ProfilerOnRenderCallback | null` returned unconditionally means React.Profiler is
+permanently mounted and ~12 "disabled" branches across 8 hosts are dead. Hoist the
+predicate to mount time; the dead branches die.
+
+**F6600/F6604/F6609/F6622 and the batch — APPROVED** per their rows: the comparator fix
+that never reached its diff-marker twin (already re-diverged both directions, the export
+for the job having zero importers — the F6001 class again); the "byte-frozen" oracle
+edited in lockstep with its subject plus an assertion entailed by its return type; the
+DATABASE_URL guard in 3 of 4 siblings; `.filter(() => type !== undefined || true)`.
+
+**F6618 — ESCALATED (owner, legal-adjacent):** the privacy policy discloses IDFA
+collection the app does not do and omits Cloudinary. Words about data practices are the
+owner's; the diff between policy and reality is the deliverable, and it is on the row.
+
+**The refutations again carry their weight,** including one refuted BY THE LANE'S OWN
+COMMIT (the glob it suspected inert had just matched its own nested path) — corrected on
+the row rather than deleted, which is the honesty norm applied to one's own filing.
+
+**Coverage floor reached:** 14 UNREVIEWED — 4 held by another session's dirty tree
+(named), 10 the staleness gate's own sanctioned reverts from a concurrent lane's churn.
+Everything else in the repo is terminal or honestly PARTIAL with its gap named. The listTests
+observation (zero integration specs in the default jest run; they ride `yarn test:db`,
+which CI DOES run at ci.yml:157) is recorded as verified-fine.
