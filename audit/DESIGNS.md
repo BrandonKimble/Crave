@@ -4409,3 +4409,28 @@ on a compliance surface → **OWNER decision required** (user-data deletion sema
 - F9340 — query-analyzer's isNonEnglish detector runs on 4 placeholder thresholds that
   gate PAID embeddings; owner-tracked to the D3 gold-corpus calibration sweep.
 - F9341 — demand-vocabulary MIN_ASKS=1 is an inert gate; owner sets the real floor or deletes it.
+
+## D142 — adversarial VERIFY-DON'T-TRUST of this session's IDEAL-VERIFIED claims (2026-08-07)
+
+The LOOP requires spot-checking IDEAL-VERIFIED files (a false one is never re-examined; an
+agent that "fixed by adding a guard" violated the mandate). Ran an INDEPENDENT adversarial
+re-derivation (different agent, framed to FALSIFY) over a 12-file stratified sample of this
+session's IDEAL-VERIFIED claims across all five newly-hunted territories.
+
+**Result: 12/12 UPHELD, ZERO new findings.** Each guarantee was re-derived to its real
+enforcement site and a break was genuinely attempted:
+- person-data-export: the single `$1` bind survives a multi-column OR (Postgres reuses $1) — holds.
+- public-author-identity: enforcement is the invariant script + the PublicAuthorIdentity DTO
+  type-slot, NOT the export keyword (the bare claim was imprecise; the guarantee still holds).
+- gemini-billable-surfaces: `undeclaredSurfaces()` runs in the client constructor, reachable at
+  LLMService.onModuleInit — genuinely boot-enforced. (Latent-shape caveat: an instance
+  arrow-property surface would escape the prototype scan; the class uses prototype methods today.)
+- entity-display total fallback, enrichment-failure-counter eslint selector, request-locale Vary
+  merge, shape-equality `Required<T>` (-? forces every field), track-motion-authority pure reducer,
+  track-native-contract capability handshake, track-settle-fact generation guard, dietary-controls
+  walls-only-with-release, run-launch-gate tri-state N/A-not-GREEN — all re-derived ideal.
+
+This is one strong ZERO-new-finding pass (the strongest kind — adversarial). Convergence
+evidence: the session did not over-claim IDEAL-VERIFIED on this sample. A second adversarial
+pass over the load-bearing core (search gate, entitlements, invariants harness, map authority,
+gesture runtime, billing meter) is running to establish the second consecutive zero-finding pass.
