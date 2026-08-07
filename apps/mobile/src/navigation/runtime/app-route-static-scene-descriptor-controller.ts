@@ -46,9 +46,9 @@ const STATIC_SCENE_SCROLL_CONTENT_INSETS = {
 // Over-scroll is enforced no-bounce structurally by BottomSheetScrollContainer (the shared sheet
 // scroll container) so the scroll↔sheet handoff works — no per-scene over-scroll config needed.
 // NOTE: no per-transport contentSurfaceStyle white here anymore — the foundation white layer
-// (scene-foundation-spec `bodySurface: 'white'` → SceneBodyFoundationSurface) paints every sheet
-// scene's white plate at the body lane; the old lists/profile transport white was the
-// per-scene hack it replaces.
+// (SceneBodyFoundationSurface, rendered by the body lane for every scene with a
+// scene-foundation-spec row) paints every sheet scene's white plate; the old lists/profile
+// transport white was the per-scene hack it replaces.
 // F950 — THE SCROLL-TAIL INSET, NAMED.
 //
 // `paddingBottom: 72` was written literally SIX times below and `160` once, with neither the

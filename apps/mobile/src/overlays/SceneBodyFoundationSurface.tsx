@@ -20,10 +20,11 @@ import { SceneStripLawContext } from '../toggles/toggle-strip-scene-law';
 /**
  * THE FOUNDATION WHITE LAYER (owner standard, 2026-07-11): every sheet scene's body sits on a
  * WHITE plate over the shared frosted foundation — no page renders on bare frost. The plate is
- * declared per scene in `scene-foundation-spec.ts` (`bodySurface: 'white'`, a required literal —
- * a new scene must state it and cannot opt out to bare frost) and rendered HERE, at the body
- * lane (`useBottomSheetSceneStackBodyContentRuntime`), under the scene's scroll/list/static
- * content.
+ * rendered HERE, at the body lane (`useBottomSheetSceneStackBodyContentRuntime`), under the
+ * scene's scroll/list/static content. The plate is not declared per scene: F1389 deleted the
+ * single-inhabitant per-row surface field, and MEMBERSHIP in the foundation table is
+ * the enforcer — every key in `SheetSceneKey` has a `SCENE_FOUNDATION_SPECS` row (the record is
+ * compile-time exhaustive, so a new scene cannot forget one), and having a row IS the plate.
  *
  * CUTOUTS: the plate is per-page customizable with holes that reveal the frost — the same
  * plate-with-punched-holes composition the header cutout plate and the cutout skeleton use
@@ -35,7 +36,8 @@ import { SceneStripLawContext } from '../toggles/toggle-strip-scene-law';
  * registered (most pages) the layer is a plain static white fill — zero per-frame work.
  *
  * The search/results sheet is NOT routed through this layer (it owns its canonical frost + white
- * plate composition); the gate is `getSceneFoundationSpec(sceneKey)?.bodySurface`.
+ * plate composition); it is one of the four keys `SheetSceneKey` excludes, which is exactly why
+ * the gate is `getSceneFoundationSpec(sceneKey) != null`.
  */
 
 const WHITE = '#ffffff';

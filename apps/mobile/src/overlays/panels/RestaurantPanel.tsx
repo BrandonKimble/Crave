@@ -850,8 +850,8 @@ export const useRestaurantPanelSpec = ({
   );
 
   // Frost is the shared page-frame foundation, and the FOUNDATION WHITE LAYER
-  // (scene-foundation-spec `bodySurface: 'white'` via SceneBodyFoundationSurface) paints the
-  // body-lane white plate for every sheet scene - the panel contributes no extra background
+  // (SceneBodyFoundationSurface, rendered for every scene that HAS a scene-foundation-spec
+  // row) paints the body-lane white plate - the panel contributes no extra background
   // material of its own.
   const backgroundComponent = null;
 

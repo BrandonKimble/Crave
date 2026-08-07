@@ -260,9 +260,9 @@ export const PersistentSheetHeaderHost: React.FC<{
       // unmounts. Bark accordingly (error, named key); prod behavior stays graceful-null.
       console.error(
         `[FOUNDATION] presented scene '${sceneKey}' has no persistent-header descriptor` +
-          ` — the full sheet chrome is unmounted. Register one via` +
-          ` registerPersistentHeaderDescriptor (scene-foundation-spec.ts declares` +
-          ` header: 'persistent' for every sheet scene).`
+          ` — the full sheet chrome is unmounted. Register one at module scope via` +
+          ` registerPersistentHeaderDescriptor (app-route-persistent-header-registry.ts);` +
+          ` every scene key in SheetSceneKey owes one.`
       );
     }
     return null;
