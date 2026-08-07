@@ -1,4 +1,6 @@
 #!/usr/bin/env node
+// @script-class: gate
+// @run-by: .github/workflows/ci.yml ('Static guard: no backtick inside an embedded SQL comment').
 /**
  * GATE: no backtick inside a SQL comment in a template literal.
  *

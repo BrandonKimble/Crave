@@ -1,3 +1,5 @@
+// @script-class: library
+// @run-by: imported by check-search-runtime-hook-names.mjs + the comment-matching gates; runs whenever they do.
 /**
  * "THE SOURCE AS THE COMPILER SEES IT" — the ONE home for scripts/ (D85's
  * replica rule, applied, 2026-08-07).

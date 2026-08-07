@@ -1,4 +1,6 @@
 #!/usr/bin/env node
+// @script-class: gate
+// @run-by: .github/workflows/ci.yml ('Static guard: no COVERAGE row claims review of a file that changed').
 /**
  * COVERAGE staleness — a reviewed row whose file has changed is not reviewed.
  *

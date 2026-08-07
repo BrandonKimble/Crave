@@ -1,4 +1,6 @@
 #!/usr/bin/env node
+// @script-class: gate
+// @run-by: .github/workflows/ci.yml ('Static guard: no eslint override silently drops a repo-wide ban').
 /**
  * GATE: an eslint override may not silently drop a repo-wide ban.
  *

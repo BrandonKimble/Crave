@@ -1,4 +1,6 @@
 #!/usr/bin/env node
+// @script-class: gate
+// @run-by: .github/workflows/ci.yml ('Static guard: doc commands and paths resolve').
 /**
  * GATE: a doc that tells you what to RUN must be executable (F2500/F2504).
  *

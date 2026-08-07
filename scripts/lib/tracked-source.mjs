@@ -1,3 +1,5 @@
+// @script-class: library
+// @run-by: imported by check-sql-comment-backticks.mjs + check-railway-manifests.mjs; runs whenever they do.
 /**
  * READING A TRACKED FILE THAT IS NOT ON DISK (F3912's sixth hole, 2026-08-06).
  *

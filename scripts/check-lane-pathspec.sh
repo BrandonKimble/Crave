@@ -1,5 +1,7 @@
 #!/usr/bin/env bash
-# @script-class: gate (pre-commit, opt-in per shell)
+# @script-class: gate
+# @run-by: lefthook.yml pre-commit (job lane-pathspec) — opt-in per shell via
+#     the LANE_PATHS env var; unset means the hook passes silently.
 #
 # THE CONCURRENT-LANE COMMIT FENCE (F4102 / D83).
 #

@@ -1,4 +1,6 @@
 #!/usr/bin/env node
+// @script-class: gate
+// @run-by: .github/workflows/ci.yml ('Static guard: a heavy migration disables parallel workers').
 /**
  * GATE: a NEW heavy migration must disable parallel workers.
  *

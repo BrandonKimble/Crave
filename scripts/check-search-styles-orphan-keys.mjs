@@ -1,4 +1,6 @@
 #!/usr/bin/env node
+// @script-class: gate
+// @run-by: .github/workflows/ci.yml (the search-styles orphan-key CI step).
 /**
  * GATE: every key of a StyleSheet in screens/Search is READ through the sheet.
  *

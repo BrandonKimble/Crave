@@ -1,4 +1,6 @@
 #!/usr/bin/env node
+// @script-class: gate
+// @run-by: .github/workflows/ci.yml ('Static guard: a use-* file in Search runtime/shared calls a hook').
 /**
  * GATE: a `use-*` file in the Search runtime/shared layer must call a hook.
  *

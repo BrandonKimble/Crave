@@ -31,16 +31,24 @@
 #   dead-scaffolding — retained but provably driving or parsing something that
 #                      no longer exists. A deletion candidate whose @run-by
 #                      must state what proved it dead.
+#   bless            — regenerates a frozen oracle/digest ON PURPOSE, refusing
+#                      without an explicit --bless flag (F6604). @run-by names
+#                      the human act, never a runner: a bless is never automatic.
+#   library          — a module IMPORTED by other scripts, never invoked
+#                      directly (scripts/lib/*). @run-by names an importer; it
+#                      runs whenever they do.
 #
-# THE RULE: a new script declares its class or CI fails. There is no fifth
-# option and no silent default — an unclassified script is exactly the
-# condition that produced F702 and F709.
+# THE RULE: a new script declares its class or CI fails. There is no silent
+# default — an unclassified script is exactly the condition that produced F702
+# and F709. New NAMED classes are added here deliberately (bless arrived with
+# F6604); what is forbidden is a script with no class, not the vocabulary
+# growing to name a real new kind.
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT_DIR"
 
-VALID_CLASSES="operational gate harness dead-scaffolding"
+VALID_CLASSES="operational gate harness dead-scaffolding bless library"
 
 # THE FENCE IS EVERY SHELL PROGRAM IN THE REPO, NOT ONE DIRECTORY (F1653, 2026-08-04).
 # The scan root used to be `scripts` alone, so the single largest dead script in the repo
@@ -59,7 +67,7 @@ while IFS= read -r script_file; do
   SCRIPT_FILES+=("$script_file")
 done < <(
   find $SCAN_ROOTS -type f \
-    \( -name '*.sh' -o -name '*.js' -o -name '*.py' -o -name '*.swift' \) \
+    \( -name '*.sh' -o -name '*.js' -o -name '*.mjs' -o -name '*.py' -o -name '*.swift' \) \
     | sort
 )
 

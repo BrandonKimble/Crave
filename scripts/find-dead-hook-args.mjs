@@ -1,4 +1,6 @@
 #!/usr/bin/env node
+// @script-class: gate
+// @run-by: .github/workflows/ci.yml (the dead-hook-args --check CI step (earned then wired, D111)).
 /**
  * HUNT TOOL (not a gate — see THE --check DECISION at the bottom of this
  * header): a property that a function's parameter TYPE declares, that the

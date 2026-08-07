@@ -1,4 +1,6 @@
 #!/usr/bin/env node
+// @script-class: gate
+// @run-by: .github/workflows/ci.yml ('Static guard: railway manifests carry no startCommand/watchPatterns').
 /**
  * GATE: the two Railway manifest keys that break production silently.
  *
