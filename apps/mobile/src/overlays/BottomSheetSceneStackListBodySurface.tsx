@@ -14,6 +14,7 @@ import type {
 import type { ScrollEvent } from './bottomSheetSceneStackBodyLayerContract';
 import { bottomSheetSceneStackHostStyles as styles } from './bottomSheetSceneStackHostStyles';
 import { resolveListContentContainerStyle } from './bottomSheetSurfaceStyleUtils';
+import { mergeSceneFlashListProps } from './sceneFlashListPropsMerge';
 import { useSearchOverlayProfilerRender } from './SearchOverlayProfilerContext';
 import {
   finishSearchNavSwitchRuntimeAttributionSpan,
@@ -243,26 +244,22 @@ const ActiveBottomSheetSceneStackListBodySurface = React.memo(
     // EVERY render, so a warm re-render (e.g. the activation commit) handed AnimatedFlashList new
     // prop identities and forced a native container reconcile. Memoized against their real inputs
     // so a re-render with unchanged inputs reuses stable identities and pays no container commit.
+    // F983: the TRANSPORT owns the MVCP default (disabled); a scene must explicitly opt IN.
+    // The default + spread order live in mergeSceneFlashListProps (spec-proven) — see
+    // sceneFlashListPropsMerge.ts for the law and the D68 note about the unused opt-in door.
     const sceneResolvedFlashListProps = React.useMemo(
-      () => ({
-        drawDistance: DEFAULT_DRAW_DISTANCE,
-        removeClippedSubviews: false,
-        estimatedItemSize: sceneBodyContentSpec.estimatedItemSize,
-        // F983: the TRANSPORT owns the MVCP default (disabled) — a re-sortable feed silently
-        // broke this law before (CLAUDE.md) because MVCP was opt-OUT per scene, threaded through
-        // spread order at four merge sites with no structural guard. Inverted: a scene must
-        // explicitly opt IN (spread after this). NOTE (D68): this used to cite
-        // PollDetailPanel's thread as the example opt-in. It is not one —
-        // PollDetailPanel.tsx:1311 disables MVCP deliberately, because a programmatic
-        // scrollToIndex after async data fights the anchor. There is no opt-in caller
-        // today; the escape hatch is real but currently unused.
-        maintainVisibleContentPosition: { disabled: true },
-        ...sceneFlashListProps,
-        overrideProps: {
-          initialDrawBatchSize: DEFAULT_INITIAL_DRAW_BATCH_SIZE,
-          ...(sceneFlashListProps?.overrideProps ?? {}),
-        },
-      }),
+      () =>
+        mergeSceneFlashListProps({
+          base: {
+            drawDistance: DEFAULT_DRAW_DISTANCE,
+            removeClippedSubviews: false,
+            estimatedItemSize: sceneBodyContentSpec.estimatedItemSize,
+          },
+          sceneProps: sceneFlashListProps,
+          baseOverrideProps: {
+            initialDrawBatchSize: DEFAULT_INITIAL_DRAW_BATCH_SIZE,
+          },
+        }),
       [sceneBodyContentSpec.estimatedItemSize, sceneFlashListProps]
     );
     const sceneSecondaryInputFlashListProps = React.useMemo(
@@ -272,29 +269,32 @@ const ActiveBottomSheetSceneStackListBodySurface = React.memo(
       }),
       [sceneFlashListProps, sceneSecondaryListTransport?.flashListProps]
     );
+    // F983: transport-owned MVCP default (disabled) — see sceneFlashListPropsMerge.ts.
     const sceneSecondaryFlashListProps = React.useMemo(
-      () => ({
-        removeClippedSubviews: false,
-        estimatedItemSize:
-          sceneSecondaryList?.estimatedItemSize ?? sceneBodyContentSpec.estimatedItemSize,
-        // F983: transport-owned MVCP default (disabled) — see sceneResolvedFlashListProps above.
-        maintainVisibleContentPosition: { disabled: true },
-        ...sceneSecondaryInputFlashListProps,
-        drawDistance: secondaryOwnsScroll
-          ? (sceneSecondaryInputFlashListProps.drawDistance ?? DEFAULT_DRAW_DISTANCE)
-          : INACTIVE_SECONDARY_DRAW_DISTANCE,
-        overrideProps: {
-          initialDrawBatchSize: secondaryOwnsScroll
-            ? DEFAULT_INITIAL_DRAW_BATCH_SIZE
-            : INACTIVE_SECONDARY_INITIAL_DRAW_BATCH_SIZE,
-          ...(sceneSecondaryInputFlashListProps.overrideProps ?? {}),
-          ...(!secondaryOwnsScroll
+      () =>
+        mergeSceneFlashListProps({
+          base: {
+            removeClippedSubviews: false,
+            estimatedItemSize:
+              sceneSecondaryList?.estimatedItemSize ?? sceneBodyContentSpec.estimatedItemSize,
+          },
+          sceneProps: sceneSecondaryInputFlashListProps,
+          forced: {
+            drawDistance: secondaryOwnsScroll
+              ? (sceneSecondaryInputFlashListProps.drawDistance ?? DEFAULT_DRAW_DISTANCE)
+              : INACTIVE_SECONDARY_DRAW_DISTANCE,
+          },
+          baseOverrideProps: {
+            initialDrawBatchSize: secondaryOwnsScroll
+              ? DEFAULT_INITIAL_DRAW_BATCH_SIZE
+              : INACTIVE_SECONDARY_INITIAL_DRAW_BATCH_SIZE,
+          },
+          forcedOverrideProps: !secondaryOwnsScroll
             ? {
                 initialDrawBatchSize: INACTIVE_SECONDARY_INITIAL_DRAW_BATCH_SIZE,
               }
-            : null),
-        },
-      }),
+            : undefined,
+        }),
       [
         sceneSecondaryList?.estimatedItemSize,
         sceneBodyContentSpec.estimatedItemSize,

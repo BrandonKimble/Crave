@@ -34,13 +34,10 @@ export const useSearchRootSearchScenePanelListTransportRuntime = ({
       overrideItemLayout: overrideItemLayout,
       removeClippedSubviews: resolvedInputFlashListRuntimeProps?.removeClippedSubviews ?? false,
       // The results feed RE-ORDERS across variant reruns (open-now/price/rising flips
-      // swap the row set under a preserved sheet). FlashList 2.x ships MVCP ON by
-      // default, which anchors a surviving row across the swap — an untoggle then
-      // reveals pre-scrolled to wherever that row moved (owner-reproduced: cards 4–6
-      // visible after every open-now untoggle). Same disease + fix as the polls feed:
-      // a re-sortable feed disables MVCP; appends grow below the viewport and need no
-      // anchoring.
-      maintainVisibleContentPosition: { disabled: true },
+      // swap the row set under a preserved sheet), so MVCP must stay OFF — an anchored
+      // surviving row left the list pre-scrolled after an untoggle (owner-reproduced:
+      // cards 4–6 visible). That is supplied by the transport-owned default in
+      // sceneFlashListPropsMerge.ts (F983/F2954); the redundant restatement here was deleted.
       overrideProps: {
         ...(resolvedInputFlashListRuntimeProps?.overrideProps ?? {}),
       },

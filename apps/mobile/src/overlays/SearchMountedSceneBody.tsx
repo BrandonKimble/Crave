@@ -13,6 +13,7 @@ import { beginRevealCommitSpan, markRevealCommitStage } from '../perf/reveal-com
 import type { ScrollEvent } from './bottomSheetSceneStackBodyLayerContract';
 import { bottomSheetSceneStackHostStyles as styles } from './bottomSheetSceneStackHostStyles';
 import { resolveListContentContainerStyle } from './bottomSheetSurfaceStyleUtils';
+import { mergeSceneFlashListProps } from './sceneFlashListPropsMerge';
 import { useSearchOverlayProfilerRender } from './SearchOverlayProfilerContext';
 import type {
   SearchRouteSceneBodyContentSpec,
@@ -833,26 +834,28 @@ const SearchMountedResultsListTarget = React.memo(
       MAX_PREPARED_ROWS_INITIAL_DRAW_BATCH_SIZE,
       Math.max(DEFAULT_INITIAL_DRAW_BATCH_SIZE, secondaryRenderTarget.data.length)
     );
+    // F983: transport-owned MVCP default (disabled); a scene opts IN explicitly instead of
+    // every re-sortable scene having to opt OUT — the default + spread order live in
+    // mergeSceneFlashListProps (spec-proven), see sceneFlashListPropsMerge.ts.
     const primaryFlashListPropsForRender = React.useMemo(
       () =>
-        ({
-          drawDistance: DEFAULT_DRAW_DISTANCE,
-          removeClippedSubviews: false,
-          estimatedItemSize: sceneBodyContent.estimatedItemSize,
-          // F983: transport-owned MVCP default (disabled) — CLAUDE.md's MVCP law had no
-          // structural enforcement at this merge site; a scene now opts IN explicitly instead
-          // of every re-sortable scene having to opt OUT.
-          maintainVisibleContentPosition: { disabled: true },
-          ...primaryFlashListProps,
-          overrideProps: {
-            ...(primaryFlashListProps.overrideProps ?? {}),
+        mergeSceneFlashListProps({
+          base: {
+            drawDistance: DEFAULT_DRAW_DISTANCE,
+            removeClippedSubviews: false,
+            estimatedItemSize: sceneBodyContent.estimatedItemSize,
+          },
+          sceneProps: primaryFlashListProps,
+          forced: {
+            style: primaryFlashListSurfaceStyle,
+            data: primaryRenderTarget.data,
+            renderItem: sceneBodyContent.renderItem,
+            keyExtractor: sceneBodyContent.keyExtractor,
+            contentContainerStyle: primaryListContentContainerStyle,
+          },
+          forcedOverrideProps: {
             initialDrawBatchSize: primaryInitialDrawBatchSize,
           },
-          style: primaryFlashListSurfaceStyle,
-          data: primaryRenderTarget.data,
-          renderItem: sceneBodyContent.renderItem,
-          keyExtractor: sceneBodyContent.keyExtractor,
-          contentContainerStyle: primaryListContentContainerStyle,
         }) as FlashListProps<unknown>,
       [
         primaryFlashListProps,
@@ -865,25 +868,27 @@ const SearchMountedResultsListTarget = React.memo(
         sceneBodyContent.renderItem,
       ]
     );
+    // F983: transport-owned MVCP default (disabled) — see sceneFlashListPropsMerge.ts.
     const secondaryFlashListPropsForRender = React.useMemo(
       () =>
-        ({
-          drawDistance: DEFAULT_DRAW_DISTANCE,
-          removeClippedSubviews: false,
-          estimatedItemSize:
-            secondaryListContent?.estimatedItemSize ?? sceneBodyContent.estimatedItemSize,
-          // F983: transport-owned MVCP default (disabled) — see primaryFlashListPropsForRender.
-          maintainVisibleContentPosition: { disabled: true },
-          ...secondaryFlashListProps,
-          overrideProps: {
-            ...(secondaryFlashListProps.overrideProps ?? {}),
+        mergeSceneFlashListProps({
+          base: {
+            drawDistance: DEFAULT_DRAW_DISTANCE,
+            removeClippedSubviews: false,
+            estimatedItemSize:
+              secondaryListContent?.estimatedItemSize ?? sceneBodyContent.estimatedItemSize,
+          },
+          sceneProps: secondaryFlashListProps,
+          forced: {
+            style: secondaryFlashListSurfaceStyle,
+            data: secondaryRenderTarget.data,
+            renderItem: secondaryListContent?.renderItem ?? sceneBodyContent.renderItem,
+            keyExtractor: secondaryListContent?.keyExtractor ?? sceneBodyContent.keyExtractor,
+            contentContainerStyle: secondaryListContentContainerStyle,
+          },
+          forcedOverrideProps: {
             initialDrawBatchSize: secondaryInitialDrawBatchSize,
           },
-          style: secondaryFlashListSurfaceStyle,
-          data: secondaryRenderTarget.data,
-          renderItem: secondaryListContent?.renderItem ?? sceneBodyContent.renderItem,
-          keyExtractor: secondaryListContent?.keyExtractor ?? sceneBodyContent.keyExtractor,
-          contentContainerStyle: secondaryListContentContainerStyle,
         }) as FlashListProps<unknown>,
       [
         sceneBodyContent.estimatedItemSize,

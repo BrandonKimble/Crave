@@ -118,13 +118,14 @@ const POST_PHOTOS_BODY_TRANSPORT: AppRouteSceneBodyTransportSpec = {
 };
 
 // W3 messaging (§4.1): the inbox is a RE-SORTING list (rows re-order on every
-// new message) — MVCP must be OFF (CLAUDE.md: re-sortable feeds disable it).
+// new message) — MVCP must be OFF, and it is via the transport-owned default in
+// sceneFlashListPropsMerge.ts (F983/F2954: disabled everywhere unless a scene
+// opts IN; the redundant per-scene restatement that lived here was deleted).
 const MESSAGES_INBOX_BODY_TRANSPORT: AppRouteSceneBodyTransportSpec = {
   contentContainerStyle: {
     ...STATIC_SCENE_SCROLL_CONTENT_INSETS,
     paddingBottom: STATIC_SCENE_SCROLL_TAIL_INSET,
   },
-  flashListProps: { maintainVisibleContentPosition: { disabled: true } },
 };
 
 // dmSession: STATIC body — the panel owns its layout (chat column: thread

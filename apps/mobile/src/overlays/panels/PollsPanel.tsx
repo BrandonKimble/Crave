@@ -105,14 +105,12 @@ const TIME_LABEL_BY_VALUE: Record<PollFeedTime, string> = {
 };
 const TIME_OPTIONS = deriveSelectorOptions(TIME_LABEL_BY_VALUE);
 
-// The polls feed is RE-SORTABLE. FlashList's maintain-visible-content-position
-// (chat-style, on by default) anchors the old top row when the Live/Results split or
-// sort re-orders the rows, scrolling the filter strip off-screen. A re-sortable feed
-// wants the opposite — stay at the top and show the new #1 — so MVCP is disabled here
-// (per-scene via the transport's flashListProps; search/restaurant keep the default).
-const POLLS_FEED_FLASH_LIST_PROPS = {
-  maintainVisibleContentPosition: { disabled: true },
-} as const;
+// The polls feed is RE-SORTABLE, so FlashList's maintain-visible-content-position
+// (chat-style anchoring) must stay OFF here — and it is, via the transport-owned
+// default in sceneFlashListPropsMerge.ts (F983 inverted the law: MVCP is disabled
+// everywhere unless a scene explicitly opts IN; no per-scene opt-out needed).
+// F2954 deleted the redundant per-scene restatement that lived here — and its
+// comment's claim that "search/restaurant keep the default" was false.
 
 type PollCardProps = {
   poll: Poll;
@@ -777,7 +775,8 @@ export const usePollsPanelListSceneParts = (): {
       onUserListScrollActivity: handleFeedUserScrollActivity,
       // Over-scroll is enforced no-bounce structurally by BottomSheetScrollContainer (see
       // SHEET_BODY_NO_OVERSCROLL) so the continuous down-handoff works — no per-scene config.
-      flashListProps: POLLS_FEED_FLASH_LIST_PROPS,
+      // MVCP-off comes from the transport default (sceneFlashListPropsMerge.ts) — no
+      // per-scene flashListProps needed.
     }),
     [contentBottomPadding, handleFeedUserScrollActivity]
   );
