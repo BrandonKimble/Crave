@@ -14,6 +14,7 @@
 import { resolveApiFailureAction } from './api-failure-policy';
 import { useSessionLapseStore } from '../store/sessionLapseStore';
 import { useEntitlementLapseStore } from '../store/entitlementLapseStore';
+import { useAccountDeletedStore } from '../store/accountDeletedStore';
 
 describe('resolveApiFailureAction', () => {
   it('401 is a SESSION LAPSE, whatever else the body says', () => {
@@ -57,13 +58,27 @@ describe('the 401 seam drives real, observable state', () => {
   beforeEach(() => {
     useSessionLapseStore.getState().clearLapse();
     useEntitlementLapseStore.getState().clearLapse();
+    useAccountDeletedStore.getState().clearDeleted();
   });
 
-  /** The interceptor's dispatch, byte-for-byte in shape (see services/api.ts). */
-  const dispatch = (status: number | undefined, errorCode?: string): void => {
-    const action = resolveApiFailureAction({ status, errorCode });
+  /**
+   * The interceptor's dispatch, byte-for-byte in shape (see services/api.ts:422-446) —
+   * ALL THREE announcing branches, in the interceptor's own order: session_lapse,
+   * account_deleted, entitlement_lapse. Each drives the same store the interceptor drives,
+   * so deleting a branch from the real policy reds a store-transition assertion below.
+   */
+  const dispatch = (
+    status: number | undefined,
+    errorCode?: string,
+    purgeDueAt?: string | null
+  ): void => {
+    const action = resolveApiFailureAction({ status, errorCode, purgeDueAt });
     if (action.kind === 'session_lapse') {
       useSessionLapseStore.getState().announceLapse();
+      return;
+    }
+    if (action.kind === 'account_deleted') {
+      useAccountDeletedStore.getState().announceDeleted(action.purgeDueAt);
       return;
     }
     if (action.kind === 'entitlement_lapse') {
@@ -114,6 +129,46 @@ describe('the 401 seam drives real, observable state', () => {
  * paywall would tell them the wrong story entirely.
  */
 describe('a deleted account is its own story', () => {
+  beforeEach(() => {
+    useSessionLapseStore.getState().clearLapse();
+    useEntitlementLapseStore.getState().clearLapse();
+    useAccountDeletedStore.getState().clearDeleted();
+  });
+
+  /**
+   * The interceptor's dispatch (api.ts:422-446), driving the real stores — the same
+   * three-branch shape the 401-seam block uses, so the deleted-account STORE transition
+   * (not just the pure return value) is pinned here.
+   */
+  const dispatch = (
+    status: number | undefined,
+    errorCode?: string,
+    purgeDueAt?: string | null
+  ): void => {
+    const action = resolveApiFailureAction({ status, errorCode, purgeDueAt });
+    if (action.kind === 'session_lapse') {
+      useSessionLapseStore.getState().announceLapse();
+      return;
+    }
+    if (action.kind === 'account_deleted') {
+      useAccountDeletedStore.getState().announceDeleted(action.purgeDueAt);
+      return;
+    }
+    if (action.kind === 'entitlement_lapse') {
+      useEntitlementLapseStore.getState().announceLapse();
+    }
+  };
+
+  it('THE TRANSITION: a 403 + ACCOUNT_DELETED flips the store deleted and carries the deadline', () => {
+    expect(useAccountDeletedStore.getState().deleted).toBe(false);
+    dispatch(403, 'ACCOUNT_DELETED', '2026-09-02T00:00:00.000Z');
+    expect(useAccountDeletedStore.getState().deleted).toBe(true);
+    expect(useAccountDeletedStore.getState().purgeDueAt).toBe('2026-09-02T00:00:00.000Z');
+    // Distinct from the neighbours: it neither signs you out nor raises the paywall.
+    expect(useSessionLapseStore.getState().lapsed).toBe(false);
+    expect(useEntitlementLapseStore.getState().lapsed).toBe(false);
+  });
+
   it('403 + ACCOUNT_DELETED carries the deadline the copy needs', () => {
     expect(
       resolveApiFailureAction({

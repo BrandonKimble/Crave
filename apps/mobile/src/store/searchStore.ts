@@ -74,10 +74,20 @@ const defaultState = {
   risingActive: false,
 } as const satisfies SearchRuntimeMirroredState;
 
-// The persisted subset — the three FILTER fields, and only those. Derived from one list so
-// `partialize` and the migration's key-strip can never drift apart.
-const PERSISTED_KEYS = ['openNow', 'dietary', 'priceLevels', 'risingActive'] as const;
+// The persisted subset — the four FILTER fields, and only those. Both `partialize` and the
+// migration's key-strip derive from this one list so they can never drift apart.
+export const PERSISTED_KEYS = ['openNow', 'dietary', 'priceLevels', 'risingActive'] as const;
 type PersistedKey = (typeof PERSISTED_KEYS)[number];
+
+// Single source: the persisted payload is exactly the PERSISTED_KEYS projection of state, so
+// `partialize` and the migration's key-strip cannot disagree about which fields survive.
+export const partializeSearchState = (
+  state: SearchRuntimeMirroredState
+): Pick<SearchRuntimeMirroredState, PersistedKey> =>
+  Object.fromEntries(PERSISTED_KEYS.map((key) => [key, state[key]])) as Pick<
+    SearchRuntimeMirroredState,
+    PersistedKey
+  >;
 
 export const normalizeActiveTab = (tab: unknown): SearchActiveTab => {
   if (tab === 'restaurants' || tab === 'dishes') {
@@ -180,12 +190,7 @@ export const useSearchStore = create<SearchState>()(
           },
         };
       }),
-      partialize: (state) => ({
-        openNow: state.openNow,
-        dietary: state.dietary,
-        priceLevels: state.priceLevels,
-        risingActive: state.risingActive,
-      }),
+      partialize: (state) => partializeSearchState(state),
     }
   )
 );
