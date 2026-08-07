@@ -47,18 +47,33 @@ const createRuntimeConfigSnapshot = ({
   interactionEnabled,
 });
 
+// F9300: the three DERIVED shared-value inputs (gestureEnabled / shouldEnableScroll /
+// hiddenOrCollapsed) were hand-copied across the initial-seed path and the sync path — two
+// transcriptions of the same formula, free to drift. This pure deriver is the ONE home;
+// both paths consume it, so they cannot compute differently by construction.
+const deriveRuntimeConfigSharedValueInputs = (
+  snapshot: BottomSheetSharedRuntimeConfigSnapshot
+): { gestureEnabled: number; shouldEnableScroll: boolean; hiddenOrCollapsed: number } => {
+  const hiddenSnap = snapshot.snapPoints.hidden;
+  return {
+    gestureEnabled: snapshot.visible && snapshot.interactionEnabled ? 1 : 0,
+    shouldEnableScroll:
+      snapshot.visible && snapshot.listScrollEnabled && snapshot.interactionEnabled,
+    hiddenOrCollapsed: hiddenSnap ?? snapshot.snapPoints.collapsed,
+  };
+};
+
 const syncRuntimeConfigValues = (
   values: BottomSheetSharedRuntimeConfigSharedValues,
   snapshot: BottomSheetSharedRuntimeConfigSnapshot
 ) => {
   const hiddenSnap = snapshot.snapPoints.hidden;
-  const hiddenOrCollapsed = hiddenSnap ?? snapshot.snapPoints.collapsed;
+  const derived = deriveRuntimeConfigSharedValueInputs(snapshot);
   values.visible.value = snapshot.visible;
   values.listScrollEnabled.value = snapshot.listScrollEnabled;
   values.interactionEnabled.value = snapshot.interactionEnabled;
-  values.gestureEnabled.value = snapshot.visible && snapshot.interactionEnabled ? 1 : 0;
-  values.shouldEnableScroll.value =
-    snapshot.visible && snapshot.listScrollEnabled && snapshot.interactionEnabled;
+  values.gestureEnabled.value = derived.gestureEnabled;
+  values.shouldEnableScroll.value = derived.shouldEnableScroll;
   values.preventSwipeDismiss.value = snapshot.preventSwipeDismiss;
   values.dismissThreshold.value =
     typeof snapshot.dismissThreshold === 'number' ? snapshot.dismissThreshold : null;
@@ -66,9 +81,9 @@ const syncRuntimeConfigValues = (
   values.middleSnap.value = snapshot.snapPoints.middle;
   values.collapsedSnap.value = snapshot.snapPoints.collapsed;
   values.hasHiddenSnap.value = typeof hiddenSnap === 'number';
-  values.hiddenSnap.value = hiddenOrCollapsed;
+  values.hiddenSnap.value = derived.hiddenOrCollapsed;
   values.initialSnapValue.value = snapshot.snapPoints[snapshot.initialSnapPoint];
-  values.hiddenOrCollapsed.value = hiddenOrCollapsed;
+  values.hiddenOrCollapsed.value = derived.hiddenOrCollapsed;
 };
 
 const useBottomSheetSharedRuntimeConfigValues = ({
@@ -80,18 +95,12 @@ const useBottomSheetSharedRuntimeConfigValues = ({
 }): BottomSheetSharedRuntimeConfigSharedValues => {
   const initialSnapshot = runtimeConfigAuthority?.getSnapshot() ?? fallbackSnapshot;
   const hiddenSnap = initialSnapshot.snapPoints.hidden;
-  const hiddenOrCollapsed = hiddenSnap ?? initialSnapshot.snapPoints.collapsed;
+  const derived = deriveRuntimeConfigSharedValueInputs(initialSnapshot);
   const visibleValue = useSharedValue(initialSnapshot.visible);
   const listScrollEnabledValue = useSharedValue(initialSnapshot.listScrollEnabled);
   const interactionEnabledValue = useSharedValue(initialSnapshot.interactionEnabled);
-  const gestureEnabledValue = useSharedValue(
-    initialSnapshot.visible && initialSnapshot.interactionEnabled ? 1 : 0
-  );
-  const shouldEnableScrollValue = useSharedValue(
-    initialSnapshot.visible &&
-      initialSnapshot.listScrollEnabled &&
-      initialSnapshot.interactionEnabled
-  );
+  const gestureEnabledValue = useSharedValue(derived.gestureEnabled);
+  const shouldEnableScrollValue = useSharedValue(derived.shouldEnableScroll);
   const preventSwipeDismissValue = useSharedValue(initialSnapshot.preventSwipeDismiss);
   const dismissThresholdValue = useSharedValue<number | null>(
     typeof initialSnapshot.dismissThreshold === 'number' ? initialSnapshot.dismissThreshold : null
@@ -99,12 +108,12 @@ const useBottomSheetSharedRuntimeConfigValues = ({
   const expandedSnapValue = useSharedValue(initialSnapshot.snapPoints.expanded);
   const middleSnapValue = useSharedValue(initialSnapshot.snapPoints.middle);
   const collapsedSnapValue = useSharedValue(initialSnapshot.snapPoints.collapsed);
-  const hiddenSnapValue = useSharedValue(hiddenOrCollapsed);
+  const hiddenSnapValue = useSharedValue(derived.hiddenOrCollapsed);
   const hasHiddenSnapValue = useSharedValue(typeof hiddenSnap === 'number');
   const initialSnapValue = useSharedValue(
     initialSnapshot.snapPoints[initialSnapshot.initialSnapPoint]
   );
-  const hiddenOrCollapsedValue = useSharedValue(hiddenOrCollapsed);
+  const hiddenOrCollapsedValue = useSharedValue(derived.hiddenOrCollapsed);
 
   const values = React.useMemo<BottomSheetSharedRuntimeConfigSharedValues>(
     () => ({
@@ -190,7 +199,6 @@ export const useBottomSheetSharedRuntime = ({
   onMomentumBeginJS,
   onMomentumEndJS,
   showsVerticalScrollIndicator,
-  activeList = 'primary',
   onDragStateChange,
   onSettleStateChange,
   onSnapSettleComplete,
@@ -203,7 +211,6 @@ export const useBottomSheetSharedRuntime = ({
   sheetYObserver,
   scrollOffsetValue,
   momentumFlag,
-  secondaryDataCount,
   runtimeConfigAuthority,
 }: BottomSheetSharedRuntimeProps): BottomSheetSharedRuntimeResult => {
   const { height: screenHeight } = useWindowDimensions();
@@ -299,7 +306,11 @@ export const useBottomSheetSharedRuntime = ({
   const fallbackIsInMomentum = useSharedValue(false);
   const isInMomentum = momentumFlag ?? fallbackIsInMomentum;
   const hasNotifiedHidden = useSharedValue(false);
-  const resolvedActiveList = secondaryDataCount > 0 ? activeList : 'primary';
+  // F9301: the sole caller never sets a secondary list — no scene sets activeList:'secondary'
+  // and the only producer hardcoded secondaryDataCount:0, so `secondaryDataCount > 0 ? activeList
+  // : 'primary'` had an unreachable true-branch. Both the `activeList` prop and the
+  // `secondaryDataCount` contract field are gone; this is 'primary' by construction now.
+  const resolvedActiveList = 'primary' as const;
   const isDragging = useSharedValue(false);
   const isSettling = useSharedValue(false);
   const settlingToHidden = useSharedValue(false);

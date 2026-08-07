@@ -33,7 +33,6 @@ export type BottomSheetSharedRuntimeProps = {
   onMomentumBeginJS?: () => void;
   onMomentumEndJS?: () => void;
   showsVerticalScrollIndicator?: boolean;
-  activeList?: 'primary' | 'secondary';
   onDragStateChange?: (isDragging: boolean) => void;
   onSettleStateChange?: (isSettling: boolean) => void;
   onSnapSettleComplete?: (settleToken: number) => void;
@@ -46,15 +45,12 @@ export type BottomSheetSharedRuntimeProps = {
   sheetYObserver?: SharedValue<number>;
   scrollOffsetValue?: SharedValue<number>;
   momentumFlag?: SharedValue<boolean>;
-  // F2407: `dataCount: number` used to sit here, REQUIRED, beside these optional siblings —
-  // and nothing read it. Its sole construction site passed the literal `0`, which is the
-  // tell: the value was not computed because it did not matter, yet the type insisted every
-  // caller supply one. A required field that decides nothing does worse than waste a line —
-  // it tells the next caller the runtime observes their list length, which it never did.
-  // The only question this pair ever answered is "is there a secondary list to activate",
-  // and `secondaryDataCount` answers that alone (useBottomSheetSharedRuntime.tsx:
-  // `secondaryDataCount > 0 ? activeList : 'primary'`).
-  secondaryDataCount: number;
+  // F2407 + F9301: a `dataCount`/`secondaryDataCount` pair once lived here, required, so the
+  // runtime could decide "is there a secondary list to activate". No scene ever set
+  // activeList:'secondary' and the sole producer hardcoded 0, so the decision was always
+  // 'primary'. Both the field and the `activeList` prop are gone — the dead secondary-list
+  // branch is now unrepresentable (useBottomSheetSharedRuntime.tsx: resolvedActiveList is
+  // 'primary' by construction).
   runtimeConfigAuthority?: BottomSheetSharedRuntimeConfigAuthority;
 };
 

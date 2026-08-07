@@ -2,6 +2,7 @@ import React from 'react';
 import { StyleSheet, View, type StyleProp, type ViewStyle } from 'react-native';
 
 import type { BottomSheetSceneStackChromeEntry } from './bottomSheetSceneStackHostContract';
+import { createShapeEquality, sameFieldRef } from './shape-equality';
 
 type SceneStackDecorLayerKind = 'underlay' | 'background' | 'overlay';
 
@@ -10,6 +11,16 @@ type SceneStackDecorLayerProps = {
   kind: SceneStackDecorLayerKind;
   isVisible: boolean;
 };
+
+// F9304: DERIVE the skip fn from the props shape (shape-equality.ts) instead of hand-rolling
+// a field-by-field comparator. A future added prop is now a COMPILE ERROR here (the
+// `FieldComparators` map must name every field), not a silently-uncompared value that would
+// freeze this layer. Every field is ref/primitive identity — sameFieldRef.
+const shouldSkipSceneStackDecorLayerUpdate = createShapeEquality<SceneStackDecorLayerProps>({
+  entry: sameFieldRef,
+  kind: sameFieldRef,
+  isVisible: sameFieldRef,
+});
 
 export const SceneStackDecorLayer = React.memo(
   ({ entry, kind, isVisible }: SceneStackDecorLayerProps) => {
@@ -50,10 +61,7 @@ export const SceneStackDecorLayer = React.memo(
       </View>
     );
   },
-  (previousProps, nextProps) =>
-    previousProps.entry === nextProps.entry &&
-    previousProps.kind === nextProps.kind &&
-    previousProps.isVisible === nextProps.isVisible
+  shouldSkipSceneStackDecorLayerUpdate
 );
 
 // P3 (page-switch-master-plan.md §6-P3): SceneStackHeaderLayer is DELETED. The per-leg header
