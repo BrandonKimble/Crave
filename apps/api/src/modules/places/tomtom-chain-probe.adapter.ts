@@ -21,40 +21,46 @@
  *    arrondissements) and the COUNTY. MunicipalitySubdivision had ZERO rows
  *    in a 22k-place catalog, and the gap was nearly blamed on the vendor.
  *
- *    What the filter bought, and what replaces it: the filtered response is
- *    a GEOGRAPHY (entityType set, boundingBox = that geography's outline,
- *    dataSources.geometry.id present), so the finest rung's bbox+id came
- *    free. The plain response is an ADDRESS — no geometry id, boundingBox is
- *    `{"entity":"position"}`, a few-metre box that must NEVER be read as an
- *    outline. Geometry now comes from the forward-geocode enrichment that
- *    every OTHER rung already used (same stable id family — the §1 identity
- *    law below), at most one extra cheap draw per probe against geocode's
- *    own 20k/month free allowance. One request shape, one geometry path,
- *    complete chain — instead of two request shapes where one silently
- *    truncated and the other padded.
- *
- *    `lookupLevelEntity` KEEPS its single-level `entityType` filter
- *    deliberately: its whole question is "the geography AT THIS LEVEL, with
- *    its id" — the geography-shaping behaviour is the point there.
- *  - Forward geocode (`entityTypeSet=<level>&limit=1`) returns a Geography
- *    result with `boundingBox` as {topLeftPoint,btmRightPoint} {lat,lon}
- *    OBJECTS (a DIFFERENT shape than reverse — do not unify blindly) plus the
- *    same stable geometry id family (§1 identity law: identical id across
- *    reverse and forward for the same entity, live-validated).
+
+ *    The filter is MODE SELECTION, not a knob: filtered = geography-mode
+ *    (entityType echoed, boundingBox = the entity's own OUTLINE,
+ *    dataSources.geometry.id present), plain = address-mode (no id, and
+ *    boundingBox is `{"entity":"position"}` — a few-metre box that must
+ *    NEVER be read as an outline). The probe uses BOTH modes for what each
+ *    is for: plain for the complete chain of names, and one anchored
+ *    SINGLE-LEVEL filtered reverse for the finest rung's identity — the
+ *    geography at this point at this level, verified live 2026-08-07 to
+ *    populate its own level's field and carry id + outline + position.
+ *    `lookupLevelEntity` IS that call; the probe and the operator scripts
+ *    share it.
+ *  - Forward geocode (`entityTypeSet=<level>`, limit =
+ *    FORWARD_GEOCODE_CANDIDATE_LIMIT for twin disambiguation) returns a
+ *    Geography result with `boundingBox` as {topLeftPoint,btmRightPoint}
+ *    {lat,lon} OBJECTS (a DIFFERENT shape than reverse — do not unify
+ *    blindly) plus the same stable geometry id family (§1 identity law:
+ *    identical id across reverse and forward for the same entity,
+ *    live-validated).
  *
  * §2 mechanics implemented here:
- *  - 1 PLAIN reverse geocode per probe → the COMPLETE chain of names, and
- *    nothing else (address-mode responses carry no outline and no id).
- *  - +1 cheap forward geocode per PREVIOUSLY-UNKNOWN node (unknown = the
- *    catalog has no bbox for that identity tuple — which also delivers §2's
- *    "once ever per node globally" without any extra bookkeeping). This is
- *    the ONE geometry path; the finest rung is not special.
- *  - Forward-geocode ceiling per probe = the ladder's 6 rungs: DEFINITIONAL
- *    (§16). Nothing comes free with the reverse response any more.
+ *  - 1 PLAIN reverse geocode per probe → the COMPLETE chain of names.
+ *  - 1 anchored single-level filtered reverse → the FINEST rung's identity
+ *    (geometry id) + outline bbox + centroid. The birth certificate of the
+ *    rung the probe exists for is answered by a POINT, never guessed from a
+ *    name; upsertSketch refuses id-less nodes, so without this the
+ *    neighbourhood under the user's view existed only if a name-keyed
+ *    forward geocode happened to win its twin lottery.
+ *  - +1 cheap forward geocode per bbox-less COARSER rung (≤5, §16
+ *    definitional: 6 rungs − the anchored finest). No catalog pre-check:
+ *    identity is asked BY ENTITY only (county dissolution), coarse rungs
+ *    have no id until the vendor issues one, so there is nothing lawful to
+ *    skip on. The old "once ever per node globally" was a fossil — its
+ *    catalogKnowsBbox guard short-circuited on the missing id and never
+ *    reached its own SQL.
  *  - Every vendor call rides the governed cheap pool (§14/§22). A denial on
  *    a FORWARD call just leaves that node bbox-less (a later probe fills it);
- *    a denial on the REVERSE call throws — the ground was never asked, so the
- *    reconciler must log-and-skip, never record a false "no place here".
+ *    a denial on the REVERSE call is a typed 'denied' — the ground was never
+ *    asked, so the reconciler breaks the pass, never records a false "no
+ *    place here".
  *  - probedRegion = the DISC of the vendor's default reverse-geocode radius
  *    (100 m — vendor fact) around the anchor: the ground this probe actually
  *    speaks for when it says "no place here".
@@ -79,7 +85,6 @@ function describeTransportFault(error: unknown): string {
   return 'tomtom_transport_unknown';
 }
 import { LoggerService } from '../../shared';
-import { PrismaService } from '../../prisma/prisma.service';
 import { UsageLedgerService } from '../external-integrations/shared/usage-ledger.service';
 import { SpendBudgetClosedError } from '../external-integrations/governance/governance.service';
 import { GovernanceService } from '../external-integrations/governance/governance.service';
@@ -134,13 +139,11 @@ const LEVEL_LADDER: ReadonlyArray<{
 ];
 
 /**
- * §16 definitional: one forward geocode per rung of the ladder, no more.
- * Was `length - 1` when the filtered reverse donated the finest rung's bbox
- * for free; the plain reverse donates nothing (its boundingBox is a position
- * box, not an outline), so every rung may need enrichment. In practice the
- * catalog already knows the coarse rungs and the real spend is 1-2.
+ * §16 definitional: one forward geocode per COARSER rung, no more — the
+ * finest rung's geometry arrives with its anchored identity lookup (a
+ * single-level filtered reverse), never a forward. 6 rungs − 1 = 5.
  */
-const MAX_FORWARD_GEOCODES_PER_PROBE = LEVEL_LADDER.length;
+const MAX_FORWARD_GEOCODES_PER_PROBE = LEVEL_LADDER.length - 1;
 
 /**
  * Vendor fact: reverse geocode's default search radius — the ground a probe
@@ -242,7 +245,6 @@ export class TomtomChainProbeAdapter implements TomtomChainProbe {
 
   constructor(
     private readonly httpService: HttpService,
-    private readonly prisma: PrismaService,
     private readonly governance: GovernanceService,
     private readonly usageLedger: UsageLedgerService,
     private readonly opsAlerts: OpsAlertsService,
@@ -451,44 +453,43 @@ export class TomtomChainProbeAdapter implements TomtomChainProbe {
       };
     }
 
-    // NOTHING IS FREE OFF A PLAIN REVERSE. The address-mode response's
-    // boundingBox is `{"entity":"position"}` — a few-metre box around the
-    // street address — and it carries no geometry id. The deleted `freeNode`
-    // step here used to adopt the filtered response's outline for the finest
-    // rung; adopting the position box the same way would sketch a
-    // neighbourhood as a doorstep. Every rung goes through the one geometry
-    // path below.
+    // THE FINEST RUNG'S IDENTITY IS ANCHORED, NEVER GUESSED (2026-08-07).
+    // The plain reverse carries no geometry id, and upsertSketch REFUSES an
+    // id-less node — so without this step, the rung the probe exists for
+    // (the neighbourhood under the user's view) would only exist if a
+    // NAME-keyed forward geocode happened to succeed: a name-twin lottery
+    // for the birth certificate. One single-level filtered reverse at the
+    // anchor answers by GEOGRAPHY instead — the entity at this point, at
+    // this level — and carries id + outline bbox + position in one draw.
+    // Any non-named outcome leaves the rung id-less this probe (an honest
+    // fault, never a memory); the chain itself is already paid for.
+    const finest = chain[0];
+    const identity = await this.lookupLevelEntity(
+      anchor,
+      finest.providerLevelCode,
+    );
+    if (
+      identity.kind === 'named' &&
+      // ID-MATCH gate, same law as fetchPolygon: believe nothing off an
+      // answer for a DIFFERENT level (the vendor echoes the entityType).
+      identity.entityType === finest.providerLevelCode &&
+      identity.geometryId
+    ) {
+      finest.providerPlaceId = identity.geometryId;
+      finest.bbox = identity.bbox ?? undefined;
+      finest.centroid = identity.centroid ?? undefined;
+    }
 
-    // +1 cheap forward geocode per PREVIOUSLY-UNKNOWN node (§2): unknown =
-    // catalog holds no bbox for the identity tuple. Once sketched with a
-    // bbox, a node is never forward-geocoded again, globally.
+    // +1 cheap forward geocode per bbox-less COARSER rung. There is no
+    // catalog pre-check: identity may only be asked BY ENTITY (the county
+    // dissolution's law), coarse rungs carry no id until the vendor issues
+    // one, and a name-keyed skip would be the exact reconciliation-by-name
+    // the dissolution deleted. The old catalogKnowsBbox short-circuited on
+    // that missing id and so was dead code from the day it was written —
+    // deleting it removed this adapter's only Prisma read.
     let forwardBudget = MAX_FORWARD_GEOCODES_PER_PROBE;
     for (const node of chain) {
       if (node.bbox || forwardBudget <= 0) {
-        continue;
-      }
-      // A CATALOG READ IS NOT A VENDOR READ. This is a Prisma query inside
-      // the interpretation, and it used to fall into the parse catch — so a
-      // DB blip returned `tomtom_parse_threw_PrismaClientKnownRequestError`,
-      // pointing the operator at the vendor's JSON while discarding a COMPLETE
-      // chain the reverse geocode had already been paid for (red team
-      // 2026-08-04). The enrichment is optional; a node without a bbox is
-      // sketched without one and the next probe fills it in.
-      let known: boolean;
-      try {
-        known = await this.catalogKnowsBbox(node);
-      } catch (error) {
-        this.logger.warn(
-          'Catalog bbox check failed — node sketched without it',
-          {
-            error: {
-              message: error instanceof Error ? error.message : String(error),
-            },
-          },
-        );
-        continue;
-      }
-      if (known) {
         continue;
       }
       forwardBudget -= 1;
@@ -496,6 +497,10 @@ export class TomtomChainProbeAdapter implements TomtomChainProbe {
       if (resolved) {
         node.bbox = resolved.bbox;
         node.centroid = resolved.centroid;
+        // `??` is LIVE here for exactly one node: a finest rung whose
+        // anchored identity landed but whose outline failed to parse falls
+        // into this loop for a bbox — its anchored id must not be clobbered
+        // by the name-matched candidate's.
         node.providerPlaceId = node.providerPlaceId ?? resolved.providerPlaceId;
       }
     }
@@ -644,9 +649,16 @@ export class TomtomChainProbeAdapter implements TomtomChainProbe {
     }
     return {
       kind: 'named',
-      geometryId: entry.dataSources?.geometry?.id ?? null,
+      geometryId: entry.dataSources?.geometry?.id?.trim() || null,
       entityType: entry.entityType ?? null,
-      address: (entry.address ?? {}) as Record<string, string | undefined>,
+      // Proven a non-null object above; the cast narrows to the NAME fields
+      // the two operator scripts read (boundingBox is parsed separately).
+      address: entry.address as Record<string, string | undefined>,
+      // Geography-mode: the boundingBox on a FILTERED reverse is the
+      // answering entity's own outline (the plain probe response's is a
+      // position box — parsed nowhere, on purpose).
+      bbox: parseGeographyBoundingBox(entry.address.boundingBox),
+      centroid: parseLatLngString(entry.position),
     };
   }
 
@@ -987,28 +999,6 @@ export class TomtomChainProbeAdapter implements TomtomChainProbe {
   }
 
   /**
-   * Does the catalog already hold ground for this identity tuple? Asked BY
-   * ENTITY — the composite (id, level) — never by name (THE FINAL
-   * DISSOLUTION; the county-axis sibling logic this once described is
-   * deleted).
-   */
-  private async catalogKnowsBbox(node: PlaceSketchNode): Promise<boolean> {
-    // FINAL DISSOLUTION (2026-07-30): "knows the extent" is asked BY ENTITY —
-    // the composite (id, level) — never by name. Chain nodes here always
-    // carry the id (it rides every reverse-geocode response); a node without
-    // one gets the forward geocode spent on it, which is the honest posture.
-    if (!node.providerPlaceId) return false;
-    const [hit] = await this.prisma.$queryRaw<Array<{ ok: boolean }>>`
-      SELECT EXISTS (
-        SELECT 1 FROM places p
-        JOIN place_geometries g ON g.place_id = p.place_id
-        WHERE p.provider_place_id = ${node.providerPlaceId}
-          AND p.provider_level_code = ${node.providerLevelCode}
-      ) AS ok`;
-    return hit?.ok === true;
-  }
-
-  /**
    * The disc this probe speaks for: the anchor plus the vendor's default
    * reverse-geocode radius. Recorded as a RADIUS, not a square — squaring it
    * claimed ~21% more ground than was ever asked about (see the port doc).
@@ -1020,6 +1010,48 @@ export class TomtomChainProbeAdapter implements TomtomChainProbe {
       radiusMeters: REVERSE_GEOCODE_RADIUS_METERS,
     };
   }
+}
+
+/** Geography-mode reverse bbox: {northEast,southWest} as "lat,lng" strings.
+ * Reinstated 2026-08-07 for the finest rung's anchored identity lookup —
+ * the SINGLE-LEVEL filtered reverse is geography-mode and its boundingBox
+ * is the entity's outline. (The probe's PLAIN reverse also carries a
+ * boundingBox, but that one is a position box and is parsed NOWHERE — this
+ * function must only ever be fed filtered-mode responses.)
+ *
+ * LONGITUDE PRESERVES THE PROVIDER'S EDGE ORDER (F3001, 2026-08-06):
+ * southWest.lng is the WEST edge (minLng), northEast.lng the EAST edge
+ * (maxLng), verbatim — min/max on longitude destroyed the antimeridian
+ * crossing representation. min/max stays for LATITUDE only.
+ */
+export function parseGeographyBoundingBox(
+  box: TomtomAddress['boundingBox'],
+): GeoBbox | null {
+  const ne = parseLatLngString(box?.northEast);
+  const sw = parseLatLngString(box?.southWest);
+  if (!ne || !sw) {
+    return null;
+  }
+  return {
+    minLat: Math.min(ne.lat, sw.lat),
+    minLng: sw.lng,
+    maxLat: Math.max(ne.lat, sw.lat),
+    maxLng: ne.lng,
+  };
+}
+
+/** TomTom's "lat,lng" comma string → GeoPoint. */
+function parseLatLngString(value: string | undefined): GeoPoint | null {
+  if (!value) {
+    return null;
+  }
+  const [latRaw, lngRaw] = value.split(',');
+  const lat = Number(latRaw);
+  const lng = Number(lngRaw);
+  if (!Number.isFinite(lat) || !Number.isFinite(lng)) {
+    return null;
+  }
+  return { lat, lng };
 }
 
 /** Forward-shape bbox: {topLeftPoint,btmRightPoint} as {lat,lon} objects.

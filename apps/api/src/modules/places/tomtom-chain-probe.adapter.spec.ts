@@ -44,6 +44,24 @@ const UWS_REVERSE_ENTRY = {
   position: '40.786999,-73.975403',
 };
 
+/** Geography-mode single-level answer for the finest rung (Neighbourhood). */
+const UWS_LEVEL_ENTITY_ENTRY = {
+  address: {
+    countryCode: 'US',
+    countrySubdivision: 'NY',
+    countrySubdivisionName: 'New York',
+    countrySubdivisionCode: 'NY',
+    neighbourhood: 'Upper West Side',
+    boundingBox: {
+      northEast: '40.807972,-73.964694',
+      southWest: '40.779488,-73.992672',
+    },
+  },
+  position: '40.786999,-73.975403',
+  dataSources: { geometry: { id: 'geo-uws' } },
+  entityType: 'Neighbourhood',
+};
+
 const MANHATTAN_FORWARD_RESULT = {
   type: 'Geography',
   entityType: 'Municipality',
@@ -62,10 +80,13 @@ function buildAdapter(options: {
   reverseAddresses?: unknown[];
   /** Force a body that violates the contract (no `addresses` array). */
   reverseBodyMalformed?: boolean;
+  /** The anchored single-level (geography-mode) reverse: entries returned
+   *  when the request carries an entityType param. Defaults to [] — the
+   *  finest rung then simply stays id-less, the honest fault posture. */
+  levelEntityAddresses?: unknown[];
   forwardResults?: unknown[];
   additionalData?: unknown[];
   denyPool?: boolean;
-  knownBboxIdentities?: boolean;
   /** Wave-6 item 2: every http call rejects with a vendor HTTP failure
    *  (AxiosError shape); retryAfter fills the Retry-After header. */
   httpFailure?: { status: number; retryAfter?: string };
@@ -92,6 +113,14 @@ function buildAdapter(options: {
         );
       }
       if (url.includes('/reverseGeocode/')) {
+        // Mode selection is the entityType param (the adapter's own law):
+        // present = geography-mode single-level lookup, absent = the plain
+        // chain read.
+        if (config.params.entityType !== undefined) {
+          return of({
+            data: { addresses: options.levelEntityAddresses ?? [] },
+          });
+        }
         return of({
           data: options.reverseBodyMalformed
             ? { unexpected: true }
@@ -117,17 +146,6 @@ function buildAdapter(options: {
       return options.denyPool ? null : act();
     },
   };
-  // P4: "catalog knows the extent" = a matching identity row WITH a ground.
-  const prisma = {
-    place: {
-      findMany: () =>
-        Promise.resolve(
-          options.knownBboxIdentities ? [{ placeId: 'known-place-id' }] : [],
-        ),
-    },
-    $queryRaw: () =>
-      Promise.resolve(options.knownBboxIdentities ? [{ ok: true }] : []),
-  };
   const configService = {
     get: (key: string) => (key === 'tomtom.apiKey' ? 'test-key' : undefined),
   };
@@ -140,7 +158,6 @@ function buildAdapter(options: {
   };
   const adapter = new TomtomChainProbeAdapter(
     httpService as never,
-    prisma as never,
     governance as never,
     { record: jest.fn() } as never,
     { emit: jest.fn() } as never,
@@ -154,9 +171,11 @@ const ANCHOR = { lat: 40.787, lng: -73.9754 };
 
 describe('TomtomChainProbeAdapter', () => {
   it('builds the COMPLETE chain most-specific-first — including the rung the entityType filter used to erase', async () => {
+    // levelEntityAddresses defaults to [] — the anchored identity lookup
+    // finds nothing, so the finest rung stays id-less here and the test
+    // isolates PLAIN-reverse parsing.
     const { adapter, calls } = buildAdapter({
       reverseAddresses: [UWS_REVERSE_ENTRY],
-      knownBboxIdentities: true, // no forward geocodes — isolate reverse parsing
     });
     const result = await adapter.probe(ANCHOR);
     // The request is PLAIN: an entityType param would truncate the chain
@@ -192,18 +211,34 @@ describe('TomtomChainProbeAdapter', () => {
     ).toBe('NY');
   });
 
-  it('forward-geocodes ONLY previously-unknown nodes and adopts the forward-shape bbox', async () => {
+  it('the FINEST rung gets its identity from the anchored single-level reverse; forwards serve only the coarser rungs', async () => {
     const { adapter, calls } = buildAdapter({
       reverseAddresses: [UWS_REVERSE_ENTRY],
+      levelEntityAddresses: [UWS_LEVEL_ENTITY_ENTRY],
       forwardResults: [MANHATTAN_FORWARD_RESULT],
-      knownBboxIdentities: false,
     });
     const result = await adapter.probe(ANCHOR);
+    // The anchored lookup asked for exactly the finest rung's level.
+    const anchored = calls.filter(
+      (c) => c.url.includes('/reverseGeocode/') && c.params.entityType,
+    );
+    expect(anchored).toHaveLength(1);
+    expect(anchored[0].params.entityType).toBe('Neighbourhood');
+    // Its answer is the birth certificate: id + OUTLINE bbox + centroid —
+    // never the plain response's position box.
+    const uws = (result as { chain: PlaceSketchNode[] }).chain[0];
+    expect(uws.providerPlaceId).toBe('geo-uws');
+    expect(uws.bbox).toEqual({
+      minLat: 40.779488,
+      minLng: -73.992672,
+      maxLat: 40.807972,
+      maxLng: -73.964694,
+    });
     const forwardCalls = calls.filter(
       (c) => !c.url.includes('/reverseGeocode/'),
     );
-    // 5-node chain, nothing free off the plain reverse → all 5 probed.
-    expect(forwardCalls).toHaveLength(5);
+    // 5-node chain, finest served by the anchored lookup → 4 coarse rungs.
+    expect(forwardCalls).toHaveLength(4);
     const municipality = (result as { chain: PlaceSketchNode[] }).chain.find(
       (n) => n.providerLevelCode === 'Municipality',
     );
@@ -244,7 +279,6 @@ describe('TomtomChainProbeAdapter', () => {
         },
       ],
       forwardResults: [],
-      knownBboxIdentities: false,
     });
     await adapter.probe(ANCHOR);
     const forward = calls.filter((c) => !c.url.includes('/reverseGeocode/'));

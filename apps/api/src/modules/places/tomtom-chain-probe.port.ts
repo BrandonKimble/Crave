@@ -5,19 +5,29 @@
  * boundary-bootstrap service died with the market model — §20 changelog; the
  * places DAG is the only geography surface).
  *
- * Contract per §2 "sketch mechanics (live-verified)":
- *   - ONE reverse geocode at the anchor returns the FULL chain of names +
- *     stable geometry ids (neighbourhood → borough → city → county → state →
- *     country).
- *   - +1 cheap forward geocode per PREVIOUSLY-UNKNOWN node supplies its bbox
- *     (≤5 per probe, once ever per node globally; all cheap pool).
+ * Contract per §2 "sketch mechanics" (re-verified live 2026-08-07):
+ *   - ONE PLAIN reverse geocode at the anchor returns the FULL chain of
+ *     NAMES (neighbourhood → borough → city → county → state → country) and
+ *     no geometry — an entityType filter would truncate the chain (it nulls
+ *     municipalitySubdivision and usually countrySecondarySubdivision), and
+ *     an address-mode response carries no ids or outlines.
+ *   - ONE anchored single-level filtered reverse supplies the FINEST rung's
+ *     identity (geometry id) + outline bbox + position — geography-mode,
+ *     anchored at the point so no name-twin ambiguity. The finest rung is
+ *     the one the probe exists for; its birth certificate is guaranteed by
+ *     a point, never guessed from a name.
+ *   - +1 cheap forward geocode per bbox-less COARSER rung supplies its
+ *     id + bbox (≤5 per probe; all cheap pool). NOTE the old "once ever per
+ *     node globally" claim is DELETED: it was never true after the county
+ *     dissolution — coarse rungs carry no id off the reverse, and the
+ *     catalog may only be asked BY ENTITY, so there is nothing to skip on.
  *   - An empty chain is a first-class result: "no place here" is a
  *     region-scale observation over `probedBbox` (30d TTL — reconciler side).
  *
  * The real adapter (tomtom-chain-probe.adapter.ts) rides the governed
  * TomTom pools (§14 / §22); this port keeps the reconciler vendor-blind.
  */
-import { GeoPoint, ProbedRegion } from '@crave-search/shared';
+import { GeoBbox, GeoPoint, ProbedRegion } from '@crave-search/shared';
 import { PlaceSketchNode } from './places-catalog.service';
 
 /**
@@ -161,6 +171,18 @@ export type LevelEntityLookup =
        *  Austin's Bouldin Creek to "Austin" (726 rows, 2026-07-28). Which
        *  field is the name at a given level is the CALLER's law. */
       address: Readonly<Record<string, string | undefined>>;
+      /**
+       * The answering geography's OUTLINE envelope and position, when the
+       * response carries them. A single-level filtered reverse is
+       * geography-mode — its boundingBox is the entity's own outline (unlike
+       * the probe's PLAIN reverse, whose boundingBox is a few-metre position
+       * box that must never be read as one). This is what makes this call
+       * the probe's finest-rung IDENTITY source (2026-08-07): anchored at
+       * the point, so no name-twin ambiguity, and it carries the birth
+       * certificate (geometry id) plus the sketch bbox in one draw.
+       */
+      bbox: GeoBbox | null;
+      centroid: GeoPoint | null;
     }
   | { kind: 'empty' }
   /** Same `scope` contract as the two results above — one unusable row must

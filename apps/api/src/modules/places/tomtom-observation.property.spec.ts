@@ -46,10 +46,6 @@ function buildAdapter(body: unknown): Built {
     draw: (_pool: string, _workClass: string, act: () => Promise<unknown>) =>
       act(),
   };
-  const prisma = {
-    place: { findMany: () => Promise.resolve([]) },
-    $queryRaw: () => Promise.resolve([]),
-  };
   const configService = {
     get: (key: string) => (key === 'tomtom.apiKey' ? 'test-key' : undefined),
   };
@@ -63,7 +59,6 @@ function buildAdapter(body: unknown): Built {
   return {
     adapter: new TomtomChainProbeAdapter(
       httpService as never,
-      prisma as never,
       governance as never,
       { record: jest.fn() } as never,
       { emit: jest.fn() } as never,
