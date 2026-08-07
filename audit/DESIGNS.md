@@ -4004,3 +4004,39 @@ boundaryCommitSource). node -c clean; zero source-literal refs remain in the fil
 **With F8600 done, both attempt-3 sub-P1 cleanups are closed except the
 effect-in-body-spec hunt (running). F8500 was attempt 3's only real finding.
 Attempt 4 is the next full pass and must return zero.**
+
+---
+
+## D131 — F8700: ios-camera-symbol-gate swallowed nm/strings absence — the F8500 class, third instance (2026-08-07)
+
+Attempt 4's gates hunter found it; I verified and fixed. `ios-camera-symbol-gate.sh`
+counted symbols with `nm/strings "$DYLIB" 2>/dev/null | grep -c … || true`. When the
+extractor is absent (127) or errors on a non-mach-O input, the pipeline yields empty
+→ `grep -c` prints 0 → `|| true` flattens it, so the NEGATIVE ban (check 2,
+host-registry-absent) read "0 banned symbols → PASS" having inspected nothing — the
+banned symbols could be resurrected in the binary and it would stay green. Check 1
+(a PRESENCE test) failed closed on 0, co-mitigating the gate as a whole, but a
+negative ban must be sound on its OWN, not borrow a sibling's tool-presence guarantee
+that evaporates if that sibling is reordered/repointed.
+
+This is F8500 (rg exit-swallow) transposed to nm/strings — the THIRD instance of the
+tool-absence-swallow class this exercise has found (F8500 was two delete-gates). The
+repeat-class sweep in attempt 4's brief is what surfaced it.
+
+FIX (same rederivation as F8500): an up-front `command -v nm/strings` precondition
+(wider than either check), plus a `count_matches` helper that proves the extractor
+ran (exit 0) before trusting the count — grep -c's own exit 1 on zero matches is the
+ONLY swallowed case (the tool ran and found none); any non-zero extractor exit is a
+hard failure. Both checks now route through it, so neither borrows the other's
+tool-presence guarantee.
+
+MUTATION-PROVEN: banned symbol present + tools available → ban fires (exit 1); clean
+binary → passes both (exit 0); tools ABSENT + banned binary → fails at precondition
+("nm is not installed", exit 1) where check 2 was previously a silent green.
+
+Severity LOW (gate is @run-by LOCAL/OPT-IN, off the CI push path) but the class is
+the exercise's signature, so fixed on sight. GATE is local-only; no CI wiring change.
+
+**Attempt 4 is NOT clean: F8700 found + fixed. api tail + mobile tail + the rest of
+the gate/shared layer returned zero. Attempt 5 is the next full pass; it must return
+zero to be the first clean pass, then a second consecutive zero for DONE.**

@@ -36,11 +36,46 @@ if [[ ! -f "$DYLIB" ]]; then
   exit 1
 fi
 
+# TOOL PRECONDITION (F8700, 2026-08-07 — the F8500 class transposed from rg to
+# nm/strings). Each check below was `nm/strings … 2>/dev/null | grep -c … ||
+# true`. When the extractor is absent (127) or errors on a non-mach-O input, the
+# pipeline yields empty → `grep -c` prints 0 → `|| true` flattens it — so the
+# NEGATIVE ban (check 2) read "0 banned symbols → PASS" having inspected nothing;
+# the banned host-registry symbols could be resurrected in the binary and this
+# check would still read green. (Check 1, a PRESENCE test, happened to fail
+# closed on 0, which co-mitigated it — but a negative ban must be sound on its
+# OWN, not borrow a sibling's tool-presence guarantee that evaporates if that
+# sibling is reordered or repointed.) Missing tooling is a FAILURE, never a pass.
+for tool in nm strings; do
+  if ! command -v "$tool" >/dev/null 2>&1; then
+    echo "[ios-camera-symbol-gate] FAIL: \`$tool\` is not installed — cannot inspect the binary; refusing a green that means nothing." >&2
+    exit 1
+  fi
+done
+
+# Count matches of PATTERN in the output of EXTRACTOR over the dylib, proving the
+# extractor actually ran (exit 0) before trusting the count. grep -c's own exit 1
+# on zero matches is legitimate here — the tool ran and found none — so it is the
+# only swallowed case; a broken extractor (any non-zero) is a hard failure.
+count_matches() {
+  local extractor="$1" pattern="$2"
+  local raw status
+  set +e
+  raw="$("$extractor" "$DYLIB" 2>/dev/null)"
+  status=$?
+  set -e
+  if [[ "$status" -ne 0 ]]; then
+    echo "[ios-camera-symbol-gate] FAIL: \`$extractor\` exited $status on $DYLIB — cannot inspect the binary; a symbol check that could not run is a failure, never a pass." >&2
+    exit 1
+  fi
+  grep -c "$pattern" <<<"$raw" || true
+}
+
 failures=0
 
 # 1. Completion channel PRESENT — the patch's native half compiled into the app.
-completion_count="$(nm "$DYLIB" 2>/dev/null | grep -c "onCameraAnimationComplete" || true)"
-event_string_count="$(strings "$DYLIB" 2>/dev/null | grep -c "cameraanimationcomplete" || true)"
+completion_count="$(count_matches nm "onCameraAnimationComplete")"
+event_string_count="$(count_matches strings "cameraanimationcomplete")"
 if [[ "$completion_count" -eq 0 || "$event_string_count" -eq 0 ]]; then
   echo "[ios-camera-symbol-gate] FAIL completion_channel_absent: onCameraAnimationComplete symbols=$completion_count, 'cameraanimationcomplete' strings=$event_string_count — the rnmapbox camera patch is NOT in this binary. Every animated camera commit will strand on its deferred state sync (F1716/F1722). Re-run yarn install (patch-package postinstall), pod install, and rebuild." >&2
   failures=$((failures + 1))
@@ -50,8 +85,8 @@ fi
 
 # 2. Host-registry parker ABSENT — D61 deleted it (never-cleared pending = stale
 #    replay); a resurrected registry would double-park underneath the arbiter.
-registry_count="$(nm "$DYLIB" 2>/dev/null | grep -c "ProfilePresentationCameraHostRegistry" || true)"
-camera_reject_count="$(strings "$DYLIB" 2>/dev/null | grep -c "camera_command_unavailable" || true)"
+registry_count="$(count_matches nm "ProfilePresentationCameraHostRegistry")"
+camera_reject_count="$(count_matches strings "camera_command_unavailable")"
 if [[ "$registry_count" -ne 0 || "$camera_reject_count" -ne 0 ]]; then
   echo "[ios-camera-symbol-gate] FAIL host_registry_resurrected: ProfilePresentationCameraHostRegistry symbols=$registry_count, camera_command_unavailable strings=$camera_reject_count — the deleted native camera fallback is back in the binary (D61 forbids it; the arbiter park-and-replay owns the hostless window)." >&2
   failures=$((failures + 1))
