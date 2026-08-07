@@ -2175,3 +2175,57 @@ mirroring the unverifiable-rows fix (F2600) this same file already got.
 One P3 lane, scripts/ + code-only.ts only. NOTE for that lane: the stage-2 inline is
 actively deleting files — expect transient ENOENT/staleness noise until it lands; fixing
 that noise IS item six.
+
+---
+
+## D82 — P2 verdicts on mobile-app-core/native (F3700–F3721 highlights, 2026-08-06)
+
+**F3700 — APPROVED, highest priority.** The display-name door lock is shaped like the six
+copies it was built from, not like the rule: the selector requires `||` AND `.trim()`,
+while the helper's own header records that the originals split between `||` and `??`.
+Execution-proven: the shipped config reports 0 on a live copy; one added `??`-dialect
+selector goes RED at both sites. Fix: add the `??` selectors to the SAME one-block rule
+(the F2050 one-block law), then route the five surviving copies through
+`resolveUserDisplayName` — including the one two lines below a comment declaring the
+eighth chain eliminated. Mutation: each converted site under the widened selector.
+
+**F3701 — APPROVED.** A comment credits a refusal that does not exist; a collaborator's
+Share button reaches the dead preview F834 exists to prevent. Implement the refusal where
+the comment claims it lives, or make `showSendSection` consult the link verdict —
+whichever the file's real flow supports after a full read; spec the collaborator path.
+
+**F3705 — APPROVED as compute-or-delete.** Honesty fields with no reader (emitter +
+FINDINGS.md are the only greps) and a noise-floor `quietDroppedFields` that fires on every
+line. Same law as F3101: a metric nothing reads and a signal indistinguishable from noise
+are deleted or made real — keeping them is not an option. The perf lane is KEEP
+(CLAUDE.md), so prefer MAKING THEM REAL if a reader is cheap (the samplers exist); else
+delete the fields and the always-firing tag.
+
+**F3720 — APPROVED.** A suite asserting the subject's constants against themselves, and a
+192/192 degenerate fixture that leaves a rowHeight/columnStride swap green. Independent
+expected values; non-square fixture; the two named mutations as acceptance.
+
+**F3706 — APPROVED (perf lane, non-map):** stop the Hermes profiler on the default exit
+paths, not two hand-picked verbs.
+
+**F3707 — EVIDENCE ONLY, owner-decision.** The dead bridge export's Swift half is deleted,
+but the file is the MAP bridge: cleanup-for-zero-benefit on the owner-locked surface, same
+ruling as F3901. Recorded; lands with the next real map change.
+
+**F3709 — DEFERRED to the tracksheet session.** `trackShellWarning` declared and
+subscribed but emitted by nothing sits in the tracksheet's dirty tree; filing it at that
+session's door rather than editing under it.
+
+**F3702/F3703 — ESCALATED (owner), both halves held.** The unreachable username step
+(~250 lines) and the four regret-rate numbers are product provenance questions. The lane
+offered to fix the drift alone; I am holding BOTH: deleting 250 lines of a step the owner
+may intend to re-enable, or blessing numbers of unknown provenance, are the same decision
+in two costumes. Owner: is the username step retired, and are the regret rates chosen or
+invented?
+
+**F3713 — ESCALATED (owner):** parked or abandoned native executor chain — the comment
+defends a reflection hop below an entry point nothing calls.
+
+**Clean bills accepted with their arguments**, notably the TrackScrollKit handshake:
+deliberate duplication whose PURPOSE is detecting divergence, pinned on both sides — the
+one place a second copy is the abstraction.
