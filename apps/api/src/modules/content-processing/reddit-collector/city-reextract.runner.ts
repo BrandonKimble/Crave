@@ -79,8 +79,18 @@ export class CityReextractRunner implements OnApplicationBootstrap {
     const promptVersion = promptVersionRaw
       ? Number.parseInt(promptVersionRaw, 10)
       : undefined;
-    if (promptVersionRaw && !Number.isFinite(promptVersion)) {
-      this.logger.error('REEXTRACT_PROMPT_VERSION is not a number — refusing');
+    // F9450: registered prompt versions start at 1 (nextVersion = (max ?? 0)+1), so a
+    // pin must be a POSITIVE integer. Requiring >0 here (not just isFinite) closes the
+    // falsy-zero seam: REEXTRACT_PROMPT_VERSION=0 is finite AND falsy, so it would slip
+    // both this check and the `if (promptVersion && activate)` firewall below — turning a
+    // "pin candidate 0" request into a live activate instead of a refusal.
+    if (
+      promptVersionRaw &&
+      (!Number.isInteger(promptVersion) || (promptVersion as number) < 1)
+    ) {
+      this.logger.error(
+        'REEXTRACT_PROMPT_VERSION must be a positive integer (versions start at 1) — refusing',
+      );
       return;
     }
     if (promptVersion && activate) {
