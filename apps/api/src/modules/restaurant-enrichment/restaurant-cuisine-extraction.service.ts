@@ -8,7 +8,15 @@ import { AliasManagementService } from '../content-processing/entity-resolver/al
 import { LLMService } from '../external-integrations/llm/llm.service';
 import { GOOGLE_PLACE_CUISINE_TYPE_MAP } from './google-place-type-attributes';
 
-type CuisineExtractionSource = 'types' | 'llm' | 'none';
+// Every value here means "we HAD evidence and extracted from it": place
+// types matched ('types'), the LLM was asked and returned cuisines ('llm'),
+// or the LLM was asked and honestly found none ('llm_found_nothing'). There
+// is deliberately no 'none' — "we had no evidence to ask with" is not a
+// completed extraction, so it writes NO cuisineExtraction record at all. The
+// ABSENCE of the record is what the once-ever gate reads as "not yet asked",
+// so first-evidence-arrives-later re-tries instead of being permanently
+// stamped done (F4948).
+type CuisineExtractionSource = 'types' | 'llm' | 'llm_found_nothing';
 
 type CuisineExtractionMetadata = {
   extractedAt: string;
@@ -140,13 +148,32 @@ export class RestaurantCuisineExtractionService {
 
     const typeMapping = this.mapTypesToCuisines(placeTypes);
     let rawCuisines = typeMapping.cuisines;
-    let source: CuisineExtractionSource = rawCuisines.length ? 'types' : 'none';
+    let source: CuisineExtractionSource;
 
-    if (!rawCuisines.length && summaryText) {
+    if (rawCuisines.length) {
+      source = 'types';
+    } else if (summaryText) {
+      // We HAD evidence (an editorial summary) and asked the LLM. Whether it
+      // returned cuisines or not, the extraction genuinely ran — record it so
+      // the once-ever gate does not re-spend on the same summary.
       const llmResult =
         await this.llmService.extractCuisineFromSummary(summaryText);
       rawCuisines = llmResult.cuisines ?? [];
-      source = rawCuisines.length ? 'llm' : 'none';
+      source = rawCuisines.length ? 'llm' : 'llm_found_nothing';
+    } else {
+      // NO EVIDENCE: no place types matched and there is no editorial summary
+      // to ask the LLM with — the common case for a freshly-grounded
+      // restaurant whose Places record has no summary yet. Writing a
+      // 'none'/extractedAt record here would make the once-ever gate at :104
+      // stamp it done PERMANENTLY, so when refreshStaleLocations re-polls and
+      // a summary finally appears, this restaurant would never be re-asked.
+      // Write NO record: the absence IS "not yet asked", and the next run
+      // re-tries once first evidence exists (F4948).
+      this.logger.debug('Cuisine extraction deferred (no evidence yet)', {
+        restaurantId: entity.entityId,
+        source: options.source,
+      });
+      return;
     }
 
     const normalizedCuisines = this.normalizeCuisineList(rawCuisines);
