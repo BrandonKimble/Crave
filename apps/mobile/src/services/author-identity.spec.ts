@@ -96,15 +96,15 @@ describe('a closed account routes above the paywall', () => {
     expect(read('navigation/RootNavigator.tsx')).toContain("case 'account_deleted':");
   });
 
-  it('is checked BEFORE the paywall in the coordinator', () => {
-    const src = read('navigation/runtime/AppRouteCoordinator.tsx');
-    const deleted = src.indexOf("? 'account_deleted'");
-    const paywall = src.indexOf("? 'paywall'");
-    expect(deleted).toBeGreaterThan(-1);
-    expect(paywall).toBeGreaterThan(-1);
-    // Order in the ternary chain IS the precedence.
-    expect(deleted).toBeLessThan(paywall);
-  });
+  // F5901: the "checked BEFORE the paywall" case used to live here as a SOURCE
+  // SCANNER — indexOf over the coordinator's ternary text, "order in the chain
+  // IS the precedence". F4501/D97 extracted that decision into the pure
+  // app-route-destination.ts precisely so precedence could be a BEHAVIORAL
+  // assertion, and its spec pins this exact law ("puts the deleted-account
+  // face above the paywall": deleted + enforced-inactive access resolves to
+  // 'account_deleted'). The scanner broke when its text moved and could never
+  // survive a refactor the law survives — the successor can only break when
+  // the LAW breaks. Deleted, not ported.
 
   it('reads the deadline from the SERVER, never a local clock', () => {
     // The client must not invent a promise about when data disappears.
