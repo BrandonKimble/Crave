@@ -2229,3 +2229,36 @@ defends a reflection hop below an entry point nothing calls.
 **Clean bills accepted with their arguments**, notably the TrackScrollKit handshake:
 deliberate duplication whose PURPOSE is detecting divergence, pinned on both sides — the
 one place a second copy is the abstraction.
+
+---
+
+## D83 — stage-2 ratified; the sweep gets a mechanism (2026-08-06)
+
+**Stage-2 inline ratified.** The re-derive condition earned its keep a second time: 35
+candidates, not the census's 51 — the gap is the executing classifier being STRICTER
+(splitting out LAMBDA files whose body defines a controller factory, which is logic, and
+BRANCHY files), reported rather than reconciled, which is the safe direction. 19 files
+inlined (−371 lines), 13 skipped on the design's own >1-importer gate with the structural
+reason named (ReturnType<typeof useX> TYPE imports in contract files keep wrappers alive —
+a future design question, recorded), 1 banked by a spec's require(), 3 deferred by
+size judgment with the deferral written down. No spec died; the three touching inlined
+territory are behavior proofs that survived and validated the work. F2900 stays honest
+PARTIAL.
+
+**F4102 -> MECHANISM (landed).** The pathspec sweep fired a fourth and fifth time
+mid-lane, and the fifth committed deletions without the caller edits that make them
+compile — main did not typecheck standalone until the lane's own commit healed it. The
+rule existed in three places; by this exercise's own law that made it a convention. Now:
+`scripts/check-lane-pathspec.sh` in lefthook pre-commit — a lane exports LANE_PATHS and
+the hook REFUSES a commit whose staged set is not a subset, naming the foreign files and
+the safe unstage command. Unset = silent pass (humans unaffected). Mutation-proven three
+ways and committed THROUGH itself. Every future brief sets LANE_PATHS. Stated limit: the
+fence cannot know what a file belongs to, only what the lane declared — it turns "forgot
+to look" into "had to lie".
+
+**F4100/F4101 — APPROVED, queued for the next mobile P3:** a use-* runtime file with zero
+importers (invisible to the hook-name guard, which checks honesty not reachability — and
+to knip, per the workspace bug's history), and a parameter typed, passed every render,
+never destructured — the third instance of "TypeScript checks supplied, never used" in
+this family. The hook-name guard MAY grow a zero-importer check; design it as part of the
+fix, not as a bolt-on.
