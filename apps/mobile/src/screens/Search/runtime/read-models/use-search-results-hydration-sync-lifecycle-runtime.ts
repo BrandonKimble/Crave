@@ -7,7 +7,6 @@ export const useSearchResultsHydrationSyncLifecycleRuntime = ({
   resultsIdentityKey,
   hydratedResultsKey,
   activeOverlayKey,
-  shouldResetHydrationCommit,
   phaseBMaterializerRef,
   resolveOperationId,
   commitHydrationKey,
@@ -18,7 +17,6 @@ export const useSearchResultsHydrationSyncLifecycleRuntime = ({
   resultsIdentityKey: string | null;
   hydratedResultsKey: string | null;
   activeOverlayKey: string;
-  shouldResetHydrationCommit: boolean;
   phaseBMaterializerRef: React.MutableRefObject<PhaseBMaterializer>;
   resolveOperationId: () => string;
   commitHydrationKey: (nextHydrationKey: string | null) => void;
@@ -30,7 +28,6 @@ export const useSearchResultsHydrationSyncLifecycleRuntime = ({
 
   React.useEffect(() => {
     const hasAlreadySettledHydrationKey =
-      !shouldResetHydrationCommit &&
       resultsIdentityKey != null &&
       resultsIdentityKey === hydratedResultsKey &&
       activeOverlayKey === 'search';
@@ -51,19 +48,15 @@ export const useSearchResultsHydrationSyncLifecycleRuntime = ({
     settledHydrationKeyRef.current = null;
     logPerfScenarioStackAttribution({
       owner: 'results_hydration_sync_lifecycle_effect',
-      path: `pending:${resultsIdentityKey ?? 'null'}|hydrated:${
-        hydratedResultsKey ?? 'null'
-      }|reset:${shouldResetHydrationCommit ? 'true' : 'false'}`,
+      // F4801: this used to carry `|reset:${shouldResetHydrationCommit}` — a field the
+      // sole call site pinned to the literal `false`, so every line this instrument will
+      // ever print says `reset:false`. Dropped with the flag, F1062-style (the same file
+      // records that deletion, fifty lines below) rather than documented in place.
+      path: `pending:${resultsIdentityKey ?? 'null'}|hydrated:${hydratedResultsKey ?? 'null'}`,
       details: {
         activeOverlayKey,
       },
     });
-    if (shouldResetHydrationCommit) {
-      phaseBMaterializerRef.current.resetHydrationCommit();
-      return () => {
-        phaseBMaterializerRef.current.resetHydrationCommit();
-      };
-    }
     return phaseBMaterializerRef.current.syncHydrationCommit({
       operationId: resolveOperationId(),
       pendingHydrationKey: resultsIdentityKey,
@@ -84,6 +77,5 @@ export const useSearchResultsHydrationSyncLifecycleRuntime = ({
     phaseBMaterializerRef,
     resolveOperationId,
     resultsIdentityKey,
-    shouldResetHydrationCommit,
   ]);
 };

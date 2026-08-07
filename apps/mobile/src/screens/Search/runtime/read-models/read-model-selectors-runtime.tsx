@@ -225,9 +225,13 @@ export const useSearchResultsReadModelSelectors = (
     resultsIdentityKey,
     hydratedResultsKey,
     activeOverlayKey,
-    // F1735: the reset condition required the hydration-finalize allowance to be false, which
-    // the fossil coordinator could never produce — pinned false.
-    shouldResetHydrationCommit: false,
+    // F4801: `shouldResetHydrationCommit: false` used to be passed here, under an F1735
+    // comment explaining that the fossil redraw-coordinator could never produce `true`.
+    // A parameter exists because two call sites disagree about it; with one call site
+    // passing a literal, it was a constant wearing a type — and it kept an always-true
+    // conjunct, a whole unreachable effect lane (cleanup included) and an instrument
+    // field that could only ever print `reset:false` alive in the consumer. Deleted the
+    // way F1062 was deleted (below, :277-286), not documented the way F1735 was.
     phaseBMaterializerRef,
     resolveOperationId: resolveHydrationOperationId,
     commitHydrationKey,
@@ -284,7 +288,6 @@ export const useSearchResultsReadModelSelectors = (
   // flag was a hardcoded `false` — the config was NEVER installed on any list. Deleted with
   // its flag plumbing rather than given an emitter: nothing asked for this observation, and
   // git holds the shape if a real blank-cell instrument is ever wanted.
-  const flashListRuntimeProps = flashListPolicyRuntime;
 
   return {
     safeResultsCountByTab: resultsProjectionRuntime.safeResultsCountByTab,
@@ -293,7 +296,10 @@ export const useSearchResultsReadModelSelectors = (
     renderListItem,
     listFooterComponent,
     preMeasureOverlay,
-    flashListRuntimeProps,
+    // F4801 (residue of the F1062 merge): `const flashListRuntimeProps =
+    // flashListPolicyRuntime` was a bare rename left behind when the viewability half
+    // was deleted. The policy runtime IS the props.
+    flashListRuntimeProps: flashListPolicyRuntime,
   };
 };
 
