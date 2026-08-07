@@ -44,11 +44,13 @@ type BottomSheetSceneStackPageFrameProps = {
 };
 
 // The header/content seam is a SINGLE boundary at `headerHeight` — it is simultaneously the
-// header plate's bottom (clipped via overflow:hidden) AND the body-lane / scroll-strip top. The
-// divider marks that boundary and must sit FLUSH with it: anchor the divider by its BOTTOM edge
-// (top = boundary − thickness) so header, divider, and content meet edge-to-edge — no white sliver
-// below it, no overlap into the content. `DIVIDER_THICKNESS` ties the offset to the line's own
-// height so the bottom always lands exactly on the boundary regardless of the device hairline.
+// header plate's bottom (clipped via overflow:hidden) AND the body-lane / scroll-strip top. This
+// frame no longer renders the divider itself (see HeaderScrollDivider below — the per-leg header
+// lane is gone; the ONE divider is hoisted into the host). What lives here is the shared ANCHORING
+// CONTRACT the host consumes: the divider must sit FLUSH with that boundary, anchored by its BOTTOM
+// edge (top = boundary − thickness) so header, divider, and content meet edge-to-edge — no white
+// sliver below it, no overlap into the content. `DIVIDER_THICKNESS` ties the offset to the line's
+// own height so the bottom always lands exactly on the boundary regardless of the device hairline.
 const DIVIDER_THICKNESS = 1;
 
 // THE canonical header-divider fade (owner standard 2026-07-11): invisible at scroll 0, fades in

@@ -174,10 +174,3 @@ export type BottomSheetSceneSurfaceProps<T> =
 
 export type BottomSheetWithFlashListProps<T> = BottomSheetWithFlashListBaseProps<T> &
   (BottomSheetWithFlashListListProps<T> | BottomSheetWithFlashListContentOnlyProps);
-
-export const isBottomSheetListSurface = <T>(
-  props:
-    | BottomSheetWithFlashListListProps<T>
-    | BottomSheetWithFlashListContentOnlyProps
-    | BottomSheetWithFlashListProps<T>
-): props is BottomSheetWithFlashListListProps<T> => props.surfaceKind === 'list';

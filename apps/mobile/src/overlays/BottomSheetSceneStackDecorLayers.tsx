@@ -8,22 +8,21 @@ type SceneStackDecorLayerKind = 'underlay' | 'background' | 'overlay';
 type SceneStackDecorLayerProps = {
   entry: BottomSheetSceneStackChromeEntry;
   kind: SceneStackDecorLayerKind;
-  promotedZIndex?: number;
   isVisible: boolean;
 };
 
 export const SceneStackDecorLayer = React.memo(
-  ({ entry, kind, promotedZIndex, isVisible }: SceneStackDecorLayerProps) => {
+  ({ entry, kind, isVisible }: SceneStackDecorLayerProps) => {
     const { sceneKey } = entry;
     const visibilityStyle = React.useMemo<StyleProp<ViewStyle>>(() => {
-      const resolvedZIndex = promotedZIndex ?? (kind === 'overlay' ? 30 : 0);
+      const resolvedZIndex = kind === 'overlay' ? 30 : 0;
       return {
         display: isVisible ? 'flex' : 'none',
         opacity: isVisible ? 1 : 0,
         zIndex: isVisible ? resolvedZIndex : 0,
         elevation: isVisible ? resolvedZIndex : 0,
       };
-    }, [isVisible, kind, promotedZIndex]);
+    }, [isVisible, kind]);
     // Mounted-chrome entries (surfaceKind 'mounted') render NOTHING per-leg — frost lives in the
     // shared page-frame foundation and headers in the hoisted persistent header
     // (app-route-persistent-header-registry). createChromeEntry builds them with all component
@@ -54,7 +53,6 @@ export const SceneStackDecorLayer = React.memo(
   (previousProps, nextProps) =>
     previousProps.entry === nextProps.entry &&
     previousProps.kind === nextProps.kind &&
-    previousProps.promotedZIndex === nextProps.promotedZIndex &&
     previousProps.isVisible === nextProps.isVisible
 );
 
