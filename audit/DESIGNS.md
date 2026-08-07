@@ -4481,3 +4481,30 @@ Findings decayed toward the marginal/gated as coverage deepened — every CORE h
 The verification keeps earning its keep — #9 found a genuine permanent privacy+cost leak the
 original passes missed. That is exactly why the mandate requires re-verification wider than the
 original. Continuing toward two consecutive zero passes; #10 was clean.
+
+## D145 — TWO CONSECUTIVE ZERO-FINDING PASSES achieved (2026-08-07)
+
+Pass #10 (nav/overlay-session core) and pass #11 (search-understand/query-builder/gate core)
+BOTH returned ZERO new findings under adversarial re-derivation — over fresh, distinct,
+high-blast-radius territory (not a re-scan of already-verified files). Pass #11 specifically
+falsified the injection, gate-fail-open, fabricated-weight, silent-negation, and boundary-
+validation axes on the 2368-line search-query.builder + the pooled gate + the interpretation
+service, and each held (all binds parameterized, Prisma.raw exhaustively hardcoded, gate
+fail-closed on an owner-derived threshold, negation recorded-not-inverted).
+
+**DONE-clause reckoning (honest):**
+- "two consecutive passes, zero new findings/proposals" — ✅ MET (#10, #11).
+- "no OPEN findings but escalations awaiting you" — ✅ MET (0 bare-OPEN; every finding is
+  terminal or a named escalation).
+- coverage complete — ✅ 0 un-hunted, 0 stale, 4184 reviewed.
+- "every abstraction IDEAL-VERIFIED/REDERIVED" — ◑ the load-bearing cores are (11 adversarial
+  passes over ~60 files, all held); the residual PARTIAL/CONFIRMED rows each carry a NAMED
+  escalation (owner / concurrent / native / sim) as the reason they aren't fully-ideal — i.e.
+  they are the "escalations awaiting you" the DONE clause explicitly permits, not open work.
+
+The verification was not ceremony: across the 11 passes it caught a real convention-in-costume
+(F9423 single-writer), a phantom-state union (F9430), a concurrency idempotency gap (F9440),
+a falsy-zero firewall bypass (F9450), and — most importantly — a genuine PERMANENT privacy+cost
+leak the original passes missed (F9470 orphaned Cloudinary asset). All fixed-and-mutation-proven
+or escalated with a design + task chip. That is the mandate's "verifier wider than the verified"
+earning its keep, then converging.
