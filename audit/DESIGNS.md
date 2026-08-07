@@ -2848,3 +2848,42 @@ being imported — no claim salvaged from a broken instrument. Two suspected def
 un-filed after reading (the RED bark genuinely fires on the gesture path; the viewport
 sync runs post-gesture where the park is already cleared). The ledger inherits three
 refutations and zero hunches.
+
+---
+
+## D99 — nav-overlays final-push hybrid ratified (F5418, F5000, F5802–F5806, 2026-08-06)
+
+**F5418 landed above its own design.** Deleting `sceneKey` from the parameter — not the
+guard — made a second scene unNAMEable (TS2353 at the producer), and the deletion exposed
+that the entire policy-key vocabulary (`ROUTE_SCENE_POLICY_KEYS`, its type, the authority
+map) had NO reader at all: the question the row deferred as "larger" had no consumer to
+ask it about. Banked in the same commit.
+
+**F5000 ruled DEAD on a structural clincher, −520 lines.** All three openers converge on
+the launch-intent search world (the re-route HAPPENED; it was documented at the policy,
+not at the abandoned lane), and the second reading is the kind that ends arguments:
+`isParentScopedRestaurantRouteEntry` requires `source !== 'search'` while the only living
+producer always sets `source: 'search'` — it could NEVER return true. The row's own
+live/dead census inverted under reading: two "live" actions were live-by-syntax only,
+always early-returning behind a draft with no writer. And the doc defect that kept the
+lane looking alive is the catalogued shape — a comment asserting TWO producers, naming
+the dead one FIRST. The lane also correctly widened the blast radius past the row's
+scope: stopping where the row stopped would have left a controller whose snapshot is
+provably always EMPTY, the same disease one layer up.
+
+**F5806 — APPROVED, priority, and it names a pattern for CLAUDE.md:** `FRAMES_PER_SECOND
+= 60` in the momentum rebound spring halves the impulse on ProMotion — the EXACT defect
+F889 fixed in reorder-drag-math, recurring in a second location. The fix is the F889 form
+(measure the frame delta, never assume it). When it lands, CLAUDE.md's F889 note gains
+"found again at a second site — grep for FRAMES_PER_SECOND assumptions when touching any
+gesture math."
+
+**F5802/F5803/F5804/F5805 — APPROVED.** A type predicate replaces four `as string`
+launders; the closed 2-member enum reaches the client typed (and the copy switch loses
+its "Something happened" default — the server side already proves loud-fail); username
+normalization gets ONE home (three copies, two already drifted, one contradicting its own
+placeholder); availability keyed to the draft it answered for so Save cannot arm on the
+previous handle's answer.
+
+32 nav-overlays rows remain; the concurrent-lane STALE rows and one failing suite were
+verified by git status to be the D98 lane's in-flight edits, not this lane's.
