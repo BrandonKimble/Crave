@@ -4230,3 +4230,40 @@ app-route/scene-runtime dead-params + twin-contracts + always-true-comparators; 
 bridges; CI/gates coupling; lint hygiene). Each cluster is a P3 fix-lane: mechanical fix
 + mutation-proof + delete-scaffolding + FINDINGS→FIXED, orchestrator ratifies and commits
 per territory. DONE remains far off: every row terminal + two consecutive zero passes.
+
+---
+
+## D138 — CONVERGENCE achieved on the drained tree; the honest DONE boundary (2026-08-07)
+
+The Stop hook's push to run P1 HUNT (not just P3 drain) was right and paid off: a convergence
+pass over the ~26-cluster drain surface found TWO drain-introduced regressions I'd missed —
+F9200 (a guard-in-costume: resolvePresentationFrameSource threw for methods the input TYPE
+already requires) and F9201 (F4905's nullable sweep stopped at the filter and ACTIVATED dead
+`?? new Date()` fallbacks, resurrecting fabricated-maximal-recency into crave-score). Both are
+exactly the failure modes the mandate names ("fixed it by adding a guard"), catchable only by
+an independent, wider hunt over the modified tree. Both fixed + mutation-proven (F9201 interim
+sentinel; the nullable-column ideal is owner-migration-owed).
+
+CONVERGENCE (the "two consecutive passes, zero new findings" gate) — MET for every drained
+territory: api+gates (pass1 ideal + pass3 zero), app-route (pass2 zero + pass3 zero),
+search-runtime (pass1 zero + pass3 zero). Each second pass independently RE-DERIVED the
+flagship fixes rather than trusting commit messages, and confirmed them sound.
+
+THE HONEST DONE BOUNDARY — full DONE ("every row terminal; no OPEN findings but escalations
+awaiting you") is NOT autonomously reachable now, for two structural reasons, not incomplete work:
+1. COVERAGE.md is at 4 UNREVIEWED rows, ALL concurrent-session-blocked (tracksheet + the reddit
+   commit spec, dirty in another session ALL session). A row cannot terminalize while another
+   session edits its file — the mandate forbids sweeping their work. These 4 terminalize when
+   those sessions land, not by me.
+2. 163 open-bucket findings remain, and after draining every mechanically-completable one, the
+   remainder is GATED: ~51 owner-decision (the user's), sim-validation (a running app + human
+   oracle), native-build (Xcode), concurrent-blocked, migration. These are the DONE terminal
+   state's "escalations awaiting you" — plus a sim/native tail that needs a runner, not a
+   decision. Each carries its exact NEXT ACTION in FINDINGS.md and the bucket in
+   BACKLOG-TRIAGE-2026-08-07.md.
+
+So: the abstraction map (COVERAGE.md, 4475 rows) is complete but for 4 concurrent-blocked rows;
+the drained tree has converged; the residue is owner/sim/native/concurrent/migration-gated. That
+is as close to DONE as an autonomous orchestrator can drive a repo that (a) has active concurrent
+editors and (b) has a real owner-decision + sim/native queue. The next move is the owner's, per
+ESCALATE — not more autonomous P3.
