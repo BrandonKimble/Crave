@@ -3388,3 +3388,42 @@ builder with `echoKinds` applied ONLY when `params.kinds` is absent, plus the mi
 `subjectScope: 'entity'` filter unconditionally (no caller defends its absence).
 Acceptance: the F4000 mutation shape for the default path; the autocomplete
 echo-kind path asserts echo rows still flow when explicitly selected.
+
+---
+
+## D114 — both bedrock designs APPROVED; the proximity class was inert since birth (2026-08-07)
+
+**F7201 (the ratchet's aim) — APPROVED as proposed.** The provenance answers the bedrock
+question: a CONCENTRATION law, born when index.tsx was 6,211 lines / 71 effects — and the
+law WON (87 lines, 0 effects; the budget satisfied structurally). The surprise is the
+finding: measured against birth actuals, FIVE OF SIX budgets were slack the day they were
+committed — the famous 101→97→70 descent was a ceiling drawn above the ceiling, never
+once capable of failing. The rederivation is right because it re-derives the SUBJECT: a
+concentration law names a tree, not a file; the quantity is a max over files; a failure
+names its own argmax. Budgets 6 and 16 at ZERO headroom, from measured actuals — a
+ratchet with headroom is the defect being fixed. The non-zero witness generalizes F2510.
+The kept absence-bans, the named ban-rescoping follow-on, and the deliberate refusal to
+invent an LOC axis are all ratified as scoped.
+
+**F7200 (the 41 proximity laws) — APPROVED, and it dissolves the F6406 escalation.** The
+premise moved under proof: the gate's rg loop lacks `-U`, so every proximity check matched
+LINE BY LINE — `{0,900}` was characters within one line, and the shapes cannot occupy one
+line in formatted TypeScript. **The entire class has been inert since it was written**;
+its only two firings ever were on comments. The classification (17 ROTTED / 10 HISTORY /
+14 LAW, with 3 of the 14 being dependency rules whose ideal home is an import
+restriction) turns the owner's blind either/or into a 14-item rehoming question. The
+global `-U` mutation is approved BECAUSE it is measured — exactly three new matches, all
+already in the delete bucket — with the per-check RED proof mandatory before any pass is
+trusted, exactly as the proposal itself demands.
+
+**P3 sequence approved:** (1) delete the 17 on their evidence; (2) convert the 10 to
+negative bans, RED-proving each; (3) add `-U` and RED-prove each of the 14 by planting
+its forbidden co-location, demoting any that will not fire; (4) the 3 dependency rules
+move to import restrictions (the one-block law applies); (5) implement F7201's
+`max_per_file_in_tree` kind with the measured budgets and the argmax-naming failure.
+The remaining 11 live proximity laws stay as NOW-WORKING behaviour guards with rehoming
+recorded as the named follow-on — a working guard beats a dead one, and the ladder climb
+continues from a functioning rung.
+
+**F6406 closes into F7200's sequence. The owner's scoping question is WITHDRAWN from the
+escalation queue** — the evidence made the decision mechanical.
