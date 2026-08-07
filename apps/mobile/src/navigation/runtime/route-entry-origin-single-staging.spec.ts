@@ -12,6 +12,7 @@ import {
   registerRouteEntryOriginRestorer,
   stageRouteEntryOriginRestore,
 } from './route-entry-origin-capture-delegate';
+import { disarmOriginRestoreTripwire } from './route-entry-origin-half-pop-tripwire';
 import type { OriginSnapshot } from '../../overlays/searchRouteSessionTypes';
 import type { OverlayKey } from './app-overlay-route-types';
 
@@ -53,6 +54,10 @@ describe('F1715 — one pop stages the origin restore exactly once', () => {
     unregisterCapturer = registerRouteEntryOriginCapturer(buildOrigin);
     unregisterRestorer = registerRouteEntryOriginRestorer((origin) => {
       stagedOrigins.push(origin);
+      // F5417: this restorer stands in for the production restore leg, which disarms the
+      // half-pop tripwire at its camera commit. Without the disarm the tripwire would
+      // correctly bark on every pop below — the stub would be an unfinished pop.
+      disarmOriginRestoreTripwire();
     });
   });
 

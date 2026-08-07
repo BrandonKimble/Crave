@@ -60,9 +60,18 @@ export const logPageSwitchDebug = (tag: string, data: Record<string, unknown>): 
  * carry the whole story and each has exactly one probe:
  *   `[CAMORIGIN-capture]` — the push-commit read (source: arbiter target vs live viewport)
  *   `[CAMORIGIN-restore]` — the origin restorer committing (or declining) a camera
- *   `[CAMORIGIN-pop]`     — popToEntry/popToRoot staging, the F1505 half-pop tripwire
- * RED reads: a capture whose center is not where the finger was; a pop line with no
- * matching restore line; a restore with `camera=null` on a flow that should carry one.
+ *   `[CAMORIGIN-pop]`     — closeActive/popToEntry/popToRoot staging
+ * RED reads: a capture whose center is not where the finger was; a restore with
+ * `camera=null` on a flow that should carry one.
+ *
+ * F5417 — THE HALF-POP TRIPWIRE IS NO LONGER ON THIS FLAG. "A pop with no matching restore"
+ * used to be a RED read of these lines, which made a correctness assertion conditional on a
+ * constant `false`: the instrument added because "an instrument that cannot fire is an
+ * always-green lie" could not fire in any build. A tripwire and a trace are different
+ * populations. The detection rule now lives in route-entry-origin-half-pop-tripwire.ts as a
+ * pending-slot assertion that barks ungated in __DEV__, the `[ORIGIN-CONTRACT]` shape this
+ * territory already uses for violations. What stays here is the narrative trace only — the
+ * JSONL you flip on while debugging the camera lane.
  *
  * Signed off on the rig 2026-08-04: all five D56 verification points passed
  * ([CAMORIGIN-capture] timing, in-flight fitAll arbiterTarget, home-shelf byte-identity,
@@ -97,7 +106,8 @@ export const logCameraOriginDebug = (tag: string, data: Record<string, unknown>)
  */
 export const CAMCOMMIT_PATH_DEBUG_ENABLED = false;
 
-export const isCameraCommitPathDebugEnabled = (): boolean => __DEV__ && CAMCOMMIT_PATH_DEBUG_ENABLED;
+export const isCameraCommitPathDebugEnabled = (): boolean =>
+  __DEV__ && CAMCOMMIT_PATH_DEBUG_ENABLED;
 
 export const logCameraCommitPath = (leg: string, data?: Record<string, unknown>): void => {
   if (!isCameraCommitPathDebugEnabled()) {

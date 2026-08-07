@@ -15,6 +15,7 @@ import {
   readRouteEntryOriginCamera,
 } from './route-entry-origin-camera-delegate';
 import { logCameraOriginDebug } from './pageswitch-debug-flag';
+import { disarmOriginRestoreTripwire } from './route-entry-origin-half-pop-tripwire';
 import { stageOriginSceneSegmentRestore } from '../../overlays/originSceneSegmentRuntime';
 import {
   primeDockedSceneForHomeLanding,
@@ -289,6 +290,10 @@ export class AppRouteOverlaySessionStateController {
           zoom: origin.camera?.zoom ?? null,
         });
         commitRouteEntryOriginCamera(origin.camera);
+        // F5417 — the half-pop tripwire's DISARM. The pop verb armed a pending slot when it
+        // staged this origin; reaching the camera commit is the proof that the two halves of
+        // the pop met. A slot that survives past the pop verb's return barks (F1505).
+        disarmOriginRestoreTripwire();
       })
     );
     this.snapshot = this.computeSnapshot();

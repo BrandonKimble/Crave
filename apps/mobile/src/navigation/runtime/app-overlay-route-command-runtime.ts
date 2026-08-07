@@ -11,9 +11,14 @@ import type {
   RouteSceneSwitchRouteParams,
 } from './app-overlay-route-transition-contract';
 import type { OverlaySheetSnap } from '../../overlays/types';
+import type { OriginSnapshot } from '../../overlays/searchRouteSessionTypes';
 import { markTrackNavPress } from '../../tracksheet/track-entry-prewarm';
 import { logCameraOriginDebug } from './pageswitch-debug-flag';
 import { stageRouteEntryOriginRestore } from './route-entry-origin-capture-delegate';
+import {
+  armOriginRestoreTripwire,
+  assertOriginRestoreCommitted,
+} from './route-entry-origin-half-pop-tripwire';
 import type {
   AppRouteSceneSwitchRuntime,
   RouteSceneSwitchRouteStateSnapshot,
@@ -62,6 +67,44 @@ export type AppOverlayRouteCommandRuntime = {
   popToRootRoute: (options?: { applyOriginDetent?: boolean }) => void;
 };
 
+// D56/F1516(C)/F5417 — THE ONE POP→RESTORE SEAM. All three pop verbs (closeActive,
+// popToEntry, popToRoot) hand the popped entry's origin here, so the seam's three
+// obligations are stated once instead of three times:
+//
+//   1. the NARRATIVE trace (`[CAMORIGIN-pop]`), which keeps CAMORIGIN_DEBUG_ENABLED —
+//      it is the JSONL you flip on while debugging the camera lane;
+//   2. the decision NOT to stage, which is a state and not a defect: the ROOT entry
+//      departed nothing, and a popToRoot on an already-rooted stack has nothing above it.
+//      Every PUSHED entry's origin is non-null by the capture contract (pushRouteState
+//      barks otherwise), so this skips exactly those two cases and nothing else;
+//   3. the HALF-POP TRIPWIRE, which does NOT keep the flag. It arms on a staged origin,
+//      is disarmed by the restore leg's camera commit, and barks here if it survived —
+//      a pop that restored the sheet and left the map (F1505). Splitting it out of the
+//      narrative sink is F5417: the trace may be turned off, a correctness assertion
+//      may not.
+//
+// Staging happens BEFORE the switch request at every call site: the motion plan reads the
+// remembered-snap ledger during plan resolution, so staging at commit is a stale read
+// (rig-proven as a wrong-detent pop).
+const stagePoppedEntryOrigin = (
+  verb: string,
+  targetKey: string | null,
+  origin: OriginSnapshot | null | undefined
+): void => {
+  logCameraOriginDebug('pop', {
+    verb,
+    targetKey,
+    hasOrigin: origin != null,
+    hasCamera: origin?.camera != null,
+  });
+  if (origin == null) {
+    return;
+  }
+  armOriginRestoreTripwire(verb, targetKey);
+  stageRouteEntryOriginRestore(origin);
+  assertOriginRestoreCommitted();
+};
+
 export const createAppOverlayRouteCommandRuntime = ({
   routeSceneSwitchRuntime,
 }: {
@@ -93,26 +136,14 @@ export const createAppOverlayRouteCommandRuntime = ({
     // S-B: the pop target is the ENTRY beneath the top (a value), not a key lookup — with
     // same-key nesting (slice 4) a key cannot identify which instance is revealed.
     const previousOverlayRoute = routeSceneSwitchRuntime.getPreviousRouteEntry();
-    // Stage the POPPED entry's origin BEFORE the switch request: the motion plan reads the
-    // remembered-snap ledger during plan resolution (staging at commit is a stale read).
-    // D56/F1516(C) — the HALF-POP tripwire, closeActive leg. The popToEntry/popToRoot verbs
-    // carried this probe from day one but closeActive — the verb EVERY ordinary dismiss uses —
-    // did not, so the tripwire never armed in a whole sim session (an instrument that cannot
-    // fire is an always-green lie). Same shape as its siblings: a `pop` line with no matching
-    // `[CAMORIGIN-restore]` line is F1505 resurrected.
-    logCameraOriginDebug('pop', {
-      verb: 'closeActive',
-      targetKey: previousOverlayRoute?.key ?? null,
-      hasOrigin: activeOverlayRoute.origin != null,
-      hasCamera: activeOverlayRoute.origin?.camera != null,
-    });
-    // F2402: the ROOT entry departed nothing, so it carries no return address BY
-    // CONSTRUCTION — that is a state, not the wiring defect the seam barks about. Every
-    // PUSHED entry's origin is non-null (pushRouteState barks otherwise), so this guard
-    // skips exactly the root and nothing else.
-    if (activeOverlayRoute.origin != null) {
-      stageRouteEntryOriginRestore(activeOverlayRoute.origin);
-    }
+    // F1516(C): closeActive — the verb EVERY ordinary dismiss uses — carried no probe at all
+    // for a whole sim session, so the tripwire never armed. It goes through the same seam as
+    // its siblings now.
+    stagePoppedEntryOrigin(
+      'closeActive',
+      previousOverlayRoute?.key ?? null,
+      activeOverlayRoute.origin
+    );
     if (previousOverlayRoute != null && isAppOverlayRouteSceneSwitchKey(activeOverlayRoute.key)) {
       // Ledger item 6 VERDICT (one mechanism per POP CLASS, not one flag-free mechanism):
       // applyOriginDetent selects the WORLD-SESSION pop shape — explicit snapTo of the popped
@@ -318,20 +349,9 @@ export const createAppOverlayRouteCommandRuntime = ({
       }
       // The revealed entry's presentation restores from the entry directly above it.
       const entryAboveTarget = routeState.overlayRouteStack[targetIndex + 1] ?? null;
-      // D56/F1516(C) — the HALF-POP tripwire. A `pop` line with no matching `[CAMORIGIN-restore]`
-      // line is the F1505 failure (sheet returns, map stays) resurrected.
-      logCameraOriginDebug('pop', {
-        verb: 'popToEntry',
-        targetKey: targetEntry.key,
-        hasOrigin: entryAboveTarget?.origin != null,
-        hasCamera: entryAboveTarget?.origin?.camera != null,
-      });
-      // F2402: `entryAboveTarget` is a PUSHED entry (targetIndex is never the top), so its
-      // origin is non-null by the capture contract; the guard states that rather than
-      // handing a maybe-null across the seam.
-      if (entryAboveTarget?.origin != null) {
-        stageRouteEntryOriginRestore(entryAboveTarget.origin);
-      }
+      // `entryAboveTarget` is a PUSHED entry (targetIndex is never the top), so its origin is
+      // non-null by the capture contract.
+      stagePoppedEntryOrigin('popToEntry', targetEntry.key, entryAboveTarget?.origin);
       if (isAppOverlayRouteSceneSwitchKey(targetEntry.key)) {
         const originDetent =
           options?.applyOriginDetent === true ? entryAboveTarget?.origin?.detent : undefined;
@@ -360,17 +380,9 @@ export const createAppOverlayRouteCommandRuntime = ({
       // (stack[1]); popToRoot restores it (intermediate entries' origins are correctly
       // discarded). Staged before the request — the motion plan reads the ledger.
       const deepestPushedOrigin = routeState.overlayRouteStack[1]?.origin ?? null;
-      logCameraOriginDebug('pop', {
-        verb: 'popToRoot',
-        targetKey: rootOverlayRouteKey,
-        hasOrigin: deepestPushedOrigin != null,
-        hasCamera: deepestPushedOrigin?.camera != null,
-      });
-      // F2402: `stack[1]` is absent when the stack is already at root — nothing was pushed,
-      // so there is no departure to return to. A state, not a defect.
-      if (deepestPushedOrigin != null) {
-        stageRouteEntryOriginRestore(deepestPushedOrigin);
-      }
+      // `stack[1]` is absent when the stack is already at root — nothing was pushed, so there
+      // is no departure to return to. A state, not a defect.
+      stagePoppedEntryOrigin('popToRoot', rootOverlayRouteKey, deepestPushedOrigin);
       if (rootOverlayRouteKey != null && isAppOverlayRouteSceneSwitchKey(activeOverlayRoute.key)) {
         const originDetent =
           options?.applyOriginDetent === true ? deepestPushedOrigin?.detent : undefined;
