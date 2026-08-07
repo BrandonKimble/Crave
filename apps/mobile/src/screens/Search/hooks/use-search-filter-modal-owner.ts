@@ -16,6 +16,11 @@ import {
   priceSliderRange,
   type PriceSliderRange,
 } from '../utils/price';
+import {
+  PRICE_SUMMARY_CANDIDATES,
+  PRICE_SUMMARY_REEL_ENTRIES,
+  getPriceSummaryReelIndexFromBoundaries,
+} from '../utils/price-summary-reel';
 
 type UseSearchFilterModalOwnerArgs = {
   searchRuntimeBus: SearchRuntimeBus;
@@ -32,77 +37,7 @@ type UseSearchFilterModalOwnerArgs = {
 const arePriceRangesEqual = (a: PriceSliderRange, b: PriceSliderRange) =>
   Math.abs(a[0] - b[0]) < 0.001 && Math.abs(a[1] - b[1]) < 0.001;
 
-const PRICE_SUMMARY_REEL_RANGES: PriceSliderRange[] = [
-  [1, 2],
-  [1, 3],
-  [1, 4],
-  [1, 5],
-  [2, 3],
-  [2, 4],
-  [2, 5],
-  [3, 4],
-  [3, 5],
-  [4, 5],
-].map(([min, max]) => priceSliderRange(min, max));
-
-const PRICE_SUMMARY_REEL_ENTRIES = PRICE_SUMMARY_REEL_RANGES.map((range) => ({
-  range,
-  key: `${range[0]}-${range[1]}`,
-  label: formatPriceRangeSummary(range),
-}));
-
-const PRICE_SUMMARY_REEL_INDEX_BY_KEY = PRICE_SUMMARY_REEL_ENTRIES.reduce<Record<string, number>>(
-  (acc, entry, index) => {
-    acc[entry.key] = index;
-    return acc;
-  },
-  {}
-);
-
-const PRICE_SUMMARY_CANDIDATES = PRICE_SUMMARY_REEL_ENTRIES.map((entry) => entry.label);
 const PRICE_SUMMARY_PILL_PADDING_X = 12;
-const PRICE_SUMMARY_REEL_DEFAULT_INDEX = PRICE_SUMMARY_REEL_INDEX_BY_KEY['1-5'] ?? 0;
-
-const getPriceSummaryReelIndexFromBoundaries = (
-  lowBoundary: number,
-  highBoundary: number
-): number => {
-  'worklet';
-  const low = Math.min(4, Math.max(1, lowBoundary));
-  const high = Math.min(5, Math.max(low + 1, highBoundary));
-  const lowFloor = Math.floor(low);
-  const lowCeil = Math.min(4, lowFloor + 1);
-  const highFloor = Math.floor(high);
-  const highCeil = Math.min(5, highFloor + 1);
-  const lowFraction = low - lowFloor;
-  const highFraction = high - highFloor;
-
-  let weightedIndex = 0;
-  let totalWeight = 0;
-
-  const applyCorner = (cornerLow: number, cornerHigh: number, weight: number) => {
-    'worklet';
-    if (weight <= 0) {
-      return;
-    }
-    const key = `${cornerLow}-${cornerHigh}`;
-    const cornerIndex = PRICE_SUMMARY_REEL_INDEX_BY_KEY[key];
-    const resolvedIndex = cornerIndex == null ? PRICE_SUMMARY_REEL_DEFAULT_INDEX : cornerIndex;
-    weightedIndex += resolvedIndex * weight;
-    totalWeight += weight;
-  };
-
-  applyCorner(lowFloor, highFloor, (1 - lowFraction) * (1 - highFraction));
-  applyCorner(lowFloor, highCeil, (1 - lowFraction) * highFraction);
-  applyCorner(lowCeil, highFloor, lowFraction * (1 - highFraction));
-  applyCorner(lowCeil, highCeil, lowFraction * highFraction);
-
-  if (totalWeight <= 0) {
-    return PRICE_SUMMARY_REEL_DEFAULT_INDEX;
-  }
-
-  return weightedIndex / totalWeight;
-};
 
 export type SearchSortMode = 'best' | 'rising';
 
