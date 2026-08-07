@@ -22,10 +22,7 @@ import {
   useViewportSubjectVerdict,
 } from '../../store/viewport-subject-store';
 import type { MapBounds } from '../../types';
-import {
-  NETWORK_RETRY_MAX_ATTEMPTS,
-  nextRetryDelayMs,
-} from '../../services/retry/network-retry-ladder';
+import { scheduleHomeFeedRetryRung } from './runtime/home-feed-retry-rung';
 import { logger } from '../../utils';
 import type { TrackSheetListProps } from '../../tracksheet/TrackSheetPage';
 import { OVERLAY_HORIZONTAL_PADDING } from '../overlaySheetStyles';
@@ -340,6 +337,22 @@ const useHomeFeedRuntime = (): void => {
     }
   }, []);
 
+  // F4510: ONE rung scheduler for both failure paths — the exhaustion bound lives
+  // in the ladder alone now (home-feed-retry-rung.ts explains what the two
+  // hand-maintained copies and their `?? 0` could have cost).
+  const armRetryRung = React.useCallback(
+    (retryAttempt: number) =>
+      scheduleHomeFeedRetryRung({
+        retryAttempt,
+        isVisible: () => useHomeSceneStateStore.getState().visible,
+        runRung: (nextRetryAttempt) => {
+          retryTimeoutRef.current = null;
+          void refreshRef.current?.(nextRetryAttempt);
+        },
+      }),
+    []
+  );
+
   const refreshHomeFeed = React.useCallback(
     async (retryAttempt = 0) => {
       const bounds = getViewportSubjectState().settledBounds;
@@ -349,18 +362,8 @@ const useHomeFeedRuntime = (): void => {
         // momentarily null returning without rescheduling silently ends the ladder). If THIS
         // call is itself a scheduled retry rung (retryAttempt > 0), keep the ladder alive by
         // scheduling the next rung instead of dropping it.
-        if (
-          retryAttempt > 0 &&
-          useHomeSceneStateStore.getState().visible &&
-          retryAttempt < NETWORK_RETRY_MAX_ATTEMPTS
-        ) {
-          retryTimeoutRef.current = setTimeout(
-            () => {
-              retryTimeoutRef.current = null;
-              void refreshRef.current?.(retryAttempt + 1);
-            },
-            nextRetryDelayMs(retryAttempt) ?? 0
-          );
+        if (retryAttempt > 0) {
+          retryTimeoutRef.current = armRetryRung(retryAttempt);
         }
         return;
       }
@@ -400,29 +403,14 @@ const useHomeFeedRuntime = (): void => {
         lastRequestedBoundsRef.current = null;
         // §9.4 ladder (polls parity): quiet backoff retries; a newer refresh
         // (settle / pick / reconnect) supersedes via clearScheduledRetry.
-        // Red-team 2026-08-01: gate on LIVE visibility — a fetch in flight
-        // when the surface hides would otherwise arm a fresh timer AFTER the
-        // hide-cleanup ran, and the ladder would fetch while hidden (the
-        // activation-diff on return covers the missed refresh honestly).
-        if (
-          useHomeSceneStateStore.getState().visible &&
-          retryAttempt < NETWORK_RETRY_MAX_ATTEMPTS
-        ) {
-          retryTimeoutRef.current = setTimeout(
-            () => {
-              retryTimeoutRef.current = null;
-              void refreshRef.current?.(retryAttempt + 1);
-            },
-            nextRetryDelayMs(retryAttempt) ?? 0
-          );
-        }
+        retryTimeoutRef.current = armRetryRung(retryAttempt);
         // Honest failure only when there is nothing to show; a stale feed stands.
         if (useHomeFeedStore.getState().feed == null) {
           useHomeFeedStore.getState().setStatus('failed');
         }
       }
     },
-    [clearScheduledRetry]
+    [armRetryRung, clearScheduledRetry]
   );
   refreshRef.current = refreshHomeFeed;
 
