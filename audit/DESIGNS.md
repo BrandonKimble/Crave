@@ -3484,3 +3484,90 @@ Charter per territory lane: fresh-eyes re-hunt (zero new findings = success, rep
 honestly either way); close the remaining UNREVIEWED residue reachable in its territory
 and any PARTIAL whose named gap is readable; every full-suite invocation captured
 `> file 2>&1` (F6803 protocol); no re-litigation of terminal rows.
+
+---
+
+## D118 — clean pass 1, lane 1: NOT ZERO, and F7500 is the exercise's gravest find (2026-08-07)
+
+**F7500 — APPROVED FOR IMMEDIATE P3, with the escalation analysis stated rather than
+skipped.** The scope builder ORs every person-bearing column and hands the OR to DELETE,
+so one column's `delete_row` ruling OVERWRITES the other columns' declared rulings. Two
+live instances: erasing P deletes THIRD PARTIES' collaborator rows on other people's
+lists whenever P sent the invite (against a declaration reading "the invite survives on
+someone else's list; who sent it does not"), and a reporter's purge deletes the safety
+record ABOUT a still-live third party at a horizon never that record's. Why this is a P3
+and not an owner escalation: the DECLARATIONS are the owner's prior rulings, and the code
+overwrote them — the fix IMPLEMENTS the rulings as written (per-column scoping: delete_row
+where the delete_row column matches; null_column for the column whose ruling is
+survival-without-attribution), making erasure STRICTLY MORE PROTECTIVE of third parties.
+The F4936 precedent applies: strictly protective changes to the data layer notify the
+owner, they do not wait. Acceptance: BEGIN/ROLLBACK proofs on the real corpus for both
+instances (P's own rows erased per ruling; the third party's row SURVIVES with P's
+attribution nulled; the safety record survives the reporter's horizon), plus the erasure
+integration specs extended to pin both. The coverage allowlist sentence that bought the
+blindness ("No invites in the dev corpus") is corrected, and the empty-table-buys-an-
+allowlist-entry pattern is recorded as a lesson on that spec.
+
+**F7501 — APPROVED with F7500.** `contradictions()` structurally returns [] (its filter
+excludes the only verb that could contradict) under a spec asserting emptiness — the
+instrument for exactly F7500's second instance, blind by construction. Fix so it can see;
+its spec must show a contradiction when one exists (RED under the restored filter).
+
+**F7502/F7503 — APPROVED.** The one-line tiebreak with its honest blast statement; the
+log-mode spec asserts the record that is log mode's only product.
+
+**The pass verdict:** lane 1 is NOT clean. Per the mandate, pass 1 restarts after these
+land. The lane's disc
+---
+
+## D118 — clean pass 1, api-core: NOT CLEAN. F7500 erases third parties. (2026-08-07)
+
+**F7500 — VERIFIED MYSELF, ESCALATED (user-data lifetime), with a loud-fail guard approved
+NOW.** `person-data-scope.ts:subjectRows` ORs every person-bearing column of a table and
+hands the OR to DELETE. But `person-data-class.ts:67-72`'s own doctrine states delete_row
+is a PER-COLUMN verb — each column scopes its OWN delete — and the allowlist declares
+`user_list_collaborators.invited_by_user_id` as SEVER: "the invitation survives for the
+OTHER collaborators, minus who made it." The emitted `user_id = $1 OR invited_by_user_id
+= $1` DELETE instead removes the whole row: erasing the inviter deletes third parties'
+collaborator memberships on OTHER people's lists. Second instance on `user_reports`: a
+reporter's purge deletes the safety record ABOUT a still-live third party at a horizon
+that was never that record's. I verified the contradiction between the declaration and
+the emitted SQL directly (the allowlist text at spec lines 54-55 says the OPPOSITE of what
+the code emits). It escaped because the dev corpus has no invites — the empty table bought
+a human-declaration allowlist entry whose sentence is backwards.
+
+THE SPLIT (the F4501 pattern for a data defect): the CORRECT erasure semantics — does the
+sweep DELETE only on delete_row-declared columns and SEVER (null) the sever-declared ones,
+producing per-column statements the doctrine already describes — is engineering, and the
+fix is deriving `subjectRows` from the per-column DISPOSITION rather than OR-ing all
+person columns. But it CHANGES WHAT AN ERASURE DOES to real user data (third-party rows
+now survive that are deleted today; a live safety record now persists), so the switchover
+is the owner's call on a legal-compliance surface. APPROVED NOW as engineering, not
+policy: a loud-fail assertion at the sweep — if a table has a person column whose
+disposition is NOT delete_row and that column is being OR'd into a DELETE scope, THROW at
+construction naming the table and column. That makes the current silent over-deletion
+IMPOSSIBLE to run unnoticed while the owner rules the semantics. Mutation: the assertion
+fires on user_list_collaborators today (proving it catches the live defect); it stops
+firing only when the scope is per-disposition.
+
+**F7501 — APPROVED (the guard-that-cannot-fail, in the erasure tooling itself):**
+`RetentionHorizonService.contradictions()` is structurally always `[]` (retain is not in
+ACTING, so ruleWhere returns null for every rule the filter sees), with an it-block
+asserting that emptiness — and the contradiction it is NAMED to find is LIVE one level up
+(F7500's user_reports instance). The instrument commissioned to catch exactly this class
+cannot. Rederive it to see the disposition conflict F7500 exposes; it must go RED on
+user_reports today.
+
+**F7502 — APPROVED.** Offset pagination on non-unique createdAt (Postgres now() is
+txn-stable) — the F1902 family, one producer today, becomes real on the first batch
+producer. Unique tiebreak in the cursor.
+
+**F7503 — APPROVED.** Log-mode's only product is the record and nothing asserts it (the
+logger double returns a fresh object per setContext so it couldn't) — deleting the
+logger.info leaves the suite green. Key the double and assert the record.
+
+**Clean pass 1 is INVALIDATED for a re-run** once F7500's guard + F7501/F7502/F7503 land —
+the pass restarts against the fixed tree, per the mandate. This is the loop working: the
+fresh-eyes re-hunt found what four coverage passes over this territory did not, because
+the empty table had bought an allowlist entry and nobody had evaluated the DELETE it
+emits against the declaration it cites.
