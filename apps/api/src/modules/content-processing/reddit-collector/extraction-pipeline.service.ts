@@ -40,6 +40,24 @@ import { UnifiedProcessingService } from './unified-processing.service';
 import { BatchJob } from './batch-processing-queue.types';
 import { isEnvFlagExplicitlyDisabled } from '../../../shared/config/env-flag';
 
+// F9201/F4905: an item whose creation time is UNKNOWN must NEVER be stamped
+// with collection-time NOW. F4905 made LLMPost/LLMComment.created_at nullable
+// so an undated item is representationally distinct from "created now", but the
+// enrichment fallbacks below still coerced null -> new Date() (dead before the
+// field was nullable, live after). A fabricated-NOW source_created_at yields
+// maximal recency in public-crave-score's recency-mass term
+// power(0.5, (now() - source_created_at)/halfLife) ≈ 1.0, inflating an undated
+// item's crave-score — exactly the harm F4905 removed.
+//
+// The persistence column source_created_at is still NOT NULL (schema.prisma),
+// so the fully-ideal fix — type it nullable and EXCLUDE null rows from the
+// recency term, matching computeTemporalRange's "excluded rather than
+// fabricated" stance — needs an OWNER-approved migration. Until then we floor
+// an unknown date to this fixed ANCIENT sentinel. It is NOT a real timestamp:
+// an epoch-0 doc is ancient, so its recency weight is ~0 (the OPPOSITE of the
+// maximal-recency harm) — a deliberate de-weighting floor for unknown dates.
+const UNKNOWN_SOURCE_CREATED_AT_SENTINEL = '1970-01-01T00:00:00.000Z';
+
 type SourceBreakdown = {
   pushshift_archive: number;
   reddit_api_chronological: number;
@@ -1135,10 +1153,11 @@ export class ExtractionPipelineService implements OnModuleInit {
     }
     const sourceUps = metadata.ups ?? mention.source_ups ?? 0;
     const sourceUrl = metadata.url ?? mention.source_url ?? '';
+    // F9201/F4905: unknown date -> ancient de-weighting sentinel, never NOW.
     const createdAt =
       metadata.created_at ??
       mention.source_created_at ??
-      new Date().toISOString();
+      UNKNOWN_SOURCE_CREATED_AT_SENTINEL;
     const subreddit = metadata.subreddit ?? mention.subreddit ?? 'unknown';
     const sourceDocumentId = sourceType
       ? (sourceDocumentIdBySourceKey.get(
@@ -1782,7 +1801,8 @@ export class ExtractionPipelineService implements OnModuleInit {
         type: 'post',
         ups: post.score ?? 0,
         url: post.url ?? '',
-        created_at: post.created_at ?? new Date().toISOString(),
+        // F9201/F4905: unknown date -> ancient de-weighting sentinel, never NOW.
+        created_at: post.created_at ?? UNKNOWN_SOURCE_CREATED_AT_SENTINEL,
         subreddit: post.subreddit ?? '',
       });
       contentById.set(post.id, post.content ?? '');
@@ -1793,7 +1813,8 @@ export class ExtractionPipelineService implements OnModuleInit {
           type: 'comment',
           ups: comment.score ?? 0,
           url: comment.url ?? '',
-          created_at: comment.created_at ?? new Date().toISOString(),
+          // F9201/F4905: unknown date -> ancient de-weighting sentinel, never NOW.
+          created_at: comment.created_at ?? UNKNOWN_SOURCE_CREATED_AT_SENTINEL,
           subreddit: post.subreddit ?? '',
         });
         contentById.set(comment.id, comment.content ?? '');
