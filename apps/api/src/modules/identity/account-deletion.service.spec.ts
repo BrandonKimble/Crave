@@ -2,6 +2,13 @@
 import { BadRequestException } from '@nestjs/common';
 import { PERSON_DATA_RULES } from './person-data/person-data-class';
 import { AccountDeletionService } from './account-deletion.service';
+import { reservedUsernameHash } from './reserved-username-hash';
+
+// The burn is keyed by the codebase's one HMAC key. Set before any test so
+// the writer and the assertions derive the same digest — an unset key is a
+// LOUD throw by design (an unkeyed hash of a handle is enumerable), not a
+// quiet fallback, so it has to be present here as it is in every environment.
+process.env.SIGNAL_AUDIT_HMAC_KEY ??= 'test-reserved-username-key';
 
 /**
  * Contract tests for account deletion (Apple 5.1.1(v)).
@@ -320,10 +327,16 @@ describe('AccountDeletionService', () => {
     await service.purgeAccount(user);
     // Every held handle is reserved — reserved_usernames has NO person
     // column, so the name is burned while nothing about who held it remains.
+    // AS A HASH (owner ruling 2026-08-07): the burn must still happen, and
+    // the stored value must NOT be the handle. See the mutation proof below
+    // for the half that matters — that hashing did not break the collision.
     const burned = prisma.reservedUsername.upsert.mock.calls.map(
       (c: { create: { username: string } }[]) => c[0].create.username,
     );
-    expect(burned).toEqual(expect.arrayContaining(['oldhandle']));
+    expect(burned).toEqual(
+      expect.arrayContaining([reservedUsernameHash('oldhandle')]),
+    );
+    expect(burned).not.toContain('oldhandle');
     expect(prisma.reservedUsername.upsert.mock.calls[0][0].create.reason).toBe(
       'account_deleted',
     );

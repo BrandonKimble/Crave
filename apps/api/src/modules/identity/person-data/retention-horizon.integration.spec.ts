@@ -123,6 +123,83 @@ describe('retention horizon — the promise has a mechanism', () => {
     expect(overdue).toEqual([]);
   });
 
+  it('THE TWO UNITS, PROVEN LIVE: an expired horizon NULLS a retained value and DELETES a retained record — and the shell survives both', async () => {
+    // THE DEFECT THIS PROVES GONE (2026-08-07). `users.stripe_customer_id`
+    // became a bounded 2555-day retention, and the sweep only knew one verb:
+    // DELETE the row. On `users` that verb is catastrophic — the anonymized
+    // shell is what anchors every retained financial record and every severed
+    // authorship, so deleting it would take out the very rows the retention
+    // exists to keep auditable. It did not fire only because the DELETE was
+    // scoped `WHERE stripe_customer_id = <a user id>`, which matches nothing:
+    // an unenforced promise wearing the costume of enforcement.
+    //
+    // So this drives BOTH units through one real sweep against a real
+    // database, on one expired account, and asserts the three things that
+    // distinguish them:
+    //   the VALUE is gone, the RECORD is gone, and the SHELL is still there.
+    const service = new RetentionHorizonService(
+      prisma as never,
+      {
+        setContext: () => ({
+          info() {},
+          warn() {},
+          error() {},
+          debug() {},
+        }),
+      } as never,
+    );
+
+    // Purged 8 years ago: deleted_at set, purge_due_at cleared (the window
+    // closed and the purge ran) — the exact state the sweep acts on.
+    const [user] = await prisma.$queryRawUnsafe<Array<{ user_id: string }>>(
+      `INSERT INTO users (email, updated_at, deleted_at, purge_due_at, stripe_customer_id)
+       VALUES ($1, now(), now() - INTERVAL '2920 days', NULL, 'cus_horizon_test')
+       RETURNING user_id`,
+      `retention-horizon-${Date.now()}@example.invalid`,
+    );
+    try {
+      // A LEAKED FIXTURE HERE POISONS THE SUITE, so the cleanup covers every
+      // path from the first INSERT onward. This row is a purged account whose
+      // horizon has passed — exactly what `overdue()` in the test above is
+      // asserting it finds NONE of — so leaving one behind reds a sibling
+      // test with a failure that looks nothing like its cause. (It did, once:
+      // the billing INSERT threw on a bad enum value between the two, and the
+      // next run failed in "reports honestly" instead.)
+      await prisma.$executeRawUnsafe(
+        `INSERT INTO billing_subscriptions
+           (user_id, status, provider, entitlement_code, updated_at)
+         VALUES ($1::uuid, 'cancelled', 'stripe', 'crave_plus', now())`,
+        user.user_id,
+      );
+
+      await service.sweep();
+
+      const [after] = await prisma.$queryRawUnsafe<
+        Array<{ stripe_customer_id: string | null; subs: number }>
+      >(
+        `SELECT u.stripe_customer_id,
+                (SELECT count(*)::int FROM billing_subscriptions b
+                  WHERE b.user_id = u.user_id) AS subs
+           FROM users u WHERE u.user_id = $1::uuid`,
+        user.user_id,
+      );
+
+      // 1. THE SHELL SURVIVED. If the row were gone this query returns
+      //    nothing — which is precisely the failure the 'column' unit exists
+      //    to prevent, so it is asserted first and on its own.
+      expect(after).toBeDefined();
+      // 2. `horizonUnit: 'column'` — the VALUE expired, the row did not.
+      expect(after.stripe_customer_id).toBeNull();
+      // 3. `horizonUnit: 'row'` — the financial RECORD expired entirely.
+      expect(after.subs).toBe(0);
+    } finally {
+      await prisma.$executeRawUnsafe(
+        `DELETE FROM users WHERE user_id = $1::uuid`,
+        user.user_id,
+      );
+    }
+  });
+
   /**
    * THE SCRUB IS A SECOND ANSWER. It cannot be deleted (staging needs SQL that
    * runs without the app), but it must not disagree: every table the

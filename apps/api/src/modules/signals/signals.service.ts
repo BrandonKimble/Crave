@@ -138,6 +138,54 @@ export interface RecordSignalInput {
 // places); pacer-derived sizing replaces them if they ever bind.
 const ACTOR_CACHE_MAX = 10_000;
 
+/**
+ * EVERY KEY `signals.meta` MAY HOLD. Anything else is dropped at the writer.
+ *
+ * The unit is the KEY, not the value, because that is what makes the column
+ * classifiable: every entry here is an opaque id, a count, a small enum, a
+ * boolean, or a keyed HMAC — none of them free text, none of them a name, and
+ * none of them a raw query (the query lives in `subject_text`, which erasure
+ * NULLs by declared rule). A key that cannot be described that way does not
+ * belong in a column retained indefinitely on a pseudonymous row.
+ *
+ * Adding a key is deliberately a code change reviewed against that sentence.
+ */
+const SIGNAL_META_KEYS: ReadonlySet<string> = new Set([
+  // Act shape / dwell
+  'dwellMs',
+  'mode',
+  // Search request correlation and result counts
+  'searchRequestId',
+  'askSearchRequestId',
+  'originSearchRequestId',
+  'originalBackendSearchRequestId',
+  'cacheRevealRequestId',
+  'resultCount',
+  'restaurantCount',
+  'resultRestaurantCount',
+  'resultFoodCount',
+  'inViewLocationCount',
+  'cached',
+  'reason',
+  'source',
+  'entityType',
+  'resolvedEntityId',
+  // Entity / place context (ids, never names)
+  'contextRestaurantId',
+  'restaurantId',
+  'locationId',
+  'connectionId',
+  // Polls
+  'pollId',
+  'endorsedSubjectId',
+  'endorsedSubjectType',
+  // Vote-integrity audit — keyed HMACs only, never the raw device key or ip
+  // (see audit-hmac.ts: the append-only ledger holds no redactable identifier)
+  'deviceKeyHmac',
+  'ipHmac',
+  'ipSubnetHmac',
+]);
+
 @Injectable()
 export class SignalsService {
   private readonly logger: LoggerService;
@@ -396,11 +444,50 @@ export class SignalsService {
     return actor.actorId;
   }
 
-  /** Drop undefined values so meta stores exactly what the caller asserted. */
+  /**
+   * Drop undefined values, AND every key outside the allow-list.
+   *
+   * WHY THE ALLOW-LIST EXISTS (person-data ruling 2026-08-07, Q7). `meta` was
+   * the one column on `signals` that nothing constrained — an open-shape JSON
+   * blob on a row the erasure declaration deliberately RETAINS. Its contents
+   * were harmless; the ABSENCE of a shape was the finding, because "no person
+   * data in here" was a statement about today's callers rather than about the
+   * column. A future caller spreading a request body, a display name, or a
+   * raw query string into meta would have been retained forever with nothing
+   * red anywhere. That is the exact silent shape the whole person-data
+   * inversion exists to make impossible, so the column is now classified
+   * `not_person` and THIS is the mechanism the classification names.
+   *
+   * IT LIVES HERE because this is the ONE writer — `persist()` is the only
+   * code that ever inserts a signal row, and `record()` is the only door into
+   * it. A compile-time type would have been nicer and is not sufficient: two
+   * callers build meta with a spread (`...extraMeta`, the vote-integrity
+   * HMAC blocks), and TypeScript's excess-property check does not see through
+   * a spread. A runtime filter at the single writer does.
+   *
+   * DROP-AND-WARN, NOT THROW: `record()` is fire-and-forget and must never
+   * fail a user action (that is its whole contract). The unknown key never
+   * reaches the database — which is the enforcement — and the log names it so
+   * an intentional new key is a one-line addition here rather than a mystery.
+   */
   private compactMeta(meta: Record<string, unknown>): Record<string, unknown> {
-    return Object.fromEntries(
-      Object.entries(meta).filter(([, value]) => value !== undefined),
-    );
+    const kept: Record<string, unknown> = {};
+    const rejected: string[] = [];
+    for (const [key, value] of Object.entries(meta)) {
+      if (value === undefined) continue;
+      if (!SIGNAL_META_KEYS.has(key)) {
+        rejected.push(key);
+        continue;
+      }
+      kept[key] = value;
+    }
+    if (rejected.length > 0) {
+      this.logger.warn(
+        'Signal meta key(s) dropped — not in SIGNAL_META_KEYS. Add the key there if it is intended (and confirm it carries no person data: this column is retained indefinitely and classified not_person on the strength of this filter).',
+        { rejected },
+      );
+    }
+    return kept;
   }
 
   private cachePut<V>(

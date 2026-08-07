@@ -7,6 +7,7 @@ import {
   resolveModeration,
 } from '../moderation/moderation-verdict';
 import { LoggerService } from '../../shared';
+import { reservedUsernameHash } from './reserved-username-hash';
 
 export type UsernameAvailabilityReason =
   | 'available'
@@ -121,8 +122,14 @@ export class UsernameService {
       };
     }
 
+    // HASH AT LOOKUP, because the burn hashes at write (owner ruling
+    // 2026-08-07 — see reserved-username-hash.ts). The reservation asks one
+    // question, "is this exact handle burned?", and a keyed HMAC answers it
+    // exactly; the shared helper is what keeps this side and the purge side
+    // from drifting into two different digests, which would fail OPEN — a
+    // burned handle silently becoming claimable again, with nothing red.
     const reserved = await this.prisma.reservedUsername.findUnique({
-      where: { username: normalized },
+      where: { username: reservedUsernameHash(normalized) },
       select: { username: true },
     });
     if (reserved) {

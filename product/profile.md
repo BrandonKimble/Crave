@@ -85,3 +85,7 @@ There is NO user feed (a deliberate ~50-50 call; polls are the engagement center
 - **Friends lens default** — is the lens always opt-in per session, or can a user set it sticky? And does the friend chip show on results by default for everyone, or is it itself opt-in?
 - **Your-circle's-consensus scope** — what's the minimum follow count before "your people's top X" is meaningful, and how do we present it so it never blurs with the global Score?
 - **Stat integrity** — are the user-stats counters guaranteed in lockstep by service hooks, or do we need a periodic reconciler to catch drift?
+
+## Pause/deactivate account (vs delete)
+
+Pause/deactivate account (vs delete) — owner wants a deactivation option at delete-time (keep-everything-come-back-later); legal way to offer resurrection; relates to subscription cancel flow. 2026-08-07.

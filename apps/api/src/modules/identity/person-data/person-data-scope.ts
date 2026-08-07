@@ -247,7 +247,36 @@ export function retentionScopeColumns(rule: PersonDataRule): string[] | null {
     return null;
   }
   if (rule.personScopeSql || declaredScope(rule.table)) return null;
+
+  // A COLUMN-UNIT HORIZON DOES NOT LOCATE ANYBODY — exactly the case
+  // `eraseScopeColumns` already handles for `null_column`. The promise is
+  // about a VALUE (`users.stripe_customer_id`), so the value cannot also be
+  // the address: `WHERE stripe_customer_id = <a user id>` compares a Stripe
+  // handle to a uuid and matches nothing. The table's declared person key is
+  // what finds the row; the UPDATE then nulls this column on it.
+  if (rule.horizonUnit === 'column') {
+    const keys = personKeyColumns(rule.table);
+    return keys.length > 0 ? keys : null;
+  }
   return [rule.column];
+}
+
+/**
+ * WHAT A BOUNDED HORIZON DOES WHEN IT EXPIRES — the one derivation the sweep
+ * and its guard both read.
+ *
+ * Returns null for rules with no bounded horizon (nothing expires) and for a
+ * `'column'` rule on a table that declares no person key (nothing to scope by
+ * — "nothing to do", never "no filter").
+ */
+export function retentionAction(
+  rule: PersonDataRule,
+): 'delete_row' | 'null_column' | null {
+  if (rule.disposition !== 'retain' || typeof rule.horizon !== 'number') {
+    return null;
+  }
+  if (retentionWhere(rule) === null) return null;
+  return rule.horizonUnit === 'column' ? 'null_column' : 'delete_row';
 }
 
 /**
@@ -436,7 +465,18 @@ export function deleteScopeContradictions(): DeleteScopeContradiction[] {
     // 2. RETENTION HORIZON — a bounded `retain` rule's DELETE may only be
     //    scoped by columns that are themselves `retain`. Any other column names
     //    a row governed by a different fate, deleted at a horizon never its own.
-    if (rule.disposition === 'retain' && typeof rule.horizon === 'number') {
+    //
+    //    ONLY FOR `horizonUnit: 'row'`. This guard is about a DELETE destroying
+    //    the whole row; a `'column'` horizon issues an UPDATE that nulls one
+    //    declared column and destroys no row at all, so running this check on
+    //    it would be asking a question the statement does not raise — and
+    //    would red on `users.user_id` (the scope key, correctly `retain`) for
+    //    a statement that deletes nothing.
+    if (
+      rule.disposition === 'retain' &&
+      typeof rule.horizon === 'number' &&
+      rule.horizonUnit !== 'column'
+    ) {
       check('retention-horizon', rule, retentionScopeColumns(rule), 'retain');
     }
   }

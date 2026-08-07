@@ -6,6 +6,7 @@ import { PERSON_DATA_RULES } from './person-data-class';
 import {
   assertNoOverbroadDeleteScope,
   deleteScopeContradictions,
+  retentionAction,
   retentionWhere,
 } from './person-data-scope';
 
@@ -73,13 +74,20 @@ export class RetentionHorizonService {
       // then delete — safety records about live third parties.
       const scope = retentionWhere(rule, 't');
       if (!scope) continue;
+      const action = retentionAction(rule);
+      if (!action) continue;
+      // COUNT WHAT THE SWEEP WOULD ACT ON, not merely what it would find. For
+      // a `'column'` horizon the sweep skips rows whose value is already NULL,
+      // so counting them here would report work that never happens — an
+      // "overdue" number that never reaches zero however often the sweep runs.
       const [row] = await this.prisma.$queryRawUnsafe<Array<{ n: number }>>(
         `SELECT count(*)::int AS n
            FROM "${rule.table}" t
            JOIN users u ON (${scope.replace(/\$1/g, 'u.user_id::text')})
           WHERE u.deleted_at IS NOT NULL
             AND u.purge_due_at IS NULL
-            AND u.deleted_at < now() - ($1::int * INTERVAL '1 day')`,
+            AND u.deleted_at < now() - ($1::int * INTERVAL '1 day')
+            ${action === 'null_column' ? `AND t."${rule.column}" IS NOT NULL` : ''}`,
         rule.horizon,
       );
       if (row.n > 0) {
@@ -107,21 +115,35 @@ export class RetentionHorizonService {
     for (const rule of this.horizonRules()) {
       const scope = retentionWhere(rule, 't');
       if (!scope) continue;
-      const count = await this.prisma.$executeRawUnsafe(
-        `DELETE FROM "${rule.table}" t
-          WHERE EXISTS (
+      const action = retentionAction(rule);
+      if (!action) continue;
+
+      // THE VERB IS DECLARED, NOT ASSUMED (`horizonUnit`). A horizon on a
+      // column that NAMES the person expires the RECORD; a horizon on a
+      // retained VALUE expires the VALUE. Writing only the first — which is
+      // what this method did until 2026-08-07 — turns the second into a
+      // DELETE on a row that must survive (`users`, the anonymized shell that
+      // anchors every retained financial record). It matched nothing and so
+      // looked fine; a later scope "fix" would have made it catastrophic.
+      const expiredAccount = `EXISTS (
             SELECT 1 FROM users u
              WHERE (${scope.replace(/\$1/g, 'u.user_id::text')})
                AND u.deleted_at IS NOT NULL
                AND u.purge_due_at IS NULL
                AND u.deleted_at < now() - ($1::int * INTERVAL '1 day')
-          )`,
+          )`;
+      const count = await this.prisma.$executeRawUnsafe(
+        action === 'delete_row'
+          ? `DELETE FROM "${rule.table}" t WHERE ${expiredAccount}`
+          : `UPDATE "${rule.table}" t SET "${rule.column}" = NULL
+              WHERE t."${rule.column}" IS NOT NULL AND ${expiredAccount}`,
         rule.horizon,
       );
       if (count > 0) {
         deleted += count;
-        this.logger.info('Retention horizon reached — rows deleted', {
+        this.logger.info('Retention horizon reached', {
           rule: `${rule.table}.${rule.column}`,
+          action,
           rows: count,
           horizon: rule.horizon,
         });

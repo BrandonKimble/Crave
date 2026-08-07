@@ -98,6 +98,33 @@ export interface PersonDataRule {
    * `'indefinite'` records that the answer was considered rather than skipped.
    */
   horizon?: number | 'indefinite';
+  /**
+   * WHAT THE HORIZON EXPIRES: the ROW, or just THIS COLUMN'S VALUE.
+   *
+   * Required whenever `horizon` is a number (the census fails without it), for
+   * the same reason `horizon` itself is required: the answer used to be an
+   * unstated default, and the default was wrong for the first rule that needed
+   * the other one.
+   *
+   * Every bounded horizon until 2026-08-07 sat on a column that NAMES the
+   * person (`billing_subscriptions.user_id`, `user_reports.reported_user_id`),
+   * where "the promise expired" and "delete the row" are the same sentence —
+   * so the sweep only ever learned to DELETE. Then `users.stripe_customer_id`
+   * arrived: a retained VALUE on a row that must never be deleted, because the
+   * anonymized shell is what anchors every retained financial record and every
+   * severed authorship. Handed to a row-DELETE it was harmless only by luck
+   * (`WHERE stripe_customer_id = <a user id>` matches nothing, so the sweep
+   * was a silent no-op reading as enforcement) — and one scope fix away from
+   * deleting the shell.
+   *
+   *   'row'    — the promise is about the RECORD. Delete it. Only legitimate
+   *              on a column that locates the person, since that is what the
+   *              DELETE scopes by.
+   *   'column' — the promise is about the VALUE. Null it, scoping by the
+   *              table's declared person key; the row survives under whatever
+   *              rules govern its other columns.
+   */
+  horizonUnit?: 'row' | 'column';
 }
 
 /**
@@ -134,6 +161,24 @@ export const PERSON_DATA_RULES: readonly PersonDataRule[] = [
     table: 'users',
     column: 'revenuecat_app_user_id',
     disposition: 'null_column',
+  },
+  // MONEY, DECLARED WHERE THE MECHANISM CAN SEE IT (owner ruling 2026-08-07).
+  // This was kept by an INLINE COMMENT in the purge — "stripeCustomerId
+  // retained: financial records must stay auditable" — which is a real ruling
+  // written in the one place nothing enforces. A comment cannot carry a basis
+  // the census checks or a horizon anybody is ever asked for, so the column
+  // sat in quarantine as retained-forever-by-omission. Same clause, same
+  // horizon as the rest of the money: 7 years.
+  {
+    table: 'users',
+    column: 'stripe_customer_id',
+    disposition: 'retain',
+    horizon: 2555,
+    // COLUMN, not row: deleting the `users` row would destroy the anonymized
+    // shell that anchors the very financial records this retention exists for.
+    horizonUnit: 'column',
+    basis:
+      'Financial-records obligation (GDPR 17(3)(b) legal obligation; CCPA 1798.105(d)(8)) — the pointer that makes billing_checkout_sessions and billing_subscriptions auditable against the provider. Owner ruling 2026-08-07: money records keep 7 years.',
   },
 
   // ─── Private to the person: their own saved things ───────────────────────
@@ -374,6 +419,7 @@ export const PERSON_DATA_RULES: readonly PersonDataRule[] = [
     column: 'reported_user_id',
     disposition: 'retain',
     horizon: 2555,
+    horizonUnit: 'row',
     basis:
       'A safety record ABOUT the departing person — the exact case a name-based rule cannot distinguish from the column above.',
   },
@@ -396,6 +442,7 @@ export const PERSON_DATA_RULES: readonly PersonDataRule[] = [
     basis:
       'Tax/AML retention (GDPR 17(3)(b) legal obligation; CCPA 1798.105(d)(8)).',
     horizon: 2555,
+    horizonUnit: 'row',
   },
   {
     table: 'username_history',
@@ -481,6 +528,7 @@ export const PERSON_DATA_RULES: readonly PersonDataRule[] = [
     column: 'user_id',
     disposition: 'retain',
     horizon: 2555,
+    horizonUnit: 'row',
     basis: 'Financial record (GDPR 17(3)(b); CCPA 1798.105(d)(1)).',
   },
 ];
@@ -972,138 +1020,204 @@ export const COLUMN_COVERAGE: readonly ColumnCoverageEntry[] = [
     }),
   ),
 
-  // ═══ QUARANTINE — OWNER RULING NEEDED ══════════════════════════════════
-  // Each of these is person-adjacent in a way no lane below the owner should
-  // decide. They pass today (they are named, and visible on every census run)
-  // and the census prints the whole list so the quarantine cannot go quiet.
-  {
-    table: 'messages',
-    column: 'body',
-    coverage: 'awaiting_owner',
-    basis:
-      'DM text authored by the departing person, surviving in the recipient’s thread.',
-    writer: 'messaging.service.ts — verbatim user-typed message text.',
-    recommendation:
-      'Owner call: keep (the recipient’s conversation record is theirs, and a half-thread is unreadable) vs null_column. Recommend RETAIN with a stated basis + horizon, matching the ruling that already preserved this row.',
-  },
-  {
-    table: 'photos',
-    column: 'caption',
-    coverage: 'awaiting_owner',
-    basis: 'Free text the person typed onto a photo that survives anonymized.',
-    writer: 'photos.service.ts — user-supplied caption.',
-    recommendation:
-      'Recommend null_column: the photo is kept for the community, the person’s prose is not community content and can name them.',
-  },
-  {
-    table: 'photos',
-    column: 'pending_dish_name',
-    coverage: 'awaiting_owner',
-    basis: 'Free text typed by the person while a dish is unmatched.',
-    writer: 'photos.service.ts — user-typed dish name awaiting resolution.',
-    recommendation:
-      'Recommend null_column (same reasoning as caption); it is discardable once the photo is anonymized.',
-  },
-  {
-    table: 'poll_comments',
-    column: 'body',
-    coverage: 'awaiting_owner',
-    basis:
-      'Comment prose kept anonymized — anonymous authorship does not make the WORDS anonymous.',
-    writer: 'polls comment service — verbatim user-typed comment.',
-    recommendation:
-      'Recommend RETAIN with a stated basis (this is the community content the 2026-08-03 ruling explicitly kept), but the ruling was about the ROW; the owner should confirm it covers the text.',
-  },
-  {
-    table: 'polls',
-    column: 'question',
-    coverage: 'awaiting_owner',
-    basis: 'Poll text, user-authored when the poll originated from a person.',
-    writer:
-      'polls creation path (and the system generator for scheduled polls).',
-    recommendation:
-      'Recommend RETAIN: the poll survives by ruling and is meaningless without its question. Confirm.',
-  },
-  {
-    table: 'polls',
-    column: 'metadata',
-    coverage: 'awaiting_owner',
-    basis: 'Open-shape JSON on a row that survives the person.',
-    writer:
-      'polls services — no schema; today generator provenance, but nothing stops a future writer putting a name in it.',
-    recommendation:
-      'Recommend a typed shape (or an allow-list assertion) so an unschema’d JSON column stops being an unclassifiable hole.',
-  },
-  {
-    table: 'poll_topics',
-    column: 'title',
-    coverage: 'awaiting_owner',
-    basis: 'Topic title, user-authored when created_by_user_id is set.',
-    writer:
-      'poll topic creation; title_source records whether it was generated.',
-    recommendation: 'Recommend RETAIN alongside polls.question.',
-  },
-  {
-    table: 'poll_topics',
-    column: 'description',
-    coverage: 'awaiting_owner',
-    basis: 'Topic prose, user-authored when created_by_user_id is set.',
-    writer: 'poll topic creation.',
-    recommendation: 'Recommend RETAIN alongside polls.question.',
-  },
-  {
-    table: 'user_reports',
-    column: 'reason',
-    coverage: 'awaiting_owner',
-    basis:
-      'Free text on a safety record — written BY the reporter, ABOUT the reported person. Both parties can be the departing one.',
-    writer: 'user report submission — user-typed reason.',
-    recommendation:
-      'Recommend RETAIN with the 2555-day horizon already declared for reported_user_id; moderation evidence with its text stripped is not evidence.',
-  },
-  {
-    table: 'photo_reports',
-    column: 'reason',
-    coverage: 'awaiting_owner',
-    basis: 'Free text on a moderation record, same two-party shape as above.',
-    writer: 'photo report submission — user-typed reason.',
-    recommendation:
-      'Recommend RETAIN with a stated horizon, as for user_reports.reason.',
-  },
-  {
-    table: 'poll_comment_reports',
-    column: 'reason',
-    coverage: 'awaiting_owner',
-    basis: 'Free text on a moderation record, same two-party shape as above.',
-    writer: 'poll comment report submission — user-typed reason.',
-    recommendation:
-      'Recommend RETAIN with a stated horizon, as for user_reports.reason.',
-  },
-  {
-    table: 'signals',
-    column: 'meta',
-    coverage: 'awaiting_owner',
-    basis:
-      'Open-shape JSON on a retained anonymous signal — the one column on this table nothing constrains.',
-    writer:
-      'signals.controller.ts / signals.service.ts compactMeta — today dwellMs and contextRestaurantId only.',
-    recommendation:
-      'Recommend a typed shape enforced at the writer, then not_person. Today’s contents are harmless; the ABSENCE of a shape is the finding.',
-  },
+  // ═══ OWNER RULING 2026-08-07 (D147) — THE QUARANTINE, DISPOSITIONED ═════
+  //
+  // 39 of the 40 quarantined columns were ruled on in one sentence:
+  //
+  //   "Contributions stay under a [deleted] byline; telemetry stays attached
+  //    only to the anonymous shell, kept for metrics; money records keep 7
+  //    years; the burned username becomes a hash."
+  //
+  // Each group below records WHICH clause disposed of it, and — because a
+  // basis that only cites an authority is not a mechanism — names the code
+  // that makes the ruling true. Where the ruling was CONDITIONAL (the
+  // telemetry clause is legitimate only if the person link is really severed),
+  // the condition is verified in the basis by naming the rule that severs it.
+
+  // ─── (1) CONTRIBUTIONS: kept, under a [deleted] byline ───────────────────
+  // The Reddit model, one level down from the 2026-08-03 row ruling: that
+  // ruling kept the ROW; this one confirms it covers the WORDS. Legitimate
+  // only because every author link on these rows is already severed or
+  // anonymized by a declared rule — each entry names its own.
+  ...(
+    [
+      [
+        'messages',
+        'body',
+        'messages.sender_user_id → anonymized_by_shell',
+        'DM prose in the recipient’s own thread; a half-thread is unreadable.',
+      ],
+      [
+        'poll_comments',
+        'body',
+        'poll_comments.user_id → anonymized_by_shell',
+        'Community comment prose the thread is built on.',
+      ],
+      [
+        'polls',
+        'question',
+        'polls.created_by_user_id → sever',
+        'The poll survives by ruling and is meaningless without its question.',
+      ],
+      [
+        'poll_topics',
+        'title',
+        'poll_topics.created_by_user_id → sever',
+        'The topic’s own name.',
+      ],
+      [
+        'poll_topics',
+        'description',
+        'poll_topics.created_by_user_id → sever',
+        'The topic’s own prose.',
+      ],
+      [
+        'user_reports',
+        'reason',
+        'user_reports.reporter_user_id → anonymized_by_shell (and reported_user_id → retain, horizon 2555)',
+        'Moderation evidence with its text stripped is not evidence.',
+      ],
+      [
+        'photo_reports',
+        'reason',
+        'photo_reports.user_id → anonymized_by_shell',
+        'Moderation evidence, same shape.',
+      ],
+      [
+        'poll_comment_reports',
+        'reason',
+        'poll_comment_reports.reporter_user_id → anonymized_by_shell',
+        'Moderation evidence, same shape.',
+      ],
+      [
+        'photos',
+        'caption',
+        'photos.user_id → anonymized_by_shell',
+        'The caption is part of the contribution the community sees.',
+      ],
+      [
+        'photos',
+        'pending_dish_name',
+        'photos.user_id → anonymized_by_shell',
+        'The contributor’s dish claim, still the photo’s only label until it resolves.',
+      ],
+    ] as const
+  ).map(
+    ([table, column, severedBy, what]): ColumnCoverageEntry => ({
+      table,
+      column,
+      coverage: 'lives_with_row',
+      basis:
+        `User contribution survives anonymized — owner ruling 2026-08-07, Reddit-model ("contributions stay under a [deleted] byline"). ${what} ` +
+        `The byline is severed by a declared rule, not by hope: ${severedBy}.`,
+    }),
+  ),
+
+  // ─── (2) TELEMETRY ON THE ANONYMOUS SHELL: kept, for metrics ─────────────
+  // CONDITIONAL RULING, AND THE CONDITION IS VERIFIED. "Kept for metrics" is
+  // only legitimate while the row carrying it names nobody. For `users` that
+  // is the anonymize step (assertShellIsAnonymous proves it). For `signals`
+  // the link is two hops — signal.actor_id → signal_actors.actor_id — and
+  // BOTH are declared: `signal_actors.user_id` is `sever` (set NULL) and
+  // `signal_actors.device_key` is `null_column`, so after erasure the actor
+  // row is a bare pseudonym with no person column and no device fingerprint
+  // left to re-adopt it on the next sign-in. Order is load-bearing and the
+  // eraser encodes it (null_column before sever), so the viewport's actor is
+  // reachable while the words are nulled and unreachable afterwards.
   ...(
     ['geo_min_lat', 'geo_min_lng', 'geo_max_lat', 'geo_max_lng'] as const
   ).map(
     (column): ColumnCoverageEntry => ({
       table: 'signals',
       column,
-      coverage: 'awaiting_owner',
+      coverage: 'lives_with_row',
       basis:
-        'The bounding box the person was LOOKING AT when they searched — retained indefinitely on an actor that erasure only pseudonymizes. A repeated home-area viewport is re-identifying in a way a severed user_id does not fix.',
-      writer: 'signals.service.ts — the client map viewport at signal time.',
-      recommendation:
-        'Recommend null_column on erasure (scoped like subject_text, via signal_actors), or coarsen the box at write time.',
+        'Anonymous-shell metrics — owner ruling 2026-08-07; legitimate only because erasure severs the person link (per-column scoping D146). ' +
+        'VERIFIED MECHANISM: the viewport hangs off signals.actor_id, and the only path from an actor to a person is signal_actors.user_id, which is declared `sever` (nulled), with signal_actors.device_key declared `null_column` so the fingerprint cannot re-attach it. The bbox survives as demand geography attached to a pseudonym.',
     }),
   ),
+  {
+    table: 'users',
+    column: 'last_sign_in_at',
+    coverage: 'lives_with_row',
+    basis:
+      'Anonymous-shell metrics (retention/churn) — owner ruling 2026-08-07; legitimate only because erasure severs the person link (per-column scoping D146). VERIFIED MECHANISM: the anonymize step in account-deletion.service.ts HMACs the email and nulls username/display_name/avatar_url/auth_provider_user_id, and PersonDataEraserService.assertShellIsAnonymous throws if any of them survives — so this timestamp is attached to a shell that names nobody.',
+  },
+  ...(
+    [
+      ['onboarding_selected_city', 'the city chosen at onboarding'],
+      ['onboarding_preview_city', 'the city previewed at onboarding'],
+      ['onboarding_city_place_id', 'the resolved place id for that city'],
+      ['locale', 'the device locale'],
+    ] as const
+  ).map(
+    ([column, what]): ColumnCoverageEntry => ({
+      table: 'users',
+      column,
+      coverage: 'lives_with_row',
+      basis:
+        `Anonymous-shell metrics (${what} — city mix and localisation) — owner ruling 2026-08-07; legitimate only because erasure severs the person link (per-column scoping D146). ` +
+        'VERIFIED MECHANISM: same as users.last_sign_in_at — the anonymize step strips every identity column on this row and assertShellIsAnonymous fails the purge if it did not.',
+    }),
+  ),
+
+  // ─── (3) MONEY: users.stripe_customer_id ────────────────────────────────
+  // NO ENTRY HERE, deliberately. It graduated OUT of coverage and into
+  // PERSON_DATA_RULES as a real `retain` rule with horizon 2555 (see above).
+  // The inline comment in account-deletion.service.ts was the ruling all
+  // along; it is now written where the mechanism can see it, so the census
+  // enforces its basis and its horizon like every other retained column.
+
+  // ─── (5) OPEN-SHAPE JSON AND UNLINKED TELEMETRY ─────────────────────────
+  {
+    table: 'signals',
+    column: 'meta',
+    coverage: 'not_person',
+    basis:
+      'Shape-enforced at the writer. SignalsService.record() is the ONLY writer of this column, and compactMeta now drops any key outside SIGNAL_META_KEYS (an explicit allow-list of ids, counts, enums and keyed HMACs) — so a future caller cannot smuggle free text or a name in. Owner ruling 2026-08-07 (Q7): keep the data, enforce the shape.',
+  },
+  {
+    table: 'polls',
+    column: 'metadata',
+    coverage: 'lives_with_row',
+    basis:
+      'Generator provenance on a poll the declaration keeps (polls.created_by_user_id → sever). Owner ruling 2026-08-07 (Q7): keep as-is. HONEST GAP: unlike signals.meta there is no single writer to enforce a shape at — polls.service.ts writes it from several paths — so this is classified by the row’s fate, not by a proven shape. TODO: give it a typed shape when the polls write paths are next consolidated.',
+  },
+  {
+    table: 'llm_decision_records',
+    column: 'input',
+    coverage: 'not_person',
+    basis:
+      'LLM audit trail over corpus text. Owner ruling 2026-08-07 (Q7): keep as-is. HONEST GAP: there is no single writer to assert at — callers across the app construct this — so "corpus-derived" is a convention today, not a mechanism. TODO: route decision records through one recorder and assert the input shape there.',
+  },
+  {
+    table: 'llm_batch_job_items',
+    column: 'request',
+    coverage: 'not_person',
+    basis:
+      'Batch extraction payloads over corpus text. Owner ruling 2026-08-07 (Q7): keep as-is. HONEST GAP: same as llm_decision_records.input — several submitters, no single enforcement point. TODO: assert the payload shape at a single batch submitter.',
+  },
+  {
+    table: 'collection_source_documents',
+    column: 'raw_payload',
+    coverage: 'not_person',
+    basis:
+      'THIRD-PARTY PUBLIC CORPUS, not our users’ data: the verbatim Reddit post as published, author handle included. Owner ruling 2026-08-07 (Q7). Person erasure cannot reach it because no person of ours is in it; it is governed by the collection retention policy. HONEST GAP: that policy has no TTL in code today — nothing prunes this table — so "governed" means "by the corpus policy", not "by a mechanism you can point at".',
+  },
+  {
+    table: 'collection_on_demand_requests',
+    column: 'term',
+    coverage: 'not_person',
+    basis:
+      'Aggregated demand across askers; the per-person edge is a DIFFERENT table (collection_on_demand_request_users), which is declared `delete_row` on erasure AND pruned at 90 days by OnDemandRequestUsersCleanupService, which then recomputes distinct_user_count. So the term outlives every link to who asked it. Owner ruling 2026-08-07 (Q7). HONEST GAP: there is no k-anonymity FLOOR — a term asked once still exists as a term; what does not exist is any way to attribute it.',
+  },
+  {
+    table: 'demand_scoring_candidates',
+    column: 'normalized_text',
+    coverage: 'not_person',
+    basis:
+      'Normalized demand term on a scoring-trace row over anonymous actors (the table is not_person for the same reason). Same basis and same honest gap as collection_on_demand_requests.term: no person link survives, and no k-anonymity floor is claimed. Owner ruling 2026-08-07 (Q7).',
+  },
   ...(
     [
       'region_id',
@@ -1122,67 +1236,13 @@ export const COLUMN_COVERAGE: readonly ColumnCoverageEntry[] = [
     (column): ColumnCoverageEntry => ({
       table: 'probed_regions',
       column,
-      coverage: 'awaiting_owner',
+      coverage: 'not_person',
       basis:
-        'Every column is a map region a PERSON caused us to probe (center/radius or a bbox), quantized to cell_key. There is no person column, so erasure can never reach it — the anonymity rests entirely on the absence of a link plus a TTL.',
-      writer:
-        'the map/reconciler probe path — viewport boxes and discs from live app use.',
-      recommendation:
-        'Recommend not_person IF the TTL is real and stated; the owner should confirm the retention window rather than let it be implied.',
+        'Unlinked probe telemetry with a REAL, VERIFIED TTL. The row records a map region we asked a vendor about — quantized to cell_key, with no person column anywhere on the table. Owner ruling 2026-08-07 (Q7). The TTL is not implied: NEGATIVE_OBSERVATION_TTL_MS = 30 days in places-reconciler.service.ts, enforced twice — pruneExpiredRegions() DELETEs rows past the cutoff, and the read filters on the same cutoff regardless of whether the prune has run.',
     }),
   ),
-  {
-    table: 'users',
-    column: 'last_sign_in_at',
-    coverage: 'awaiting_owner',
-    basis:
-      'Behavioural fact about the person surviving on the anonymized shell.',
-    writer: 'the auth path, on every sign-in.',
-    recommendation:
-      'Recommend null_column at anonymize: the shell exists to anchor records, not to remember when they last used the app.',
-  },
-  ...(
-    [
-      ['onboarding_selected_city', 'the city the person chose at onboarding'],
-      [
-        'onboarding_preview_city',
-        'the city the person previewed at onboarding',
-      ],
-      ['onboarding_city_place_id', 'the resolved place id for that city'],
-      ['locale', 'the person’s device locale'],
-    ] as const
-  ).map(
-    ([column, what]): ColumnCoverageEntry => ({
-      table: 'users',
-      column,
-      coverage: 'awaiting_owner',
-      basis: `Location/locale residue (${what}) surviving on the anonymized shell. Onboarding ANSWERS are nulled; these were left.`,
-      writer: 'the onboarding flow / auth path.',
-      recommendation:
-        'Recommend null_column at anonymize — they are the person’s, and nothing retained depends on them.',
-    }),
-  ),
-  {
-    table: 'users',
-    column: 'stripe_customer_id',
-    coverage: 'awaiting_owner',
-    basis:
-      'A live pointer into Stripe, where the person’s name and card remain. Deliberately kept (an inline comment says “financial records must stay auditable”) but never declared, so it has no basis and no horizon.',
-    writer: 'the billing path, at first checkout.',
-    recommendation:
-      'Recommend a `retain` rule with horizon 2555, matching billing_subscriptions.user_id — the comment IS the ruling, it just was not written where the mechanism can see it.',
-  },
-  {
-    table: 'user_reserved_usernames',
-    column: 'username',
-    coverage: 'awaiting_owner',
-    basis:
-      'The departed person’s handle, deliberately burned so nobody can re-claim it. A handle can be an identity (real names, @firstlast).',
-    writer:
-      'the deletion path, which burns the handle here before username_history dies.',
-    recommendation:
-      'Recommend hashing the burned handle (the reservation only needs equality, exactly like the email HMAC) — or a `retain` rule with a stated basis if the plaintext is wanted for support.',
-  },
+
+  // ─── STILL OPEN: one column the ruling did not reach ─────────────────────
   {
     table: 'notifications',
     column: 'device_id',
@@ -1191,54 +1251,6 @@ export const COLUMN_COVERAGE: readonly ColumnCoverageEntry[] = [
       'A pointer at a person’s device row on a delivery ledger nothing in the declaration touches. The FK is optional, so a device delete SetNulls it — by Prisma default, not by declaration.',
     writer: 'the notification dispatcher.',
     recommendation:
-      'Recommend declaring it (sever, scoped through notification_devices) so the behaviour is stated rather than inherited from a default.',
-  },
-  {
-    table: 'collection_source_documents',
-    column: 'raw_payload',
-    coverage: 'awaiting_owner',
-    basis:
-      'The verbatim third-party post, author handle included. Not OUR user’s data — but it is somebody’s, and the table’s not_person entry is about US, not about them.',
-    writer: 'the Reddit collector.',
-    recommendation:
-      'Out of scope for person erasure; recommend the owner state a corpus retention policy so this is governed by a decision instead of by silence.',
-  },
-  {
-    table: 'collection_on_demand_requests',
-    column: 'term',
-    coverage: 'awaiting_owner',
-    basis:
-      'Typed search text, aggregated across people — but a term asked by exactly one person (distinct_user_count = 1) is that person’s query.',
-    writer: 'the on-demand collection path, from user searches.',
-    recommendation:
-      'Recommend not_person if a k-anonymity floor is enforced on promotion; otherwise it needs a rule.',
-  },
-  {
-    table: 'demand_scoring_candidates',
-    column: 'normalized_text',
-    coverage: 'awaiting_owner',
-    basis: 'Derived from typed queries; same single-asker concern as above.',
-    writer: 'the demand scorer, from signal/residue text.',
-    recommendation: 'Recommend the same k-anonymity floor, then not_person.',
-  },
-  {
-    table: 'llm_decision_records',
-    column: 'input',
-    coverage: 'awaiting_owner',
-    basis:
-      'Unschema’d JSON audit trail; whether a user’s query text ever lands here depends on the caller, not on this column.',
-    writer: 'LLM decision callers across the app.',
-    recommendation:
-      'Recommend an assertion at the writer that inputs are corpus-derived, then not_person.',
-  },
-  {
-    table: 'llm_batch_job_items',
-    column: 'request',
-    coverage: 'awaiting_owner',
-    basis:
-      'Same shape: batch payloads are corpus text TODAY, by convention only.',
-    writer: 'the batch job submitters.',
-    recommendation:
-      'Recommend the same writer-side assertion, then not_person.',
+      'NOT COVERED by the 2026-08-07 ruling (it is neither a contribution, telemetry-on-the-shell, money, nor a handle) and it is not a pure declaration change either: notification_devices.user_id is `delete_row`, which the eraser runs BEFORE every `sever`, so a sever rule added here would find its subquery already empty and no-op while reading as protection. Declaring it truthfully needs the eraser’s ordering to gain a "sever-before-the-owning-row-dies" phase. Held open deliberately rather than papered over.',
   },
 ];

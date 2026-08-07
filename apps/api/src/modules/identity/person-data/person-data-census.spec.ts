@@ -5,6 +5,7 @@ import {
   PERSON_DATA_RULES,
   type ColumnCoverageEntry,
 } from './person-data-class';
+import { retentionAction, retentionScopeColumns } from './person-data-scope';
 
 /**
  * THE CENSUS — TOTAL CLASSIFICATION (F9310, owner-approved 2026-08-07).
@@ -144,6 +145,79 @@ describe('person-data census — EVERY column in the schema is classified', () =
         `${rule.table}.${rule.column}:${rule.basis ?? 'MISSING-BASIS'}`,
       ).not.toContain('MISSING-BASIS');
     }
+  });
+
+  it('every BOUNDED horizon says WHAT expires — the row or the column', () => {
+    // The same lesson as `horizon` itself, one field along. Until 2026-08-07
+    // every bounded horizon sat on a column that NAMES the person, so "the
+    // promise expired" and "delete the row" were the same sentence and the
+    // sweep only knew how to DELETE. `users.stripe_customer_id` is a retained
+    // VALUE on a row that must never be deleted (the anonymized shell anchors
+    // the very financial records it is retained for) — and the row-DELETE it
+    // inherited by default matched nothing, so it read as enforcement while
+    // enforcing nothing, one scope fix away from destroying the shell.
+    //
+    // RED RECIPE: delete `horizonUnit` from any rule below and this names it.
+    const unstated = PERSON_DATA_RULES.filter(
+      (r) => r.disposition === 'retain' && typeof r.horizon === 'number',
+    )
+      .filter((r) => r.horizonUnit !== 'row' && r.horizonUnit !== 'column')
+      .map((r) => `${r.table}.${r.column}`);
+    expect(unstated).toEqual([]);
+  });
+
+  it('a `row` horizon scopes by a column that LOCATES the person; a `column` horizon does not', () => {
+    // The two units are not interchangeable and the mistake is silent in both
+    // directions: a 'row' unit on a value column builds `WHERE <value> =
+    // <userId>` (matches nothing, deletes nothing, looks fine), and a 'column'
+    // unit on the person key would null the key itself. So each unit is
+    // checked against the derivation the SQL is actually built from.
+    const declaredPersonKeys = new Map<string, Set<string>>();
+    for (const r of PERSON_DATA_RULES.filter((r) => r.personKey)) {
+      const set = declaredPersonKeys.get(r.table) ?? new Set<string>();
+      set.add(r.column);
+      declaredPersonKeys.set(r.table, set);
+    }
+
+    const wrong: string[] = [];
+    for (const rule of PERSON_DATA_RULES) {
+      if (rule.disposition !== 'retain' || typeof rule.horizon !== 'number') {
+        continue;
+      }
+      const key = `${rule.table}.${rule.column}`;
+      const scoped = retentionScopeColumns(rule);
+      if (rule.horizonUnit === 'column') {
+        // Scoped by SOMETHING ELSE — the table's declared person key.
+        if (scoped?.includes(rule.column)) wrong.push(`${key} (self-scoped)`);
+        if (retentionAction(rule) !== 'null_column') {
+          wrong.push(`${key} (not an UPDATE)`);
+        }
+      } else {
+        if (!scoped?.includes(rule.column)) {
+          wrong.push(`${key} (not self-scoped)`);
+        }
+        if (retentionAction(rule) !== 'delete_row') {
+          wrong.push(`${key} (not a DELETE)`);
+        }
+        // THE ONE THAT CATCHES THE REAL DEFECT. A row-DELETE scopes BY this
+        // column, so this column has to be able to hold a user id. Where the
+        // table has told us which columns do — a declared `personKey` — a
+        // row-unit horizon on any OTHER column is provably a statement that
+        // can never match: `WHERE stripe_customer_id = <a uuid>`.
+        //
+        // RED RECIPE: flip users.stripe_customer_id to `horizonUnit: 'row'`
+        // and this names it. (Tables that declare no personKey — user_reports,
+        // billing_* — are not checked here: nothing has said which of their
+        // columns locates a person, so there is no fact to check against.)
+        const keys = declaredPersonKeys.get(rule.table);
+        if (keys && keys.size > 0 && !keys.has(rule.column)) {
+          wrong.push(
+            `${key} (row horizon on a column the table does not declare as a person key — the DELETE would scope by a value, matching nothing)`,
+          );
+        }
+      }
+    }
+    expect(wrong).toEqual([]);
   });
 
   it('every coverage entry states WHY (a bare claim is not a classification)', () => {

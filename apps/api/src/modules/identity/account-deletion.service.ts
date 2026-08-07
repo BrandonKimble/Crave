@@ -10,6 +10,7 @@ import { EntitlementService } from '../entitlements/entitlement.service';
 import { BillingService } from '../billing/billing.service';
 import { CloudinaryService } from '../photos/cloudinary.service';
 import { PersonDataEraserService } from './person-data/person-data-eraser.service';
+import { reservedUsernameHash } from './reserved-username-hash';
 
 /**
  * In-app account deletion (Apple 5.1.1(v) — required for App Store review).
@@ -291,6 +292,14 @@ export class AccountDeletionService {
     // BURN THE HANDLE, DROP THE PERSON LINK — before the eraser (see the doc).
     // `reserved_usernames` is keyed by the handle with no person column: it
     // burns the name while retaining nothing about who held it.
+    //
+    // AND THE HANDLE ITSELF IS HASHED (owner ruling 2026-08-07). "No person
+    // column" is not the same as "no person": a table of every handle ever
+    // abandoned is a roster of who used to be here, since a handle is often a
+    // real name. The reservation only ever asks an EQUALITY question, so a
+    // keyed HMAC answers it exactly — see reserved-username-hash.ts, which
+    // both this writer and UsernameService's lookup go through so they cannot
+    // drift apart.
     const heldNames = await this.prisma.usernameHistory.findMany({
       where: { userId: user.userId },
       select: { username: true },
@@ -298,10 +307,11 @@ export class AccountDeletionService {
     const toBurn = new Set(heldNames.map((row) => row.username));
     if (user.username) toBurn.add(user.username);
     for (const username of toBurn) {
+      const hashed = reservedUsernameHash(username);
       await this.prisma.reservedUsername.upsert({
-        where: { username },
+        where: { username: hashed },
         update: {},
-        create: { username, reason: 'account_deleted' },
+        create: { username: hashed, reason: 'account_deleted' },
       });
     }
 
@@ -350,7 +360,12 @@ export class AccountDeletionService {
         authProviderUserId: null,
         revenueCatAppUserId: null,
         onboardingResponses: Prisma.DbNull,
-        // stripeCustomerId retained: financial records must stay auditable.
+        // stripeCustomerId retained — and the ruling now lives in
+        // PERSON_DATA_RULES (`retain`, horizon 2555, GDPR 17(3)(b)) rather
+        // than in this comment. It stayed here for months as a real decision
+        // written where nothing could enforce it: no basis the census checks,
+        // no horizon anybody was ever asked for, so "auditable forever" was
+        // the silent default. Declared 2026-08-07 (owner ruling).
       },
     });
 
