@@ -2294,9 +2294,28 @@ export class PollsService {
       await this.prisma.pollEndorsement.delete({ where: key });
       endorsed = false;
     } else {
-      await this.prisma.pollEndorsement.create({
-        data: { pollId, subjectType, subjectId, userId },
-      });
+      // F9440: check-then-act. Two concurrent taps from the same user both read
+      // existing=null; the composite PK lets exactly one create win. Catch the
+      // loser's P2002 and treat it as the idempotent "already endorsed" the winner
+      // produced (mirrors user-lists addItem) instead of 500ing. The tally is safe
+      // regardless (PK guarantees one row) — this only fixes the loser's error.
+      let createdNow = true;
+      try {
+        await this.prisma.pollEndorsement.create({
+          data: { pollId, subjectType, subjectId, userId },
+        });
+      } catch (error) {
+        if (
+          error instanceof Prisma.PrismaClientKnownRequestError &&
+          error.code === 'P2002'
+        ) {
+          // The concurrent winner already created the row AND recorded the
+          // append-only poll_vote signal below — the loser must NOT double-append.
+          createdNow = false;
+        } else {
+          throw error;
+        }
+      }
       endorsed = true;
 
       // DUAL-WRITE (delete with old logging — master plan §22, one-milestone hard deletion)
@@ -2311,38 +2330,39 @@ export class PollsService {
       // carries the endorsed candidate itself: the mutable pollEndorsement
       // row can be deleted, so the ledger must hold WHAT was voted for, not
       // just which poll.
-      this.signals.record({
-        kind: 'poll_vote',
-        userId,
-        subject: this.pollSignalSubject(poll),
-        geo: null,
-        placeId: poll.placeId,
-        meta: {
-          pollId,
-          endorsedSubjectId: subjectId,
-          endorsedSubjectType: subjectType,
-          // Vote-integrity audit fields (plans/vote-integrity-ladder.md):
-          // the one skip-forever-lose-forever capture. deviceKeyHmac =
-          // keyed HMAC of the keychain install id; ipHmac/ipSubnetHmac =
-          // keyed HMACs of the canonicalized IP/subnet. All equality-
-          // joinable, never reversible: the append-only ledger must hold NO
-          // redactable identifier, so the RAW device key (like the raw ip)
-          // never enters it — it lives only in the retention-manageable
-          // user_devices table, while the HMAC preserves every equality
-          // join. Absent inputs / absent SIGNAL_AUDIT_HMAC_KEY → fields
-          // omitted, never faked.
-          ...((): Record<string, string> => {
-            const deviceKeyHmac = hmacDeviceKey(
-              auditContext?.deviceKey,
-              (message) => this.logger.warn(message),
-            );
-            return deviceKeyHmac ? { deviceKeyHmac } : {};
-          })(),
-          ...(computeIpAuditHmacs(auditContext?.ip, (message) =>
-            this.logger.warn(message),
-          ) ?? {}),
-        },
-      });
+      if (createdNow)
+        this.signals.record({
+          kind: 'poll_vote',
+          userId,
+          subject: this.pollSignalSubject(poll),
+          geo: null,
+          placeId: poll.placeId,
+          meta: {
+            pollId,
+            endorsedSubjectId: subjectId,
+            endorsedSubjectType: subjectType,
+            // Vote-integrity audit fields (plans/vote-integrity-ladder.md):
+            // the one skip-forever-lose-forever capture. deviceKeyHmac =
+            // keyed HMAC of the keychain install id; ipHmac/ipSubnetHmac =
+            // keyed HMACs of the canonicalized IP/subnet. All equality-
+            // joinable, never reversible: the append-only ledger must hold NO
+            // redactable identifier, so the RAW device key (like the raw ip)
+            // never enters it — it lives only in the retention-manageable
+            // user_devices table, while the HMAC preserves every equality
+            // join. Absent inputs / absent SIGNAL_AUDIT_HMAC_KEY → fields
+            // omitted, never faked.
+            ...((): Record<string, string> => {
+              const deviceKeyHmac = hmacDeviceKey(
+                auditContext?.deviceKey,
+                (message) => this.logger.warn(message),
+              );
+              return deviceKeyHmac ? { deviceKeyHmac } : {};
+            })(),
+            ...(computeIpAuditHmacs(auditContext?.ip, (message) =>
+              this.logger.warn(message),
+            ) ?? {}),
+          },
+        });
     }
 
     await this.rebuildPollLeaderboard(pollId);

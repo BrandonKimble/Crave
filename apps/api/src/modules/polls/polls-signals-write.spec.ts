@@ -1,5 +1,5 @@
 import 'reflect-metadata';
-import { PollLeaderboardSubjectType } from '@prisma/client';
+import { PollLeaderboardSubjectType, Prisma } from '@prisma/client';
 import { PollsService } from './polls.service';
 import { SignalsService } from '../signals/signals.service';
 
@@ -199,6 +199,32 @@ describe('poll endorsement dual-write (§3 poll_vote signal)', () => {
 
     expect(result.endorsed).toBe(false);
     expect(pollsPrisma.pollEndorsement.delete).toHaveBeenCalledTimes(1);
+    expect(signalsPrisma.signal.create).not.toHaveBeenCalled();
+  });
+
+  it('a concurrent double-tap loser (create → P2002) returns endorsed:true WITHOUT throwing or double-appending the signal (F9440)', async () => {
+    const { service, signalsPrisma, pollsPrisma } = createHarness();
+    // Both taps read existing=null (findUnique default), then this tap loses the
+    // create race: the composite PK is already taken by the winner.
+    pollsPrisma.pollEndorsement.create.mockRejectedValueOnce(
+      new Prisma.PrismaClientKnownRequestError('unique', {
+        code: 'P2002',
+        clientVersion: 'test',
+      }),
+    );
+
+    const result = await service.togglePollEndorsement(
+      POLL_ID,
+      ENDORSED_SUBJECT_ID,
+      USER_ID,
+      PollLeaderboardSubjectType.entity,
+    );
+    await flush();
+
+    // Idempotent: the loser reports the winner's outcome, not a 500.
+    expect(result.endorsed).toBe(true);
+    // The winner already recorded the append-only poll_vote; the loser must NOT
+    // append a second one. Reverting the F9440 catch makes this throw (RED).
     expect(signalsPrisma.signal.create).not.toHaveBeenCalled();
   });
 });
