@@ -753,14 +753,16 @@ const checkLoadingCoverRuntimeContracts = () => {
     fail('missing initial_loading header source event for cover-over-toggle contract');
     return;
   }
+  // F6410: this gate used to require four fields the header-source payload no longer emits
+  // (hasStableHeaderChromeForRender / stableHeaderChromeLane / stableHeaderChromeOwner /
+  // shouldHideScrollHeaderForSurface), which made it permanently unsatisfiable. Re-expressed on
+  // the two surviving emitted facts: the strip renders (hasListHeaderForRender) and the cover is
+  // over it during initial loading (stableHeaderChromeCoveredByLoadingCover) — the events are
+  // already filtered to surfaceMode === 'initial_loading'.
   const validLoadingEvent = loadingHeaderEvents.find(
     (event) =>
-      event.hasStableHeaderChromeForRender === true &&
       event.hasListHeaderForRender === true &&
-      event.stableHeaderChromeLane === 'mounted_results_list_header' &&
-      event.stableHeaderChromeOwner === 'search_mounted_results_list' &&
-      event.stableHeaderChromeCoveredByLoadingCover === true &&
-      event.shouldHideScrollHeaderForSurface === true
+      event.stableHeaderChromeCoveredByLoadingCover === true
   );
   if (validLoadingEvent) {
     pass(
@@ -1177,9 +1179,9 @@ const checkDismissHandoffRuntimeContracts = () => {
       (event) =>
         event.line > dismissEvent.line &&
         event.line < nextBoundaryLine &&
-        (event.shouldShowResultsSurface !== true ||
-          event.hasListHeaderForRender !== true ||
-          event.hasStableHeaderChromeForRender !== true)
+        // F6410: hasStableHeaderChromeForRender is no longer emitted; dropped from this
+        // strip-only test, which now reads the two surviving emitted facts.
+        (event.shouldShowResultsSurface !== true || event.hasListHeaderForRender !== true)
     )
   );
   if (stripOnlyBeforeBoundary) {

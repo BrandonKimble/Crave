@@ -3,6 +3,23 @@ import { perfNow as resolvePerfNow } from './perf-clock';
 
 import type { RuntimePerfScenarioConfig } from './perf-scenario-runtime-store';
 import { usePerfScenarioRuntimeStore } from './perf-scenario-runtime-store';
+import type { SearchResultsHeaderSourceContractPayload } from '../screens/Search/runtime/shared/use-search-root-search-scene-surface-render-header-source-runtime';
+
+// Derived from the emitter's payload type so the two cannot drift: `emittedAtMs` is stamped by the
+// logger, every other key is a payload field. Adding or removing a field on
+// `SearchResultsHeaderSourceContractPayload` reds the `satisfies` below until this list matches.
+const SEARCH_RESULTS_HEADER_SOURCE_CONTRACT_ALLOWLIST = Object.keys({
+  event: true,
+  emittedAtMs: true,
+  effectiveFiltersHeaderHeightBase: true,
+  effectiveFiltersHeaderHeightForRender: true,
+  hasListHeaderForRender: true,
+  stableHeaderChromeCoveredByLoadingCover: true,
+  renderRowCount: true,
+  shouldForceListHeaderForInteraction: true,
+  shouldShowResultsSurface: true,
+  surfaceMode: true,
+} satisfies Record<keyof SearchResultsHeaderSourceContractPayload | 'emittedAtMs', true>);
 
 export const SEARCH_SUBMIT_DISMISS_REPEAT_SCENARIO = 'search_submit_dismiss_repeat';
 export const SEARCH_SUBMIT_DISMISS_INTERRUPT_SCENARIO = 'search_submit_dismiss_interrupt';
@@ -789,20 +806,7 @@ const QUIET_VISUAL_CONTRACT_FIELD_ALLOWLIST = new Map<string, string[]>([
       'shortcutsVisibleTarget',
     ],
   ],
-  [
-    'search_results_header_source_contract',
-    [
-      'event',
-      'emittedAtMs',
-      'effectiveFiltersHeaderHeightForRender',
-      'hasListHeaderForRender',
-      'hasStableHeaderChromeForRender',
-      'shouldForceListHeaderForInteraction',
-      'shouldShowResultsSurface',
-      'stableHeaderChromeLane',
-      'surfaceMode',
-    ],
-  ],
+  ['search_results_header_source_contract', SEARCH_RESULTS_HEADER_SOURCE_CONTRACT_ALLOWLIST],
   [
     'search_results_toggle_bar_contract',
     [

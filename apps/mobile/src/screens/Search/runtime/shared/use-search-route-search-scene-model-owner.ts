@@ -248,10 +248,12 @@ export const useSearchRouteSearchSceneModelOwner = ({
   );
   const routeSearchSceneScrollIndicatorInsets = React.useMemo(
     () => ({
-      top: routeSearchSceneRenderRuntime.resultsBodyHeaderHeightForRender,
+      // F1328/F6411: the measured results-header lane that fed this inset was deleted under
+      // the strip-band seam law; the top inset is structurally 0.
+      top: 0,
       bottom: RESULTS_BOTTOM_PADDING,
     }),
-    [routeSearchSceneRenderRuntime.resultsBodyHeaderHeightForRender]
+    []
   );
   const routeSearchSceneSecondaryListTransport = React.useMemo(
     () => ({

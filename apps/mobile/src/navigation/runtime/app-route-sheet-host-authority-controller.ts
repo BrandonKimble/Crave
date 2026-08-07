@@ -74,7 +74,6 @@ import { setOverlaySheetSceneSnapLock } from '../../overlays/overlaySheetSceneSn
 import {
   areSearchSurfaceVisualPoliciesEqual,
   getSearchSurfaceRuntime,
-  selectSearchSurfaceRouteGraphPolicy,
   selectSearchSurfaceVisualPolicy,
   type SearchSurfaceRuntimeSnapshot,
   type SearchSurfaceVisualPolicySnapshot,
@@ -717,7 +716,7 @@ class AppRouteSheetHostAuthorityController {
         }
       }),
       getSearchSurfaceRuntime().subscribeSelector(
-        selectSearchSurfaceRouteGraphPolicy,
+        selectSearchSurfaceVisualPolicy,
         () => {
           this.recomputeAll(true, 'searchSurfaceRuntime');
         },

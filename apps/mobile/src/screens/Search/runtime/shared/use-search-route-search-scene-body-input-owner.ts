@@ -87,8 +87,9 @@ export const useSearchRouteSearchSceneBodyInputOwner = ({
   const targetSnapPoints =
     routeSearchSceneModel.routeSearchSceneSheetTransportRuntime.routeSearchSceneSheetPlaneRuntime
       .snapPoints;
-  const effectiveResultsBodyHeaderHeight =
-    routeSearchSceneModel.routeSearchSceneRenderRuntime.resultsBodyHeaderHeightForRender;
+  // F1328/F6411: the measured results-header lane that fed this height was deleted under the
+  // strip-band seam law; the published body-layout header height is structurally 0.
+  const effectiveResultsBodyHeaderHeight = 0;
   const handoffPhaseRef = useLatestRef(handoffPhase);
   const hydratedResultsKeyRef = useLatestRef(hydratedResultsKey);
   const rawSceneBodyContentRef = useLatestRef(rawSceneBodyContent);

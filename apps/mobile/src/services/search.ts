@@ -13,6 +13,7 @@ import type {
   MapBounds,
   NaturalSearchRequest,
   Pagination,
+  QueryEntity,
   RestaurantProfile,
   RestaurantStatusPreview,
   SearchResponse,
@@ -25,11 +26,14 @@ import { SILENT, type ApiRequestBehaviorConfig } from './api';
 import { getCurrentLocale } from '../i18n/current-locale';
 
 export interface StructuredSearchRequest {
+  // F3803: each group is a real element type (shared `QueryEntity`), not
+  // `unknown[]` — a mistyped or misnamed entity field now reds tsc here and,
+  // via `QueryEntityDto implements QueryEntity`, on the server too.
   entities: {
-    restaurants?: unknown[];
-    food?: unknown[];
-    foodAttributes?: unknown[];
-    restaurantAttributes?: unknown[];
+    restaurants?: QueryEntity[];
+    food?: QueryEntity[];
+    foodAttributes?: QueryEntity[];
+    restaurantAttributes?: QueryEntity[];
   };
   bounds?: MapBounds;
   // Screen-accurate viewport polygon ([lng, lat] pairs, pitch/twist-aware). When present the

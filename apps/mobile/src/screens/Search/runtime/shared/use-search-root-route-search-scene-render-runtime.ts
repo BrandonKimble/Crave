@@ -32,10 +32,6 @@ export const useSearchRootRouteSearchSceneRenderRuntime = ({
       activeList: 'primary' as const,
       effectiveFiltersHeaderHeightForRender:
         routeSearchSceneSurfaceRenderHeaderSourceRuntime.effectiveFiltersHeaderHeightForRenderLive,
-      // F1328: the measured results-header lane this fed was deleted under the strip-band
-      // seam law; the field stays at 0 so consumer contracts (scroll-indicator insets,
-      // body layout snapshot) didn't have to change shape.
-      resultsBodyHeaderHeightForRender: 0,
       resultsContentContainerStyle: {
         paddingTop: 0,
         paddingBottom: RESULTS_BOTTOM_PADDING,

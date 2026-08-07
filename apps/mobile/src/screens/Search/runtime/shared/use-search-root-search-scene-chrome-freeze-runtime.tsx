@@ -19,10 +19,6 @@ export const useSearchRootSearchSceneChromeFreezeRuntime = ({
   filtersHeaderRuntime,
   effectiveFiltersHeaderHeight,
 }: UseSearchRootSearchSceneChromeFreezeRuntimeArgs) => {
-  // F1735: this required the redraw chrome-deferred flag, which the fossil redraw
-  // coordinator pinned false by construction — the freeze could never engage. Pinned to
-  // its only reachable value.
-  const shouldFreezeResultsChrome = false;
   const searchSceneChromeFreezeRuntimeRef = React.useRef<ReturnType<
     typeof createSearchRootSearchSceneChromeFreezeRuntime
   > | null>(null);
@@ -32,7 +28,6 @@ export const useSearchRootSearchSceneChromeFreezeRuntime = ({
   }
 
   const freezeRuntimeValue = searchSceneChromeFreezeRuntimeRef.current.resolve({
-    shouldFreezeResultsChrome,
     filtersHeaderRuntime,
     // Shortcut toggle title swap: a shortcut search toggled to the sibling tab shows the sibling
     // shortcut's label ("Best restaurants" ⇄ "Best dishes"), swapped optimistically on press-up

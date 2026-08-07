@@ -28,12 +28,12 @@ type UseSearchResultsPanelCardRenderRuntimeArgs = Pick<
 };
 
 export type SearchResultsPanelCardRenderRuntime = {
-  renderDishCard: (item: FoodResult, index: number) => React.ReactNode;
+  renderDishCard: (item: FoodResult, index: number) => React.ReactElement | null;
   renderRestaurantCard: (
     restaurant: RestaurantResult,
     index: number,
     preparedDescriptor?: RestaurantResultCardDescriptor | null
-  ) => React.ReactNode;
+  ) => React.ReactElement | null;
 };
 
 type MountedResultsCardMetricsSnapshot = {

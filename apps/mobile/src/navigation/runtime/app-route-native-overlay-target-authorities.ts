@@ -42,7 +42,6 @@ import type {
 import {
   areSearchSurfaceVisualPoliciesEqual,
   getSearchSurfaceRuntime,
-  selectSearchSurfaceRouteGraphPolicy,
   selectSearchSurfaceVisualPolicy,
   type SearchSurfaceVisualPolicySnapshot,
 } from '../../screens/Search/runtime/surface/search-surface-runtime';
@@ -357,7 +356,7 @@ export const createAppRouteNativeOverlayTargetAuthorities = ({
         routeScenePolicyAuthority.subscribe(onChange),
         routeSheetSnapSessionAuthority.subscribe(onChange),
         getSearchSurfaceRuntime().subscribeSelector(
-          selectSearchSurfaceRouteGraphPolicy,
+          selectSearchSurfaceVisualPolicy,
           onChange,
           areSearchSurfaceVisualPoliciesEqual
         ),
@@ -1016,7 +1015,7 @@ export const createAppRouteNativeOverlayTargetAuthorities = ({
       recomputeLanes(SHEET_SESSION_NATIVE_OVERLAY_TARGET_LANES, 'sheetSession')
     ),
     getSearchSurfaceRuntime().subscribeSelector(
-      selectSearchSurfaceRouteGraphPolicy,
+      selectSearchSurfaceVisualPolicy,
       () => recomputeLanes(POLICY_NATIVE_OVERLAY_TARGET_LANES, 'searchSurface'),
       areSearchSurfaceVisualPoliciesEqual
     ),

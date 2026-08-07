@@ -72,7 +72,6 @@ import {
 import {
   areSearchSurfaceVisualPoliciesEqual,
   getSearchSurfaceRuntime,
-  selectSearchSurfaceRouteGraphPolicy,
   selectSearchSurfaceVisualPolicy,
 } from '../../screens/Search/runtime/surface/search-surface-runtime';
 import type { RouteSceneSwitchTransitionPhase } from './app-overlay-route-transition-contract';
@@ -1143,7 +1142,7 @@ class AppRouteSceneStackLayerStateController {
         recomputeTransitionSlice('sceneChrome:pollsPrewarm');
       }),
       getSearchSurfaceRuntime().subscribeSelector(
-        selectSearchSurfaceRouteGraphPolicy,
+        selectSearchSurfaceVisualPolicy,
         () => {
           recomputeTransitionSlice('searchSurfaceRuntime');
           if (getSearchSurfaceRuntime().getSnapshot().dismissTransaction == null) {

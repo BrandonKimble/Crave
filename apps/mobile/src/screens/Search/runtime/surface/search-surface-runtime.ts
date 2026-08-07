@@ -149,10 +149,6 @@ export const areSearchSurfaceVisualPoliciesEqual = (
   left.bottomBandOwner === right.bottomBandOwner &&
   left.sheetClipMode === right.sheetClipMode;
 
-export const selectSearchSurfaceRouteGraphPolicy = (
-  snapshot: SearchSurfaceRuntimeSnapshot
-): SearchSurfaceVisualPolicySnapshot => selectSearchSurfaceVisualPolicy(snapshot);
-
 export type NavSilhouetteRuntimeProjection = {
   owner: 'poll_page' | 'results_page' | 'held_results_page';
   material: 'frosted';

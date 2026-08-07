@@ -3388,10 +3388,11 @@ if (!shouldAssertResultsDismissContracts) {
         if (sourceEvent.line <= dismissEvent.line || sourceEvent.line >= nextBoundaryLine) {
           return false;
         }
+        // F6410: hasStableHeaderChromeForRender is no longer emitted; the strip-only test
+        // reads the two surviving emitted facts.
         return (
           sourceEvent.shouldShowResultsSurface !== true ||
-          sourceEvent.hasListHeaderForRender !== true ||
-          sourceEvent.hasStableHeaderChromeForRender !== true
+          sourceEvent.hasListHeaderForRender !== true
         );
       })
   );
@@ -3401,15 +3402,13 @@ if (!shouldAssertResultsDismissContracts) {
         sourceEvent.line > badPreHandoffHeaderSourceSample.dismissEvent.line &&
         sourceEvent.line < badPreHandoffHeaderSourceSample.nextBoundaryLine &&
         (sourceEvent.shouldShowResultsSurface !== true ||
-          sourceEvent.hasListHeaderForRender !== true ||
-          sourceEvent.hasStableHeaderChromeForRender !== true)
+          sourceEvent.hasListHeaderForRender !== true)
     );
     fail(
       `dismiss pre-boundary source sample dropped cards/header to strip-only at line ${
         badSource?.line ?? badPreHandoffHeaderSourceSample.dismissEvent.line
       }: ${JSON.stringify({
         hasListHeaderForRender: badSource?.hasListHeaderForRender ?? null,
-        hasStableHeaderChromeForRender: badSource?.hasStableHeaderChromeForRender ?? null,
         shouldShowResultsSurface: badSource?.shouldShowResultsSurface ?? null,
         surfaceMode: badSource?.surfaceMode ?? null,
       })}`
@@ -3980,11 +3979,11 @@ if (dismissBottomEvents.length > 0) {
     event.runtimeConfigVisible === true &&
     event.canRenderSurface === true &&
     event.isRenderable === true;
+  // F6410: hasStableHeaderChromeForRender is no longer emitted; the release test reads the two
+  // surviving emitted facts.
   const isResultsHeaderReleaseEvent = (event) =>
     event.line != null &&
-    (event.hasStableHeaderChromeForRender === false ||
-      event.hasListHeaderForRender === false ||
-      event.shouldShowResultsSurface === false);
+    (event.hasListHeaderForRender === false || event.shouldShowResultsSurface === false);
   const badHeaderRelease = dismissPressEvents.find((dismissEvent) => {
     const releaseLine =
       dismissBottomEvents.find((bottomEvent) => bottomEvent.line > dismissEvent.line)?.line ??

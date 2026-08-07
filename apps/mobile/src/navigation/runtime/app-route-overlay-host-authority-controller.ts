@@ -379,6 +379,12 @@ const areChromeContainerSnapshotsEqual = (
     return false;
   }
 
+  // INTENTIONAL EXEMPTION: `shouldHideBottomNavForRender` only drives layout of
+  // the suggestion overlay's bottom-nav gap, so while the overlay is hidden
+  // (`isSuggestionOverlayVisible === false`) a change to it produces no visible
+  // difference and must not force a publish. When the overlay IS visible the
+  // field is compared normally. Pinned so a future change that makes this field
+  // matter while hidden knows it is deliberately dropped here.
   return (
     !left.isSuggestionOverlayVisible ||
     left.shouldHideBottomNavForRender === right.shouldHideBottomNavForRender
@@ -389,6 +395,14 @@ const areChromeSuggestionSurfacePropsEqual = (
   left: SearchOverlayChromeSuggestionSurfaceProps,
   right: SearchOverlayChromeSuggestionSurfaceProps
 ): boolean => {
+  // INTENTIONAL EXEMPTION: `navBarHeight` and `shouldHideBottomNav` are layout
+  // inputs that only affect where the suggestion surface sits. When the surface
+  // is hidden AND inert to touch (`shouldShowSuggestionSurface === false` and
+  // `pointerEvents === 'none'` on both sides) those layout fields cannot produce
+  // a visible difference, so they are normalised away and must not force a
+  // publish. When the surface is showable or touchable they are compared as
+  // ordinary shallow fields. Pinned so a future change that makes either field
+  // matter while the surface is hidden knows it is deliberately dropped here.
   if (
     left.shouldShowSuggestionSurface === false &&
     right.shouldShowSuggestionSurface === false &&

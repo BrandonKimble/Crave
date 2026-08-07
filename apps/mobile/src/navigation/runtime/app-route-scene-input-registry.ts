@@ -26,8 +26,8 @@ export type AppRouteSceneInputKey = (typeof APP_ROUTE_SCENE_INPUT_KEYS)[number];
 
 /**
  * Scenes whose body runs a live data lane the scene-stack tracks for activity
- * (mount / subscribe / surface-diff). SINGLE source of truth — three call sites
- * gate on this, and three hand-kept copies could silently drift apart. NOT
+ * (mount / subscribe / surface-diff). SINGLE source of truth — every call site
+ * gates on this constant, so hand-kept copies cannot silently drift apart. NOT
  * derived from metadata: `search` also has live data but is intentionally
  * excluded because it renders through the bespoke search-surface body path, not
  * the normal scene-body data lane.

@@ -53,16 +53,8 @@ export const useSearchRootRouteSearchSceneSelectorResultsRuntime = ({
     setHydratedResultsKeySync:
       routeSearchSceneDataRuntime.routeSearchSceneHydrationKeyRuntime.setHydratedResultsKeySync,
     phaseBMaterializerRef: routeSearchSceneDataRuntime.routeSearchScenePhaseBMaterializerRef,
-    renderDishCard: ((item, index) =>
-      routeSearchSceneCardRenderRuntime.renderDishCard(item, index)) as Parameters<
-      typeof useSearchResultsReadModelSelectors
-    >[0]['renderDishCard'],
-    renderRestaurantCard: ((item, index, preparedDescriptor) =>
-      routeSearchSceneCardRenderRuntime.renderRestaurantCard(
-        item,
-        index,
-        preparedDescriptor
-      )) as Parameters<typeof useSearchResultsReadModelSelectors>[0]['renderRestaurantCard'],
+    renderDishCard: routeSearchSceneCardRenderRuntime.renderDishCard,
+    renderRestaurantCard: routeSearchSceneCardRenderRuntime.renderRestaurantCard,
     exactMatchWriter: readModelPolicyWriters.exactMatch,
     readModelProjection: readModelPolicyWriters.projection,
     shouldRetainCommittedResultsForPolicy:

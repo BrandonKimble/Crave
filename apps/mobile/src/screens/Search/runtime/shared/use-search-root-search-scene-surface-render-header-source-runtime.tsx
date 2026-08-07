@@ -15,6 +15,24 @@ type UseSearchRootSearchSceneSurfaceRenderHeaderSourceRuntimeArgs = {
   >;
 };
 
+/**
+ * The exact shape emitted under the `search_results_header_source_contract` event. The quiet-mode
+ * field allowlist in perf-scenario-attribution derives its key set from this type via
+ * `keyof`, so adding or removing a field here (or in the emitter below, which is annotated with
+ * this type) is a compile error until the allowlist is updated — the parallel key list cannot drift.
+ */
+export type SearchResultsHeaderSourceContractPayload = {
+  event: 'search_results_header_source_contract';
+  effectiveFiltersHeaderHeightBase: number;
+  effectiveFiltersHeaderHeightForRender: number;
+  hasListHeaderForRender: boolean;
+  stableHeaderChromeCoveredByLoadingCover: boolean;
+  renderRowCount: number | null;
+  shouldForceListHeaderForInteraction: boolean;
+  shouldShowResultsSurface: boolean;
+  surfaceMode: ReturnType<typeof useSearchRootSearchSceneSurfacePanelStateRuntime>['surfaceMode'];
+};
+
 export const useSearchRootSearchSceneSurfaceRenderHeaderSourceRuntime = ({
   listHeader,
   effectiveFiltersHeaderHeightBase,
@@ -52,7 +70,7 @@ export const useSearchRootSearchSceneSurfaceRenderHeaderSourceRuntime = ({
     //
     // One fact, one column: `hasListHeaderForRender`. The two genuinely distinct fields — the
     // measured height and whether the cover is hiding the chrome — stay.
-    const contractPayload = {
+    const contractPayload: SearchResultsHeaderSourceContractPayload = {
       event: 'search_results_header_source_contract',
       effectiveFiltersHeaderHeightBase,
       effectiveFiltersHeaderHeightForRender: runtime.effectiveFiltersHeaderHeightForRenderLive,
