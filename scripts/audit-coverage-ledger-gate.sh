@@ -33,11 +33,16 @@ if [[ ! -f "$LEDGER" ]]; then
   exit 1
 fi
 
-# Data rows only: a leading '| ', six pipe-delimited cells, not the header and
-# not the '---' separator.
+# Data rows only: a leading '| ', not the header and not the '---' separator.
+#
+# F5101: this used to require NF == 8 — exactly six cells. A row whose FINDINGS
+# text contained a pipe had NF > 8 and was SILENTLY SKIPPED: the count dropped
+# while the gate printed "pass", and ~29 paths were exempt from the uniqueness
+# guarantee this gate exists to give. The path is $2, so pipes in later cells
+# cannot affect the key — the NF condition bought nothing and cost coverage.
 paths="$(
   awk -F'|' '
-    /^\| / && NF == 8 {
+    /^\| / && NF >= 8 {
       p = $2
       gsub(/^[ \t]+|[ \t]+$/, "", p)
       if (p == "path") next

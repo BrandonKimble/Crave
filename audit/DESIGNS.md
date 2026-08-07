@@ -2655,3 +2655,35 @@ reader inherits the refutation, not the hunch.
 overlay-relay family: the legacy write path is not deprecated but IMPLEMENTED — a
 defineProperty setter routes it into the new one, so the two paths are the same code and
 cannot diverge. Unrepresentability for six lines.
+
+---
+
+## D94 — api-tails P3 ratified; the coverage gate's pipe exemption closed (2026-08-06)
+
+**All seven D91 items landed, vacuity-first every time** (196/196 green under the reverted
+118x bug BEFORE the rewire, then 3 red after; 167/167 green under a 999 ceiling, then
+straddled). Deviations all ratified: the merge extracted to a sibling module so the spec
+avoids the Nest graph (the gemini-thinking.ts precedent); the wipe anchor as a CASE inside
+jsonb_array_elements because a set-returning FROM runs before WHERE (a non-array value
+would otherwise error the whole wipe); five double-seams covered instead of three because
+D91's triplet did not match the rows — the lane covered BOTH readings rather than picking.
+
+**The wipe-anchor proof found real data:** two entities in the austinfood corpus are
+anchored ONLY by a poll comment span — the current wipe would have deleted them. Preserved
+5736 -> 5746 on the dry run. Owner notified, not asked; the change is strictly protective.
+
+**F5100 — APPROVED, queued:** `recordNoMatchCandidates` is the identical silent twin of
+the F4907 fix; the lane correctly filed rather than improvising on a money path. Same
+F205 form, next api P3.
+
+**F5101 — FIXED BY ME, the guard-that-cannot-fail shape in our own primary-key gate:**
+NF==8 silently exempted every row whose findings cell contained a pipe (~36 paths outside
+the uniqueness guarantee). Path is $2; the condition bought nothing. Mutation-proven on
+the exempt class: old parse zero duplicates, new gate names the path. This is the SECOND
+defect found in the coverage tooling by a lane using it honestly (F2600 was the first) —
+the tooling keeps earning its own audits.
+
+Cross-lane note: the mobile survivors lane committed the shared ledgers wholesale under
+its message, sweeping this lane's rows — content intact, gates green, and the eighth
+sweep instance is on ledger files where wholesale commits are the practical norm; the
+LANE_PATHS fence covers production files, which is where sweeps did damage.
