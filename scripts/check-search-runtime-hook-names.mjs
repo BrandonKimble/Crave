@@ -184,6 +184,61 @@ function callsAHook(code) {
   return /\buse[A-Z][A-Za-z0-9_]*\s*[(<]/.test(withoutTypeRefs);
 }
 
+/**
+ * ORPHAN CHECK (F4100/D83, added 2026-08-06).
+ *
+ * THE SECOND INCIDENT. `use-search-root-foreground-effects-runtime-args.ts`
+ * sat in this directory with ZERO importers — its only repo-wide mentions were
+ * three superseded plans/ docs and its own coverage row. It survived the D45
+ * repacker collapse and the D70 rename sweep because both keyed on files that
+ * DO have importers, and it survived knip because knip does not glob
+ * per-workspace (F63/D63). The hook-name check above could not see it either:
+ * that gate asks whether a name is HONEST, never whether the file is REACHED.
+ * Those are different questions, and only one of them was being asked.
+ *
+ * WHAT THIS PROVES. Every `use-*.ts`/`use-*.tsx` in runtime/shared is named by
+ * at least one module specifier somewhere in apps/mobile/src (excluding its own
+ * file). Dynamic forms count — `import('...')`, `require('...')`,
+ * `jest.mock('...')` — because a module reached only at runtime or only by a
+ * spec is still reached; D83 records a file legitimately banked by a spec's
+ * require(), and a gate that missed that would demand a live file's deletion.
+ *
+ * THE STATED BIAS: this matches on the specifier's LAST PATH SEGMENT, not on a
+ * resolved path. Two files with the same stem in different directories credit
+ * each other. That over-credits, which is the SAFE direction for a deletion
+ * gate: it can fail to report an orphan, but it cannot accuse a live file. A
+ * gate whose failure mode is "delete this file" must never be the loose one.
+ */
+const MOBILE_SRC = join(REPO_ROOT, 'apps/mobile/src');
+
+function collectSourceFiles(dir) {
+  const out = [];
+  for (const entry of readdirSync(dir, { withFileTypes: true })) {
+    if (entry.name === 'node_modules') continue;
+    const abs = join(dir, entry.name);
+    if (entry.isDirectory()) out.push(...collectSourceFiles(abs));
+    else if (/\.(ts|tsx|js|jsx|mjs|cjs)$/.test(entry.name)) out.push(abs);
+  }
+  return out;
+}
+
+/**
+ * Every quoted string in the stripped code that could be a module specifier:
+ * it must look like a path (relative, or containing a `/`), which keeps plain
+ * words and copy strings out. Template literals are read as raw text — a
+ * `${}` inside one simply will not match a stem, and that is the over-credit
+ * direction again.
+ */
+function referencedModuleStems(code) {
+  const stems = new Set();
+  for (const match of code.matchAll(/['"`]([^'"`\n]*\/[^'"`\n/]+|\.[^'"`\n/]+)['"`]/g)) {
+    const specifier = match[1];
+    const segment = specifier.slice(specifier.lastIndexOf('/') + 1);
+    stems.add(segment.replace(/\.(ts|tsx|js|jsx)$/, ''));
+  }
+  return stems;
+}
+
 // Missing tooling is a FAILURE, never a pass.
 if (!existsSync(SHARED_DIR)) {
   console.error(
@@ -222,7 +277,53 @@ if (liars.length) {
   );
   process.exit(1);
 }
+// Missing tooling is a FAILURE, never a pass — same rule as SHARED_DIR above.
+if (!existsSync(MOBILE_SRC)) {
+  console.error(
+    `FAIL: ${MOBILE_SRC} does not exist, so the orphan check would credit ` +
+      `NOTHING and report every file as an orphan. Retarget it deliberately.`,
+  );
+  process.exit(1);
+}
+
+const importerFiles = collectSourceFiles(MOBILE_SRC);
+if (importerFiles.length === 0) {
+  console.error(
+    'FAIL: zero importer files scanned under apps/mobile/src. An orphan ' +
+      'check over an empty corpus reports every file as an orphan; an empty ' +
+      'corpus is a broken scan, not a finding.',
+  );
+  process.exit(1);
+}
+
+const referencedStems = new Set();
+for (const abs of importerFiles) {
+  // A file cannot keep ITSELF alive: skip the subject's own source when
+  // collecting, or a self-referential path string would credit it.
+  const isSubject = abs.startsWith(SHARED_DIR) && /[\\/]use-[^\\/]*\.tsx?$/.test(abs);
+  const stems = referencedModuleStems(stripComments(readFileSync(abs, 'utf8')));
+  if (isSubject) stems.delete(abs.slice(abs.lastIndexOf('/') + 1).replace(/\.tsx?$/, ''));
+  for (const stem of stems) referencedStems.add(stem);
+}
+
+const orphans = files.filter((f) => !referencedStems.has(f.replace(/\.tsx?$/, '')));
+
+if (orphans.length) {
+  console.error(
+    `search-runtime-hook-names FAILED — ${orphans.length} use-* file(s) in ` +
+      `runtime/shared are named by NO module specifier anywhere in ` +
+      `apps/mobile/src:\n` +
+      orphans.map((f) => `  - ${f}`).join('\n') +
+      '\nAn unreferenced module in a leaf directory is deletable by ' +
+      'definition (F4100). Delete it, or — if it is genuinely reached by a ' +
+      'path this check cannot see — say so at the call site, because nothing ' +
+      'else in the guard set asks whether this layer is reachable at all.',
+  );
+  process.exit(1);
+}
+
 console.log(
   `search-runtime-hook-names OK — ${files.length} use-* file(s) in ` +
-    `runtime/shared each call a hook.`,
+    `runtime/shared each call a hook, and each is referenced by at least one ` +
+    `of the ${importerFiles.length} source files under apps/mobile/src.`,
 );
