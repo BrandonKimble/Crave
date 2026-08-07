@@ -11,7 +11,6 @@ import {
 } from '../surface/search-surface-runtime';
 
 export type ResultsPresentationPolicyFactsShellInputs = {
-  hasActiveSearchContent: boolean;
   closeTransitionState: SearchCloseTransitionState;
   holdDockedLane: boolean;
   surfaceVisualPolicy: SearchSurfaceVisualPolicySnapshot;
@@ -31,7 +30,6 @@ export type ResultsPresentationPolicyFactsSnapshot = ResultsPresentationPolicyFa
 };
 
 export type ResultsPresentationPolicyFactsLaneChange = {
-  hasActiveSearchContent: boolean;
   closeTransitionState: SearchCloseTransitionState;
   holdDockedLane: boolean;
   surfaceVisualPolicy: SearchSurfaceVisualPolicySnapshot;
@@ -65,7 +63,6 @@ const UNRESOLVED_PANEL_INPUTS: ResultsPresentationPolicyFactsSnapshot['unresolve
 ];
 
 const createSnapshot = ({
-  hasActiveSearchContent,
   closeTransitionState,
   holdDockedLane,
   surfaceVisualPolicy,
@@ -74,12 +71,10 @@ const createSnapshot = ({
   policyFacts: ResultsPresentationAuthorityPolicyFactsSnapshot;
 }): ResultsPresentationPolicyFactsSnapshot => {
   const searchSheetContentLane = resolveSearchSheetContentLane({
-    hasActiveSearchContent,
     surfaceVisualPolicy,
   });
 
   return {
-    hasActiveSearchContent,
     closeTransitionState,
     holdDockedLane,
     surfaceVisualPolicy,
@@ -96,7 +91,6 @@ const areShellInputsEqual = (
     policyFacts: ResultsPresentationAuthorityPolicyFactsSnapshot;
   }
 ): boolean =>
-  current.hasActiveSearchContent === next.hasActiveSearchContent &&
   current.closeTransitionState === next.closeTransitionState &&
   current.holdDockedLane === next.holdDockedLane &&
   current.surfaceVisualPolicy === next.surfaceVisualPolicy &&
@@ -108,7 +102,6 @@ export const createResultsPresentationPolicyFactsController = ({
   policyFacts: ResultsPresentationAuthorityPolicyFactsSnapshot;
 }): ResultsPresentationPolicyFactsController => {
   const initialInputs = {
-    hasActiveSearchContent: false,
     closeTransitionState: null,
     holdDockedLane: false,
     surfaceVisualPolicy: EMPTY_SEARCH_SURFACE_VISUAL_POLICY,
@@ -123,7 +116,6 @@ export const createResultsPresentationPolicyFactsController = ({
       if (!areShellInputsEqual(snapshot, inputs)) {
         snapshot = createSnapshot(inputs);
         pendingSearchSheetContentLaneChange = {
-          hasActiveSearchContent: snapshot.hasActiveSearchContent,
           closeTransitionState: snapshot.closeTransitionState,
           holdDockedLane: snapshot.holdDockedLane,
           surfaceVisualPolicy: snapshot.surfaceVisualPolicy,

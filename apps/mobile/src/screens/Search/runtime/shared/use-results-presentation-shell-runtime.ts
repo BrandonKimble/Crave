@@ -71,7 +71,6 @@ export const useResultsPresentationShellRuntime = ({
     areSearchSurfaceVisualPoliciesEqual
   );
   const policyFactsSnapshot = policyFactsControllerRef.current.updateShellFacts({
-    hasActiveSearchContent,
     closeTransitionState: shellLocalState.searchCloseTransitionState,
     holdDockedLane: shellLocalState.holdDockedLane,
     surfaceVisualPolicy,

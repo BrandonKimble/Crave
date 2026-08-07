@@ -8,7 +8,6 @@ import type { SearchSurfaceVisualPolicySnapshot } from '../surface/search-surfac
 export const resolveSearchSheetContentLane = ({
   surfaceVisualPolicy,
 }: {
-  hasActiveSearchContent: boolean;
   surfaceVisualPolicy: SearchSurfaceVisualPolicySnapshot;
 }): SearchSheetContentLane => {
   if (surfaceVisualPolicy.phase === 'results_dismissing') {
