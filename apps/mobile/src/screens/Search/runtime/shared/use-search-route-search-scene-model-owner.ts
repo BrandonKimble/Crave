@@ -23,7 +23,8 @@ import { syncSearchResultsPreMeasureOverlay } from '../../../../overlays/SearchR
 import { useSearchRootRouteSearchSceneDataRuntime } from './use-search-root-route-search-scene-data-runtime';
 import { useSearchRootRouteSearchSceneReadModelRuntime } from './use-search-root-route-search-scene-read-model-runtime';
 import { useSearchRootRouteSearchSceneRenderRuntime } from './use-search-root-route-search-scene-render-runtime';
-import { useSearchRootRouteSearchSceneSurfacePanelPartsRuntime } from './use-search-root-route-search-scene-surface-panel-parts-runtime';
+import { computeSceneChromeHeight } from '../../../../navigation/runtime/scene-chrome-geometry';
+import { useSearchRootSearchScenePanelSurfaceCompositeRuntime } from './use-search-root-search-scene-panel-surface-composite-runtime';
 import { useSearchRootRouteSearchSceneSurfaceTransportRuntime } from './use-search-root-route-search-scene-surface-transport-runtime';
 import { useSearchRootSearchScenePanelSurfaceRenderRuntime } from './use-search-root-search-scene-panel-surface-render-runtime';
 import { useSearchRootSearchSceneShellSpecPublicationRuntime } from './use-search-root-search-scene-shell-spec-publication-runtime';
@@ -116,24 +117,24 @@ export const useSearchRouteSearchSceneModelOwner = ({
     routeSearchSceneReadModelRuntime,
     routeSearchSceneSurfacePanelStateRuntime,
   });
-  const routeSearchSceneSurfaceStateRuntime = React.useMemo(
-    () => ({
-      routeSearchSceneSurfacePanelStateRuntime,
-      routeSearchSceneRenderRuntime,
-    }),
-    [routeSearchSceneRenderRuntime, routeSearchSceneSurfacePanelStateRuntime]
-  );
-  const routeSearchSceneSurfacePanelPartsRuntime =
-    useSearchRootRouteSearchSceneSurfacePanelPartsRuntime({
-      routeSearchSceneDataRuntime,
-      routeSearchSceneSurfaceStateRuntime,
+  const routeSearchScenePanelSurfaceCompositeRuntime =
+    useSearchRootSearchScenePanelSurfaceCompositeRuntime({
+      // The COMPUTED chrome fact (strip-band seam law §4) — the measured lane and its
+      // magic 64 fallback are deleted.
+      resolvedResultsHeaderHeightForRender: computeSceneChromeHeight('search'),
+      shouldShowResultsSurface: routeSearchSceneSurfacePanelStateRuntime.shouldShowResultsSurface,
+      surfaceMode: routeSearchSceneSurfacePanelStateRuntime.surfaceMode,
+      resolvedResults:
+        routeSearchSceneDataRuntime.routeSearchSceneResolvedResultsRuntime.resolvedResults,
+      activeTab: routeSearchSceneDataRuntime.routeSearchSceneResultsRuntimeState.activeTab,
+      onDemandNotice: routeSearchSceneDataRuntime.routeSearchSceneOnDemandNotice,
+      resolutionFailure:
+        routeSearchSceneDataRuntime.routeSearchSceneResultsRuntimeState.resolutionFailure,
     });
   const routeSearchScenePanelSurfaceRenderRuntime =
     useSearchRootSearchScenePanelSurfaceRenderRuntime({
-      backgroundComponent:
-        routeSearchSceneSurfacePanelPartsRuntime.routeSearchScenePanelBackgroundComponent,
-      overlayComponent:
-        routeSearchSceneSurfacePanelPartsRuntime.routeSearchScenePanelOverlayComponent,
+      backgroundComponent: routeSearchScenePanelSurfaceCompositeRuntime.backgroundComponent,
+      overlayComponent: routeSearchScenePanelSurfaceCompositeRuntime.overlayComponent,
       searchSceneSheetPlaneRuntime:
         routeSearchSceneSheetTransportRuntime.routeSearchSceneSheetPlaneRuntime,
     });

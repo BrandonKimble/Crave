@@ -4,7 +4,9 @@ import { useSearchForegroundLaunchIntentRuntime } from './use-search-foreground-
 import { useSearchForegroundInteractionRenderRegistrationRuntime } from './use-search-foreground-interaction-effects-runtime';
 import { useSearchRootForegroundEffectsRegistrationArgs } from './use-search-root-foreground-effects-registration-args';
 import { useSearchRootForegroundCommandRuntime } from './use-search-root-foreground-command-runtime';
-import { useSearchRootForegroundTransientRuntime } from './use-search-root-foreground-transient-runtime';
+import { useSearchForegroundTransientController } from './use-search-foreground-transient-controller';
+import { useSearchRootForegroundEditingRuntimeArgs } from './use-search-root-foreground-editing-runtime-args';
+import { useSearchRootForegroundOverlayRuntimeArgs } from './use-search-root-foreground-overlay-runtime-args';
 import { useSearchRootControlAuthorityRuntime } from './use-search-root-control-authority-runtime';
 import { useSearchRootControlProfileExperienceRuntime } from './use-search-root-control-profile-experience-runtime';
 import { useSearchRootControlResultsExperienceRuntime } from './use-search-root-control-results-experience-runtime';
@@ -162,12 +164,9 @@ export const useSearchRootRuntimeControlStageRuntime = ({
         .suggestionPanelStateController,
     ]
   );
-  const foregroundTransientHandlersRuntime = useSearchRootForegroundTransientRuntime({
+  const foregroundEditingRuntimeArgs = useSearchRootForegroundEditingRuntimeArgs({
     stateFoundationLane: stateAssemblyRuntime.stateFoundationLane,
     rootOverlayFoundationRuntime: overlayFoundationAssemblyRuntime.rootOverlayFoundationRuntime,
-    navigation: appEntryPlaneRuntime.navigation,
-    routeSearchIntent: appEntryPlaneRuntime.routeSearchIntent,
-    userLocation: appEntryPlaneRuntime.userLocation,
     autocompleteAuthorityRuntime:
       controlAuthorityRuntime.foundationAuthorityRuntime.autocompleteAuthorityRuntime,
     clearRestoreAuthorityRuntime:
@@ -178,9 +177,25 @@ export const useSearchRootRuntimeControlStageRuntime = ({
     foregroundInputRuntime:
       controlAuthorityRuntime.presentationAuthorityRuntime.foregroundInputRuntime,
     profileOwner: profileControlRuntime.profileOwner,
-    filterModalRuntime,
+  });
+  const foregroundOverlayRuntimeArgs = useSearchRootForegroundOverlayRuntimeArgs({
+    stateFoundationLane: stateAssemblyRuntime.stateFoundationLane,
+    rootOverlayFoundationRuntime: overlayFoundationAssemblyRuntime.rootOverlayFoundationRuntime,
+    navigation: appEntryPlaneRuntime.navigation,
+    routeSearchIntent: appEntryPlaneRuntime.routeSearchIntent,
+    userLocation: appEntryPlaneRuntime.userLocation,
+    profileOwner: profileControlRuntime.profileOwner,
     transientCleanupActions: foregroundTransientCleanupActions,
-    foregroundCommandRuntime,
+  });
+  const foregroundTransientHandlersRuntime = useSearchForegroundTransientController({
+    editingRuntimeArgs: foregroundEditingRuntimeArgs,
+    overlayRuntimeArgs: foregroundOverlayRuntimeArgs,
+    submitHandlers: {
+      handleRecentSearchPress: foregroundCommandRuntime.handleRecentSearchPress,
+      handleRecentlyViewedRestaurantPress:
+        foregroundCommandRuntime.handleRecentlyViewedRestaurantPress,
+      handleRecentlyViewedFoodPress: foregroundCommandRuntime.handleRecentlyViewedFoodPress,
+    },
   });
   const foregroundInteractionRuntime = React.useMemo(
     () => ({

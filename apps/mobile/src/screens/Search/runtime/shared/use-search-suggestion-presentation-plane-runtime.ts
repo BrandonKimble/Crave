@@ -1,10 +1,17 @@
 import { deriveSearchSuggestionDisplayRuntime } from './derive-search-suggestion-display-runtime';
 import { useSearchSuggestionHeldDisplayRuntime } from './use-search-suggestion-held-display-runtime';
-import { useSearchSuggestionHoldEffectsRuntime } from './use-search-suggestion-hold-effects-runtime';
+import { useSearchSuggestionHoldActionsRuntime } from './use-search-suggestion-hold-actions-runtime';
+import { useSearchSuggestionHoldSyncRuntime } from './use-search-suggestion-hold-sync-runtime';
 import { useSearchSuggestionHoldStateRuntime } from './use-search-suggestion-hold-state-runtime';
-import { useSearchSuggestionTransitionRuntime } from './use-search-suggestion-transition-runtime';
+import { useSearchSuggestionLayoutWarmthRuntime } from './use-search-suggestion-layout-warmth-runtime';
+import { useSearchSuggestionTransitionPresenceRuntime } from './use-search-suggestion-transition-presence-runtime';
+import { useSearchSuggestionTransitionTimingRuntime } from './use-search-suggestion-transition-timing-runtime';
 import type {
   SearchSuggestionDisplayRuntime,
+  SearchSuggestionHoldActionRuntime,
+  SearchSuggestionLayoutWarmthRuntime,
+  SearchSuggestionTransitionPresenceRuntime,
+  SearchSuggestionTransitionTimingRuntime,
   SearchSuggestionHeldDisplayRuntime,
   SearchSuggestionHoldEffectsRuntime,
   SearchSuggestionHoldStateRuntime,
@@ -20,11 +27,28 @@ type UseSearchSuggestionPresentationPlaneRuntimeArgs = UseSearchSuggestionSurfac
 export const useSearchSuggestionPresentationPlaneRuntime = ({
   ...args
 }: UseSearchSuggestionPresentationPlaneRuntimeArgs): SearchSuggestionVisibilityRuntime => {
-  const transitionRuntime: SearchSuggestionTransitionRuntime = useSearchSuggestionTransitionRuntime(
-    {
+  const transitionTimingRuntime: SearchSuggestionTransitionTimingRuntime =
+    useSearchSuggestionTransitionTimingRuntime();
+  const transitionPresenceRuntime: SearchSuggestionTransitionPresenceRuntime =
+    useSearchSuggestionTransitionPresenceRuntime({
       isSuggestionPanelActive: args.isSuggestionPanelActive,
-    }
-  );
+      getSuggestionTransitionDurationMs: transitionTimingRuntime.getSuggestionTransitionDurationMs,
+      getSuggestionTransitionEasing: transitionTimingRuntime.getSuggestionTransitionEasing,
+      getSuggestionTransitionDelayMs: transitionTimingRuntime.getSuggestionTransitionDelayMs,
+    });
+  const layoutWarmthRuntime: SearchSuggestionLayoutWarmthRuntime =
+    useSearchSuggestionLayoutWarmthRuntime({
+      isSuggestionPanelActive: args.isSuggestionPanelActive,
+      isSuggestionPanelVisible: transitionPresenceRuntime.isSuggestionPanelVisible,
+    });
+  const transitionRuntime: SearchSuggestionTransitionRuntime = {
+    isSuggestionLayoutWarm: layoutWarmthRuntime.isSuggestionLayoutWarm,
+    setIsSuggestionLayoutWarm: layoutWarmthRuntime.setIsSuggestionLayoutWarm,
+    isSuggestionPanelVisible: transitionPresenceRuntime.isSuggestionPanelVisible,
+    isSuggestionOverlayVisible: transitionPresenceRuntime.isSuggestionOverlayVisible,
+    suggestionProgress: transitionPresenceRuntime.suggestionProgress,
+    shouldDriveSuggestionLayout: layoutWarmthRuntime.shouldDriveSuggestionLayout,
+  };
   const displayRuntime: SearchSuggestionDisplayRuntime = deriveSearchSuggestionDisplayRuntime({
     query: args.query,
     suggestions: args.suggestions,
@@ -44,21 +68,31 @@ export const useSearchSuggestionPresentationPlaneRuntime = ({
     recentlyViewedRestaurants: args.recentlyViewedRestaurants,
     recentlyViewedFoods: args.recentlyViewedFoods,
   });
-  const holdEffectsRuntime: SearchSuggestionHoldEffectsRuntime =
-    useSearchSuggestionHoldEffectsRuntime({
-      query: args.query,
-      isSuggestionPanelActive: args.isSuggestionPanelActive,
-      setSuggestions: args.setSuggestions,
-      setBeginSuggestionCloseHold: args.setBeginSuggestionCloseHold,
+  const holdActionRuntime: SearchSuggestionHoldActionRuntime =
+    useSearchSuggestionHoldActionsRuntime({
       shouldDriveSuggestionLayout: transitionRuntime.shouldDriveSuggestionLayout,
       shouldShowSuggestionBackground: displayRuntime.shouldShowSuggestionBackground,
       liveShouldRenderAutocompleteSection: displayRuntime.liveShouldRenderAutocompleteSection,
       liveShouldRenderRecentSection: displayRuntime.liveShouldRenderRecentSection,
-      resetSubmitTransitionHold: holdStateRuntime.resetSubmitTransitionHold,
-      resetSubmitTransitionHoldIfQueryChanged:
-        holdStateRuntime.resetSubmitTransitionHoldIfQueryChanged,
       captureSuggestionTransitionHold: holdStateRuntime.captureSuggestionTransitionHold,
     });
+
+  useSearchSuggestionHoldSyncRuntime({
+    query: args.query,
+    isSuggestionPanelActive: args.isSuggestionPanelActive,
+    setSuggestions: args.setSuggestions,
+    setBeginSuggestionCloseHold: args.setBeginSuggestionCloseHold,
+    shouldDriveSuggestionLayout: transitionRuntime.shouldDriveSuggestionLayout,
+    resetSubmitTransitionHold: holdStateRuntime.resetSubmitTransitionHold,
+    resetSubmitTransitionHoldIfQueryChanged:
+      holdStateRuntime.resetSubmitTransitionHoldIfQueryChanged,
+    beginSuggestionCloseHold: holdActionRuntime.beginSuggestionCloseHold,
+  });
+
+  const holdEffectsRuntime: SearchSuggestionHoldEffectsRuntime = {
+    beginSubmitTransition: holdActionRuntime.beginSubmitTransition,
+    beginSuggestionCloseHold: holdActionRuntime.beginSuggestionCloseHold,
+  };
   const heldDisplayRuntime: SearchSuggestionHeldDisplayRuntime =
     useSearchSuggestionHeldDisplayRuntime({
       query: args.query,

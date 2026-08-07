@@ -10,7 +10,11 @@ import { type ResultsPresentationOwner } from './results-presentation-owner-cont
 import type { AppRouteSharedSheetRuntimeOwner } from '../../../../navigation/runtime/app-route-shared-sheet-runtime-contract';
 import type { RouteSceneVisibilityPolicyRuntime } from '../../../../navigation/runtime/app-route-scene-visibility-policy-contract';
 import type { ResultsPresentationPolicyFactsLaneChange } from './results-presentation-policy-facts-controller';
-import { useResultsPresentationOwnerCompositionRuntime } from './use-results-presentation-owner-composition-runtime';
+import { useResultsPresentationOwnerStateSessionRuntime } from './use-results-presentation-owner-state-session-runtime';
+import { publishResultsPresentationCloseTransitionBridgeRuntime } from './publish-results-presentation-close-transition-bridge-runtime';
+import { useResultsPresentationCloseTransitionRuntime } from './use-results-presentation-close-transition-runtime';
+import { useResultsPresentationOwnerPresentationActionsRuntime } from './use-results-presentation-owner-presentation-actions-runtime';
+import { useResultsPresentationOwnerValueRuntime } from './use-results-presentation-owner-value-runtime';
 import type { RouteSceneSwitchAuthority } from './route-authority-contract';
 export type {
   ResultsInteractionModel,
@@ -87,22 +91,17 @@ export const useResultsPresentationOwner = ({
   routeSceneVisibilityPolicyRuntime,
   onSearchSheetContentLaneChanged,
 }: UseResultsPresentationOwnerArgs): ResultsPresentationOwner => {
-  return useResultsPresentationOwnerCompositionRuntime({
+  const sessionRuntime = useResultsPresentationOwnerStateSessionRuntime({
     setActiveTab,
     setActiveTabPreference,
-    clearTypedQuery,
-    clearSearchState,
     query,
     submittedQuery,
     hasActiveSearchContent,
     isSearchSessionActive,
-    hasResults,
     isSearchLoading,
     isSuggestionPanelActive,
     shouldRenderSearchOverlay,
     shouldEnableShortcutInteractions,
-    ignoreNextSearchBlurRef,
-    isClearingSearchRef,
     resultsSheetRuntime,
     searchRuntimeBus,
     resultsPresentationAuthority,
@@ -110,7 +109,72 @@ export const useResultsPresentationOwner = ({
     resultsPresentationSurfaceAuthority,
     searchMapSourceFramePort,
     log,
-        routeSceneVisibilityPolicyRuntime,
     onSearchSheetContentLaneChanged,
+  });
+
+  // S-C.5 item 2 (wrapper collapse): the pure re-lister owner-close-state-runtime is
+  // deleted — its only move was picking these two fields off the session runtimes.
+  // Leg 4: the dead close-search-cleanup runtime's arg fan (bus, request/autocomplete
+  // cancels, input setters, inputRef) is gone with it — the close chain needs exactly
+  // these three inputs.
+  const closeTransitionRuntime = useResultsPresentationCloseTransitionRuntime({
+    clearSearchState,
+    shellLocalState: sessionRuntime.shellStateRuntime.shellLocalState,
+    routeSceneVisibilityPolicyRuntime,
+  });
+
+  publishResultsPresentationCloseTransitionBridgeRuntime({
+    markSearchSheetCloseMapExitSettledRef:
+      sessionRuntime.bridgeStateRuntime.markSearchSheetCloseMapExitSettledRef,
+    closeTransitionActions: closeTransitionRuntime.closeTransitionActions,
+  });
+
+  const { bridgeStateRuntime, shellStateRuntime } = sessionRuntime;
+  const { resultsRuntimeOwner, interactionModel } = bridgeStateRuntime;
+  const { shellLocalState, shellModel } = shellStateRuntime;
+
+  const presentationActions = useResultsPresentationOwnerPresentationActionsRuntime({
+    clearTypedQuery,
+    clearSearchState,
+    submittedQuery,
+    isSearchSessionActive,
+    hasResults,
+    ignoreNextSearchBlurRef,
+    isClearingSearchRef,
+    resultsSheetRuntime,
+    shellLocalState,
+    resultsRuntimeOwner,
+    resultsPresentationAuthority,
+    setPendingCloseIntentId: closeTransitionRuntime.setPendingCloseIntentId,
+    matchesPendingCloseIntentId: closeTransitionRuntime.matchesPendingCloseIntentId,
+    beginCloseTransition: closeTransitionRuntime.beginCloseTransition,
+    cancelSearchSheetCloseTransition:
+      closeTransitionRuntime.closeTransitionActions.cancelSearchSheetCloseTransition,
+    routeSceneVisibilityPolicyRuntime,
+  });
+
+  return useResultsPresentationOwnerValueRuntime({
+    searchSurfaceResultsTransactionKey: resultsRuntimeOwner.searchSurfaceResultsTransactionKey,
+    pendingTogglePresentationIntentId: resultsRuntimeOwner.pendingTogglePresentationIntentId,
+    scheduleToggleCommit: resultsRuntimeOwner.scheduleToggleCommit,
+    cancelToggleInteraction: resultsRuntimeOwner.cancelToggleInteraction,
+    beginSearchThisAreaPresentationPending:
+      resultsRuntimeOwner.beginSearchThisAreaPresentationPending,
+    beginVariantRerunPresentationPending: resultsRuntimeOwner.beginVariantRerunPresentationPending,
+    stageSearchSurfaceResultsTransaction: resultsRuntimeOwner.stageSearchSurfaceResultsTransaction,
+    clearStagedSearchSurfaceResultsTransaction:
+      resultsRuntimeOwner.clearStagedSearchSurfaceResultsTransaction,
+    handlePageOneResultsCommitted: resultsRuntimeOwner.handlePageOneResultsCommitted,
+    cancelPresentationIntent: resultsRuntimeOwner.cancelPresentationIntent,
+    handlePresentationIntentAbort: resultsRuntimeOwner.handlePresentationIntentAbort,
+    handleExecutionBatchMountedHidden: resultsRuntimeOwner.handleExecutionBatchMountedHidden,
+    handleMarkerEnterStarted: resultsRuntimeOwner.handleMarkerEnterStarted,
+    handleMarkerEnterSettled: resultsRuntimeOwner.handleMarkerEnterSettled,
+    handleMarkerExitStarted: resultsRuntimeOwner.handleMarkerExitStarted,
+    handleMarkerExitSettled: resultsRuntimeOwner.handleMarkerExitSettled,
+    shellModel,
+    presentationActions,
+    closeTransitionActions: closeTransitionRuntime.closeTransitionActions,
+    interactionModel,
   });
 };

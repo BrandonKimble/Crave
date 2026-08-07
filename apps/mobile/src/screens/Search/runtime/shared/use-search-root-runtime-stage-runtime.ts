@@ -3,13 +3,20 @@ import React from 'react';
 import { useAppRouteSceneRuntime } from '../../../../navigation/runtime/AppRouteSceneRuntimeProvider';
 import { usePublishAppRouteDynamicSceneInputRuntime } from '../../../../navigation/runtime/app-route-dynamic-scene-input-runtime-controller';
 import { useAppRouteSceneCameraMotionTargetRuntime } from '../../../../navigation/runtime/use-app-route-scene-camera-motion-target-runtime';
-import { useSearchRouteSceneDefinitionOwner } from './use-search-route-scene-definition-owner';
+import { useSearchRouteSearchSceneModelOwner } from './use-search-route-search-scene-model-owner';
+import { useSearchRouteSearchSceneRouteInputOwner } from './use-search-route-search-scene-route-input-owner';
+import { useSearchRouteSearchSceneBodyInputOwner } from './use-search-route-search-scene-body-input-owner';
+import { useSearchRootSearchSceneListHydrationPublicationRuntime } from './use-search-root-search-scene-list-hydration-publication-runtime';
+import { useSearchRootSearchSceneBusPublicationRuntime } from './use-search-root-search-scene-bus-publication-runtime';
 import { useSearchRootAppRouteOverlayPublicationRuntime } from './use-search-root-app-route-overlay-publication-runtime';
 import { useSearchRootRuntimeFoundationStageRuntime } from './use-search-root-runtime-foundation-stage-runtime';
 import { useSearchRootRuntimeControlStageRuntime } from './use-search-root-runtime-control-stage-runtime';
 import { useSearchRootRuntimeMapHostPublicationStageRuntime } from './use-search-root-runtime-map-host-publication-stage-runtime';
 import { useSearchRootRuntimeOverlayFoundationAssemblyRuntime } from './use-search-root-runtime-overlay-foundation-assembly-runtime';
-import { useSearchRootRouteAncillaryPublicationRuntime } from './use-search-root-route-ancillary-publication-runtime';
+import { useSearchRootRouteRestaurantOverlayInteractionPublicationRuntime } from './use-search-root-route-restaurant-overlay-interaction-publication-runtime';
+import { useSearchRootRouteRestaurantOverlayPolicyPublicationRuntime } from './use-search-root-route-restaurant-overlay-policy-publication-runtime';
+import { useSearchRootRouteRestaurantOverlayPanelContentPublicationRuntime } from './use-search-root-route-restaurant-overlay-panel-content-publication-runtime';
+import { useSearchRootRouteVisualHostPublicationRuntime } from './use-search-root-route-visual-host-publication-runtime';
 import { useSearchRootRouteControlRuntime } from './use-search-root-route-control-runtime';
 import { useSearchRootRouteOverlayHostPublicationLanesRuntime } from './use-search-root-route-overlay-host-publication-lanes-runtime';
 import { selectSearchRootRouteSurfaceHostRuntime } from './select-search-root-route-surface-host-runtime';
@@ -152,32 +159,67 @@ export const useSearchRootRuntimeStageRuntime = ({
     controlAuthorityRuntime,
     profileControlRuntime,
   });
-  useSearchRouteSceneDefinitionOwner({
+  const routeSearchSceneModel = useSearchRouteSearchSceneModelOwner({
     sessionAssemblyRuntime,
     stateAssemblyRuntime,
     overlayFoundationAssemblyRuntime,
     visualAssemblyRuntime,
     routeSceneSwitchAuthority,
-    routeSceneInputLane: routeSceneRuntime.sceneInputLane,
     controlAuthorityRuntime,
     profileControlRuntime,
     resultsControlRuntime,
     filterModalControlLane,
-    foregroundInteractionControlLane,
-    searchRouteResultsPolicyRuntime,
+    readModelPolicyWriters: searchRouteResultsPolicyRuntime.readModelPolicyWriters,
   });
 
-  useSearchRootRouteAncillaryPublicationRuntime({
-    sessionAssemblyRuntime,
-    stateAssemblyRuntime,
-    overlayFoundationAssemblyRuntime,
+  useSearchRouteSearchSceneRouteInputOwner({
+    routeSceneInputLane: routeSceneRuntime.sceneInputLane,
+    routeSearchSceneModel,
+  });
+
+  useSearchRouteSearchSceneBodyInputOwner({
+    routeSearchSceneModel,
+  });
+
+  useSearchRootSearchSceneListHydrationPublicationRuntime({
+    activeTab:
+      routeSearchSceneModel.routeSearchSceneDataRuntime.routeSearchSceneResultsRuntimeState
+        .activeTab,
+    resultsPresentationSurfaceAuthority:
+      sessionAssemblyRuntime.sessionRuntime.sessionCoreLane.resultsPresentationSurfaceAuthority,
+    routeSceneSwitchAuthority,
+    searchInteractionRef:
+      sessionAssemblyRuntime.sessionRuntime.sessionPrimitivesLane.primitives.searchInteractionRef,
+    hydrationKeyRuntime:
+      routeSearchSceneModel.routeSearchSceneDataRuntime.routeSearchSceneHydrationKeyRuntime,
+    resultsReadModelSelectors:
+      routeSearchSceneModel.routeSearchSceneReadModelRuntime
+        .routeSearchSceneResultsReadModelSelectors,
+  });
+  useSearchRootSearchSceneBusPublicationRuntime({
+    sessionCoreLane: sessionAssemblyRuntime.sessionRuntime.sessionCoreLane,
+    filterModalControlLane,
+    foregroundInteractionControlLane,
+  });
+
+  useSearchRootRouteVisualHostPublicationRuntime({
     routeVisualHostPublicationLane,
+    rootOverlayFoundationRuntime: overlayFoundationAssemblyRuntime.rootOverlayFoundationRuntime,
+    routeHostVisualRuntime: visualAssemblyRuntime.hostVisualRuntime.routeHostVisualRuntime,
+  });
+  useSearchRootRouteRestaurantOverlayPanelContentPublicationRuntime({
     routeRestaurantOverlayPanelContentPublicationLane,
+    profilePresentationControlLane: profileControlRuntime.profilePresentationControlLane,
+    stateFoundationLane: stateAssemblyRuntime.stateFoundationLane,
+  });
+  useSearchRootRouteRestaurantOverlayPolicyPublicationRuntime({
     routeRestaurantOverlayPolicyPublicationLane,
+    resultsPresentationStateControlLane: resultsControlRuntime.resultsPresentationStateControlLane,
+  });
+  useSearchRootRouteRestaurantOverlayInteractionPublicationRuntime({
     routeRestaurantOverlayInteractionPublicationLane,
-    profileControlRuntime,
-    resultsControlRuntime,
-    visualAssemblyRuntime,
+    rootOverlayFoundationRuntime: overlayFoundationAssemblyRuntime.rootOverlayFoundationRuntime,
+    profilePresentationControlLane: profileControlRuntime.profilePresentationControlLane,
   });
   const routeDynamicSceneInputRuntime = React.useMemo(
     () => ({

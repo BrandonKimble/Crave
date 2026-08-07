@@ -10,7 +10,7 @@ import type { SearchRootSessionCoreLane } from './search-root-session-runtime-co
 import { useSearchRootMapRuntimeLane } from './use-search-root-map-runtime-lane';
 import { useSearchRootOverlaySessionSurfaceRuntime } from './use-search-root-overlay-session-surface-runtime';
 import { useSearchRootOverlayStoreRuntime } from './use-search-root-overlay-store-runtime';
-import { useSearchRootScaffoldInstrumentationRuntime } from './use-search-root-scaffold-instrumentation-runtime';
+import { useSearchRuntimeInstrumentationRuntime } from './use-search-runtime-instrumentation-runtime';
 import type {
   SearchRootBootstrapEnvironment,
   SearchRootEnvironment,
@@ -98,13 +98,28 @@ export const useSearchRootOverlayFoundationRuntime = ({
   const rootOverlayStoreRuntime = useSearchRootOverlayStoreRuntime({
     routeOverlayIdentityAuthority,
   });
-  const rootInstrumentationRuntime = useSearchRootScaffoldInstrumentationRuntime({
-    rootPrimitivesRuntime,
-    rootSessionCoreLane: sessionCoreLane,
-    rootSessionPrimitivesLane: sessionPrimitivesLane,
-    rootSharedSheetRuntimeLane,
-    rootDataPlaneRuntime,
-    rootOverlayStoreRuntime,
+  const rootInstrumentationRuntime = useSearchRuntimeInstrumentationRuntime({
+    getPerfNow: sessionPrimitivesLane.primitives.getPerfNow,
+    searchMode: rootDataPlaneRuntime.runtimeFlags.searchMode,
+    isSearchLoading: rootDataPlaneRuntime.runtimeFlags.isSearchLoading,
+    resultsRequestKey: rootDataPlaneRuntime.resultsArrivalState.resultsRequestKey,
+    searchInteractionRef: sessionPrimitivesLane.primitives.searchInteractionRef,
+    searchRuntimeBus: sessionCoreLane.searchRuntimeBus,
+    resultsPresentationAuthority: sessionCoreLane.resultsPresentationAuthority,
+    resultsPresentationSurfaceAuthority: sessionCoreLane.resultsPresentationSurfaceAuthority,
+    isSearchRequestLoadingRef: rootDataPlaneRuntime.runtimeFlags.isSearchRequestLoadingRef,
+    readRuntimeMemoryDiagnostics: sessionPrimitivesLane.primitives.readRuntimeMemoryDiagnostics,
+    isSearchSessionActive: rootDataPlaneRuntime.runtimeFlags.isSearchSessionActive,
+    isAutocompleteSuppressed: rootPrimitivesRuntime.searchState.isAutocompleteSuppressed,
+    rootOverlay: rootOverlayStoreRuntime.rootOverlay,
+    activeOverlayKey: rootOverlayStoreRuntime.activeOverlayKey,
+    cameraIntentArbiter: sessionCoreLane.cameraIntentArbiter,
+    viewportBoundsService: sessionCoreLane.viewportBoundsService,
+    markMapMovedIfNeeded: rootSharedSheetRuntimeLane.markMapMovedIfNeeded,
+    scheduleMapIdleEnter: rootSharedSheetRuntimeLane.scheduleMapIdleEnter,
+    ensureInitialCameraReady: sessionCoreLane.mapBootstrapRuntime.ensureInitialCameraReady,
+    isSearchOverlay: rootOverlayStoreRuntime.isSearchOverlay,
+    resultsPage: rootDataPlaneRuntime.resultsArrivalState.resultsPage,
   });
   // Memoised like every sibling assembly hook in this wave (F1348): this aggregate is
   // threaded into ~20 consumers, some of which take the whole object rather than a field

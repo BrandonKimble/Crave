@@ -10,7 +10,8 @@ import type { SearchRootOverlayFoundationRuntime } from './search-root-overlay-f
 import type { SearchRootStateFoundationLane } from './search-root-foundation-runtime';
 import type { SearchRootMapViewportIntentRuntime } from './search-root-map-viewport-intent-runtime-contract';
 import { useSearchRootMapPresentationRuntime } from './use-search-root-map-presentation-runtime';
-import { useSearchRootMapSurfaceModelRuntime } from './use-search-root-map-surface-model-runtime';
+import { useSearchRootMapSurfaceStateRuntime } from './use-search-root-map-surface-state-runtime';
+import { useSearchRootMapSurfaceViewRuntime } from './use-search-root-map-surface-view-runtime';
 import type { SearchRootSessionCoreLane } from './search-root-session-runtime-contract';
 import type { SearchMapRenderHostConfig } from '../../components/SearchMapWithMarkerEngine';
 
@@ -52,12 +53,17 @@ export const useSearchRootMapSurfacePublicationRuntime = ({
     mapProfileControlLane,
     resultsPresentationControlLane,
   });
-  const { engineInputs, hostConfig, presentationProps } = useSearchRootMapSurfaceModelRuntime({
+  const mapSurfaceStateRuntime = useSearchRootMapSurfaceStateRuntime({
     appEntryPlaneRuntime,
     stateFoundationLane,
     mapViewportIntentRuntime,
     mapPresentationRuntime,
+  });
+  const { engineInputs, hostConfig, presentationProps } = useSearchRootMapSurfaceViewRuntime({
+    appEntryPlaneRuntime,
+    mapPresentationRuntime,
     mapInteractionBridgeRuntime,
+    mapSurfaceStateRuntime,
   });
 
   return React.useMemo(

@@ -1,9 +1,11 @@
 import type {
   SearchRootOverlayLocalRestaurantSheetHostRuntimeParams,
   SearchRootOverlayLocalRestaurantSheetPublicationRuntime,
+  SearchRootOverlayLocalRestaurantSheetStateRuntime,
 } from './search-root-overlay-local-restaurant-runtime-contract';
 import { useSearchRootOverlayLocalRestaurantSheetPublicationRuntime } from './use-search-root-overlay-local-restaurant-sheet-publication-runtime';
-import { useSearchRootOverlayLocalRestaurantSheetStateRuntime } from './use-search-root-overlay-local-restaurant-sheet-state-runtime';
+import { useSearchRootOverlayLocalRestaurantSheetSelectionRuntime } from './use-search-root-overlay-local-restaurant-sheet-selection-runtime';
+import { useSearchRootOverlayLocalRestaurantSheetVisualHostRuntime } from './use-search-root-overlay-local-restaurant-sheet-visual-host-runtime';
 
 export const useSearchRootOverlayLocalRestaurantSheetHostRuntime = ({
   routeOverlayVisibilityAuthority,
@@ -17,15 +19,27 @@ export const useSearchRootOverlayLocalRestaurantSheetHostRuntime = ({
   SearchRootOverlayLocalRestaurantSheetPublicationRuntime,
   'overlayLocalRestaurantSheetHostAuthority'
 > => {
-  const localRestaurantSheetStateRuntime = useSearchRootOverlayLocalRestaurantSheetStateRuntime({
-    routeOverlayVisibilityAuthority,
+  const localRestaurantSheetSelectionRuntime =
+    useSearchRootOverlayLocalRestaurantSheetSelectionRuntime({
+      routeLocalRestaurantOverlayPanelContentAuthority,
+      routeLocalRestaurantOverlayPolicyAuthority,
+      routeLocalRestaurantOverlayInteractionAuthority,
+    });
+  const localRestaurantSheetVisualRuntime =
+    useSearchRootOverlayLocalRestaurantSheetVisualHostRuntime({
+      routeOverlayVisibilityAuthority,
+      overlayGateSnapshot,
+      localRestaurantRouteVisualAuthority,
+    });
+
+  const localRestaurantSheetStateRuntime: SearchRootOverlayLocalRestaurantSheetStateRuntime = {
     routeLocalRestaurantOverlaySessionAuthority,
-    routeLocalRestaurantOverlayPanelContentAuthority,
-    routeLocalRestaurantOverlayPolicyAuthority,
-    routeLocalRestaurantOverlayInteractionAuthority,
-    overlayGateSnapshot,
-    localRestaurantRouteVisualAuthority,
-  });
+    localRestaurantSheetControlSelectionAuthority:
+      localRestaurantSheetSelectionRuntime.localRestaurantSheetControlSelectionAuthority,
+    localRestaurantSheetVisualHostAuthority:
+      localRestaurantSheetVisualRuntime.localRestaurantSheetVisualHostAuthority,
+  };
+
   const localRestaurantSheetPublicationRuntime =
     useSearchRootOverlayLocalRestaurantSheetPublicationRuntime(localRestaurantSheetStateRuntime);
 
