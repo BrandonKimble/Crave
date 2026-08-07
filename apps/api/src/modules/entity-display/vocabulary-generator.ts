@@ -42,7 +42,11 @@ import {
  *  v1 = pre-gender-complete labels (implicit, DB default); v2 = the
  *  gender/plural-complete + dietary-boundary prompt. The sweep re-offers
  *  labels below this — one re-pay per bump. */
-export const VOCABULARY_PROMPT_VERSION = 2;
+export const VOCABULARY_PROMPT_VERSION = 3;
+// v3 (2026-08-06): not a wording change — the collision guard became
+// same-type-only (the `picante` ruling), so surfaces v2 offered and the old
+// guard refused are now bankable. The version is the PASS's output contract,
+// not just the prompt text.
 
 @Injectable()
 export class VocabularyGenerator implements LabelGenerator {
