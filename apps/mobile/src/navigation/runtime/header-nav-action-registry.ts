@@ -14,20 +14,48 @@ import type { OverlayKey } from '../../overlays/types';
 //     'search' (the published results-session close) and 'restaurant' (the session-token-
 //     guarded closeRestaurantRoute via its header live state).
 
-const createActions = new Map<OverlayKey, () => void>();
-const closeActions = new Map<OverlayKey, () => void>();
+// F1483 — a STACK per sceneKey, not last-writer-wins. Two stacked entries of one scene
+// (an explicitly supported shape — listDetail passes `entryId`) can each register an
+// override; the host runs the TOP (most-recent) one, and an identity-guarded release
+// pops that entry and RESTORES the one beneath it. Last-writer-wins silently reverted
+// the still-live lower entry to the host default on the upper entry's release (its
+// header X lost the discard-confirm, dropping an uncommitted reorder without a prompt).
+const createActions = new Map<OverlayKey, Array<() => void>>();
+const closeActions = new Map<OverlayKey, Array<() => void>>();
 
 const register = (
-  map: Map<OverlayKey, () => void>,
+  map: Map<OverlayKey, Array<() => void>>,
   sceneKey: OverlayKey,
   action: () => void
 ): (() => void) => {
-  map.set(sceneKey, action);
+  const stack = map.get(sceneKey) ?? [];
+  stack.push(action);
+  map.set(sceneKey, stack);
   return () => {
-    if (map.get(sceneKey) === action) {
+    const current = map.get(sceneKey);
+    if (current == null) {
+      return;
+    }
+    // Identity-guarded, top-most-first: pop THIS registration wherever it sits, so an
+    // out-of-order release still restores the correct remaining override.
+    const index = current.lastIndexOf(action);
+    if (index !== -1) {
+      current.splice(index, 1);
+    }
+    if (current.length === 0) {
       map.delete(sceneKey);
     }
   };
+};
+
+const runTopAction = (map: Map<OverlayKey, Array<() => void>>, sceneKey: OverlayKey): boolean => {
+  const stack = map.get(sceneKey);
+  const action = stack != null && stack.length > 0 ? stack[stack.length - 1] : undefined;
+  if (action == null) {
+    return false;
+  }
+  action();
+  return true;
 };
 
 export const registerHeaderCreateAction = (
@@ -38,22 +66,10 @@ export const registerHeaderCreateAction = (
 export const registerHeaderCloseAction = (sceneKey: OverlayKey, action: () => void): (() => void) =>
   register(closeActions, sceneKey, action);
 
-/** Returns true when a registered create action ran. */
-export const runHeaderCreateAction = (sceneKey: OverlayKey): boolean => {
-  const action = createActions.get(sceneKey);
-  if (action == null) {
-    return false;
-  }
-  action();
-  return true;
-};
+/** Returns true when a registered create action ran (the top-most for the scene). */
+export const runHeaderCreateAction = (sceneKey: OverlayKey): boolean =>
+  runTopAction(createActions, sceneKey);
 
 /** Returns true when a registered close OVERRIDE ran (the host then skips its default). */
-export const runHeaderCloseAction = (sceneKey: OverlayKey): boolean => {
-  const action = closeActions.get(sceneKey);
-  if (action == null) {
-    return false;
-  }
-  action();
-  return true;
-};
+export const runHeaderCloseAction = (sceneKey: OverlayKey): boolean =>
+  runTopAction(closeActions, sceneKey);

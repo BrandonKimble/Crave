@@ -12,6 +12,7 @@ import type {
 import { beginRevealCommitSpan, markRevealCommitStage } from '../perf/reveal-commit-attribution';
 import type { ScrollEvent } from './bottomSheetSceneStackBodyLayerContract';
 import { bottomSheetSceneStackHostStyles as styles } from './bottomSheetSceneStackHostStyles';
+import { LANDING_ABOVE_FOLD_ROWS, landingClockBandExceedsFold } from './landing-clock-band-gate';
 import { resolveListContentContainerStyle } from './bottomSheetSurfaceStyleUtils';
 import { mergeSceneFlashListProps } from './sceneFlashListPropsMerge';
 import { useSearchOverlayProfilerRender } from './SearchOverlayProfilerContext';
@@ -168,7 +169,6 @@ const getPendingBlockListDataSnapshot = (): SearchMountedResultsListDataSnapshot
 // remaining rows are below the fold for the ~32ms gap. Only a NEW world landing
 // slices (the fence's episode-open transition) — pagination appends bypass the fence
 // (no live txn) and land whole, as before.
-const LANDING_ABOVE_FOLD_ROWS = 4;
 // Release-measured (2026-07-19, clock v1): two beats halved ONE burst window but the
 // 16-row remainder still landed in one ~185ms commit — the clock is PROGRESSIVE now:
 // +LANDING_SLICE_STEP rows per free frame pair until complete (idle-frame SLICES,
@@ -363,7 +363,7 @@ const getMotionFencedListDataSnapshot = (): SearchMountedResultsListDataSnapshot
   if (wasRedrawEpisodeLive) {
     wasRedrawEpisodeLive = false;
     markRevealCommitStage('base_build', performance.now() - baseBuildStartedAtMs);
-    if (base.primaryData.length > LANDING_ABOVE_FOLD_ROWS) {
+    if (landingClockBandExceedsFold(base.primaryData.length, base.secondaryData.length)) {
       const sliced = getLandingSlicedSnapshot(base);
       markRevealCommitStage('above_fold_slice');
       return sliced;

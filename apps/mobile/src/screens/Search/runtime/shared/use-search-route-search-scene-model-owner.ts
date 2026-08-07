@@ -201,12 +201,18 @@ export const useSearchRouteSearchSceneModelOwner = ({
     () => ({
       surfaceKind: 'list',
       data: EMPTY_MOUNTED_SEARCH_ROWS,
-      renderItem:
-        routeSearchSceneSheetTransportRuntime.routeSearchSceneListItemContentRuntime
-          .resultsRenderItem,
-      keyExtractor:
-        routeSearchSceneSheetTransportRuntime.routeSearchSceneListItemContentRuntime
-          .resultsKeyExtractor,
+      // F5421 — the scene-body spec is item-untyped (unknown rows); the runtime keeps the
+      // typed ResultsListItem shape and these seams erase the item type only.
+      renderItem: routeSearchSceneSheetTransportRuntime.routeSearchSceneListItemContentRuntime
+        .resultsRenderItem as unknown as Extract<
+        SearchRouteSceneBodyContentSpec,
+        { surfaceKind: 'list' }
+      >['renderItem'],
+      keyExtractor: routeSearchSceneSheetTransportRuntime.routeSearchSceneListItemContentRuntime
+        .resultsKeyExtractor as unknown as Extract<
+        SearchRouteSceneBodyContentSpec,
+        { surfaceKind: 'list' }
+      >['keyExtractor'],
       estimatedItemSize:
         routeSearchSceneSheetTransportRuntime.routeSearchSceneListItemContentRuntime
           .estimatedItemSize,
@@ -292,9 +298,9 @@ export const useSearchRouteSearchSceneModelOwner = ({
         // sheet scroll container) so the scroll↔sheet handoff works — no per-scene config needed.
         testID: 'search-results-flatlist',
         activeList: routeSearchSceneRenderRuntime.activeList,
-        flashListProps:
-          routeSearchSceneSheetTransportRuntime.routeSearchScenePanelListTransportRuntime
-            .resolvedFlashListProps,
+        flashListProps: routeSearchSceneSheetTransportRuntime
+          .routeSearchScenePanelListTransportRuntime
+          .resolvedFlashListProps as unknown as SearchRouteSceneBodyTransportSpec['flashListProps'],
         contentSurfaceStyle: undefined,
         listRef: routeSearchSceneSheetTransportRuntime.routeSearchSceneSheetPlaneRuntime
           .listRef as SearchRouteSceneBodyTransportSpec['listRef'],

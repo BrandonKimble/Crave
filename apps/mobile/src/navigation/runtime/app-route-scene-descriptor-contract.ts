@@ -6,7 +6,11 @@ import type { BottomSheetWithFlashListBaseProps } from '../../overlays/bottomShe
 import type { OverlayKey, OverlaySheetFrameSpec } from '../../overlays/types';
 import type { SceneBodyContentInsets } from '../../overlays/bottomSheetSurfaceStyleUtils';
 
-type AppRouteSceneListItem = unknown;
+// F5421 — the ONE scene-list-item type. `unknown` is deliberate (the stricter of the
+// twin contracts): a scene body's rows are opaque to the route host, and concretely-typed
+// consumers cast at the edge. The search-route contract aliases this rather than
+// re-spelling its own `any` twin.
+export type AppRouteSceneListItem = unknown;
 
 type AppRouteSceneSheetHostOwnedField =
   | 'initialSnapPoint'

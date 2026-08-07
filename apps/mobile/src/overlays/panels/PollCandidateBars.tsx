@@ -175,7 +175,9 @@ export const PollCandidateBars = React.memo(
         }
         inFlight.current = true;
         const willEndorse = !candidate.currentUserEndorsed;
-        setOptimistic(applyOptimisticEndorsement(rows, candidate.subjectId, willEndorse));
+        setOptimistic((current) =>
+          applyOptimisticEndorsement(current ?? candidates, candidate.subjectId, willEndorse)
+        );
         try {
           const result = await togglePollEndorsement(
             pollId,
@@ -196,7 +198,7 @@ export const PollCandidateBars = React.memo(
           inFlight.current = false;
         }
       },
-      [interactive, isSignedIn, onCandidatesChange, pollId, rows]
+      [interactive, isSignedIn, onCandidatesChange, pollId, candidates]
     );
 
     if (!rows.length) return null;
@@ -204,9 +206,9 @@ export const PollCandidateBars = React.memo(
     const fractionOf = (row: Candidate): number =>
       totalEndorsements > 0 ? row.distinctEndorsers / totalEndorsements : 0;
 
-    const showPeek = previewRows != null && rows.length > previewRows;
-    const fullRows = showPeek ? rows.slice(0, previewRows) : rows;
-    const peekRow = showPeek ? rows[previewRows as number] : null;
+    const peekIndex = previewRows != null && rows.length > previewRows ? previewRows : null;
+    const fullRows = peekIndex != null ? rows.slice(0, peekIndex) : rows;
+    const peekRow = peekIndex != null ? rows[peekIndex] : null;
 
     return (
       <View style={styles.container}>
@@ -227,7 +229,7 @@ export const PollCandidateBars = React.memo(
             <PollCandidateBarRow
               candidate={peekRow}
               fraction={fractionOf(peekRow)}
-              fillColor={resolveFillColor(previewRows as number, rows.length)}
+              fillColor={resolveFillColor(peekIndex ?? 0, rows.length)}
               viewerAvatarUrl={viewerAvatarUrl}
               disabled
               onToggle={handleToggle}

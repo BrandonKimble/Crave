@@ -104,6 +104,7 @@ import {
 import { useEntityRefActionExecutor } from '../../navigation/runtime/use-entity-ref-action-executor';
 import { fetchCuratedListDetail, saveCuratedListToMyLists } from '../../services/home';
 import { deriveListDetailVerbs } from './list-detail-verbs';
+import { listDetailMetaQueryKey, listDetailResultsQueryKey } from './list-detail-query-keys';
 import {
   mapCuratedDetailToUserListDetail,
   mapCuratedDetailToSearchResponse,
@@ -994,10 +995,7 @@ export const ListDetailPanelBody = React.memo(({ entry }: MountedSceneBodyProps)
   // meta through the share endpoint, which also yields the concrete listId for results.
   // Virtual All lists have no stored row: meta is synthesized below, the query stays off.
   const metaQuery = useQuery({
-    queryKey: [
-      'listDetail',
-      isCurated ? `curated:${listIdParam}` : (listIdParam ?? `slug:${shareSlug}`),
-    ],
+    queryKey: listDetailMetaQueryKey({ isCurated, listIdParam, shareSlug }),
     enabled: hasIdentity && !isVirtualAll,
     staleTime: 60_000,
     retry: (failureCount, error) => !isPrivateGoneError(error) && failureCount < 2,
@@ -1170,8 +1168,7 @@ export const ListDetailPanelBody = React.memo(({ entry }: MountedSceneBodyProps)
   const worldServesResults = worldBacked;
   const resultsQuery = useQuery({
     queryKey: [
-      'listDetailResults',
-      isCurated ? `curated:${resolvedListId}` : resolvedListId,
+      ...listDetailResultsQueryKey({ isCurated, resolvedListId }),
       effectiveSort,
       openNow,
       priceLevel,
@@ -1285,8 +1282,7 @@ export const ListDetailPanelBody = React.memo(({ entry }: MountedSceneBodyProps)
           }
           await queryClient.fetchQuery({
             queryKey: [
-              'listDetailResults',
-              resolvedListId,
+              ...listDetailResultsQueryKey({ isCurated, resolvedListId }),
               slice.sort,
               slice.openNow,
               slice.priceLevel,
@@ -1361,7 +1357,9 @@ export const ListDetailPanelBody = React.memo(({ entry }: MountedSceneBodyProps)
         }
         const enabled = await userListsService.enableShare(resolvedListId);
         slug = enabled.shareSlug;
-        await queryClient.invalidateQueries({ queryKey: ['listDetail', resolvedListId] });
+        await queryClient.invalidateQueries({
+          queryKey: listDetailMetaQueryKey({ isCurated, listIdParam, shareSlug }),
+        });
       }
       const inviteUrl = `${SHARE_BASE_URL}${serializeDesireLinkToPath({
         kind: 'sharedList',
@@ -1373,7 +1371,7 @@ export const ListDetailPanelBody = React.memo(({ entry }: MountedSceneBodyProps)
     } catch {
       announceFailureIfOnline();
     }
-  }, [metaQuery.data, queryClient, resolvedListId, viewerRole]);
+  }, [isCurated, listIdParam, metaQuery.data, queryClient, resolvedListId, shareSlug, viewerRole]);
 
   const handleOpenProfile = React.useCallback(
     (userId: string) => {
@@ -1387,10 +1385,10 @@ export const ListDetailPanelBody = React.memo(({ entry }: MountedSceneBodyProps)
     await Promise.all([
       queryClient.invalidateQueries({ queryKey: ['listCollaborators', resolvedListId] }),
       queryClient.invalidateQueries({
-        queryKey: ['listDetail', listIdParam ?? `slug:${shareSlug}`],
+        queryKey: listDetailMetaQueryKey({ isCurated, listIdParam, shareSlug }),
       }),
     ]);
-  }, [listIdParam, queryClient, resolvedListId, shareSlug]);
+  }, [isCurated, listIdParam, queryClient, resolvedListId, shareSlug]);
 
   const handleKick = React.useCallback(
     async (userId: string) => {
@@ -1564,11 +1562,11 @@ export const ListDetailPanelBody = React.memo(({ entry }: MountedSceneBodyProps)
   const invalidateListReads = React.useCallback(async () => {
     await Promise.all([
       queryClient.invalidateQueries({
-        queryKey: ['listDetail', listIdParam ?? `slug:${shareSlug}`],
+        queryKey: listDetailMetaQueryKey({ isCurated, listIdParam, shareSlug }),
       }),
       queryClient.invalidateQueries({ queryKey: userListKeys.all }),
     ]);
-  }, [listIdParam, queryClient, shareSlug]);
+  }, [isCurated, listIdParam, queryClient, shareSlug]);
 
   const runListUpdate = React.useCallback(
     async (payload: Parameters<typeof userListsService.update>[1]) => {
@@ -1779,19 +1777,23 @@ export const ListDetailPanelBody = React.memo(({ entry }: MountedSceneBodyProps)
     setCollaboratorModalVisible(true);
   }, []);
   const onOrderSaved = React.useCallback(async () => {
-    await queryClient.invalidateQueries({ queryKey: ['listDetailResults', resolvedListId] });
     await queryClient.invalidateQueries({
-      queryKey: ['listDetail', listIdParam ?? `slug:${shareSlug}`],
+      queryKey: listDetailResultsQueryKey({ isCurated, resolvedListId }),
+    });
+    await queryClient.invalidateQueries({
+      queryKey: listDetailMetaQueryKey({ isCurated, listIdParam, shareSlug }),
     });
     setSortOverride('custom');
-  }, [listIdParam, queryClient, resolvedListId, shareSlug]);
+  }, [isCurated, listIdParam, queryClient, resolvedListId, shareSlug]);
   const onItemsMutated = React.useCallback(async () => {
-    await queryClient.invalidateQueries({ queryKey: ['listDetailResults', resolvedListId] });
     await queryClient.invalidateQueries({
-      queryKey: ['listDetail', listIdParam ?? `slug:${shareSlug}`],
+      queryKey: listDetailResultsQueryKey({ isCurated, resolvedListId }),
+    });
+    await queryClient.invalidateQueries({
+      queryKey: listDetailMetaQueryKey({ isCurated, listIdParam, shareSlug }),
     });
     await queryClient.invalidateQueries({ queryKey: userListKeys.all });
-  }, [listIdParam, queryClient, resolvedListId, shareSlug]);
+  }, [isCurated, listIdParam, queryClient, resolvedListId, shareSlug]);
   // Dead slug (sharing revoked — the only way link access dies): 410 {state:'private'}
   // on either read → a RESOLVED private-gone answer, excluded from the error edge.
   const isPrivateGone =

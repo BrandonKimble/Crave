@@ -47,7 +47,11 @@ import {
   type PersistentHeaderExtrasProps,
 } from '../../navigation/runtime/app-route-persistent-header-registry';
 import type { SnapPoints } from '../bottomSheetMotionTypes';
-import type { SearchRoutePublishedSceneParts } from '../searchOverlayRouteHostContract';
+import type {
+  SearchRoutePublishedSceneParts,
+  SearchRouteSceneBodyContentSpec,
+  SearchRouteSceneBodyTransportSpec,
+} from '../searchOverlayRouteHostContract';
 import { normalizeSearchRouteSceneStackShellSpec } from '../searchOverlayRouteHostContract';
 import { useQuery } from '@tanstack/react-query';
 import { useAuthController } from '../../hooks/use-auth-controller';
@@ -1340,8 +1344,16 @@ export const usePollDetailPanelSpec = ({
       // Collapse state + the P4 anchor flash live outside `data`, so the list re-renders rows
       // when either changes (combined into listExtraData so its identity flips on a flash).
       extraData: listExtraData,
-      renderItem,
-      keyExtractor,
+      // F5421 — the scene-body spec is item-untyped (unknown rows); the panel keeps the
+      // typed ThreadNode shape and this seam erases the item type only.
+      renderItem: renderItem as unknown as Extract<
+        SearchRouteSceneBodyContentSpec,
+        { surfaceKind: 'list' }
+      >['renderItem'],
+      keyExtractor: keyExtractor as unknown as Extract<
+        SearchRouteSceneBodyContentSpec,
+        { surfaceKind: 'list' }
+      >['keyExtractor'],
       estimatedItemSize: 96,
       ListHeaderComponent: listHeaderComponent,
       ListEmptyComponent: emptyComponent,
@@ -1350,7 +1362,7 @@ export const usePollDetailPanelSpec = ({
     sceneBodyTransport: {
       // P4 — hand the thread's FlashList ref to the panel so the post-fetch anchor restore can
       // scrollToIndex on it as the sole scroll writer for that frame.
-      listRef: threadListRef,
+      listRef: threadListRef as unknown as SearchRouteSceneBodyTransportSpec['listRef'],
       // P4 — disable MVCP so the anchor scrollToIndex isn't fought by chat-style anchoring.
       flashListProps: threadFlashListProps,
       contentContainerStyle: {

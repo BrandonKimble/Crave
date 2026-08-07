@@ -43,6 +43,7 @@ import {
 } from '../../../screens/Search/components/restaurant-result-card-descriptor';
 import type { SuggestionMatchSegment } from '../../../screens/Search/utils/suggestion-match-highlight';
 import CardActionPillRow from './CardActionPillRow';
+import { resolveRestaurantPhoneNumber } from './result-card-helpers';
 import { useSavedMembership } from '../../../store/saved-membership-store';
 import {
   RESULT_CARD_GALLERY_HEIGHT,
@@ -151,6 +152,10 @@ const RestaurantResultCard: React.FC<RestaurantResultCardProps> = ({
       ? restaurant.craveScore
       : null;
   }, [preparedDescriptor, restaurant.craveScore]);
+
+  // F3719 — computed ONCE per render (was called twice inline: as the condition and as
+  // the content).
+  const scoreMovementLabel = formatCraveScoreMovement(restaurant.rising ?? null);
 
   const candidateTopFoods = React.useMemo(
     () => preparedDescriptor?.candidateTopFoods ?? topFoodItems.slice(0, TOP_FOOD_RENDER_LIMIT),
@@ -406,13 +411,13 @@ const RestaurantResultCard: React.FC<RestaurantResultCardProps> = ({
                         weight="semibold"
                         style={styles.metricValue}
                       />
-                      {formatCraveScoreMovement(restaurant.rising ?? null) ? (
+                      {scoreMovementLabel ? (
                         <Text
                           variant="body"
                           weight="medium"
                           style={{ marginLeft: 4, color: themeColors.textBody }}
                         >
-                          {formatCraveScoreMovement(restaurant.rising ?? null)}
+                          {scoreMovementLabel}
                         </Text>
                       ) : null}
                       <TouchableOpacity
@@ -575,11 +580,7 @@ const RestaurantResultCard: React.FC<RestaurantResultCardProps> = ({
         isSaved={isSavedAnywhere}
         editMode={pillEditMode}
         onShare={handleShare}
-        phoneNumber={
-          restaurant.displayLocation?.phoneNumber ??
-          restaurant.locations?.find((location) => location.phoneNumber != null)?.phoneNumber ??
-          null
-        }
+        phoneNumber={resolveRestaurantPhoneNumber(restaurant)}
         onDishes={handleRestaurantPress}
         testID={`result-card-pills-${restaurant.restaurantId}`}
       />

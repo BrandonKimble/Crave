@@ -6,6 +6,9 @@ import type {
   DualListSelection,
 } from './bottomSheetWithFlashListContract';
 import type { OverlayKey, OverlaySheetFrameSpec } from './types';
+// F5421 — the search-route scene-body twins alias the canonical scene-list-item type
+// (`unknown`, the stricter of the two) rather than re-spelling their own `any`.
+import type { AppRouteSceneListItem } from '../navigation/runtime/app-route-scene-descriptor-contract';
 import { createNullableShapeEquality, createShapeEquality, sameFieldRef } from './shape-equality';
 import type { SearchInteractionSnapshot } from '../screens/Search/context/SearchInteractionContext';
 import type { SceneBodyContentInsets } from './bottomSheetSurfaceStyleUtils';
@@ -34,24 +37,24 @@ export type SearchRouteSceneStackShellSpec = SearchRouteSceneShellSpec & {
 };
 
 export type SearchRouteSceneSecondaryListContentPublication = {
-  data: ReadonlyArray<any>;
-  renderItem?: FlashListProps<any>['renderItem'];
-  keyExtractor?: FlashListProps<any>['keyExtractor'];
+  data: ReadonlyArray<AppRouteSceneListItem>;
+  renderItem?: FlashListProps<AppRouteSceneListItem>['renderItem'];
+  keyExtractor?: FlashListProps<AppRouteSceneListItem>['keyExtractor'];
   estimatedItemSize?: number;
-  extraData?: FlashListProps<any>['extraData'];
-  ListHeaderComponent?: FlashListProps<any>['ListHeaderComponent'];
-  ListFooterComponent?: FlashListProps<any>['ListFooterComponent'];
-  ListEmptyComponent?: FlashListProps<any>['ListEmptyComponent'];
-  ItemSeparatorComponent?: FlashListProps<any>['ItemSeparatorComponent'];
-  onEndReached?: FlashListProps<any>['onEndReached'];
+  extraData?: FlashListProps<AppRouteSceneListItem>['extraData'];
+  ListHeaderComponent?: FlashListProps<AppRouteSceneListItem>['ListHeaderComponent'];
+  ListFooterComponent?: FlashListProps<AppRouteSceneListItem>['ListFooterComponent'];
+  ListEmptyComponent?: FlashListProps<AppRouteSceneListItem>['ListEmptyComponent'];
+  ItemSeparatorComponent?: FlashListProps<AppRouteSceneListItem>['ItemSeparatorComponent'];
+  onEndReached?: FlashListProps<AppRouteSceneListItem>['onEndReached'];
   listKey?: string;
 };
 
 export type SearchRouteSceneSecondaryListTransportPublication = {
-  listRef?: React.RefObject<FlashListRef<any> | null>;
+  listRef?: React.RefObject<FlashListRef<AppRouteSceneListItem> | null>;
   scrollIndicatorInsets?: ScrollViewProps['scrollIndicatorInsets'];
   contentContainerStyle?: SceneBodyContentInsets;
-  flashListProps?: BottomSheetWithFlashListBaseProps<any>['flashListProps'];
+  flashListProps?: BottomSheetWithFlashListBaseProps<AppRouteSceneListItem>['flashListProps'];
   testID?: string;
 };
 
@@ -128,28 +131,28 @@ export type SearchRouteSceneBodyContentSpec =
   | {
       /** Scrollable bodies — gesture-coordinated FlashList with drag→scroll handoff + taps. */
       surfaceKind: 'list';
-      data: ReadonlyArray<any>;
-      renderItem: FlashListProps<any>['renderItem'];
-      keyExtractor?: FlashListProps<any>['keyExtractor'];
+      data: ReadonlyArray<AppRouteSceneListItem>;
+      renderItem: FlashListProps<AppRouteSceneListItem>['renderItem'];
+      keyExtractor?: FlashListProps<AppRouteSceneListItem>['keyExtractor'];
       estimatedItemSize: number;
       ListChromeComponent?: React.ReactNode;
-      ListHeaderComponent?: FlashListProps<any>['ListHeaderComponent'];
-      ListFooterComponent?: FlashListProps<any>['ListFooterComponent'];
-      ListEmptyComponent?: FlashListProps<any>['ListEmptyComponent'];
-      ItemSeparatorComponent?: FlashListProps<any>['ItemSeparatorComponent'];
-      extraData?: FlashListProps<any>['extraData'];
+      ListHeaderComponent?: FlashListProps<AppRouteSceneListItem>['ListHeaderComponent'];
+      ListFooterComponent?: FlashListProps<AppRouteSceneListItem>['ListFooterComponent'];
+      ListEmptyComponent?: FlashListProps<AppRouteSceneListItem>['ListEmptyComponent'];
+      ItemSeparatorComponent?: FlashListProps<AppRouteSceneListItem>['ItemSeparatorComponent'];
+      extraData?: FlashListProps<AppRouteSceneListItem>['extraData'];
       secondaryList?: SearchRouteSceneSecondaryListContentPublication | null;
       listKey?: string;
-      onEndReached?: FlashListProps<any>['onEndReached'];
-      onEndReachedThreshold?: FlashListProps<any>['onEndReachedThreshold'];
+      onEndReached?: FlashListProps<AppRouteSceneListItem>['onEndReached'];
+      onEndReachedThreshold?: FlashListProps<AppRouteSceneListItem>['onEndReachedThreshold'];
     };
 
 export type SearchRouteSceneBodyTransportSpec = {
   contentContainerStyle?: SceneBodyContentInsets;
   keyboardShouldPersistTaps?: ScrollViewProps['keyboardShouldPersistTaps'];
   scrollIndicatorInsets?: ScrollViewProps['scrollIndicatorInsets'];
-  onScrollOffsetChange?: BottomSheetWithFlashListBaseProps<any>['onScrollOffsetChange'];
-  onScrollBeginDrag?: BottomSheetWithFlashListBaseProps<any>['onScrollBeginDrag'];
+  onScrollOffsetChange?: BottomSheetWithFlashListBaseProps<AppRouteSceneListItem>['onScrollOffsetChange'];
+  onScrollBeginDrag?: BottomSheetWithFlashListBaseProps<AppRouteSceneListItem>['onScrollBeginDrag'];
   /** Fired from the list's live onScroll with the current offsetY. The gesture-handoff
    * scroll container never produces native drag events (the finger is on the sheet's
    * GestureDetector; scrolling is worklet-driven), so consumers needing 'a real user scroll
@@ -157,18 +160,18 @@ export type SearchRouteSceneBodyTransportSpec = {
    * (content minus viewport minus offset) lets consumers derive end-proximity — FlashList's
    * onEndReached also never fires under handoff scrolling, so pagination triggers off THIS. */
   onUserListScrollActivity?: (offsetY: number, distanceFromEnd: number) => void;
-  onScrollEndDrag?: BottomSheetWithFlashListBaseProps<any>['onScrollEndDrag'];
-  onMomentumBeginJS?: BottomSheetWithFlashListBaseProps<any>['onMomentumBeginJS'];
-  onMomentumEndJS?: BottomSheetWithFlashListBaseProps<any>['onMomentumEndJS'];
+  onScrollEndDrag?: BottomSheetWithFlashListBaseProps<AppRouteSceneListItem>['onScrollEndDrag'];
+  onMomentumBeginJS?: BottomSheetWithFlashListBaseProps<AppRouteSceneListItem>['onMomentumBeginJS'];
+  onMomentumEndJS?: BottomSheetWithFlashListBaseProps<AppRouteSceneListItem>['onMomentumEndJS'];
   showsVerticalScrollIndicator?: boolean;
   keyboardDismissMode?: ScrollViewProps['keyboardDismissMode'];
   // Over-scroll is enforced no-bounce structurally by BottomSheetScrollContainer (the handoff
   // requires it); not configurable per scene. See SHEET_BODY_NO_OVERSCROLL.
   testID?: string;
   activeList?: DualListSelection;
-  flashListProps?: BottomSheetWithFlashListBaseProps<any>['flashListProps'];
+  flashListProps?: BottomSheetWithFlashListBaseProps<AppRouteSceneListItem>['flashListProps'];
   contentSurfaceStyle?: StyleProp<ViewStyle>;
-  listRef?: React.RefObject<FlashListRef<any> | null>;
+  listRef?: React.RefObject<FlashListRef<AppRouteSceneListItem> | null>;
   secondaryList?: SearchRouteSceneSecondaryListTransportPublication | null;
 };
 

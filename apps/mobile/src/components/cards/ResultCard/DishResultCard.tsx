@@ -23,6 +23,7 @@ import { formatCraveScoreMovement } from '../../../screens/Search/utils/quality'
 import { searchService } from '../../../services/search';
 import { useSearchHistoryStore } from '../../../store/searchHistoryStore';
 import CardActionPillRow from './CardActionPillRow';
+import { resolveRestaurantPhoneNumber } from './result-card-helpers';
 import { useSavedMembership } from '../../../store/saved-membership-store';
 import {
   RESULT_CARD_GALLERY_HEIGHT,
@@ -117,6 +118,10 @@ const DishResultCard: React.FC<DishResultCardProps> = ({
       ? item.craveScore
       : null;
   }, [item.craveScore]);
+
+  // F3719 — computed ONCE per render (was called twice inline: as the condition and as
+  // the content).
+  const scoreMovementLabel = formatCraveScoreMovement(item.rising ?? null);
 
   // W3 universal share modal (dish share id = the food entityId).
   const handleShare = React.useCallback(() => {
@@ -218,13 +223,13 @@ const DishResultCard: React.FC<DishResultCardProps> = ({
                     weight="semibold"
                     style={styles.metricValue}
                   />
-                  {formatCraveScoreMovement(item.rising ?? null) ? (
+                  {scoreMovementLabel ? (
                     <Text
                       variant="body"
                       weight="medium"
                       style={{ marginLeft: 4, color: themeColors.textBody }}
                     >
-                      {formatCraveScoreMovement(item.rising ?? null)}
+                      {scoreMovementLabel}
                     </Text>
                   ) : null}
                   <TouchableOpacity
@@ -278,12 +283,7 @@ const DishResultCard: React.FC<DishResultCardProps> = ({
         isSaved={isSavedAnywhere}
         editMode={pillEditMode}
         onShare={handleShare}
-        phoneNumber={
-          restaurantForDish?.displayLocation?.phoneNumber ??
-          restaurantForDish?.locations?.find((location) => location.phoneNumber != null)
-            ?.phoneNumber ??
-          null
-        }
+        phoneNumber={resolveRestaurantPhoneNumber(restaurantForDish)}
         testID={`result-card-pills-${item.connectionId}`}
       />
     </View>

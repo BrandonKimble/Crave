@@ -318,7 +318,6 @@ export const useSearchForegroundBottomNavVisualRuntime = ({
         cutoutSamplesSheet: 'pixel_contract_required',
         sheetClippedFromNavBody: true,
         singleNavSilhouetteHost: true,
-        noMapThroughNavSilhouetteOverlap: false,
         loadingResultsSettledSheetExclusionMode: isDockedSceneHandoffCommitted
           ? 'dockedScene applies committed inverse nav silhouette mask'
           : 'animatedSearchTransition projects inverse sheet mask from nav silhouette',
