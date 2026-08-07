@@ -6,6 +6,8 @@
  * attempts++), census two-step (cheap geometry-id fetch then scarce
  * polygon), raw-SQL polygon persist, header-answer frequency memory.
  */
+import type { PlaceGeometryPromotion } from '@prisma/client';
+
 import { PlacesPromotionService } from './places-promotion.service';
 
 const PLACE_ID = '00000000-0000-4000-8000-000000000001';
@@ -39,15 +41,31 @@ function makePlaceRow(overrides: Record<string, unknown> = {}) {
   };
 }
 
-function makeQueueRow(overrides: Record<string, unknown> = {}) {
+/**
+ * TYPED ON THE PRODUCTION ROW (F4950). This builder used to be
+ * `Record<string, unknown>` and omitted `missAttempts` entirely, so every
+ * test ran with `item.missAttempts === undefined`: `undefined + 1` is `NaN`,
+ * `NaN >= MISS_ATTEMPTS_BEFORE_RETIRE` is `false`, and BOTH retirement
+ * branches (the vendor-miss ceiling and the unusable-answer ceiling) were
+ * unreachable in the whole suite — setting the constant to 999 reddened
+ * nothing. `PlaceGeometryPromotion` makes `missAttempts` non-optional, so
+ * the compiler now refuses the omission and the counter starts at the
+ * column's own default, EXPLICITLY.
+ */
+function makeQueueRow(
+  overrides: Partial<PlaceGeometryPromotion> = {},
+): PlaceGeometryPromotion {
   return {
     placeId: PLACE_ID,
     trigger: 'poll_created',
     enqueuedAt: new Date('2026-07-01T00:00:00Z'),
     promotedAt: null,
+    missAttempts: 0,
     attempts: 0,
     lastAttemptAt: null,
+    refusedAt: null,
     providerBoundaryId: null,
+    campaignId: null,
     ...overrides,
   };
 }
@@ -97,7 +115,7 @@ function erroringPolygon(error: Error): jest.Mock {
 }
 
 function makeHarness(options: {
-  queueRows?: Array<Record<string, unknown>>;
+  queueRows?: PlaceGeometryPromotion[];
   place?: Record<string, unknown> | null;
   hasGeometryAlready?: boolean;
   resolveGeometryId?: jest.Mock;
@@ -335,6 +353,93 @@ describe('PlacesPromotionService — §2 earned-moment queue', () => {
       });
       // Never promoted.
       expect(prisma.place.update).not.toHaveBeenCalled();
+    });
+
+    /**
+     * THE RETIREMENT CEILING, F4950. Before the fixture builder was typed,
+     * `missAttempts` was never set, so `item.missAttempts + 1` was `NaN` and
+     * `NaN >= MISS_ATTEMPTS_BEFORE_RETIRE` was false in EVERY test: the
+     * ceiling that exists to stop a permanently-unsatisfiable row drawing a
+     * scarce polygon every hour forever was unreachable, and setting the
+     * constant to 999 reddened nothing. These two cases straddle it, so the
+     * VALUE is pinned and not just the branch.
+     */
+    it('the ceiling FIRES: the miss that reaches MISS_ATTEMPTS_BEFORE_RETIRE retires the row terminally', async () => {
+      const fetchPolygon = answeringPolygon({ kind: 'miss' });
+      const { service, prisma } = makeHarness({
+        // Two prior vendor misses; this draw is the third ask.
+        queueRows: [
+          makeQueueRow({ providerBoundaryId: 'geo-cached', missAttempts: 2 }),
+        ],
+        fetchPolygon,
+      });
+      const now = new Date('2026-07-20T00:00:00Z');
+      await service.drainQueue(now);
+      // recordRefusal, not recordMiss: refusedAt is stamped (terminal — the
+      // drain never selects the row again) and missAttempts is NOT bumped,
+      // because there is nothing left to count toward.
+      expect(prisma.placeGeometryPromotion.update).toHaveBeenCalledWith({
+        where: { placeId: PLACE_ID },
+        data: {
+          attempts: { increment: 1 },
+          lastAttemptAt: now,
+          refusedAt: now,
+        },
+      });
+      const calls = prisma.placeGeometryPromotion.update.mock.calls as Array<
+        [{ data: Record<string, unknown> }]
+      >;
+      expect(calls.filter((c) => 'missAttempts' in c[0].data)).toHaveLength(0);
+    });
+
+    it('the ceiling does NOT fire one miss early — the row below it stays queued and countable', async () => {
+      const fetchPolygon = answeringPolygon({ kind: 'miss' });
+      const { service, prisma } = makeHarness({
+        queueRows: [
+          makeQueueRow({ providerBoundaryId: 'geo-cached', missAttempts: 1 }),
+        ],
+        fetchPolygon,
+      });
+      const now = new Date('2026-07-20T00:00:00Z');
+      await service.drainQueue(now);
+      expect(prisma.placeGeometryPromotion.update).toHaveBeenCalledWith({
+        where: { placeId: PLACE_ID },
+        data: {
+          attempts: { increment: 1 },
+          missAttempts: { increment: 1 },
+          lastAttemptAt: now,
+        },
+      });
+      const calls = prisma.placeGeometryPromotion.update.mock.calls as Array<
+        [{ data: Record<string, unknown> }]
+      >;
+      expect(calls.filter((c) => 'refusedAt' in c[0].data)).toHaveLength(0);
+    });
+
+    it('the ROW-SCOPED-FAULT ceiling fires on the same count (the second retirement branch)', async () => {
+      const { service, prisma } = makeHarness({
+        queueRows: [
+          makeQueueRow({ providerBoundaryId: 'geo-stale', missAttempts: 2 }),
+        ],
+        fetchPolygon: jest.fn((_id: string, onDrawConsumed?: () => void) => {
+          onDrawConsumed?.();
+          return Promise.resolve({
+            kind: 'failed' as const,
+            reason: 'tomtom_geometry_id_not_echoed',
+            scope: 'row' as const,
+          });
+        }),
+      });
+      const now = new Date('2026-07-20T00:00:00Z');
+      await service.drainQueue(now);
+      expect(prisma.placeGeometryPromotion.update).toHaveBeenCalledWith({
+        where: { placeId: PLACE_ID },
+        data: {
+          attempts: { increment: 1 },
+          lastAttemptAt: now,
+          refusedAt: now,
+        },
+      });
     });
 
     it('success persists the polygon via the place_geometries raw-SQL shape and stamps BOTH promotion timestamps', async () => {
