@@ -38,6 +38,12 @@ import {
  * Sampling three times would triple the cost to re-measure a stable answer.
  * What DID move results was prompt WORDING — hence the version-pinned prompt.
  */
+/** Bumped when prompt WORDING changes what the corpus should contain.
+ *  v1 = pre-gender-complete labels (implicit, DB default); v2 = the
+ *  gender/plural-complete + dietary-boundary prompt. The sweep re-offers
+ *  labels below this — one re-pay per bump. */
+export const VOCABULARY_PROMPT_VERSION = 2;
+
 @Injectable()
 export class VocabularyGenerator implements LabelGenerator {
   readonly name = 'llm-vocabulary';

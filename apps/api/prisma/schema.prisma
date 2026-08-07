@@ -201,6 +201,9 @@ model EntityLabel {
   description String?  @db.VarChar(500)
   isDefault   Boolean  @default(false) @map("is_default")
   rank        Int      @default(0)
+  /// Vocabulary-prompt version that wrote this row; the sweep re-offers rows
+  /// below the generator's current version (one re-pay per prompt bump).
+  promptVersion Int    @default(1) @map("prompt_version")
   /// R5-10: the sweep and the spine seeder judge by MULTI-SAMPLE CONSENSUS.
   /// Agreement lands 'active'; disagreement lands 'candidate' for human
   /// review; a rejected label is 'deprecated' (remembered as wrong, not

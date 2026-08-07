@@ -1,3 +1,4 @@
+import { VOCABULARY_PROMPT_VERSION } from './vocabulary-generator';
 import { Injectable, Logger } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
@@ -98,6 +99,7 @@ export class LabelSweepService {
             WHERE l.entity_id = e.entity_id
               AND LOWER(l.locale) = ANY(${localeLookupChain(locale)}::text[])
               AND l.status IN ('active', 'candidate')
+              AND l.prompt_version >= ${VOCABULARY_PROMPT_VERSION}
           )
       `,
     );
@@ -128,6 +130,7 @@ export class LabelSweepService {
             WHERE l.entity_id = e.entity_id
               AND LOWER(l.locale) = ANY(${localeLookupChain(locale)}::text[])
               AND l.status IN ('active', 'candidate')
+              AND l.prompt_version >= ${VOCABULARY_PROMPT_VERSION}
           )
         -- MOST-REFERENCED FIRST. A sweep is always budget-bounded, so the
         -- concepts users actually encounter must be labelled first. This
@@ -242,10 +245,12 @@ export class LabelSweepService {
           rank: 0,
           status: label.status,
           source,
+          promptVersion: VOCABULARY_PROMPT_VERSION,
         },
         update: {
           description: label.description,
           status: label.status,
+          promptVersion: VOCABULARY_PROMPT_VERSION,
           updatedAt: new Date(),
         },
       });
