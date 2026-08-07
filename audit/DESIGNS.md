@@ -2687,3 +2687,52 @@ Cross-lane note: the mobile survivors lane committed the shared ledgers wholesal
 its message, sweeping this lane's rows — content intact, gates green, and the eighth
 sweep instance is on ledger files where wholesale commits are the practical norm; the
 LANE_PATHS fence covers production files, which is where sweeps did damage.
+
+---
+
+## D95 — P2 verdicts on the authority-controllers pass (F5400–F5425, 2026-08-06)
+
+**F5417 — APPROVED, and it earns a place in the catalogue: the fix addressed the leg and
+left the sink.** The half-pop probe was repaired under the banner "an instrument that
+cannot fire is an always-green lie" — and the repaired leg emits through a debug logger
+gated on a constant false, so it STILL cannot fire in any build. The rederivation is the
+ruling: a correctness TRIPWIRE and a narrative TRACE are different populations; split
+them so only the trace may be flipped off. The tripwire emits unconditionally (or through
+the crash-reporting seam), and the spec proves it fires with the debug flag off.
+
+**F5405 — APPROVED with its honest cost.** A module-global Set maintained on every
+production arm/disarm exists to serve txns minted OUTSIDE the single-live-transaction
+holder — which exist because the constructor is exported and the spec uses it 14 times
+against the engine's own architecture. Un-export, stage through the holder (which already
+supersedes-and-disarms), delete the Set and its duplicated-ledger hazard. The cost is
+stated and accepted: two spec cases rewritten, and if one asserts a state production
+cannot reach, it DIES rather than being contorted — a spec of an unreachable state is
+the F4507 shape.
+
+**F5407 — APPROVED, priority within the batch.** The dismiss richness gate — inside the
+golden-guarded deadlock seam — reads a field with ZERO writers whose own type comment
+concedes it is unwritten, and setting it flips a branch the golden assertion cannot see
+(it guards the emission, not the branch choice). Delete the dead field and the branch it
+gates; the golden stays exactly as strong because it never saw this axis.
+
+**F5400/F5404/F5410/F5411/F5418 — APPROVED.** The publication lane collapses to the one
+integer it carries (and that integer's derivation gets ONE home instead of three); the
+phantom union member whose only use is a spec's invalid-value case dies with its false
+header credit; the correct `=== undefined` discrimination replaces the broken `??` eight
+lines away so the admission policy becomes clearable; the hard-coded `durationMs: 0`
+computes or the span dies (F2901's rule); and the silently-discarding guard becomes a
+shape that cannot receive a second scene.
+
+**F5416 — accepted, and it changes an acceptance bar:** the F4700 flake reproduced at
+1-in-7 with the suite dying wholesale (3 tests lost, no assertion failing) — consistent
+with the `virtual: true` registry-effect diagnosis. The fix's bar is TWENTY consecutive
+greens, not one. The lane's honesty about not capturing the suite name (ran --silent) is
+noted; the fix lane must run without it.
+
+**The re-verification discipline drew blood again:** a delegated "contradiction" was two
+different flags' docblocks — recorded as a NON-FINDING so nobody re-derives it. And the
+26 clean bills include the contrast that teaches: premount-violation-probe is ARMED and
+honest about its unmeasured constant, in the same territory as F5417's disarmed sibling.
+
+F5000 remains OPEN honestly — its opener surfaces are in unreached files and the lane
+did not guess.
