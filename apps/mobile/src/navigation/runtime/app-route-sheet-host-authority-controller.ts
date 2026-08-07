@@ -170,30 +170,18 @@ type AppRouteSheetHostInteractionPolicy = {
 // PresentationFrame instead of re-deriving it from its own subscriptions (the deleted §9.2
 // site-1 cascade). Access path: `routeSceneSwitchActions` IS the full scene-switch runtime
 // object (app-route-scene-runtime.ts wires `routeOverlayTransitionActions: routeSceneSwitchRuntime`);
-// it is merely TYPED as the narrow actions surface at the provider seam. Narrow it back with a
-// construction-time guard so a future wiring change fails loudly here, not as a silent
-// empty-frame sheet.
+// it is TYPED as the narrow actions surface at the provider seam, and
+// RouteSceneSwitchTransitionActions already declares getPresentationFrame +
+// subscribePresentationFrame as REQUIRED members — so tsc GUARANTEES they exist and the
+// field is assigned directly. (A prior construction-time typeof-guard here was a
+// verification that could not fail: the Partial<> widening re-opened a hole the type does
+// not have, then checked for it. Deleted — the sibling app-route-overlay-session-state-
+// controller reads the identical contract guardless. The type makes an empty-frame source
+// unrepresentable; that is the whole guarantee.)
 type AppRouteSheetHostPresentationFrameSource = Pick<
   AppRouteSceneSwitchRuntime,
   'getPresentationFrame' | 'subscribePresentationFrame'
 >;
-
-const resolvePresentationFrameSource = (
-  routeSceneSwitchActions: RouteSceneSwitchTransitionActions
-): AppRouteSheetHostPresentationFrameSource => {
-  const candidate = routeSceneSwitchActions as RouteSceneSwitchTransitionActions &
-    Partial<AppRouteSheetHostPresentationFrameSource>;
-  if (
-    typeof candidate.getPresentationFrame !== 'function' ||
-    typeof candidate.subscribePresentationFrame !== 'function'
-  ) {
-    throw new Error(
-      'AppRouteSheetHostAuthorityController requires the scene-switch RUNTIME as ' +
-        'routeSceneSwitchActions — it is the PresentationFrame source (page-switch P2).'
-    );
-  }
-  return candidate as AppRouteSheetHostPresentationFrameSource;
-};
 
 export type AppRouteSheetHostAuthorityControllerRuntime = {
   routeSheetMotionRuntimeAuthority: AppRouteSheetHostMotionRuntimeAuthority;
@@ -532,7 +520,9 @@ class AppRouteSheetHostAuthorityController {
 
   constructor(private readonly input: AppRouteSheetHostAuthorityControllerInput) {
     // Must resolve before the initial snapshot creation below — getResolvedSurfaceInput reads it.
-    this.presentationFrameSource = resolvePresentationFrameSource(input.routeSceneSwitchActions);
+    // Direct assignment: RouteSceneSwitchTransitionActions requires both PF methods, so
+    // this narrows to the Pick by structural assignability — no runtime guard needed.
+    this.presentationFrameSource = input.routeSceneSwitchActions;
     this.motionCallbacksEntry = {
       onSnapStart: this.handleSheetSnapStart,
       onSnapChange: this.recordSharedSheetSnap,
