@@ -1794,10 +1794,6 @@ export class EntityResolutionService implements OnModuleInit {
       (r) => r.resolutionTier === 'new' && r.entityId,
     ).length;
 
-    const totalConfidence = results.reduce((sum, r) => sum + r.confidence, 0);
-    const averageConfidence =
-      results.length > 0 ? totalConfidence / results.length : 0;
-
     return {
       totalProcessed: results.length,
       exactMatches,
@@ -1805,7 +1801,6 @@ export class EntityResolutionService implements OnModuleInit {
       fuzzyMatches,
       newEntitiesCreated,
       processingTimeMs: Math.max(processingTimeMs, 1), // Ensure minimum 1ms for testing
-      averageConfidence: Math.round(averageConfidence * 100) / 100,
     };
   }
 

@@ -108,9 +108,6 @@ export function monthPositionColor(
   spentMicros: number,
   expectedMicros: number,
 ): MonthPositionColor {
-  if (expectedMicros <= 0) {
-    return 'blue';
-  }
   const ratio = spentMicros / expectedMicros;
   if (ratio <= MONTH_POSITION_WARN_RATIO) {
     return 'blue';
@@ -388,15 +385,7 @@ export class OpsSummaryService {
         ...pipelineCore,
         unackedAlerts: unacknowledgedCount,
       },
-      // Prisma returns BIGINT columns as BigInt, which JSON.stringify
-      // rejects — surfaced by the first real spend_campaigns row (an empty
-      // table serialized fine). Map to plain numbers at the payload edge.
-      campaigns: campaigns.map((row) => ({
-        ...row,
-        spentMicros: row.spentMicros === null ? null : Number(row.spentMicros),
-        estimateMicros:
-          row.estimateMicros === null ? null : Number(row.estimateMicros),
-      })),
+      campaigns,
       alerts: { latest: alerts, unacknowledgedCount },
     };
   }
