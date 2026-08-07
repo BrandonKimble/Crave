@@ -3296,3 +3296,32 @@ forbidden.
 Numbers at this landing: 150 suites / 1468 mobile tests, both ledger gates green,
 ownership gate green. The 1450→1468 delta between the lane's runs is concurrent churn,
 attributed not assumed.
+
+---
+
+## D111 — tooling residuals ratified; the scanner earned trust the only honest way (2026-08-07)
+
+**F4601's scanner was shaped by its own false positives, and that is the point.** Three
+report-only runs each forced a design correction — platform types excluded, credits keyed
+by property SYMBOL so the compiler's own unification of aliases/intersections does the
+work, `getRootSymbols` so a mapped-type comparator 600 lines away still credits its
+source. Calibrated against the real F4101 family restored from pre-fix blobs (found all
+provable shapes; the one non-calibratable case is NAMED, with why). Live-tree run: 11
+candidates, 11 verified genuine — zero false positives — and TWO of the eleven were
+already declared dead in the code's own comments while their types still carried them.
+**--check exists, is proven, and is deliberately UNWIRED** because the tree holds those
+11: a gate that lands red is what this repo keeps learning not to ship. F6900 queues
+their deletion with the wiring point named. That sequencing — earn the gate, then drain
+the population, then wire — is now the house pattern (third use).
+
+**F5851's gate falsified the hand sweeps it was meant to merely freeze.** Two manual
+sweeps reported zero orphans over 153 keys; both credited bare `styles.<key>` hits in
+files that own a SAME-NAMED key on their own local StyleSheet and never import the
+module. The gate found 20 dead keys behind that shadowing — verified by hand, deleted,
+−115 lines — and its comment-mention mutation stays RED. The stripper replica count went
+DOWN (moved to scripts/lib, both gates import it, the hook-names gate re-proven after
+the move). Regression-prevention tooling that pays for itself on day one.
+
+**F6405(b)** landed with the demonstration the old assertion could only show green.
+
+F6900 (drain the 11, wire --check) and F6901 (pre-existing styles warnings) queued.
