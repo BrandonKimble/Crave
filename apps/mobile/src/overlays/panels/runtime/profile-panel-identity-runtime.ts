@@ -36,7 +36,10 @@ export const useProfilePanelIdentityRuntime = ({
       return `${parts[0][0]}${parts[1][0]}`.toUpperCase();
     }
     return cleaned[0].toUpperCase();
-  }, [profile?.displayName, profile?.email, profile?.username]);
+    // The memo now reads `profile` as a whole (the resolver also consults
+    // isDeleted), so the field-by-field dependency list would go stale on
+    // exactly the input that changes the answer.
+  }, [profile]);
   const stats = profile?.stats;
   // Distinguish "still loading" (profile === undefined → render skeletons) from a genuinely
   // resolved profile (use the text fallbacks). The text fallbacks above stay correct for a
