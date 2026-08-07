@@ -2736,3 +2736,33 @@ honest about its unmeasured constant, in the same territory as F5417's disarmed 
 
 F5000 remains OPEN honestly — its opener surfaces are in unreached files and the lane
 did not guess.
+
+---
+
+## D96 — survivors P3 ratified; my "cannot false-accuse" claim was FALSE (2026-08-06)
+
+**F5302's lint rule is DEAD, and the refutation is mine to own.** I ruled the `void
+<identifier>;` rule shippable because "the author has already asserted the arg is unread —
+false accusation is absent by construction." A repo census found THIRTEEN sites, not
+eight, and in four of them the void means the OPPOSITE: `void _assertEveryRuntimeField...`,
+`void exhaustive;` — the voided identifier is a declared const WHOSE DECLARATION IS THE
+CHECK (never-exhaustiveness bindings, compile-time type assertions), and the void marks it
+used. Deleting the line deletes a real guard. ESLint cannot resolve bindings, so no
+selector separates the two meanings; and the F2050 one-block law makes scoping the rule
+unavailable (a second no-restricted-syntax block would REPLACE the display-name bans).
+Third element of mine refuted by reading (F2403's composite, F4506's dispose order, now
+this). The terminal state is honest: seven in-territory sites cleaned to their producers
+(tsc-proven), two remain with out-of-lane callers, the rule is NOT shipped, and the
+general answer stays F4601's type-aware scanner. F5427 (make no-unused-vars args an
+error) FOLDS INTO the F2406 owner escalation — same decision, same cost surface.
+
+**The rest landed at the standard.** F5300's mutation held exactly as designed (no spec
+edited, nothing lost); F5301's spec is a real discriminator (the identity tests red under
+the restored rest-destructure while wiring tests stay green); F5304's caller-side proof
+ran at all three sites simultaneously per the D92 warning; F5306 chose the higher rung
+with a MEASURED zero cascade rather than a guessed one.
+
+**F5426 — ESCALATED (product), and it reframes F5306:** `setOverlapRegion` has zero
+callers, so the frozen region was never written and the leak had no state to leak — the
+fix was correct and free, but the real question (freeze the overlap region per search, or
+recompute per source build) is a product behavior choice. Options on the row.
