@@ -47,7 +47,6 @@ export type BottomSheetWithFlashListBaseProps<T> = {
   listScrollEnabled?: boolean;
   snapPoints: SnapPoints;
   initialSnapPoint?: SheetSnapPoint;
-  preservePositionOnSnapPointsChange?: boolean;
   headerComponent?: React.ReactNode;
   backgroundComponent?: React.ReactNode;
   overlayComponent?: React.ReactNode;
@@ -145,7 +144,6 @@ export type BottomSheetSceneSurfaceSharedProps<T> = Omit<
   | 'visible'
   | 'snapPoints'
   | 'initialSnapPoint'
-  | 'preservePositionOnSnapPointsChange'
   | 'onHidden'
   | 'onSnapStart'
   | 'onSnapChange'

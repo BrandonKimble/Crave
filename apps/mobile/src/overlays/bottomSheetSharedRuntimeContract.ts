@@ -25,7 +25,6 @@ export type BottomSheetSharedRuntimeProps = {
   listScrollEnabled?: boolean;
   snapPoints: BottomSheetSnapPoints;
   initialSnapPoint?: BottomSheetSnapPoint;
-  preservePositionOnSnapPointsChange?: boolean;
   scrollHeaderComponent?: React.ReactNode;
   onHidden?: () => void;
   onSnapStart?: (snap: BottomSheetSnap, meta?: BottomSheetSnapChangeMeta) => void;
@@ -34,7 +33,6 @@ export type BottomSheetSharedRuntimeProps = {
   onMomentumBeginJS?: () => void;
   onMomentumEndJS?: () => void;
   showsVerticalScrollIndicator?: boolean;
-  testID?: string;
   activeList?: 'primary' | 'secondary';
   onDragStateChange?: (isDragging: boolean) => void;
   onSettleStateChange?: (isSettling: boolean) => void;
@@ -48,7 +46,6 @@ export type BottomSheetSharedRuntimeProps = {
   sheetYObserver?: SharedValue<number>;
   scrollOffsetValue?: SharedValue<number>;
   momentumFlag?: SharedValue<boolean>;
-  listKey?: string;
   // F2407: `dataCount: number` used to sit here, REQUIRED, beside these optional siblings —
   // and nothing read it. Its sole construction site passed the literal `0`, which is the
   // tell: the value was not computed because it did not matter, yet the type insisted every

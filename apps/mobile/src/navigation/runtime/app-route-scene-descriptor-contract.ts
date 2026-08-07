@@ -230,8 +230,6 @@ export const areAppRouteSceneShellSpecsEqual = (
     previousSpec.renderWrapper === nextSpec.renderWrapper &&
     previousSpec.nativeHostKey === nextSpec.nativeHostKey &&
     previousSpec.listScrollEnabled === nextSpec.listScrollEnabled &&
-    previousSpec.preservePositionOnSnapPointsChange ===
-      nextSpec.preservePositionOnSnapPointsChange &&
     previousSpec.onDragStateChange === nextSpec.onDragStateChange &&
     previousSpec.onSettleStateChange === nextSpec.onSettleStateChange &&
     previousSpec.interactionEnabled === nextSpec.interactionEnabled &&

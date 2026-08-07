@@ -364,9 +364,11 @@ export const useBottomSheetSharedRuntime = ({
   // F1475: `visible` / `wasVisible` / `initialSnapValue` / `hiddenOrCollapsed` /
   // `preservePositionOnSnapPointsChange` / `sheetYValue` / `currentSnapKeyRef` no longer
   // travel here — they fed only the pre-native JS spring lane the execution runtime deleted.
-  // `preservePositionOnSnapPointsChange` is consequently read by NOTHING now, though it is
-  // still declared on bottomSheetSharedRuntimeContract / bottomSheetWithFlashListContract and
-  // set by the scene descriptors: unplumbing that prop chain is its own rederivation.
+  // F4503 finished that: `preservePositionOnSnapPointsChange` is GONE from both contracts,
+  // from the assembly that passed it a literal `true`, and from the shell-spec equality that
+  // was comparing it field-by-field — an equality doing work to detect changes in a value
+  // that could change nothing. Its two never-destructured siblings (`testID`, dead since
+  // F973(d) deleted its only reader; `listKey`, which had no reader anywhere) went with it.
   const { resolveDestination, startSpring } = useBottomSheetSharedSnapExecutionRuntime({
     motionCommandValue,
     sheetY,
