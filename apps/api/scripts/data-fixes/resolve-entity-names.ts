@@ -95,7 +95,12 @@ async function main(): Promise<void> {
         faulted += 1;
         continue;
       }
-      if (lookup.kind === 'empty') {
+      if (lookup.kind === 'empty' || lookup.kind === 'wrong-level') {
+        // wrong-level = the adapter's echo gate (2026-08-07): the vendor
+        // answered about a DIFFERENT rung. Before the gate this script
+        // id-matched only — a coincident-boundary pair shares one geometry
+        // id across two rungs, so an answer about the OTHER rung could pass
+        // the id test. Structurally closed now.
         none += 1;
         continue;
       }

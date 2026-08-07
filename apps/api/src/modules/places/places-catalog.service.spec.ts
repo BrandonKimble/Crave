@@ -564,18 +564,18 @@ describe('PlacesCatalogService.placesInView — §2.5 coverage', () => {
     expect(sql).toContain('LIMIT');
   });
 
-  it('a ground read failure yields NO candidates for this read — never a weaker judgment', async () => {
+  it('a ground read failure THROWS — never an empty result, never a weaker judgment', async () => {
+    // Round-2 red team: returning [] here made a Postgres blip
+    // indistinguishable from an honest "nothing here" — the header rendered
+    // «this area» and the feed rendered empty, behind one warn line. The
+    // §2.6 half survives (no bbox-judged fallback arm); the failure is now
+    // a failure.
     const { service, findMany, queryRaw } = makeHarness([]);
     queryRaw.mockRejectedValue(new Error('postgis down'));
 
-    expect(
-      await service.placesInView({
-        minLat: 0,
-        minLng: 0,
-        maxLat: 1,
-        maxLng: 1,
-      }),
-    ).toEqual([]);
+    await expect(
+      service.placesInView({ minLat: 0, minLng: 0, maxLat: 1, maxLng: 1 }),
+    ).rejects.toThrow('postgis down');
     expect(findMany).not.toHaveBeenCalled();
   });
 
@@ -595,7 +595,9 @@ describe('PlacesCatalogService.placesInView — §2.5 coverage', () => {
     });
     const sql = queryRaw.mock.calls[0][0].sql as string;
     expect(sql).not.toContain('ST_Union');
-    expect((sql.match(/geometry && /g) ?? []).length).toBe(2);
+    // 2 view arms + 1 centre-point envelope prefilter in the ORDER BY (the
+    // sort-key guard that keeps ST_Covers off every &&-matched row).
+    expect((sql.match(/geometry && /g) ?? []).length).toBe(3);
     expect(sql).toContain(' OR ');
 
     const plain = makeHarness([]);
@@ -607,7 +609,8 @@ describe('PlacesCatalogService.placesInView — §2.5 coverage', () => {
       maxLng: 1,
     });
     const plainSql = plain.queryRaw.mock.calls[0][0].sql as string;
-    expect((plainSql.match(/geometry && /g) ?? []).length).toBe(1);
+    // 1 view arm + the centre prefilter.
+    expect((plainSql.match(/geometry && /g) ?? []).length).toBe(2);
   });
 });
 

@@ -28,6 +28,7 @@
  * It FAILS LOUDLY without one rather than skipping.
  */
 import { PrismaClient } from '@prisma/client';
+import { ATTENTION_FRACTION } from '@crave-search/shared';
 import {
   PLACES_IN_VIEW_CANDIDATE_CAP,
   PlacesCatalogService,
@@ -37,10 +38,10 @@ const TEST_TAG = 'itest-viewport-cap';
 /** A 1°×1° box in the open Pacific — no real place in the corpus reaches it,
  *  so the cap is contested only by this spec's own fixtures. */
 const VIEW = { minLat: 0, minLng: -150, maxLat: 1, maxLng: -149 };
-/** The §4 attention floor: the feed-membership half of the assertion —
- *  places above it must survive the cap for the FEED even though the header
- *  no longer ranks on it. */
-const ATTENTION_FRACTION = 1 / 3;
+// The §4 attention floor (imported, not re-declared — a local copy would
+// silently keep passing if the shared knob ever moved): the feed-membership
+// half of the assertion — places above it must survive the cap for the FEED
+// even though the header no longer ranks on it.
 
 const prisma = new PrismaClient();
 const logger = {

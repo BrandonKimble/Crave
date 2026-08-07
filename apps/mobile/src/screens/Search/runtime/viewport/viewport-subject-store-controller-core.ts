@@ -1,5 +1,7 @@
 import {
+  PLACES_SLICE_MARGIN_FACTOR,
   bboxContains,
+  bboxLngSpan,
   bboxToGround,
   resolveHeaderPlace,
   subjectCandidatesInView,
@@ -177,6 +179,9 @@ export const createViewportSubjectStoreController = ({
   let sliceRetryTimer: ReturnType<typeof setTimeout> | null = null;
   let sliceRetryAttempt = 0;
   let sliceFetchInFlight = false;
+  /** The span of the view the current slice was CUT for — the scale re-cut
+   *  detector's baseline (null until the first slice lands). */
+  let sliceCutSpan: number | null = null;
   let fetchEpoch = 0;
   let settledEpisode: SettledEpisode | null = null;
   let pendingExitVerdict: ViewportSubjectVerdict | null = null;
@@ -327,6 +332,17 @@ export const createViewportSubjectStoreController = ({
     }
     const { slice, marginBox, catalogWatermarkSeen, sliceCatalogWatermark } =
       getViewportSubjectState();
+    // SCALE RE-CUT (round-2 red team): a slice is simplified and cap-ranked
+    // for the span it was CUT at. Zooming in never escapes the margin box,
+    // so without this a deep zoom judged block-scale views against
+    // margin-scale rings (~3x the boundary error the 512-fraction law
+    // promises) and against a slice whose cap may have dropped exactly the
+    // fine rows a deep view needs. One margin-step (the same ×3) is the
+    // re-cut threshold: within it the error stays at the documented bound;
+    // past it the slice is re-fetched at the finer scale.
+    const viewSpan = Math.max(view.maxLat - view.minLat, bboxLngSpan(view));
+    const scaleStale =
+      slice != null && sliceCutSpan != null && viewSpan < sliceCutSpan / PLACES_SLICE_MARGIN_FACTOR;
     // Inequality = change detector, never an ordering. THE LOAD-BEARING
     // INVARIANT (why a re-cut can never loop): the controller refetches with
     // the SAME view the feeds asked about, and the server expands both by
@@ -342,12 +358,25 @@ export const createViewportSubjectStoreController = ({
       slice != null &&
       catalogWatermarkSeen != null &&
       catalogWatermarkSeen !== sliceCatalogWatermark;
-    if (slice != null && marginBox != null && bboxContains(marginBox, view) && !sliceStale) {
+    if (
+      slice != null &&
+      marginBox != null &&
+      bboxContains(marginBox, view) &&
+      !sliceStale &&
+      !scaleStale
+    ) {
       return;
     }
     sliceFetchInFlight = true;
     const epoch = ++fetchEpoch;
-    const cause = slice == null ? 'no-slice' : sliceStale ? 'watermark-refresh' : 'margin-escape';
+    const cause =
+      slice == null
+        ? 'no-slice'
+        : sliceStale
+          ? 'watermark-refresh'
+          : scaleStale
+            ? 'scale-refetch'
+            : 'margin-escape';
     logSubjectStore('slice-fetch', { cause, view });
     void fetchSlice(view)
       .then((response) => {
@@ -365,8 +394,9 @@ export const createViewportSubjectStoreController = ({
         sliceRetryAttempt = 0;
         // Replace slice+marginBox atomically; the committed verdict stands
         // until the hysteresis pipeline re-judges (never blank mid-move).
-        // Rows are stored VERBATIM (PlaceLike) — §2.5 ground rings and
-        // ride along untouched for the shared law to judge.
+        // Rows are stored VERBATIM (PlaceLike) — the ground rings ride
+        // along untouched for the shared law to judge.
+        sliceCutSpan = Math.max(view.maxLat - view.minLat, bboxLngSpan(view));
         setViewportSubjectState({
           slice: response.places,
           marginBox: response.marginBox,
@@ -449,21 +479,25 @@ export const createViewportSubjectStoreController = ({
     pendingExitVerdict = null;
     clearTimer(dwellTimer);
     dwellTimer = null;
-    // Cheap per-camera-change local read: the CANDIDATE hint (held, not
-    // committed — hysteresis commits at settle+dwell, with full-detail
-    // ground). Judges envelope-grade rings (§2.5/§2.6 cadence split):
-    // bounded microseconds per tick.
-    const resolution = computeResolution(view, 'envelope-hint');
-    const candidateIdentity = viewportSubjectVerdictIdentity(
-      resolution == null ? null : verdictFromResolution(resolution)
-    );
-    if (candidateIdentity !== lastLoggedCandidateIdentity) {
-      lastLoggedCandidateIdentity = candidateIdentity;
-      logSubjectStore('camera-candidate', {
-        candidate: candidateIdentity,
-        reason: resolution?.reason ?? 'no-slice',
-        judge: 'envelope-hint',
-      });
+    // The per-tick CANDIDATE hint feeds exactly one consumer: the __DEV__
+    // marker log below. Round-2 red team: in a release build this ran the
+    // whole header law (envelope slice copy + coverage + resolve) on every
+    // camera tick of a 60/120Hz pan purely to compute an unused value — so
+    // the entire arm is dev-gated now. Commits are untouched: hysteresis
+    // judges full-detail ground at settle+dwell either way.
+    if (__DEV__) {
+      const resolution = computeResolution(view, 'envelope-hint');
+      const candidateIdentity = viewportSubjectVerdictIdentity(
+        resolution == null ? null : verdictFromResolution(resolution)
+      );
+      if (candidateIdentity !== lastLoggedCandidateIdentity) {
+        lastLoggedCandidateIdentity = candidateIdentity;
+        logSubjectStore('camera-candidate', {
+          candidate: candidateIdentity,
+          reason: resolution?.reason ?? 'no-slice',
+          judge: 'envelope-hint',
+        });
+      }
     }
     ensureSliceFetch(view);
     clearTimer(settleTimer);

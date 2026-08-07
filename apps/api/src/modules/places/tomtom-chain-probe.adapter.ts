@@ -32,35 +32,22 @@
  *    geography at this point at this level, verified live 2026-08-07 to
  *    populate its own level's field and carry id + outline + position.
  *    `lookupLevelEntity` IS that call; the probe and the operator scripts
- *    share it.
- *  - Forward geocode (`entityTypeSet=<level>`, limit =
- *    FORWARD_GEOCODE_CANDIDATE_LIMIT for twin disambiguation) returns a
- *    Geography result with `boundingBox` as {topLeftPoint,btmRightPoint}
- *    {lat,lon} OBJECTS (a DIFFERENT shape than reverse — do not unify
- *    blindly) plus the same stable geometry id family (§1 identity law:
- *    identical id across reverse and forward for the same entity,
- *    live-validated).
+ *    share it. (The name-keyed forward geocode and its twin-disambiguation
+ *    lottery are DELETED, 2026-08-07 round 2: the anchored lookup answers
+ *    any rung for the same one-draw price, entity-honestly.)
  *
  * §2 mechanics implemented here:
  *  - 1 PLAIN reverse geocode per probe → the COMPLETE chain of names.
- *  - 1 anchored single-level filtered reverse → the FINEST rung's identity
- *    (geometry id) + outline bbox + centroid. The birth certificate of the
- *    rung the probe exists for is answered by a POINT, never guessed from a
- *    name; upsertSketch refuses id-less nodes, so without this the
- *    neighbourhood under the user's view existed only if a name-keyed
- *    forward geocode happened to win its twin lottery.
- *  - +1 cheap forward geocode per bbox-less COARSER rung (≤5, §16
- *    definitional: 6 rungs − the anchored finest). No catalog pre-check:
- *    identity is asked BY ENTITY only (county dissolution), coarse rungs
- *    have no id until the vendor issues one, so there is nothing lawful to
- *    skip on. The old "once ever per node globally" was a fossil — its
- *    catalogKnowsBbox guard short-circuited on the missing id and never
- *    reached its own SQL.
- *  - Every vendor call rides the governed cheap pool (§14/§22). A denial on
- *    a FORWARD call just leaves that node bbox-less (a later probe fills it);
- *    a denial on the REVERSE call is a typed 'denied' — the ground was never
- *    asked, so the reconciler breaks the pass, never records a false "no
- *    place here".
+ *  - Per rung, identity BY THE POINT: the catalog's outline-grade covering
+ *    entity is adopted free (the lawful BY-GROUND skip — see
+ *    outlineEntitiesCovering; sketch envelopes never qualify), else one
+ *    anchored single-level lookup buys geometry id + outline bbox +
+ *    centroid. Steady state: 1-2 draws per probe.
+ *  - A denial or fault while resolving ANY rung's identity PROPAGATES as
+ *    the probe's own 'denied'/'failed' — an id-less rung may only mean the
+ *    VENDOR answered (empty / wrong-level). The reconciler records
+ *    asked-ground off a returned chain, and a quiet fault here became a
+ *    30-day suppression of a never-minted place (round-2 red team, P5).
  *  - probedRegion = the DISC of the vendor's default reverse-geocode radius
  *    (100 m — vendor fact) around the anchor: the ground this probe actually
  *    speaks for when it says "no place here".
@@ -85,16 +72,12 @@ function describeTransportFault(error: unknown): string {
   return 'tomtom_transport_unknown';
 }
 import { LoggerService } from '../../shared';
+import { PrismaService } from '../../prisma/prisma.service';
 import { UsageLedgerService } from '../external-integrations/shared/usage-ledger.service';
 import { SpendBudgetClosedError } from '../external-integrations/governance/governance.service';
 import { GovernanceService } from '../external-integrations/governance/governance.service';
 import { OpsAlertsService } from '../external-integrations/shared/ops-alerts.service';
-import {
-  GeoBbox,
-  GeoPoint,
-  bboxContainsPoint,
-  ProbedRegion,
-} from '@crave-search/shared';
+import { GeoBbox, GeoPoint, ProbedRegion } from '@crave-search/shared';
 import { PlaceSketchNode } from './places-catalog.service';
 import {
   LevelEntityLookup,
@@ -139,13 +122,6 @@ const LEVEL_LADDER: ReadonlyArray<{
 ];
 
 /**
- * §16 definitional: one forward geocode per COARSER rung, no more — the
- * finest rung's geometry arrives with its anchored identity lookup (a
- * single-level filtered reverse), never a forward. 6 rungs − 1 = 5.
- */
-const MAX_FORWARD_GEOCODES_PER_PROBE = LEVEL_LADDER.length - 1;
-
-/**
  * Vendor fact: reverse geocode's default search radius — the ground a probe
  * speaks for. Lives on the PORT (shared with the reconciler's cell-level
  * derivation); this alias keeps the adapter reading in vendor terms.
@@ -161,18 +137,6 @@ const REVERSE_GEOCODE_RADIUS_METERS = PROBE_SPEAKS_FOR_METERS;
  * handling, where the vendor's minute window yields a 60s default).
  */
 const TOMTOM_429_DEFAULT_RETRY_MS = 1_000;
-
-/**
- * §2.5 twin disambiguation: how many FORWARD-GEOCODE candidates to draw, so
- * the caller's anchor-containment check has twins to pick between. Vendor
- * duplicate sets observed so far are 2-4 records deep; 5 is headroom, still
- * one cheap draw.
- *
- * It was called GEOMETRY_ID_CANDIDATE_LIMIT — named for `resolveGeometryId`,
- * a function this file's own comment records as DELETED — and declared 170
- * lines below its only use.
- */
-const FORWARD_GEOCODE_CANDIDATE_LIMIT = 5;
 
 type TomtomAddress = {
   countryCode?: string;
@@ -201,22 +165,6 @@ type TomtomReverseResponse = {
   addresses?: TomtomReverseAddressEntry[];
 };
 
-type TomtomGeocodeResult = {
-  type?: string;
-  entityType?: string;
-  address?: TomtomAddress;
-  position?: { lat?: number; lon?: number };
-  boundingBox?: {
-    topLeftPoint?: { lat?: number; lon?: number };
-    btmRightPoint?: { lat?: number; lon?: number };
-  };
-  dataSources?: { geometry?: { id?: string } };
-};
-
-type TomtomGeocodeResponse = {
-  results?: TomtomGeocodeResult[];
-};
-
 /** Additional Data (polygon) response shape — mirrors the live-proven parse
  *  in the legacy markets bootstrap (tomtom-boundary-bootstrap.service.ts). */
 type TomtomAdditionalDataItem = {
@@ -238,13 +186,15 @@ export class TomtomChainProbeAdapter implements TomtomChainProbe {
   private readonly logger: LoggerService;
   private readonly apiKey: string | undefined;
   private readonly reverseBaseUrl: string;
-  private readonly geocodeBaseUrl: string;
   private readonly additionalDataUrl: string;
   private readonly geometryZoom: number | null;
   private readonly timeoutMs: number;
 
   constructor(
     private readonly httpService: HttpService,
+    /** The lawful BY-GROUND skip (outlineEntitiesCovering) — the adapter's
+     *  only catalog read, and a read-only one. */
+    private readonly prisma: PrismaService,
     private readonly governance: GovernanceService,
     private readonly usageLedger: UsageLedgerService,
     private readonly opsAlerts: OpsAlertsService,
@@ -256,10 +206,6 @@ export class TomtomChainProbeAdapter implements TomtomChainProbe {
     this.reverseBaseUrl = (
       configService.get<string>('tomtom.reverseGeocodeBaseUrl') ??
       'https://api.tomtom.com/search/2/reverseGeocode'
-    ).replace(/\/$/, '');
-    this.geocodeBaseUrl = (
-      configService.get<string>('tomtom.geocodeBaseUrl') ??
-      'https://api.tomtom.com/search/2/geocode'
     ).replace(/\/$/, '');
     this.additionalDataUrl =
       configService.get<string>('tomtom.additionalDataUrl') ??
@@ -320,7 +266,6 @@ export class TomtomChainProbeAdapter implements TomtomChainProbe {
   }
 
   async probe(anchor: GeoPoint): Promise<TomtomChainProbeResult> {
-    const probedRegion = this.probedRegionAround(anchor);
     if (!this.apiKey) {
       // Config absence is an operational fault, not a "no place here"
       // observation — throw so the reconciler logs it and does NOT write a
@@ -348,9 +293,9 @@ export class TomtomChainProbeAdapter implements TomtomChainProbe {
     }
     // ANY THROW WHILE READING THE VENDOR BODY IS A TYPED FAULT (property
     // test, 2026-08-04). Scoped to the PARSE: the catalog read and the
-    // forward geocode inside interpretReverse handle their own failures, so
-    // this catch cannot mislabel a DB fault as a vendor-JSON fault or throw
-    // away a chain the reverse geocode already paid for.
+    // per-rung identity lookups inside interpretReverse are total (typed
+    // arms, never throws), so this catch cannot mislabel their faults as
+    // vendor-JSON faults or throw away a chain already paid for.
     // The parse below reads vendor-controlled JSON, and a field whose TYPE is
     // wrong — `countryCode: 123` — made `?.trim()` throw straight out of
     // probe(), escaping the union entirely: the one shape a caller cannot
@@ -359,7 +304,11 @@ export class TomtomChainProbeAdapter implements TomtomChainProbe {
     // Interpretation is now total: it returns a fault or it returns an
     // observation, and it cannot do neither.
     try {
-      return await this.interpretReverse(outcome.entries, anchor, probedRegion);
+      return await this.interpretReverse(
+        outcome.entries,
+        anchor,
+        this.probedRegionAround(anchor),
+      );
     } catch (error) {
       return {
         kind: 'failed',
@@ -453,59 +402,106 @@ export class TomtomChainProbeAdapter implements TomtomChainProbe {
       };
     }
 
-    // THE FINEST RUNG'S IDENTITY IS ANCHORED, NEVER GUESSED (2026-08-07).
-    // The plain reverse carries no geometry id, and upsertSketch REFUSES an
-    // id-less node — so without this step, the rung the probe exists for
-    // (the neighbourhood under the user's view) would only exist if a
-    // NAME-keyed forward geocode happened to succeed: a name-twin lottery
-    // for the birth certificate. One single-level filtered reverse at the
-    // anchor answers by GEOGRAPHY instead — the entity at this point, at
-    // this level — and carries id + outline bbox + position in one draw.
-    // Any non-named outcome leaves the rung id-less this probe (an honest
-    // fault, never a memory); the chain itself is already paid for.
-    const finest = chain[0];
-    const identity = await this.lookupLevelEntity(
-      anchor,
-      finest.providerLevelCode,
-    );
-    if (
-      identity.kind === 'named' &&
-      // ID-MATCH gate, same law as fetchPolygon: believe nothing off an
-      // answer for a DIFFERENT level (the vendor echoes the entityType).
-      identity.entityType === finest.providerLevelCode &&
-      identity.geometryId
-    ) {
-      finest.providerPlaceId = identity.geometryId;
-      finest.bbox = identity.bbox ?? undefined;
-      finest.centroid = identity.centroid ?? undefined;
-    }
-
-    // +1 cheap forward geocode per bbox-less COARSER rung. There is no
-    // catalog pre-check: identity may only be asked BY ENTITY (the county
-    // dissolution's law), coarse rungs carry no id until the vendor issues
-    // one, and a name-keyed skip would be the exact reconciliation-by-name
-    // the dissolution deleted. The old catalogKnowsBbox short-circuited on
-    // that missing id and so was dead code from the day it was written —
-    // deleting it removed this adapter's only Prisma read.
-    let forwardBudget = MAX_FORWARD_GEOCODES_PER_PROBE;
+    // EVERY RUNG'S IDENTITY IS ANSWERED BY THE POINT (2026-08-07, round-2
+    // red team). One mechanism for all six rungs: the anchored single-level
+    // filtered reverse (lookupLevelEntity) — geography-mode, so it carries
+    // the geometry id + outline bbox + centroid, keyed by the ANCHOR rather
+    // than a name. The name-keyed forward geocode and its twin lottery are
+    // deleted: the same one-draw price bought a strictly weaker answer.
+    //
+    // THE LAWFUL SKIP: a rung whose OUTLINE-grade ground covers the anchor
+    // is already-known BY GROUND — the covering outline IS the entity, so
+    // its stored identity is adopted and no draw is spent. This is not the
+    // name-keyed reconciliation the county dissolution outlawed; it is the
+    // same ST_Covers question the containment law asks everywhere else.
+    // Sketch envelopes never qualify (they overhang real ground). In steady
+    // state a probe therefore spends 1-2 draws, not 7; before this skip the
+    // country/state/county under every settled city were re-bought on every
+    // probe, forever.
+    const known = await this.outlineEntitiesCovering(anchor);
     for (const node of chain) {
-      if (node.bbox || forwardBudget <= 0) {
+      const owned = known.get(node.providerLevelCode);
+      if (owned) {
+        node.providerPlaceId = owned;
         continue;
       }
-      forwardBudget -= 1;
-      const resolved = await this.forwardGeocode(node, anchor);
-      if (resolved) {
-        node.bbox = resolved.bbox;
-        node.centroid = resolved.centroid;
-        // `??` is LIVE here for exactly one node: a finest rung whose
-        // anchored identity landed but whose outline failed to parse falls
-        // into this loop for a bbox — its anchored id must not be clobbered
-        // by the name-matched candidate's.
-        node.providerPlaceId = node.providerPlaceId ?? resolved.providerPlaceId;
+      const lookup = await this.lookupLevelEntity(
+        anchor,
+        node.providerLevelCode,
+      );
+      if (lookup.kind === 'named') {
+        node.providerPlaceId = lookup.geometryId;
+        node.bbox = lookup.bbox ?? undefined;
+        node.centroid = lookup.centroid ?? undefined;
+        continue;
       }
+      if (lookup.kind === 'empty' || lookup.kind === 'wrong-level') {
+        // A VENDOR ANSWER about this rung: it models no entity at this
+        // level here (or a different level). The rung stays id-less —
+        // upsertSketch drops it and the chain threads past — and that is an
+        // observation, not a gap.
+        this.logger.debug('Rung unmodelled by the vendor at this level', {
+          levelCode: node.providerLevelCode,
+          answered: lookup.kind,
+        });
+        continue;
+      }
+      // denied / failed: WE could not resolve this rung's identity. This
+      // must PROPAGATE, never survive as a silently id-less rung — the
+      // reconciler records asked-ground off a returned chain, so a fault
+      // that stayed quiet here became a 30-day suppression of a
+      // never-minted place (round-2 red team, P5 class: the pool denying
+      // the SECOND call of a probe erased the neighbourhood the probe
+      // existed for AND blocked its rediscovery).
+      if (lookup.kind === 'denied') {
+        return { kind: 'denied' };
+      }
+      return { kind: 'failed', reason: lookup.reason, scope: lookup.scope };
     }
 
-    return { kind: 'named', chain, probedRegion };
+    return { kind: 'named', chain };
+  }
+
+  /**
+   * The catalog's outline-grade entities covering a point, by level:
+   * providerLevelCode → providerPlaceId. Overlapping outlines at one level
+   * resolve to the smallest (the finest representative). A failed read
+   * yields the empty map — the probe then SPENDS instead of skipping, which
+   * is the safe direction (a catalog blip must never erase a rung).
+   */
+  private async outlineEntitiesCovering(
+    anchor: GeoPoint,
+  ): Promise<Map<string, string>> {
+    try {
+      const rows = await this.prisma.$queryRaw<
+        Array<{ levelCode: string; providerPlaceId: string }>
+      >`
+        SELECT DISTINCT ON (p.provider_level_code)
+               p.provider_level_code AS "levelCode",
+               p.provider_place_id  AS "providerPlaceId"
+        FROM places p
+        JOIN place_geometries g ON g.place_id = p.place_id
+        WHERE g.provider_boundary_id IS NOT NULL
+          AND p.provider_place_id IS NOT NULL
+          AND g.geometry && ST_SetSRID(ST_MakePoint(${anchor.lng}, ${anchor.lat}), 4326)
+          AND ST_Covers(
+            g.geometry,
+            ST_SetSRID(ST_MakePoint(${anchor.lng}, ${anchor.lat}), 4326)
+          )
+        ORDER BY p.provider_level_code, ST_Area(g.geometry) ASC
+      `;
+      return new Map(rows.map((row) => [row.levelCode, row.providerPlaceId]));
+    } catch (error) {
+      this.logger.warn(
+        'Outline-coverage read failed — probe spends instead of skipping',
+        {
+          error: {
+            message: error instanceof Error ? error.message : String(error),
+          },
+        },
+      );
+      return new Map();
+    }
   }
 
   /**
@@ -574,7 +570,15 @@ export class TomtomChainProbeAdapter implements TomtomChainProbe {
     levelCode: string,
   ): Promise<LevelEntityLookup> {
     if (!this.apiKey) {
-      throw new Error('tomtom_config_missing');
+      // Typed, not thrown (round-2 red team): config absence is exactly "we
+      // could not observe", the union has the word for it, and the two
+      // operator scripts that reach here carefully handle typed stops but
+      // caught no raw Error.
+      return {
+        kind: 'failed',
+        reason: 'tomtom_config_missing',
+        scope: 'systemic',
+      };
     }
     const budget = await this.spendGateVerdict();
     if (budget) {
@@ -626,15 +630,19 @@ export class TomtomChainProbeAdapter implements TomtomChainProbe {
       return {
         kind: 'failed',
         reason: 'tomtom_entry_shape',
-        scope: 'systemic',
+        scope: 'row',
       };
     }
     const entry = first as TomtomReverseAddressEntry;
     if (typeof entry.address !== 'object' || entry.address === null) {
+      // 'row' scope: the vendor ANSWERED about this ask and the answer is
+      // unusable — the next row/rung is unaffected. These three shape
+      // faults were 'systemic' until the round-2 red team pointed out that
+      // made the port's 'row' arm unreachable dead contract on this path.
       return {
         kind: 'failed',
         reason: 'tomtom_address_missing',
-        scope: 'systemic',
+        scope: 'row',
       };
     }
     if (
@@ -644,8 +652,16 @@ export class TomtomChainProbeAdapter implements TomtomChainProbe {
       return {
         kind: 'failed',
         reason: 'tomtom_entity_type_shape',
-        scope: 'systemic',
+        scope: 'row',
       };
+    }
+    // THE ECHO GATE LIVES HERE NOW (round-2 red team): entityType is a
+    // FILTER the vendor may answer past, and a caller who forgot to compare
+    // it believed geometry for a different rung. Answering about a
+    // different level is a first-class vendor ANSWER, its own arm — silent
+    // mismatch was indistinguishable from a fault, the P5 road.
+    if ((entry.entityType ?? null) !== levelCode) {
+      return { kind: 'wrong-level', entityType: entry.entityType ?? null };
     }
     return {
       kind: 'named',
@@ -688,8 +704,8 @@ export class TomtomChainProbeAdapter implements TomtomChainProbe {
                 // municipalitySubdivision and usually
                 // countrySecondarySubdivision (measured 2026-08-07, header
                 // table), so filtering here truncated every chain this
-                // adapter ever built. Geometry comes from the forward
-                // enrichment, never from this response.
+                // adapter ever built. Geometry comes from the per-rung
+                // anchored lookups, never from this response.
                 key: this.apiKey as string,
               },
               timeout: this.timeoutMs,
@@ -724,150 +740,6 @@ export class TomtomChainProbeAdapter implements TomtomChainProbe {
       return { kind: 'failed', reason: 'tomtom_body_shape', scope: 'systemic' };
     }
     return { kind: 'ok', entries: response.data.addresses };
-  }
-
-  /**
-   * Governed forward geocode of one chain node; null on any miss.
-   *
-   * ANCHOR-CONTAINMENT VALIDATION (coherence red-team 2026-07-23): this
-   * fill DONATES the node's catalog bbox (resolveGeometryId, its old
-   * consumer, is deleted — dockets #1/#4), so it must not adopt a
-   * wrong-twin record itself. The probe owns ground truth the drain lacks:
-   * the chain came from reverse-geocoding THE ANCHOR, so the node's true
-   * extent must contain that point — a same-name twin elsewhere cannot.
-   * Draw a candidate list and take the first (vendor-ranked) candidate whose
-   * bbox contains the anchor; none containing = stay bbox-less (a later
-   * probe retries) rather than poison the catalog index.
-   */
-  private async forwardGeocode(
-    node: PlaceSketchNode,
-    anchor: GeoPoint,
-  ): Promise<{
-    bbox: GeoBbox | null;
-    centroid: GeoPoint | null;
-    providerPlaceId: string | null;
-  } | null> {
-    // The adapter's own contract: "a denial on a FORWARD call just leaves
-    // that node bbox-less". Red-team 2026-08-01: a NON-429 transport error
-    // rethrew instead, discarding the whole chain from an ALREADY-PAID
-    // reverse geocode and forcing the next settle to pay for it again. A
-    // forward fault is per-node and non-fatal, by the stated law.
-    let outcome: Awaited<ReturnType<typeof this.forwardGeocodeMatch>>;
-    try {
-      outcome = await this.forwardGeocodeMatch(node);
-    } catch (error) {
-      this.logger.warn('forwardGeocode faulted — node stays bbox-less', {
-        name: node.name,
-        level: node.providerLevelCode,
-        detail: error instanceof Error ? error.message : String(error),
-      });
-      return null;
-    }
-    if (outcome.kind !== 'ok') {
-      return null; // denial: bbox-less until a later probe; miss: logged below
-    }
-    const result =
-      outcome.results.find((candidate) => {
-        const bbox = parseForwardBoundingBox(candidate.boundingBox);
-        // Wrap-aware (bug fixed 2026-07-26): the raw min/max comparison this
-        // replaces silently rejected EVERY candidate whose bbox crosses the
-        // antimeridian (minLng > maxLng), leaving such nodes permanently
-        // bbox-less. bboxContainsPoint judges by lng ARCS.
-        return bbox !== null && bboxContainsPoint(bbox, anchor);
-      }) ?? null;
-    if (!result) {
-      this.logger.warn(
-        `forwardGeocode: no anchor-containing candidate for ${node.providerLevelCode} "${node.name}" (${outcome.results.length} candidates) — node stays bbox-less`,
-      );
-      return null;
-    }
-    return {
-      bbox: parseForwardBoundingBox(result.boundingBox),
-      centroid:
-        result.position?.lat !== undefined && result.position?.lon !== undefined
-          ? { lat: result.position.lat, lng: result.position.lon }
-          : null,
-      providerPlaceId: result.dataSources?.geometry?.id?.trim() || null,
-    };
-  }
-
-  // resolveGeometryId / geometryIdAtPoint DELETED (dockets #1 + #4,
-  // 2026-07-30): the census-GEOID resolve lane — the last name-identity
-  // organ. Its only caller died when promotion stopped needing it (every
-  // place carries its geometry id from birth, composite (id, level) unique).
-
-  /**
-   * The one governed forward-geocode call — single caller (the probe's bbox
-   * fill; the drain-side geometry-id resolver is deleted, dockets #1/#4).
-   * Query = "name, subdivisionCode" (the county qualifier died with the
-   * county column); candidates are validated downstream by ANCHOR
-   * CONTAINMENT, which is stronger than any name qualifier.
-   * `denied` = pool not-now; `miss` = admitted but wrong-entity/no result —
-   * a wrong-entity or wrong-country match must not donate its answer to this
-   * identity (§1's merge would widen a place with foreign geometry it can
-   * never shed — bboxes only ever grow).
-   */
-  private async forwardGeocodeMatch(
-    node: Pick<
-      PlaceSketchNode,
-      'name' | 'subdivisionCode' | 'countryCode' | 'providerLevelCode'
-    >,
-  ): Promise<
-    | {
-        kind: 'ok';
-        results: TomtomGeocodeResult[];
-      }
-    | { kind: 'denied' | 'miss' }
-  > {
-    // Docket #4: the county qualifier died with the county column — the
-    // caller validates candidates by ANCHOR CONTAINMENT, which is stronger
-    // than any name qualifier.
-    const query = encodeURIComponent(
-      [node.name, node.subdivisionCode]
-        .filter((part): part is string => Boolean(part))
-        .join(', '),
-    );
-    const url = `${this.geocodeBaseUrl}/${query}.json`;
-    let response: AxiosResponse<TomtomGeocodeResponse> | null;
-    try {
-      response = await this.governance.draw(
-        'tomtom.geocode',
-        'chain-probe',
-        () =>
-          firstValueFrom(
-            this.httpService.get<TomtomGeocodeResponse>(url, {
-              params: {
-                key: this.apiKey as string,
-                entityTypeSet: node.providerLevelCode,
-                countrySet: node.countryCode,
-                limit: FORWARD_GEOCODE_CANDIDATE_LIMIT,
-              },
-              timeout: this.timeoutMs,
-            }),
-          ),
-        { onDrawConsumed: () => this.recordDraw('geocode') },
-      );
-    } catch (error) {
-      if (this.poisonPoolOn429(error, 'tomtom.geocode')) {
-        return { kind: 'denied' }; // transient — NOT an attempt (wave-6 item 2)
-      }
-      throw error;
-    }
-    if (!response) {
-      return { kind: 'denied' };
-    }
-    const results = (response.data?.results ?? []).filter(
-      (candidate) =>
-        candidate.entityType === node.providerLevelCode &&
-        candidate.address?.countryCode?.toUpperCase() === node.countryCode,
-    );
-    if (results.length === 0) {
-      this.logger.debug(
-        `forward geocode mismatch for ${node.providerLevelCode} "${node.name}" — skipping`,
-      );
-      return { kind: 'miss' };
-    }
-    return { kind: 'ok', results };
   }
 
   /**
@@ -1013,16 +885,19 @@ export class TomtomChainProbeAdapter implements TomtomChainProbe {
 }
 
 /** Geography-mode reverse bbox: {northEast,southWest} as "lat,lng" strings.
- * Reinstated 2026-08-07 for the finest rung's anchored identity lookup —
- * the SINGLE-LEVEL filtered reverse is geography-mode and its boundingBox
- * is the entity's outline. (The probe's PLAIN reverse also carries a
- * boundingBox, but that one is a position box and is parsed NOWHERE — this
- * function must only ever be fed filtered-mode responses.)
+ * THE one vendor bbox parser now (2026-08-07): every rung's geometry
+ * arrives via the anchored single-level lookup, whose boundingBox is the
+ * entity's outline. (The probe's PLAIN reverse also carries a boundingBox,
+ * but that one is a position box and is parsed NOWHERE — this function
+ * must only ever be fed filtered-mode responses. The forward-geocode
+ * parser died with the forward geocode.)
  *
  * LONGITUDE PRESERVES THE PROVIDER'S EDGE ORDER (F3001, 2026-08-06):
  * southWest.lng is the WEST edge (minLng), northEast.lng the EAST edge
  * (maxLng), verbatim — min/max on longitude destroyed the antimeridian
- * crossing representation. min/max stays for LATITUDE only.
+ * crossing representation (a 20° wrap box parsed as its 340° COMPLEMENT
+ * arc). min/max stays for LATITUDE only, where there is no wraparound.
+ * F3001's tests live in the adapter spec against THIS function.
  */
 export function parseGeographyBoundingBox(
   box: TomtomAddress['boundingBox'],
@@ -1052,37 +927,4 @@ function parseLatLngString(value: string | undefined): GeoPoint | null {
     return null;
   }
   return { lat, lng };
-}
-
-/** Forward-shape bbox: {topLeftPoint,btmRightPoint} as {lat,lon} objects.
- *
- * LONGITUDE PRESERVES THE PROVIDER'S EDGE ORDER (F3001, 2026-08-06):
- * topLeftPoint = NW corner (lon = WEST edge = minLng), btmRightPoint = SE
- * corner (lon = EAST edge = maxLng), verbatim. Math.min/max on longitude
- * destroyed the antimeridian crossing representation (minLng > maxLng) that
- * the shared lib's bboxContainsPoint/bboxLngArcs were taught to read on
- * 2026-07-26 — a 20° wrap box parsed as its 340° COMPLEMENT arc. min/max
- * stays for LATITUDE only, where there is no wraparound. (The reverse-shape
- * parser that carried this law first was deleted 2026-08-07 with the free
- * bbox it fed — the probe's reverse geocode is plain/address-mode now and
- * returns no outline at all. This parser is where F3001 lives.) */
-export function parseForwardBoundingBox(
-  box: TomtomGeocodeResult['boundingBox'],
-): GeoBbox | null {
-  const tl = box?.topLeftPoint;
-  const br = box?.btmRightPoint;
-  if (
-    tl?.lat === undefined ||
-    tl?.lon === undefined ||
-    br?.lat === undefined ||
-    br?.lon === undefined
-  ) {
-    return null;
-  }
-  return {
-    minLat: Math.min(tl.lat, br.lat),
-    minLng: tl.lon,
-    maxLat: Math.max(tl.lat, br.lat),
-    maxLng: br.lon,
-  };
 }

@@ -80,7 +80,14 @@ function interpret(lookup: LevelEntityLookup): VendorAnswer {
   if (lookup.kind === 'failed') {
     return { kind: 'faulted', reason: lookup.reason };
   }
-  if (lookup.kind === 'empty' || !lookup.entityType) return { kind: 'none' };
+  // 'wrong-level' is the adapter's own echo gate now (2026-08-07): the
+  // vendor answered about a DIFFERENT rung, which for this audit's question
+  // ("does the vendor model an entity at THIS level here?") is the same
+  // observation as none.
+  if (lookup.kind === 'empty' || lookup.kind === 'wrong-level') {
+    return { kind: 'none' };
+  }
+  if (!lookup.entityType) return { kind: 'none' };
   const a = lookup.address;
   const nameByLevel: Record<string, string | undefined> = {
     Neighbourhood: a.neighbourhood,

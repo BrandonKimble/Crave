@@ -2615,7 +2615,11 @@ export class SearchService {
       }
       return null;
     } catch (error) {
-      this.logger.debug('Unable to resolve header place name', {
+      // WARN, not debug (round-2 red team): null is also the honest
+      // this-area answer, so a swallowed failure at debug level was
+      // invisible. The degrade itself is right — a naming failure must not
+      // fail the search — but it must be loud enough to notice.
+      this.logger.warn('Header place name unresolved — degrading to null', {
         error: {
           message: error instanceof Error ? error.message : String(error),
         },

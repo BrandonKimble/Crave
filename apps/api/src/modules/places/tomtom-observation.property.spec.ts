@@ -59,6 +59,7 @@ function buildAdapter(body: unknown): Built {
   return {
     adapter: new TomtomChainProbeAdapter(
       httpService as never,
+      { $queryRaw: () => Promise.resolve([]) } as never,
       governance as never,
       { record: jest.fn() } as never,
       { emit: jest.fn() } as never,

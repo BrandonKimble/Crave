@@ -5,22 +5,28 @@
  * boundary-bootstrap service died with the market model — §20 changelog; the
  * places DAG is the only geography surface).
  *
- * Contract per §2 "sketch mechanics" (re-verified live 2026-08-07):
+ * Contract per §2 "sketch mechanics" (re-derived 2026-08-07):
  *   - ONE PLAIN reverse geocode at the anchor returns the FULL chain of
  *     NAMES (neighbourhood → borough → city → county → state → country) and
  *     no geometry — an entityType filter would truncate the chain (it nulls
  *     municipalitySubdivision and usually countrySecondarySubdivision), and
  *     an address-mode response carries no ids or outlines.
- *   - ONE anchored single-level filtered reverse supplies the FINEST rung's
- *     identity (geometry id) + outline bbox + position — geography-mode,
- *     anchored at the point so no name-twin ambiguity. The finest rung is
- *     the one the probe exists for; its birth certificate is guaranteed by
- *     a point, never guessed from a name.
- *   - +1 cheap forward geocode per bbox-less COARSER rung supplies its
- *     id + bbox (≤5 per probe; all cheap pool). NOTE the old "once ever per
- *     node globally" claim is DELETED: it was never true after the county
- *     dissolution — coarse rungs carry no id off the reverse, and the
- *     catalog may only be asked BY ENTITY, so there is nothing to skip on.
+ *   - EVERY rung's identity is then ANSWERED BY THE POINT, one mechanism for
+ *     all six: an anchored single-level filtered reverse (geography-mode:
+ *     geometry id + outline bbox + position, no name-twin lottery) — except
+ *     rungs the catalog already knows BY GROUND: an OUTLINE-grade geometry
+ *     covering the anchor at that level IS the entity, so its stored
+ *     identity is adopted and no draw is spent. (Asking the catalog which
+ *     outline covers a point is lawful under the county dissolution — the
+ *     dissolution outlawed NAME-keyed reconciliation, not ground-keyed
+ *     reads. Sketch envelopes do NOT qualify: they overhang.) The old
+ *     name-keyed forward geocode and its twin-disambiguation machinery are
+ *     DELETED — same draw price bought a strictly weaker answer.
+ *   - A denial or fault while resolving identity PROPAGATES ('denied' /
+ *     'failed') — it never survives as a silently id-less rung, because the
+ *     reconciler records asked-ground off a returned chain and a fault must
+ *     not become a 30-day suppression. Only a vendor ANSWER (empty /
+ *     wrong-level) may leave a rung id-less.
  *   - An empty chain is a first-class result: "no place here" is a
  *     region-scale observation over `probedBbox` (30d TTL — reconciler side).
  *
@@ -60,8 +66,16 @@ export const PROBE_SPEAKS_FOR_METERS = 100;
  * and a real place sitting there could be suppressed from discovery.
  */
 export type TomtomChainProbeResult =
-  /** The vendor NAMED this ground: the chain, most specific first. */
-  | { kind: 'named'; chain: PlaceSketchNode[]; probedRegion: ProbedRegion }
+  /**
+   * The vendor NAMED this ground: the chain, most specific first. Carries
+   * NO probedRegion (deleted 2026-08-07: no consumer ever read it — the
+   * reconciler derives its own asked-regions from the grounds it sketches,
+   * and a field nobody reads is a lie waiting to be believed). A node
+   * without providerPlaceId is a VENDOR ANSWER about that rung (no entity
+   * at that level / a different level echoed) — never a fault; faults
+   * propagate as 'failed'/'denied' instead of surviving as gaps.
+   */
+  | { kind: 'named'; chain: PlaceSketchNode[] }
   /** The vendor OBSERVED nothing here — a first-class §2 negative. */
   | { kind: 'empty'; probedRegion: ProbedRegion }
   /**
@@ -159,6 +173,8 @@ export interface GeoJsonFeatureCollection {
 export type LevelEntityLookup =
   | {
       kind: 'named';
+      /* The vendor echoed the REQUESTED level (the echo gate lives inside
+       * the adapter now — a caller can no longer forget it). */
       /** The vendor's geometry id for the answering entity — the ID-MATCH
        *  gate callers must apply before believing anything else here. */
       geometryId: string | null;
@@ -184,6 +200,14 @@ export type LevelEntityLookup =
       bbox: GeoBbox | null;
       centroid: GeoPoint | null;
     }
+  /**
+   * The vendor ANSWERED, about a DIFFERENT level (single-level entityType is
+   * a filter the vendor may answer past — e.g. asking Neighbourhood over
+   * ground that only models a Municipality). A first-class, loggable,
+   * row-scoped ANSWER — it used to be silently indistinguishable from a
+   * fault, which put it on the P5 road.
+   */
+  | { kind: 'wrong-level'; entityType: string | null }
   | { kind: 'empty' }
   /** Same `scope` contract as the two results above — one unusable row must
    *  not read as the vendor being down. */

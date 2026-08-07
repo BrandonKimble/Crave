@@ -2,16 +2,18 @@ import type { PlaceSketchNode } from './places-catalog.service';
 /**
  * TomtomChainProbeAdapter specs — §2 sketch mechanics.
  *
- * The probe's reverse geocode is PLAIN (address-mode, corrected 2026-08-07):
- * it supplies the COMPLETE chain of names and NO geometry — its boundingBox
- * is a position box, never an outline. All geometry arrives through the
- * forward geocode ({topLeftPoint,btmRightPoint} objects), which is why the
- * F3001 antimeridian tests below exercise only the forward parser.
+ * The probe's reverse geocode is PLAIN (address-mode): it supplies the
+ * COMPLETE chain of names and NO geometry — its boundingBox is a position
+ * box, never an outline. Every rung's identity then arrives BY THE POINT:
+ * the catalog's outline-grade covering entity (the lawful skip) or an
+ * anchored single-level lookup (geography-mode: id + outline + centroid).
+ * The F3001 antimeridian tests exercise the geography parser — the one
+ * vendor bbox parser left.
  */
 import { of } from 'rxjs';
 import {
   TomtomChainProbeAdapter,
-  parseForwardBoundingBox,
+  parseGeographyBoundingBox,
 } from './tomtom-chain-probe.adapter';
 import { bboxContainsPoint } from '@crave-search/shared';
 import { SpendBudgetClosedError } from '../external-integrations/governance/governance.service';
@@ -62,18 +64,6 @@ const UWS_LEVEL_ENTITY_ENTRY = {
   entityType: 'Neighbourhood',
 };
 
-const MANHATTAN_FORWARD_RESULT = {
-  type: 'Geography',
-  entityType: 'Municipality',
-  address: { countryCode: 'US', municipality: 'New York' },
-  position: { lat: 40.7532511, lon: -74.0038099 },
-  boundingBox: {
-    topLeftPoint: { lat: 40.882, lon: -74.04725 },
-    btmRightPoint: { lat: 40.684007, lon: -73.907093 },
-  },
-  dataSources: { geometry: { id: 'geo-nyc' } },
-};
-
 type HttpCall = { url: string; params: Record<string, unknown> };
 
 function buildAdapter(options: {
@@ -84,9 +74,16 @@ function buildAdapter(options: {
    *  when the request carries an entityType param. Defaults to [] — the
    *  finest rung then simply stays id-less, the honest fault posture. */
   levelEntityAddresses?: unknown[];
-  forwardResults?: unknown[];
+  /** Outline-grade catalog coverage rows for the lawful skip:
+   *  providerLevelCode → providerPlaceId. Defaults to none — every rung
+   *  then pays an anchored lookup. */
+  outlineCoverage?: Array<{ levelCode: string; providerPlaceId: string }>;
   additionalData?: unknown[];
   denyPool?: boolean;
+  /** Deny only the anchored single-level lookups (entityType present),
+   *  admitting the plain chain read — the P5 shape: the SECOND call of a
+   *  probe failing. */
+  denyLevelLookups?: boolean;
   /** Wave-6 item 2: every http call rejects with a vendor HTTP failure
    *  (AxiosError shape); retryAfter fills the Retry-After header. */
   httpFailure?: { status: number; retryAfter?: string };
@@ -130,7 +127,7 @@ function buildAdapter(options: {
       if (url.includes('additionalData')) {
         return of({ data: { additionalData: options.additionalData ?? [] } });
       }
-      return of({ data: { results: options.forwardResults ?? [] } });
+      throw new Error(`unexpected vendor url in spec: ${url}`);
     },
   };
   const poisonWindow = jest.fn();
@@ -143,8 +140,21 @@ function buildAdapter(options: {
       act: () => Promise<unknown>,
     ) => {
       drawCalls.push({ pool, workClass });
-      return options.denyPool ? null : act();
+      if (options.denyPool) return null;
+      if (options.denyLevelLookups && workClass === 'level-entity-lookup') {
+        return null;
+      }
+      return act();
     },
+  };
+  const prisma = {
+    $queryRaw: () =>
+      Promise.resolve(
+        (options.outlineCoverage ?? []).map((row) => ({
+          levelCode: row.levelCode,
+          providerPlaceId: row.providerPlaceId,
+        })),
+      ),
   };
   const configService = {
     get: (key: string) => (key === 'tomtom.apiKey' ? 'test-key' : undefined),
@@ -158,6 +168,7 @@ function buildAdapter(options: {
   };
   const adapter = new TomtomChainProbeAdapter(
     httpService as never,
+    prisma as never,
     governance as never,
     { record: jest.fn() } as never,
     { emit: jest.fn() } as never,
@@ -211,98 +222,65 @@ describe('TomtomChainProbeAdapter', () => {
     ).toBe('NY');
   });
 
-  it('the FINEST rung gets its identity from the anchored single-level reverse; forwards serve only the coarser rungs', async () => {
+  it('every rung is answered BY THE POINT: known outline rungs adopt catalog ids free; the rest pay one anchored lookup each', async () => {
     const { adapter, calls } = buildAdapter({
       reverseAddresses: [UWS_REVERSE_ENTRY],
       levelEntityAddresses: [UWS_LEVEL_ENTITY_ENTRY],
-      forwardResults: [MANHATTAN_FORWARD_RESULT],
+      outlineCoverage: [
+        { levelCode: 'Country', providerPlaceId: 'geo-us' },
+        { levelCode: 'CountrySubdivision', providerPlaceId: 'geo-ny' },
+      ],
     });
     const result = await adapter.probe(ANCHOR);
-    // The anchored lookup asked for exactly the finest rung's level.
+    expect(result.kind).toBe('named');
+    const chain = (result as { chain: PlaceSketchNode[] }).chain;
+
+    // Known-by-ground rungs adopted the catalog's identity with NO draw.
+    expect(
+      chain.find((n) => n.providerLevelCode === 'Country')?.providerPlaceId,
+    ).toBe('geo-us');
+    expect(
+      chain.find((n) => n.providerLevelCode === 'CountrySubdivision')
+        ?.providerPlaceId,
+    ).toBe('geo-ny');
+
+    // Unknown rungs each got ONE anchored single-level lookup — and only
+    // the Neighbourhood ask matched the mock's geography answer; the others
+    // came back wrong-level (a vendor ANSWER), leaving those rungs id-less.
     const anchored = calls.filter(
       (c) => c.url.includes('/reverseGeocode/') && c.params.entityType,
     );
-    expect(anchored).toHaveLength(1);
-    expect(anchored[0].params.entityType).toBe('Neighbourhood');
-    // Its answer is the birth certificate: id + OUTLINE bbox + centroid —
-    // never the plain response's position box.
-    const uws = (result as { chain: PlaceSketchNode[] }).chain[0];
+    expect(anchored.map((c) => c.params.entityType).sort()).toEqual([
+      'Municipality',
+      'MunicipalitySubdivision',
+      'Neighbourhood',
+    ]);
+    const uws = chain[0];
     expect(uws.providerPlaceId).toBe('geo-uws');
+    // The anchored answer's OUTLINE bbox, never the plain response's
+    // position box.
     expect(uws.bbox).toEqual({
       minLat: 40.779488,
       minLng: -73.992672,
       maxLat: 40.807972,
       maxLng: -73.964694,
     });
-    const forwardCalls = calls.filter(
-      (c) => !c.url.includes('/reverseGeocode/'),
-    );
-    // 5-node chain, finest served by the anchored lookup → 4 coarse rungs.
-    expect(forwardCalls).toHaveLength(4);
-    const municipality = (result as { chain: PlaceSketchNode[] }).chain.find(
-      (n) => n.providerLevelCode === 'Municipality',
-    );
-    // Forward-shape {topLeftPoint,btmRightPoint} parsed and normalized —
-    // but only when the vendor echoes the SAME entityType back.
-    expect(municipality?.bbox).toEqual({
-      minLat: 40.684007,
-      minLng: -74.04725,
-      maxLat: 40.882,
-      maxLng: -73.907093,
-    });
-    // Wrong-entity echoes (CountrySubdivision request → Municipality result)
-    // must NOT donate a bbox (§1: bboxes only ever grow — no foreign geometry).
-    const state = (result as { chain: PlaceSketchNode[] }).chain.find(
-      (n) => n.providerLevelCode === 'CountrySubdivision',
-    );
-    expect(state?.bbox ?? null).toBeNull();
+    // No forward-geocode machinery exists to call.
+    expect(calls.every((c) => c.url.includes('/reverseGeocode/'))).toBe(true);
   });
 
-  // The county-threading test DIED with the county axis (docket #4).
-
-  it('the forward-geocode query is EXACTLY "name, subdivisionCode" — the county qualifier died with docket #4 and must not come back', async () => {
-    // F372(a): this spec used to assert the SAME string twice while its
-    // comments claimed the two rungs differed by a county qualifier, and it
-    // set up `countrySecondarySubdivision` without ever discriminating on it
-    // — so re-introducing the county axis would have passed. The fixture now
-    // carries a county name that appears NOWHERE else ('Gotham County'), and
-    // the assertions are the actual claim: candidates are disambiguated by
-    // ANCHOR CONTAINMENT, not by name qualifiers, so no rung qualifies.
-    const { adapter, calls } = buildAdapter({
-      reverseAddresses: [
-        {
-          ...UWS_REVERSE_ENTRY,
-          address: {
-            ...UWS_REVERSE_ENTRY.address,
-            countrySecondarySubdivision: 'Gotham County',
-          },
-        },
-      ],
-      forwardResults: [],
+  it("P5 GUARD: a pool denial while resolving a rung is the probe's OWN denied — never a quiet id-less chain", async () => {
+    // The round-2 red team's laundering bug: the pool denying the SECOND
+    // call of a probe left the finest rung silently id-less, upsertSketch
+    // dropped it, the reconciler recorded the view as asked — and the
+    // neighbourhood the probe existed for was suppressed for 30 days.
+    const { adapter } = buildAdapter({
+      reverseAddresses: [UWS_REVERSE_ENTRY],
+      levelEntityAddresses: [UWS_LEVEL_ENTITY_ENTRY],
+      denyLevelLookups: true,
     });
-    await adapter.probe(ANCHOR);
-    const forward = calls.filter((c) => !c.url.includes('/reverseGeocode/'));
-    const urlFor = (entityTypeSet: string) =>
-      decodeURIComponent(
-        forward.find((c) => c.params.entityTypeSet === entityTypeSet)?.url ??
-          '',
-      );
-    // Every rung: "<name>, <subdivisionCode>" and nothing else.
-    expect(urlFor('Municipality').endsWith('/New York, NY.json')).toBe(true);
-    expect(urlFor('CountrySubdivision').endsWith('/New York, NY.json')).toBe(
-      true,
-    );
-    // The county is a RUNG OF ITS OWN (CountrySecondarySubdivision), so it
-    // appears as that rung's own name — and NOWHERE else. It is never a
-    // qualifier appended to another rung's query, which is the distinction
-    // the old comments claimed and the old assertions could not see.
-    expect(
-      urlFor('CountrySecondarySubdivision').endsWith('/Gotham County, NY.json'),
-    ).toBe(true);
-    expect(forward.length).toBeGreaterThan(1);
-    expect(
-      forward.filter((c) => decodeURIComponent(c.url).includes('Gotham')),
-    ).toHaveLength(1);
+    const result = await adapter.probe(ANCHOR);
+    expect(result.kind).toBe('denied');
   });
 
   it('a well-formed 200 with NO addresses is OBSERVED-EMPTY — the one negative that may be remembered', async () => {
@@ -470,10 +448,10 @@ describe('bbox parsers — F3001: longitude preserves the provider edge order (a
   // parse as its 340-degree COMPLEMENT ({minLng:-170, maxLng:170}) because
   // Math.min/max on longitude destroyed the minLng>maxLng crossing
   // representation that bboxContainsPoint/bboxLngArcs honor.
-  it('forward shape: a crossing box keeps minLng>maxLng and contains a point inside the true arc', () => {
-    const parsed = parseForwardBoundingBox({
-      topLeftPoint: { lat: 53, lon: 170 },
-      btmRightPoint: { lat: 51, lon: -170 },
+  it('geography shape: a crossing box keeps minLng>maxLng and contains a point inside the true arc', () => {
+    const parsed = parseGeographyBoundingBox({
+      northEast: '53,-170',
+      southWest: '51,170',
     });
     expect(parsed).toEqual({
       minLat: 51,
@@ -486,21 +464,19 @@ describe('bbox parsers — F3001: longitude preserves the provider edge order (a
     expect(bboxContainsPoint(parsed!, { lat: 52, lng: 0 })).toBe(false);
   });
 
-  it('forward shape: a non-crossing box still parses correctly and excludes outside points', () => {
-    const parsed = parseForwardBoundingBox({
-      topLeftPoint: { lat: 40.882, lon: -74.04725 },
-      btmRightPoint: { lat: 40.684007, lon: -73.907093 },
+  it('geography shape: a non-crossing box still parses correctly and excludes outside points', () => {
+    const parsed = parseGeographyBoundingBox({
+      northEast: '40.807972,-73.964694',
+      southWest: '40.779488,-73.992672',
     });
     expect(parsed).toEqual({
-      minLat: 40.684007,
-      minLng: -74.04725,
-      maxLat: 40.882,
-      maxLng: -73.907093,
+      minLat: 40.779488,
+      minLng: -73.992672,
+      maxLat: 40.807972,
+      maxLng: -73.964694,
     });
-    expect(
-      bboxContainsPoint(parsed!, { lat: 40.7532511, lng: -74.0038099 }),
-    ).toBe(true);
-    expect(bboxContainsPoint(parsed!, { lat: 40.75, lng: -75.5 })).toBe(false);
+    expect(bboxContainsPoint(parsed!, { lat: 40.79, lng: -73.98 })).toBe(true);
+    expect(bboxContainsPoint(parsed!, { lat: 40.79, lng: -75.5 })).toBe(false);
   });
 
   // The reverse-shape F3001 tests died with parseReverseBoundingBox

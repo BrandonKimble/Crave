@@ -77,21 +77,26 @@ export const GROUND_SIMPLIFY_VIEW_FRACTION = 512;
 /**
  * §16 DERIVED — candidate ceiling for one viewport read: an abuse bound on
  * bytes and scan work (a world-span view once serialized 11 MB per request),
- * never a judgment input. The header's candidates cannot be truncated by it:
- * the read ranks grounds containing the view's CENTRE ahead of the cut, and
- * the centre chain is nesting-bounded (a handful of rows). What the cap can
- * drop, at pathological density, is off-centre feed-membership tail —
- * coarsest-first within each band so the drop lands on the places least
- * able to hold attention. What changes it: measured dense-view row counts,
- * never tuning.
+ * never a judgment input. The centre-rank guarantee is scoped to THE READ'S
+ * OWN view: grounds containing ITS centre rank ahead of the cut (the centre
+ * chain is nesting-bounded), so a server-judged header can never lose its
+ * winner to truncation. The SLICE read's privileged centre is the MARGIN
+ * BOX's — the client then judges sub-views whose centres differ, so at
+ * pathological density (>cap grounds in one margin box) a fine off-centre
+ * row can be cut from the slice and the CLIENT header coarsens until the
+ * zoom-in re-cut fetches a tighter slice. Residual, bounded, and stated
+ * here rather than denied. What changes it: measured dense-view row
+ * counts, never tuning.
  */
 export const PLACES_IN_VIEW_CANDIDATE_CAP = 400;
 
 /**
  * One node of a reverse-geocode chain, as handed to sketchChain. Everything
  * beyond the identity tuple is optional: §2's sketch mechanics may learn a
- * node's bbox only on a LATER probe (forward geocode is once-ever per node),
- * and the identity-law merge fills gaps as observations accrue.
+ * node's bbox only on a LATER probe, and the identity-law merge fills gaps
+ * as observations accrue. (The "forward geocode is once-ever per node"
+ * claim died 2026-08-07 — identity is per-rung anchored lookups now, with
+ * the catalog's outline coverage as the lawful skip.)
  */
 export interface PlaceSketchNode {
   name: string;
@@ -498,9 +503,19 @@ export class PlacesCatalogService {
     // rank ahead of the candidate cap. bboxCenter is wrap-aware, so the
     // point is a plain lng even when the view crosses the antimeridian.
     const centre = bboxCenter(view);
-    const centreCoversSql = Prisma.sql`ST_Covers(
-      g.geometry,
-      ST_SetSRID(ST_MakePoint(${centre.lng}::float8, ${centre.lat}::float8), 4326)
+    // The && envelope test first: ORDER BY runs on every &&-matched row
+    // BEFORE the LIMIT, and a bare ST_Covers at world zoom is a
+    // point-in-polygon over every ground in the catalog per request. The
+    // envelope check is index-grade cheap and false for almost every row,
+    // so the exact cover runs only on the handful whose envelope holds the
+    // centre. (Round-2 red team; the 27ms world-zoom measurement above
+    // predates this ORDER BY and was re-taken after it — see below.)
+    const centreCoversSql = Prisma.sql`(
+      g.geometry && ST_SetSRID(ST_MakePoint(${centre.lng}::float8, ${centre.lat}::float8), 4326)
+      AND ST_Covers(
+        g.geometry,
+        ST_SetSRID(ST_MakePoint(${centre.lng}::float8, ${centre.lat}::float8), 4326)
+      )
     )`;
     try {
       const rows = await this.prisma.$queryRaw<
@@ -517,7 +532,9 @@ export class PlacesCatalogService {
         -- BOUNDED, with the CENTRE CHAIN guaranteed in. Abuse audit
         -- 2026-08-01: this read had no LIMIT, so a world-span view
         -- seq-scanned every ground and serialized 11 MB of GeoJSON per
-        -- request — reachable at 100/min from an UNAUTHENTICATED endpoint.
+        -- request, at the rate-limit ceiling (the endpoint has since gained
+        -- ClerkAuthGuard + the heavyGeoRead tier; the bound stays because
+        -- authenticated abuse is still abuse).
         -- The cap survives; its ORDERING flipped with the header law
         -- (2026-08-07). The old comment argued coarsest-first was safe
         -- because "the §2.5 law only ever names a DOMINATOR, and the places
@@ -526,9 +543,10 @@ export class PlacesCatalogService {
         -- area-descending dropped exactly the class the law selects from,
         -- and a dense-view read silently coarsened the header to an
         -- ancestor. The centre-containment sort key ranks every ground
-        -- holding the view's centre ahead of the cut: the centre chain is
-        -- nesting-bounded (a handful of rows), so the header's candidates
-        -- can never be truncated; what the cap drops is off-centre tail,
+        -- holding THIS READ'S centre ahead of the cut: the centre chain is
+        -- nesting-bounded (a handful of rows), so a server-judged header
+        -- can never lose its winner (the slice residual is on the CAP
+        -- constant's doc); what the cap drops is off-centre tail,
         -- which can affect only feed MEMBERSHIP at pathological density —
         -- coarsest-first within each band keeps that drop to the places
         -- least able to hold attention.
@@ -538,20 +556,25 @@ export class PlacesCatalogService {
       for (const row of rows) {
         if (!row.geojson) continue;
         // parseGroundGeoJson THROWS on a malformed shape (no bbox fallback
-        // exists). A throw here aborts the read into the catch below, which
-        // logs and yields no candidates — never a silent per-row drop.
+        // exists). A throw here aborts the whole read — never a silent
+        // per-row drop.
         const ground = parseGroundGeoJson(row.geojson);
         grounds.set(row.placeId, { ground, bbox: bboxFromDerivedRow(row) });
       }
     } catch (error) {
-      this.logger.warn(
-        'Ground-in-view read failed — no candidates for this read (§2.6: never bbox-judged)',
-        {
-          error: {
-            message: error instanceof Error ? error.message : String(error),
-          },
+      // THROW, never an empty map (round-2 red team). Returning [] here made
+      // a Postgres blip indistinguishable from an honest "nothing here": the
+      // header rendered «this area» and the polls feed rendered EMPTY, behind
+      // one warn line. A database failure is a failure — callers that can
+      // degrade honestly (search's display name) catch and say so; a feed
+      // request 500s and the client retries. The §2.6 half of the old
+      // message survives: there is still no bbox-judged fallback arm.
+      this.logger.warn('Ground-in-view read failed', {
+        error: {
+          message: error instanceof Error ? error.message : String(error),
         },
-      );
+      });
+      throw error;
     }
     return grounds;
   }

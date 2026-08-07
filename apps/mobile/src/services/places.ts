@@ -6,12 +6,12 @@ import api from './api';
  * Sliding catalog slice read (header subject-store design): the server returns
  * every catalog place intersecting the ×3-expanded margin box around the
  * requested view, plus that marginBox as the client's cache-validity region.
- * Rows are shared PlaceLike VERBATIM — since §2.5 (polygon-native header law)
- * (the DAG stays server-side — descendant expansion reads Prisma, and the
- * header law reads geometry only)
- * and optional `ground` (margin-simplified real-ground rings; absent until a
- * place's polygon lands). Nothing is mapped or dropped here: the store keeps
- * these rows as-is and the shared law judges them.
+ * Rows are shared PlaceLike VERBATIM, each carrying its REQUIRED `ground`
+ * (margin-simplified real rings; a sketch-grade place ships its envelope
+ * rectangle — §2.6 one representation, never absent). The DAG stays
+ * server-side: descendant expansion reads Prisma, and the header law reads
+ * geometry only. Nothing is mapped or dropped here: the store keeps these
+ * rows as-is and the shared law judges them.
  * Wrap-aware: a crossing view (minLng > maxLng) passes through as-is — the
  * shared geo law owns the seam on both sides.
  */

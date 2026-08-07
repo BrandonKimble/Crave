@@ -293,6 +293,10 @@ export class PlacesReconcilerService {
     // ground doesn't re-spend draws every settle when its finest chain is
     // over-scale (see NegativeObservation doc). Recorded only when a probe
     // actually fired (a fully-answered pass costs nothing to repeat).
+    // HONEST since 2026-08-07 round 2: probe() propagates identity
+    // denials/faults instead of returning a chain with quiet gaps, so a
+    // 'named' result here really did resolve every rung the vendor models —
+    // this box can no longer bury a never-minted place for 30 days.
     if (observedAny) {
       await this.rememberAskedRegion({ kind: 'box', bbox: view });
     }

@@ -45,7 +45,6 @@ const boundsOf = (view: GeoBbox): MapBounds => ({
 const place = (partial: Partial<PlaceLike> & Pick<PlaceLike, 'placeId' | 'bbox'>): PlaceLike => ({
   name: partial.placeId,
   providerLevelCode: 'test-level',
-  parentPlaceIds: [],
   // §2.6: ground is REQUIRED — default fixture is the sketch-grade envelope.
   ground: bboxToGround(partial.bbox),
   ...partial,
@@ -154,7 +153,6 @@ describe('viewport subject controller core (§2.5 polygon-native)', () => {
     expect(state.verdict).toEqual({ kind: 'place', placeId: 'texas', placeName: 'Texas' });
     // The slice kept the §2.5 fields — nothing was mapped away.
     expect(state.slice?.find((row) => row.placeId === 'mexico')?.ground).toBeDefined();
-    expect(state.slice?.every((row) => Array.isArray(row.parentPlaceIds))).toBe(true);
 
     const settleLogs = harness.logsFor('settle');
     expect(settleLogs[settleLogs.length - 1]).toMatchObject({
@@ -237,7 +235,6 @@ describe('viewport subject controller core (§2.5 polygon-native)', () => {
       placeId: 'round-rock',
       name: 'Round Rock',
       bbox: { minLat: 28.8, maxLat: 30.2, minLng: -100.6, maxLng: -99.45 },
-      parentPlaceIds: ['travis'],
       ground: [
         [
           [-100.6, 28.8],
@@ -251,7 +248,6 @@ describe('viewport subject controller core (§2.5 polygon-native)', () => {
       placeId: 'austin',
       name: 'Austin',
       bbox: { minLat: 28.8, maxLat: 30.2, minLng: -99.44, maxLng: -98.4 },
-      parentPlaceIds: ['travis'],
       ground: [
         [
           [-99.44, 28.8],

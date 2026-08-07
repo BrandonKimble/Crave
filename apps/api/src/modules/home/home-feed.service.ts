@@ -222,11 +222,15 @@ export class HomeFeedService {
     const cityIds = new Set(liveCities.map((city) => city.placeId));
     // The viewport verdict WINS whenever it honestly resolves to a live city.
     // The explicit pick (a tapped pick-a-city card) is a SOFT FALLBACK for
-    // broader-than-city viewports only: a city-bbox camera fit leaves the
-    // city under the ⅔ header law (tall screens add big margins), so without
-    // this the tap would land the user right back on pick-a-city. Explicit
-    // user intent fills exactly that gap — it never overrides an honest
-    // city-level verdict, and an unknown/non-live pick is ignored.
+    // broader-than-city viewports only. The gap it fills survives the
+    // center-anchored header law (2026-08-07, replacing the ⅔ rule this
+    // comment used to cite): a city-bbox camera fit still leaves the city
+    // under the header fraction on tall screens (the fit adds big vertical
+    // margins, so the city holds < HEADER_ATTENTION_FRACTION of the view),
+    // and without the pick the tap would land the user right back on
+    // pick-a-city. Explicit user intent fills exactly that gap — it never
+    // overrides an honest city-level verdict, and an unknown/non-live pick
+    // is ignored.
     const verdictCityId = verdict.headerPlace
       ? await this.rollupToListCity(verdict.headerPlace.placeId, cityIds)
       : null;
