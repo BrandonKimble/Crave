@@ -2512,3 +2512,51 @@ the WORKING-TREE version and will absorb another lane's edits to that
 file; `git ls-files` from a drifted cwd silently scopes to the subtree
 (one near-false-finding); agent briefs name territories, never counts —
 COVERAGE.md decays under concurrent writers.
+
+## Cross-cutting: what the rederivation's second half taught (D62–D103, 2026-08-06)
+
+**Non-checking typing positions (F5850 — the class with one home, as promised).** Three
+TypeScript positions LOOK like they buy excess-property checking and do not:
+1. A JSX spread (`<C {...props} />`) — never excess-checked (D88; the fix is building
+   through an ANNOTATED props local, which is checked).
+2. `useMemo<T>(() => ({...}))` — the generic parameter is not a check position (D97).
+3. `useMemo<T>` with an arrow OBJECT literal — same, probe-verified even where a file's
+   own header claims the F1668 inline-literal discipline (F5850).
+The working forms: an annotated local (`const p: Props = {...}`), or a return-type
+annotation ON THE CALLBACK (`useMemo((): T => ...)`) — D97 proved the second fires
+TS2353 where the generic form does not. When a design claims "re-adding the field cannot
+compile", run the mutation; two of this exercise's designs claimed it falsely.
+
+**Frame-rate assumptions (the F889/F5806 class).** Never convert pt/frame to pt/s with a
+constant; ProMotion is 120Hz. Measure the inter-event delta. Two sites have now carried
+this defect (reorder-drag-math, the sheet momentum rebound); CLAUDE.md carries the law
+with both named. Grep `FRAMES_PER_SECOND|PER_FRAME` when touching any gesture math.
+
+**Laws must live where the next author looks (D101).** The F889 fix existed only in the
+fixed file; the law was not in CLAUDE.md, and the defect grew back one surface over.
+Corollary: when a P2 verdict cites a precedent, OPEN the precedent — two of this
+exercise's own verdicts cited deleted or nonexistent text (D68's bodySurface, D99's
+CLAUDE.md entry).
+
+**The scanner-vs-behavior ladder for specs (F5901).** A source-scanner spec (indexOf over
+production text) breaks on any refactor its law survives. When the decision it pins moves
+into a pure module, the behavioral spec REPLACES the scanner — the successor breaks only
+when the law breaks. Search for remaining `read(` source-scanner specs when their subject
+files are refactored.
+
+**Doubles must key on their input (F2210/F2180/F4920-22/F3805).** A mock that answers
+any argument cannot fail when production asks the wrong question. The honest doubles live
+in `apps/api/src/shared/testing/prisma-doubles.ts` (+ the lint ban and registry mutation
+that keep the blind form unwritable). The stopping boundary of any hardening campaign is
+itself a hunting ground: three vacuous doubles were each ONE SEAM past where a prior
+campaign stopped.
+
+**Session arcs worth knowing before touching these areas:** the abort observation now
+travels as a discriminated kind end-to-end (F4800 — never reconstruct state from an error
+message); the MVCP default is transport-owned with a both-directions proof
+(sceneFlashListPropsMerge.ts); scene policy inputs cannot name a second scene (F5418);
+the restaurant-route panelDraft lane is DELETED (F5000 — a predicate that could never
+return true); username normalization has one home (services/username-draft.ts, the
+server's regex is the rule); notification types cross the wire as a shared union with a
+`satisfies` pin at the API write (F5803); the camera watchdog retry preserves its
+completion id (F5703 — including the failed-retry branch).
