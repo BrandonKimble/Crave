@@ -6,9 +6,41 @@
  *  - Reverse geocode with a multi-value `entityType` list returns ONE
  *    address: the MOST SPECIFIC matching geography, carrying its own
  *    `address.boundingBox` ({northEast,southWest} as "lat,lng" STRINGS), its
- *    stable `dataSources.geometry.id`, and the PARENT CHAIN NAMES inline
- *    (municipality / countrySecondarySubdivision / countrySubdivision /
- *    country) WITHOUT parent bboxes or ids.
+ *    stable `dataSources.geometry.id`, and PARENT CHAIN NAMES inline
+ *    WITHOUT parent bboxes or ids.
+ *
+ *    ⚠️ CORRECTED 2026-08-07 — that inline chain is NOT COMPLETE, and the
+ *    original wording ("municipality / countrySecondarySubdivision /
+ *    countrySubdivision / country") named a rung the filtered request does
+ *    not actually return. PASSING `entityType` NULLS OUT
+ *    `municipalitySubdivision` AND USUALLY `countrySecondarySubdivision`.
+ *    Measured against the live API, filtered vs plain at the same point:
+ *
+ *      point          filtered mSub / county   plain mSub / county
+ *      Austin         null      / null         null      / Travis
+ *      West Village   null      / null         Manhattan / New York
+ *      Chicago        null      / null         null      / Cook
+ *      Los Angeles    null      / Los Angeles  null      / Los Angeles
+ *
+ *    So every probe ever run here has built chains missing up to two rungs:
+ *    the BOROUGH tier (Manhattan, Brooklyn, and city districts generally) and
+ *    the COUNTY. It is why the catalog has no "Manhattan" while TomTom knows
+ *    it perfectly well — a gap that was very nearly blamed on the vendor.
+ *
+ *    THE FILTER IS NOT SIMPLY DELETABLE. It is what makes the response a
+ *    GEOGRAPHY: entityType is set, `address.boundingBox` is that geography's
+ *    OUTLINE, and `dataSources.geometry.id` is present. The plain response is
+ *    an ADDRESS — entityType is null and boundingBox is
+ *    `{"entity":"position"}`, a few-metre box around the street address, not
+ *    the neighbourhood polygon. The two requests answer two different
+ *    questions and this probe asks only the first:
+ *
+ *      filtered → the finest named geography here, WITH its geometry
+ *      plain    → the COMPLETE parent chain of names
+ *
+ *    Closing it costs one extra cheap call per probe (a second reverse
+ *    geocode for the names, or dropping the free bbox and letting the
+ *    existing forward-geocode enrichment fill it). Not yet decided.
  *  - Forward geocode (`entityTypeSet=<level>&limit=1`) returns a Geography
  *    result with `boundingBox` as {topLeftPoint,btmRightPoint} {lat,lon}
  *    OBJECTS (a DIFFERENT shape than reverse — do not unify blindly) plus the
