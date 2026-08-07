@@ -53,7 +53,13 @@ export type SearchMountedResultsCoverageEntry = {
   requestKey: string;
   features: Array<Feature<Point, RestaurantFeatureProperties>> | null;
   reason: string | null;
-  resolvedAt: number | null;
+  // F4806: a `resolvedAt: number | null` used to sit here, written at all three of
+  // fetchShortcutCoverageWorldEntry's return sites and read by NOTHING in the repo — a
+  // value alive past its last reader (its sibling `reason` has four real readers in
+  // use-direct-search-map-source-controller). It also mixed clocks
+  // (`globalThis.performance?.now?.() ?? Date.now()`), so the two epochs would have been
+  // incomparable if anyone HAD read it: a dead field that was also a trap for whoever
+  // revived it. A field exists because something reads it; git holds the shape.
 };
 
 export type SearchMountedResultsCoverage = {

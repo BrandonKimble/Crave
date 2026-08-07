@@ -71,6 +71,18 @@ export const buildShortcutCoverageWorldRequestKey = (args: {
   }|filters:${buildFiltersKey(args.tuple)}`;
 };
 
+/** F4806: the two STRING fields used to be read as `(properties.x as string) ?? ''` —
+ *  an unchecked assertion where the five NUMERIC fields ten lines below do a real
+ *  `typeof` + `Number.isFinite` check. `??` fires only on null/undefined, so a wire value
+ *  of any other truthy type (a number id, an object) passed the `!restaurantId` check and
+ *  landed in the emitted feature TYPED as string — and these features feed the map's pin
+ *  layer, so a mistyped restaurantId propagates into pin identity. One rejection path for
+ *  every field now; there is nothing left to assert. */
+const readString = (properties: Record<string, unknown>, key: string): string | null => {
+  const value = properties[key];
+  return typeof value === 'string' && value.length > 0 ? value : null;
+};
+
 /** The ONE mapping from a raw coverage FeatureCollection to validated dot features —
  *  identical semantics to the controller's mapper so both tabs' coverage is built the
  *  same regardless of which path produced it. */
@@ -84,10 +96,10 @@ export const mapShortcutCoverageWorldFeatures = (
         feature?.properties && typeof feature.properties === 'object'
           ? (feature.properties as Record<string, unknown>)
           : {};
-      const restaurantId = (properties.restaurantId as string) ?? '';
-      const restaurantName = (properties.restaurantName as string) ?? '';
+      const restaurantId = readString(properties, 'restaurantId');
+      const restaurantName = readString(properties, 'restaurantName');
       const rank = properties.rank;
-      if (!restaurantId || !restaurantName || typeof rank !== 'number') {
+      if (restaurantId == null || restaurantName == null || typeof rank !== 'number') {
         return null;
       }
       const craveScore =
@@ -173,14 +185,12 @@ export const fetchShortcutCoverageWorldEntry = async (args: {
   const { shortcutCoverage, tuple, tab } = args;
   const requestKey = buildShortcutCoverageWorldRequestKey({ tuple, tab });
   const bounds = tuple.committedBounds?.bounds ?? null;
-  const now = (): number => globalThis.performance?.now?.() ?? Date.now();
   if (bounds == null) {
     return {
       status: 'failed',
       requestKey,
       features: null,
       reason: 'viewport_bounds_unavailable',
-      resolvedAt: now(),
     };
   }
   const includeTopDish = tab === 'dishes';
@@ -203,7 +213,6 @@ export const fetchShortcutCoverageWorldEntry = async (args: {
       requestKey,
       features,
       reason: features.length > 0 ? 'accepted_features' : 'validated_empty_coverage',
-      resolvedAt: now(),
     };
   } catch (error) {
     return {
@@ -211,7 +220,6 @@ export const fetchShortcutCoverageWorldEntry = async (args: {
       requestKey,
       features: null,
       reason: error instanceof Error ? error.message : 'coverage_fetch_failed',
-      resolvedAt: now(),
     };
   }
 };
