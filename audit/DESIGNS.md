@@ -3613,3 +3613,50 @@ sweep STILL zero, all 14 new specs input-keyed, and 288 backticked comment ident
 scripted for non-comment survival — zero ghosts. The territory is sound except the three.
 
 Clean pass 1 restarts on the api-search fixes too (F7600 gated on its migration).
+
+---
+
+## D120 — clean pass 1, mobile-search: NOT CLEAN. F7700 disarms the recovery it promises. (2026-08-07)
+
+**F7700 — VERIFIED MYSELF, APPROVED.** The dismiss motion plane's `useLayoutEffect`
+(:618) deps on `observeDismissMotion`, which deps (:274-275) on the two `notifyClose*`
+callbacks the sole caller passes as INLINE ARROWS — fresh every render. So mid-dismiss,
+any re-render runs the cleanup (`clearDismissMotionBoundaryTimers` at :624, clearing BOTH
+the 420ms watchdog and the F1041 1200ms recovery deadline), then re-registers and
+re-invokes `observeDismiss` — which hits the idempotent early-return (:427-433, same
+active transaction + motion in progress) BEFORE the two arm calls at :438-439. The timers
+are cleared and never re-armed. The module header says it "RECOVERS, always"; a single
+mid-dismiss re-render makes it unable to. Read end to end across the three files and the
+early-return/arm ordering confirmed directly.
+REDERIVATION (the ideal, not a patch): the registration effect must not churn on callback
+identity — the arming is a property of the TRANSACTION, not of the render. Either (a) the
+caller memoizes the two callbacks (fixes THIS site but a third caller can forget — a
+convention), or (b) THE CORRECT ONE: the effect deps drop to the stable observation
+identity and the callbacks are read through a ref, so re-registration cannot disarm a live
+transaction because re-registration no longer HAPPENS on callback identity. Rederive to
+(b); the timers arm on transaction start and clear only on transaction END or unmount.
+Mutation: a forced re-render mid-dismiss (bump an unrelated prop) must leave both timers
+armed — RED today, GREEN after; the F1041 recovery must still fire on a stalled boundary.
+
+**F7701 — APPROVED (the F6400 red-team's blind spot, named).** Four provenance literals
+hardcoded in the one producer's emit, so `badDismissNavSource` can never differ from its
+own literal — its `pass` is unearnable. F6400 asked "is the name consumed?" and never "CAN
+THE CONSUMPTION FAIL?" — the deeper question for every positive contract assertion. Either
+the check gains a second producer to disagree with it, or it becomes a type (the literal
+is the only legal value → make it the type and delete the runtime check). Read the contract
+to choose; a check that cannot fail is deleted or made failable, never kept.
+
+**F7702 — APPROVED with the lane's own caution honored.** `boundaryY`/`collapsedY` are one
+shared value under two names (fifth instance of the F6400 alias class), BUT the `+ 8` band
+in the handoff assertion may encode a real threshold the alias is hiding — so the P3 READS
+whether the two names were ever meant to differ: if the band is real, the names become two
+DISTINCT values with the offset made explicit; if not, collapse to one. Not a blind
+dedupe.
+
+**The lane's HELD verdicts are the pass's real product:** F5703's retry (including the
+gesture-during-retry hole re-checked), both halves of F6407, F4800's zero `.includes`,
+F6206's renormalisation, F6000's collapse — all verified holding TODAY, months of this
+exercise's own fixes re-confirmed under fresh eyes. Five reverted rows closed with fresh
+reads.
+
+Pass 1 restarts on mobile-search too after these land.
