@@ -2803,3 +2803,48 @@ and acceptance, queued for the next lane in.
 **F5411's ruling paid twice:** the consumer READ decided measure-over-delete (a constant
 zero pinned the owner to the bottom of worstByDuration forever), and the fix
 incidentally made the uninstrumented path cheaper.
+
+---
+
+## D98 — P2 verdicts on the mobile-search final-push P1 (F5700–F5707, 2026-08-06)
+
+**F5703 — VERIFIED MYSELF, APPROVED, first in line. A defect in this session's own D61
+work.** The watchdog's recommit flows through the F1374 supersede block, which is not
+retry-aware: `isWatchdogRetry` is threaded in and consulted only to set `retried`, so the
+retry emits `cancelled` for the completion downstream armed on, then continues under a
+fresh id nobody holds — a SUCCESSFUL rescue reported as failure, tearing down the
+scene-switch settle it just saved. The F1374 law (an armed completion resolves exactly
+once) is correct; the retry violates its spirit by resolving the WRONG once. Rederivation
+as proposed: on retry, REUSE the pending completionId and suppress the supersede cancel —
+the same completion continues and still resolves exactly once. The lane's proving
+mutation is the acceptance, and the park spec (its own F5707 exhibit) gains the missing
+assertion rather than a new harness.
+
+**F5700 — APPROVED.** Provenance declared, filled differently by five call sites, read by
+none — then overwritten with a constant, so a recent-search tap reaches the backend as an
+autocomplete submission with the entity's own name as the user's typed prefix. Carry the
+declared fields through the emission path; delete the constant. Found by reading the
+emission path after a comment credited a path that lane cannot take — the D97 discipline
+paying again.
+
+**F5701 — APPROVED at the unrepresentable rung.** 17 of 38 option members unread; shrink
+the type and tsc is the proof. The four-link memo chain whose only live output is
+unchanged dies with the two dead uiPorts members that were its whole reason.
+
+**F5704 — APPROVED.** Four commit-path legs, and the ONLY uninstrumented one is where a
+committed intent genuinely vanishes (park supersession) — while commit() has already
+returned true. The enumeration omits the failure it was commissioned for (F2901 one level
+up). Instrument the park-supersession leg with a completion emission, consistent with the
+one-law-both-paths comment.
+
+**F5702/F5705/F5706 — APPROVED.** Two permanently-false flags and their dead arm +
+zero-delta wrapper deleted (callers enumerated); the geometry contract's `enabled` becomes
+the real pointerEvents-derived fact or the duplicate field dies; the three style orphans
+deleted with the prose-mention class noted for any future orphan tooling.
+
+**The refutation section is the model.** The lane DISCARDED its own orphan sweep entirely
+after its quoting bug returned 135 false positives including a file it had just watched
+being imported — no claim salvaged from a broken instrument. Two suspected defects
+un-filed after reading (the RED bark genuinely fires on the gesture path; the viewport
+sync runs post-gesture where the park is already cleared). The ledger inherits three
+refutations and zero hunches.
