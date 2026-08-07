@@ -20,23 +20,26 @@ import { useSearchOverlayProfilerRender } from './SearchOverlayProfilerContext';
 
 // P5: no headerComponent lane — the results header rides the hoisted PersistentSheetHeaderHost
 // (persistent-header registry 'search' descriptor, search-results-header-live-state.tsx).
+// F6200: the `kind: 'results_page_bundle'` discriminant is gone. P5 replaced the
+// swappable render object with three fixed slot components, so the union had a single
+// member and its only two readers were log-string interpolations — an instrument field
+// that could emit exactly one value (the F2901 family). The three parts ARE the bundle.
 export type SearchResultsPageBundleRenderObject = {
-  kind: 'results_page_bundle';
   underlayComponent: React.ReactNode | null;
   backgroundComponent: React.ReactNode | null;
   overlayComponent: React.ReactNode | null;
 };
 
 type Listener = () => void;
-type SearchResultsPageBundlePartsSnapshot = Pick<
-  SearchResultsPageBundleRenderObject,
-  'underlayComponent' | 'backgroundComponent' | 'overlayComponent'
->;
 
 const listeners = new Set<Listener>();
-let snapshot: SearchResultsPageBundleRenderObject | null = null;
+// What the authority stores is PRESENCE, not a bundle: the parts live in their own
+// store below and the only object ever published was the module constant. A structural
+// equality over a two-inhabitant domain reads as protection while protecting nothing,
+// so this is a boolean and `Object.is` is the whole comparison.
+let isPageBundlePresented = false;
 const partsListeners = new Set<Listener>();
-let partsSnapshot: SearchResultsPageBundlePartsSnapshot = {
+let partsSnapshot: SearchResultsPageBundleRenderObject = {
   underlayComponent: null,
   backgroundComponent: null,
   overlayComponent: null,
@@ -46,21 +49,9 @@ let deferredVisibleDismissPageBundleClearLogKey: string | null = null;
 let visibleDismissPageBundleFrozenLogKey: string | null = null;
 let unsubscribeDeferredVisibleDismissPageBundleClear: (() => void) | null = null;
 
-const areSearchResultsPageBundlesEqual = (
-  left: SearchResultsPageBundleRenderObject | null,
-  right: SearchResultsPageBundleRenderObject | null
-): boolean =>
-  left === right ||
-  (left != null &&
-    right != null &&
-    left.kind === right.kind &&
-    left.underlayComponent === right.underlayComponent &&
-    left.backgroundComponent === right.backgroundComponent &&
-    left.overlayComponent === right.overlayComponent);
-
 const areSearchResultsPageBundlePartsEqual = (
-  left: SearchResultsPageBundlePartsSnapshot,
-  right: SearchResultsPageBundlePartsSnapshot
+  left: SearchResultsPageBundleRenderObject,
+  right: SearchResultsPageBundleRenderObject
 ): boolean =>
   left.underlayComponent === right.underlayComponent &&
   left.backgroundComponent === right.backgroundComponent &&
@@ -106,7 +97,7 @@ const searchResultsPageBundlePartsAuthority = {
 };
 
 const publishSearchResultsPageBundleParts = (
-  nextSnapshot: SearchResultsPageBundlePartsSnapshot
+  nextSnapshot: SearchResultsPageBundleRenderObject
 ): void => {
   if (areSearchResultsPageBundlePartsEqual(partsSnapshot, nextSnapshot)) {
     return;
@@ -118,7 +109,7 @@ const publishSearchResultsPageBundleParts = (
 };
 
 const createSearchResultsPageBundlePartSlot = <
-  Key extends keyof SearchResultsPageBundlePartsSnapshot,
+  Key extends keyof SearchResultsPageBundleRenderObject,
 >(
   key: Key,
   displayName: string
@@ -129,7 +120,7 @@ const createSearchResultsPageBundlePartSlot = <
       subscribe: searchResultsPageBundlePartsAuthority.subscribe,
       getSnapshot: searchResultsPageBundlePartsAuthority.getSnapshot,
       selector: React.useCallback(
-        (nextSnapshot: SearchResultsPageBundlePartsSnapshot) => nextSnapshot[key],
+        (nextSnapshot: SearchResultsPageBundleRenderObject) => nextSnapshot[key],
         [key]
       ),
       isEqual: Object.is,
@@ -150,7 +141,6 @@ const createSearchResultsPageBundlePartSlot = <
 };
 
 const STABLE_SEARCH_RESULTS_PAGE_BUNDLE: SearchResultsPageBundleRenderObject = {
-  kind: 'results_page_bundle',
   underlayComponent: createSearchResultsPageBundlePartSlot(
     'underlayComponent',
     'SearchResultsPageBundleUnderlaySlot'
@@ -208,7 +198,7 @@ function clearSearchResultsPageBundleAfterVisibleDismissSettled(): void {
     backgroundComponent: null,
     overlayComponent: null,
   });
-  publishSearchResultsPageBundleImmediate(null, 'visible_dismiss_settled_clear');
+  publishSearchResultsPageBundleImmediate(false, 'visible_dismiss_settled_clear');
 }
 
 const ensureDeferredVisibleDismissPageBundleSubscription = (): void => {
@@ -221,10 +211,10 @@ const ensureDeferredVisibleDismissPageBundleSubscription = (): void => {
 };
 
 const publishSearchResultsPageBundleImmediate = (
-  nextSnapshot: SearchResultsPageBundleRenderObject | null,
-  path = nextSnapshot == null ? 'clear' : nextSnapshot.kind
+  nextIsPresented: boolean,
+  path = nextIsPresented ? 'results_page_bundle' : 'clear'
 ): void => {
-  if (areSearchResultsPageBundlesEqual(snapshot, nextSnapshot)) {
+  if (Object.is(isPageBundlePresented, nextIsPresented)) {
     return;
   }
 
@@ -237,7 +227,7 @@ const publishSearchResultsPageBundleImmediate = (
     },
   });
 
-  snapshot = nextSnapshot;
+  isPageBundlePresented = nextIsPresented;
   listeners.forEach((listener) => {
     listener();
   });
@@ -246,7 +236,7 @@ const publishSearchResultsPageBundleImmediate = (
 export const publishSearchResultsPageBundle = (
   nextSnapshot: SearchResultsPageBundleRenderObject | null
 ): void => {
-  if (isSearchSurfaceRetainingVisibleDismissPageBundle() && snapshot != null) {
+  if (isSearchSurfaceRetainingVisibleDismissPageBundle() && isPageBundlePresented) {
     const transactionId =
       getSearchSurfaceRuntime().getSnapshot().dismissTransaction?.id ?? 'unknown';
     if (nextSnapshot != null) {
@@ -260,12 +250,12 @@ export const publishSearchResultsPageBundle = (
         deferredVisibleDismissPageBundleClearLogKey = null;
         clearDeferredVisibleDismissPageBundleSubscription();
       }
-      const frozenLogKey = `${transactionId}|${nextSnapshot.kind}`;
+      const frozenLogKey = transactionId;
       if (visibleDismissPageBundleFrozenLogKey !== frozenLogKey) {
         visibleDismissPageBundleFrozenLogKey = frozenLogKey;
         logPerfScenarioWorkSpan({
           owner: 'search_results_page_bundle_parts_publish_frozen',
-          path: nextSnapshot.kind,
+          path: 'results_page_bundle',
           startedAtMs: getPerfScenarioWorkNow(),
           details: {
             listenerCount: partsListeners.size,
@@ -300,10 +290,10 @@ export const publishSearchResultsPageBundle = (
       backgroundComponent: nextSnapshot.backgroundComponent,
       overlayComponent: nextSnapshot.overlayComponent,
     });
-    if (snapshot != null) {
+    if (isPageBundlePresented) {
       return;
     }
-    publishSearchResultsPageBundleImmediate(STABLE_SEARCH_RESULTS_PAGE_BUNDLE);
+    publishSearchResultsPageBundleImmediate(true);
     return;
   }
   deferredVisibleDismissPageBundleClear = false;
@@ -315,7 +305,7 @@ export const publishSearchResultsPageBundle = (
     backgroundComponent: null,
     overlayComponent: null,
   });
-  publishSearchResultsPageBundleImmediate(null);
+  publishSearchResultsPageBundleImmediate(false);
 };
 
 const searchResultsPageBundleAuthority = {
@@ -325,7 +315,7 @@ const searchResultsPageBundleAuthority = {
       listeners.delete(listener);
     };
   },
-  getSnapshot: () => snapshot,
+  getSnapshot: () => isPageBundlePresented,
 };
 
 type SearchResultsPageBundleHostProps = {
@@ -335,14 +325,11 @@ type SearchResultsPageBundleHostProps = {
 
 export const SearchResultsPageBundleHost = React.memo(
   ({ bodyDefaults, bodyScrollRuntime }: SearchResultsPageBundleHostProps) => {
-    const pageBundle = useRouteAuthoritySelector({
+    const isPageBundlePresentedForRender = useRouteAuthoritySelector({
       subscribe: searchResultsPageBundleAuthority.subscribe,
       getSnapshot: searchResultsPageBundleAuthority.getSnapshot,
-      selector: React.useCallback(
-        (nextSnapshot: SearchResultsPageBundleRenderObject | null) => nextSnapshot,
-        []
-      ),
-      isEqual: areSearchResultsPageBundlesEqual,
+      selector: React.useCallback((nextIsPresented: boolean) => nextIsPresented, []),
+      isEqual: Object.is,
       attributionOwner: 'SearchResultsPageBundleHost',
       attributionOperation: 'pageBundleSelector',
     });
@@ -358,7 +345,7 @@ export const SearchResultsPageBundleHost = React.memo(
         []
       )
     );
-    if (pageBundle == null) {
+    if (!isPageBundlePresentedForRender) {
       // P5 NEVER-NULL SEARCH LEG (invariant SR1, unscoped): a presented 'search' leg must never
       // render null. Pre-bundle (cold mount, mid-motion poll-CTA presentation, unmount gap) it
       // renders a REAL results-skeleton page: the shared page frame (constant hoisted frost
@@ -375,14 +362,13 @@ export const SearchResultsPageBundleHost = React.memo(
       );
     }
 
-    // Frost now comes from the shared page-frame foundation (BottomSheetSceneStackPageFrame);
-    // the result sheet just contributes its own background material on top of it.
-    const backgroundComponent = pageBundle.backgroundComponent;
-
+    // The three slots are the module constant's fixed part components — each one a memo
+    // that subscribes to its own part of the parts store, so this frame never re-renders
+    // for a part change.
     return (
       <BottomSheetSceneStackPageFrame
-        underlayComponent={pageBundle.underlayComponent}
-        backgroundComponent={backgroundComponent}
+        underlayComponent={STABLE_SEARCH_RESULTS_PAGE_BUNDLE.underlayComponent}
+        backgroundComponent={STABLE_SEARCH_RESULTS_PAGE_BUNDLE.backgroundComponent}
         bodyComponent={
           <SceneScrollFactsSceneKeyContext.Provider value="search">
             <SearchResultsPersistentBodyHost
@@ -395,7 +381,7 @@ export const SearchResultsPageBundleHost = React.memo(
         // PersistentSheetHeaderHost ('search' descriptor). The lane is reserved at the
         // COMPUTED chrome height; the scroll divider is hoisted too, so the in-frame
         // headerDividerScrollOffset lane is gone — no double-draw.
-        overlayComponent={pageBundle.overlayComponent}
+        overlayComponent={STABLE_SEARCH_RESULTS_PAGE_BUNDLE.overlayComponent}
         reserveHeaderLane
         chromeHeight={SEARCH_SCENE_CHROME_HEIGHT}
       />

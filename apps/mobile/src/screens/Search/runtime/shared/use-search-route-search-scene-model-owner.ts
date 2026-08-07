@@ -152,20 +152,18 @@ export const useSearchRouteSearchSceneModelOwner = ({
   // mid-motion presentation of 'search' finds a real page instead of frost. The bundle has no
   // header lane — the results header rides the persistent-header registry
   // (search-results-header-live-state.tsx); the page frame reserves the header lane instead.
-  const routeSearchSceneResultsPageBundle =
-    React.useMemo<SearchResultsPageBundleRenderObject | null>(
-      () => ({
-        kind: 'results_page_bundle',
-        underlayComponent: routeSearchScenePanelSurfaceRenderRuntime.underlayComponent,
-        backgroundComponent: routeSearchScenePanelSurfaceRenderRuntime.backgroundComponent ?? null,
-        overlayComponent: routeSearchScenePanelSurfaceRenderRuntime.overlayComponent ?? null,
-      }),
-      [
-        routeSearchScenePanelSurfaceRenderRuntime.backgroundComponent,
-        routeSearchScenePanelSurfaceRenderRuntime.overlayComponent,
-        routeSearchScenePanelSurfaceRenderRuntime.underlayComponent,
-      ]
-    );
+  const routeSearchSceneResultsPageBundle = React.useMemo<SearchResultsPageBundleRenderObject>(
+    () => ({
+      underlayComponent: routeSearchScenePanelSurfaceRenderRuntime.underlayComponent,
+      backgroundComponent: routeSearchScenePanelSurfaceRenderRuntime.backgroundComponent ?? null,
+      overlayComponent: routeSearchScenePanelSurfaceRenderRuntime.overlayComponent ?? null,
+    }),
+    [
+      routeSearchScenePanelSurfaceRenderRuntime.backgroundComponent,
+      routeSearchScenePanelSurfaceRenderRuntime.overlayComponent,
+      routeSearchScenePanelSurfaceRenderRuntime.underlayComponent,
+    ]
+  );
   React.useLayoutEffect(() => {
     publishSearchResultsPageBundle(routeSearchSceneResultsPageBundle);
   }, [routeSearchSceneResultsPageBundle]);
