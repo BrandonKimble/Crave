@@ -84,10 +84,10 @@ export const useSearchAutocompleteRequestExecutionRuntime = ({
         ) {
           return;
         }
-        const isLatestSuppressed =
+        if (
           requestStateRuntime.latestAutocompleteSuppressedRef.current ||
-          requestStateRuntime.manuallySuppressedAutocompleteRef.current;
-        if (isLatestSuppressed || !requestStateRuntime.latestSuggestionScreenActiveRef.current) {
+          !requestStateRuntime.latestSuggestionScreenActiveRef.current
+        ) {
           return;
         }
         writeAutocompleteCache(trimmed, matches);
@@ -100,10 +100,10 @@ export const useSearchAutocompleteRequestExecutionRuntime = ({
         ) {
           return;
         }
-        const isLatestSuppressed =
+        if (
           requestStateRuntime.latestAutocompleteSuppressedRef.current ||
-          requestStateRuntime.manuallySuppressedAutocompleteRef.current;
-        if (isLatestSuppressed || !requestStateRuntime.latestSuggestionScreenActiveRef.current) {
+          !requestStateRuntime.latestSuggestionScreenActiveRef.current
+        ) {
           return;
         }
         logger.warn('Autocomplete request failed', {

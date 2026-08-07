@@ -56,7 +56,6 @@ const createInputs = () => {
   };
   const autocompleteAuthorityRuntime = {
     autocompleteRuntime: {
-      allowAutocompleteResults: fn('allowAutocompleteResults'),
       suppressAutocompleteResults: fn('suppressAutocompleteResults'),
     },
   };
@@ -140,9 +139,9 @@ describe('useSearchRootForegroundEditingRuntimeArgs', () => {
     );
 
     // autocomplete half
-    expect(args.allowAutocompleteResults).toBe(
-      inputs.autocompleteAuthorityRuntime.autocompleteRuntime.allowAutocompleteResults
-    );
+    // F6000: the args carry exactly ONE autocomplete control now — the `allow`
+    // partner was a no-op ref write and is gone.
+    expect(args).not.toHaveProperty('allowAutocompleteResults');
     expect(args.suppressAutocompleteResults).toBe(
       inputs.autocompleteAuthorityRuntime.autocompleteRuntime.suppressAutocompleteResults
     );

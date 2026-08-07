@@ -18,6 +18,7 @@ export const useSearchForegroundSubmitPreparationRuntime = ({
   setIsSuggestionPanelActive,
   setSuggestions,
   setQuery,
+  setIsAutocompleteSuppressed,
   isSearchEditingRef,
   allowSearchBlurExitRef,
   ignoreNextSearchBlurRef,
@@ -33,6 +34,7 @@ export const useSearchForegroundSubmitPreparationRuntime = ({
   | 'setIsSuggestionPanelActive'
   | 'setSuggestions'
   | 'setQuery'
+  | 'setIsAutocompleteSuppressed'
   | 'isSearchEditingRef'
   | 'allowSearchBlurExitRef'
   | 'ignoreNextSearchBlurRef'
@@ -41,6 +43,9 @@ export const useSearchForegroundSubmitPreparationRuntime = ({
     isSearchEditingRef.current = false;
     allowSearchBlurExitRef.current = true;
     ignoreNextSearchBlurRef.current = true;
+    // F6000: submitting suppresses the panel until focus returns — that has to
+    // be the STATE, which the autocomplete lifecycle reads on every render.
+    setIsAutocompleteSuppressed(true);
     suppressAutocompleteResults();
     if (isSuggestionPanelActive) {
       const shouldDeferSuggestionClear = beginSubmitTransition();
@@ -69,6 +74,7 @@ export const useSearchForegroundSubmitPreparationRuntime = ({
     isSearchEditingRef,
     isSuggestionPanelActive,
     resetFocusedMapState,
+    setIsAutocompleteSuppressed,
     setIsSearchFocused,
     setIsSuggestionPanelActive,
     setSuggestions,
@@ -81,6 +87,7 @@ export const useSearchForegroundSubmitPreparationRuntime = ({
       allowSearchBlurExitRef.current = true;
       const shouldDeferSuggestionClear = beginSubmitTransition();
       ignoreNextSearchBlurRef.current = true;
+      setIsAutocompleteSuppressed(true);
       suppressAutocompleteResults();
       cancelAutocomplete();
       setIsSearchFocused(false);
@@ -100,6 +107,7 @@ export const useSearchForegroundSubmitPreparationRuntime = ({
       ignoreNextSearchBlurRef,
       isSearchEditingRef,
       resetFocusedMapState,
+      setIsAutocompleteSuppressed,
       setIsSearchFocused,
       setIsSuggestionPanelActive,
       setQuery,

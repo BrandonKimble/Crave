@@ -7,7 +7,7 @@ import type { ResultsPresentationOwner } from './use-results-presentation-runtim
 
 export type SearchRootAutocompletePort = Pick<
   ReturnType<typeof useSearchAutocompleteRuntime>,
-  'allowAutocompleteResults' | 'suppressAutocompleteResults'
+  'suppressAutocompleteResults'
 >;
 
 export type SearchRootForegroundInputRuntime = {

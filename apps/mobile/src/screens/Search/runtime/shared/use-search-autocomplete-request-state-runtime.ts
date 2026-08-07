@@ -5,9 +5,7 @@ type SearchAutocompleteRequestStateRuntime = {
   latestAutocompleteQueryRef: React.MutableRefObject<string>;
   latestSuggestionScreenActiveRef: React.MutableRefObject<boolean>;
   latestAutocompleteSuppressedRef: React.MutableRefObject<boolean>;
-  manuallySuppressedAutocompleteRef: React.MutableRefObject<boolean>;
   suppressAutocompleteResults: () => void;
-  allowAutocompleteResults: () => void;
 };
 
 export const useSearchAutocompleteRequestStateRuntime = ({
@@ -25,24 +23,25 @@ export const useSearchAutocompleteRequestStateRuntime = ({
   const latestAutocompleteQueryRef = React.useRef(query);
   const latestSuggestionScreenActiveRef = React.useRef(isSuggestionScreenActive);
   const latestAutocompleteSuppressedRef = React.useRef(isAutocompleteSuppressed);
-  const manuallySuppressedAutocompleteRef = React.useRef(false);
 
   latestAutocompleteQueryRef.current = query;
   latestSuggestionScreenActiveRef.current = isSuggestionScreenActive;
   latestAutocompleteSuppressedRef.current = isAutocompleteSuppressed;
-  if (!isAutocompleteSuppressed) {
-    manuallySuppressedAutocompleteRef.current = false;
-  }
 
+  // F6000: there is ONE suppression fact (`isAutocompleteSuppressed`, the state
+  // the lifecycle memo reads) and ONE staleness fact (the monotonic sequence).
+  // A third used to live here — `manuallySuppressedAutocompleteRef`, set by this
+  // callback and erased unconditionally in this render body whenever the state
+  // was false. At every call site it was therefore either wiped before any
+  // reader saw it, or an exact duplicate of the state set beside it. Dropping a
+  // late response is the sequence bump's job (the execution runtime's
+  // `.then`/`.catch` compare against it before anything else); keeping the panel
+  // suppressed across renders is the state's job. A caller that wants the panel
+  // to stay suppressed sets the state — it cannot suppress invisibly anymore.
   const suppressAutocompleteResults = React.useCallback(() => {
-    manuallySuppressedAutocompleteRef.current = true;
     autocompleteRequestSequenceRef.current += 1;
     cancelAutocomplete();
   }, [cancelAutocomplete]);
-
-  const allowAutocompleteResults = React.useCallback(() => {
-    manuallySuppressedAutocompleteRef.current = false;
-  }, []);
 
   return React.useMemo(
     () => ({
@@ -50,10 +49,8 @@ export const useSearchAutocompleteRequestStateRuntime = ({
       latestAutocompleteQueryRef,
       latestSuggestionScreenActiveRef,
       latestAutocompleteSuppressedRef,
-      manuallySuppressedAutocompleteRef,
       suppressAutocompleteResults,
-      allowAutocompleteResults,
     }),
-    [allowAutocompleteResults, suppressAutocompleteResults]
+    [suppressAutocompleteResults]
   );
 };

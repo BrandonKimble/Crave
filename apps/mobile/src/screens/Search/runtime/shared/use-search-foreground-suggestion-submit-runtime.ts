@@ -18,6 +18,7 @@ type UseSearchForegroundSuggestionSubmitRuntimeArgs = Pick<
   | 'setIsSuggestionPanelActive'
   | 'setSuggestions'
   | 'setQuery'
+  | 'setIsAutocompleteSuppressed'
   | 'pendingRestaurantSelectionRef'
   | 'isSearchEditingRef'
   | 'allowSearchBlurExitRef'
@@ -43,6 +44,7 @@ export const useSearchForegroundSuggestionSubmitRuntime = ({
   setIsSuggestionPanelActive,
   setSuggestions,
   setQuery,
+  setIsAutocompleteSuppressed,
   pendingRestaurantSelectionRef,
   isSearchEditingRef,
   allowSearchBlurExitRef,
@@ -68,6 +70,9 @@ export const useSearchForegroundSuggestionSubmitRuntime = ({
       isSearchEditingRef.current = false;
       allowSearchBlurExitRef.current = true;
       ignoreNextSearchBlurRef.current = true;
+      // F6000: committing a suggestion suppresses the panel until focus
+      // returns — the STATE carries that, not a ref the next render erased.
+      setIsAutocompleteSuppressed(true);
       suppressAutocompleteResults();
       const shouldDeferSuggestionClear = holdList ? beginSubmitTransition() : false;
       cancelAutocomplete();
@@ -86,6 +91,7 @@ export const useSearchForegroundSuggestionSubmitRuntime = ({
       dismissSearchKeyboard,
       ignoreNextSearchBlurRef,
       isSearchEditingRef,
+      setIsAutocompleteSuppressed,
       setIsSearchFocused,
       setIsSuggestionPanelActive,
       setSuggestions,

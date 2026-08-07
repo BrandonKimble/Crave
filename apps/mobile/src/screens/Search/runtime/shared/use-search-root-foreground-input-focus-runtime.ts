@@ -38,7 +38,6 @@ export const useSearchRootForegroundInputFocusRuntime = ({
     rootPrimitivesRuntime.searchState.allowSearchBlurExitRef.current = false;
     captureSearchSessionQuery();
     rootOverlayStoreRuntime.dismissTransientOverlays();
-    autocompleteRuntime.allowAutocompleteResults();
     rootPrimitivesRuntime.searchState.setIsAutocompleteSuppressed(false);
     rootPrimitivesRuntime.searchState.setIsSearchFocused(true);
     rootPrimitivesRuntime.searchState.setIsSuggestionPanelActive(true);

@@ -83,7 +83,6 @@ export const useSearchRootForegroundEditingRuntimeArgs = ({
       captureSearchSessionQuery: foregroundInputRuntime.captureSearchSessionQuery,
 
       // autocomplete
-      allowAutocompleteResults: autocompleteRuntime.allowAutocompleteResults,
       suppressAutocompleteResults: autocompleteRuntime.suppressAutocompleteResults,
       cancelAutocomplete: rootDataPlaneRuntime.requestStatusRuntime.cancelAutocomplete,
       setIsAutocompleteSuppressed: searchState.setIsAutocompleteSuppressed,
@@ -102,7 +101,6 @@ export const useSearchRootForegroundEditingRuntimeArgs = ({
       setQuery: searchState.setQuery,
     }),
     [
-      autocompleteRuntime.allowAutocompleteResults,
       autocompleteRuntime.suppressAutocompleteResults,
       clearOwner.clearSearchState,
       clearOwner.clearTypedQuery,

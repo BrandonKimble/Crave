@@ -28,7 +28,6 @@ type UseSearchAutocompleteRuntimeArgs = {
 type SearchAutocompleteRuntimeValue = {
   showCachedSuggestionsIfFresh: (rawQuery: string) => boolean;
   suppressAutocompleteResults: () => void;
-  allowAutocompleteResults: () => void;
 };
 
 const bucketCoordinate = (value: number | undefined): string =>
@@ -79,13 +78,11 @@ export const useSearchAutocompleteRuntime = ({
 
   return React.useMemo<SearchAutocompleteRuntimeValue>(
     () => ({
-        showCachedSuggestionsIfFresh: autocompleteCacheRuntime.showCachedSuggestionsIfFresh,
-        suppressAutocompleteResults: autocompleteRequestRuntime.suppressAutocompleteResults,
-        allowAutocompleteResults: autocompleteRequestRuntime.allowAutocompleteResults,
-      }),
+      showCachedSuggestionsIfFresh: autocompleteCacheRuntime.showCachedSuggestionsIfFresh,
+      suppressAutocompleteResults: autocompleteRequestRuntime.suppressAutocompleteResults,
+    }),
     [
       autocompleteCacheRuntime.showCachedSuggestionsIfFresh,
-      autocompleteRequestRuntime.allowAutocompleteResults,
       autocompleteRequestRuntime.suppressAutocompleteResults,
     ]
   );

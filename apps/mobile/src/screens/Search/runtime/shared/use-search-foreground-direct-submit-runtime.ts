@@ -34,6 +34,7 @@ type UseSearchForegroundDirectSubmitRuntimeArgs = Pick<
   | 'setIsSuggestionPanelActive'
   | 'setSuggestions'
   | 'setQuery'
+  | 'setIsAutocompleteSuppressed'
   | 'pendingRestaurantSelectionRef'
   | 'isSearchEditingRef'
   | 'allowSearchBlurExitRef'
@@ -77,6 +78,7 @@ export const useSearchForegroundDirectSubmitRuntime = ({
   setIsSuggestionPanelActive,
   setSuggestions,
   setQuery,
+  setIsAutocompleteSuppressed,
   pendingRestaurantSelectionRef,
   isSearchEditingRef,
   allowSearchBlurExitRef,
@@ -99,6 +101,7 @@ export const useSearchForegroundDirectSubmitRuntime = ({
     setIsSuggestionPanelActive,
     setSuggestions,
     setQuery,
+    setIsAutocompleteSuppressed,
     pendingRestaurantSelectionRef,
     isSearchEditingRef,
     allowSearchBlurExitRef,

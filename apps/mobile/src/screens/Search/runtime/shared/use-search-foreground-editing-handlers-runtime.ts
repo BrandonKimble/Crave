@@ -40,7 +40,6 @@ export const useSearchForegroundEditingHandlersRuntime = ({
   const focusRuntime = useSearchForegroundFocusRuntime({
     captureSearchSessionQuery: args.captureSearchSessionQuery,
     dismissTransientOverlays: args.dismissTransientOverlays,
-    allowAutocompleteResults: args.allowAutocompleteResults,
     requestSearchPresentationIntent,
     setIsSearchFocused: args.setIsSearchFocused,
     setIsSuggestionPanelActive: args.setIsSuggestionPanelActive,

@@ -127,6 +127,10 @@ export type SearchForegroundSubmitRuntimeArgs = {
   setIsSuggestionPanelActive: React.Dispatch<React.SetStateAction<boolean>>;
   setSuggestions: React.Dispatch<React.SetStateAction<AutocompleteMatch[]>>;
   setQuery: React.Dispatch<React.SetStateAction<string>>;
+  // F6000: a submit teardown SUPPRESSES the panel — and suppression is a fact
+  // the lifecycle memo has to be able to see, so it is set on the state here
+  // rather than on a ref the next render erased.
+  setIsAutocompleteSuppressed: React.Dispatch<React.SetStateAction<boolean>>;
   pendingRestaurantSelectionRef: React.MutableRefObject<{
     restaurantId: string;
   } | null>;
@@ -157,7 +161,6 @@ export type SearchForegroundEditingRuntimeArgs = {
   profilePresentationActive: boolean;
   captureSearchSessionQuery: () => void;
   dismissTransientOverlays: () => void;
-  allowAutocompleteResults: () => void;
   suppressAutocompleteResults: () => void;
   cancelAutocomplete: () => void;
   beginSuggestionCloseHold: (mode?: 'default' | 'submitting') => boolean;

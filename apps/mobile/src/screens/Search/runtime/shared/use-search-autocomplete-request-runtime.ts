@@ -31,7 +31,6 @@ type UseSearchAutocompleteRequestRuntimeArgs = {
 
 type SearchAutocompleteRequestRuntime = {
   suppressAutocompleteResults: () => void;
-  allowAutocompleteResults: () => void;
 };
 
 export const useSearchAutocompleteRequestRuntime = ({
@@ -74,8 +73,7 @@ export const useSearchAutocompleteRequestRuntime = ({
   return React.useMemo(
     () => ({
       suppressAutocompleteResults: requestStateRuntime.suppressAutocompleteResults,
-      allowAutocompleteResults: requestStateRuntime.allowAutocompleteResults,
     }),
-    [requestStateRuntime.allowAutocompleteResults, requestStateRuntime.suppressAutocompleteResults]
+    [requestStateRuntime.suppressAutocompleteResults]
   );
 };

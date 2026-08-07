@@ -30,9 +30,7 @@ export const useSearchAutocompleteRequestLifecycleRuntime = ({
 }) => {
   const lifecycle = React.useMemo(() => {
     const trimmed = query.trim();
-    const isSuppressed =
-      isAutocompleteSuppressed || requestStateRuntime.manuallySuppressedAutocompleteRef.current;
-    const shouldRun = isSuggestionScreenActive && !isSuppressed;
+    const shouldRun = isSuggestionScreenActive && !isAutocompleteSuppressed;
 
     if (!shouldRun) {
       return {
@@ -78,7 +76,6 @@ export const useSearchAutocompleteRequestLifecycleRuntime = ({
     isSuggestionScreenActive,
     lookupAutocompleteCache,
     query,
-    requestStateRuntime,
   ]);
 
   React.useEffect(() => {

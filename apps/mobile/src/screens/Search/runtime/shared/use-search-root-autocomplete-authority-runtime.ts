@@ -59,10 +59,9 @@ export const useSearchRootAutocompleteAuthorityRuntime = ({
 
   const autocompleteControlPort = React.useMemo(
     () => ({
-      allowAutocompleteResults: autocompleteRuntime.allowAutocompleteResults,
       suppressAutocompleteResults: autocompleteRuntime.suppressAutocompleteResults,
     }),
-    [autocompleteRuntime.allowAutocompleteResults, autocompleteRuntime.suppressAutocompleteResults]
+    [autocompleteRuntime.suppressAutocompleteResults]
   );
 
   return React.useMemo(

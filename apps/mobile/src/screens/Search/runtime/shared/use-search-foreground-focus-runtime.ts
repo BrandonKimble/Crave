@@ -9,7 +9,6 @@ type UseSearchForegroundFocusRuntimeArgs = Pick<
   SearchForegroundEditingRuntimeArgs,
   | 'captureSearchSessionQuery'
   | 'dismissTransientOverlays'
-  | 'allowAutocompleteResults'
   | 'requestSearchPresentationIntent'
   | 'setIsSearchFocused'
   | 'setIsSuggestionPanelActive'
@@ -26,7 +25,6 @@ type SearchForegroundFocusRuntime = Pick<
 export const useSearchForegroundFocusRuntime = ({
   captureSearchSessionQuery,
   dismissTransientOverlays,
-  allowAutocompleteResults,
   requestSearchPresentationIntent,
   setIsSearchFocused,
   setIsSuggestionPanelActive,
@@ -40,12 +38,10 @@ export const useSearchForegroundFocusRuntime = ({
     allowSearchBlurExitRef.current = false;
     captureSearchSessionQuery();
     dismissTransientOverlays();
-    allowAutocompleteResults();
     setIsSearchFocused(true);
     setIsSuggestionPanelActive(true);
     setIsAutocompleteSuppressed(false);
   }, [
-    allowAutocompleteResults,
     allowSearchBlurExitRef,
     captureSearchSessionQuery,
     dismissTransientOverlays,
