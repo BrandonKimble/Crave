@@ -23,9 +23,12 @@ export type ProfileActionExecutionPorts = {
   ) => void;
   setNextFocusSession: (session: RestaurantFocusSession) => void;
   setMultiLocationZoomBaseline: (zoomBaseline: number | null) => void;
-  setLastCameraState: (
-    state: { center: [number, number]; zoom: number } | null | undefined
-  ) => void;
+  // F5304: NOT `| undefined`. "No change" is not a value of the thing being changed; it
+  // is the absence of the call, and the three callers each make that decision from the
+  // plan (`if (plan.updatedLastCameraState !== undefined)`) — which is correct, because
+  // the plan is what knows. Widening this to match the plan field made the adapter
+  // re-derive the same control flow from the data, a guard no caller could ever reach.
+  setLastCameraState: (state: { center: [number, number]; zoom: number } | null) => void;
   setMapHighlightedRestaurantId: (restaurantId: string | null) => void;
   openPreparedProfilePresentation: (
     restaurantId: string,

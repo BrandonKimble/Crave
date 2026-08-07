@@ -54,11 +54,7 @@ export const useProfileOwnerActionStatePortsRuntime = ({
       capturePreparedProfileTransitionSnapshot,
       setNextFocusSession: setRestaurantFocusSession,
       setMultiLocationZoomBaseline: setProfileMultiLocationZoomBaseline,
-      setLastCameraState: (state) => {
-        if (state !== undefined) {
-          nativeExecutionModel.transitionExecutionModel.setLastCameraState(state);
-        }
-      },
+      setLastCameraState: nativeExecutionModel.transitionExecutionModel.setLastCameraState,
       setMapHighlightedRestaurantId,
       seedRestaurantProfile,
       hydrateRestaurantProfileById,
