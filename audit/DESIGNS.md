@@ -4508,3 +4508,15 @@ a falsy-zero firewall bypass (F9450), and — most importantly — a genuine PER
 leak the original passes missed (F9470 orphaned Cloudinary asset). All fixed-and-mutation-proven
 or escalated with a design + task chip. That is the mandate's "verifier wider than the verified"
 earning its keep, then converging.
+
+## D146 — OWNER RULING on F9313/F9314 (GDPR over-deletion, D118): straight to Option B (2026-08-07)
+
+Owner ruled: skip the interim fail-closed rail (Option A); implement the real fix directly.
+B = per-COLUMN erasure scoping: delete_row deletes ONLY rows where the erased person is the
+delete_row-column subject; person-columns where they are merely referenced (sever/retain/
+anonymize dispositions) are handled per their own declared disposition, leaving third
+parties' rows intact. The declaration (PERSON_DATA_RULES) already states this per column —
+the scope compiler must obey it. Acceptance: "erasing Alice never touches a row whose
+delete_row subject is someone else" becomes a mutation-proven spec; the existing
+contradictions() detector goes to ZERO on the live corpus; wire assertNoOverbroadDeleteScope
+into the live erase+retention paths once it can pass (it becomes the permanent regression rail).
