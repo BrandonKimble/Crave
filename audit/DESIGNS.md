@@ -3660,3 +3660,39 @@ exercise's own fixes re-confirmed under fresh eyes. Five reverted rows closed wi
 reads.
 
 Pass 1 restarts on mobile-search too after these land.
+
+---
+
+## D121 — clean pass 1, mobile overlays/nav: NOT CLEAN. F7800 reopens a row this exercise closed wrong. (2026-08-07)
+
+**F7800 — CONFIRMED, REOPENS F4700, APPROVED.** F4700 was marked FIXED (D97) after
+repairing ONE spec's `virtual: true` mock — but the disease is live on main: four
+`virtual: true` mocks of the REAL react-native module survive, and the jest
+`moduleNameMapper` is EMPTY (verified — F4700's approved repair (b), map react-native in
+the mapper, was never applied). The lane measured RED deterministically three ways (a full
+run reds 1-in-6 with react-native/index.js:27's exact signature; a specific trio
+`--runInBand` reds 8/8; parallel and each-alone green — the load-order signature). This is
+the sharpest self-correction of the exercise: a row closed on a partial fix, its own
+close-condition (D97's twenty-green bar) satisfied only because the flake is load-order
+dependent and twenty sequential greens can miss it. REDERIVATION: the four remaining
+`virtual: true` on real modules become real mocks (drop `virtual`, or `moduleNameMapper`
+the module — read each to choose), AND the flake gets a real gate: the `--runInBand` trio
+is a ready-made RED-before/GREEN-after. Wire it or a broader deterministic-order run so the
+class cannot silently return. F4700 -> reopened -> folded into F7800's fix.
+
+**F7801 — APPROVED (the F5000 collapse stopped at the union).** After the restaurant-route
+source union collapsed, `createRestaurantRoutePanelDraft` always returns an object, so
+`panel` is permanently non-null while its type still says `| null` — eight sites written
+for an unreachable state (the F4507/F5405 shape: a spec/branch of a state production cannot
+reach). Narrow the type to non-null; the eight guards die by compile. Mutation: re-adding
+`| null` is dead-branch-flagged or the guards read as unreachable.
+
+**The lane VERIFIED NINE of this exercise's landed fixes standing today** — F4501's
+fail-open closed, F5418's unNameable scene, F5000's deletion, F4502's drift-proof contract,
+F5405, F5806's time-carrying math, F5805's one username home, F6601, F6407 — each re-read
+in full. That is the clean pass's core deliverable even where it found F7800/F7801: the
+prior work HOLDS, and the two new findings are a partial-fix reopening and a
+collapse-residual, not regressions.
+
+Four of five pass-1 lanes reported; all four found real work. Pass 1 is NOT clean and
+restarts after the F75xx/F76xx/F77xx/F78xx fixes land. The gate self-audit lane remains.
