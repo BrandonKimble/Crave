@@ -3696,3 +3696,48 @@ collapse-residual, not regressions.
 
 Four of five pass-1 lanes reported; all four found real work. Pass 1 is NOT clean and
 restarts after the F75xx/F76xx/F77xx/F78xx fixes land. The gate self-audit lane remains.
+
+---
+
+## D122 — clean pass 1, gate self-audit: the highest-yield lane, as history predicted. NOT CLEAN. (2026-08-07)
+
+The tooling audits itself last, and it found four holes — three in the gate machinery, one
+the CI root cause. Every one of the ~20 gates RED-proved on a planted mutation; the five
+Fable-era proof-holes stayed closed. The findings are where the gates DON'T reach.
+
+**F7900 + F7902 — FIXED BY ME (both clean), the containment fence's own two holes.** The
+gate was RED ON MAIN unobserved (a `bless` class it didn't define + a header on the wrong
+line), and its `find` was blind to `.mjs` — so all nine mjs CI gates plus scripts/lib
+could be added unclassified, the exact condition the gate exists to prevent, in the gate's
+own file type. Added `bless` and `library` as NAMED classes (the vocabulary grows to name
+real kinds; only silent defaults were ever forbidden), fenced `.mjs`, headed the eleven
+surfaced files. 67 scripts classified, RED-proven. The fence now guards its own kind.
+
+**F7903 — the CI root cause, handed to the owning session (dirty file).** `yarn lint` is
+RED on main: 2 errors in `apps/api/scripts/job-control.ts`, one a violation of the repo's
+OWN env-flag ban — introduced by the F420 fix whose entire point was to move the file into
+the lint project, which verified with tsc and never with lint. This is F6552's mechanism
+proven: a red build job masks every job beside it, which is why the delete-gate red went
+26 hours unseen. Fixing it un-blinds CI. Messaged the owning lane; if unclaimed, I take it.
+
+**F7901 — APPROVED (a gate covering half its mandate).** check-lint-ban-inheritance's
+BASELINE file carries one of the two F2050 bans; the SKELETON LAW ban (ActivityIndicator
+in panels) is an override-only ADDITION, so a later override can delete IT with the gate
+green — the exact class the gate exists to catch, on the exact ban that motivated it.
+Demonstrated live by the lane. FIX: the baseline must carry BOTH bans (add a second
+baseline probe whose scope includes the panel ban, or assert the union of all F2050 bans
+as the floor). A gate whose baseline is a subset of what it guards cannot guard the
+remainder. P3.
+
+**The census + spot-checks are the pass's clean half:** every ci.yml step resolves (no
+F2143 dangling), 5 laws have live mechanisms, 5 IDEAL-VERIFIED configs hold exactly, the
+D68 MVCP correction is accurate in code. One recorded-not-filed: COVERAGE's status column
+has no closed-vocabulary gate (FINDINGS got one in the ledger gate); 2 rows already
+drifted off-vocabulary, invisible to staleness. Filed as the F7900-adjacent observation
+for a P3 — the ledger gate's own sibling gap.
+
+**PASS 1 COMPLETE, NOT CLEAN: all five lanes found real work** (F7500 escalated + guard,
+F7600 schema, F7700 timer, F7800 reopened-flake, F7801 collapse-residual, F7901 half-gate,
+F7903 CI-root, plus the smalls). This is the loop's verdict that the tree was not yet
+clean — exactly what the pass is for. Next: batch the approved P3s (grouped by territory),
+land them, and PASS 1 RESTARTS against the repaired tree.
