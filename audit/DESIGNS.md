@@ -2097,3 +2097,30 @@ The cross-user read scope spec is the priority item of the batch.
 
 **F3804 — accepted terminal.** F2040 verified intact by exhaustive enumeration: five
 producers, one chokepoint, no new peer path.
+
+---
+
+## D80 — polls/signals P3 ratified; two loose ends filed (2026-08-06)
+
+All five landed, mutation-proven both directions, and the standard held under pressure:
+the lane's own first mutation run went RED for the WRONG reason (a deliberately-durable
+vendor_lookup_misses row outlived the process and short-circuited the control case) and it
+fixed the spec's cleanup instead of accepting the red — a false RED interrogated as hard
+as a false green. The Prisma.join sweep audited all 47 sites: the F3501 instance was the
+only one; the other 46 are safe in three enumerated shapes. The free path now provably
+answers without the vendor (zero-vendor-call assertion), with fail-open retained but
+upgraded to an error-level named policy.
+
+F3504's outcome is the P2 lesson of the batch: the design I approved offered a
+transactional scope that DOES NOT EXIST. The lane took the approved fallback (honest
+comment) and named the real fix — a profile_rebuild_floor latch mirroring the existing
+floor pattern — which is now F4001, staged for its own design rather than improvised.
+The lane also reported a FOURTH hand-rolled daily aggregation outside its scope rather
+than silently fixing or silently skipping it; filed as F4000 with the triage question that
+decides severity.
+
+Index-sweep hazard, third occurrence, new mechanism: `git add <own paths>` does not
+protect against a PRE-EXISTING dirty index — another lane's staged deletions ride into
+the commit unless caught at commit time. The lane caught it via --name-only review,
+soft-reset, recommitted clean. The rule is now: review `git diff --cached --name-only`
+against your pathspec list BEFORE every commit in a multi-lane tree.
