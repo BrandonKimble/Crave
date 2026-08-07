@@ -3774,3 +3774,45 @@ check is deleted. It lands with F7700's lane or after.
 
 Three of four remediation lanes' territories now clean; F4700 no longer reopenable on its
 own axis.
+
+---
+
+## D124 — api-core erasure guard ratified; F7500 fail-open-vs-closed goes to the OWNER (2026-08-07)
+
+**F7500's guard ratified** — the contradiction is DERIVED ONCE from the disposition
+declaration (`personNamingRules()` exposes the exact OR'd column set;
+`deleteScopeContradictions()` flags any column OR'd into a row-DELETE whose disposition
+says the row survives), finds EXACTLY the two live instances and nothing else, and is
+proven via the non-production assertion path (not wired into live erase/sweep). That is
+the ideal shape for the AUDIBLE half: the silent contradiction is now a named, tested,
+derivable fact rather than a comment.
+
+**The fail-open-vs-closed decision is a genuine OWNER ESCALATION — the lane correctly
+refused it and so do I.** Both options destroy or delay something a person is owed:
+- FAIL-CLOSED (guard throws in the live sweep): third parties' data stops being
+  irreversibly destroyed NOW, but a requester's own erasure cannot complete until the
+  per-disposition semantics land. A GDPR erasure REQUEST is itself time-bound (30 days),
+  so this trades one compliance obligation for another.
+- FAIL-OPEN (log + ops-alert, sweep continues): erasures complete on time, the defect is
+  audible, but every real erasure keeps destroying non-consenting third parties' rows,
+  now logged.
+The lane's lean (and mine) is FAIL-CLOSED — irreversible over-deletion of non-consenting
+third parties is graver and less recoverable than a bounded, logged delay of the
+requester's own erasure, and the delay is visible/actionable where the deletion is not.
+But this is a compliance-law values call weighing two legal duties against each other; it
+is the owner's, with the semantics fix (per-disposition DELETE/SEVER, the real end state)
+as the thing that dissolves the dilemma. RECOMMENDATION ON THE ROW: land the semantics fix
+FAST (it makes both horns disappear), and fail-closed in the interim only if the owner
+accepts erasure-request delay as the lesser breach.
+
+**F7501 ratified** — the always-empty contradiction instrument now reads the horizon subset
+of the same derived contradiction set, non-empty and RED on user_reports today, its
+`toEqual([])` assertion deleted. The guard-that-cannot-fail in the erasure tooling itself
+is fixed by pointing it at the real fact.
+
+**F7502/F7503 ratified**, migrations landed atomically with F7600's (D-note above:
+commit ae466c0d5 resolved the two-lane schema entanglement — schema + both migrations
+together so a fresh DB is consistent).
+
+F7500's guard-half is FIXED; its semantics + live-path decision remain the owner's — the
+single most serious item in the escalation queue.
