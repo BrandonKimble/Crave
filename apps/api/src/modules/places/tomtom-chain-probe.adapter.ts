@@ -989,8 +989,17 @@ export class TomtomChainProbeAdapter implements TomtomChainProbe {
   }
 }
 
-/** Reverse-shape bbox: {northEast,southWest} as "lat,lng" strings. */
-function parseReverseBoundingBox(
+/** Reverse-shape bbox: {northEast,southWest} as "lat,lng" strings.
+ *
+ * LONGITUDE PRESERVES THE PROVIDER'S EDGE ORDER (F3001, 2026-08-06):
+ * southWest.lng is the WEST edge (minLng) and northEast.lng the EAST edge
+ * (maxLng), verbatim. Math.min/max on longitude destroyed the antimeridian
+ * crossing representation (minLng > maxLng) that the shared lib's
+ * bboxContainsPoint/bboxLngArcs were taught to read on 2026-07-26 — a
+ * 20° wrap box parsed as its 340° COMPLEMENT arc. min/max stays for
+ * LATITUDE only, where there is no wraparound.
+ */
+export function parseReverseBoundingBox(
   box: TomtomAddress['boundingBox'],
 ): GeoBbox | null {
   const ne = parseLatLngString(box?.northEast);
@@ -1000,14 +1009,17 @@ function parseReverseBoundingBox(
   }
   return {
     minLat: Math.min(ne.lat, sw.lat),
-    minLng: Math.min(ne.lng, sw.lng),
+    minLng: sw.lng,
     maxLat: Math.max(ne.lat, sw.lat),
-    maxLng: Math.max(ne.lng, sw.lng),
+    maxLng: ne.lng,
   };
 }
 
-/** Forward-shape bbox: {topLeftPoint,btmRightPoint} as {lat,lon} objects. */
-function parseForwardBoundingBox(
+/** Forward-shape bbox: {topLeftPoint,btmRightPoint} as {lat,lon} objects.
+ * topLeftPoint = NW corner (lon = WEST edge = minLng), btmRightPoint = SE
+ * corner (lon = EAST edge = maxLng) — preserved verbatim so a crossing box
+ * keeps minLng > maxLng (see parseReverseBoundingBox's F3001 note). */
+export function parseForwardBoundingBox(
   box: TomtomGeocodeResult['boundingBox'],
 ): GeoBbox | null {
   const tl = box?.topLeftPoint;
@@ -1022,9 +1034,9 @@ function parseForwardBoundingBox(
   }
   return {
     minLat: Math.min(tl.lat, br.lat),
-    minLng: Math.min(tl.lon, br.lon),
+    minLng: tl.lon,
     maxLat: Math.max(tl.lat, br.lat),
-    maxLng: Math.max(tl.lon, br.lon),
+    maxLng: br.lon,
   };
 }
 

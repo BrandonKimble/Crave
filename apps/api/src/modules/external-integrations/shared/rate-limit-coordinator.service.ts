@@ -246,6 +246,19 @@ export class RateLimitCoordinatorService implements OnModuleInit {
         case 'llm':
           resolved.add(ExternalApiService.LLM);
           break;
+        default:
+          // REFUSE, DON'T WIDEN (F3002 — the same F114 doctrine as
+          // requireCeiling above). An unknown token used to be silently
+          // discarded, so 'google_places' (underscore — the ledger's own
+          // spelling of the SAME vendor) quietly unlisted Places from the
+          // Redis-outage fail-closed set: a typo in a fail-CLOSED list must
+          // refuse boot loudly, never narrow the guard silently.
+          throw new Error(
+            `EXTERNAL_RATE_LIMIT_FAIL_CLOSED_SERVICES contains unrecognized ` +
+              `token '${token}'. Valid tokens: 'google-places', 'llm'. A ` +
+              `fail-closed list must refuse to boot rather than silently ` +
+              `drop a service from the Redis-outage guard.`,
+          );
       }
     }
 

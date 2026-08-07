@@ -1,8 +1,8 @@
 import 'reflect-metadata';
 import { CentralizedRateLimiter } from './centralized-rate-limiter.service';
-import { readFileSync } from 'node:fs';
-import { join } from 'node:path';
-import { codeOnly } from '../../../../shared/testing/code-only';
+import { SmartLLMProcessor } from './smart-llm-processor.service';
+import type { LLMService } from '../llm.service';
+import type { LLMModelInput } from '../llm.types';
 
 // REDIS DOWN USED TO MEAN NO LLM RATE LIMIT AT ALL.
 //
@@ -91,10 +91,56 @@ describe('LLM rate limiter: outage guard', () => {
     const guard = makeGuard(1);
     const minuteOne = 60_000;
     expect(guard.reserveLocallyDuringOutage(minuteOne).throttled).toBe(false);
-    expect(guard.reserveLocallyDuringOutage(minuteOne).throttled).toBe(true);
+    // No overflow in between — a HELD request would rightly own the next
+    // minute's slot (see the boundary-burst test below).
     expect(guard.reserveLocallyDuringOutage(minuteOne + 60_000).throttled).toBe(
       false,
     );
+  });
+
+  // F3000 (D71 acceptance): the reservation OWNS ITS LANDING SLOT. Before the
+  // fix, a throttled reservation incremented nothing and the caller
+  // slept-then-fired, so limit+k requests landed in minute N+1 while N+1
+  // separately admitted its own full limit — up to 2x the ceiling in one
+  // synchronized boundary burst.
+  it('held requests are booked into the minute they fire in: total releases landing in minute N+1 <= limit', () => {
+    const limit = 5;
+    const k = 3;
+    const guard = makeGuard(limit);
+    const minuteN = 60_000;
+
+    // Drive limit+k calls in minute N: k are held, and each hold must be
+    // booked into its landing minute.
+    const held: ReturnType<Guard['reserveLocallyDuringOutage']>[] = [];
+    for (let i = 0; i < limit + k; i++) {
+      const r = guard.reserveLocallyDuringOutage(minuteN);
+      if (r.throttled) held.push(r);
+    }
+    expect(held).toHaveLength(k);
+    const minuteN1 = minuteN + 60_000;
+    const heldLandingInN1 = held.filter(
+      (r) =>
+        r.reservationTime >= minuteN1 && r.reservationTime < minuteN1 + 60_000,
+    ).length;
+
+    // At the N+1 boundary, drive limit more calls: fresh admissions plus the
+    // held releases landing in N+1 must not exceed the limit.
+    let admittedAtBoundary = 0;
+    for (let i = 0; i < limit; i++) {
+      const r = guard.reserveLocallyDuringOutage(minuteN1);
+      if (!r.throttled) admittedAtBoundary += 1;
+    }
+    expect(heldLandingInN1 + admittedAtBoundary).toBeLessThanOrEqual(limit);
+  });
+
+  it('holds cascade: once the next minute is fully booked, further holds land in the minute after', () => {
+    const guard = makeGuard(1);
+    const minuteN = 60_000;
+    expect(guard.reserveLocallyDuringOutage(minuteN).throttled).toBe(false);
+    const firstHold = guard.reserveLocallyDuringOutage(minuteN);
+    const secondHold = guard.reserveLocallyDuringOutage(minuteN);
+    expect(firstHold.reservationTime).toBe(minuteN + 60_000);
+    expect(secondHold.reservationTime).toBe(minuteN + 120_000);
   });
 
   it('prunes expired buckets so a long outage does not grow the map', () => {
@@ -110,28 +156,115 @@ describe('LLM rate limiter: outage guard', () => {
 // directly, so severing its one call site — restoring the original bug exactly
 // — left them all green (red team 2026-08-02). What actually matters is that
 // the OUTAGE PATH consults it and the caller sleeps on the result.
-describe('the outage path is wired to the guard', () => {
-  const limiter = codeOnly(
-    readFileSync(
-      join(__dirname, 'centralized-rate-limiter.service.ts'),
-      'utf8',
-    ),
-  );
-  const processor = codeOnly(
-    readFileSync(join(__dirname, 'smart-llm-processor.service.ts'), 'utf8'),
-  );
+//
+// F3003 (D71): the previous version of this describe was a SOURCE SCANNER —
+// /(sleep|setTimeout|delay)/i matched anywhere in an 880-line file (the 429
+// retry path alone satisfied it), and the catch-scan anchored to the file's
+// FIRST catch block. Severing the outage-path sleep left it green. Replaced
+// with the behavioral stub-and-spy proofs below; the scanner died with it.
+describe('the outage path is wired to the guard (behavioral)', () => {
+  it('a Redis failure in reserveRequestSlot consults the local guard — the emergency booking actually lands', async () => {
+    const instance = Object.create(CentralizedRateLimiter.prototype) as {
+      reserveRequestSlot: CentralizedRateLimiter['reserveRequestSlot'];
+      outageMinuteCounters: Map<number, { count: number; expiresAt: number }>;
+    };
+    Object.assign(instance, {
+      redis: { eval: jest.fn().mockRejectedValue(new Error('redis is down')) },
+      logger: {
+        debug: jest.fn(),
+        warn: jest.fn(),
+        error: jest.fn(),
+        info: jest.fn(),
+      },
+      safeRPM: 60,
+      safeTPM: 100_000,
+      minSpacingMs: 0,
+      workerTimeSlotMs: 0,
+      outageMinuteCounters: new Map(),
+    });
+    delete process.env.LLM_EXPECTED_REPLICAS;
 
-  it('the reservation failure path calls the guard', () => {
-    // Scoped to the catch block, not the whole file: a definition elsewhere
-    // must not satisfy "the failure path uses it".
-    const at = limiter.indexOf('} catch (error) {');
-    expect(at).toBeGreaterThan(-1);
-    const failurePath = limiter.slice(at, at + 900);
-    expect(failurePath).toContain('reserveLocallyDuringOutage(');
+    const reservation = await instance.reserveRequestSlot('worker-test', 100);
+
+    // The outage reservation is the guard's, not a naked 1.5s nap: it is
+    // unguaranteed AND it occupies a slot in the local minute counter.
+    expect(reservation.guaranteed).toBe(false);
+    const totalBooked = [...instance.outageMinuteCounters.values()].reduce(
+      (sum, entry) => sum + entry.count,
+      0,
+    );
+    expect(totalBooked).toBe(1);
   });
 
-  it('the caller actually WAITS on waitMs — a returned delay nobody sleeps on is not a limit', () => {
-    expect(processor).toMatch(/waitMs/);
-    expect(processor).toMatch(/(sleep|setTimeout|delay)/i);
+  it('the caller actually SLEEPS the outage waitMs before calling the LLM — a returned delay nobody sleeps on is not a limit', async () => {
+    const order: string[] = [];
+    const outageWaitMs = 40_000;
+    const logger = {
+      setContext: () => logger,
+      info: jest.fn(),
+      warn: jest.fn(),
+      error: jest.fn(),
+      debug: jest.fn(),
+    };
+    const rateLimiter = {
+      reserveRequestSlot: jest.fn().mockResolvedValue({
+        reservationTime: Date.now() + outageWaitMs,
+        waitMs: outageWaitMs,
+        guaranteed: false,
+        metrics: { error: 'reservation_failed', fallbackMode: true },
+        reservationMember: '',
+      }),
+      confirmReservation: jest.fn().mockResolvedValue(undefined),
+      finalizeTokenReservation: jest.fn().mockResolvedValue(undefined),
+      recordTokenUsage: jest.fn().mockResolvedValue(undefined),
+      getRPMAnalysis: jest.fn().mockResolvedValue({
+        currentRPM: 1,
+        utilizationPercent: 1,
+        availableCapacity: 99,
+      }),
+      getTPMAnalysis: jest.fn().mockResolvedValue({
+        currentTPM: 10,
+        reservedTPM: 0,
+        windowTokens: 10,
+        utilizationPercent: 1,
+        projectedTPM: 10,
+        avgTokensPerRequest: 10,
+        bottleneckType: 'none',
+      }),
+    };
+    const processor = new SmartLLMProcessor(
+      logger as never,
+      rateLimiter as never,
+      { mirrorDraw: jest.fn() } as never,
+    );
+    processor.onModuleInit();
+    const sleptMs: number[] = [];
+    (processor as unknown as { sleep: (ms: number) => Promise<void> }).sleep = (
+      ms: number,
+    ) => {
+      order.push(`sleep:${ms}`);
+      sleptMs.push(ms);
+      return Promise.resolve();
+    };
+    const llm = {
+      processContent: jest.fn().mockImplementation(() => {
+        order.push('llm');
+        return Promise.resolve({ restaurants: [] });
+      }),
+    } as unknown as LLMService;
+
+    await processor.processContent(
+      { posts: [] } as unknown as LLMModelInput,
+      llm,
+      'worker-test',
+    );
+
+    // The processor awaited a sleep of at least the guard's waitMs BEFORE
+    // the LLM fired (jitter may add up to 500ms).
+    expect(sleptMs.length).toBeGreaterThanOrEqual(1);
+    expect(sleptMs[0]).toBeGreaterThanOrEqual(outageWaitMs);
+    expect(order.indexOf(`sleep:${sleptMs[0]}`)).toBeLessThan(
+      order.indexOf('llm'),
+    );
   });
 });

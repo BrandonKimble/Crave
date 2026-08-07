@@ -5,7 +5,12 @@ import type { PlaceSketchNode } from './places-catalog.service';
  * {topLeftPoint,btmRightPoint} objects).
  */
 import { of } from 'rxjs';
-import { TomtomChainProbeAdapter } from './tomtom-chain-probe.adapter';
+import {
+  TomtomChainProbeAdapter,
+  parseForwardBoundingBox,
+  parseReverseBoundingBox,
+} from './tomtom-chain-probe.adapter';
+import { bboxContainsPoint } from '@crave-search/shared';
 import { SpendBudgetClosedError } from '../external-integrations/governance/governance.service';
 
 const UWS_REVERSE_ENTRY = {
@@ -407,5 +412,72 @@ describe('TomtomChainProbeAdapter — wave-6 item 2: 429 → poisonWindow', () =
     const result = await boom.adapter.fetchPolygon('geo-wolfe');
     expect(result.kind).toBe('failed');
     expect(boom.poisonWindow).not.toHaveBeenCalled();
+  });
+});
+
+describe('bbox parsers — F3001: longitude preserves the provider edge order (antimeridian crossing survives the parse)', () => {
+  // D71 acceptance: a 20-degree wrap box (tl.lon=170 / br.lon=-170) used to
+  // parse as its 340-degree COMPLEMENT ({minLng:-170, maxLng:170}) because
+  // Math.min/max on longitude destroyed the minLng>maxLng crossing
+  // representation that bboxContainsPoint/bboxLngArcs honor.
+  it('forward shape: a crossing box keeps minLng>maxLng and contains a point inside the true arc', () => {
+    const parsed = parseForwardBoundingBox({
+      topLeftPoint: { lat: 53, lon: 170 },
+      btmRightPoint: { lat: 51, lon: -170 },
+    });
+    expect(parsed).toEqual({
+      minLat: 51,
+      minLng: 170,
+      maxLat: 53,
+      maxLng: -170,
+    });
+    expect(bboxContainsPoint(parsed!, { lat: 52, lng: 179 })).toBe(true);
+    // Directional: the complement arc must test OUTSIDE.
+    expect(bboxContainsPoint(parsed!, { lat: 52, lng: 0 })).toBe(false);
+  });
+
+  it('forward shape: a non-crossing box still parses correctly and excludes outside points', () => {
+    const parsed = parseForwardBoundingBox({
+      topLeftPoint: { lat: 40.882, lon: -74.04725 },
+      btmRightPoint: { lat: 40.684007, lon: -73.907093 },
+    });
+    expect(parsed).toEqual({
+      minLat: 40.684007,
+      minLng: -74.04725,
+      maxLat: 40.882,
+      maxLng: -73.907093,
+    });
+    expect(
+      bboxContainsPoint(parsed!, { lat: 40.7532511, lng: -74.0038099 }),
+    ).toBe(true);
+    expect(bboxContainsPoint(parsed!, { lat: 40.75, lng: -75.5 })).toBe(false);
+  });
+
+  it('reverse shape: a crossing box (sw.lng=170 / ne.lng=-170) keeps the crossing representation', () => {
+    const parsed = parseReverseBoundingBox({
+      northEast: '53,-170',
+      southWest: '51,170',
+    });
+    expect(parsed).toEqual({
+      minLat: 51,
+      minLng: 170,
+      maxLat: 53,
+      maxLng: -170,
+    });
+    expect(bboxContainsPoint(parsed!, { lat: 52, lng: 179 })).toBe(true);
+    expect(bboxContainsPoint(parsed!, { lat: 52, lng: 0 })).toBe(false);
+  });
+
+  it('reverse shape: a non-crossing box parses as before', () => {
+    const parsed = parseReverseBoundingBox({
+      northEast: '40.807972,-73.964694',
+      southWest: '40.779488,-73.992672',
+    });
+    expect(parsed).toEqual({
+      minLat: 40.779488,
+      minLng: -73.992672,
+      maxLat: 40.807972,
+      maxLng: -73.964694,
+    });
   });
 });

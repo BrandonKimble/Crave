@@ -683,20 +683,42 @@ export class CentralizedRateLimiter {
     };
 
     if (entry.count >= limit) {
-      // Hold until the next minute rather than firing anyway. A caller that
+      // Hold until a later minute rather than firing anyway. A caller that
       // waits is a caller that did not spend.
-      const waitMs = Math.max(1, entry.expiresAt - now);
-      this.logger.warn(
-        'Rate limiter unreachable; holding request on the local minute guard',
-        { usage: entry.count, limit, waitMs, replicas },
-      );
-      return {
-        reservationTime: entry.expiresAt,
-        waitMs,
-        usage: entry.count,
-        limit,
-        throttled: true,
-      };
+      //
+      // THE RESERVATION OWNS ITS LANDING SLOT (F3000, 2026-08-06): a held
+      // request is BOOKED into the minute it will fire in, by walking
+      // forward to the first minute with headroom and incrementing that
+      // bucket NOW. Before this, the throttled arm incremented nothing and
+      // the caller slept-then-fired — so every request held out of minute N
+      // landed at the top of minute N+1 while N+1 separately admitted its
+      // own full limit: up to 2x the per-replica ceiling in one
+      // synchronized boundary burst.
+      let target = bucket + 1;
+      for (;;) {
+        const targetEntry = this.outageMinuteCounters.get(target) ?? {
+          count: 0,
+          expiresAt: (target + 1) * 60_000,
+        };
+        if (targetEntry.count < limit) {
+          targetEntry.count += 1;
+          this.outageMinuteCounters.set(target, targetEntry);
+          const reservationTime = target * 60_000;
+          const waitMs = Math.max(1, reservationTime - now);
+          this.logger.warn(
+            'Rate limiter unreachable; holding request on the local minute guard',
+            { usage: targetEntry.count, limit, waitMs, replicas },
+          );
+          return {
+            reservationTime,
+            waitMs,
+            usage: targetEntry.count,
+            limit,
+            throttled: true,
+          };
+        }
+        target += 1;
+      }
     }
 
     entry.count += 1;
