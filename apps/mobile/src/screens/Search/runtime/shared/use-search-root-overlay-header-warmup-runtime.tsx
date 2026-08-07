@@ -2,12 +2,10 @@ import React from 'react';
 
 import { ACTIVE_TAB_COLOR, CONTENT_HORIZONTAL_PADDING } from '../../constants/search';
 import type { SearchOverlayChromeHiddenSearchFiltersWarmupProps } from './search-foreground-chrome-contract';
-import type { SearchRootFilterModalControlLane } from './search-root-control-plane-runtime-contract';
 import type { SearchRootSearchStateRuntime } from './search-root-primitives-runtime-contract';
 import { createSearchRuntimeBus } from './search-runtime-bus';
 
 type UseSearchRootOverlayHeaderWarmupRuntimeArgs = {
-  filterModalControlLane: SearchRootFilterModalControlLane;
   searchState: SearchRootSearchStateRuntime;
 };
 
@@ -22,85 +20,45 @@ const EMPTY_DIETARY_OPTIONS: ReadonlyArray<{ name: string; label: string }> = []
 const WARMUP_DETACHED_BUS = createSearchRuntimeBus();
 
 export const useSearchRootOverlayHeaderWarmupRuntime = ({
-  filterModalControlLane,
   searchState,
 }: UseSearchRootOverlayHeaderWarmupRuntimeArgs): SearchOverlayChromeHiddenSearchFiltersWarmupProps | null => {
-  const filtersWarmupSnapshot = React.useMemo(
-    () =>
-      searchState.isSearchFiltersLayoutWarm
-        ? null
-        : {
-            activeTab: searchState.activeTab,
-            openNow: filterModalControlLane.filterModalRuntime.openNow,
-            includeSimilarActive: filterModalControlLane.filterModalRuntime.includeSimilarActive,
-            risingActive: filterModalControlLane.filterModalRuntime.risingActive,
-            priceButtonLabelText: filterModalControlLane.filterModalRuntime.priceButtonLabelText,
-            priceButtonIsActive: filterModalControlLane.filterModalRuntime.priceButtonIsActive,
-            // Same seat as the presented strip — the warmup render pre-fills it so
-            // first presentation paints warm (holes + pill + scrollX on frame one).
-            layoutCacheSeat: searchState.searchFiltersCacheSeat,
-          },
-    [
-      filterModalControlLane.filterModalRuntime.openNow,
-      filterModalControlLane.filterModalRuntime.priceButtonIsActive,
-      filterModalControlLane.filterModalRuntime.priceButtonLabelText,
-      filterModalControlLane.filterModalRuntime.includeSimilarActive,
-      filterModalControlLane.filterModalRuntime.risingActive,
-      searchState.activeTab,
-      searchState.isSearchFiltersLayoutWarm,
-      searchState.searchFiltersCacheSeat,
-    ]
+  // F3900/D78: this used to project SIX chip-state values off filterModalRuntime into
+  // props the strip discarded — and it could never have mattered here anyway: the warmup
+  // renders against a DETACHED bus, so the chips it measures have always shown that bus's
+  // defaults, not these values. What survives is the only thing the warmup is for: the
+  // seat, and the gate that stops warming once layout is warm.
+  const warmupLayoutCacheSeat = React.useMemo(
+    () => (searchState.isSearchFiltersLayoutWarm ? null : searchState.searchFiltersCacheSeat),
+    [searchState.isSearchFiltersLayoutWarm, searchState.searchFiltersCacheSeat]
   );
 
-  const hiddenFiltersWarmupState = React.useMemo(
-    () =>
-      filtersWarmupSnapshot == null
-        ? null
-        : {
-            activeTab: filtersWarmupSnapshot.activeTab,
-            openNow: filtersWarmupSnapshot.openNow,
-            includeSimilarActive: filtersWarmupSnapshot.includeSimilarActive,
-            similarAvailableCount: 0,
-            risingActive: filtersWarmupSnapshot.risingActive,
-            priceButtonLabel: filtersWarmupSnapshot.priceButtonLabelText,
-            priceButtonActive: filtersWarmupSnapshot.priceButtonIsActive,
-          },
-    [filtersWarmupSnapshot]
-  );
-
-  const hiddenFiltersWarmupLayout = React.useMemo(
-    () =>
-      filtersWarmupSnapshot == null
-        ? null
-        : {
-            layoutCacheSeat: filtersWarmupSnapshot.layoutCacheSeat,
-          },
-    [filtersWarmupSnapshot]
-  );
-
-  return React.useMemo(
-    () =>
-      hiddenFiltersWarmupState == null || hiddenFiltersWarmupLayout == null
-        ? null
-        : {
-            ...hiddenFiltersWarmupState,
-            ...hiddenFiltersWarmupLayout,
-            searchRuntimeBus: WARMUP_DETACHED_BUS,
-            onTabChange: NOOP,
-            onToggleOpenNow: NOOP,
-            // Warmup measures LAYOUT only — the dietary chips are absent
-            // here on purpose: the strip's width is measured with the
-            // chips the live header will render (options arrive with the
-            // first real render, and the seat re-measures then).
-            dietaryOptions: EMPTY_DIETARY_OPTIONS,
-            onToggleDietary: NOOP_WITH_NAME,
-            onToggleIncludeSimilar: NOOP,
-            onToggleSortSelector: NOOP,
-            onTogglePriceSelector: NOOP,
-            isPriceSelectorVisible: false,
-            contentHorizontalPadding: CONTENT_HORIZONTAL_PADDING,
-            accentColor: ACTIVE_TAB_COLOR,
-          },
-    [hiddenFiltersWarmupLayout, hiddenFiltersWarmupState]
-  );
+  // Typed through an annotated local for the same reason as the live header runtime
+  // (F3900/D78): a fresh object literal assigned to an ANNOTATED binding is
+  // excess-property checked, so re-adding a deleted chip prop here fails tsc. The
+  // useMemo type argument alone does not do this.
+  return React.useMemo<SearchOverlayChromeHiddenSearchFiltersWarmupProps | null>(() => {
+    if (warmupLayoutCacheSeat == null) {
+      return null;
+    }
+    const warmupProps: SearchOverlayChromeHiddenSearchFiltersWarmupProps = {
+      // Same seat as the presented strip — the warmup render pre-fills it so
+      // first presentation paints warm (holes + pill + scrollX on frame one).
+      layoutCacheSeat: warmupLayoutCacheSeat,
+      searchRuntimeBus: WARMUP_DETACHED_BUS,
+      onTabChange: NOOP,
+      onToggleOpenNow: NOOP,
+      // Warmup measures LAYOUT only — the dietary chips are absent
+      // here on purpose: the strip's width is measured with the
+      // chips the live header will render (options arrive with the
+      // first real render, and the seat re-measures then).
+      dietaryOptions: EMPTY_DIETARY_OPTIONS,
+      onToggleDietary: NOOP_WITH_NAME,
+      onToggleIncludeSimilar: NOOP,
+      onToggleSortSelector: NOOP,
+      onTogglePriceSelector: NOOP,
+      contentHorizontalPadding: CONTENT_HORIZONTAL_PADDING,
+      accentColor: ACTIVE_TAB_COLOR,
+    };
+    return warmupProps;
+  }, [warmupLayoutCacheSeat]);
 };

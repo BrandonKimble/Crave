@@ -42,9 +42,6 @@ export const useSearchRootRouteSearchSceneDataRuntime = ({
     searchRuntimeBus: sessionAssemblyRuntime.sessionRuntime.sessionCoreLane.searchRuntimeBus,
     stateFoundationLane: stateAssemblyRuntime.stateFoundationLane,
     filterModalControlLane,
-    searchResultsRuntimeState: routeSearchSceneDataStateRuntime.routeSearchSceneResultsRuntimeState,
-    searchFiltersRuntimeState: routeSearchSceneFiltersRuntimeState,
-    hydrationKeyRuntime: routeSearchSceneDataStateRuntime.routeSearchSceneHydrationKeyRuntime,
     scheduleTabToggleCommit:
       routeSearchSceneDataStateRuntime.routeSearchSceneScheduleTabToggleCommit,
   });

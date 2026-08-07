@@ -43,7 +43,6 @@ export const useSearchRootOverlayHostRuntime = ({
     overlaySceneHostVisualRuntime,
     foregroundInteractionControlLane,
     foregroundInputControlLane,
-    filterModalControlLane,
     profileControlRuntime,
     controlAuthorityRuntime,
   });

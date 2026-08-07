@@ -38,7 +38,6 @@ export const useSearchRootOverlayChromeHostRuntime = ({
   overlaySceneHostVisualRuntime,
   foregroundInteractionControlLane,
   foregroundInputControlLane,
-  filterModalControlLane,
   profileControlRuntime,
   controlAuthorityRuntime,
 }: Pick<
@@ -51,7 +50,6 @@ export const useSearchRootOverlayChromeHostRuntime = ({
   | 'overlaySceneHostVisualRuntime'
   | 'foregroundInteractionControlLane'
   | 'foregroundInputControlLane'
-  | 'filterModalControlLane'
   | 'profileControlRuntime'
   | 'controlAuthorityRuntime'
 >): SearchRootOverlayChromeHostRuntime => {
@@ -101,7 +99,6 @@ export const useSearchRootOverlayChromeHostRuntime = ({
     shortcutsInputs.shouldMountSearchShortcuts &&
     shortcutsInputs.shouldEnableSearchShortcutsInteraction;
   const { hiddenSearchFiltersWarmupProps } = useSearchRootOverlayHeaderWarmupSourceRuntime({
-    filterModalControlLane,
     searchState: stateFoundationLane.rootPrimitivesRuntime.searchState,
   });
   const suggestionShellContainerRuntime = useSearchRootOverlaySuggestionShellContainerRuntime({

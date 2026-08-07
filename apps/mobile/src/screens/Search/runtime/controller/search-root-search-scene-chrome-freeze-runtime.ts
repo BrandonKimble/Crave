@@ -41,23 +41,15 @@ export const createSearchRootSearchSceneChromeFreezeRuntime = () => {
         effectiveFiltersHeaderHeightBase: shouldFreezeResultsChrome
           ? frozenSnapshot.effectiveFiltersHeaderHeight
           : effectiveFiltersHeaderHeight,
+        // F3900/D78: this used to spread the FROZEN header and then punch eight toggle
+        // ACTIVE STATES back through it live, so a chip's color could flip on press-up
+        // while the rest of the chrome stayed frozen for layout stability. That hole is
+        // no longer needed and no longer possible: the strip reads those states straight
+        // from the runtime bus (`selectSearchFilterChipState`), which the freeze never
+        // touched — the props the hole re-supplied are deleted. What freezes here is what
+        // freezing was always for: header heights, chip structure, handlers.
         filtersHeaderRuntimeForReadModel: shouldFreezeResultsChrome
-          ? {
-              ...frozenSnapshot.filtersHeaderRuntime,
-              // Toggle ACTIVE STATES flow LIVE (straight from the runtime bus) so a
-              // toggle's color flips on press-up even while the rest of the chrome
-              // (header heights, chip structure, handlers) stays frozen for layout
-              // stability during interaction loading. Freezing these was the regression
-              // that made toggles look stuck — same color, never switching on tap.
-              activeTab: filtersHeaderRuntime.activeTab,
-              openNow: filtersHeaderRuntime.openNow,
-              includeSimilarActive: filtersHeaderRuntime.includeSimilarActive,
-              similarAvailableCount: filtersHeaderRuntime.similarAvailableCount,
-              risingActive: filtersHeaderRuntime.risingActive,
-              priceButtonActive: filtersHeaderRuntime.priceButtonActive,
-              priceButtonLabel: filtersHeaderRuntime.priceButtonLabel,
-              isPriceSelectorVisible: filtersHeaderRuntime.isPriceSelectorVisible,
-            }
+          ? frozenSnapshot.filtersHeaderRuntime
           : filtersHeaderRuntime,
         submittedQueryForReadModel: shouldFreezeResultsChrome
           ? frozenSnapshot.submittedQuery

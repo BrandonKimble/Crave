@@ -9,7 +9,11 @@ import { SelectorChip } from '../../../components/SelectorChip';
 import { ToggleStrip } from '../../../toggles/ToggleStrip';
 import type { ToggleStripCacheSeat } from '../../../toggles/toggle-strip-layout-cache';
 import { resolveDietaryControls } from '../hooks/use-dietary-options';
-import { areDietarySetsEqual } from '../runtime/shared/search-desired-state-contract';
+import {
+  SEARCH_FILTER_CHIP_OBSERVED_BUS_KEYS,
+  areSearchFilterChipStatesEqual,
+  selectSearchFilterChipState,
+} from '../runtime/read-models/search-filter-chip-state';
 import type { SearchRuntimeBus } from '../runtime/shared/search-runtime-bus';
 import { useSearchRuntimeBusSelector } from '../runtime/shared/use-search-runtime-bus-selector';
 
@@ -29,34 +33,32 @@ const PRICE_TOGGLE_RIGHT_PADDING = Math.max(0, TOGGLE_HORIZONTAL_PADDING - 3);
 type SegmentValue = (typeof SEGMENT_OPTIONS)[number]['value'];
 
 export type SearchFiltersProps = {
-  // LIVE chip-state source. The rendered strip element rides the mounted-results snapshot
-  // store (chrome-freeze), so its PROPS can be stale between data commits — the tab pill hid
-  // this behind its internal press animation, but the plain chips (Open now, Rising, Include
-  // similar, Price) visibly failed to flip color on press-up. The strip therefore reads its
-  // display states straight from the runtime bus (the single writer the toggle setters flip
-  // optimistically at press time); the same-named props remain as the first-render values.
+  // THE ONLY chip-state source. The rendered strip element rides the mounted-results
+  // snapshot store (chrome-freeze), so PROPS can be stale between data commits — the tab
+  // pill hid this behind its internal press animation, but the plain chips (Open now,
+  // Rising, Include similar, Price) visibly failed to flip color on press-up. The strip
+  // therefore reads its display states straight from the runtime bus (the single writer
+  // the toggle setters flip optimistically at press time).
+  //
+  // F3900/D78: the eight same-named props (activeTab, openNow, includeSimilarActive,
+  // similarAvailableCount, risingActive, priceButtonLabel, priceButtonActive,
+  // isPriceSelectorVisible) are DELETED, and the comment that used to stand here — "the
+  // same-named props remain as the first-render values" — was false: the bus selector
+  // seeds its cache with `selector(bus.getState())`, so the bus wins on render 1 exactly
+  // as on render N. They were a second source of truth that was already unreachable;
+  // deleting them makes a stale chip prop unrepresentable rather than merely documented.
   searchRuntimeBus: SearchRuntimeBus;
-  activeTab: SegmentValue;
   onTabChange: (value: SegmentValue) => void;
-  openNow: boolean;
   onToggleOpenNow: () => void;
   /** DIETARY WALLS (owner semantics 2026-08-04): the OPTIONS come from the
    *  server's curated vocabulary; the ACTIVE set is the lens. Hard by rule —
    *  a dietary chip never softens, so thin results are the honest answer. */
   dietaryOptions: ReadonlyArray<{ name: string; label: string }>;
   onToggleDietary: (name: string) => void;
-  includeSimilarActive: boolean;
   onToggleIncludeSimilar: () => void;
-  // metadata.similarAvailable from the committed page-1 response; the availability chip
-  // renders when > 0 and the toggle is off, and is a REMOTE CONTROL for the toggle.
-  similarAvailableCount: number;
-  risingActive: boolean;
   /** Sort dropdown (toggle-strip primitive): opens the Best/Rising OptionSelectorSheet. */
   onToggleSortSelector: () => void;
-  priceButtonLabel: string;
-  priceButtonActive: boolean;
   onTogglePriceSelector: () => void;
-  isPriceSelectorVisible: boolean;
   contentHorizontalPadding: number;
   accentColor: string;
   /** The surface's ONE warm-restore seat (layout + settled scrollX, engine-owned). */
@@ -65,71 +67,34 @@ export type SearchFiltersProps = {
 
 const SearchFilters: React.FC<SearchFiltersProps> = ({
   searchRuntimeBus,
-  activeTab,
   onTabChange,
-  openNow,
   onToggleOpenNow,
   dietaryOptions,
   onToggleDietary,
-  includeSimilarActive,
   onToggleIncludeSimilar,
-  similarAvailableCount,
-  risingActive,
   onToggleSortSelector,
-  priceButtonLabel,
-  priceButtonActive,
   onTogglePriceSelector,
-  isPriceSelectorVisible,
   contentHorizontalPadding,
   accentColor,
   layoutCacheSeat,
 }) => {
-  const liveChipState = useSearchRuntimeBusSelector(
+  const {
+    activeTab,
+    openNow,
+    dietary: activeDietary,
+    includeSimilarActive,
+    similarAvailableCount,
+    risingActive,
+    priceButtonActive,
+    priceButtonLabel,
+    isPriceSelectorVisible,
+    isSortSelectorVisible,
+  } = useSearchRuntimeBusSelector(
     searchRuntimeBus,
-    (state) => ({
-      // S4e: the chip strip renders DESIRED state — the tuple directly (tuple.tab IS the
-      // old optimistic `pendingTabSwitchTab ?? activeTab` read, by the writer's invariant).
-      activeTab: state.desiredTuple.tab as SegmentValue,
-      openNow: state.desiredTuple.filterVariant.openNow,
-      dietary: state.desiredTuple.filterVariant.dietary,
-      includeSimilarActive: state.desiredTuple.filterVariant.includeSimilar,
-      similarAvailableCount: state.results?.metadata?.similarAvailable ?? 0,
-      risingActive: state.desiredTuple.filterVariant.rising,
-      priceButtonActive: state.priceButtonIsActive,
-      priceButtonLabel: state.priceButtonLabelText,
-      isPriceSelectorVisible: state.isPriceSelectorVisible,
-      isSortSelectorVisible: state.isSortSelectorVisible,
-    }),
-    (left, right) =>
-      left.activeTab === right.activeTab &&
-      left.openNow === right.openNow &&
-      areDietarySetsEqual(left.dietary, right.dietary) &&
-      left.includeSimilarActive === right.includeSimilarActive &&
-      left.similarAvailableCount === right.similarAvailableCount &&
-      left.risingActive === right.risingActive &&
-      left.priceButtonActive === right.priceButtonActive &&
-      left.priceButtonLabel === right.priceButtonLabel &&
-      left.isPriceSelectorVisible === right.isPriceSelectorVisible &&
-      left.isSortSelectorVisible === right.isSortSelectorVisible,
-    [
-      'desiredTuple',
-      'results',
-      'priceButtonIsActive',
-      'priceButtonLabelText',
-      'isPriceSelectorVisible',
-      'isSortSelectorVisible',
-    ] as const
+    selectSearchFilterChipState,
+    areSearchFilterChipStatesEqual,
+    SEARCH_FILTER_CHIP_OBSERVED_BUS_KEYS
   );
-  const isSortSelectorVisible = liveChipState.isSortSelectorVisible;
-  activeTab = liveChipState.activeTab;
-  openNow = liveChipState.openNow;
-  const activeDietary = liveChipState.dietary;
-  includeSimilarActive = liveChipState.includeSimilarActive;
-  similarAvailableCount = liveChipState.similarAvailableCount;
-  risingActive = liveChipState.risingActive;
-  priceButtonActive = liveChipState.priceButtonActive;
-  priceButtonLabel = liveChipState.priceButtonLabel;
-  isPriceSelectorVisible = liveChipState.isPriceSelectorVisible;
 
   return (
     <ToggleStrip
