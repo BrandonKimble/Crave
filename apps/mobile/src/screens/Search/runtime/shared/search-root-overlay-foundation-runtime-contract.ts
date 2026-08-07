@@ -7,7 +7,7 @@ import type {
 } from '../../../../navigation/runtime/app-route-overlay-session-contract';
 import type {
   AppRouteOverlayCommandActions,
-  AppRouteOverlayCommandSnapshot,
+  AppRouteSaveSheetState,
 } from '../../../../navigation/runtime/app-route-overlay-command-controller';
 import type { AppRouteSceneRuntime } from '../../../../navigation/runtime/app-route-scene-runtime';
 import type {
@@ -21,7 +21,7 @@ export type SearchRootOverlayFoundationRuntime = {
   routeSceneRuntime: AppRouteSceneRuntime;
   routeOverlaySessionSnapshotRef: React.RefObject<AppRouteOverlaySessionSnapshot>;
   routeOverlaySessionActions: AppRouteOverlaySessionActions;
-  routeOverlayCommandSnapshotRef: React.MutableRefObject<AppRouteOverlayCommandSnapshot>;
+  routeOverlayCommandSnapshotRef: React.MutableRefObject<AppRouteSaveSheetState>;
   routeOverlayCommandActions: AppRouteOverlayCommandActions;
   routeOverlayRouteCommandRuntime: AppRouteSceneRuntime['routeOverlayRouteCommandRuntime'];
   routeOverlayTransitionActions: AppRouteSceneRuntime['routeOverlayTransitionActions'];

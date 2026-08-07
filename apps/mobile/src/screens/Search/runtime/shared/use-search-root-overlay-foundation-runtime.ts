@@ -4,7 +4,7 @@ import type { RouteOverlayVisibilityAuthority } from './route-authority-contract
 import type { SearchRootOverlayFoundationRuntime } from './search-root-overlay-foundation-runtime-contract';
 import { useAppRouteSharedSheetRuntimeOwner } from '../../../../navigation/runtime/AppRouteSharedSheetRuntimeProvider';
 import type { AppRouteOverlaySessionSnapshot } from '../../../../navigation/runtime/app-route-overlay-session-contract';
-import type { AppRouteOverlayCommandSnapshot } from '../../../../navigation/runtime/app-route-overlay-command-controller';
+import type { AppRouteSaveSheetState } from '../../../../navigation/runtime/app-route-overlay-command-controller';
 import type { SearchRootStateFoundationLane } from './search-root-foundation-runtime';
 import type { SearchRootSessionCoreLane } from './search-root-session-runtime-contract';
 import { useSearchRootMapRuntimeLane } from './use-search-root-map-runtime-lane';
@@ -72,7 +72,7 @@ export const useSearchRootOverlayFoundationRuntime = ({
     () => createRouteOverlaySessionSnapshotRef(routeSceneRuntime.routeSceneSwitchRuntime),
     [routeSceneRuntime.routeSceneSwitchRuntime]
   );
-  const routeOverlayCommandSnapshotRef = React.useRef<AppRouteOverlayCommandSnapshot>(
+  const routeOverlayCommandSnapshotRef = React.useRef<AppRouteSaveSheetState>(
     routeSceneRuntime.routeOverlayCommandAuthority.getSnapshot()
   );
   React.useEffect(

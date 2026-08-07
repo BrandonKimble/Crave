@@ -10,7 +10,7 @@ import type {
 } from '../../../../services/search';
 import type { RootStackParamList, MainSearchIntent } from '../../../../types/navigation';
 import type { LaunchIntent } from '../../../../navigation/runtime/app-route-types';
-import type { OverlayKey, OverlaySheetSnap } from '../../../../overlays/types';
+import type { OverlayKey } from '../../../../overlays/types';
 import type { SearchClearOwner } from '../../hooks/use-search-clear-owner';
 import type useSearchHistory from '../../hooks/use-search-history';
 import type useSearchSubmitOwner from '../../hooks/use-search-submit-owner';
@@ -166,7 +166,7 @@ export type SearchForegroundEditingRuntimeArgs = {
   beginSuggestionCloseHold: (mode?: 'default' | 'submitting') => boolean;
   requestSearchPresentationIntent: (intent: { kind: 'focus_editing' | 'exit_editing' }) => void;
   beginCloseSearch: () => void;
-  restoreDockedScene: (args?: { snap?: Exclude<OverlaySheetSnap, 'hidden'> }) => void;
+  restoreDockedScene: () => void;
   setIsSearchFocused: React.Dispatch<React.SetStateAction<boolean>>;
   setIsSuggestionPanelActive: React.Dispatch<React.SetStateAction<boolean>>;
   setSuggestions: React.Dispatch<React.SetStateAction<AutocompleteMatch[]>>;

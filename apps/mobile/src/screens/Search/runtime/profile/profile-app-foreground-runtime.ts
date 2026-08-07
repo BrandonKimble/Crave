@@ -36,7 +36,7 @@ export const useProfileAppForegroundExecutionRuntime = ({
     // NOT come back on close (finish-or-cancel). The prior capture-and-maybe-restore
     // machinery had no reader on the restore side (verified repo-wide, zero call sites)
     // and is deleted; this hide is unconditional.
-    const { saveSheetState } = routeOverlayCommandAuthority.getSnapshot();
+    const saveSheetState = routeOverlayCommandAuthority.getSnapshot();
     if (saveSheetState.visible) {
       routeOverlayCommandActions.setSaveSheetState((prev) => ({
         ...prev,

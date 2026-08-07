@@ -19,7 +19,7 @@ import { buildSaveListRows, dispatchSaveForRow, type SaveListRowModel } from './
 import { useBottomSheetSceneStackBodyDataActivity } from '../BottomSheetSceneStackBodyActivityContext';
 import { useAppRouteSceneRuntime } from '../../navigation/runtime/AppRouteSceneRuntimeProvider';
 import { useRouteAuthoritySelector } from '../../navigation/runtime/use-route-authority-selector';
-import type { AppRouteOverlayCommandSnapshot } from '../../navigation/runtime/app-route-overlay-command-controller';
+import type { AppRouteSaveSheetState } from '../../navigation/runtime/app-route-overlay-command-controller';
 import type { AppOverlaySaveListTarget } from '../../navigation/runtime/app-overlay-route-types';
 import { useDeferredSceneDataLane } from './useDeferredSceneDataLane';
 import { SceneLoadingSurface } from '../../components/skeletons';
@@ -41,10 +41,9 @@ type ListFormState = {
   visibility: UserListVisibility;
 };
 
-const selectSaveSheetListType = (snapshot: AppRouteOverlayCommandSnapshot) =>
-  snapshot.saveSheetState.listType;
+const selectSaveSheetListType = (saveSheetState: AppRouteSaveSheetState) => saveSheetState.listType;
 
-const selectSaveSheetState = (snapshot: AppRouteOverlayCommandSnapshot) => snapshot.saveSheetState;
+const selectSaveSheetState = (saveSheetState: AppRouteSaveSheetState) => saveSheetState;
 
 // ---------------------------------------------------------------------------
 // Save-sheet SIDE store (page-registry §8.8): the sheet is dynamically

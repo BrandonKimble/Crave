@@ -2,12 +2,10 @@ import type React from 'react';
 
 import type { UserListType } from '../../services/user-lists';
 import { resolveOwnerSceneKeyAndOpener } from './docked-scene-target';
-import type { OverlaySheetSnap } from '../../overlays/types';
 import type {
   AppOverlaySaveListTarget,
   AppOverlayTopLevelProductRouteKey,
   OverlayKey,
-  OverlayRouteEntry,
   OverlayRouteParamsMap,
 } from './app-overlay-route-types';
 import type { AppOverlayRouteCommandRuntime } from './app-overlay-route-command-runtime';
@@ -24,22 +22,21 @@ export type AppRouteSaveSheetState = {
   routeInstanceId: string | null;
 };
 
-// F1360 — `searchHeaderActionResetToken` is GONE. It was the surviving half of the
+// F1360 removed `searchHeaderActionResetToken` — the surviving half of the
 // 'follow-collapse' header policy that app-overlay-route-types.ts:42-44 records as
-// DELETED: a token with no reader, bumped by an action with no caller.
-export type AppRouteOverlayCommandSnapshot = {
-  saveSheetState: AppRouteSaveSheetState;
-};
-
+// DELETED — and left a one-field envelope behind. F6202: the save-sheet state IS
+// the command snapshot. A wrapper around a single field is a rename plus an
+// allocation, and the field-wise equality it justified degenerated to the identity
+// check `setSaveSheetState` had already performed, i.e. a bail-out that could not
+// bail out.
 export type AppRouteOverlayCommandAuthority = {
   subscribe: (listener: Listener) => () => void;
-  getSnapshot: () => AppRouteOverlayCommandSnapshot;
+  getSnapshot: () => AppRouteSaveSheetState;
 };
 
 export type AppRouteOverlayCommandActions = {
   setSaveSheetState: (next: React.SetStateAction<AppRouteSaveSheetState>) => void;
-  restoreSaveSheetState: (state: AppRouteSaveSheetState) => void;
-  restoreDockedScene: (args?: { snap?: Exclude<OverlaySheetSnap, 'hidden'> }) => void;
+  restoreDockedScene: () => void;
   // locationId = the in-context location the save trigger rendered (master
   // plan §7) — rides the save-sheet target into the add payloads.
   getDishSaveHandler: (connectionId: string, locationId?: string | null) => () => void;
@@ -47,9 +44,6 @@ export type AppRouteOverlayCommandActions = {
   handleRestaurantSavePress: (restaurantId: string, locationId?: string | null) => void;
   handleCloseSaveSheet: () => void;
 };
-
-export type AppRouteOverlayCommandRuntime = AppRouteOverlayCommandSnapshot &
-  AppRouteOverlayCommandActions;
 
 const DEFAULT_SAVE_SHEET_STATE: AppRouteSaveSheetState = {
   visible: false,
@@ -63,11 +57,6 @@ const DEFAULT_SAVE_SHEET_STATE: AppRouteSaveSheetState = {
 
 const resolveStateUpdate = <T>(current: T, next: React.SetStateAction<T>): T =>
   typeof next === 'function' ? (next as (value: T) => T)(current) : next;
-
-const areCommandSnapshotsEqual = (
-  left: AppRouteOverlayCommandSnapshot,
-  right: AppRouteOverlayCommandSnapshot
-): boolean => left.saveSheetState === right.saveSheetState;
 
 class AppRouteOverlayCommandController {
   private readonly listeners = new Set<Listener>();
@@ -119,9 +108,7 @@ class AppRouteOverlayCommandController {
 
   private nextSaveSheetRouteInstance = 0;
 
-  private snapshot: AppRouteOverlayCommandSnapshot = {
-    saveSheetState: DEFAULT_SAVE_SHEET_STATE,
-  };
+  private snapshot: AppRouteSaveSheetState = DEFAULT_SAVE_SHEET_STATE;
 
   public readonly authority: AppRouteOverlayCommandAuthority = {
     subscribe: (listener) => this.subscribe(listener),
@@ -130,31 +117,17 @@ class AppRouteOverlayCommandController {
 
   public readonly actions: AppRouteOverlayCommandActions = {
     setSaveSheetState: (next) => {
-      const nextSaveSheetState = resolveStateUpdate(this.snapshot.saveSheetState, next);
-      if (nextSaveSheetState === this.snapshot.saveSheetState) {
+      const nextSaveSheetState = resolveStateUpdate(this.snapshot, next);
+      if (nextSaveSheetState === this.snapshot) {
         return;
       }
-      this.updateSnapshot({
-        ...this.snapshot,
-        saveSheetState: nextSaveSheetState,
+      this.snapshot = nextSaveSheetState;
+      this.listeners.forEach((listener) => {
+        listener();
       });
     },
-    restoreSaveSheetState: (state) => {
-      if (!state.visible || state.target == null) {
-        return;
-      }
-      this.openSaveSheetRoute({
-        listType: state.listType,
-        target: state.target,
-        ownerSceneKey: state.ownerSceneKey,
-        parentSceneKey: state.parentSceneKey,
-        openerRouteKey: state.openerRouteKey,
-        routeInstanceId: state.routeInstanceId,
-      });
-    },
-    restoreDockedScene: ({ snap } = {}) => {
-      const resolvedSnap = snap ?? 'collapsed';
-      this.routeOverlayRouteCommandRuntime.restoreDockedScene({ snap: resolvedSnap });
+    restoreDockedScene: () => {
+      this.routeOverlayRouteCommandRuntime.restoreDockedScene();
     },
     getDishSaveHandler: (connectionId, locationId) => {
       // Cache key includes the location: the same connection can render at a
@@ -192,16 +165,6 @@ class AppRouteOverlayCommandController {
     return () => {
       this.listeners.delete(listener);
     };
-  }
-
-  private updateSnapshot(nextSnapshot: AppRouteOverlayCommandSnapshot): void {
-    if (areCommandSnapshotsEqual(this.snapshot, nextSnapshot)) {
-      return;
-    }
-    this.snapshot = nextSnapshot;
-    this.listeners.forEach((listener) => {
-      listener();
-    });
   }
 
   private resolveCurrentSaveSheetOwner(): {
@@ -263,7 +226,7 @@ class AppRouteOverlayCommandController {
   }
 
   private closeSaveSheetRoute(): void {
-    const currentSaveSheetState = this.snapshot.saveSheetState;
+    const currentSaveSheetState = this.snapshot;
     if (!currentSaveSheetState.visible && currentSaveSheetState.target == null) {
       return;
     }

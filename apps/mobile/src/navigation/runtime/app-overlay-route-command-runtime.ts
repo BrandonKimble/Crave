@@ -49,7 +49,7 @@ export type AppOverlayRouteCommandRuntime = {
   // alias kept so existing call sites need no churn.
   revealRoute: <K extends OverlayKey>(overlay: K, params?: OverlayRouteParamsMap[K]) => void;
   pushRoute: <K extends OverlayKey>(overlay: K, params?: OverlayRouteParamsMap[K]) => void;
-  restoreDockedScene: (args?: { snap?: Exclude<OverlaySheetSnap, 'hidden'> }) => void;
+  restoreDockedScene: () => void;
   collapseActiveSheet: (args?: { snap?: Exclude<OverlaySheetSnap, 'hidden'> }) => void;
   // The shared HEADER-TAP / grab-handle press (owner req 2026-07-02): tapping the persistent
   // header PROMOTES the sheet up to at least middle when it sits below middle, and is a no-op
@@ -283,7 +283,12 @@ export const createAppOverlayRouteCommandRuntime = ({
     updateRoute: (overlay, params) => {
       routeSceneSwitchRuntime.updateRouteState(overlay, params);
     },
-    restoreDockedScene: ({ snap = 'collapsed' } = {}) => {
+    restoreDockedScene: () => {
+      // The docked scene restores COLLAPSED — one literal, live, in the only
+      // place that builds the switch request (F6203: this used to be spelled
+      // here AND in the controller's forwarder, for a parameter no caller has
+      // ever supplied, so the inner copy could not reach behaviour at all).
+      const snap = 'collapsed';
       requestRouteSceneSwitch({
         targetSceneKey: 'search',
         routeAction: 'setRoot',

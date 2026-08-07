@@ -13,7 +13,7 @@ import type { AppRouteSceneRuntime } from './app-route-scene-runtime';
 import { useAppRouteSheetHostOwner } from './AppRouteSheetHostRuntimeProvider';
 import type { AppRouteSheetHostSurfaceBodySnapshot } from './app-route-sheet-host-surface-runtime-contract';
 import type {} from './app-route-scene-policy-contract';
-import type { AppRouteOverlayCommandSnapshot } from './app-route-overlay-command-controller';
+import type { AppRouteSaveSheetState } from './app-route-overlay-command-controller';
 import type { RouteHostOverlayGeometryBinding } from './route-host-overlay-geometry-state-controller';
 import type {
   RouteOverlayChromeSnapConfig,
@@ -33,8 +33,8 @@ const AppRouteSceneChromeMotionRuntimeContext =
 // with the dead parameters they existed to compute — the chrome response zone is a pure
 // function of the search bar's top edge and the save-list mode, and nothing else.
 
-const selectSaveSheetVisible = (snapshot: AppRouteOverlayCommandSnapshot): boolean =>
-  snapshot.saveSheetState.visible;
+const selectSaveSheetVisible = (saveSheetState: AppRouteSaveSheetState): boolean =>
+  saveSheetState.visible;
 
 // F964: ONE SNAP-GEOMETRY FORMULA. This used to recompute the sheet's expanded/middle
 // pair here — the same four expressions with the same four literals as
