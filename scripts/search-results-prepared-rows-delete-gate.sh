@@ -21,22 +21,60 @@ fail() {
   exit 1
 }
 
+# TOOL PRECONDITION (F8500, 2026-08-07). `if rg …; then` treats EVERY non-zero
+# rg exit as "no match → clean" — but exit 2 is an invalid regex and 127 is rg
+# not installed. So a rotted pattern or a machine without ripgrep made every
+# negative ban below PASS having scanned nothing (the exact class the sibling
+# no-bypass-search-runtime.sh and app-route-runtime-delete-gate.sh were already
+# hardened against; these two delete-gates were wired in the same D37 sweep but
+# never inherited the defense). Missing tooling is a FAILURE, never a pass.
+if ! command -v rg >/dev/null 2>&1; then
+  fail "ripgrep (rg) is not installed — this gate cannot verify anything; refusing a green that means nothing (brew install ripgrep)"
+fi
+
+# A negative ban: any match is a failure. Exit 1 (no match) is the ONLY pass;
+# exit 2 (bad regex) and anything else are hard failures, not silent greens.
 scan_active() {
   local pattern="$1"
   local description="$2"
   shift 2
-  if rg -n "$pattern" "$@" >/tmp/search-results-prepared-rows-delete-gate.out; then
+  local status
+  set +e
+  rg -n "$pattern" "$@" >/tmp/search-results-prepared-rows-delete-gate.out
+  status=$?
+  set -e
+  if [[ "$status" -eq 0 ]]; then
     cat /tmp/search-results-prepared-rows-delete-gate.out >&2
     fail "$description"
+  elif [[ "$status" -eq 1 ]]; then
+    : # no match — the ban holds
+  elif [[ "$status" -eq 2 ]]; then
+    fail "invalid rg pattern (\`$pattern\`) — the scan for '$description' did not run"
+  else
+    fail "rg exited with status $status scanning for '$description' — check not performed"
   fi
 }
 
+# A required symbol: exit 0 (present) is the pass. Exit 1 (genuinely absent) is
+# the designed failure; exit 2/other means the TOOL broke, reported distinctly
+# so a rotted pattern is never misread as a missing symbol.
 require_active() {
   local pattern="$1"
   local description="$2"
   shift 2
-  if ! rg -n "$pattern" "$@" >/tmp/search-results-prepared-rows-delete-gate.out; then
+  local status
+  set +e
+  rg -n "$pattern" "$@" >/tmp/search-results-prepared-rows-delete-gate.out
+  status=$?
+  set -e
+  if [[ "$status" -eq 0 ]]; then
+    : # present
+  elif [[ "$status" -eq 1 ]]; then
     fail "$description"
+  elif [[ "$status" -eq 2 ]]; then
+    fail "invalid rg pattern (\`$pattern\`) — the required-symbol check for '$description' did not run"
+  else
+    fail "rg exited with status $status checking for '$description' — check not performed"
   fi
 }
 

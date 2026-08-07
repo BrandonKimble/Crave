@@ -3939,3 +3939,42 @@ cleanup, not a can't-fail defect. Queued.
 
 **F7701 was pass 1's last unlanded item. Attempt-2 remediation (F8400 + F7701) is complete.
 ATTEMPT 3 is the next full pass** — it must return zero to be the first clean pass.
+
+---
+
+## D129 — F8500: the two surviving delete-gates swallowed rg exit 2/127 as PASS (2026-08-07)
+
+Attempt 3's gate hunter found it; I verified and fixed. `scan_active` in both
+`crave-score-cutover-delete-gate.sh` and `search-results-prepared-rows-delete-gate.sh`
+was `if rg -n "$pattern" …; then fail`. `if rg` reads EVERY non-zero exit as
+"no match → clean," but rg exit 2 = invalid regex and 127 = rg not installed.
+So a pattern rotted into invalidity, or any local run without ripgrep, made
+every NEGATIVE ban PASS having scanned nothing — a gate green where the
+developer looks at it. The asymmetry made it worse: the co-located `require_active`
+(`if ! rg`) DID fail loudly when rg was absent, so a maintainer saw the positive
+checks fire and reasonably assumed the negative bans had too. They hadn't.
+
+This is the exact class the sibling gates already close — `no-bypass-search-runtime.sh`
+(a `command -v rg` precondition) and `app-route-runtime-delete-gate.sh` (per-check
+`status=$?` with exit-2 discrimination). All three were wired in the same D37 sweep
+(F703/F704), but these two never inherited the defense.
+
+FIX (mirrors the siblings): a `command -v rg` precondition failing the whole gate
+when rg is absent, plus full exit-status discrimination in BOTH helpers —
+scan_active: exit 0 → ban fired (fail), 1 → pass, 2 → invalid-pattern fail,
+other → tool-broke fail; require_active: 0 → present, 1 → designed absent-fail,
+2/other → tool-broke fail reported DISTINCTLY so a rotted pattern is never
+misread as a missing symbol.
+
+MUTATION-PROVEN three ways (all against the reverted defect):
+- normal run → pass (exit 0), unchanged.
+- PATH stripped of rg (127) → FAIL exit 1 ("cannot verify anything") — was silent green.
+- one pattern corrupted to an unbalanced `[` (exit 2) → FAIL exit 1
+  ("invalid rg pattern … the scan did not run") — was silent green.
+
+**Attempt 3 is NOT clean: it found F8500 (real). api core + api rest (both halves)
++ mobile returned zero new. Remediation of F8500 done → attempt 4 is the next full
+pass.** Two sub-P1 items remain queued from this pass: F8600 (mobile — four redundant
+source-literal conjuncts on POSITIVE filters, confirmed dead weight not load-bearing,
+safe to delete for honesty) and the dead-effect-in-body-spec class the mobile hunter
+sampled but did not fully rederive across 961 files.
