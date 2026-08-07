@@ -373,3 +373,27 @@ Residual owed: pollo/fideo/lima-class corpus merges (data session); the
 sweep's watermark is label-existence, so entities labeled BEFORE the
 gender-complete prompt never re-offer — inflection completeness needs a
 surface-coverage watermark (open).
+
+## 9. IDEAL-SHAPE CLOSURE PLAN (2026-08-06 — everything open, one list)
+
+1. **Negation family → constraint class.** Sweep banked correct negatives
+   (`sin queso`→cheeseless) that ground as SOFT attributes — pooled fill can
+   serve queso to "sin queso". Flag the without-X family like `gluten free`
+   (constraint_class hard wall); re-author ng-02/03/18 to expect the positive
+   hard grounding. No alias deletions.
+2. **Sweep watermark → surface coverage.** Label-existence watermark means
+   pre-prompt-fix entities (mexican/japanese/peruvian/coffee) never re-offer;
+   gender forms missing on real corpus (89.3 vs 98.0 sim). Re-offer when
+   locale surface coverage is incomplete, not when a label exists.
+3. **Corpus merges (data session):** pollo→chicken, fideos↔fideo dual-ground,
+   lima→lime; then re-author cp-12/18/sn-35/hg-13 gold.
+4. **Dense truth.** Three sites: Understand tier (always on), sibling
+   membership (`includeSimilar===true` only, service:3168), and a DTO comment
+   promising "silent thin-results widening" that siblingsWanted does not
+   implement — reconcile comment vs code, then decide the ideal: automatic
+   thin-results dense widening (one list, admission-gated) vs explicit chip.
+5. **One-list presentation.** exactMatch stays row metadata; no client
+   divider (owner ruling). Pooled admission (full-fills-first) stays.
+6. **Batch rail + prompt registry** for vocabulary/satisfies passes (50% off,
+   shadow-replayable); script-shell dedupe; writeLabels N+1.
+7. **Deploy** staging→prod after 1–3 land; re-run gate + parity on staging.
