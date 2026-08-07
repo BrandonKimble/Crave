@@ -624,7 +624,7 @@
     {
       "label": "search dismiss motion plane logs one collapsed boundary owner",
       "file": "apps/mobile/src/screens/Search/runtime/shared/use-search-dismiss-motion-plane-runtime.ts",
-      "pattern": "boundaryCommitSource:\\s*'searchSurfaceMotionPlane'[\\s\\S]*boundaryY:\\s*sample\\.boundaryY[\\s\\S]*collapsedY:\\s*sample\\.collapsedY[\\s\\S]*navReturnProgressSource:\\s*'bottomNavTiming'[\\s\\S]*pageBundleHandoffLatched:\\s*sample\\.pageBundleHandoffLatched[\\s\\S]*sheetMotionSource:\\s*'routeSheetMotionCommandObservedBySearchSurfaceMotionPlane'[\\s\\S]*waitingForPollPageAtBoundary:\\s*sample\\.waitingForPollPageAtBoundary"
+      "pattern": "boundaryCommitSource:\\s*'searchSurfaceMotionPlane'[\\s\\S]*collapsedY:\\s*sample\\.collapsedY[\\s\\S]*navReturnProgressSource:\\s*'bottomNavTiming'[\\s\\S]*pageBundleHandoffLatched:\\s*sample\\.pageBundleHandoffLatched[\\s\\S]*sheetMotionSource:\\s*'routeSheetMotionCommandObservedBySearchSurfaceMotionPlane'[\\s\\S]*waitingForPollPageAtBoundary:\\s*sample\\.waitingForPollPageAtBoundary"
     },
     {
       "label": "dismiss boundary handoff releases visible page after nav policy release",

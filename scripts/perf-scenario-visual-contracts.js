@@ -1122,7 +1122,7 @@ const checkDismissHandoffRuntimeContracts = () => {
       }: ${JSON.stringify({
         boundaryReached: resultHeaderOnlyRiskSample.boundaryReached ?? null,
         dismissProgress: resultHeaderOnlyRiskSample.dismissProgress ?? null,
-        boundaryY: resultHeaderOnlyRiskSample.boundaryY ?? null,
+        collapsedY: resultHeaderOnlyRiskSample.collapsedY ?? null,
         physicalCollapsedSettled: resultHeaderOnlyRiskSample.physicalCollapsedSettled ?? null,
         pollPageReadyForBoundary: resultHeaderOnlyRiskSample.pollPageReadyForBoundary ?? null,
         sheetY: resultHeaderOnlyRiskSample.sheetY ?? null,
@@ -1133,14 +1133,14 @@ const checkDismissHandoffRuntimeContracts = () => {
   }
   const badHandoffGeometrySample = dismissMotionPlaneEvents.find((event) => {
     const sheetY = numeric(event.sheetY);
-    const boundaryY = numeric(event.boundaryY);
+    const collapsedY = numeric(event.collapsedY);
     return (
       event.boundaryReached === true &&
       event.pollPageReleasedForBoundary !== true &&
       event.physicalCollapsedSettled !== true &&
       sheetY != null &&
-      boundaryY != null &&
-      sheetY > boundaryY + 8
+      collapsedY != null &&
+      sheetY > collapsedY + 8
     );
   });
   if (badHandoffGeometrySample) {
@@ -1148,7 +1148,7 @@ const checkDismissHandoffRuntimeContracts = () => {
       `dismiss motion plane boundary happened after the complete-result handoff geometry at line ${
         badHandoffGeometrySample.line
       }: ${JSON.stringify({
-        boundaryY: badHandoffGeometrySample.boundaryY ?? null,
+        collapsedY: badHandoffGeometrySample.collapsedY ?? null,
         physicalCollapsedSettled: badHandoffGeometrySample.physicalCollapsedSettled ?? null,
         pollPageReleasedForBoundary: badHandoffGeometrySample.pollPageReleasedForBoundary ?? null,
         sheetY: badHandoffGeometrySample.sheetY ?? null,
@@ -1169,7 +1169,7 @@ const checkDismissHandoffRuntimeContracts = () => {
       `dismiss motion plane reached handoff without same-sample poll ownership release at line ${
         boundaryWithoutPollReleaseSample.line
       }: ${JSON.stringify({
-        boundaryY: boundaryWithoutPollReleaseSample.boundaryY ?? null,
+        collapsedY: boundaryWithoutPollReleaseSample.collapsedY ?? null,
         physicalCollapsedSettled: boundaryWithoutPollReleaseSample.physicalCollapsedSettled ?? null,
         pollPageReadyForBoundary: boundaryWithoutPollReleaseSample.pollPageReadyForBoundary ?? null,
         pollPageReleasedForBoundary:

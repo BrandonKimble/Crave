@@ -21,21 +21,27 @@ type UseRestaurantRouteEntryRuntimeArgs = {
 };
 
 export type RestaurantRouteEntryRuntime = {
-  panel: RestaurantRoutePanelContract | null;
+  // F7801: after F5000 collapsed the two-armed source union to `data`,
+  // `createRestaurantRoutePanelDraft` always returns an object, so the panel is never
+  // absent — the `| null` here was an unreachable state. Absence is modelled ONCE, as
+  // `data: null` inside the contract (the host's own off-switch operates on the scene
+  // descriptor's spec, not on this panel). Narrowed to non-null so the dead guards die by
+  // compile.
+  panel: RestaurantRoutePanelContract;
   hostConfig: RestaurantRoutePanelHostConfig | null;
 };
 
 // F4507: the retained draft used to carry `onToggleFavorite` as a second identity axis,
 // so a re-minted handler forced a new draft. The handler was dead; the PAYLOAD signature
-// is the whole identity now.
+// is the whole identity now. F7801: the retained slot is initialised lazily (ref === null
+// until the first render); a populated slot always carries both a draft and its signature.
 type RetainedRestaurantRoutePanelDraft = {
-  panelDraft: RestaurantRoutePanelDraft | null;
-  payloadSignature: string | null;
+  panelDraft: RestaurantRoutePanelDraft;
+  payloadSignature: string;
 };
 
-const createPanelDraftPayloadSignature = (
-  panelDraft: RestaurantRoutePanelDraft | null
-): string | null => (panelDraft == null ? null : JSON.stringify(panelDraft.data));
+const createPanelDraftPayloadSignature = (panelDraft: RestaurantRoutePanelDraft): string =>
+  JSON.stringify(panelDraft.data);
 
 const useStableEvent = <TArgs extends readonly unknown[], TResult>(
   handler: (...args: TArgs) => TResult
@@ -53,17 +59,14 @@ export const useRestaurantRouteEntryRuntime = ({
 }: UseRestaurantRouteEntryRuntimeArgs): RestaurantRouteEntryRuntime => {
   const stableRequestClose = useStableEvent(onRequestClose);
   const panelDraft = React.useMemo(() => createRestaurantRoutePanelDraft({ data }), [data]);
-  const retainedPanelDraftRef = React.useRef<RetainedRestaurantRoutePanelDraft>({
-    panelDraft: null,
-    payloadSignature: null,
-  });
+  const retainedPanelDraftRef = React.useRef<RetainedRestaurantRoutePanelDraft | null>(null);
   const nextPayloadSignature = createPanelDraftPayloadSignature(panelDraft);
   const retainedPanelDraft = retainedPanelDraftRef.current;
   const resolvedPanelDraft =
-    retainedPanelDraft.payloadSignature === nextPayloadSignature
+    retainedPanelDraft != null && retainedPanelDraft.payloadSignature === nextPayloadSignature
       ? retainedPanelDraft.panelDraft
       : panelDraft;
-  if (retainedPanelDraft.panelDraft !== resolvedPanelDraft) {
+  if (retainedPanelDraftRef.current?.panelDraft !== resolvedPanelDraft) {
     retainedPanelDraftRef.current = {
       panelDraft: resolvedPanelDraft,
       payloadSignature: nextPayloadSignature,
@@ -72,12 +75,10 @@ export const useRestaurantRouteEntryRuntime = ({
 
   const panel = React.useMemo(
     () =>
-      resolvedPanelDraft == null
-        ? null
-        : createRestaurantRoutePanelContract({
-            ...resolvedPanelDraft,
-            onRequestClose: stableRequestClose,
-          }),
+      createRestaurantRoutePanelContract({
+        ...resolvedPanelDraft,
+        onRequestClose: stableRequestClose,
+      }),
     [resolvedPanelDraft, stableRequestClose]
   );
 

@@ -79,7 +79,12 @@ const resolveSearchDismissVisualBoundaryReached = (
 
 type SearchSurfaceMotionPlaneSample = {
   boundaryReached: boolean;
-  boundaryY: number;
+  // F7702: `boundaryY` used to alias `collapsedY` byte-for-byte (one shared-value read
+  // under two names). The dismiss plane has exactly ONE geometric boundary — the collapsed
+  // Y — and a prior pass removed and BANNED a distinct commit-lead/pre-handoff boundary
+  // (see the maestro pin's negative lookahead on SEARCH_DISMISS_BOUNDARY_COMMIT_LEAD_PT).
+  // The alias made the handoff-geometry check look corroborated by two witnesses that were
+  // one; it now reads `collapsedY` directly.
   collapsedY: number;
   physicalCollapsedSettled: boolean;
   pollPageReadyForBoundary: boolean;
@@ -215,7 +220,6 @@ export const useSearchDismissMotionPlaneRuntime = ({
         authority: 'SearchSurfaceMotionPlaneRuntime',
         boundaryReached: sample.boundaryReached,
         boundaryCommitSource: 'searchSurfaceMotionPlane',
-        boundaryY: sample.boundaryY,
         collapsedY: sample.collapsedY,
         dismissMotionDurationMs: null,
         dismissProgress: sample.progress,
@@ -615,16 +619,39 @@ export const useSearchDismissMotionPlaneRuntime = ({
     ]
   );
 
+  // F7700: register a STABLE observation identity. The live observe callbacks churn on every
+  // render — their deps include the current sheet snap, the snap points, and (transitively,
+  // via markDismissBoundaryReached) the two inline notify arrows the caller passes. This
+  // effect's cleanup clears BOTH the 420ms boundary watchdog and the F1041 1200ms recovery
+  // deadline. When the effect was keyed on callback identity, any mid-dismiss re-render
+  // re-ran it: the cleanup disarmed a LIVE recovery deadline, and re-registration re-invoked
+  // observeDismiss — which hits its idempotent early-return BEFORE the arm calls, so the
+  // timers were destroyed and never re-armed. The deadline the module promises "recovers,
+  // always" could not fire. Reading the live callbacks through a ref and registering a stable
+  // wrapper means re-registration no longer HAPPENS on identity churn: the timers arm on
+  // transaction start and are cleared only on transaction end (commit/supersede) or unmount.
+  const observeDismissMotionRef = React.useRef(observeDismissMotion);
+  observeDismissMotionRef.current = observeDismissMotion;
+  const observeOpenMotionRef = React.useRef(observeOpenMotion);
+  observeOpenMotionRef.current = observeOpenMotion;
+
+  const stableObserveDismiss = React.useCallback<
+    SearchSurfaceMotionPlaneObservationTarget['observeDismiss']
+  >((args) => observeDismissMotionRef.current(args), []);
+  const stableObserveOpen = React.useCallback<
+    SearchSurfaceMotionPlaneObservationTarget['observeOpen']
+  >((args) => observeOpenMotionRef.current(args), []);
+
   React.useLayoutEffect(() => {
     const unregister = getSearchSurfaceRuntime().registerMotionPlaneObservationTarget({
-      observeDismiss: observeDismissMotion,
-      observeOpen: observeOpenMotion,
+      observeDismiss: stableObserveDismiss,
+      observeOpen: stableObserveOpen,
     });
     return () => {
       clearDismissMotionBoundaryTimers();
       unregister();
     };
-  }, [observeDismissMotion, observeOpenMotion]);
+  }, [clearDismissMotionBoundaryTimers, stableObserveDismiss, stableObserveOpen]);
 
   React.useLayoutEffect(() => {
     syncMotionFromSurfaceSnapshot(getSearchSurfaceRuntime().getSnapshot());
@@ -828,7 +855,6 @@ export const useSearchDismissMotionPlaneRuntime = ({
       }
       return {
         boundaryReached,
-        boundaryY: dismissMotionCollapsedY.value,
         collapsedY: dismissMotionCollapsedY.value,
         physicalCollapsedSettled,
         pageBundleHandoffLatched: dismissMotionPageBundleHandoffProgress.value >= 0.5,

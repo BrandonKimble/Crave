@@ -9,7 +9,10 @@ import type {
 } from './restaurantRoutePanelContract';
 
 type UseRestaurantRouteContentSpecRuntimeArgs = {
-  panel: RestaurantRoutePanelContract | null;
+  // F7801: `panel` is non-null now that the entry runtime narrowed it — its absence is
+  // carried inside `panel.data` (nullable), not by a null panel. The off-switch is the
+  // host's own `shouldUseSearchRestaurant` ternary over the scene descriptor's spec.
+  panel: RestaurantRoutePanelContract;
   hostConfig: RestaurantRoutePanelHostConfig | null;
   navBarTop?: number;
   searchBarTop?: number;
@@ -19,8 +22,9 @@ export type RestaurantRouteContentSpecRuntime = {
   spec: OverlayContentSpec<unknown> | null;
   // P3 persistent header: the SAME freeze-retained data + handlers the (now header-less) spec is
   // built from, exposed so RestaurantRouteSceneInputHost can publish the winning entry's header
-  // inputs to the restaurant-header-live-state store for the hoisted persistent header.
-  headerState: RestaurantHeaderLiveState | null;
+  // inputs to the restaurant-header-live-state store for the hoisted persistent header. F7801:
+  // always present — the host nulls it for the off state via `shouldUseSearchRestaurant`.
+  headerState: RestaurantHeaderLiveState;
 };
 
 export const useRestaurantRouteContentSpecRuntime = ({
@@ -29,8 +33,8 @@ export const useRestaurantRouteContentSpecRuntime = ({
   navBarTop = 0,
   searchBarTop = 0,
 }: UseRestaurantRouteContentSpecRuntimeArgs): RestaurantRouteContentSpecRuntime => {
-  const visibleDataRef = React.useRef(panel?.data ?? null);
-  const incomingRestaurantId = panel?.data?.restaurant.restaurantId ?? null;
+  const visibleDataRef = React.useRef(panel.data);
+  const incomingRestaurantId = panel.data?.restaurant.restaurantId ?? null;
   const visibleRestaurantId = visibleDataRef.current?.restaurant.restaurantId ?? null;
 
   if (
@@ -38,29 +42,26 @@ export const useRestaurantRouteContentSpecRuntime = ({
     visibleDataRef.current == null ||
     (incomingRestaurantId != null && incomingRestaurantId !== visibleRestaurantId)
   ) {
-    visibleDataRef.current = panel?.data ?? null;
+    visibleDataRef.current = panel.data;
   }
 
   const restaurantData = hostConfig?.shouldFreezeContent
-    ? (visibleDataRef.current ?? panel?.data ?? null)
-    : (panel?.data ?? null);
+    ? (visibleDataRef.current ?? panel.data)
+    : panel.data;
   const spec = useRestaurantPanelSpec({
     data: restaurantData,
-    onDismiss: panel?.onRequestClose ?? (() => undefined),
+    onDismiss: panel.onRequestClose,
     navBarTop,
     searchBarTop,
     interactionEnabled: hostConfig?.interactionEnabled,
     containerStyle: hostConfig?.containerStyle,
   });
 
-  const headerState = React.useMemo<RestaurantHeaderLiveState | null>(
-    () =>
-      panel == null
-        ? null
-        : {
-            data: restaurantData,
-            onRequestClose: panel.onRequestClose,
-          },
+  const headerState = React.useMemo<RestaurantHeaderLiveState>(
+    () => ({
+      data: restaurantData,
+      onRequestClose: panel.onRequestClose,
+    }),
     [panel, restaurantData]
   );
 
