@@ -2613,3 +2613,45 @@ F4507's ten-contract dead-handler chain deleted as ONE typechecking commit with 
 seventeen identity assertions. F5000 filed OPEN rather than deleted-on-a-grep: a route
 lane that can be closed but never opened needs its three opener surfaces READ first —
 the F4939 lesson applied forward.
+
+---
+
+## D93 — P2 verdicts on the runtime/shared survivors pass (F5300–F5307, 2026-08-06)
+
+**F5300 — APPROVED, and it refines the census's own definition.** Three files, 204 lines,
+zero transformation — bucketed GENUINE because each calls a hook, but D70's bedrock says
+isolation is bought by a SUBSCRIPTION boundary, and React re-runs these on every parent
+render exactly as if inlined. Calling a hook is not a boundary; subscribing is. Inline all
+three into the consumer that already destructures the result apart. The stated mutation is
+accepted: a layer that transforms nothing cannot lose a behaviour.
+
+**F5302 — APPROVED FOR IMMEDIATE LANDING, the reusable one.** `void <identifier>;` at
+eight sites — the author has ALREADY asserted the arg is unread, so a regex rule cannot
+false-accuse (the property that made D88 stop the general scanner is absent by
+construction here). Ship the lint rule in the one-block law, clean the eight sites, and
+the worst case (a value threaded four hops so one hop can discard it) dies with F5300's
+plumbing. F4601's type-aware scanner remains owed for the general case; this subclass
+does not wait for it.
+
+**F5301 — APPROVED.** Two stacked permanently-cold memos off a fresh-every-render
+rest-destructure; the F1610 comment defends the field list while the memoization it rides
+is inert. The census ran territory-wide: exactly ONE instance — bounded, fix it, and the
+identity assertion is the proof (no type-level form exists, per D92's finding).
+
+**F5303/F5304/F5305/F5306 — APPROVED.** The re-packing memo dies; the widened port
+narrows to its sink (F5304 is filed correctly as a port-width defect, not a dead branch —
+see F5307); the fourth constant-emitting instrument computes or dies (F2901's rule); and
+the one accessor leaking a live handle joins its four cloning siblings — prefer typing
+the frozen region readonly so the leak is unwritable, clone only if the type change
+cascades unreasonably (say which).
+
+**F5307 — ACCEPTED, and this is now the expected shape.** Two of the lane's own hypotheses
+refuted by reading, RECORDED rather than dropped: the profile record layer is genuinely
+one-owner (a named accessor for every outside reader), and `state !== undefined` is
+satisfiable by type — dead only by caller census. Both live in the ledger so the next
+reader inherits the refutation, not the hunch.
+
+**The viewport-bounds clean bill is flagged as a second exhibit** alongside D89's
+overlay-relay family: the legacy write path is not deprecated but IMPLEMENTED — a
+defineProperty setter routes it into the new one, so the two paths are the same code and
+cannot diverge. Unrepresentability for six lines.
