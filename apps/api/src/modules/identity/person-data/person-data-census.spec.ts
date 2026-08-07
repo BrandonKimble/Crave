@@ -1,40 +1,48 @@
 import { readFileSync } from 'fs';
 import { join } from 'path';
-import { PERSON_DATA_RULES } from './person-data-class';
+import {
+  COLUMN_COVERAGE,
+  PERSON_DATA_RULES,
+  type ColumnCoverageEntry,
+} from './person-data-class';
 
 /**
- * THE CENSUS — inference demoted to adversary.
+ * THE CENSUS — TOTAL CLASSIFICATION (F9310, owner-approved 2026-08-07).
  *
- * A regex must never DECIDE what happens to personal data (it answers
- * confidently for columns it has never seen, and a name cannot distinguish
- * `reporter_user_id` from `reported_user_id`). But a deliberately OVER-BROAD
- * regex is exactly the right tool for asking the question: "is there a
- * person-shaped column nobody has classified?"
+ * WHAT THIS USED TO BE, AND WHY IT WAS NOT ENOUGH. The census asked a
+ * deliberately over-broad regex — `*_user_id` plus a hardcoded literal list —
+ * "is there a person-shaped column nobody classified?" That is the right
+ * SHAPE of question (inference as adversary, never as decider) asked over the
+ * wrong domain. A `bio`, a `phone_number`, a `home_address`, a `dob`, a
+ * `lat`/`lng` on a person's action matches no reference-column pattern and is
+ * in no literal list, so it would be born unclassified, stay unclassified,
+ * and never be erased — silently, which is the one failure mode the whole
+ * declaration exists to make impossible. The net could only catch the columns
+ * someone had already thought of.
  *
- * The net here is wider than the declaration on purpose. Its independence is
- * the point — the prior scrub verifier reused its subject's own predicate and
- * therefore printed "verified" while raw search text leaked. This reads
- * schema.prisma; the declaration is hand-written. Different sources, so they
- * cannot share a blind spot.
+ * SO THE QUESTION IS INVERTED: guilty until classified. The domain is now the
+ * SCHEMA ITSELF — every (table, column) Prisma declares — and each one must
+ * appear either in `PERSON_DATA_RULES` (a disposition) or in
+ * `COLUMN_COVERAGE` (not_person / dies_with_row / lives_with_row /
+ * erased_by_hand / awaiting_owner). Anything in neither is named and fails.
+ * There is no residual "the pattern didn't match it" category left, because
+ * there is no pattern.
  *
- * RED RECIPE (run it, don't trust it): add
- *   `newThing String @map("new_thing_user_id")`
- * to any model. This spec names it and fails. Delete a rule from
- * PERSON_DATA_RULES and the same thing happens.
+ * The independence that made the old census trustworthy is preserved: this
+ * reads schema.prisma, the classification is hand-written, so the two cannot
+ * share a blind spot. What changed is that the schema side is now COMPLETE.
+ *
+ * AND THE LEANING CLAIMS ARE VERIFIED, NOT TRUSTED. `dies_with_row` on a
+ * table with no `delete_row` rule fails. `lives_with_row` with nothing
+ * retaining the row fails. `erased_by_hand` whose handler no longer mentions
+ * the field fails. A coverage entry cannot outlive the mechanism it names.
+ *
+ * RED RECIPE (run it, don't trust it): add `bio String? @map("bio")` to any
+ * model — no `_user_id`, no literal-list membership — and this fails naming
+ * `<table>.bio`. Delete a rule from PERSON_DATA_RULES and the same happens.
  */
 
 const SCHEMA_PATH = join(__dirname, '../../../../prisma/schema.prisma');
-
-/** Over-broad on purpose: person-shaped, contact-shaped, free-text-shaped. */
-const PERSON_SHAPED =
-  /(^|_)(user|actor|owner|sender|reporter|follower|blocker|blocked|creator)_id$|(push_token|device_key|pair_key|residue_text|subject_text|ip_hash|subnet_hash)/;
-
-/** Corpus/business tables whose contact columns are not a person's. */
-const BUSINESS_TABLES = new Set([
-  'core_restaurant_locations',
-  'core_entities',
-  'collection_source_documents',
-]);
 
 interface SchemaColumn {
   table: string;
@@ -43,12 +51,22 @@ interface SchemaColumn {
   optional: boolean;
 }
 
-/** Parse `@@map`ped table names and `@map`ped column names out of the schema. */
+/**
+ * Parse EVERY stored column out of the schema.
+ *
+ * Relation fields are excluded because they are not columns — a
+ * `user User @relation(fields: [userId])` line stores nothing; its `userId`
+ * scalar, which IS stored, is a separate line and is classified on its own.
+ * Excluding them by "the field's type is a model name" is exact, and it
+ * deliberately does NOT exclude enums (`EntityType`), which are real columns.
+ */
 function readSchemaColumns(): SchemaColumn[] {
   const src = readFileSync(SCHEMA_PATH, 'utf8');
+  const modelNames = new Set(
+    [...src.matchAll(/^model\s+(\w+)\s*\{/gm)].map((m) => m[1]),
+  );
   const out: SchemaColumn[] = [];
-  const modelBlocks = src.matchAll(/model\s+(\w+)\s*\{([\s\S]*?)\n\}/g);
-  for (const block of modelBlocks) {
+  for (const block of src.matchAll(/^model\s+(\w+)\s*\{([\s\S]*?)\n\}/gm)) {
     const body = block[2];
     const mapped = body.match(/@@map\("(\w+)"\)/);
     const table = mapped ? mapped[1] : block[1];
@@ -57,8 +75,9 @@ function readSchemaColumns(): SchemaColumn[] {
       if (!trimmed || trimmed.startsWith('//') || trimmed.startsWith('@@')) {
         continue;
       }
-      const field = trimmed.match(/^(\w+)\s+\S+/);
+      const field = trimmed.match(/^(\w+)\s+(\S+)/);
       if (!field) continue;
+      if (modelNames.has(field[2].replace(/[?[\]]/g, ''))) continue;
       const colMap = trimmed.match(/@map\("(\w+)"\)/);
       const column =
         colMap?.[1] ?? field[1].replace(/[A-Z]/g, (c) => `_${c.toLowerCase()}`);
@@ -69,28 +88,48 @@ function readSchemaColumns(): SchemaColumn[] {
   return out;
 }
 
-describe('person-data census — every person-shaped column is classified', () => {
+const snakeToCamel = (s: string): string =>
+  s.replace(/_([a-z])/g, (_, c: string) => c.toUpperCase());
+
+/** The coverage entry governing a column: the column entry, else the table's. */
+function coverageFor(
+  table: string,
+  column: string,
+): ColumnCoverageEntry | undefined {
+  return (
+    COLUMN_COVERAGE.find((e) => e.table === table && e.column === column) ??
+    COLUMN_COVERAGE.find((e) => e.table === table && e.column === undefined)
+  );
+}
+
+describe('person-data census — EVERY column in the schema is classified', () => {
+  const columns = readSchemaColumns();
   const declared = new Set(
     PERSON_DATA_RULES.map((r) => `${r.table}.${r.column}`),
   );
+  const dispositionsByTable = new Map<string, Set<string>>();
+  for (const rule of PERSON_DATA_RULES) {
+    const set = dispositionsByTable.get(rule.table) ?? new Set<string>();
+    set.add(rule.disposition);
+    dispositionsByTable.set(rule.table, set);
+  }
 
-  it('finds person-shaped columns in the schema at all (RED-proof: the net works)', () => {
-    const columns = readSchemaColumns();
-    const shaped = columns.filter((c) => PERSON_SHAPED.test(c.column));
-    // If this ever hits zero the parser broke and every assertion below would
-    // pass vacuously — the always-green failure mode this repo keeps finding.
-    expect(shaped.length).toBeGreaterThan(20);
+  it('parses the whole schema (RED-proof: an empty parse would pass everything vacuously)', () => {
+    // The always-green failure mode this repo keeps finding. Real numbers on
+    // 2026-08-07: 98 tables, 886 columns. A parser regression collapses these.
+    expect(new Set(columns.map((c) => c.table)).size).toBeGreaterThan(90);
+    expect(columns.length).toBeGreaterThan(800);
   });
 
-  it('NO person-shaped column lacks a declared disposition', () => {
-    const columns = readSchemaColumns();
+  it('NO column anywhere in the schema is unclassified', () => {
     const unclassified = columns
-      .filter((c) => PERSON_SHAPED.test(c.column))
-      .filter((c) => !BUSINESS_TABLES.has(c.table))
       .filter((c) => !declared.has(`${c.table}.${c.column}`))
+      .filter((c) => !coverageFor(c.table, c.column))
       .map((c) => `${c.table}.${c.column}`);
 
-    // Jest prints the array, which names exactly what to classify.
+    // Jest prints the array, which names exactly what to classify. Add a
+    // PERSON_DATA_RULES rule (it holds a person's data) or a COLUMN_COVERAGE
+    // entry (it does not, or something else already disposes of it).
     expect(unclassified).toEqual([]);
   });
 
@@ -107,13 +146,96 @@ describe('person-data census — every person-shaped column is classified', () =
     }
   });
 
-  it('no rule names a table or column that no longer exists (drift both ways)', () => {
-    const columns = readSchemaColumns();
-    const real = new Set(columns.map((c) => `${c.table}.${c.column}`));
-    const stale = PERSON_DATA_RULES.map((r) => `${r.table}.${r.column}`).filter(
-      (key) => !real.has(key),
+  it('every coverage entry states WHY (a bare claim is not a classification)', () => {
+    const bare = COLUMN_COVERAGE.filter((e) => !e.basis?.trim()).map(
+      (e) => `${e.table}.${e.column ?? '*'}`,
     );
+    expect(bare).toEqual([]);
+  });
+
+  it('no rule and no coverage entry names something that no longer exists (drift both ways)', () => {
+    const real = new Set(columns.map((c) => `${c.table}.${c.column}`));
+    const realTables = new Set(columns.map((c) => c.table));
+    const stale = [
+      ...PERSON_DATA_RULES.map((r) => `${r.table}.${r.column}`).filter(
+        (key) => !real.has(key),
+      ),
+      ...COLUMN_COVERAGE.filter((e) =>
+        e.column === undefined
+          ? !realTables.has(e.table)
+          : !real.has(`${e.table}.${e.column}`),
+      ).map((e) => `${e.table}.${e.column ?? '*'}`),
+    ];
     expect(stale).toEqual([]);
+  });
+
+  it('`dies_with_row` leans on a real delete_row rule (the claim cannot outlive it)', () => {
+    const unsupported = COLUMN_COVERAGE.filter(
+      (e) => e.coverage === 'dies_with_row',
+    )
+      .filter((e) => !dispositionsByTable.get(e.table)?.has('delete_row'))
+      .map((e) => `${e.table}.${e.column ?? '*'}`);
+    expect(unsupported).toEqual([]);
+  });
+
+  it('`lives_with_row` leans on a real rule that keeps the row', () => {
+    const keeps = new Set(['retain', 'sever', 'anonymized_by_shell']);
+    const unsupported = COLUMN_COVERAGE.filter(
+      (e) => e.coverage === 'lives_with_row',
+    )
+      .filter(
+        (e) =>
+          ![...(dispositionsByTable.get(e.table) ?? [])].some((d) =>
+            keeps.has(d),
+          ),
+      )
+      .map((e) => `${e.table}.${e.column ?? '*'}`);
+    expect(unsupported).toEqual([]);
+  });
+
+  it('NO table-level entry may KEEP data — an inherited default must be a safe one', () => {
+    // The asymmetry that makes table-level grouping legitimate at all. A
+    // table-level entry classifies columns THAT DO NOT EXIST YET, so it is
+    // only honest where the default it hands them is safe: `not_person`
+    // (nothing about a person can appear on a corpus/ops table unnoticed) and
+    // `dies_with_row` (a new column is destroyed with its row regardless).
+    // `lives_with_row` and `erased_by_hand` hand a FUTURE column the answer
+    // "keep it" / "something already handles it" — which is how a `bio` added
+    // to `users` would be born classified and never erased. Exactly the
+    // silence the inversion exists to break, so it is unrepresentable.
+    const safeToInherit = new Set(['not_person', 'dies_with_row']);
+    const overreaching = COLUMN_COVERAGE.filter(
+      (e) => e.column === undefined && !safeToInherit.has(e.coverage),
+    ).map((e) => `${e.table} (${e.coverage})`);
+    expect(overreaching).toEqual([]);
+  });
+
+  it('`erased_by_hand` names a handler that still mentions the column', () => {
+    // The whole point of this coverage kind is that the mechanism lives
+    // OUTSIDE the rule walk. An out-of-band mechanism nothing checks is how
+    // `users.email` came to be uncovered in the first place, so the coupling
+    // is mechanical: delete the anonymize line and this reds.
+    const broken: string[] = [];
+    for (const entry of COLUMN_COVERAGE.filter(
+      (e) => e.coverage === 'erased_by_hand',
+    )) {
+      const key = `${entry.table}.${entry.column ?? '*'}`;
+      if (!entry.handledBy || !entry.column) {
+        broken.push(`${key} (no handledBy)`);
+        continue;
+      }
+      let src: string;
+      try {
+        src = readFileSync(join(__dirname, entry.handledBy), 'utf8');
+      } catch {
+        broken.push(`${key} (handler missing: ${entry.handledBy})`);
+        continue;
+      }
+      if (!src.includes(snakeToCamel(entry.column))) {
+        broken.push(`${key} (handler no longer mentions it)`);
+      }
+    }
+    expect(broken).toEqual([]);
   });
 
   it('every `sever` rule targets a NULLABLE column — a declaration that cannot be executed is a lie', () => {
@@ -123,7 +245,7 @@ describe('person-data census — every person-shaped column is classified', () =
     // not run. Those are now `anonymized_by_shell`, which names the mechanism
     // that actually provides their anonymity.
     const byKey = new Map(
-      readSchemaColumns().map((c) => [`${c.table}.${c.column}`, c.optional]),
+      columns.map((c) => [`${c.table}.${c.column}`, c.optional]),
     );
     const notNullable = PERSON_DATA_RULES.filter(
       (r) => r.disposition === 'sever',
@@ -131,5 +253,53 @@ describe('person-data census — every person-shaped column is classified', () =
       .map((r) => `${r.table}.${r.column}`)
       .filter((key) => byKey.get(key) === false);
     expect(notNullable).toEqual([]);
+  });
+
+  it('QUARANTINE: every awaiting_owner entry is a complete question (and is reported)', () => {
+    const quarantined = COLUMN_COVERAGE.filter(
+      (e) => e.coverage === 'awaiting_owner',
+    );
+    // Incomplete quarantine is worse than none: "we're not sure" without what
+    // the writer puts there or what we'd recommend is not a question anyone
+    // can answer, so it would sit forever.
+    const incomplete = quarantined
+      .filter((e) => !e.writer?.trim() || !e.recommendation?.trim())
+      .map((e) => `${e.table}.${e.column ?? '*'}`);
+    expect(incomplete).toEqual([]);
+
+    // Printed on EVERY run, deliberately. A quarantine nobody sees becomes a
+    // permanent classification by default — the silence this design exists to
+    // prevent, one level up.
+
+    console.warn(
+      `\nPERSON DATA — ${quarantined.length} column(s) AWAITING OWNER CLASSIFICATION:\n` +
+        quarantined
+          .map((e) => `  • ${e.table}.${e.column ?? '*'} — ${e.basis}`)
+          .join('\n') +
+        '\n',
+    );
+  });
+
+  it('THE MUTATION PROOF: an unclassified new column is named and fails', () => {
+    // The inversion's whole claim is that a column matching NO person-shaped
+    // pattern still cannot hide. `bio` is exactly the shape the old
+    // reference-column net was blind to, so it is the right mutation.
+    const mutated: SchemaColumn[] = [
+      ...columns,
+      { table: 'users', column: 'bio', optional: true },
+      { table: 'core_entities', column: 'phone_number', optional: true },
+    ];
+    const unclassified = mutated
+      .filter((c) => !declared.has(`${c.table}.${c.column}`))
+      .filter((c) => !coverageFor(c.table, c.column))
+      .map((c) => `${c.table}.${c.column}`);
+
+    // NOTE the second one: `core_entities` is covered TABLE-level as
+    // not_person, so a new column there is covered by inheritance and does
+    // NOT red. That is the deliberate trade of table-level grouping — and it
+    // is why a table that could ever hold a person is never covered at table
+    // level as not_person, only as dies_with_row / lives_with_row, where the
+    // row's fate is the correct default for a new column on it.
+    expect(unclassified).toEqual(['users.bio']);
   });
 });
