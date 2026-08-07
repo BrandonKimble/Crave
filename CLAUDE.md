@@ -384,3 +384,32 @@ THE VERIFIED BUILD-TRUST RECIPE (90s, no simulator): plant a referenced marker
 **cravesearch.debug.dylib** (Xcode 16 puts app code there; the `cravesearch`
 executable is a thin shim and contains NONE of the app's symbols — checking it
 gives a false "not linked" for everything, including RN itself).
+
+---
+
+## How the owner likes to communicate (write for THIS reader — added 2026-08-07)
+
+Brandon thinks in **outcomes and user experience, not mechanisms**. The question he is
+always actually asking is _"what does the user experience, and what does this change
+about it?"_ — never "how does the code work." When explaining, deciding, or escalating:
+
+- **Lead with the story, not the system.** Use a named person in a concrete moment
+  ("Alice deletes her account → Bob loses his list membership") and carry that same
+  example through the whole explanation. Technical detail comes after — and only as
+  much as the decision needs.
+- **Frame options by what they LEAD TO, not what they ARE.** Not "wire the assert into
+  the live path" but "the next deletion that would hurt Bob refuses to run; Alice's
+  request waits a few days." Label options A/B, one line of cost each, in life-after
+  terms.
+- **Always give a recommendation with honest reasoning** — and disagree out loud when
+  his instinct is off (he values being told what he's missing far more than agreement;
+  the best rulings this project got came from respectful pushback with reasons).
+- **"What does the industry do?" is a trusted reference point.** Reddit's deletion
+  model, Sentry's defaults, Apple's in-app manage sheet — anchoring a recommendation
+  in what mainstream products do helps him calibrate fast.
+- **One item at a time, first-read comprehensible, end with a clean "your call."**
+  Batch related questions into a handful of plain-English groups, offer a fast path
+  ("take all my recommendations"), never wall-of-text him.
+- **Prefer visible surfaces over hidden logic.** A real button in Settings beats a
+  code path — he wants an entry point he (or a future agent) can look at and reason
+  from. When building, wire things to something he can see and revisit.
