@@ -1,6 +1,7 @@
 import React from 'react';
 
 import { normalizePriceLevels } from '../../../../store/searchStore';
+import { areNumberArraysEqual } from './search-desired-state-contract';
 import { writeSearchDesiredTuple } from './search-desired-state-writer';
 import type { SearchRuntimeBus } from './search-runtime-bus';
 import { useSearchRuntimeBusSelector } from './use-search-runtime-bus-selector';
@@ -10,6 +11,27 @@ import { useSearchRuntimeBusSelector } from './use-search-runtime-bus-selector';
 // persistence via search-runtime-filter-state-store-bridge.ts — never write it from here.
 // `includeSimilarActive` is deliberately session-scoped (bus-only, NOT mirrored/persisted):
 // it resets to false on a new search submit and on bus reset.
+export type SearchFilterRuntimeState = {
+  openNow: boolean;
+  priceLevels: readonly number[];
+  includeSimilarActive: boolean;
+  risingActive: boolean;
+};
+
+/** F6409(c): priceLevels is an ARRAY — it must compare by VALUE. The tuple writer
+ *  can hand back a fresh array on an unrelated filter write (e.g. toggling openNow),
+ *  so a reference `===` re-renders every filter consumer on any filter change. This
+ *  is the ONE equality for the filter selector; the array-by-value rule is here, not
+ *  a thing each future field has to remember. */
+export const areSearchFilterRuntimeStatesEqual = (
+  left: SearchFilterRuntimeState,
+  right: SearchFilterRuntimeState
+): boolean =>
+  left.openNow === right.openNow &&
+  areNumberArraysEqual(left.priceLevels, right.priceLevels) &&
+  left.includeSimilarActive === right.includeSimilarActive &&
+  left.risingActive === right.risingActive;
+
 export const useSearchFilterStateRuntime = (searchRuntimeBus: SearchRuntimeBus) => {
   // S4e: filter reads come straight off the desired tuple (the legacy projection keys
   // left the bus). Output field names unchanged — consumers are agnostic.
@@ -21,11 +43,7 @@ export const useSearchFilterStateRuntime = (searchRuntimeBus: SearchRuntimeBus) 
       includeSimilarActive: state.desiredTuple.filterVariant.includeSimilar,
       risingActive: state.desiredTuple.filterVariant.rising,
     }),
-    (left, right) =>
-      left.openNow === right.openNow &&
-      left.priceLevels === right.priceLevels &&
-      left.includeSimilarActive === right.includeSimilarActive &&
-      left.risingActive === right.risingActive,
+    areSearchFilterRuntimeStatesEqual,
     ['desiredTuple'] as const,
     'search_filter_state_runtime'
   );

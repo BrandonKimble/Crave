@@ -32,6 +32,10 @@
 set -euo pipefail
 
 if [[ -z "${LANE_PATHS:-}" ]]; then
+  # F6621: say so, so a lane's transcript can never mistake an unguarded commit
+  # (LANE_PATHS forgotten) for a fence that ran and passed. A bare green tick was
+  # indistinguishable from a real subset-check.
+  echo "lane-pathspec: SKIPPED (LANE_PATHS unset — fence not armed for this commit)"
   exit 0
 fi
 

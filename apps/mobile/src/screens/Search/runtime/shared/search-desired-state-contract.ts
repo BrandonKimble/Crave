@@ -174,7 +174,7 @@ export const IDLE_SEARCH_DESIRED_TUPLE: SearchDesiredTuple = {
   tab: 'restaurants',
 };
 
-const areNumberArraysEqual = (a: readonly number[], b: readonly number[]): boolean =>
+export const areNumberArraysEqual = (a: readonly number[], b: readonly number[]): boolean =>
   a.length === b.length && a.every((value, index) => value === b[index]);
 
 /** Dietary walls are a SET — order never distinguishes two lenses. */
