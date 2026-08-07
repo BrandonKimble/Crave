@@ -56,8 +56,6 @@ export const useSearchRootProfilePresentationRuntime = ({
     setIsSearchFocused: rootPrimitivesRuntime.searchState.setIsSearchFocused,
     setIsSuggestionPanelActive: rootPrimitivesRuntime.searchState.setIsSuggestionPanelActive,
     setSuggestions: rootPrimitivesRuntime.searchState.setSuggestions,
-    shouldLogPerf:
-      rootOverlayFoundationRuntime.rootInstrumentationRuntime.shouldLogSearchStateChanges,
   });
 
   return React.useMemo(

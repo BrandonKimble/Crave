@@ -13,11 +13,7 @@ import {
   resolveHeaderSwap,
   useTransitionLanePlayer,
 } from '../navigation/runtime/transition-engine/transition-lane-player';
-import type { ContentMode } from '../navigation/runtime/transition-engine/transition-descriptor-contract';
-import {
-  deriveHostTokenDescriptor,
-  HOST_TOKEN_CONTENT_MODE,
-} from '../navigation/runtime/transition-engine/host-token-transition-adapter';
+import { deriveHostTokenDescriptor } from '../navigation/runtime/transition-engine/host-token-transition-adapter';
 import {
   amendTransitionTxnJoinInputs,
   getLiveTransitionTxn,
@@ -93,9 +89,8 @@ const PERSISTENT_ROUTE_SCENE_STACK_KEYS: readonly OverlayKey[] = APP_ROUTE_SCENE
 //     INSTANT swap, NEVER fades → the cutouts always reveal the constant frosted-map.
 //   • WHITE PLATE (background, with cutouts) → resolveHeaderSwap too: HARD swap, stays opaque (no
 //     map leak in the solid areas).
-//   • BODY region → resolveContentLaneOpacities(progress, paintAck, mode): the ONLY thing that
-//     cross-dissolves, over the constant frost, per ContentMode (hard = paint-ack-gated immediate
-//     swap; held-dissolve = hold outgoing opaque then dissolve).
+//   • BODY region → resolveContentLaneOpacities(paintAck): the ONLY thing that swaps over the
+//     constant frost — a paint-ack-gated immediate swap (all ContentModes are degenerate hard now).
 // Every scene is still a co-mounted absolute-fill sibling toggled by role; the player's outputs are a
 // {outgoing, incoming} opacity PAIR, and each leg picks its component by its role (below).
 // SHEET-Y is NOT in the player this phase — translateY stays with the kept spring runtime (no
@@ -155,14 +150,11 @@ type SceneStackTransitionDisplayValue = {
   // The UI-thread swap lane (above). Read by every leg's opacity worklets; written only by the
   // host (sync PF subscription + commit reconcile).
   liveSwapRoles: SharedValue<SceneStackLiveSwapRoles | null>;
-  // The content mode of the in-flight transition (derived from the incoming scene). Drives the
-  // BODY-region dissolve; the header/plate always instant-swap regardless of mode.
-  contentMode: ContentMode;
   // NOTE (2026-07-02 zero-JS-switch): the volatile role fields (effectiveIncoming/effectiveOutgoing/
   // isTransitioning) NO LONGER live on this context — they re-minted the whole value every switch,
   // re-rendering all 7 legs. Each leg now receives its role via a `legRole` PROP computed in the
   // surface host's render body (synchronous-in-render, Commit-A). This context is the STABLE PORTS
-  // set (player/SV/contentMode/callbacks) whose identity survives a switch, so idle legs never
+  // set (player/SV/callbacks) whose identity survives a switch, so idle legs never
   // re-render from it. See computeLegRole + the .map below.
   // Paint-ack producer sink: the incoming body's first onLayout reports here. The host honors it
   // ONLY for the incoming scene of the live transition, so an idle/outgoing leg's
@@ -633,8 +625,8 @@ const SceneStackBodyFrameHost = React.memo(
     const isSearchLeg = sceneKey === 'search';
     // ── The four-lane split (Phase 2). The player owns ONE progress + ONE paintAck. Per leg, we
     // pick our component of the {outgoing, incoming} opacity pair by this leg's role (pickLegOpacity).
-    //   • BODY dissolve = resolveContentLaneOpacities(progress, paintAck, mode) — the body cross-
-    //     dissolves (held) or hard-swaps (hard, paint-ack-gated) over the constant frost.
+    //   • BODY dissolve = resolveContentLaneOpacities(paintAck) — the body hard-swaps
+    //     (paint-ack-gated) over the constant frost.
     //   • CHROME swap   = resolveHeaderSwap(paintAck) — header + plate + underlay + overlay INSTANT-
     //     swap on the paint-ack (never fade) → cutouts always show the frosted-map; plate stays opaque.
     // No transition in flight (or no player): the lone non-idle leg shows fully; idle hides.
@@ -1435,12 +1427,6 @@ const ActiveSceneStackSurfaceHost = React.memo(
     // every switch (the old deps) re-minted the ports context and re-rendered every leg. Recompute
     // the raw mode each render (cheap, pure), but only change the returned OBJECT identity when the
     // serialized mode actually changes — so a nav switch (always 'hard') keeps a stable identity.
-    // F906: this was a `useRef` + `JSON.stringify(rawContentMode)` memo key whose ENTIRE
-    // job was to keep a freshly-allocated `{ mode: 'hard' }` from re-minting the ports
-    // context and re-rendering every leg on each switch. The mode never varied — the
-    // per-scene table it came from resolved HARD for every row — so the stable identity
-    // is now simply the module constant, and the identity dance is deleted.
-    const inFlightContentMode = HOST_TOKEN_CONTENT_MODE;
     // Paint-ack producer SINK. The incoming body's first onLayout calls this; honor it ONLY for the
     // live transition's incoming scene (gate on identity), so an idle/outgoing re-layout — or a
     // stale leg — can never flip the gate; the txn's 'revealed' edge reveals the content.
@@ -1684,19 +1670,11 @@ const ActiveSceneStackSurfaceHost = React.memo(
       () => ({
         player,
         liveSwapRoles,
-        contentMode: inFlightContentMode,
         reportScenePaint,
         recordScenePainted,
         recordSceneBodyAttached,
       }),
-      [
-        player,
-        liveSwapRoles,
-        inFlightContentMode,
-        reportScenePaint,
-        recordScenePainted,
-        recordSceneBodyAttached,
-      ]
+      [player, liveSwapRoles, reportScenePaint, recordScenePainted, recordSceneBodyAttached]
     );
     const surfaceHost = (
       <SceneStackTransitionDisplayContext.Provider value={transitionDisplayValue}>

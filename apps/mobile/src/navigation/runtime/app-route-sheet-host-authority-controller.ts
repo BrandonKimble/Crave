@@ -147,10 +147,6 @@ type AppRouteSheetHostResolvedSurfaceInput = {
   contentTransitionToken: number | null;
   initialSheetY: number;
   isDockedLane: boolean;
-  // True during a forward-open's PRE-PUBLISH hold (the target shell hasn't landed yet, so the
-  // visible feed is held as the outgoing). A programmatic snap recorded in this window is the
-  // transient INSTANT-COVER snap mis-attributed to the held scene — it must NOT persist.
-  isForwardOpenHold: boolean;
   isRenderable: boolean;
   overlayRouteScope: SearchRouteOverlayRouteScope;
   overlaySheetPolicy: ReturnType<
@@ -591,7 +587,7 @@ class AppRouteSheetHostAuthorityController {
     this.surfaceSnapshot = this.createSurfaceSnapshot();
     this.unsubscribers.push(
       input.routeSceneFrameAuthority.subscribe(() => {
-        this.recomputeAll(true, 'routeSceneFrameAuthority');
+        this.recomputeAll(true);
       }),
       input.routeOverlayNavigationAuthority.subscribeTarget({
         selector: (snapshot): SheetHostNavigationSelectorSnapshot => ({
@@ -600,7 +596,7 @@ class AppRouteSheetHostAuthorityController {
           rootOverlayKey: snapshot.rootOverlayKey,
         }),
         syncNavigationSnapshot: () => {
-          this.recomputeAll(true, 'routeOverlayNavigationAuthority');
+          this.recomputeAll(true);
         },
         isEqual: areSheetHostNavigationSelectorSnapshotsEqual,
         attributionLabel: 'AppRouteSheetHostNavigation',
@@ -615,7 +611,7 @@ class AppRouteSheetHostAuthorityController {
         attributionLabel: 'AppRouteSheetHostSheetPolicy',
       }),
       input.routeSceneSwitchAuthority.subscribe(() => {
-        this.recomputeAll(true, 'routeSceneSwitchAuthority');
+        this.recomputeAll(true);
       }, 'AppRouteSheetHostRouteSwitch'),
       // RE-MINT cadence only (§9.1 R1): a frame minted BY a switch is always followed by the
       // scene-authorities dispatch (the routeSceneSwitchAuthority listener above) with the
@@ -632,20 +628,20 @@ class AppRouteSheetHostAuthorityController {
           frame.switchId === this.lastConsumedPresentationFrame.switchId &&
           frame.revision !== this.lastConsumedPresentationFrame.revision
         ) {
-          this.recomputeAll(true, 'presentationFrame:remint');
+          this.recomputeAll(true);
         }
       }),
       getSearchSurfaceRuntime().subscribeSelector(
         selectSearchSurfaceVisualPolicy,
         () => {
-          this.recomputeAll(true, 'searchSurfaceRuntime');
+          this.recomputeAll(true);
         },
         areSearchSurfaceVisualPoliciesEqual
       ),
       getSearchSurfaceRuntime().subscribeSelector(
         selectSheetHostSearchSurfaceRuntimeReseedSnapshot,
         () => {
-          this.recomputeRuntimeReseed(true, 'searchSurfaceRuntime:runtimeReseed');
+          this.recomputeRuntimeReseed(true);
         },
         areSheetHostSearchSurfaceRuntimeReseedSnapshotsEqual
       )
@@ -964,7 +960,6 @@ class AppRouteSheetHostAuthorityController {
       contentTransitionToken,
       initialSheetY,
       isDockedLane: effectiveIsDockedLane,
-      isForwardOpenHold: isForwardOpenIntent && !isForwardOpenCrossfade,
       isRenderable,
       overlayRouteScope,
       overlaySheetPolicy,
@@ -1102,7 +1097,7 @@ class AppRouteSheetHostAuthorityController {
     return this.input.routeSheetHostSurfaceAuthority.getSnapshot();
   }
 
-  private recomputeAll(notify: boolean, source = 'unknown'): void {
+  private recomputeAll(notify: boolean): void {
     withSearchNavSwitchRuntimeAttribution(
       'sheetHost',
       notify ? 'recomputeAll:notify' : 'recomputeAll:silent',
@@ -1124,7 +1119,7 @@ class AppRouteSheetHostAuthorityController {
     );
   }
 
-  private recomputeRuntimeReseed(notify: boolean, source = 'unknown'): void {
+  private recomputeRuntimeReseed(notify: boolean): void {
     withSearchNavSwitchRuntimeAttribution(
       'sheetHost',
       notify ? 'recomputeRuntimeReseed:notify' : 'recomputeRuntimeReseed:silent',
@@ -1658,7 +1653,6 @@ class AppRouteSheetHostAuthorityController {
       this.initialVisibleSnapDispatchKey = null;
     }
     const resolvedSurfaceInput = this.getResolvedSurfaceInput();
-    const { resolvedRuntimeModel } = resolvedSurfaceInput;
     this.input.routeSharedSheetPresentationRuntime.recordSharedSheetSnap(snap);
     if (snap !== 'hidden') {
       this.markSearchSurfaceSheetReadyForVisibleSnap(resolvedSurfaceInput);
@@ -1679,11 +1673,10 @@ class AppRouteSheetHostAuthorityController {
     // instances. Deleted with the model.
     this.recordRouteSceneSnapFact(resolvedSurfaceInput, snap, meta);
 
-    // A programmatic snap recorded during a forward-open PRE-PUBLISH hold is the transient
-    // instant-COVER snap (e.g. openChild pollDetail snapping the sheet to 'expanded') mis-attributed
-    // to the held outgoing scene. Persisting it would stickily force that scene's `overlay:` key
-    // to re-open 'expanded'. Skip the persist; currentSnap / shared sheetState above still update
-    // for rendering. (Root-page posture memory lives in the two seats, gesture-gated upstream.)
+    // recordRouteSceneSnapFact above updates currentSnap / shared sheetState for rendering only —
+    // there is no snap-persistence lane here (F947 deleted it). Root-page posture memory lives in
+    // the two seats, gesture-gated upstream; a programmatic snap taken during a forward-open
+    // pre-publish hold therefore cannot stickily re-open a held scene's `overlay:` key.
   };
 
   // Transition-perf fence: the sheet host is THE sheet-motion authority for the redraw

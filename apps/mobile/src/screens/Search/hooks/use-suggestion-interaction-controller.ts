@@ -12,7 +12,6 @@ type UseSuggestionInteractionControllerArgs = {
   setIsSearchFocused: React.Dispatch<React.SetStateAction<boolean>>;
   setIsSuggestionPanelActive: React.Dispatch<React.SetStateAction<boolean>>;
   setSuggestions: React.Dispatch<React.SetStateAction<AutocompleteMatch[]>>;
-  shouldLogPerf?: boolean;
 };
 
 export const useSuggestionInteractionController = ({
@@ -24,7 +23,6 @@ export const useSuggestionInteractionController = ({
   setIsSearchFocused,
   setIsSuggestionPanelActive,
   setSuggestions,
-  shouldLogPerf: _shouldLogPerf = false,
 }: UseSuggestionInteractionControllerArgs) => {
   const [isSuggestionScrollDismissing, setIsSuggestionScrollDismissing] = React.useState(false);
 
