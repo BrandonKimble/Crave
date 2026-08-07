@@ -1,3 +1,5 @@
+import { logPerfScenarioStackAttribution } from '../../perf/perf-scenario-attribution';
+
 import type { SearchRoutePanelInteractionRef } from '../../overlays/searchOverlayRouteHostContract';
 import type {
   AppRouteSheetHostRuntimeConfigAuthority,
@@ -74,8 +76,48 @@ const _assertEveryRuntimeFieldIsClassified: AppRouteSheetHostRuntimeUnclassified
   : never = true;
 void _assertEveryRuntimeFieldIsClassified;
 
-export const APP_ROUTE_SHEET_HOST_RUNTIME_DIFF_KEYS: readonly AppRouteSheetHostRuntimeComparedKey[] =
-  APP_ROUTE_SHEET_HOST_RUNTIME_COMPARED_KEYS;
+/**
+ * THE DIFF MARKER IS THE SAME LIST AS THE COMPARATOR (F6600).
+ *
+ * F975(e) gave the field COMPARISON one home driven by the key array above.
+ * The per-field DIFF MARKER each memo also runs for perf attribution was left
+ * as twins, and they re-diverged in both directions: AppOverlayRouteHost marked
+ * 8 fields, SearchOverlayRouteSheetSurfaceHost marked 9, and the difference was
+ * not a subset — so two attribution probes disagreed about which fields exist,
+ * exactly as the two comparators had, and nothing could catch it.
+ *
+ * This module exported `APP_ROUTE_SHEET_HOST_RUNTIME_DIFF_KEYS` for this job and
+ * nothing ever imported it. A second exported alias of the same array would only
+ * make divergence writable again, so it is deleted: the marker below iterates
+ * the comparator's own array. The marker and the comparison cannot disagree
+ * because there is nothing for them to disagree about.
+ *
+ * `routeSceneDisplayTargetRegistry` therefore stops being marked, and that is a
+ * consequence rather than a separate decision — it is EXCLUDED above because it
+ * is a process-lifetime singleton, so its mark was a probe that could only ever
+ * report green (F1486's non-guard, one level down).
+ *
+ * The wrapper identity IS marked, and is the one mark not derived from a field:
+ * a fresh merge object with identical members is precisely the churn the
+ * field-comparator exists to bail out of, and knowing it happened is real
+ * attribution.
+ */
+export const markAppRouteSheetHostRuntimeDiffs = (
+  owner: string,
+  left: AppRouteSheetHostRuntime,
+  right: AppRouteSheetHostRuntime
+): void => {
+  const mark = (field: string, leftValue: unknown, rightValue: unknown): void => {
+    if (Object.is(leftValue, rightValue)) {
+      return;
+    }
+    logPerfScenarioStackAttribution({ owner, path: `field:${field}` });
+  };
+  mark('routeSheetHostRuntimeRef', left, right);
+  for (const key of APP_ROUTE_SHEET_HOST_RUNTIME_COMPARED_KEYS) {
+    mark(`routeSheetHostRuntime.${key}`, left[key], right[key]);
+  }
+};
 
 export const areAppRouteSheetHostRuntimesFieldEqual = (
   left: AppRouteSheetHostRuntime,

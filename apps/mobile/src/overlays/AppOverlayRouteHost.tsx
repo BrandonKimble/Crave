@@ -25,7 +25,10 @@ import { SearchOverlayShellHost } from './SearchOverlayShellHost';
 import { NavSilhouetteHost } from './NavSilhouetteHost';
 import { SearchResultsExternalPreMeasureHost } from './SearchResultsPreMeasureHost';
 import { logPerfScenarioStackAttribution } from '../perf/perf-scenario-attribution';
-import { areAppRouteSheetHostRuntimesFieldEqual } from '../navigation/runtime/app-route-sheet-host-runtime-contract';
+import {
+  areAppRouteSheetHostRuntimesFieldEqual,
+  markAppRouteSheetHostRuntimeDiffs,
+} from '../navigation/runtime/app-route-sheet-host-runtime-contract';
 
 export type AppOverlayRouteHostRuntime = {
   overlayChromeHostAuthority: SearchOverlayChromeHostAuthority;
@@ -52,64 +55,6 @@ const markAppOverlayRouteHostPropDiff = (field: string, left: unknown, right: un
     path: `field:${field}`,
   });
 };
-
-const markRouteSheetHostRuntimeDiffs = (
-  left: AppRouteSheetHostRuntime,
-  right: AppRouteSheetHostRuntime
-): void => {
-  markAppOverlayRouteHostPropDiff('routeSheetHostRuntimeRef', left, right);
-  markAppOverlayRouteHostPropDiff(
-    'routeSheetHostRuntime.searchInteractionRef',
-    left.searchInteractionRef,
-    right.searchInteractionRef
-  );
-  markAppOverlayRouteHostPropDiff(
-    'routeSheetHostRuntime.routeSheetSurfaceAuthority',
-    left.routeSheetSurfaceAuthority,
-    right.routeSheetSurfaceAuthority
-  );
-  markAppOverlayRouteHostPropDiff(
-    'routeSheetHostRuntime.routeSheetSurfaceBodyAuthority',
-    left.routeSheetSurfaceBodyAuthority,
-    right.routeSheetSurfaceBodyAuthority
-  );
-  markAppOverlayRouteHostPropDiff(
-    'routeSheetHostRuntime.routeSheetRuntimeConfigAuthority',
-    left.routeSheetRuntimeConfigAuthority,
-    right.routeSheetRuntimeConfigAuthority
-  );
-  markAppOverlayRouteHostPropDiff(
-    'routeSheetHostRuntime.sceneStackSurfaceAuthority',
-    left.sceneStackSurfaceAuthority,
-    right.sceneStackSurfaceAuthority
-  );
-  markAppOverlayRouteHostPropDiff(
-    'routeSheetHostRuntime.routeSceneDisplayTargetRegistry',
-    left.routeSceneDisplayTargetRegistry,
-    right.routeSceneDisplayTargetRegistry
-  );
-  markAppOverlayRouteHostPropDiff(
-    'routeSheetHostRuntime.routeHostVisualRuntimeAuthority',
-    left.routeHostVisualRuntimeAuthority,
-    right.routeHostVisualRuntimeAuthority
-  );
-};
-
-// BAIL-OUT (perf attribution 2026-07-12): the runtime bundle is a MERGE object whose
-// wrapper identity can churn even when every field is stable — compare by FIELD so a
-// fresh wrapper with identical members bails instead of cascading the 12-level chain.
-const areRouteSheetHostRuntimesFieldEqual = (
-  left: AppRouteSheetHostRuntime,
-  right: AppRouteSheetHostRuntime
-): boolean =>
-  // F975(e): the shared field comparison has ONE home now
-  // (app-route-sheet-host-runtime-contract). `routeSceneDisplayTargetRegistry` is EXCLUDED
-  // there deliberately — it is a singleton constructed once (app-route-scene-runtime.ts) and
-  // threaded unchanged for process lifetime, so any per-field comparison of it can never be
-  // false. This host already compares it as a top-level prop (see
-  // areAppOverlayRouteHostPropsEqual below); a second, always-true comparison here is not a
-  // guard (F1486).
-  areAppRouteSheetHostRuntimesFieldEqual(left, right);
 
 const AppOverlayRouteHost = ({
   overlayChromeHostAuthority,
@@ -205,7 +150,8 @@ const areAppOverlayRouteHostPropsEqual = (
     previousProps.routeSheetSnapSessionActions,
     nextProps.routeSheetSnapSessionActions
   );
-  markRouteSheetHostRuntimeDiffs(
+  markAppRouteSheetHostRuntimeDiffs(
+    'app_overlay_route_host_props_diff',
     previousProps.routeSheetHostRuntime,
     nextProps.routeSheetHostRuntime
   );
@@ -221,7 +167,15 @@ const areAppOverlayRouteHostPropsEqual = (
     previousProps.routeOverlayTransitionActions === nextProps.routeOverlayTransitionActions &&
     previousProps.routeSheetSnapSessionAuthority === nextProps.routeSheetSnapSessionAuthority &&
     previousProps.routeSheetSnapSessionActions === nextProps.routeSheetSnapSessionActions &&
-    areRouteSheetHostRuntimesFieldEqual(
+    // BAIL-OUT (perf attribution 2026-07-12): the runtime bundle is a MERGE object whose
+    // wrapper identity churns even when every field is stable, so compare by FIELD — a fresh
+    // wrapper with identical members bails instead of cascading the 12-level chain. The
+    // comparison has ONE home (app-route-sheet-host-runtime-contract), which is also where
+    // `routeSceneDisplayTargetRegistry` is deliberately EXCLUDED: it is a singleton
+    // constructed once (app-route-scene-runtime.ts) and threaded unchanged for process
+    // lifetime, so comparing it per field can never be false. This host compares it as a
+    // top-level prop above, which is a real guard; a second always-true one is not (F1486).
+    areAppRouteSheetHostRuntimesFieldEqual(
       previousProps.routeSheetHostRuntime,
       nextProps.routeSheetHostRuntime
     )

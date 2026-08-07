@@ -14,7 +14,10 @@ import {
 } from '../screens/Search/runtime/shared/search-nav-switch-runtime-attribution';
 import { useSearchNavSwitchCommitAttribution } from '../screens/Search/runtime/shared/use-search-nav-switch-commit-attribution';
 import { logPerfScenarioStackAttribution } from '../perf/perf-scenario-attribution';
-import { areAppRouteSheetHostRuntimesFieldEqual } from '../navigation/runtime/app-route-sheet-host-runtime-contract';
+import {
+  areAppRouteSheetHostRuntimesFieldEqual,
+  markAppRouteSheetHostRuntimeDiffs,
+} from '../navigation/runtime/app-route-sheet-host-runtime-contract';
 
 type SearchOverlayRouteSheetSurfaceHostProps = {
   routeSheetHostRuntime: AppRouteSheetHostRuntime;
@@ -33,82 +36,6 @@ const areRouteSheetSurfaceSelectionsEqual = (left: boolean, right: boolean): boo
     },
   });
   return false;
-};
-
-const markRouteSheetHostRuntimePropDiff = (
-  owner: string,
-  field: string,
-  left: unknown,
-  right: unknown
-): void => {
-  if (Object.is(left, right)) {
-    return;
-  }
-  logPerfScenarioStackAttribution({
-    owner,
-    path: `field:${field}`,
-  });
-};
-
-const markRouteSheetHostRuntimePropDiffs = (
-  owner: string,
-  left: AppRouteSheetHostRuntime,
-  right: AppRouteSheetHostRuntime
-): void => {
-  markRouteSheetHostRuntimePropDiff(owner, 'routeSheetHostRuntimeRef', left, right);
-  markRouteSheetHostRuntimePropDiff(
-    owner,
-    'searchInteractionRef',
-    left.searchInteractionRef,
-    right.searchInteractionRef
-  );
-  markRouteSheetHostRuntimePropDiff(
-    owner,
-    'routeSheetSurfaceAuthority',
-    left.routeSheetSurfaceAuthority,
-    right.routeSheetSurfaceAuthority
-  );
-  markRouteSheetHostRuntimePropDiff(
-    owner,
-    'routeSheetSurfaceBodyAuthority',
-    left.routeSheetSurfaceBodyAuthority,
-    right.routeSheetSurfaceBodyAuthority
-  );
-  markRouteSheetHostRuntimePropDiff(
-    owner,
-    'routeSheetMotionRuntimeAuthority',
-    left.routeSheetMotionRuntimeAuthority,
-    right.routeSheetMotionRuntimeAuthority
-  );
-  markRouteSheetHostRuntimePropDiff(
-    owner,
-    'routeSheetRuntimeConfigAuthority',
-    left.routeSheetRuntimeConfigAuthority,
-    right.routeSheetRuntimeConfigAuthority
-  );
-  markRouteSheetHostRuntimePropDiff(
-    owner,
-    'sceneStackSurfaceAuthority',
-    left.sceneStackSurfaceAuthority,
-    right.sceneStackSurfaceAuthority
-  );
-  // F974(b): the routeSceneDisplayTargetRegistry diff-mark and equality conjunct used to
-  // sit here. Nothing in THIS host's subtree reads the registry any more (it was threaded
-  // five layers deep into BottomSheetSceneStackHost and never dereferenced), so comparing
-  // it could only ever cost an extra re-render of the whole sheet surface. Its real reader,
-  // NavSilhouetteHost, is fed by AppOverlayRouteHost, which still compares it there.
-  markRouteSheetHostRuntimePropDiff(
-    owner,
-    'routeHostVisualRuntimeAuthority',
-    left.routeHostVisualRuntimeAuthority,
-    right.routeHostVisualRuntimeAuthority
-  );
-  markRouteSheetHostRuntimePropDiff(
-    owner,
-    'onContentSettleComplete',
-    left.onContentSettleComplete,
-    right.onContentSettleComplete
-  );
 };
 
 const SearchOverlayRouteSheetFrameSurfaceHost = React.memo(
@@ -146,7 +73,7 @@ const SearchOverlayRouteSheetFrameSurfaceHost = React.memo(
     return profiledFrameSurface;
   },
   (previousProps, nextProps) => {
-    markRouteSheetHostRuntimePropDiffs(
+    markAppRouteSheetHostRuntimeDiffs(
       'search_overlay_route_sheet_frame_surface_host_props_diff',
       previousProps.routeSheetHostRuntime,
       nextProps.routeSheetHostRuntime
@@ -227,7 +154,7 @@ export const SearchOverlayRouteSheetSurfaceHost = React.memo(
     return profiledSheetSurface;
   },
   (previousProps, nextProps) => {
-    markRouteSheetHostRuntimePropDiffs(
+    markAppRouteSheetHostRuntimeDiffs(
       'search_overlay_route_sheet_surface_host_props_diff',
       previousProps.routeSheetHostRuntime,
       nextProps.routeSheetHostRuntime
