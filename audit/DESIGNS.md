@@ -4108,3 +4108,32 @@ not mine to execute unilaterally. Closing the F8800 residual is subsumed by (a).
 ESCALATED — awaiting owner. Meanwhile the class is drained instance-by-instance
 (4 gates done) and no live breach exists (all patterns valid, all tools present in
 CI today; these are holes in the fence, not breaches — the F7902 framing).
+
+---
+
+## D134 — F8800 residual CLOSED: compound presence+ban blocks migrated (2026-08-07)
+
+Attempt-5's gate hunter gave exact line numbers and a HIGH/LOWER split; a P3 lane
+closed all 14 compound presence+ban blocks. Added `require_present` (the inverted
+twin of `ban_absent`, same 0/1/2/other discrimination: 0→present-pass,
+1→absent-fail, 2→invalid-pattern-fail, other→tool-broke-fail) and routed every arm
+of the 14 blocks through `require_present` (must-exist arms) or `ban_absent`
+(must-be-absent arms) — including the 6 exit-2-vulnerable --pcre2 ban arms that
+were the only live hole. Existence guards preserved; two structural cases handled
+honestly (nav_silhouette multi-file `2>/dev/null` tolerance reproduced by
+pre-filtering to existing files before ban_absent; the one numeric-equality arm in
+search_map_source_frame_resident_commit_gate kept verbatim — no rg exit to discriminate).
+
+VERIFIED myself (not trusted): require_present present (:498); bash -n clean;
+HEAD-vs-new verdict-ID SET IDENTICAL (319 ids, 0 FAIL both, byte-for-byte diff) —
+no gate flipped; and my OWN deterministic mutation (unbalanced group injected into
+search_map_single_visual_projector_gate's --pcre2 ban pattern) now yields
+`FAIL … : invalid pattern` exit 1 where HEAD PASSed. (First mutation attempt was a
+false negative — my perl regex missed and the unchanged file exited 0; I re-ran
+with a deterministic corruption of the actual pattern. Do not trust a mutation
+that didn't visibly change the file.)
+
+F8800 is now FIXED end to end (standalone bans in D132 + compound blocks here). F8900
+narrows to PURELY the layer-wide make-it-impossible mechanism (a shared gate-scan
+lib + conformance gate to stop the FIFTH gate author reintroducing the shape) —
+the residual it used to also cover is gone.
