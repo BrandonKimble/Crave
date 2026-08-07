@@ -3571,3 +3571,45 @@ the pass restarts against the fixed tree, per the mandate. This is the loop work
 fresh-eyes re-hunt found what four coverage passes over this territory did not, because
 the empty table had bought an allowlist entry and nobody had evaluated the DELETE it
 emits against the declaration it cites.
+
+---
+
+## D119 — clean pass 1, api-search: NOT CLEAN. F7600 breaks its own fold law on 20% of labels. (2026-08-07)
+
+**F7600 — VERIFIED MYSELF, APPROVED (schema rederivation).** `scanForKnownEntityGroups`
+states the N1 FOLD SYMMETRY law in its own header — both sides canonicalFold'd, citing the
+1,714 entities that were unreachable before — and the ALIAS arm honors it correctly
+(`ea.form_folded = ANY(folded candidates)`, and `entity_alias` carries a `form_folded`
+column + indexes, schema:167/184-185). But the LABELS arm (:1366-1370) does
+`LOWER(el.form) = ANY(folded candidates)`, and `EntityLabel` (schema:194) has `form` with
+NO folded column. So a folded candidate `cesar` is matched against `LOWER('ensalada
+César')` = `ensalada césar` and cannot equal it. The lane's measurement — 2,262 of 11,068
+active labels (20.4%) structurally unmatchable, overwhelmingly the Spanish rows the arm
+exists to serve — is the corpus proof. The repo states this exact law in prose one module
+over (demand-vocabulary: "lower('Crème Brûlée') would never equal stored 'creme brulee'").
+REDERIVATION: `EntityLabel` gets a `form_folded` column (the alias table's exact shape,
+same index), written by canonicalFold at every label write site (the sweep + seeder), the
+match arm compares `el.form_folded = ANY(candidates)`, and the migration backfills
+existing rows. This makes the asymmetry UNREPRESENTABLE — a label without a folded form
+cannot be written — rather than fixing the query alone. Migration under the
+parallel-worker guard (F303/F2163). Acceptance: an es label (`ensalada césar`) is reachable
+by its folded candidate; mutation: the pre-migration `LOWER(el.form)` form misses it.
+ESCALATION NOTE: this is data-shape, not policy — a NEW column and backfill on a table
+whose writes are the vocabulary pipeline; it is engineering, but the backfill touches the
+label corpus, so the OWNER is notified of the one-time re-fold, not asked (it only makes
+more labels reachable — strictly additive to recall).
+
+**F7601 — APPROVED.** `openNowFilterMs = 0` literal forwarded into phaseTimings — a
+constant instrument (F2901 family). Measure it or drop the field; the three other
+zero-constants the lane triaged and REJECTED with reasons are the discipline working.
+
+**F7602 — APPROVED.** The seventh non-unique ORDER-BY-under-LIMIT site (`matched_tags`,
+builder:603), same shape as F3802's five and F3807's one — the sibling hunt's standing
+value. One-line tiebreak.
+
+**The lane's clean confirmations are half the value:** the F3801 DISTINCT ON fix complete,
+F3807's cap reproduced to the exact row (11,141) against the live corpus, the Prisma.join
+sweep STILL zero, all 14 new specs input-keyed, and 288 backticked comment identifiers
+scripted for non-comment survival — zero ghosts. The territory is sound except the three.
+
+Clean pass 1 restarts on the api-search fixes too (F7600 gated on its migration).
