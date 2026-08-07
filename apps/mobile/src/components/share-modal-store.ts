@@ -138,6 +138,44 @@ export const resolveShareLinkMode = (config: ShareModalConfig): ShareLinkMode =>
   return 'ready';
 };
 
+/**
+ * THE ONE SEND-IN-APP VERDICT for a share config (F3701, 2026-08-06).
+ *
+ * F834 threaded the capability slug into the fan-out and wrote the OTHER half
+ * of the rule into a COMMENT: `sharedEntitySlug` is null "for a list the viewer
+ * cannot mint one for — in which case the send is REFUSED ABOVE rather than
+ * delivering a dead preview." Traced line by line, nothing refused anything.
+ * `showSendSection` never consulted the link verdict, so a COLLABORATOR on a
+ * share-disabled list (slug null, owned false — exactly the `'none'` case) saw
+ * the full Send section, and the fan-out went out with no slug. Under the "slug
+ * is the capability" law that recipient's read MUST fail: the dead preview F834
+ * exists to prevent, reached from a Share button.
+ *
+ * The verdict lives HERE, next to `resolveShareLinkMode`, for the reason F887
+ * gave when it moved the link verdict here: a predicate the host re-derives
+ * from raw fields is a predicate that can disagree with the one that decided
+ * whether the rows render. The host reads a discriminant.
+ *
+ *  - `'ready'`             — this share can carry whatever capability its kind
+ *                            requires (or requires none).
+ *  - `'unsupported-kind'`  — a curated list: the messaging share-package
+ *                            resolver speaks favorites list ids only, so
+ *                            send-in-app is hidden rather than a failing fake.
+ *  - `'no-capability'`     — a non-curated list whose slug this viewer cannot
+ *                            produce. The refusal the comment credited.
+ */
+export type ShareSendMode = 'ready' | 'unsupported-kind' | 'no-capability';
+
+export const resolveShareSendMode = (config: ShareModalConfig): ShareSendMode => {
+  if (config.listSource === 'curated') {
+    return 'unsupported-kind';
+  }
+  if (config.kind === 'list' && resolveShareLinkMode(config) === 'none') {
+    return 'no-capability';
+  }
+  return 'ready';
+};
+
 const store = createSingletonSurfaceStore<ShareModalConfig>();
 
 export const shareModalStore = store;

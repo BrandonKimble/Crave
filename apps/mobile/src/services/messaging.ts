@@ -65,6 +65,45 @@ export interface ShareFanOutResult {
 // next tick repainted, forever, over unrelated screens. A timer-issued request has no user
 // waiting on it and must never speak for the whole app (see USER_INITIATED / SILENT in
 // services/api.ts). The panels render their own empty/failed state for these.
+/**
+ * THE CAPABILITY IS PART OF THE SHAPE, NOT AN OPTIONAL FIELD ON IT (F3701, 2026-08-06).
+ *
+ * F834 added `sharedEntitySlug?: string` because `ShareFanOutDto.sharedEntitySlug` has
+ * always been accepted and PERSISTED by the server (messaging.service.ts writes it onto
+ * the message row), and the "slug is the capability" law (commit b34cdbe8d) makes it the
+ * thing that grants a recipient access. Mobile's payload OMITTED it, so DMing a PRIVATE
+ * list sent a preview whose tap carried no capability, and under that law the recipient's
+ * read must fail.
+ *
+ * OPTIONAL WAS THE WRONG SHAPE FOR THAT FIX. `sharedEntitySlug?: string` let `undefined`
+ * through silently for the one kind that cannot survive it — which is exactly what
+ * shipped: the share modal's resolver returned `undefined` for a list the viewer could
+ * not mint a slug for, and the fan-out went out anyway. The comment here used to say the
+ * send was "refused above"; nothing refused it. So the union makes a list SAY something:
+ * a real slug, or an EXPLICIT `null` for the curated lane, which is reachable by id and
+ * legitimately needs no capability. `undefined` for a list no longer compiles, and the
+ * caller has to have had the thought.
+ */
+export type ShareFanOutPayload = {
+  recipientUserIds: string[];
+  sharedEntityId: string;
+  body?: string;
+  /** Per-modal-open uuid: the server derives `share:{clientShareId}` as each
+   *  message's dedupe id, so a retry after a transport error replays instead
+   *  of double-sending to recipients that already succeeded. */
+  clientShareId?: string;
+} & (
+  | {
+      sharedEntityKind: 'list';
+      /** The capability. `null` ONLY for a curated list, which is reachable by id. */
+      sharedEntitySlug: string | null;
+    }
+  | {
+      sharedEntityKind: Exclude<SharedEntityKind, 'list'>;
+      sharedEntitySlug?: undefined;
+    }
+);
+
 export const messagingService = {
   async listConversations(
     filter: 'inbox' | 'requests' = 'inbox'
@@ -137,31 +176,7 @@ export const messagingService = {
   },
   /** Share-modal fan-out: get-or-create each conversation + send in one call.
    *  Per-recipient errors come back honestly instead of failing the batch. */
-  async shareFanOut(payload: {
-    recipientUserIds: string[];
-    sharedEntityKind: SharedEntityKind;
-    sharedEntityId: string;
-    /**
-     * THE CAPABILITY, when the shared thing needs one (F834, 2026-08-03).
-     *
-     * `ShareFanOutDto.sharedEntitySlug` has always been accepted and PERSISTED by the
-     * server (messaging.service.ts writes it onto the message row), and the "slug is the
-     * capability" law (commit b34cdbe8d) makes it the thing that grants a recipient
-     * access. Mobile's payload type OMITTED it and the share modal could not supply one —
-     * so DMing a PRIVATE list sent a preview whose tap carried NO capability, and under
-     * that law the recipient's read must fail. A hole in a just-landed law, on the client
-     * side of it.
-     *
-     * Required in practice for a private list; the modal resolves it (minting one via
-     * `enableShare` if the owner consents) before fanning out.
-     */
-    sharedEntitySlug?: string;
-    body?: string;
-    /** Per-modal-open uuid: the server derives `share:{clientShareId}` as each
-     *  message's dedupe id, so a retry after a transport error replays instead
-     *  of double-sending to recipients that already succeeded. */
-    clientShareId?: string;
-  }): Promise<{ results: ShareFanOutResult[] }> {
+  async shareFanOut(payload: ShareFanOutPayload): Promise<{ results: ShareFanOutResult[] }> {
     const response = await api.post<{ results: ShareFanOutResult[] }>('/messaging/share', payload);
     return response.data;
   },

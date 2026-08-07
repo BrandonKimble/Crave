@@ -24,6 +24,7 @@ import {
   dismissShareModal,
   SHARE_BASE_URL,
   resolveShareLinkMode,
+  resolveShareSendMode,
   shareModalStore,
   type ShareModalConfig,
 } from './share-modal-store';
@@ -129,6 +130,12 @@ const ShareRow = ({
     </View>
   </Pressable>
 );
+
+/**
+ * The capability question has TWO answers, not one value (F3701): this share can carry
+ * what its kind requires (`slug: null` meaning "requires none"), or it cannot be sent.
+ */
+type ShareCapability = { ok: true; slug: string | null } | { ok: false };
 
 const ShareModalContent = ({ config }: { config: ShareModalConfig }) => {
   // THE link verdict, evaluated once (F887). Everything below reads this discriminant
@@ -244,43 +251,56 @@ const ShareModalContent = ({ config }: { config: ShareModalConfig }) => {
   }, [config.title, confirmEnableShareThen, resolveLinkUrl]);
 
   /**
-   * The CAPABILITY slug this share must carry, or undefined when the shared thing needs
-   * none (F834). A public restaurant / dish / poll / profile is reachable by id; a
-   * non-curated list is not — its slug IS the access. When the list has no slug yet, this
-   * mints one, which is why every caller must go through `confirmEnableShareThen` first:
-   * minting a link is the owner's decision, never a side effect of tapping Send.
+   * The CAPABILITY this share must carry (F834), as a RESULT rather than a
+   * `string | undefined` (F3701, 2026-08-06). A public restaurant / dish / poll /
+   * profile is reachable by id; a non-curated list is not — its slug IS the access.
+   * When the list has no slug yet, this mints one, which is why every caller must go
+   * through `confirmEnableShareThen` first: minting a link is the owner's decision,
+   * never a side effect of tapping Send.
+   *
+   * WHY A RESULT. The old signature returned `undefined` for BOTH "this kind needs no
+   * capability" and "this viewer cannot produce one" — two opposite facts wearing one
+   * value, and the caller could not have distinguished them if it had tried. It did not
+   * try: the `undefined` went straight into the fan-out and the recipient got a preview
+   * whose tap carries nothing. The two cases are now different shapes, and the failing
+   * one has to be handled.
    */
-  const resolveShareCapabilitySlug = React.useCallback(async (): Promise<string | undefined> => {
+  const resolveShareCapability = React.useCallback(async (): Promise<ShareCapability> => {
     if (config.kind !== 'list' || config.listSource === 'curated') {
-      return undefined;
+      return { ok: true, slug: null };
     }
     if (config.listShareSlug) {
-      return config.listShareSlug;
+      return { ok: true, slug: config.listShareSlug };
     }
     if (linkMode !== 'needs-enable') {
-      return undefined;
+      return { ok: false };
     }
-    return (await userListsService.enableShare(config.id)).shareSlug;
+    return { ok: true, slug: (await userListsService.enableShare(config.id)).shareSlug };
   }, [config, linkMode]);
 
   const sendShare = React.useCallback(
-    (sharedEntitySlug: string | undefined) => {
+    (slug: string | null) => {
       const nameById = new Map(targets.map((t) => [t.userId, peerDisplayName(t)]));
+      const base = {
+        recipientUserIds: [...selectedIds],
+        sharedEntityId: config.id,
+        body: message.trim() ? message.trim() : undefined,
+        clientShareId: clientShareIdRef.current,
+      };
       messagingService
-        .shareFanOut({
-          recipientUserIds: [...selectedIds],
-          sharedEntityKind: config.kind,
-          sharedEntityId: config.id,
-          // F834 (2026-08-03): THREAD THE CAPABILITY. Without this a DM'd private list
-          // arrives as a preview whose tap carries no slug, and "slug is the capability"
-          // means that read fails. `shareSlug` is null for kinds that need no capability
-          // (a public restaurant / dish / poll is reachable by id) and for a list the
-          // viewer cannot mint one for — in which case the send is refused above rather
-          // than delivering a dead preview.
-          sharedEntitySlug,
-          body: message.trim() ? message.trim() : undefined,
-          clientShareId: clientShareIdRef.current,
-        })
+        // F834 (2026-08-03): THREAD THE CAPABILITY. Without this a DM'd private list
+        // arrives as a preview whose tap carries no slug, and "slug is the capability"
+        // means that read fails. F3701 (2026-08-06): the payload type now makes the
+        // capability part of the LIST shape, so this branch is not a courtesy — the
+        // `sharedEntityKind: 'list'` arm does not compile without a slug or an explicit
+        // null, and the slug-less case never reaches here: `resolveShareCapability`
+        // returns `{ ok: false }` and `handleSend` refuses, which is what the comment
+        // that used to live here merely CLAIMED.
+        .shareFanOut(
+          config.kind === 'list'
+            ? { ...base, sharedEntityKind: 'list', sharedEntitySlug: slug }
+            : { ...base, sharedEntityKind: config.kind }
+        )
         .then(({ results }) => {
           // This share is done — a future re-share must be a NEW dedupe scope.
           clientShareIdRef.current = mintShareId();
@@ -316,23 +336,43 @@ const ShareModalContent = ({ config }: { config: ShareModalConfig }) => {
     // private list must arrive with the capability that makes it readable.
     confirmEnableShareThen(() => {
       setSending(true);
-      void resolveShareCapabilitySlug()
-        .then(sendShare)
+      void resolveShareCapability()
+        .then((capability) => {
+          if (!capability.ok) {
+            // THE REFUSAL THE COMMENT USED TO CREDIT (F3701). Reaching this is a
+            // BUG, not a user error — `showSendSection` reads the same verdict and
+            // hides this button — so it says so rather than failing silently, which
+            // is what the obvious `if (slug == null) return;` would have done.
+            setSending(false);
+            showAppModal({
+              title: 'Can’t send this list',
+              message:
+                'Sharing is off for this list and only its owner can turn it on. Ask them to enable sharing, then try again.',
+              actions: [{ label: 'OK', style: 'default' }],
+            });
+            return;
+          }
+          sendShare(capability.slug);
+        })
         .catch(() => {
           setSending(false);
           announceFailureIfOnline();
         });
     });
-  }, [confirmEnableShareThen, resolveShareCapabilitySlug, selectedIds, sendShare, sending]);
+  }, [confirmEnableShareThen, resolveShareCapability, selectedIds, sendShare, sending]);
 
   // Hidden (not failing) rows: comment has no public URL; a non-owned list
   // with no known slug can't mint one (enableShare is owner-only).
   const hasLink = linkMode !== 'none';
-  // Curated lists: the messaging share-package resolver speaks favorites list ids
-  // only, so send-in-app is HIDDEN (never a failing fake) — link rows carry the /cl
-  // public URL instead. Wiring curated ids into the resolver is a follow-up.
-  const showSendSection =
-    config.listSource !== 'curated' && (targetsQuery.isPending || targets.length > 0);
+  // F3701: the Send section now reads a VERDICT from the store, the same way the link
+  // rows read `linkMode`. 'unsupported-kind' is the curated lane (the messaging
+  // share-package resolver speaks favorites list ids only, so send-in-app is HIDDEN
+  // rather than a failing fake; the link rows carry the /cl public URL instead).
+  // 'no-capability' is the case that shipped visible: a COLLABORATOR on a
+  // share-disabled list — slug null, not owned — saw this section in full and could
+  // fan out a preview whose tap carries nothing.
+  const sendMode = resolveShareSendMode(config);
+  const showSendSection = sendMode === 'ready' && (targetsQuery.isPending || targets.length > 0);
 
   return (
     <View testID="share-modal">
