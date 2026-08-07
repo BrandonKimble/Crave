@@ -280,8 +280,14 @@ export class ConceptSatisfiesService {
           AND (
             -- RUNG 2: word-boundary containment either way. Grammar (the
             -- head-final rule) already decides IS-A vs MENTIONS for these.
-            (' ' || lower(c.name) || ' ') LIKE ('%' || ' ' || lower(a.name) || ' ' || '%')
-            OR (' ' || lower(a.name) || ' ') LIKE ('%' || ' ' || lower(c.name) || ' ' || '%')
+            -- THE FOLD LAW: fold BOTH sides so "café" contains "cafe". lower()
+            -- is NOT canonicalFold on accented text (é != e), so an accented
+            -- pair that SHOULD be excluded slipped through to the judge.
+            -- core_entities.identity_key IS canonicalFold(name) (app-written,
+            -- identityInsertData) — the same folded form the alias/label match
+            -- arms compare against, and there is no SQL fold function by design.
+            (' ' || c.identity_key || ' ') LIKE ('%' || ' ' || a.identity_key || ' ' || '%')
+            OR (' ' || a.identity_key || ' ') LIKE ('%' || ' ' || c.identity_key || ' ' || '%')
             -- RUNG 3: a stored category claim in either direction.
             OR EXISTS (
                  SELECT 1 FROM derived_food_category_edges e

@@ -220,49 +220,22 @@ export class LabelSweepService {
       // pair is a constraint violation, not a preference. First writer wins;
       // promoting a later label is a review action, never a side effect of a
       // sweep re-run.
-      const existingDefault = await this.prisma.entityLabel.findFirst({
-        where: {
-          entityId: label.entityId,
-          locale,
-          isDefault: true,
-        },
-        select: { form: true },
-      });
-      const isDefault = !existingDefault && label.status === 'active';
-      await this.prisma.entityLabel.upsert({
-        where: {
-          entityId_locale_form: {
-            entityId: label.entityId,
-            locale,
-            form,
-          },
-        },
-        create: {
-          entityId: label.entityId,
-          locale,
-          form,
-          // The FOLD LAW: a label cannot be written without its folded recall
-          // mirror (same canonicalFold entity_alias.form_folded uses), so the
-          // labels match arm can fold BOTH sides. Never a SQL fold.
-          formFolded: canonicalFold(form),
-          description: label.description,
-          isDefault,
-          rank: 0,
-          status: label.status,
-          source,
-          promptVersion: VOCABULARY_PROMPT_VERSION,
-        },
-        update: {
-          // form is the conflict key (unchanged on update), so the fold is
-          // invariant — but writing it self-heals any row whose fold predates
-          // this column (pre-backfill '' seed) the next time the sweep re-pays.
-          formFolded: canonicalFold(form),
-          description: label.description,
-          status: label.status,
-          promptVersion: VOCABULARY_PROMPT_VERSION,
-          updatedAt: new Date(),
-        },
-      });
+      //
+      // THE ELECTION IS ATOMIC (F9342). It used to read the existing default
+      // with findFirst, then write is_default across a gap — two concurrent
+      // writers for the same (entity_id, locale) could both read "no default"
+      // and both write is_default=true, either violating the partial unique
+      // (aborting the whole sweep on an un-caught upsert) or, worse, both
+      // landing. The election now happens INSIDE the insert: is_default is
+      // `status='active' AND NOT EXISTS(another default for this pair)`
+      // evaluated in the same statement, so the read-then-write gap is gone.
+      // The partial unique remains the final arbiter for the genuinely
+      // simultaneous case (two forms whose NOT EXISTS both saw no default in
+      // their own snapshot); we catch ONLY that one violation and re-insert
+      // this row as a non-default, which is the minimal correct consequence —
+      // a default already exists, so this label simply is not it, and the
+      // sweep continues instead of aborting mid-batch.
+      await this.upsertLabelRow(label, form, locale, source, false);
       written += 1;
 
       // SEARCH SURFACES ride the same verdict. The label is what a user READS;
@@ -315,5 +288,74 @@ export class LabelSweepService {
       }
     }
     return written;
+  }
+
+  /**
+   * Write one label row, electing is_default ATOMICALLY (F9342).
+   *
+   * A single INSERT ... ON CONFLICT: is_default is decided IN the statement as
+   * `status='active' AND NOT EXISTS(another default for this entity/locale)`,
+   * so there is no read-then-write window. On conflict with an existing row
+   * for the same (entity_id, locale, form) we refresh the mutable columns and
+   * never touch is_default (the form is the conflict key, so the election is
+   * invariant). `forceNonDefault` is the retry path for the one race the
+   * partial unique arbitrates: two DISTINCT forms of the same pair whose
+   * NOT EXISTS both saw no default — the loser re-inserts as non-default.
+   */
+  private async upsertLabelRow(
+    label: GeneratedLabel,
+    form: string,
+    locale: string,
+    source: string,
+    forceNonDefault: boolean,
+  ): Promise<void> {
+    // The FOLD LAW: a label cannot be written without its folded recall mirror
+    // (same canonicalFold entity_alias.form_folded uses), so the labels match
+    // arm can fold BOTH sides. Never a SQL fold. Writing it on UPDATE too
+    // self-heals any row whose fold predates this column (pre-backfill '' seed).
+    const formFolded = canonicalFold(form);
+    const wantsDefault = !forceNonDefault && label.status === 'active';
+    // is_default = wantsDefault AND no default already exists for this pair,
+    // evaluated in the same snapshot as the insert. When forceNonDefault, the
+    // NOT EXISTS is short-circuited to a literal false.
+    const isDefaultExpr = wantsDefault
+      ? Prisma.sql`NOT EXISTS (
+            SELECT 1 FROM entity_labels d
+             WHERE d.entity_id = ${label.entityId}::uuid
+               AND d.locale = ${locale}
+               AND d.is_default
+          )`
+      : Prisma.sql`false`;
+    try {
+      await this.prisma.$executeRaw`
+        INSERT INTO entity_labels
+          (entity_id, locale, form, form_folded, description, is_default,
+           rank, status, source, prompt_version, created_at, updated_at)
+        VALUES (
+          ${label.entityId}::uuid, ${locale}, ${form}, ${formFolded},
+          ${label.description ?? null}, ${isDefaultExpr},
+          0, ${label.status}, ${source}, ${VOCABULARY_PROMPT_VERSION},
+          now(), now()
+        )
+        ON CONFLICT (entity_id, locale, form) DO UPDATE SET
+          form_folded = EXCLUDED.form_folded,
+          description = EXCLUDED.description,
+          status = EXCLUDED.status,
+          prompt_version = EXCLUDED.prompt_version,
+          updated_at = now()`;
+    } catch (error) {
+      // The ONLY violation we absorb: a concurrent writer already elected the
+      // default for this (entity_id, locale). Re-insert this row as a
+      // non-default so the sweep continues rather than aborting mid-batch.
+      if (
+        !forceNonDefault &&
+        error instanceof Error &&
+        error.message.includes('uq_entity_labels_one_default')
+      ) {
+        await this.upsertLabelRow(label, form, locale, source, true);
+        return;
+      }
+      throw error;
+    }
   }
 }
