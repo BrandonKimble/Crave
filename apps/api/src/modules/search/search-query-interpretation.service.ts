@@ -598,8 +598,14 @@ export class SearchQueryInterpretationService {
       }
     }
 
+    // F8400: `llmMs: 0` was a constant emitted as a measurement — the F7601
+    // twin one file over. unsegmented-residue.service.ts:17 records the reason
+    // ("per-search LLM cost -> zero; llmMs disappears"): the LLM left this hot
+    // path, so the field is not a zero timing, it is a timing that no longer
+    // exists. A phase that does not run has no phaseTiming. The consumer
+    // (search-orchestration) iterates the object generically, so a 2-key object
+    // is handled identically to a 3-key one.
     const phaseTimings = {
-      llmMs: 0,
       gazetteerMs: Math.round(gazetteerMs),
       interpretationMs: Math.round(performance.now() - interpretationStart),
     };
