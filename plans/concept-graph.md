@@ -416,3 +416,13 @@ surface-coverage watermark (open).
    the gazetteer can match what the sweep banks — measure before spending.
    The es p95 984ms tail is the cost of missing vocabulary (miss → live
    dense probe); each seeded language collapses its own tail the same way.
+
+9. **Collision guard needs adjudication, not just refusal (found 2026-08-06,
+   v2 sweep: 12,455 banked / 4,698 BLOCKED).** P0-b is first-writer-wins: a
+   wrong incumbent squats forever (picante→hot sauce blocks spicy;
+   vegetariana→serves-vegetarian-food blocks vegetarian; cafe blocks
+   coffee). Post-sweep gate 90.7 vs 98.0 sim (sim bypassed the guard) — the
+   remaining gap IS this class. Ideal: a blocked inferred surface whose
+   target disagrees with the incumbent goes to the identity judge for
+   eviction/keep, instead of silent refusal. Morphology class is CLOSED
+   (japonés/mexicano/peruanos pass; 19,168 es aliases live).
