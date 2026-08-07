@@ -196,7 +196,9 @@ export type SceneBodyFoundationSurfaceProps = {
   /** The scene body lane's live scroll offset (shared scroll container / list). */
   scrollOffset: SharedValue<number>;
   /** Boundary-physics law §1: runtime-owned overscroll. Optional — hosts outside the
-   *  sheet runtime (none today) get an inert zero. */
+   *  sheet runtime get an inert zero. The live omitter is the track's per-row
+   *  foundation (`tracksheet/use-track-leg-resolver.tsx`, `wrapRowOnFoundation`),
+   *  which wraps each row cell with a zero scroll offset and no overscroll lane. */
   contentOverscroll?: SharedValue<number>;
   /**
    * The scene this lane paints — provided over `SceneStripLawContext` so strip
