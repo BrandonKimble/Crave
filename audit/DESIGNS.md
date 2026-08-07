@@ -2887,3 +2887,35 @@ previous handle's answer.
 
 32 nav-overlays rows remain; the concurrent-lane STALE rows and one failing suite were
 verified by git status to be the D98 lane's in-flight edits, not this lane's.
+
+---
+
+## D100 — mobile-search D98 P3 ratified (2026-08-06)
+
+All seven landed in separate commits, both-direction proofs throughout, 46 suites / 327
+tests green. Three outcomes to record:
+
+**F5703 went one branch beyond the design, correctly.** With the supersede cancel
+suppressed, a retry whose command channel returns FALSE would have stranded its
+still-armed id — a hole the design created and the lane found by reading the park branch
+before landing. That branch now resolves `cancelled` exactly once. The exactly-once law
+survives every path again, including the one my design would have broken.
+
+**F5705's deletion carries the strongest argument available:** rendered-but-inert is
+unrepresentable IN THE COMPONENT (pointerEvents is a pure function of the visibility
+boolean; nothing gates between them), so deriving `enabled` would reproduce an
+undivergeable boolean with longer provenance — and the consumer's `enabled === true`
+conjunct could never contribute. Instrument deleted at the source, conjunct died with it.
+
+**F5850 — APPROVED as a finding with teeth:** `React.useMemo<T>(() => ({...}))` is NOT an
+excess-property-check position (probe-verified), so a file whose own header claims the
+F1668 inline-literal discipline does not actually have it there. Third instance of the
+obvious-typing-gesture-fails class (JSX spread D88, useMemo generic D97, now this) — the
+class deserves one home: a short section in CRAVE.md's guard-integrity notes listing the
+three known non-checking positions and the working forms. Queued for my next map update.
+F5851 (widen the orphan gate to styles keys) approved for the next tooling P3.
+
+Design corrections accepted: the newer-commit park arm's real sequence is
+parked/parkSuperseded/parked/replayed (the superseding commit parks in turn — the host is
+still unmounted), and the resetSheetToHidden producer attribution moves to the
+clear-restore authority. Both now recorded where the next reader will look.
