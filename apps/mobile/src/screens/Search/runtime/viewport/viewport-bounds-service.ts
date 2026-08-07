@@ -1,6 +1,6 @@
 import type { MutableRefObject } from 'react';
 import type { MapBounds } from '../../../../types';
-import type { LngLat, OverlapRegion } from '../../utils/overlap-region';
+import type { LngLat, OverlapRegion, ReadonlyOverlapRegion } from '../../utils/overlap-region';
 
 type BoundsSubscriber = (bounds: MapBounds | null) => void;
 
@@ -146,7 +146,12 @@ export class ViewportBoundsService {
     this.overlapRegion = region;
   }
 
-  public getOverlapRegion(): OverlapRegion | null {
+  /** F5306: READONLY, not a clone. This is the only accessor pair in the class that hands
+   *  back the internal object rather than a copy — deliberately, because the region carries
+   *  a polygon and the copy would be paid on every source build. The return type is what
+   *  establishes the invariant the other four buy with `cloneX`: a writer through this
+   *  handle does not compile, so the frozen region cannot be corrupted mid-search. */
+  public getOverlapRegion(): ReadonlyOverlapRegion | null {
     return this.overlapRegion;
   }
 

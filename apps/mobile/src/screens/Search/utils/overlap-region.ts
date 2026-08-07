@@ -27,6 +27,32 @@ export type OverlapRegion =
   | { kind: 'viewport'; bounds: MapBounds; polygon: LngLat[] | null }
   | { kind: 'radius'; center: Coordinate; radiusMiles: number };
 
+/**
+ * F5306: the overlap region AS ITS READERS SEE IT.
+ *
+ * `ViewportBoundsService` owns one frozen region per active search — its own comment says
+ * the field's whole contract is that it does not change mid-search. The service clones on
+ * the way out of `getBounds`, `getCamera` and `getSubmittedPolygon`; this type is the same
+ * guarantee bought one rung higher on the ladder. Instead of paying a polygon copy on every
+ * source build so a mutation would be harmless, the return type makes the mutation
+ * UNREPRESENTABLE: `service.getOverlapRegion()!.bounds = x` is a compile error, and the
+ * reader still gets the real object with no allocation. Readers only ever read.
+ */
+export type ReadonlyOverlapRegion =
+  | {
+      readonly kind: 'viewport';
+      readonly bounds: {
+        readonly northEast: Readonly<Coordinate>;
+        readonly southWest: Readonly<Coordinate>;
+      };
+      readonly polygon: readonly Readonly<LngLat>[] | null;
+    }
+  | {
+      readonly kind: 'radius';
+      readonly center: Readonly<Coordinate>;
+      readonly radiusMiles: number;
+    };
+
 export const resolveOverlapRegion = ({
   submittedBounds,
   submittedPolygon = null,
