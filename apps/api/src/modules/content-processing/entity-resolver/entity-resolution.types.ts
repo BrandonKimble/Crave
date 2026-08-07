@@ -41,6 +41,11 @@ export interface EntityResolutionResult {
    *  its own tier so a cross-lingual link is never laundered as a
    *  lexical 'fuzzy' in the ledgers or the diagnostics. */
   resolutionTier: 'exact' | 'alias' | 'fuzzy' | 'dense' | 'new' | 'unmatched';
+  /** Query-time maximal linking: this result is the DECOMPOSED reading of a
+   *  compound span (the part, not the whole). Consumers section it at
+   *  match tier 1; the compound itself stays tier 0. Never set by
+   *  content-processing resolution. */
+  decomposed?: boolean;
   matchedName?: string;
   originalInput: EntityResolutionInput;
 

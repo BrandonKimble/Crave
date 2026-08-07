@@ -28,7 +28,10 @@ import {
 } from '../entity-text-search/query-analyzer';
 import { DietaryConstraintRegistry } from './dietary-constraints';
 import { UnsegmentedResidueService } from './unsegmented-residue.service';
-import type { EntitySpanGroup } from '../entity-text-search/entity-text-search.service';
+import type {
+  EntitySpanGroup,
+  SpanEntity,
+} from '../entity-text-search/entity-text-search.service';
 import { foodNameVariants } from '../content-processing/entity-resolver/food-lemma';
 import { canonicalFold } from '../content-processing/entity-resolver/entity-identity';
 import { EngineCoverageService } from './engine-coverage.service';
@@ -416,7 +419,12 @@ export class SearchQueryInterpretationService {
     // by the deterministic order (curated list = calibration tail).
     const placedResults: EntityResolutionResult[] = [];
     for (const group of groups) {
-      if (consumedGroups.has(group) || negatedGroups.has(group)) continue;
+      // MAXIMAL LINKING: a CONSUMED group (residue-join built a compound
+      // over it — "brekfast tacos" → breakfast taco) still places. The
+      // compound is the primary reading; the bare span it absorbed is the
+      // decomposed one, and discarding it was the consume defect. Only
+      // negated groups stay out (fail closed, R5-3).
+      if (negatedGroups.has(group)) continue;
       const dietaryEntity = group.entities.find((e) =>
         dietaryIds.has(e.entityId),
       );
@@ -440,6 +448,10 @@ export class SearchQueryInterpretationService {
         entityIds: tiedIds.length > 1 ? tiedIds : undefined,
         confidence: 1,
         resolutionTier: 'exact',
+        // A consumed group was replaced by a residue-join compound
+        // ("brekfast tacos" → breakfast taco); its own reading is the
+        // decomposed one, sectioned tier 1 downstream.
+        decomposed: consumedGroups.has(group) || undefined,
         matchedName: winner.name,
         originalInput: {
           tempId: `${winner.type}:${uuid()}`,
@@ -450,6 +462,76 @@ export class SearchQueryInterpretationService {
           engineId: null,
         },
       });
+      // MAXIMAL LINKING (2026-08-06): the compound's decomposed reading
+      // stays ELIGIBLE alongside it — "tacos vegetarianos" admits
+      // `vegetarian taco` AND (`taco` + `vegetarian`). Measured before
+      // this change: compound-consumes-parts was 17 of 38 missed concepts
+      // on the es gate, and the discarded parts carried ~1000x the
+      // compound's evidence (taco 2,328 ev vs vegetarian taco 2). Under
+      // the ranking invariant this cannot reorder anything: matching
+      // decides eligibility, Crave Score decides order.
+      // GUARD: a sub-span behind a negation cue must NOT become eligible —
+      // "pizza sin gluten" grounds `gluten free pizza` whole; the bare
+      // `gluten` inside it would invert the constraint (fail closed, same
+      // law as R5-3).
+      // COMPOSITIONALITY GUARD (rung-2 concept containment): a part is only
+      // a valid decomposition when the compound CONCEPT's own name contains
+      // the part concept's name — `vegetarian taco` ⊇ {taco, vegetarian} ✓;
+      // `pan dulce` ⊉ {bread, candy} ✗ (a lexicalized name whose fragments
+      // were translated out of context — the sn-02 regression). Checked in
+      // CONCEPT space (folded entity names), never surface space, so it is
+      // the same containment relation the concept-graph ladder already
+      // trusts at rung 2.
+      const winnerTokens = new Set(
+        canonicalFold(winner.name).split(' ').map(singularish),
+      );
+      const isContainedPart = (e: SpanEntity) =>
+        canonicalFold(e.name)
+          .split(' ')
+          .every((tok) => winnerTokens.has(singularish(tok)));
+      for (const sub of group.subGroups ?? []) {
+        if (negatedSpan(analysis, sub)) continue;
+        const contained = sub.entities.filter(isContainedPart);
+        if (!contained.length) continue;
+        const subDietary = contained.find((e) => dietaryIds.has(e.entityId));
+        // MODIFIER-FIRST PLACEMENT (owner ruling 2026-08-06): a PART of a
+        // dish name reads as what it does INSIDE the dish — an attribute
+        // (soft conjunct in the pooled gate) or an ingredient (hard
+        // conjunct), falling back to food membership only when no modifier
+        // reading exists. "arroz con pollo" → rice∧chicken via the
+        // ingredient lane, ONE score-ranked list — never "any rice dish".
+        const subWinner =
+          subDietary ??
+          [...contained].sort(
+            (a, b) =>
+              SearchQueryInterpretationService.DECOMPOSED_PLACEMENT_ORDER.indexOf(
+                a.type,
+              ) -
+              SearchQueryInterpretationService.DECOMPOSED_PLACEMENT_ORDER.indexOf(
+                b.type,
+              ),
+          )[0];
+        const subTiedIds = contained
+          .filter((e) => e.type === subWinner.type)
+          .map((e) => e.entityId);
+        placedResults.push({
+          tempId: `${subWinner.type}:${uuid()}`,
+          entityId: subWinner.entityId,
+          entityIds: subTiedIds.length > 1 ? subTiedIds : undefined,
+          confidence: 1,
+          resolutionTier: 'exact',
+          decomposed: true,
+          matchedName: subWinner.name,
+          originalInput: {
+            tempId: `${subWinner.type}:${uuid()}`,
+            normalizedName: sub.text.toLowerCase(),
+            originalText: sub.text,
+            entityType: subWinner.type,
+            aliases: [sub.text],
+            engineId: null,
+          },
+        });
+      }
     }
 
     const allResults = [...placedResults, ...residueResults];
@@ -867,6 +949,18 @@ export class SearchQueryInterpretationService {
     'restaurant',
   ] as EntityType[];
 
+  /** Placement order for DECOMPOSED parts only: a fragment of a dish name
+   *  reads as a modifier of the dish (attribute/ingredient conjunct), not
+   *  as a rival dish. Food is the fallback when no modifier reading
+   *  exists (`taco` in "tacos vegetarianos"). */
+  private static readonly DECOMPOSED_PLACEMENT_ORDER: EntityType[] = [
+    'food_attribute',
+    'restaurant_attribute',
+    'ingredient',
+    'food',
+    'restaurant',
+  ] as EntityType[];
+
   /** Run `fn` over `items` with at most `concurrency` in flight, preserving order. */
   private async mapLimit<T, R>(
     items: T[],
@@ -907,6 +1001,12 @@ export class SearchQueryInterpretationService {
         entry.entityIds.includes(result.entityId!),
       );
       if (existing) {
+        // PRIMARY WINS: if the same entity arrives both as a primary
+        // reading and a decomposed one (it names its own span elsewhere in
+        // the query), the primary reading owns the entry.
+        if (!result.decomposed) {
+          delete existing.decomposed;
+        }
         return;
       }
 
@@ -918,6 +1018,7 @@ export class SearchQueryInterpretationService {
           ? result.entityIds
           : [result.entityId],
         originalText: result.originalInput.originalText,
+        ...(result.decomposed ? { decomposed: true } : {}),
       });
     };
 

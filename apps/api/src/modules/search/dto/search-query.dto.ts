@@ -82,6 +82,15 @@ export class QueryEntityDto {
   @IsOptional()
   @IsString()
   originalText?: string | null;
+
+  /** MAXIMAL LINKING (2026-08-06): true when this entity is the DECOMPOSED
+   *  reading of a compound span ("tacos vegetarianos" → `taco` here, while
+   *  `vegetarian taco` stays the primary). Decomposed foods widen
+   *  membership at tier 1 (grounding.similar), never tier 0 — the compound
+   *  leads its own query. Absent = primary reading. */
+  @IsOptional()
+  @IsBoolean()
+  decomposed?: boolean;
 }
 
 export class QueryEntityGroupDto {
@@ -111,6 +120,65 @@ export class QueryEntityGroupDto {
   @ValidateNested({ each: true })
   @Type(() => QueryEntityDto)
   ingredients?: QueryEntityDto[];
+}
+
+/**
+ * THE SEARCH-GROUP VOCABULARY — the one exhaustive statement of "what can a
+ * search be about" (F3800/D79). Every predicate, counter and switch that
+ * enumerates the groups DERIVES from this array instead of hand-copying it:
+ * three hand-copied four-arm lists in search-orchestration.service.ts all
+ * forgot `ingredients`, which the interpreter emits as a STANDALONE group, so
+ * typing "burrata" fell to the empty response while tapping it in autocomplete
+ * searched fine.
+ *
+ * The array IS the type (the repo's scene-foundation-spec / app-env pattern),
+ * and it is pinned EXHAUSTIVE IN BOTH DIRECTIONS by the two lines below:
+ *  - `satisfies` rejects a key that is not a group (extra arm);
+ *  - `_NoUnenumeratedQueryEntityGroup` rejects a group missing from the array
+ *    (dropped arm) — deleting `'ingredients'` here is a tsc error, not an
+ *    empty state discovered in production.
+ */
+export const QUERY_ENTITY_GROUP_KEYS = [
+  'restaurants',
+  'food',
+  'foodAttributes',
+  'restaurantAttributes',
+  'ingredients',
+] as const satisfies readonly (keyof QueryEntityGroupDto)[];
+
+export type QueryEntityGroupKey = (typeof QUERY_ENTITY_GROUP_KEYS)[number];
+
+/** Compile-time exhaustiveness: resolves to `never` only while every group on
+ *  QueryEntityGroupDto appears in QUERY_ENTITY_GROUP_KEYS. Adding a sixth group
+ *  to the DTO without adding it here fails to compile HERE, at the vocabulary,
+ *  rather than silently at every consumer. */
+type AssertNoUnenumeratedGroup<T extends never> = T;
+export type _NoUnenumeratedQueryEntityGroup = AssertNoUnenumeratedGroup<
+  Exclude<keyof QueryEntityGroupDto, QueryEntityGroupKey>
+>;
+
+/** Does this request name ANYTHING to search for? Derived from the vocabulary,
+ *  so a new group is counted by construction. */
+export function countQueryEntityGroupEntries(
+  entities: QueryEntityGroupDto | undefined,
+): number {
+  if (!entities) {
+    return 0;
+  }
+  return QUERY_ENTITY_GROUP_KEYS.reduce(
+    (total, key) => total + (entities[key]?.length ?? 0),
+    0,
+  );
+}
+
+/** Per-group entry counts for diagnostics — same vocabulary, so the debug log
+ *  can never report on a subset of what the gate consulted. */
+export function summarizeQueryEntityGroupCounts(
+  entities: QueryEntityGroupDto | undefined,
+): Record<QueryEntityGroupKey, number> {
+  return Object.fromEntries(
+    QUERY_ENTITY_GROUP_KEYS.map((key) => [key, entities?.[key]?.length ?? 0]),
+  ) as Record<QueryEntityGroupKey, number>;
 }
 
 export class CoordinateDto {
