@@ -22,7 +22,9 @@
 //
 // OWNER DEFAULTS ENCODED (two-posture law ratified 2026-07-12, plans/root-snap-law.md §Leg 2;
 // supersedes the 2026-07-01 map-first rows and the 2026-07-02 per-tab memory rows):
-//   • Nav switches (topLevelSwitch) = the TWO-POSTURE SEATS ('postureSeat'): home (search/polls)
+//   • Nav switches (topLevelSwitch) = the TWO-POSTURE SEATS ('postureSeat'): home (search + the
+//     docked carrier scene 'home'; POLLS was demoted to content 2026-07-26 and this line said
+//     otherwise until F6604)
 //     and content (every other root page, ONE shared posture) each remember wherever the user's
 //     FINGER last put the sheet — collapsed included. Switching tabs never moves the sheet
 //     except when crossing between home and the rest; cold-start seeds: home collapsed,
@@ -61,8 +63,8 @@ export type SheetMotionDescriptorKind = RouteSceneSwitchSheetTransitionKind | '*
  *    detent when usable (middle/expanded — a collapsed parent memory would hide the content
  *    the child was opened from), else `fallbackSnap`.
  *  - 'postureSeat' (THE two-posture law, owner 2026-07-12): every nav-page switch snaps to the
- *    TARGET side's posture seat — home (search/polls → the docked seat) or content (one
- *    shared seat for every other root page). Same-side switches resolve to the detent the live
+ *    TARGET side's posture seat — home (search + the docked carrier scene 'home') or content
+ *    (one shared seat for every other root page, POLLS INCLUDED since the 2026-07-26 demotion). Same-side switches resolve to the detent the live
  *    sheet already sits at (zero motion — content pages swap in place); home↔content crossings
  *    restore the other side's remembered posture, collapsed included (it is a first-class home
  *    posture). An unusable seat (hidden = dismissed docked scene, or unset) falls to the side's
@@ -242,8 +244,9 @@ export const SHEET_MOTION_DESCRIPTOR_TABLE: readonly SheetMotionDescriptorRow[] 
   // 2026-07-02 per-tab rememberedDetent rows (owner-ratified deletion: tabs now share ONE seat).
   // The rows themselves are DERIVED from the scene-policy registry's exhaustive `postureSeat`
   // field (root-snap-law.md §Leg 3): a new root page declared there gets its row by
-  // construction — no hand-maintained target list to forget (today: search/polls/lists/
-  // profile).
+  // construction — no hand-maintained target list to forget (today the five scenes declaring a
+  // seat: search + the docked carrier 'home' on the home side, polls/lists/profile on content;
+  // this parenthetical omitted 'home' — F6604).
   ...APP_ROUTE_SCENE_KEYS.filter((sceneKey) => resolveNavTargetPostureSeat(sceneKey) != null).map(
     (sceneKey): SheetMotionDescriptorRow => ({
       from: '*',
@@ -330,9 +333,14 @@ export const lookupDefaultSheetMotionDescriptorRow = (
  * the content the child was opened from), else the row's fallbackSnap.
  *
  * 'postureSeat' (two-posture law): snap to the TARGET side's seat. The seat read goes through
- * resolveSceneRememberedSnap, whose snap-session backing routes polls → the HOME seat and
- * lists/profile → the ONE content seat ('search' as a nav target IS home — the docked
- * presentation — so it aliases to the polls seat here). Collapsed is a first-class remembered
+ * resolveSceneRememberedSnap, whose snap-session backing follows the scene-policy registry's
+ * own `postureSeat` declarations: the HOME seat is 'search' plus the docked carrier scene
+ * (HOME_SEAT_CARRIER_SCENE_KEY === DOCKED_SCENE_KEY === 'home'), and POLLS sits with lists and
+ * profile on the ONE content seat. (This paragraph used to say polls routed to the home seat
+ * and that search "aliases to the polls seat" — both were made false by the 2026-07-26 polls
+ * demotion and went uncorrected in the implementation while F953 fixed the same stale claim
+ * twice in the sibling spec. Read the registry, not this comment, if they ever disagree
+ * again.) Collapsed is a first-class remembered
  * posture; only hidden (dismissed docked scene) / unset fall to the side's cold-start seed —
  * which for home is also the sanctioned docked resurrect posture.
  */

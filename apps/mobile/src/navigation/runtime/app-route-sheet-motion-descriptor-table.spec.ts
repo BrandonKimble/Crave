@@ -251,7 +251,28 @@ describe('sheet-motion descriptor table (P6 step 1)', () => {
     expect(mismatches).toEqual([]);
   });
 
-  it('T1: every (from, to, kind) resolves to exactly one default row', () => {
+  // F6604(b): this case used to assert `expect(row).not.toBeNull()` over all 3,528
+  // combinations. `lookupDefaultSheetMotionDescriptorRow` returns a NON-NULLABLE
+  // SheetMotionDescriptorRow and THROWS when the catch-all is missing, so that assertion
+  // was ENTAILED BY THE RETURN TYPE: the only thing that could redden the case was the
+  // throw, and 3,528 iterations of a tautology carried no signal. The name also promised
+  // something it never checked — EXACTLY-ONE is the duplicate-row case below, and WHICH
+  // row resolved was checked nowhere.
+  //
+  // What totality actually claims, and what is asserted now: the lookup returns a row that
+  // IS a member of the table (not a fabricated object), that is DEFAULT-tier (a mandate row
+  // must never leak out of the default lookup — the tiers are the reason both lookups
+  // exist), and whose rule is one the materializer can speak.
+  it('T1: every (from, to, kind) resolves to a DEFAULT-tier row drawn from the table', () => {
+    const RULE_KINDS = new Set([
+      'none',
+      'hide',
+      'preserveLiveY',
+      'snapTo',
+      'promoteAtLeast',
+      'rememberedDetent',
+      'postureSeat',
+    ]);
     for (const fromSceneKey of ALL_SCENE_KEYS) {
       for (const toSceneKey of ALL_SCENE_KEYS) {
         for (const transitionKind of ALL_TRANSITION_KINDS) {
@@ -260,7 +281,10 @@ describe('sheet-motion descriptor table (P6 step 1)', () => {
             toSceneKey,
             transitionKind,
           });
-          expect(row).not.toBeNull();
+          // Referential identity: the resolver hands back one of the table's own rows.
+          expect(SHEET_MOTION_DESCRIPTOR_TABLE).toContain(row);
+          expect(row.tier).not.toBe('mandate');
+          expect(RULE_KINDS.has(row.motion.kind)).toBe(true);
         }
       }
     }
