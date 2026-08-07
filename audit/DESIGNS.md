@@ -2360,3 +2360,54 @@ re-deriving stored rows touches data.
 
 Three entity-resolver COVERAGE rows went stale under that other session's commits and are
 reverted to UNREVIEWED — their re-review rides the next api wave.
+
+---
+
+## D87 — P2 verdicts on the gesture/panels pass (F4500–F4512, 2026-08-06)
+
+**F4501 — SPLIT RULING: the symmetry fix is APPROVED, the residual policy is ESCALATED.**
+`isReady` awaits four async facts and the destination memo reads a FIFTH
+(`access.enforced`) it never waits for, with `?? false` shared between a fail-closed
+sibling (`active`) and this fail-OPEN one. Approved as engineering: `enforced` joins the
+four awaited facts — that is symmetry, not policy; the current behavior routes
+access-UNKNOWN to main not by decision but by a shared default. ESCALATED as policy: what
+happens when access is genuinely unknown AFTER waiting (timeout, error) — open or closed —
+is the owner's paywall call, and the P3 must leave that arm explicitly marked with the
+escalation reference, not pick silently.
+
+**F4502 — APPROVED.** The gestures contract is silently short by one — the runtime returns
+a fourth pan carrying the boundary-physics law, read against the inferred type before the
+narrowing. The fix IS the stated mutation: annotate the runtime's return as the contract
+type, so deleting a field fails at the return statement. Update the "two pans" comment to
+the truth in the same commit.
+
+**F4500 — APPROVED, F3701's shape.** A 15-line docblock names consumers that do not exist
+for a hazard that is fully live. Read the sign-out and access-redirect flows END TO END
+first (the reading directive is the method here), then either implement the isResolving
+check where the doc claims it lives or rewrite the doc to say the hazard is UNHANDLED —
+a doc that says handled-when-not is worse than no doc.
+
+**F4508 — APPROVED.** Delete the two guards that cannot fail (non-nullable type, verified),
+KEEP the two real ones (genuinely optional fields), and add one comment distinguishing
+them — the author's failure was not distinguishing, so the fix must make the distinction
+legible, not just shorter.
+
+**F4507 — APPROVED, banking law.** A ~340-line spec proving a dead handler's identity
+survives a swap, ten contracts deep, when the UI moved to useFavoriteHeart. Re-grep the
+whole chain at execution; delete handler, threading, and spec together.
+
+**F4510 — APPROVED, and the design note is the ruling:** deleting the `?? 0` IS the
+abstraction — `number | null` is not assignable to setTimeout, so tsc enforces what a
+reviewer currently must remember. Exhaustion stops being a zero-delay hot loop by type.
+
+**F4503/F4504/F4505/F4506/F4509/F4511/F4512 — APPROVED as smalls** per their rows.
+
+**The F1475 hunt returning EMPTY is accepted as evidence**, with the reason recorded: the
+family's `runtimeConfigValues` is now REQUIRED, so the dead-fallback shape is
+inexpressible there — the earlier rederivation closed the class, not just the instance.
+The cousin it found instead (values alive past their last reader) is this pass's harvest.
+
+**Clean bills accepted**, notably the immutable-pans design (empty-deps memo, stable
+captures, effects leaving via the command bus — the polls detached-pan disease
+unrepresentable) and ProfileSectionsBody's DOUBLE compile-time enforcement of the section
+union — the one panel-family guard that goes RED under mutation.
