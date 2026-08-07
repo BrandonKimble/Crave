@@ -4205,3 +4205,28 @@ surfaces. COST: one new config + a first-lint backlog of unknown size in site.
 Coupled to F9100's policy decision (does the repo want the lint gate to be a hard
 CI gate). ESCALATED — awaiting owner. These are holes-in-the-fence (no live breach:
 tsc + error-level lint + the type-check gates still run), not a shipping bug.
+
+---
+
+## D137 — the backlog reckoning: 268 open findings triaged into MOOT/OWNER/LIVE-MINE (2026-08-07)
+
+The attempt-3..6 "converging" reads were measuring only the NEW-finding rate in fresh
+territory, not the standing backlog. A dedup of FINDINGS.md by each finding's LATEST
+status found 268 truly-open (+44 owner). Four parallel triage lanes read every one
+against today's tree. Result: ~26 MOOT, ~52 OWNER, ~190 LIVE-MINE (a handful
+concurrent-blocked). This is a large multi-session remediation program, NOT a near-done
+convergence — the honest state is recorded in audit/BACKLOG-TRIAGE-2026-08-07.md
+(canonical index; per-finding fixes live in each FINDINGS NEXT ACTION).
+
+Actions taken this pass: 17 tree-VERIFIED MOOTs closed (F126/F214/F481/F482/F757/F767/
+F865/F1010/F1052/F1080/F1327/F1342/F1661/F1902/F3505/F4102/F4601 — each with proof the
+fix already landed or the symbol is gone). VERIFY-DON'T-TRUST caught two triage errors:
+F1561/F1669 were labeled MOOT but the ledger says CONFIRMED-STILL-LIVE — left OPEN
+pending a real check, not closed on the lane's word.
+
+The LIVE-MINE ~190 are heavily clustered by territory (reddit-collector fake-defaults;
+places/enrichment seeded-priors+SQL-injection; api specs mocks-answering-any-arg;
+app-route/scene-runtime dead-params + twin-contracts + always-true-comparators; native
+bridges; CI/gates coupling; lint hygiene). Each cluster is a P3 fix-lane: mechanical fix
++ mutation-proof + delete-scaffolding + FINDINGS→FIXED, orchestrator ratifies and commits
+per territory. DONE remains far off: every row terminal + two consecutive zero passes.
