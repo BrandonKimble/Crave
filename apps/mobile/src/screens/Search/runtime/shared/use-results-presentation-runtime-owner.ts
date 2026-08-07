@@ -14,7 +14,7 @@ import { useResultsPresentationOwnerStateSessionRuntime } from './use-results-pr
 import { publishResultsPresentationCloseTransitionBridgeRuntime } from './publish-results-presentation-close-transition-bridge-runtime';
 import { useResultsPresentationCloseTransitionRuntime } from './use-results-presentation-close-transition-runtime';
 import { useResultsPresentationOwnerPresentationActionsRuntime } from './use-results-presentation-owner-presentation-actions-runtime';
-import { useResultsPresentationOwnerValueRuntime } from './use-results-presentation-owner-value-runtime';
+import { createResultsPresentationOwnerValue } from '../controller/results-presentation-owner-runtime';
 import type { RouteSceneSwitchAuthority } from './route-authority-contract';
 export type {
   ResultsInteractionModel,
@@ -153,7 +153,15 @@ export const useResultsPresentationOwner = ({
     routeSceneVisibilityPolicyRuntime,
   });
 
-  return useResultsPresentationOwnerValueRuntime({
+  // F4802: this used to go through `useResultsPresentationOwnerValueRuntime`, a use-*
+  // wrapper whose entire body was a `React.useMemo` around this call — with the rest
+  // element `...resultsRuntimeOwner` in its dep array. A rest element allocates a fresh
+  // object on every call, so the dep could never be stable and the memo recomputed
+  // unconditionally: a memo that cannot hit, returning a new identity every render. With
+  // the memo gone the wrapper called no hook at all (search-runtime-hook-names would have
+  // failed it), so it is deleted rather than renamed — one of F1610's five re-lists of
+  // the same 20 field names goes with it.
+  return createResultsPresentationOwnerValue({
     searchSurfaceResultsTransactionKey: resultsRuntimeOwner.searchSurfaceResultsTransactionKey,
     pendingTogglePresentationIntentId: resultsRuntimeOwner.pendingTogglePresentationIntentId,
     scheduleToggleCommit: resultsRuntimeOwner.scheduleToggleCommit,
