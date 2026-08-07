@@ -173,31 +173,59 @@ export class SignalDemandReadService {
     const actorFilterAgg = actorId
       ? Prisma.sql`AND a.actor_id = ${actorId}::uuid`
       : Prisma.empty;
+    // F6800 / D113: `kinds` is a LANE SELECTOR WITHIN the echo law, not an
+    // escape from it (signals.service.ts's ECHO_SIGNAL_KINDS doctrine, in its
+    // own words: "Kind-FILTERED readers ... keep reading echo rows directly —
+    // there the echo IS the act being asked about"). autocomplete's attribute
+    // support asks for `['autocomplete_selection']` ON PURPOSE, and that lane
+    // must not silently zero. So the exclusion binds the UNFILTERED read only;
+    // an empty echo list is the honest spelling of "nothing excluded here",
+    // because the builder expresses the exclusion as a kind LIST, not a flag.
+    const echoKinds = kinds ? [] : ECHO_SIGNAL_KINDS;
     const rows = await this.prisma.$queryRaw<
       { entity_id: string; demand_score: number }[]
     >`
-      WITH agg AS (
-        SELECT
-          ${resolvedSubjectSql('a')} AS entity_id,
-          a.actor_id,
-          SUM(
-            a.signal_count * ${dayRecencySql(Prisma.sql`(${todayKey}::date - a.day)`)}
-          )::float8 AS acts
-        FROM signal_demand_daily a
-        ${redirectJoinSql('a')}
-        WHERE a.place_id IS NULL
+      -- THE §4 daily-acts statement (act-identity.ts), same as the global arm
+      -- below. F6800: this was a FIFTH hand-rolled dialect — a raw
+      -- SUM(signal_count * recency) against the daily table with the echo
+      -- exclusion and the entity-subject filter both simply absent (the exact
+      -- two legs F4000 measured wrong on globalEntityDemand). Its kind
+      -- arithmetic was right for the same reason globalEntityDemand's was: a
+      -- flat SUM over the per-kind rows already sums them.
+      WITH agg AS (${dailyActsCteSql({
+        dimensions: [
+          {
+            expr: resolvedSubjectSql('a'),
+            as: 'entity_id',
+          },
+        ],
+        from: Prisma.sql`signal_demand_daily a
+          ${redirectJoinSql('a')}`,
+        where: Prisma.sql`a.place_id IS NULL
           AND a.subject_id = ANY(${expandedIds}::uuid[])
-          -- Docket #6: the aggregate INCLUDES today (15-min cadence = freshness);
-          -- the fresh ledger arm — the law's second dialect — is deleted.
-          AND a.day >= ${sinceDayKey}::date
-          ${kindFilterAgg}
-          ${actorFilterAgg}
           AND ${resolvedSubjectSql('a')} = ANY(${params.entityIds}::uuid[])
-        GROUP BY 1, 2
+          ${kindFilterAgg}
+          ${actorFilterAgg}`,
+        actsAlias: 'day_acts',
+        echoKinds,
+        sinceDayKey,
+        subjectScope: 'entity',
+      })}),
+      -- The agg CTE is per-KIND, so a day's acts SUM across kinds before the
+      -- recency weight is applied — two kinds on one day are two acts.
+      by_day AS (
+        SELECT entity_id, actor_id, day, SUM(day_acts)::float8 AS day_acts
+        FROM agg
+        GROUP BY 1, 2, 3
       ),
       by_actor AS (
-        SELECT entity_id, actor_id, SUM(acts) AS acts
-        FROM agg
+        SELECT
+          entity_id,
+          actor_id,
+          SUM(
+            day_acts * ${dayRecencySql(Prisma.sql`(${todayKey}::date - day)`)}
+          )::float8 AS acts
+        FROM by_day
         GROUP BY 1, 2
       )
       SELECT
