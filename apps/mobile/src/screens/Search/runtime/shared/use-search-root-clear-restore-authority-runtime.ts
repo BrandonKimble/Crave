@@ -37,11 +37,7 @@ export const useSearchRootClearRestoreAuthorityRuntime = ({
     rootDataPlaneRuntime,
     rootSuggestionRuntime,
   } = stateFoundationLane;
-  const {
-    routeOverlaySessionActions,
-    rootSharedSheetRuntimeLane,
-    appRouteSharedSheetRuntimeOwner,
-  } = rootOverlayFoundationRuntime;
+  const { routeOverlaySessionActions, rootSharedSheetRuntimeLane } = rootOverlayFoundationRuntime;
 
   const clearOwner = useSearchClearOwner({
     isClearingSearchRef: rootPrimitivesRuntime.searchState.isClearingSearchRef,
@@ -60,7 +56,6 @@ export const useSearchRootClearRestoreAuthorityRuntime = ({
     resetShortcutCoverageState: sessionPrimitivesLane.primitives.resetShortcutCoverageState,
     resetMapMoveFlag: rootSharedSheetRuntimeLane.resetMapMoveFlag,
     setSuggestions: rootPrimitivesRuntime.searchState.setSuggestions,
-    resetSheetToHidden: appRouteSharedSheetRuntimeOwner.markSharedSheetHidden,
     lastAutoOpenKeyRef: requestExecutionAuthorityRuntime.lastAutoOpenKeyRef,
     resetFocusedMapState: rootPrimitivesRuntime.searchState.resetFocusedMapState,
     searchSessionQueryRef: rootPrimitivesRuntime.searchState.searchSessionQueryRef,

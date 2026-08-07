@@ -26,7 +26,7 @@ type UseProfileOwnerActionSurfaceRuntimeArgs = {
   // close finalization used to run it; every close is pop-shaped now).
   getProfileDismissBehavior: ProfileRuntimeStateOwner['closeRuntimeState']['policyRuntimeState']['getProfileDismissBehavior'];
   getProfileShouldClearSearchOnDismiss: ProfileRuntimeStateOwner['closeRuntimeState']['policyRuntimeState']['getProfileShouldClearSearchOnDismiss'];
-  clearSearchAfterProfileDismiss: () => void;
+  clearSearchState: () => void;
 };
 
 export const useProfileOwnerActionSurfaceRuntime = ({
@@ -44,7 +44,7 @@ export const useProfileOwnerActionSurfaceRuntime = ({
   finalizePreparedProfileCloseState,
   getProfileDismissBehavior,
   getProfileShouldClearSearchOnDismiss,
-  clearSearchAfterProfileDismiss,
+  clearSearchState,
 }: UseProfileOwnerActionSurfaceRuntimeArgs): ProfileRuntimeActions => {
   const presentationActions = useProfileOwnerPresentationActionsRuntime({
     queryState,
@@ -91,7 +91,7 @@ export const useProfileOwnerActionSurfaceRuntime = ({
     // the search session ends with it (the machine's close finalization used to do this;
     // the behavior record resets at the settle-half finalize).
     if (getProfileDismissBehavior() === 'clear' && getProfileShouldClearSearchOnDismiss()) {
-      clearSearchAfterProfileDismiss();
+      clearSearchState();
     }
     const nextRequestSeq = getRestaurantProfileRequestSeq() + 1;
     cancelActiveHydrationIntent('profile_hydration_cancelled_on_overlay_dismiss', {
@@ -105,7 +105,7 @@ export const useProfileOwnerActionSurfaceRuntime = ({
   }, [
     actionExecutionPorts,
     cancelActiveHydrationIntent,
-    clearSearchAfterProfileDismiss,
+    clearSearchState,
     getProfileDismissBehavior,
     getProfileShouldClearSearchOnDismiss,
     getProfileTransitionState,

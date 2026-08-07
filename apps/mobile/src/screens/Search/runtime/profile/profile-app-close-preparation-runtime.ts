@@ -15,7 +15,7 @@ export type ProfileAppCloseExecutionArgs = {
   pendingMarkerOpenAnimationFrameRef: React.MutableRefObject<number | null>;
   hydrationOperationId: string | null;
   phaseBMaterializerRef: React.MutableRefObject<PhaseBMaterializerLike>;
-  clearSearchAfterProfileDismiss: () => void;
+  clearSearchState: () => void;
 };
 
 export type ProfileAppClosePreparationRuntime = {

@@ -92,8 +92,7 @@ export const useSearchRootProfileOwnerRuntime = ({
         pendingMarkerOpenAnimationFrameRef,
         hydrationOperationId: rootDataPlaneRuntime.runtimeFlags.hydrationOperationId,
         phaseBMaterializerRef: sessionCoreLane.phaseBMaterializerRef,
-        clearSearchAfterProfileDismiss:
-          clearRestoreAuthorityRuntime.clearOwner.clearSearchAfterProfileDismiss,
+        clearSearchState: clearRestoreAuthorityRuntime.clearOwner.clearSearchState,
       },
       resultsExecutionArgs: {},
     },

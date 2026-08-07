@@ -145,8 +145,7 @@ export const useProfileOwner = ({
       runtimeStateOwner.closeRuntimeState.policyRuntimeState.getProfileDismissBehavior,
     getProfileShouldClearSearchOnDismiss:
       runtimeStateOwner.closeRuntimeState.policyRuntimeState.getProfileShouldClearSearchOnDismiss,
-    clearSearchAfterProfileDismiss:
-      appExecutionArgs.closeExecutionArgs.clearSearchAfterProfileDismiss,
+    clearSearchState: appExecutionArgs.closeExecutionArgs.clearSearchState,
     finalizePreparedProfileCloseState:
       runtimeStateOwner.closeRuntimeState.finalizationRuntimeState
         .finalizePreparedProfileCloseState,

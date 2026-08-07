@@ -8,15 +8,17 @@ import { publishSearchMountedResultsDataSnapshot } from '../runtime/shared/searc
 import { resetSearchFiltersStripScrollX } from '../runtime/shared/use-search-root-search-primitives-runtime';
 
 export type SearchClearOwner = {
-  clearSearchAfterProfileDismiss: () => void;
   clearTypedQuery: () => void;
   clearSearchState: (options?: ClearSearchStateOptions) => void;
 };
 
+// F5702 — every flag here is passed by a real call site. `skipSheetAnimation` and
+// `deferSuggestionClear` were not: all four `clearSearchState` callers pass explicit
+// literals, none spreads, and neither flag was ever anything but its `= false` default.
+// They are gone at the unrepresentable rung, so no future caller can re-create the dead
+// state they described.
 export type ClearSearchStateOptions = {
   shouldRefocusInput?: boolean;
-  skipSheetAnimation?: boolean;
-  deferSuggestionClear?: boolean;
   skipPostSearchRestore?: boolean;
   preserveForegroundEditing?: boolean;
 };
@@ -47,7 +49,6 @@ export type UseSearchClearOwnerArgs<Suggestion> = {
   resetShortcutCoverageState: () => void;
   resetMapMoveFlag: () => void;
   setSuggestions: React.Dispatch<React.SetStateAction<Suggestion[]>>;
-  resetSheetToHidden: () => void;
   lastAutoOpenKeyRef: React.MutableRefObject<string | null>;
   resetFocusedMapState: () => void;
   searchSessionQueryRef: React.MutableRefObject<string>;
@@ -76,7 +77,6 @@ export const useSearchClearOwner = <Suggestion>({
   resetShortcutCoverageState,
   resetMapMoveFlag,
   setSuggestions,
-  resetSheetToHidden,
   lastAutoOpenKeyRef,
   resetFocusedMapState,
   searchSessionQueryRef,
@@ -107,8 +107,6 @@ export const useSearchClearOwner = <Suggestion>({
   const clearSearchState = React.useCallback(
     ({
       shouldRefocusInput = false,
-      skipSheetAnimation = false,
-      deferSuggestionClear = false,
       skipPostSearchRestore = false,
       preserveForegroundEditing = false,
     }: ClearSearchStateOptions = {}) => {
@@ -124,9 +122,7 @@ export const useSearchClearOwner = <Suggestion>({
       cancelActiveSearchRequest();
       cancelAutocomplete();
       handleCancelPendingMutationWork();
-      if (!deferSuggestionClear) {
-        resetSubmitTransitionHold();
-      }
+      resetSubmitTransitionHold();
       // Dismiss is ONE commit moment = ONE atomic tuple write (identity idle + filters
       // reset + bounds cleared). Two writes made the intermediate filters-only delta
       // classify as a phantom variant_rerun — caught by the S4a reconciler parity trace.
@@ -150,11 +146,6 @@ export const useSearchClearOwner = <Suggestion>({
         setIsSearchFocused(false);
         setIsSuggestionPanelActive(false);
         setIsAutocompleteSuppressed(true);
-        // F1308 collateral: a `if (!deferSuggestionClear) { setShowSuggestions(false); }` sat
-        // here. That was the ONLY thing this arm of the flag did — the suggestion ARRAY is
-        // cleared by the two other `deferSuggestionClear` arms in this file, which are
-        // untouched and still live. With the dead write gone the arm is empty, so it is gone
-        // too rather than left as a branch that does nothing.
         setQuery('');
       }
       publishSearchMountedResultsDataSnapshot(null);
@@ -173,11 +164,8 @@ export const useSearchClearOwner = <Suggestion>({
       });
       resetShortcutCoverageState();
       resetMapMoveFlag();
-      if (!deferSuggestionClear && !preserveForegroundEditing) {
+      if (!preserveForegroundEditing) {
         setSuggestions([]);
-      }
-      if (skipSheetAnimation) {
-        resetSheetToHidden();
       }
       if (closeRestoreOrigin != null) {
         restoreSearchCloseOrigin(closeRestoreOrigin);
@@ -221,7 +209,6 @@ export const useSearchClearOwner = <Suggestion>({
       resetFocusedMapState,
       resetMapMoveFlag,
       resetRestaurantProfileFocusSessionRef,
-      resetSheetToHidden,
       resetShortcutCoverageState,
       resetSubmitTransitionHold,
       scrollResultsToTop,
@@ -236,18 +223,15 @@ export const useSearchClearOwner = <Suggestion>({
     ]
   );
 
-  // S-C.5 item 8: the old 86-line fork was clearSearchState() minus one idempotent focus
-  // reset — a copy that would only ever drift. The profile-dismiss clear IS the default clear.
-  const clearSearchAfterProfileDismiss = React.useCallback(() => {
-    clearSearchState();
-  }, [clearSearchState]);
-
+  // S-C.5 item 8 collapsed the old 86-line profile-dismiss fork into the default clear.
+  // F5702 finishes the job: what survived was `() => clearSearchState()` — zero delta,
+  // threaded four hops as a second name for the same function. The profile close path
+  // calls `clearSearchState` under its own name now.
   return React.useMemo(
     () => ({
-      clearSearchAfterProfileDismiss,
       clearTypedQuery,
       clearSearchState,
     }),
-    [clearSearchAfterProfileDismiss, clearSearchState, clearTypedQuery]
+    [clearSearchState, clearTypedQuery]
   );
 };
