@@ -29,6 +29,20 @@
 #     assertions outside a real map change, so they were not rewritten.
 # Those 16 blocks were REMOVED and the surviving 327 checks WIRED INTO CI.
 #
+# TRIAGE 2026-08-07 (audit D114 / F7200). The 41 PURE co-location checks were
+# re-measured and the premise everyone had been arguing over collapsed: the
+# CONTENT_CHECKS runner had no `rg -U`, so every `[\s\S]{0,N}` distance meant
+# "N characters within ONE LINE" and the whole class had been INERT since
+# birth. 17 were ROTTED (dead anchor, or the pattern matches legal live code)
+# and are DELETED, each with its measurement in a one-line tombstone. 8 were
+# HISTORY — the forbidden fragment is absent tree-wide, so the co-location
+# reduces exactly to the negative single-symbol ban this header demands — and
+# were CONVERTED. 3 were module-boundary (dependency) rules and moved to
+# eslint import restrictions in apps/mobile/.eslintrc.js. `-U` landed in the
+# same commit as the deletions (see the loop below), and every surviving
+# proximity check was RED-PROVEN by planting its forbidden co-location as
+# multi-line prettier-formatted TypeScript: 22 of 22 fired, 0 demotions.
+#
 # RULE FOR ADDING CHECKS HERE: negative only. Assert that a killed symbol or
 # path is absent. Do NOT add positive "the current design looks like X" string
 # assertions — that is what rotted, and it belongs in a live spec next to the
@@ -165,9 +179,9 @@ declare -a CONTENT_CHECKS=(
   "search_surface_legacy_run_one_handoff_ownership::(?i)runonehandoff|run-one-handoff|\\b(Run1|run1)\\b::Search redraw ownership must use SearchSurfaceRedraw/SearchSurfaceRuntime names, not run-one handoff names."
   "search_surface_legacy_prepared_results_transaction::\\b(PreparedResults|preparedResults|preparedPresentationSnapshotKey|results-prepared|prepared_snapshot|prepared_staging|cards_pins_prepared|prepared_commit_gate|map_prepared_source_frame_ready_contract)\\b::Search results transactions must use SearchSurfaceResultsTransaction names."
   "search_surface_redraw_null_results_clears_transaction_key::results == null[\\s\\S]{0,260}searchSurfaceResultsTransactionKey:\\s*null::Transient null result data during redraw must not clear the active SearchSurfaceResultsTransaction key."
-  "search_surface_redraw_stage_sources_ready_reset::stage: \\([\\s\\S]{0,520}publishMapSearchSurfaceResultsSourcesReady\\(false, snapshot\\.transactionId\\)::Staging a redraw transaction must not reset already-latched marker/source readiness."
+  "search_surface_redraw_stage_sources_ready_reset::publishMapSearchSurfaceResultsSourcesReady\\(false,\\s*snapshot\\.transactionId\\)::Staging a redraw transaction must not reset already-latched marker/source readiness. F7200/D114: converted from a proximity check to a negative ban on the killed call form (the legal `(false, null)` clear at search-surface-results-transaction.ts:315 is untouched)."
   "search_surface_results_body_bundle_active_only::syncResultsPageBodyBundle[\\s\\S]{0,180}if \\(this\\.snapshot\\.activeBundle\\.kind !== 'results'\\)[\\s\\S]{0,220}this\\.latestResultsBodyBundle = bodyBundle::Results body bundle must be retained before the active-results guard so future redraws can mount cards."
-  "search_surface_same_key_rerun_blocked_after_page_one_commit::handlePageOneResultsCommitted\\(inputs\\)[\\s\\S]{0,120}return;[[:space:]]*}[[:space:]]*promoteDataReady\\(inputs\\)::Page-one response commit must refresh same-key cached reruns before promoting data readiness."
+  # DELETED F7200/D114 (2026-08-07) — search_surface_same_key_rerun_blocked_after_page_one_commit ROTTED: handlePageOneResultsCommitted/promoteDataReady are both dead as literals. It could not fire even with rg -U; a check that cannot fire defends nothing.
   "search_surface_results_react_effect_fallback::react_effect_fallback::Search results transaction commits must use named source events, not fallback labels."
   "search_surface_results_synthetic_enter_settle::synthetic-batch|settledCommittedEnterFromRevealedSurface|committed_enter_settled_from_revealed_surface|maybeSettleCommittedEnterFromRevealedSurface::Search results enter must wait for native mounted-hidden/settled events, not synthetic JS settlement."
   "search_results_semantic_visual_reuse_names::semanticResultsVisualReuse|semantic_visual_reuse|semantic-reuse|semantic_reuse|retainedResultsVisualReuse|retained_results_visual_reuse|retained_submit_promoted|responseLifecycleSkipped|requestPayloadSkipped::Search reveals must not revive the old semantic/retained mounted-visual reuse lane."
@@ -176,7 +190,7 @@ declare -a CONTENT_CHECKS=(
   "search_results_enter_conditional_sheet_ready::if \\(targetSnap == null\\) \\{\\s*getSearchSurfaceRuntime\\(\\)\\.markRedrawSheetReady\\(snapshot\\.transactionId\\)::Results enter must mark the sheet gate ready when the shared sheet transition is accepted, not only when no snap target exists."
   "route_sheet_runtime_config_initial_snap_current_snap::return this\\.currentSnap === 'hidden' \\? policyInitialSnap : this\\.currentSnap::Runtime config initial snap must stay policy/bootstrap only; live snap belongs to motion state."
   "search_surface_persistent_poll_clear_without_redraw_guard::transportSnapshot\\.snapshotKind !== 'results_enter'\\) \\{[[:space:]]*publishSearchMountedResultsDataSnapshot\\(null\\)::Persistent-poll lane cleanup must not clear mounted results while a redraw transaction is active or armed."
-  "search_results_settled_surface_none::coverState === 'hidden'[\\s\\S]{0,120}\\? 'none'[\\s\\S]{0,120}coverState === 'initial_loading'::Settled visible results must remain an active results surface after the loading cover hides."
+  # DELETED F7200/D114 (2026-08-07) — search_results_settled_surface_none ROTTED: -U MATCHES the CORRECT code at results-presentation-runtime-machine-state.ts:54-58. It could not fire even with rg -U; a check that cannot fire defends nothing.
   "search_transition_visual_side_request_api::requestSearchTransitionVisualState::Search transition visual state side requests must not return."
   "search_transition_visual_dead_header_fields::\\b(SearchTransitionVisualHeaderOwner|headerOwner|headerReady|navSilhouetteMode)\\b::Search transition visual state must not revive dead header-owner/header-ready/nav-silhouette fields."
   "search_transition_visual_internal_owner_exports::export type SearchTransitionVisual(Phase|BottomBandOwner)\\b::Search transition phase and bottom-band owner types are internal implementation details."
@@ -185,7 +199,7 @@ declare -a CONTENT_CHECKS=(
   "app_route_nav_silhouette_sheet_like_bottom_band::\\bshouldUseSheetLikeBottomNavBand\\b::Old sheet-like bottom-nav band workaround must not return."
   "app_route_nav_silhouette_solid_bg::\\bAPP_ROUTE_NAV_SILHOUETTE_SOLID_BG\\b::Bottom-nav silhouette must render frosted material, not a solid fallback band."
   "app_route_nav_silhouette_solid_background_color::\\bsolidBackgroundColor\\b::Bottom-nav silhouette geometry must not carry a solid fill color."
-  "app_route_nav_silhouette_disable_blur_prop::NavBarSilhouetteBackground[\\s\\S]{0,240}\\bdisableBlur\\b::Bottom-nav silhouette blur must not be switchable off."
+  # DELETED F7200/D114 (2026-08-07) — app_route_nav_silhouette_disable_blur_prop ROTTED: NavBarSilhouetteBackground: 0 occurrences. It could not fire even with rg -U; a check that cannot fire defends nothing.
   "app_route_nav_silhouette_svg_material_mask::\\bNavBarSilhouetteBackground\\b|@react-native-masked-view/masked-view[\\s\\S]{0,260}nav.*silhouette|react-native-svg[\\s\\S]{0,260}nav.*silhouette::Bottom-nav must not revive a separate SVG/MaskedView material cutout."
   "app_route_nav_silhouette_runtime_mask_role_prop::\\bmaskRole\\b::Nav material and sheet exclusion must use fixed native component roles, not a runtime string role prop."
   "app_route_nav_material_fullscreen_host::materialHost:\\s*\\{[\\s\\S]{0,160}StyleSheet\\.absoluteFillObject|NavSilhouetteMaterialHost[\\s\\S]{0,520}viewportHeight|NavSilhouetteMaterialHost[\\s\\S]{0,520}height:\\s*viewportHeight::Nav material must live inside the bounded nav silhouette host, not as a full-screen or separate material overlay."
@@ -200,12 +214,12 @@ declare -a CONTENT_CHECKS=(
   "search_overlay_split_chrome_publication_slots::\\b(publishOverlayChromeFrameSnapshot|publishOverlayChromeContainerSnapshot|publishOverlayChromeHeaderProps|publishOverlayChromeSuggestionSurfaceProps|overlayChromeFrameHostAuthority|overlayChromeContainerHostAuthority|overlayChromeHeaderHostAuthority|overlayChromeSuggestionSurfaceHostAuthority)\\b::Search-mode header and cutout surface must publish through one atomic overlay chrome snapshot."
   "search_overlay_header_drops_input_motion::inputAnimatedStyle=\\{undefined\\}::Search header must receive the app-route input motion style; dropping it desynchronizes search-mode chrome placement."
   "search_suggestion_shortcut_cutout_waits_for_measurement_only::shouldDriveSuggestionLayout\\s*&&\\s*hasResolvedSearchShortcutsFrame::Search-mode shortcut cutouts must reserve the old-good fallback strip before row measurement arrives."
-  "search_suggestion_shortcut_hole_cache_null_overwrite::suggestionHeaderShortcutHolesRef\\.current\\s*=\\s*\\{[\\s\\S]{0,220}\\?\\s*cloneSuggestionMaskedHole\\([\\s\\S]{0,120}:\\s*null::Shortcut cutout holes must retain the last valid measured holes when transient layout measurement clears."
-  "search_suggestion_keyboard_show_duration::keyboard(Will|Did)Show[\\s\\S]{0,260}event\\.duration::Entering search mode must use fixed local show timing, not keyboard show duration."
-  "search_suggestion_keyboard_hide_duration::keyboard(Will|Did)Hide[\\s\\S]{0,260}event\\.duration::Leaving search mode must use fixed local hide timing, not the slower keyboard hide duration."
+  # DELETED F7200/D114 (2026-08-07) — search_suggestion_shortcut_hole_cache_null_overwrite ROTTED: suggestionHeaderShortcutHolesRef.current: dead. It could not fire even with rg -U; a check that cannot fire defends nothing.
+  # DELETED F7200/D114 (2026-08-07) — search_suggestion_keyboard_show_duration ROTTED: both fragments dead. It could not fire even with rg -U; a check that cannot fire defends nothing.
+  "search_suggestion_keyboard_hide_duration::\\bevent\\.duration\\b::Leaving search mode must use fixed local hide timing, not the slower keyboard hide duration. F7200/D114: converted from a proximity check to a negative ban; `event.duration` is absent tree-wide."
   "search_mode_press_down_entry_path::\\bhandleSearchPressIn\\b|\\bonInputTouchStart\\b::Search mode enter/exit must use press-up/focus semantics, not a press-down entry lane."
   "search_mode_inactive_input_focusable::inputFocusEnabled=\\{headerVisualModel\\.editable::Inactive search chrome must not leave TextInput focusable before press-up."
-  "search_suggestion_exit_ease_in::use-search-suggestion-(transition-timing|layout-animation)-runtime\\.ts[\\s\\S]{0,520}Easing\\.in\\(Easing\\.cubic\\)::Search-mode exit should start visibly on press-up; do not use ease-in for the suggestion surface."
+  # DELETED F7200/D114 (2026-08-07) — search_suggestion_exit_ease_in ROTTED: its first anchor is a FILE NAME matched against file CONTENT — unfireable by construction. It could not fire even with rg -U; a check that cannot fire defends nothing.
   "search_mode_shortcut_frozen_interaction_boolean::\\bshortcutsInteractionEnabled\\b(?!Ref)::Search-mode shortcut submit must read live interaction through a ref, not a frozen boolean captured by the overlay chrome host."
   "search_submit_dismiss_legacy_lifecycle_methods::\\.(beginResultsEnter|beginResultsExit|markResultsHeaderReady|markPollsHeaderReady|markDockedSceneHeaderReady|markDockedSceneBodyReady|markResultsExitMapSettled|markResultsExitCollapsedSettled|markDockedSceneRestoreRequested)\\(::Submit/dismiss result lifecycle marks must update route-scene transaction readiness."
   "search_dismiss_motion_plane_sheet_y_writer::useSearchDismissMotionPlaneRuntime[\\s\\S]*sheetTranslateY\\.value\\s*=::Search dismiss motion plane must observe real sheet Y, not write sheetTranslateY."
@@ -216,15 +230,15 @@ declare -a CONTENT_CHECKS=(
   "search_nav_surface_progress_copy_lane::bottomNavHideProgress\\.value\\s*=\\s*surfaceMotionProgress::Search nav silhouette must use its fixed timing lane, not copy Search surface progress."
   "search_route_sheet_clip_stale_ref::sheetClipStyleRef::Route sheet clip must consume the live animated clip style, not retain a stale first style."
   "search_route_sheet_frame_animated_layout_prop::navSilhouetteSheetClipStyle|routeHostVisualRuntime\\?\\.navSilhouetteSheetBodyExclusionHeight|bottom:\\s*Math\\.max\\(0,\\s*bodyExclusionHeight\\s*-\\s*cutoutRevealDepth\\)::Route sheet frame host must keep static layout during nav silhouette motion; do not animate Yoga-affecting props."
-  "search_results_portal_animated_layout_props::useAnimatedStyle\\([\\s\\S]{0,260}const sheetY = sheetYValue\\?\\.value \\?\\? measuredSheetY;[\\s\\S]{0,320}(top:\\s*sheetY|left:\\s*viewportLeft|width:\\s*viewportWidth|height:\\s*viewportHeight)::Results body/header portal hosts must keep JS layout static and follow sheetY with transform-only projection."
-  "scene_stack_body_frame_reanimated_visibility::SceneStackBodyFrame[\\s\\S]{0,260}<Animated\\.View|SceneStackBodyFrameHost[\\s\\S]{0,520}useAnimatedStyle\\([\\s\\S]{0,260}(opacity|zIndex|elevation)::Scene body frames must use discrete visible/hidden styles, not Reanimated opacity/zIndex/elevation over large page trees."
+  # DELETED F7200/D114 (2026-08-07) — search_results_portal_animated_layout_props ROTTED: the pinned `const sheetY = ...` line is gone; measuredSheetY and viewportLeft are both 0. It could not fire even with rg -U; a check that cannot fire defends nothing.
+  # DELETED F7200/D114 (2026-08-07) — scene_stack_body_frame_reanimated_visibility ROTTED: -U MATCHES the shipped SceneStackBodyFrame at BottomSheetSceneStackBodyLayer.tsx:91-100. It could not fire even with rg -U; a check that cannot fire defends nothing.
   "scene_stack_chrome_reanimated_visibility::SceneStack(Decor|Header)Layer[\\s\\S]{0,520}useAnimatedStyle\\([\\s\\S]{0,260}(opacity|zIndex|elevation)::Scene chrome layers must use discrete visible/hidden styles, not Reanimated opacity/zIndex/elevation over SVG/chrome trees."
   "results_header_body_underlap_cutout_leak::\\b(bodyUnderlapsHeader|applyContentTopInset|contentTopInset)\\b::Results header cutouts must not reveal scrolling rows; keep the list viewport physically below the fixed page header instead of underlapping with content padding."
   "search_results_body_bundle_result_specific_deps::stableSceneBodyContent[\\s\\S]{0,900}(rawSceneBodyContent\\.List(Header|Chrome|Empty)Component|rawSceneBodyContent\\.ListFooterComponent|rawSceneBodyContent\\.ItemSeparatorComponent,|rawSceneBodyContent\\.onEndReached,)::Mounted results body bundle must stay structural; result-specific list decorations and callbacks must flow through refs/data-store paths."
-  "search_results_body_bundle_transport_flashlist_spread::stableFlashListProps[\\s\\S]{0,260}\\.\\.\\.\\(rawSceneBodyTransport\\.flashListProps::Mounted results body bundle must not resync from FlashList prop object identity; delegate hot callbacks through stable refs."
+  "search_results_body_bundle_transport_flashlist_spread::\\.\\.\\.\\(rawSceneBodyTransport\\.flashListProps::Mounted results body bundle must not resync from FlashList prop object identity; delegate hot callbacks through stable refs. F7200/D114: converted from a proximity check to a negative ban."
   "search_route_sheet_frame_local_clip_fallback::\\b(EMPTY_ROUTE_HOST_VISUAL_RUNTIME_AUTHORITY|fallbackFrameSheetClipStyle)\\b::Route sheet frame host must require NavSilhouetteRuntime clipping, not define a local fallback clip."
-  "search_route_sheet_mask_progress_mount_gate::shouldMountMaskHost[\\s\\S]{0,260}navBarCutoutProgress[\\s\\S]{0,260}>\\s*0\\.001::Route sheet nav mask host must be semantically present for nav-owned exclusion modes, not mounted from animated progress."
-  "search_route_sheet_mask_host_progress_owner::should(Host|Enable)SheetMaskForNavSilhouette[\\s\\S]{0,220}\\bprogress\\b|setShouldHostMask[\\s\\S]{0,260}navBarCutoutProgress::Route sheet nav mask host ownership must not depend on animated progress."
+  # DELETED F7200/D114 (2026-08-07) — search_route_sheet_mask_progress_mount_gate ROTTED: shouldMountMaskHost: 0. It could not fire even with rg -U; a check that cannot fire defends nothing.
+  # DELETED F7200/D114 (2026-08-07) — search_route_sheet_mask_host_progress_owner ROTTED: setShouldHostMask: 0, and the surviving branch's second fragment is a bare-word `progress`. It could not fire even with rg -U; a check that cannot fire defends nothing.
   "search_route_sheet_mask_native_manager_fallback::\\b(hasNativeViewManager|hasSearchRouteSheetNavExclusionMaskNativeView|getViewManagerConfig)\\b::Nav silhouette native mask registration must be strict; do not fallback to a JS View when the native manager is missing."
   "nav_silhouette_rectangular_sheet_clip_helper::useAppRouteNavSilhouetteSheetClipAnimatedStyle|navSilhouetteSheetExclusion\\b|expectedSheetExclusion\\b::Nav silhouette sheet exclusion must be an inverse silhouette mask, not a rectangular bottom inset."
   "search_foreground_local_nav_silhouette_mode_converter::resolveSearchSurfaceNavSilhouetteModeValue::Search foreground must use the app-route nav silhouette authority for mode-to-value projection."
@@ -243,15 +257,22 @@ declare -a CONTENT_CHECKS=(
   "search_mounted_scene_chrome_authority::\\bSearchMountedSceneChromeAuthority\\b|\\bSearchMountedSceneChromeSurfaceHost\\b|\\bpublishSearchMountedSceneChromeSnapshot\\b|\\bSearchMountedSceneChromeSnapshot\\b::Search results must publish a single page bundle object, not separate mounted chrome surfaces."
   "search_results_fixed_header_component_lane::\\bfixedHeaderComponent\\b::Results page header must not be threaded through a separate fixed header component prop."
   "search_results_old_mounted_chrome_lane::sheet_mounted_chrome_overlay|result_page_sheet_chrome_overlay|mounted_behind_loading_cover|mountedChromeKey:\\s*'search'|mountedChromeKey\\s*=\\s*\"search\"::Results toggle/header contracts must name the results page bundle, not the old mounted chrome lane."
-  "scene_stack_host_shared_page_material::physicalSheetBackground|BottomSheetSceneStackHost[\\s\\S]*FrostedGlassBackground::Scene stack host must move/clip/present page bundles only; page material belongs to each page bundle."
-  "scene_stack_inline_header_before_body::SceneStackBodyFrame[\\s\\S]{0,360}surface=\"header\"[\\s\\S]{0,220}\\{children\\}::Mounted sheet page header must be layered by the page frame above a clipped body lane, not rendered inline before body children."
+  # F7200/D114 (2026-08-07): this is one of the 9 RESIDUE checks (a bannable branch plus a
+  # proximity branch). Its `BottomSheetSceneStackHost[\s\S]*FrostedGlassBackground` branch is
+  # UNBOUNDED, so under rg -U it means "these two symbols must not share a file" — and it
+  # matched exactly one file that merely MENTIONS both (overlays/BottomSheetSceneStackHost.tsx),
+  # which is legal live code. That branch is deleted on F7200's residue measurement; the
+  # bannable residue (`physicalSheetBackground`, 0 occurrences tree-wide) is kept as the
+  # negative single-symbol ban the gate header demands.
+  "scene_stack_host_shared_page_material::\\bphysicalSheetBackground\\b::Scene stack host must move/clip/present page bundles only; page material belongs to each page bundle."
+  # DELETED F7200/D114 (2026-08-07) — scene_stack_inline_header_before_body ROTTED: surface="header": dead. It could not fire even with rg -U; a check that cannot fire defends nothing.
   "search_dismiss_old_visual_handoff_telemetry::\\b(boundaryHandoffSource|handoffY|releaseDelayAfterVisualHandoffBoundaryMs|releasedAtVisualHandoffBoundary|collapsed_visual_boundary|visual_boundary)\\b::Search dismiss telemetry/contracts must use collapsed motion-plane boundary ownership, not old visual-handoff naming."
   "search_dismiss_delayed_post_restore_path::\\b(requestPostDismissDockedSceneRestore|restoreDockedSceneHostAtBoundary|restoredDockedSceneHostIntentIdRef)\\b|resultsDismissBottomHandoff[\\s\\S]{0,240}restoreDockedScene::Search dismiss boundary must synchronously publish the poll page through SearchSurfaceRuntime, not a delayed post-dismiss restore path."
   "search_dismiss_poll_release_nav_gate::const canReleaseDockedScene =[\\s\\S]{0,180}bottomNavReturnReady|const canCompleteDismissHandoff =[\\s\\S]{0,260}bottomNavReturnReady|const isReadyToReleaseDockedScene =[\\s\\S]{0,220}bottomNavReturnReady::Persistent-poll content handoff must release at the collapsed sheet boundary once poll header/body/host are ready; bottom-nav return is a separate visual fact, not a content-swap gate."
-  "persistent_poll_prewarm_search_only_gate::activeSceneKey === 'search'[\\s\\S]{0,180}pollsPrewarmed|pollsPrewarmed[\\s\\S]{0,180}activeSceneKey === 'search'::Persistent poll prewarm must be substrate-owned from any idle scene once the polls input is ready, not limited to idle search."
+  "persistent_poll_prewarm_search_only_gate::\\bpollsPrewarmed\\b::Persistent poll prewarm must be substrate-owned from any idle scene once the polls input is ready, not limited to idle search. F7200/D114: converted from a proximity check to a negative ban."
   "search_dismiss_polls_panel_release_readiness::\\b(useDockedSceneSearchTransitionReadiness|PollsPanel:(isDockedSceneHeaderReady|isDockedSceneBodyReady|isDockedSceneHostReady))\\b::Mounted PollsPanel effects must not satisfy Search dismiss release readiness; release must come from route scene-stack mounted header/body/host evidence."
   "search_dismiss_sheet_host_release_readiness::\\bsheetHost:\\$\\{source\\}|markPollPagePartReady\\([\\s\\S]{0,120}sheetHost::Sheet-host generic renderability must not satisfy Search dismiss poll release readiness."
-  "search_dismiss_attach_only_poll_body_readiness::if \\(hasMountedPollBody\\)[\\s\\S]{0,220}markPollPagePartReady\\([\\s\\S]{0,120}'body'::Mounted poll body attachment alone must not satisfy Search dismiss body readiness; release requires an active poll data/content lane."
+  # DELETED F7200/D114 (2026-08-07) — search_dismiss_attach_only_poll_body_readiness ROTTED: hasMountedPollBody: 0. It could not fire even with rg -U; a check that cannot fire defends nothing.
   "search_dismiss_synthetic_poll_release_readiness::pollHeaderReady:\\s*pollBundle\\.chromeReady|pollBodyReady:\\s*pollBundle\\.bodyReady|pollHostReady:\\s*pollBundle\\.hostReady::Search dismiss prewarm must not satisfy persistent-poll release readiness; only sceneStack header/body/host evidence may release."
   "search_dismiss_poll_data_prewarm_requires_display_ready::shouldPrewarmSearchDismissPollDataLane[\\s\\S]{0,420}canDisplayDockedSceneSubstrate|shouldSyncSearchDismissDockedSceneDataPrewarmScene[\\s\\S]{0,420}canDisplayDockedSceneSubstrate::Persistent-poll data prewarm must depend on the active dismiss transaction, not on display/release readiness that the data lane itself must prove."
   "search_dismiss_publish_release_clears_transaction::private publishDismissTransaction\\([\\s\\S]{0,760}dismissTransaction:\\s*null::Dismiss release-ready must be observable; publishDismissTransaction may mark release-ready, but only completeDismissHandoff may clear the dismiss transaction."
@@ -267,7 +288,7 @@ declare -a CONTENT_CHECKS=(
   "search_dismiss_press_up_enter_presentation_commit::useResultsSurfaceExitTransactionExecutionRuntime[\\s\\S]*commitSearchSurfaceResultsEnterPresentation\\(snapshot\\)::Search dismiss press-up must not run the enter presentation commit; exit uses its dedicated transaction commit."
   "search_pending_page_one_after_stage_patch::pending_page_one_commit_applied_after_stage|runDeferredStage[\\s\\S]{0,520}handlePageOneResultsCommitted\\(::Pending page-one results for a deferred stage must merge into the effective staged snapshot before publication, not patch the staged transaction afterward."
   "search_dismiss_press_up_immediate_ui_reset::handleCloseResultsUiReset\\(\\)|scheduleCloseSearchCleanup\\(closeIntentId\\)::Search dismiss press-up must not clear/reset the results UI before the motion-plane boundary."
-  "search_dismiss_poll_restore_blank_results_chrome::shouldClearSearchBarForPollRestore[\\s\\S]{0,360}\\? 'results'::Dismiss poll restore must switch directly to default search chrome, not an empty results chrome frame."
+  # DELETED F7200/D114 (2026-08-07) — search_dismiss_poll_restore_blank_results_chrome ROTTED: shouldClearSearchBarForPollRestore: 0. It could not fire even with rg -U; a check that cannot fire defends nothing.
   "search_dismiss_page_bundle_transform_writer::resultPageBundleDismissAnimatedStyle::Search dismiss must not add a second page-bundle transform writer; SearchDismissMotionPlaneRuntime owns sheetTranslateY."
   "search_dismiss_nav_header_progress_owner::navReturnProgressSource:\\s*shouldDriveBottomNavReturnFromSearchCloseProgress\\s*\\?\\s*'searchHeaderDefaultChromeProgress'::Search dismiss nav return must derive from the dismiss motion plane, not header chrome progress."
   "search_close_cleanup_raf_handoff::pendingCloseCleanupFrameRef::Close cleanup must not use a RAF handoff to decide restored/closed visual state."
@@ -275,16 +296,16 @@ declare -a CONTENT_CHECKS=(
   "perf_legacy_harness_env::EXPO_PUBLIC_PERF_HARNESS::Old env-driven perf harness switches must not return."
   "perf_legacy_harness_runtime_names::PerfHarness(Coordinator|Config|Runtime)|usePerfHarnessRuntimeStore|perfHarnessConfig::Old perf harness runtime names must not return."
   "perf_legacy_harness_observer_imports::use(Shortcut|NavSwitch)HarnessObserver::Old self-driving perf observers must not return."
-  "docked_scene_restore_command_current_snap_compare::(dockedSceneRestoreIntent|pollsDockedSnapRequest)[\\s\\S]{0,160}!== currentSnap::Persistent polls restore commands must compare against physicalPollsSheetSnap, not synthetic currentSnap."
+  "docked_scene_restore_command_current_snap_compare::!== currentSnap\\b::Persistent polls restore commands must compare against physicalPollsSheetSnap, not synthetic currentSnap. F7200/D114: converted from a proximity check to a negative ban."
   "docked_scene_initial_snap_live_bypass::currentSnap !== 'hidden' && !isDockedSceneSearchSurfaceActive::Initial visible snap bootstrap must not special-case docked polls; once the shared sheet has a live snap, policy defaults cannot issue another bootstrap command."
-  "docked_scene_restore_shortcut_without_motion::syncDockedSceneTarget[\\s\\S]{0,320}prepareSharedSheetForSearchPresentation\\(::Docked polls restore from hidden must issue an animated sheet command, not promote hidden-to-visible through the shortcut path."
+  # DELETED F7200/D114 (2026-08-07) — docked_scene_restore_shortcut_without_motion ROTTED: both fragments dead. It could not fire even with rg -U; a check that cannot fire defends nothing.
   "bottom_sheet_special_hidden_dismiss_resolver::SWIPE_DISMISS_INTENT|shouldResolveSwipeDismiss::Bottom-sheet dismiss must use the unified header-gated snap resolver, not a hidden-specific threshold path."
-  "bottom_sheet_legacy_step_snap_resolver_owner::resolveDestination[\\s\\S]{0,420}resolveSteppedSnapPoint::Gesture release must use the unified header-gated snap resolver, not the old step/skip resolver."
+  "bottom_sheet_legacy_step_snap_resolver_owner::\\bresolveSteppedSnapPoint\\b::Gesture release must use the unified header-gated snap resolver, not the old step/skip resolver. F7200/D114: converted from a proximity check to a negative ban on the killed resolver."
   "search_marker_collision_release_settles_js_presentation::event\\.type === 'presentation_visual_sources_collision_released'[\\s\\S]{0,900}onMarkerExitSettled\\?\\.\\(::Fade-zero collision/source release must not be treated as full JS presentation settled."
   "search_marker_old_native_visual_lifecycle_states::\\.(fadingOut|collisionReleased)\\b::Native search map visuals must use explicit hidden/preparingReveal/revealing/visible/dismissing states, not the ambiguous lifecycle states."
   "profile_active_route_camera_push_gate::isSearchRestaurantRouteActive && routeIntent\\.targetCamera == null::Active search restaurant route opens must update in place even when the profile transaction has a camera target."
-  "profile_open_route_camera_owner_gate::type: 'open_profile_restaurant_route'[\\s\\S]{0,180}targetCamera: snapshot\\.targetCamera::Profile open camera motion must be owned by the prepared transaction pre-shell command, not route intent feedback."
-  "profile_open_split_camera_padding_gate::targetCamera: snapshot\\.targetCamera,[\\s\\S]{0,120}profileCameraPadding::Profile open camera padding must travel with the target camera command, not as a duplicate side command."
+  # DELETED F7200/D114 (2026-08-07) — profile_open_route_camera_owner_gate ROTTED: both fragments dead. It could not fire even with rg -U; a check that cannot fire defends nothing.
+  # DELETED F7200/D114 (2026-08-07) — profile_open_split_camera_padding_gate ROTTED: both fragments dead. It could not fire even with rg -U; a check that cannot fire defends nothing.
   "profile_panel_solid_loading_background_gate::loadingBackground|backgroundColor: '#ffffff',[\\s\\S]{0,120}isLoading::Restaurant profile loading chrome must use the sheet frosted background, not a solid white fallback."
   "profile_camera_completion_dropped_gate::completionId: _completionId::Profile camera completion id must travel with the native camera command."
   "profile_camera_completion_unhandled_gate::void payload\\.animationCompletionId::Profile camera completion payload must be consumed by the camera arbiter, not ignored."
@@ -299,10 +320,10 @@ declare -a CONTENT_CHECKS=(
   "search_map_label_solver_layer_gate::\\b(labelSolver|solverLayer|placementSolver|dotPlacementSolver|labelPlacementSolver)\\b::Search map labels use native rendered-candidate observation; solver-layer experiments must not return."
   "search_map_old_label_interaction_commit_gate::\\bcommitInteractionVisibility\\b::Visible label hits are committed from rendered label observation; the old label interaction visibility naming/path must not return."
   "search_map_shortcut_viewport_lod_skip_gate::canSkipSourceRebuildForShortcutViewport::Shortcut viewport changes must publish local LOD projection; only shortcut coverage fetch work may be skipped or coalesced."
-  "profile_close_clear_after_closing_guard::executeProfileCloseAction[\\s\\S]{0,220}if \\(transitionStatus === 'closing'\\)[\\s\\S]{0,120}ports\\.setMapHighlightedRestaurantId\\(null\\)::Profile close press-up must clear map highlight before any closing/idempotency guard."
+  # DELETED F7200/D114 (2026-08-07) — profile_close_clear_after_closing_guard ROTTED: the middle fragment `if (transitionStatus === 'closing')` is dead. It could not fire even with rg -U; a check that cannot fire defends nothing.
   "profile_close_closing_guard_bare_return::if \\(transitionStatus === 'closing'\\) \\{[[:space:]]*return;::Profile close while already closing must re-enter prepared close so clear dismiss can upgrade the pending finalization."
-  "profile_optimistic_highlight_timeout::setTimeout\\([\\s\\S]{0,180}setOptimisticSelectedRestaurantId::Map optimistic highlight must be transaction/authority-scoped, not timeout-cleared."
-  "profile_restaurant_panel_animate_on_mount::overlayKey:\\s*'restaurant'[\\s\\S]{0,520}animateOnMount:\\s*true::Search restaurant content swaps must preserve sheet position; RestaurantPanel must not animate on mount."
+  "profile_optimistic_highlight_timeout::\\bsetOptimisticSelectedRestaurantId\\b::Map optimistic highlight must be transaction/authority-scoped, not timeout-cleared. F7200/D114: converted from a proximity check to a negative ban on the killed setter."
+  "profile_restaurant_panel_animate_on_mount::\\banimateOnMount:\\s*true\\b::Search restaurant content swaps must preserve sheet position; RestaurantPanel must not animate on mount. F7200/D114: converted from a proximity check to a negative ban."
   "profile_route_param_highlight_fallback::shellMapHighlightedRestaurantId\\s*\\?\\?\\s*mapHighlightedRestaurantId::Map highlight must be owned by the profile shell transaction, not route-param fallback."
   "profile_restaurant_motion_target_middle_current_snap::resolveCurrentSnapTarget:\\s*\\(\\)\\s*=>\\s*'middle'::Restaurant route motion target must resolve the live shared sheet snap, not assume middle."
   "profile_results_initial_snap_middle_coercion::searchSceneSheetPlaneRuntime\\.sheetState === 'expanded' \\? 'expanded' : 'middle'::Search results shell must preserve collapsed and expanded live snaps across profile/results content swaps."
@@ -447,7 +468,19 @@ for check in "${CONTENT_CHECKS[@]}"; do
   # Specs are excluded: invariant-proof tests QUOTE the exterminated patterns
   # (RED recipes, mutation probes) — this collision bit twice (bookmarks spec
   # 08-03; route-entry-origin-camera.spec 08-04/F1664) before the exclusion.
-  matches="$(rg -n --pcre2 --glob '!**/*.spec.ts' --glob '!**/*.spec.tsx' "$pattern" "$TARGET_PATH" 2>&1)"
+  #
+  # -U IS LOAD-BEARING (F7200/D114, 2026-08-07). Without it rg matches LINE BY
+  # LINE, so every `[\s\S]{0,N}` co-location distance in these patterns meant
+  # "N characters WITHIN ONE LINE" — and in prettier-formatted TypeScript the
+  # forbidden shapes these checks describe (a statement then a return then
+  # another statement; a JSX element then a prop) physically cannot occupy one
+  # line. The whole proximity class was therefore INERT from birth; its only
+  # two firings ever were on COMMENTS, the one place two anchors do share a
+  # line. The flag was measured before it landed: it produced exactly three new
+  # matches, all three of which are deleted in this same commit (two ROTTED
+  # proximity checks and one residue proximity branch). Do not remove it —
+  # without it 200 checks are comments with a CI job attached.
+  matches="$(rg -n --pcre2 -U --glob '!**/*.spec.ts' --glob '!**/*.spec.tsx' "$pattern" "$TARGET_PATH" 2>&1)"
   status=$?
   set -e
 
