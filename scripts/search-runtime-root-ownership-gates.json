@@ -92,10 +92,10 @@
         "description": "S9B requires header read-model builder module to exist."
       },
       {
-        "id": "s9b_owner_module_chip_read_model_builder_exists",
+        "id": "s9b_owner_module_chip_read_model_exists",
         "kind": "path_exists",
-        "path": "apps/mobile/src/screens/Search/runtime/read-models/chip-read-model-builder.ts",
-        "description": "S9B requires chip read-model builder module to exist."
+        "path": "apps/mobile/src/screens/Search/runtime/read-models/search-filter-chip-state.ts",
+        "description": "S9B requires the chip read-model owner module to exist. RENAMED 2026-08-07 (F6619): chip-read-model-builder.ts was deliberately deleted by F3900/D78 — it was an identity function behind a memo — and search-filter-chip-state.ts is the ratified successor that owns chip projection. The rules data was not updated with the module, so this check exited 1 on HEAD and reddened the whole search-runtime-contract-tests job for a rename."
       },
       {
         "id": "s9b_owner_module_read_model_selectors_exists",
