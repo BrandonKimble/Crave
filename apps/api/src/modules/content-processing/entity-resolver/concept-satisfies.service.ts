@@ -129,19 +129,22 @@ export class ConceptSatisfiesService {
     const concepts = await this.prisma.$queryRawUnsafe<
       Array<{ entity_id: string; name: string }>
     >(
-      // THE WATERMARK. Without this the pass re-scans the same oldest N
-      // concepts on every run and can never reach concept N+1 — measured:
-      // a second `--limit 25` run scanned 25, judged 0, and spent 25 recall
-      // round trips to discover it had nothing to do. `NOT EXISTS a verdict
-      // at the current prompt version` is the same shape the label sweep uses
-      // and makes the pass resumable AND re-derivable on a version bump.
+      // THE WATERMARK IS THE RUN LEDGER (audit KL-A). The old output-row
+      // watermark (NOT EXISTS a verdict) conflated "no answer needed" with
+      // "not yet asked": a concept whose candidates were ALL decided free by
+      // the ladder wrote zero rows, was re-selected every night, and once
+      // 200 of the oldest concepts had empty residuals the pass could NEVER
+      // reach concept #201 — while its counters read exactly like a healthy
+      // quiet corpus. A run row is written UNCONDITIONALLY per concept,
+      // whatever the outcome, so absence-of-run is the only re-offer signal.
       `SELECT e.entity_id::text, e.name
          FROM core_entities e
         WHERE e.type = $1::entity_type AND e.status = 'active'
           AND NOT EXISTS (
-                SELECT 1 FROM entity_satisfies s
-                 WHERE s.from_entity_id = e.entity_id
-                   AND s.prompt_version = ${SATISFIES_PROMPT_VERSION}
+                SELECT 1 FROM knowledge_pass_runs r
+                 WHERE r.pass = 'satisfies'
+                   AND r.subject_id = e.entity_id
+                   AND r.prompt_version = ${SATISFIES_PROMPT_VERSION}
               )
         ORDER BY e.created_at ASC
         LIMIT $2`,
@@ -153,8 +156,11 @@ export class ConceptSatisfiesService {
       summary.conceptsScanned += 1;
       const residual = await this.residualFor(concept, type, summary);
       if (!residual.length) {
+        // "Nothing to judge" IS an outcome — record it or starve (KL-A).
+        await this.recordRun(concept.entity_id, 'no_residual', dryRun);
         continue;
       }
+      let incomplete = false;
       for (let i = 0; i < residual.length; i += PAIRS_PER_CALL) {
         const batch = residual.slice(i, i + PAIRS_PER_CALL);
         let verdicts: Map<number, string>;
@@ -170,6 +176,7 @@ export class ConceptSatisfiesService {
               message: error instanceof Error ? error.message : String(error),
             },
           });
+          incomplete = true;
           continue;
         }
         const decided: Array<{ toId: string; relation: string }> = [];
@@ -207,10 +214,31 @@ export class ConceptSatisfiesService {
                           decided_at = CURRENT_TIMESTAMP`;
         }
       }
+      // KL-A: the run row is written whatever happened. An incomplete run
+      // (failed batch / unreturned verdicts) is NOT recorded as done — the
+      // watermark re-offers it — but a completed judgment is, even when
+      // every verdict was a reject.
+      if (!incomplete) {
+        await this.recordRun(concept.entity_id, 'judged', dryRun);
+      }
     }
 
     this.logger.info('Satisfies pass complete', { ...summary, dryRun });
     return summary;
+  }
+
+  /** One unconditional run row per (pass, subject, version) — the ledger the
+   *  watermark reads. Idempotent; a re-run of a recorded subject no-ops. */
+  private async recordRun(
+    subjectId: string,
+    outcome: string,
+    dryRun: boolean,
+  ): Promise<void> {
+    if (dryRun) return;
+    await this.prisma.$executeRaw`
+      INSERT INTO knowledge_pass_runs (pass, subject_id, prompt_version, outcome)
+      VALUES ('satisfies', ${subjectId}::uuid, ${SATISFIES_PROMPT_VERSION}, ${outcome})
+      ON CONFLICT (pass, subject_id, prompt_version) DO NOTHING`;
   }
 
   /**

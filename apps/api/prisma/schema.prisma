@@ -2898,3 +2898,21 @@ model EstimatorState {
   @@id([estimatorName, subjectKey])
   @@map("estimator_state")
 }
+
+/// THE PASS-RUN LEDGER (concept-graph §11 #1): one row per (pass, subject,
+/// prompt_version) written unconditionally when a knowledge pass finishes a
+/// subject — "no output needed" is a recorded outcome, not an absence. The
+/// watermark is "no run at this version", never "no output row", which is
+/// what let the satisfies pass starve invisibly.
+model KnowledgePassRun {
+  pass          String
+  subjectId     String   @map("subject_id") @db.Uuid
+  promptVersion Int      @map("prompt_version")
+  outcome       String
+  detail        String?
+  ranAt         DateTime @default(now()) @map("ran_at") @db.Timestamptz(6)
+
+  @@id([pass, subjectId, promptVersion])
+  @@index([pass, ranAt], map: "idx_knowledge_pass_runs_ran_at")
+  @@map("knowledge_pass_runs")
+}
