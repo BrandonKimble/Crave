@@ -1584,3 +1584,15 @@ the snippet-feeding + six-principle chooser reshape push in exactly that
 direction, worth measuring on the sweep's ledger rows; session tokens are
 rejected-with-return-condition (F9520); dead selectQualifiedCandidate
 deleted here.
+## JUNK-NAME INVESTIGATION CLOSED (2026-08-08): all three are REAL MENU ITEMS
+
+The flagged "junk entities" are correct extractions, verified against source:
+  "good taco"   — Chino's Fusion Hacienda sells tacos named "The Good",
+                  "The Bad", "The Ugly" ("I love the 'good' taco, husband
+                  loves the 'bad' and 'ugly'").
+  "sos"         — a Tiki Tatsuya menu item ("The SoS is so fucking good I
+                  dream of it").
+  "souper soup" — a named dish ("I only go there for the souper soup!").
+The flag was a SHAPE judgment (praise-word inside a food name = junk) — the
+same shape-vs-kind error the whole audit catalogues. The kind test (a thing
+a diner orders by name) passes all three. KEEP. No prompt or code change.
