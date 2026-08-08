@@ -1527,10 +1527,12 @@ transient/retryable by the taxonomy, cleared on rerun.
 PLACES SPEND REVIEW (owner ask): the big levers are already pulled — dollar
 gate before rate gate, SKU classification from field masks, lean refresh
 mask for re-polls, archived-never-enriched, spend metered per caller. One
-gap noted: enrichment autocomplete->details flows don't use session tokens
-(polls does), so autocomplete + details bill separately instead of as a
-session. Worth a look, not urgent: grounding volume is one-shot per
-restaurant, not per-user-keystroke.
+gap noted at the time: enrichment doesn't use Places session tokens.
+RETRACTED 2026-08-08 — the red-team session investigated and DELETED the
+half-wired plumbing (F9520): no producer existed, sessions don't pay at
+one-autocomplete-per-grounding, and the real cost lever is elsewhere (the
+retry/fallback tail is ~60% of grounding cost; first-set chooser
+acceptance is worth ~$0.017/location, 4x the session-token prize).
 
 ## GHOST MACHINERY RED TEAM (2026-08-08) — my own shipped code had the census disease
 
@@ -1565,3 +1567,20 @@ still earns its keep, and for a leftover-code sweep. Findings, all executed:
    or neighborhood, pick that branch."
 106 llm+enrichment tests green. Sweep resumed after session teardown:
 460 grounded so far, remainder running.
+
+
+## CROSS-SESSION HANDOFF ABSORBED (2026-08-08)
+
+From the red-team session, all relevant to this lane: failure reason codes
+now fill forward on every attempt (failureClass/failureReasonCode);
+transient failures no longer burn strikes, so the sweep cannot mass-archive
+during a Google hiccup; the janitor cron stays OFF until the owner unparks
+the drain-pace decision — NOTE: the root-cause fix it was waiting on (the
+type-gate veto) LANDED, so that decision is now unblocked; priceRange
+backfill rides every details call this sweep makes (owner ruled no
+standalone backfill); the measured cost lever is first-candidate-set
+chooser acceptance (~60% of grounding cost is the retry/fallback tail) —
+the snippet-feeding + six-principle chooser reshape push in exactly that
+direction, worth measuring on the sweep's ledger rows; session tokens are
+rejected-with-return-condition (F9520); dead selectQualifiedCandidate
+deleted here.

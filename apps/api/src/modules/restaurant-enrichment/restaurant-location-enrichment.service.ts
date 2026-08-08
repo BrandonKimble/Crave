@@ -2777,19 +2777,6 @@ export class RestaurantLocationEnrichmentService {
     };
   }
 
-  private async selectQualifiedCandidate(params: {
-    autocompleteRanked: RankedCandidate[];
-    entity: RestaurantEntity;
-    context?: EnrichmentSearchContext;
-  }): Promise<CandidateSelectionResult> {
-    const flow = await this.runGeminiSelectionFlow({
-      autocompleteRanked: params.autocompleteRanked,
-      entity: params.entity,
-      context: params.context,
-    });
-    return flow.selection;
-  }
-
   private async evaluateGeminiCandidateSet(
     params: {
       autocompleteRanked: RankedCandidate[];
