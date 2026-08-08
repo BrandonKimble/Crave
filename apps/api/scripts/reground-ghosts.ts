@@ -46,7 +46,6 @@ interface GhostRow {
   community: string | null;
   last_reason: string | null;
   user_anchored: boolean;
-  snippet: string | null;
 }
 
 /** Ghosts, each with its majority community and whether any user list
@@ -61,17 +60,6 @@ const GHOSTS_SQL = `
       WHERE e.restaurant_id = c.entity_id AND d.community IS NOT NULL
       GROUP BY d.community ORDER BY count(*) DESC LIMIT 1) AS community,
     c.restaurant_metadata->'lastEnrichmentAttempt'->>'reason' AS last_reason,
-    -- The chooser's rule 2 lets SOURCE TEXT override the market default,
-    -- and rule 11b judges store-typed candidates by how people talk about
-    -- the place. Red-team finding (Wegmans): grounded to Harrison NY while
-    -- the community text said "Wegman's Astor Place" — the snippet was
-    -- sitting in our own events the whole time. Feed the highest-upvote
-    -- mention so the judge reads what the community actually wrote.
-    (SELECT left(regexp_replace(coalesce(d2.body,''), E'[\n\r]+', ' ', 'g'), 400)
-       FROM core_restaurant_entity_events e2
-       JOIN collection_source_documents d2 ON d2.document_id = e2.source_document_id
-      WHERE e2.restaurant_id = c.entity_id AND length(coalesce(d2.body,'')) > 20
-      ORDER BY e2.source_upvotes DESC, length(d2.body) DESC LIMIT 1) AS snippet,
     EXISTS (
       SELECT 1 FROM user_list_items uli
        WHERE uli.restaurant_id = c.entity_id
@@ -182,7 +170,9 @@ async function main(): Promise<void> {
       sourceLocale: context.sourceLocale ?? undefined,
       countryCode: context.countryCode ?? undefined,
       locationBias: context.locationBias ?? undefined,
-      sourceText: ghost.snippet ?? undefined,
+      // sourceText intentionally omitted: the service derives the
+      // highest-upvote mention snippet itself now — one implementation
+      // for every lane, not a script-local copy.
     });
     tally[result.status] = (tally[result.status] ?? 0) + 1;
     console.log(

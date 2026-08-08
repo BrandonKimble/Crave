@@ -784,7 +784,20 @@ export class RestaurantLocationEnrichmentService {
       };
     }
 
-    const searchContext = this.buildSearchContext(entity, options);
+    // The chooser's GEOGRAPHY and WHAT-THE-PLACE-IS principles both key on
+    // the community's own words ("Wegman's Astor Place", "the deli counter"),
+    // and that text is already in our events — deriving it here means EVERY
+    // lane feeds the judge, not just the recovery script that learned the
+    // lesson (2026-08-08: the sweep passed snippets and live enqueues did
+    // not, so day-to-day grounding still judged blind).
+    const contextOptions = options.sourceText
+      ? options
+      : {
+          ...options,
+          sourceText:
+            (await this.deriveSourceSnippet(entity.entityId)) ?? undefined,
+        };
+    const searchContext = this.buildSearchContext(entity, contextOptions);
     if (!searchContext.query) {
       await this.recordEnrichmentFailure(
         entity,
@@ -2180,6 +2193,22 @@ export class RestaurantLocationEnrichmentService {
     }
 
     return domain.startsWith('www.') ? domain.slice(4) : domain;
+  }
+
+  /** The highest-upvote mention body for this restaurant — the community's
+   *  own words, fed to the place chooser as source text when the caller has
+   *  none. Returns null for entities with no usable mention (new entities in
+   *  the live lane usually DO have one: their minting mention just wrote). */
+  private async deriveSourceSnippet(entityId: string): Promise<string | null> {
+    const rows = await this.prisma.$queryRaw<Array<{ snippet: string }>>`
+      SELECT left(regexp_replace(coalesce(d.body, ''), E'[\n\r]+', ' ', 'g'), 400) AS snippet
+        FROM core_restaurant_entity_events e
+        JOIN collection_source_documents d ON d.document_id = e.source_document_id
+       WHERE e.restaurant_id = ${entityId}::uuid
+         AND length(coalesce(d.body, '')) > 20
+       ORDER BY e.source_upvotes DESC, length(d.body) DESC
+       LIMIT 1`;
+    return rows[0]?.snippet ?? null;
   }
 
   private buildSearchContext(
