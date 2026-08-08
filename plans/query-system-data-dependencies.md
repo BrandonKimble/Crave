@@ -15,6 +15,9 @@ query critical path, plus three defects I found that I don't see in the audit.
 
 ### 1. Attribute tombstone leak (audit P0.1) — **highest search impact**
 
+> ✅ CLOSED (data-audit-2026-08.md; annotated 2026-08-08): fixed in the
+> class-②-⑤ cleanup — do not re-litigate from this section.
+
 Measured in vocabulary terms:
 
 | type | active entities | archived | active aliases | **aliases stranded on archived** |
@@ -31,6 +34,9 @@ Search consequence: a user typing any of those gets zero grounding. This is
 also why every cuisine compound fails — see below.
 
 ### 2. Cuisine four-way split (audit P2.1, "cuisine dissolves")
+
+> ✅ CLOSED (data-audit-2026-08.md class ②: cuisine facet + redirect-on-
+> archival + stranded-event drain; annotated 2026-08-08).
 
 Every cuisine exists 3–4 times, with the row a compound query needs archived:
 
@@ -50,6 +56,11 @@ Search consequence: `desayuno mexicano`, `sushi japonés`, `mariscos peruanos`,
 **CORRECTED 2026-08-06: simulated in full on a corpus clone — these fixes moved the launch gate +0.0% (141/179 concepts identical). They matter for SCORING integrity, not search grounding; the grounding blocker was the query-side consume rule, fixed separately (e76ae45bc). Items below remain worth doing on their own merits.**
 
 ### 3. Alias/name collisions (audit P1 "aliases")
+
+> ⛔ DECIDED AGAINST for testimony surfaces (later ruling; see
+> entity-alias.service.ts:88-93 — 7.8% of aliases collide and "refusing
+> those would be refusing reality"). The backfill this section asks for
+> should NOT be built; annotated 2026-08-08.
 
 **1,331 active entities whose name is another active entity's alias.** Bigger
 than the audit's 29+37 figure, which appears to be scoped to same-type and

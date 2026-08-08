@@ -35,7 +35,11 @@ the evidence chips, the surrounding graph.
 
 ## 2. Red team — real defects found (2026-08-01 deep read)
 
-### 🔴 R1. Everyday projection rebuild can CASCADE-DELETE user list rows
+### ✅ R1 DONE. Everyday projection rebuild can CASCADE-DELETE user list rows
+
+> LANDED: user-layer FKs into the derived layer are `Restrict`/`SetNull`
+> (schema.prisma — user_list_items.connection FK Restrict; verified by the
+> plans audit 2026-08-08, which found the line numbers below stale).
 
 `projection-rebuild.service.ts:897-908` deletes connections not in
 `retainedKeys`; `user_list_items.connection_id` is `onDelete: Cascade`
@@ -48,7 +52,10 @@ anchor-aware path (merge/rehome), and "user data deleted by derived-layer
 GC" becomes impossible by construction. This is the single most important
 fix in this doc and is independent of any choreography.
 
-### 🔴 R2. Poll endorsements and comment spans never survive merges
+### ✅ R2 DONE. Poll endorsements and comment spans never survive merges
+
+> LANDED: entity-anchor-rehome.service.ts:92-150 rekeys poll anchors
+> through the shared rehome authority.
 
 `poll_endorsements.subjectId` is a bare string (schema.prisma:965, no FK);
 merges never rekey it (unlike list items/photos/topics via
@@ -57,7 +64,10 @@ archived loser → silently stops counting. `poll_comments.entitySpans` same.
 Fix: either rekey in rehome, or resolve through `entity_redirects` at read
 (the signals-ledger pattern, already the blessed design there).
 
-### 🟠 R3. Food-merge list rekey is a blunt updateMany
+### ✅ R3 DONE. Food-merge list rekey is a blunt updateMany
+
+> LANDED: food-dedupe-merge routes through EntityAnchorRehomeService —
+> one conflict policy for both merges.
 
 `food-dedupe-merge.service.ts:311-314` — no conflict check; if a user has
 both dishes in one list it throws P2002 and aborts the whole merge.
@@ -65,7 +75,10 @@ Restaurant merge handles this (but resolves by DELETING the losing item,
 discarding the user's note — should merge notes/keep earliest position).
 Unify both through EntityAnchorRehomeService with a real conflict policy.
 
-### 🟠 R4. Semantic twins evade the audit
+### ✅ R4 DONE. Semantic twins evade the audit
+
+> LANDED: anchor-audit.sql:95-123 adds the embedding-distance semantic
+> twin pass.
 
 anchor-audit's TWIN check is lexical (name/alias/plural). A prompt that
 renames a concept ("birria tacos" → "quesabirria") yields a live new entity
@@ -75,7 +88,10 @@ renames a concept ("birria tacos" → "quesabirria") yields a live new entity
   name embeddings) — output pairs for agent review, auto-merge only above a
   conservative threshold.
 
-### 🟠 R5. Cross-community counter zeroing without rebuild
+### ✅ R5 DONE. Cross-community counter zeroing without rebuild
+
+> LANDED: activate-shadow.ts rebuilds affected restaurants from the full
+> surviving ledger on BOTH activate and rollback paths.
 
 Wipe L91-96 zeroes counters restaurant-scoped (not community-scoped); a
 shared restaurant's other-city evidence survives in the ledger but nothing
@@ -91,7 +107,9 @@ name for Google's. Usually correct; but it's a silent label change in user
 lists. Disposition: accept, but surface renamed-anchored-entities in the
 review output.
 
-### 🟡 R7. Anchor-list blind spots
+### ✅ R7 DONE. Anchor-list blind spots
+
+> LANDED: preserved-anchors.sql:69-70 carries the additions.
 
 `user_list_items.location_id` not in preserved-anchors (narrow today);
 `signals.subject_type='entity'` only — audit live distinct subject_types;
@@ -197,13 +215,20 @@ verbs too (`onboard` = sources row + lanes + funded archive load).
 
 ## 5. Build order (no throwaway work)
 
+> STATUS (truth pass 2026-08-08): items 1-5 are SHIPPED — see the ✅ R
+> sections above and reextract.sh. Only item 6 (onboarding verb
+> convergence) remains open. A reader starting here should build NOTHING
+> from items 1-5.
+
 1. **R1 schema fix** (Restrict FKs) + R2/R3 rehome fixes — independent,
    user-protecting, do first.
 2. Versioned prompts (runtime prompt registry; runs pin version; active
    switch). Verify replay's activate:false semantics end-to-end.
 3. Diff reporter + review-file format + runbook for agent triage.
-4. Coordinator verbs (estimate/shadow/diff/activate/status) wrapping the
-   existing campaign/replay/audit machinery. Semantic-twin pass in audit.
+4. Coordinator verbs — SHIPPED as EIGHT, not five: push (register the
+   candidate — the required first step), estimate, shadow, rollback,
+   discard, diff, activate, status (reextract.sh:42-110). Semantic-twin
+   pass in audit.
 5. Preserved-anchors additions (R7) + projection-rebuild closing step (R5).
 6. Onboarding verb convergence (later).
 
@@ -241,9 +266,16 @@ contract that makes this safe:
   vendor data.
 - A rejected candidate is removed with `reextract.sh discard <version>`:
   runs+events+claims deleted, prompt retired, then
-  gc-unsupported-entities.sql (now active-run-filtered) collects the
-  minted vocabulary. Discard hard-refuses if any document ACTIVATED the
-  version.
+  gc-unsupported-entities.sql collects the minted vocabulary. NOTE
+  (corrected 2026-08-08 — this doc previously claimed the GC was
+  "active-run-filtered"; the code deliberately REVERSED that): the GC
+  treats ANY surviving event as support, because retained-generation
+  events exist precisely so rollback stays a pointer flip — an
+  active-run-only GC would delete rollback evidence. Vocabulary is
+  reclaimed only AFTER `discard` deletes the generation's events; never
+  run GC between an activation and its rollback decision
+  (gc-unsupported-entities.sql:22-32 is authoritative). Discard
+  hard-refuses if any document ACTIVATED the version.
 - Zero-mention shadow runs are compaction-immune while their prompt is
   non-retired (the "correctly found nothing" verdict survives to
   activation).

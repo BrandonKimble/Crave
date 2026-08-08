@@ -125,13 +125,17 @@ REEXTRACT_DB=$(grep -o 'postgresql://.*' ~/.crave-prod-readonly.env | sed 's/PRO
 ## If something goes wrong
 
 **If activation was INTERRUPTED** (crash, SIGTERM, laptop sleep): the pointer
-flips that committed are durable, the rebuild may not have run. Do NOT
-`rollback` and do NOT re-run blindly — first re-run
-`activate ... --reviewed --execute`: it now resolves the whole plan BEFORE
-mutating, saves it to `~/.crave-activation-plan-v<N>-<communities>.json`, and
-rebuilds the ENTIRE planned restaurant set every time, so a resume is
-idempotent and self-healing. Verify the printed plan counts match the first
-run's before continuing.
+flips that committed are durable; re-run `activate ... --reviewed --execute`.
+The saved plan at `~/.crave-activation-plan-v<N>-<communities>.json` IS THE
+AUTHORITY for the resume (F9976, fixed 2026-08-08): the script reads it back
+and rebuilds the ENTIRE originally-planned restaurant set — it never
+recomputes from `documentsOwnedByRun()`, the predicate activation itself
+invalidates, and never overwrites the artifact. The resume prints
+"RESUMED plan" with the original counts; a version/community mismatch with
+the saved file hard-refuses rather than mixing plans. On full success the
+artifact is consumed (deleted) so it cannot replay as a stale resume.
+Mutation-proven in activation-plan.spec.ts (a resume must not recompute,
+must not clobber the artifact; success must consume it).
 
 Activation is reversible (owner decision 2026-08-01): the superseded
 generation's events are RETAINED, so `reextract.sh rollback <communities>

@@ -24,7 +24,10 @@
  */
 import { NestFactory } from '@nestjs/core';
 import { createHash } from 'crypto';
-import { writeFileSync } from 'fs';
+import {
+  consumeActivationPlan,
+  resolveActivationPlan,
+} from '../src/modules/content-processing/reddit-collector/activation-plan';
 import { join } from 'path';
 import { AppModule } from '../src/app.module';
 import { PrismaService } from '../src/prisma/prisma.service';
@@ -274,33 +277,41 @@ async function main(): Promise<void> {
     // printing success. The pointer flip is idempotent; the rebuild was not.
     //
     // Now: resolve the entire plan (documents + affected restaurants) up
-    // front, persist it, and rebuild the WHOLE planned set on every run —
-    // including a resume. Re-running is then genuinely idempotent.
-    const plan: Array<{ runId: string; documentIds: string[] }> = [];
-    const affectedRestaurants = new Set<string>();
-    for (const run of runs) {
-      const documentIds = await scope.documentsOwnedByRun(run.run_id);
-      if (!documentIds.length) continue;
-      plan.push({ runId: run.run_id, documentIds });
-      for (const id of await scope.affectedRestaurantsForDocuments(documentIds))
-        affectedRestaurants.add(id);
-    }
-    const restaurantIds = Array.from(affectedRestaurants);
+    // front, persist it, and on a RESUME read the artifact back — never
+    // recompute (F9976: activation destroys the predicate the plan is
+    // computed from, so a recomputing resume skipped every already-flipped
+    // run's rebuild AND clobbered the recovery file with the empty plan).
     const planPath = join(
       process.env.HOME ?? '.',
       `.crave-activation-plan-v${promptVersion}-${communities.join('+')}.json`,
     );
-    writeFileSync(
+    const resolved = await resolveActivationPlan({
       planPath,
-      JSON.stringify({ promptVersion, communities, plan, restaurantIds }),
-    );
+      promptVersion,
+      communities,
+      compute: async () => {
+        const plan: Array<{ runId: string; documentIds: string[] }> = [];
+        const affectedRestaurants = new Set<string>();
+        for (const run of runs) {
+          const documentIds = await scope.documentsOwnedByRun(run.run_id);
+          if (!documentIds.length) continue;
+          plan.push({ runId: run.run_id, documentIds });
+          for (const id of await scope.affectedRestaurantsForDocuments(
+            documentIds,
+          ))
+            affectedRestaurants.add(id);
+        }
+        return { plan, restaurantIds: Array.from(affectedRestaurants) };
+      },
+    });
+    const { plan, restaurantIds } = resolved.plan;
     console.log(
-      `Plan: ${plan.length} runs, ${plan.reduce((n, p) => n + p.documentIds.length, 0)} documents, ${restaurantIds.length} restaurants → ${planPath}`,
+      `${resolved.resumed ? 'RESUMED plan' : 'Plan'}: ${plan.length} runs, ${plan.reduce((n, p) => n + p.documentIds.length, 0)} documents, ${restaurantIds.length} restaurants → ${planPath}`,
     );
     if (!plan.length) {
-      console.log(
-        'Nothing to activate (already activated? a resume rebuilds from the saved plan below).',
-      );
+      console.log('Nothing to activate.');
+      consumeActivationPlan(planPath);
+      return;
     }
 
     let flipped = 0;
@@ -338,6 +349,9 @@ async function main(): Promise<void> {
         console.log(`  rebuilt ${i}/${restaurantIds.length}…`);
       }
     }
+    // The artifact is consumed only on FULL success — a crash anywhere above
+    // leaves it in place as the authority for the resume.
+    consumeActivationPlan(planPath);
     console.log(
       'DONE. Close with: reload/anchor-audit.sql, reload/gc-unsupported-entities.sql, prompt-activate.ts, cost-reconcile.sh',
     );
