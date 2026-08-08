@@ -1,7 +1,6 @@
 export type OnDemandNoticeMetadata = {
   onDemandQueued?: boolean;
   onDemandEtaMs?: number;
-  displayPlaceName?: string | null;
   engineCoverageShare?: number;
 };
 
@@ -9,8 +8,10 @@ export type OnDemandNoticeMetadata = {
 // the notice judges the raw engine-coverage SHARE — covered ⇔ some engine
 // territory ground intersects the viewport (share > 0). The election fields
 // (marketResolutionStatus / candidateLocalityName / collectableMarketKeys)
-// are DEAD; area naming is verdict-first with the catalog-derived
-// displayPlaceName as the strictly-pre-first-commit fallback.
+// are DEAD; area naming is the CLIENT verdict, full stop (one naming
+// authority, 2026-08-08 — the server's displayPlaceName fallback died with
+// the header cutover; before the store's first commit the copy says
+// "this area", which a later commit cannot contradict).
 export const resolveOnDemandNoticeText = ({
   metadata,
   verdictAreaLabel,
@@ -26,10 +27,6 @@ export const resolveOnDemandNoticeText = ({
       ? metadata.engineCoverageShare
       : 0;
   const coveredByEngines = engineCoverageShare > 0;
-  const displayName =
-    typeof metadata.displayPlaceName === 'string' && metadata.displayPlaceName.trim()
-      ? metadata.displayPlaceName.trim()
-      : null;
 
   if (metadata.onDemandQueued) {
     const etaMs = metadata.onDemandEtaMs;
@@ -43,7 +40,7 @@ export const resolveOnDemandNoticeText = ({
         etaText = hours === 1 ? 'about 1 hour' : `about ${hours} hours`;
       }
     }
-    const areaLabel = verdictAreaLabel ?? displayName ?? 'this area';
+    const areaLabel = verdictAreaLabel ?? 'this area';
     const searchLabel = onDemandNoticeQuery ? ` for ${onDemandNoticeQuery}` : '';
     const suffix = etaText ? ` Check back in ${etaText}.` : ' Check back soon.';
     return `Your search${searchLabel} is helping us grow coverage in ${areaLabel}. More searches like this help us learn what people want here.${suffix} Create a poll to get answers faster.`;
@@ -53,7 +50,7 @@ export const resolveOnDemandNoticeText = ({
     // "no collectable market" arm, re-keyed): same growth copy. The
     // election's multi-market "zoom out" arm died with the election —
     // there is no tie state in ground coverage.
-    const areaLabel = verdictAreaLabel ?? displayName;
+    const areaLabel = verdictAreaLabel;
     if (areaLabel) {
       const searchLabel = onDemandNoticeQuery ? ` for ${onDemandNoticeQuery}` : '';
       return `Your search${searchLabel} is helping us grow coverage in ${areaLabel}. More searches like this help us learn what people want here. Check back soon, or create a poll to get answers faster.`;

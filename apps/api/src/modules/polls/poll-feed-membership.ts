@@ -2,10 +2,11 @@
  * §6 feed membership + §2.5 header verdict for the polls surface — PURE.
  *
  * Feed = polls of places in view PLUS descendants of the header subject(s).
- * The header is the SAME center-anchored judgment search uses
- * (resolveHeaderPlace, 2026-08-07 law — one law, one implementation; "Polls
- * in this area" is the client's rendering of the null verdict, exactly like
- * search's displayPlaceName).
+ * The header verdict is the SAME center-anchored judgment the client
+ * subject store runs (resolveHeaderPlace, 2026-08-07 law — one law, one
+ * implementation; one naming AUTHORITY since 2026-08-08: only the client
+ * renders names, "Polls in this area" being its rendering of a null
+ * verdict).
  *
  * §4 boundary, feed half — "big-place (subdivision+) polls are
  * feed-at-that-zoom only": an in-view place that is BOTH over-scale for the

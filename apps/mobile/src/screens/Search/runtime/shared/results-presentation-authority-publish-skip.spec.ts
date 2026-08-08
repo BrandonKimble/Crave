@@ -83,9 +83,7 @@ describe('F1300(a) — the enter_mounted_hidden publish skip stores what it sync
     expect(liveTarget.received.at(-1)?.coverState).toBe('initial_loading');
 
     // ...and now the authority's own record agrees with what it already pushed.
-    expect(authority.getSnapshot().resultsPresentationTransport.coverState).toBe(
-      'initial_loading'
-    );
+    expect(authority.getSnapshot().resultsPresentationTransport.coverState).toBe('initial_loading');
   });
 
   it('seeds a late-registering target from the same transport live targets already hold', () => {

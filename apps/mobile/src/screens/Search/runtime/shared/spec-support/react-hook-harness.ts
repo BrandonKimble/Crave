@@ -178,10 +178,7 @@ const useEffect = (_effect: () => void | (() => void), _deps?: readonly unknown[
 };
 
 /** Same contract as `useEffect` above: a recorded slot, never invoked. */
-const useLayoutEffect = (
-  _effect: () => void | (() => void),
-  _deps?: readonly unknown[]
-): void => {
+const useLayoutEffect = (_effect: () => void | (() => void), _deps?: readonly unknown[]): void => {
   allocateCell('useLayoutEffect');
 };
 

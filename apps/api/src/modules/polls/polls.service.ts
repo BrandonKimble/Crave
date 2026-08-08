@@ -181,8 +181,8 @@ export class PollsService {
    * is dead), §2 header verdict in the response metadata.
    *
    * Membership: placesInView(bounds) → the §2 subjecthood judgment
-   * (resolveHeaderPlace — the SAME derivation search's displayPlaceName
-   * uses) → feed members = in-view places (minus over-scale subdivision+
+   * (resolveHeaderPlace — the ONE shared naming law the client subject
+   * store also runs) → feed members = in-view places (minus over-scale subdivision+
    * places, §4's feed-at-that-zoom boundary) ∪ descendants of the
    * commensurate subject(s). Every poll row is place-keyed (legacy-poll
    * expiry, 2026-07-20) — the market-bbox interim arm is gone.

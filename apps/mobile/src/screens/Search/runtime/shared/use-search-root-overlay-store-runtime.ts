@@ -12,11 +12,7 @@ const selectRouteIdentityRuntime = (
   snapshot: RouteOverlayIdentitySnapshot
 ): Pick<
   SearchOverlayStoreRuntime,
-  | 'activeOverlayKey'
-  | 'rootOverlay'
-  | 'isSearchOverlay'
-  | 'showListsOverlay'
-  | 'showProfileOverlay'
+  'activeOverlayKey' | 'rootOverlay' | 'isSearchOverlay' | 'showListsOverlay' | 'showProfileOverlay'
 > => ({
   activeOverlayKey: snapshot.activeOverlayRouteKey,
   rootOverlay: snapshot.rootOverlayKey,

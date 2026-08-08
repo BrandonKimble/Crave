@@ -828,9 +828,6 @@ export class SearchService {
         pageSize: pagination.pageSize,
         resultCoverageStatus,
         primaryFoodTerm: primaryFoodTerm || undefined,
-        // §2 header law (master plan §22 cut 3): the VALUE comes from the
-        // Place Catalog (resolveDisplayPlaceName); the FIELD name is the
-        // frozen wire contract until the mobile-side cut.
         // ENGINE-COVERAGE (leg 2): raw territory-ground share of the
         // viewport + the engines present. Consumers judge per their own
         // law (§16 — no threshold baked here); nothing market-shaped.
@@ -1637,26 +1634,15 @@ export class SearchService {
     // entirely and become structured walls; activation comes from BOTH the
     // toggle strip (request.dietary names) and query-text grounding (one
     // grounded side activates the whole pair).
-    const dietaryPairs = await this.dietaryConstraints.getDietaryPairs();
-    const wallNames = new Set<string>(
-      (params.request.dietary ?? [])
-        .map((name) => name.trim().toLowerCase())
-        .filter((name) => dietaryPairs.has(name)),
-    );
-    for (const [name, pair] of dietaryPairs) {
-      const grounded =
-        (pair.foodAttributeId &&
-          constraints.ids.foodAttributeIds.includes(pair.foodAttributeId)) ||
-        (pair.restaurantAttributeId &&
-          constraints.ids.restaurantAttributeIds.includes(
-            pair.restaurantAttributeId,
-          ));
-      if (grounded) wallNames.add(name);
-    }
-    const dietaryWalls = Array.from(wallNames).map((name) => ({
-      name,
-      ...dietaryPairs.get(name)!,
-    }));
+    // ONE wall derivation, shared with map coverage and the saved-list
+    // assembler. Both the toggle strip AND query-text grounding raise walls;
+    // coverage used to read only the strip, so "vegan tacos" walled the cards
+    // beside an unwalled map.
+    const dietaryWalls = await this.dietaryConstraints.resolveDietaryWalls({
+      dietary: params.request.dietary,
+      foodAttributeIds: constraints.ids.foodAttributeIds,
+      restaurantAttributeIds: constraints.ids.restaurantAttributeIds,
+    });
 
     // Membership: soft ids move to provenance; dietary ids move to WALLS.
     // Presence bookkeeping is untouched — it describes the QUERY the user

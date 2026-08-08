@@ -31,9 +31,9 @@ export const useSearchRootPrimitivesRuntime = ({
 
   return React.useMemo<SearchRootPrimitivesRuntime>(
     () => ({
-        mapState,
-        searchState,
-      }),
+      mapState,
+      searchState,
+    }),
     [mapState, searchState]
   );
 };

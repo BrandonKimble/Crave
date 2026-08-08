@@ -1,19 +1,19 @@
 import { resolveOnDemandNoticeText } from './on-demand-notice-copy';
 
-// ENGINE-COVERAGE notice re-key parity (markets extermination leg 2).
-// Old law → new law mapping:
-//   covered      ⇔ collectableMarketKeys.length > 0  →  engineCoverageShare > 0
-//   area label   ⇔ verdict → displayPlaceName/candidateLocalityName chain
-//                →  verdict → displayPlaceName (catalog header) only
-//   multi-market "zoom out" tie arm → DEAD (ground coverage has no tie state)
+// ENGINE-COVERAGE notice re-key parity (markets extermination leg 2), under
+// the ONE-NAMING-AUTHORITY cutover (2026-08-08): the server's
+// displayPlaceName fallback is DELETED — the area label comes from the
+// CLIENT verdict alone, and before the store's first commit the copy says
+// "this area". These fixtures deliberately carry NO server name to hand-feed
+// (F9963: the old suite fed a field no producer could emit, keeping dead
+// code green).
 
-describe('resolveOnDemandNoticeText (engine-coverage re-key)', () => {
-  it('queued arm: verdict-first area label, ETA suffix', () => {
+describe('resolveOnDemandNoticeText (one naming authority)', () => {
+  it('queued arm: the client verdict labels the area, ETA suffix', () => {
     const text = resolveOnDemandNoticeText({
       metadata: {
         onDemandQueued: true,
         onDemandEtaMs: 30 * 60000,
-        displayPlaceName: 'Austin',
         engineCoverageShare: 0.9,
       },
       verdictAreaLabel: 'East Austin',
@@ -24,13 +24,7 @@ describe('resolveOnDemandNoticeText (engine-coverage re-key)', () => {
     expect(text).toContain('Check back in 30 min.');
   });
 
-  it('queued arm pre-commit: falls back to the catalog header name, then "this area"', () => {
-    const withName = resolveOnDemandNoticeText({
-      metadata: { onDemandQueued: true, displayPlaceName: 'Austin' },
-      verdictAreaLabel: null,
-      onDemandNoticeQuery: '',
-    });
-    expect(withName).toContain('grow coverage in Austin');
+  it('queued arm pre-commit (no verdict yet): "this area" — never a stale server name', () => {
     const bare = resolveOnDemandNoticeText({
       metadata: { onDemandQueued: true },
       verdictAreaLabel: null,
@@ -39,36 +33,29 @@ describe('resolveOnDemandNoticeText (engine-coverage re-key)', () => {
     expect(bare).toContain('grow coverage in this area');
   });
 
-  it('a committed straddle verdict ("this area") out-votes the metadata name', () => {
+  it('a committed "this area" verdict renders as itself', () => {
     const text = resolveOnDemandNoticeText({
-      metadata: { onDemandQueued: true, displayPlaceName: 'Austin' },
+      metadata: { onDemandQueued: true },
       verdictAreaLabel: 'this area',
       onDemandNoticeQuery: '',
     });
     expect(text).toContain('grow coverage in this area');
-    expect(text).not.toContain('Austin');
   });
 
-  it('UNCOVERED state (share 0 or absent, nothing queued): growth copy with the verdict/header label', () => {
+  it('UNCOVERED state (share 0, nothing queued): growth copy with the verdict label', () => {
     const text = resolveOnDemandNoticeText({
-      metadata: { engineCoverageShare: 0, displayPlaceName: 'Marfa' },
-      verdictAreaLabel: null,
+      metadata: { engineCoverageShare: 0 },
+      verdictAreaLabel: 'Marfa',
       onDemandNoticeQuery: 'kolaches',
     });
     expect(text).toContain('for kolaches');
     expect(text).toContain('grow coverage in Marfa');
-    const absent = resolveOnDemandNoticeText({
-      metadata: {},
-      verdictAreaLabel: 'Marfa',
-      onDemandNoticeQuery: '',
-    });
-    expect(absent).toContain('grow coverage in Marfa');
   });
 
   it('COVERED (share > 0) with nothing queued renders NO notice', () => {
     expect(
       resolveOnDemandNoticeText({
-        metadata: { engineCoverageShare: 0.4, displayPlaceName: 'Austin' },
+        metadata: { engineCoverageShare: 0.4 },
         verdictAreaLabel: 'Austin',
         onDemandNoticeQuery: 'tacos',
       })

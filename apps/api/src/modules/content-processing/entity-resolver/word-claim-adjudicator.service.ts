@@ -2,7 +2,11 @@ import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../../../prisma/prisma.service';
 import { LoggerService } from '../../../shared';
 import { LLMService } from '../../external-integrations/llm/llm.service';
-import { addAliases, type AliasSource } from './entity-alias.service';
+import {
+  addAliases,
+  mintWordClaimVerdict,
+  type AliasSource,
+} from './entity-alias.service';
 import { canonicalFold } from './entity-identity';
 
 /**
@@ -437,7 +441,7 @@ export class WordClaimAdjudicatorService {
         // The verdict IS the ownership ruling — a 'both win' is a sanctioned
         // collision, so the guard defers to it (it blocked every coexistence
         // verdict otherwise; 862-claim forever-loop, 2026-08-08).
-        { adjudicated: true },
+        { adjudicated: mintWordClaimVerdict() },
       ),
     );
   }

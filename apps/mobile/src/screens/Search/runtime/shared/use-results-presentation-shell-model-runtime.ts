@@ -186,7 +186,6 @@ export const useResultsPresentationShellModelRuntime = ({
     surfaceVisualPolicy.transactionId,
   ]);
 
-
   return React.useMemo(
     () => ({
       backdropTarget: effectiveBackdropTarget,

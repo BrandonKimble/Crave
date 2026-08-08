@@ -115,11 +115,11 @@ export const useResultsPresentationOwnerPresentationActionsRuntime = ({
 
   return React.useMemo<ResultsPresentationActions>(
     () => ({
-        requestSearchPresentationIntent,
-        beginCloseSearch: closeActionsRuntime.beginCloseSearch,
-        handleCloseResults: closeActionsRuntime.handleCloseResults,
-        cancelCloseSearch: closeActionsRuntime.cancelCloseSearch,
-      }),
+      requestSearchPresentationIntent,
+      beginCloseSearch: closeActionsRuntime.beginCloseSearch,
+      handleCloseResults: closeActionsRuntime.handleCloseResults,
+      cancelCloseSearch: closeActionsRuntime.cancelCloseSearch,
+    }),
     [
       closeActionsRuntime.beginCloseSearch,
       closeActionsRuntime.cancelCloseSearch,

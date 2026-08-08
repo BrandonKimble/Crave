@@ -40,11 +40,7 @@ export const useSearchResultsPageHeaderRuntime = ({
       headerTitle: resolvedHeaderTitle,
       handleCloseResults,
     };
-  }, [
-    handleCloseResults,
-    headerTitle,
-    shouldRetainResultsPage,
-  ]);
+  }, [handleCloseResults, headerTitle, shouldRetainResultsPage]);
   retainedTitleRef.current = liveState.headerTitle;
 
   // Layout effect (not useEffect): the descriptor must read the fresh model on the FIRST painted
