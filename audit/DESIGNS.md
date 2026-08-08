@@ -4567,3 +4567,37 @@ DTO slots as PublicAuthorIdentity.
 STATUS: QUEUED — blocked on the concurrent photo session's pending migration
 (20260807020000_photo_destroy_pending + dirty schema.prisma). Build fires when it lands.
 Already shipped from the same red-team: F9480 (live share-card leak) fixed + mutation-proven.
+
+## D149 — "SCREAM, NEVER KILL" spend-governance rederivation: OWNER APPROVED (2026-08-07)
+
+Owner ruled (full inventory in the 2026-08-07 exhaustive read): no user action may ever be
+refused by budget state; alerts must actually reach him; only bug-altitude backstops survive.
+
+APPROVED SHAPE:
+1. REMOVE the spend refusal from every synchronous user path: poll-create→Places enrichment
+   (the live organic 500), the photo→Gemini classifier tail (degrade to pending-retry, never
+   throw), and the fail-closed store-hiccup denial for user-facing pools (a DB blip must not
+   refuse a user).
+2. EXPECTED-SPEND COMPARATOR: a checked-in owner-editable constants file (no table — simpler
+   beats a migration, and it's visible/versioned) of expected monthly $ per vendor; a nightly
+   cron compares api_usage_ledger month-to-date (prorated) and emits ops alerts at 1×
+   ("running hot", warn→EMAIL) and 2× ("something is wrong", critical→email). Spend anomaly
+   warns STOP being dashboard-only rows.
+3. TWO hard stops survive, WORKER-ONLY, at ~10× measured (~$1,500 Gemini, ~$1,000 Places),
+   where a trip can only mean a runaway loop. Everything else that refused converts to
+   alert-or-nothing. Pacers (per-minute vendor QPS windows) KEEP (vendor physics). Campaign
+   grant envelopes KEEP (owner decisions). Poisoned-credential mirrors KEEP (vendor reality).
+4. DELETE the machinery the law obsoletes (~900 LOC): durable fail-closed admission
+   (admit/storeFailure/flushDurable chains), nightly Gemini backstop derivation + its 3 env
+   vars, the gemini.tokens mirror pool. Measurement (ledger/pricing/reconcile/gated-client
+   surface map) stays whole — it IS the system now.
+5. QUOTA WATCHER (lite, no table): worker cron polls Cloudinary Admin usage (credits +
+   aws_rek moderation) hourly for rek / daily for credits; ops-alerts at 80%/95% with
+   windowed dedupe keys; TomTom stays owner-declared balance minus measured burn on the
+   dashboard. Snapshot table deferred (schema concurrent-locked) — recorded, not lost.
+6. QUEUED behind the photo session (schema + photos.service): Vision SafeSearch moderation
+   migration (D149-V: preset stops pinning aws_rek; server-side gated+metered SafeSearch call
+   on upload-finalize; converts moderation from un-watchable quota to GATED per-call vendor)
+   and the lying reconcile counter fix. GCP Vision API enabled 2026-08-07 (project crave-467301).
+   GCP budgets verified alert-only ($50 dev/$2,500 prod); prod Resend+OPS_ALERT_EMAIL verified
+   set on both services.
