@@ -36,6 +36,7 @@ import { PrismaService } from '../../src/prisma/prisma.service';
 const RNG = makeRng(Number(process.env.SEED ?? 4242));
 const PER_TYPE = Number(process.env.PER_TYPE ?? 350);
 const NEGATIVES = Number(process.env.NEGATIVES ?? 150);
+const LINKER_FALLBACK_SINGLETON = 0.65;
 const TARGET_PRECISION = Number(process.env.TARGET_PRECISION ?? 0.95);
 const SHORTLIST_K = 5;
 const POOL = 50;
@@ -199,10 +200,17 @@ async function main(): Promise<void> {
     const floors: Record<string, { absolute: number; singleton: number }> = {};
     for (const tier of tiers) {
       const obs = observations.filter((o) => o.tier === tier);
-      const absolute = obs.length >= 20 ? derive(obs, tier) : 0.82;
+      // AUDIT H4: an under-observed tier is NOT emitted — the reader's
+      // LINKER_FALLBACK_FLOORS covers it, and the artifact honestly shows
+      // which tiers were measured (three defaults used to be
+      // indistinguishable from measurements).
+      if (obs.length < 20) continue;
+      const absolute = derive(obs, tier);
       const singles = obs.filter((o) => o.singleton);
       const singleton =
-        singles.length >= 20 ? derive(singles, `${tier} (singleton)`) : 0.65;
+        singles.length >= 20
+          ? derive(singles, `${tier} (singleton)`)
+          : LINKER_FALLBACK_SINGLETON;
       floors[tier] = { absolute, singleton };
       if (obs.length < 20)
         out(

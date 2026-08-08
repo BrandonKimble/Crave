@@ -34,6 +34,10 @@ import type {
   SpanEntity,
 } from '../entity-text-search/entity-text-search.service';
 import { foodNameVariants } from '../content-processing/entity-resolver/food-lemma';
+import {
+  damerauLevenshtein,
+  editBudgetForLength,
+} from '../entity-text-search/entity-lexicon';
 import { canonicalFold } from '../content-processing/entity-resolver/entity-identity';
 import { EngineCoverageService } from './engine-coverage.service';
 import { SignalsService } from '../signals/signals.service';
@@ -664,8 +668,14 @@ export class SearchQueryInterpretationService {
     // word). Reject; the span stays grounded and the residue stands alone
     // (bare probe, then staging).
     if (!leftover) return false;
-    const budget = residue.length <= 2 ? 0 : residue.length <= 5 ? 1 : 2;
-    return levenshtein(leftover, residue) <= budget;
+    // AUDIT H7: ONE budget authority and ONE metric. The inline ternary was
+    // the third copy of editBudgetForLength, and plain Levenshtein rejected
+    // transpositions the recall lane's Damerau verification accepts — the
+    // guard and the lane now speak the same distance.
+    return (
+      damerauLevenshtein(leftover, residue) <=
+      editBudgetForLength(residue.length)
+    );
   }
 
   /**
@@ -1222,24 +1232,4 @@ export class SearchQueryInterpretationService {
  *  decides identity — mirrors the lemma-variant law). */
 function singularish(token: string): string {
   return token.endsWith('s') && token.length > 3 ? token.slice(0, -1) : token;
-}
-
-function levenshtein(a: string, b: string): number {
-  if (a === b) return 0;
-  const m = a.length;
-  const n = b.length;
-  if (!m || !n) return Math.max(m, n);
-  let prev = Array.from({ length: n + 1 }, (_, j) => j);
-  for (let i = 1; i <= m; i++) {
-    const cur = [i];
-    for (let j = 1; j <= n; j++) {
-      cur[j] = Math.min(
-        prev[j] + 1,
-        cur[j - 1] + 1,
-        prev[j - 1] + (a[i - 1] === b[j - 1] ? 0 : 1),
-      );
-    }
-    prev = cur;
-  }
-  return prev[n];
 }

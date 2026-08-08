@@ -1017,8 +1017,7 @@ export class EntityTextSearchService {
         const similarityThreshold = options.thresholdsByTerm.get(term) ?? 0.35;
         // Step 6: length-banded edit budget (ES-AUTO(3,6) seed; swept later) —
         // 0 edits for very short terms, 1 for mid, 2 for long.
-        const editBudget = term.length <= 2 ? 0 : term.length <= 5 ? 1 : 2;
-        return Prisma.sql`(${term}, ${prefixPattern}, ${similarityThreshold}, ${editBudget}, ${idx})`;
+        return Prisma.sql`(${term}, ${prefixPattern}, ${similarityThreshold}, ${idx})`;
       }),
     );
     const entityTypeArray = Prisma.sql`ARRAY[${Prisma.join(
@@ -1049,7 +1048,7 @@ export class EntityTextSearchService {
         r."generalPraiseUpvotes"
       FROM (
         VALUES ${values}
-      ) AS v(term, prefix_pattern, similarity_threshold, edit_budget, term_index)
+      ) AS v(term, prefix_pattern, similarity_threshold, term_index)
       CROSS JOIN LATERAL (
         SELECT
           scored."entityId",
