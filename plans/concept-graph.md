@@ -426,3 +426,13 @@ surface-coverage watermark (open).
    target disagrees with the incumbent goes to the identity judge for
    eviction/keep, instead of silent refusal. Morphology class is CLOSED
    (japonés/mexicano/peruanos pass; 19,168 es aliases live).
+
+### §9.9 BUILT (2026-08-08, commit 8f7e4096c) — the claims registry
+
+WordClaimAdjudicatorService + reconcile-surface-claims.ts + lane-4 removal.
+One law, one store: labels display, aliases ground, contested inferred
+claims get the judge, verdicts remembered. Red team found and fixed one
+judicial rule live (testimony bars EVICTION, not a co-claim hearing —
+first version cost café→coffee). 1,543 surfaces reconciled; es gate 98.7
+(new high). OWED: judge prompt v2 with concept descriptions — single-
+incumbent pairing mis-voted picante/café (two facts hand-banked, logged).
