@@ -77,15 +77,18 @@ export class PrismaService
   ) {
     const dbConfig = configService?.get<DatabaseConfig>('database');
 
-    const logConfig: Prisma.LogDefinition[] = dbConfig?.performance?.logging
-      ?.enabled
-      ? [
-          { emit: 'event', level: 'query' },
-          { emit: 'event', level: 'error' },
-          { emit: 'event', level: 'warn' },
-          { emit: 'event', level: 'info' },
-        ]
-      : [{ emit: 'event', level: 'error' }];
+    // Dev query logging is a toolchain fact (is this a local dev run), not a
+    // config knob — the deleted performance.logging block only ever wrapped
+    // this same NODE_ENV check in three layers of unread structure.
+    const logConfig: Prisma.LogDefinition[] =
+      process.env.NODE_ENV === 'development'
+        ? [
+            { emit: 'event', level: 'query' },
+            { emit: 'event', level: 'error' },
+            { emit: 'event', level: 'warn' },
+            { emit: 'event', level: 'info' },
+          ]
+        : [{ emit: 'event', level: 'error' }];
 
     super({
       datasources: {

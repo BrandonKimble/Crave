@@ -36,11 +36,14 @@ describe('configuration() boot decisions key on AppEnv (F404)', () => {
 
     const config = loadConfig();
 
-    expect(config.database.connectionPool.max).toBe(25);
-    expect(config.database.connectionPool.max).not.toBe(50);
+    // Rederived 2026-08-08 with the ceiling-derived defaults (dev 10 /
+    // staging 15 / prod 20 — see getDatabasePoolSize). The F404 claim this
+    // pins is unchanged: staging gets STAGING's default, never prod's.
+    expect(config.database.connectionPool.max).toBe(15);
+    expect(config.database.connectionPool.max).not.toBe(20);
   });
 
-  it('real production (APP_ENV=prod, NODE_ENV=production) still gets the 50-connection pool', () => {
+  it('real production (APP_ENV=prod, NODE_ENV=production) gets the ceiling-derived 20-connection default', () => {
     process.env.NODE_ENV = 'production';
     process.env.APP_ENV = 'prod';
     process.env.DATABASE_URL = 'postgresql://u:p@db.internal:5432/crave';
@@ -48,7 +51,10 @@ describe('configuration() boot decisions key on AppEnv (F404)', () => {
 
     const config = loadConfig();
 
-    expect(config.database.connectionPool.max).toBe(50);
+    // 20 per service: two services × 20 = 40% of the 100-connection
+    // ceiling. The old default of 50 meant two services could consume the
+    // entire ceiling — the 2026-08-08 incident's arithmetic as a default.
+    expect(config.database.connectionPool.max).toBe(20);
   });
 
   it('staging Cloudinary assets default to the staging namespace, not "dev"', () => {

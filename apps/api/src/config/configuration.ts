@@ -26,15 +26,23 @@ function getDatabasePoolSize(appEnv: AppEnv): string {
   // silently inherited prod's pool size (50). Test stays keyed off NODE_ENV
   // (a toolchain fact: is this a jest run) since AppEnv doesn't model it.
   if (process.env.NODE_ENV === 'test') return '5';
+  // DERIVED against the real ceiling (2026-08-08): prod Postgres has
+  // max_connections=100, shared by TWO app services (api + worker) plus
+  // migrate-at-boot, TimescaleDB workers, and operator sessions. Two
+  // services at `max` each must leave real headroom, so the per-service
+  // default is 20 (2×20 = 40% of ceiling). The old prod default was 50 —
+  // 2×50 = the whole ceiling, i.e. the incident's shape with extra steps.
+  // Prod/staging set DATABASE_CONNECTION_POOL_MAX=10 explicitly anyway;
+  // this default is the safety net for an env that forgets.
   switch (appEnv) {
     case 'dev':
-      return '10'; // Smaller pool for development with detailed logging
+      return '10';
     case 'staging':
-      return '25'; // Mid-size pool for staging
+      return '15';
     case 'prod':
-      return '50'; // MVP production pool size (can scale to 100+)
+      return '20';
     default:
-      return '10'; // Conservative default
+      return '10';
   }
 }
 
@@ -255,35 +263,19 @@ export default () => {
     database: {
       url: getDatabaseUrl(),
       connectionPool: {
-        // Pool sizing is the only genuinely env-different DB knob (dev 10 vs
-        // prod 50) — stays env-overridable. Everything else below is a
-        // never-changed constant (2026-07-11 config fold-in).
+        // THE one real DB knob (2026-08-08 incident): applied to Prisma as
+        // the connection_limit URL parameter by prisma.service. The
+        // Sequelize-era fiction that used to surround it (min/acquire/idle/
+        // evict/handleDisconnects, a query timeout+retry block, a
+        // performance/logging block) is DELETED — nothing consumed any of
+        // it but its own validator, and the fog hid that `max` itself was
+        // unconsumed too, which is how both prod services ran Prisma's
+        // 73-connection default into the 100-connection ceiling.
         max: parseInt(
           process.env.DATABASE_CONNECTION_POOL_MAX ||
             getDatabasePoolSize(appEnv),
           10,
         ),
-        min: parseInt(process.env.DATABASE_CONNECTION_POOL_MIN || '2', 10),
-        acquire: 60_000, // ms to wait for a pool connection before erroring
-        idle: 10_000, // ms an idle connection lingers before release
-        evict: 10_000, // eviction sweep interval (ms)
-        handleDisconnects: true, // always reconnect on dropped connections
-      },
-      query: {
-        timeout: 30_000, // per-query ceiling (ms); slow analytical work uses its own paths
-        retry: {
-          attempts: 3,
-          delay: 1_000, // base backoff (ms)
-          factor: 2.0, // exponential backoff multiplier
-        },
-      },
-      performance: {
-        preparedStatements: true,
-        logging: {
-          // Query logging is a dev observability aid, not an env knob.
-          enabled: process.env.NODE_ENV === 'development',
-          slowQueryThreshold: 1_000, // ms — log queries slower than this
-        },
       },
     },
     redis: {

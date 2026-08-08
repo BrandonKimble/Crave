@@ -16,6 +16,24 @@ export class DatabaseConfigurationError extends AppException {
   }
 }
 
+/**
+ * Validates the database configuration THAT EXISTS.
+ *
+ * REWRITTEN 2026-08-08. The previous version was 354 lines validating a
+ * Sequelize-era configuration Prisma cannot honor — retry factors, eviction
+ * intervals, slow-query thresholds — none of it consumed by anything but
+ * this validator. Fiction validating fiction, and it was worse than inert:
+ * its production posture check warned "connection pool < 20, consider
+ * increasing" — arguing AGAINST the correct setting. Prod Postgres has
+ * max_connections=100 shared by TWO services plus migrate-at-boot and
+ * operator sessions; the incident this rewrite follows was both services
+ * running Prisma's 73-connection default into that ceiling. Small pools are
+ * the cure here, not the disease.
+ *
+ * What remains is exactly what is real: the URL is a well-formed Postgres
+ * URL, and `max` — the one knob that reaches Prisma (see
+ * prisma.service.ts's pinConnectionLimit) — is sane against the ceiling.
+ */
 @Injectable()
 export class DatabaseValidationService implements OnModuleInit {
   private logger!: LoggerService;
@@ -28,10 +46,6 @@ export class DatabaseValidationService implements OnModuleInit {
     this.logger = this.loggerService.setContext('DatabaseValidationService');
   }
 
-  /**
-   * Validates complete database configuration
-   * Throws DatabaseConfigurationError if validation fails
-   */
   validateDatabaseConfiguration(config: ConfigService): void {
     const dbConfig = config.get<DatabaseConfig>('database');
 
@@ -41,8 +55,6 @@ export class DatabaseValidationService implements OnModuleInit {
 
     this.validateConnectionString(dbConfig.url);
     this.validateConnectionPool(dbConfig.connectionPool);
-    this.validateQueryConfiguration(dbConfig.query);
-    this.validatePerformanceConfiguration(dbConfig.performance);
 
     if (this.logger) {
       this.logger.info(
@@ -55,9 +67,6 @@ export class DatabaseValidationService implements OnModuleInit {
     }
   }
 
-  /**
-   * Validates database connection string
-   */
   private validateConnectionString(url: string): void {
     if (!url) {
       throw new DatabaseConfigurationError(
@@ -78,7 +87,6 @@ export class DatabaseValidationService implements OnModuleInit {
       );
     }
 
-    // Validate URL components
     try {
       const urlObj = new URL(url);
 
@@ -103,180 +111,48 @@ export class DatabaseValidationService implements OnModuleInit {
     }
   }
 
-  /**
-   * Validates connection pool configuration
-   */
   private validateConnectionPool(
     poolConfig: DatabaseConfig['connectionPool'],
   ): void {
-    const { max, min, acquire, idle, evict } = poolConfig;
+    const { max } = poolConfig;
 
-    if (min < 1) {
+    if (!Number.isInteger(max) || max < 1) {
       throw new DatabaseConfigurationError(
-        'Minimum connection pool size must be at least 1',
-        { provided: min, minimum: 1 },
+        'Connection pool max must be a positive integer',
+        { provided: max, minimum: 1 },
       );
     }
 
-    if (max < min) {
-      throw new DatabaseConfigurationError(
-        'Maximum connection pool size must be greater than or equal to minimum',
-        { max, min },
-      );
-    }
-
-    if (max > 200) {
-      if (this.logger) {
-        this.logger.warn('Large connection pool size detected', {
+    // The ceiling derivation (2026-08-08): max_connections=100, two app
+    // services, plus migrate/Timescale/operators. One service asking for
+    // more than 40 means the PAIR can exceed 80% of the ceiling — the
+    // incident's arithmetic. Warn, don't refuse: a single-service topology
+    // or a raised ceiling are legitimate, but they should be loud choices.
+    if (max > 40 && this.logger) {
+      this.logger.warn(
+        'Connection pool max is large for a shared 100-connection ceiling',
+        {
           correlationId: CorrelationUtils.getCorrelationId(),
           operation: 'validate_connection_pool',
           max,
-          recommendation: 'Consider scaling considerations',
-        });
-      }
-    }
-
-    if (acquire < 1000) {
-      if (this.logger) {
-        this.logger.warn('Very short acquire timeout detected', {
-          correlationId: CorrelationUtils.getCorrelationId(),
-          operation: 'validate_connection_pool',
-          acquire,
-          warning: 'This may cause connection failures',
-        });
-      }
-    }
-
-    if (idle < 1000) {
-      if (this.logger) {
-        this.logger.warn('Very short idle timeout detected', {
-          correlationId: CorrelationUtils.getCorrelationId(),
-          operation: 'validate_connection_pool',
-          idle,
-          warning: 'This may cause frequent reconnections',
-        });
-      }
-    }
-
-    if (evict < 1000) {
-      if (this.logger) {
-        this.logger.warn('Very short eviction interval detected', {
-          correlationId: CorrelationUtils.getCorrelationId(),
-          operation: 'validate_connection_pool',
-          evict,
-          warning: 'This may impact performance',
-        });
-      }
-    }
-  }
-
-  /**
-   * Validates query configuration
-   */
-  private validateQueryConfiguration(
-    queryConfig: DatabaseConfig['query'],
-  ): void {
-    const { timeout, retry } = queryConfig;
-
-    if (timeout < 1000) {
-      throw new DatabaseConfigurationError(
-        'Query timeout must be at least 1000ms (1 second)',
-        { provided: timeout, minimum: 1000 },
-      );
-    }
-
-    if (timeout > 300000) {
-      // 5 minutes
-      if (this.logger) {
-        this.logger.warn('Very long query timeout detected', {
-          correlationId: CorrelationUtils.getCorrelationId(),
-          operation: 'validate_query_configuration',
-          timeout,
-          warning: 'Consider if this is necessary',
-        });
-      }
-    }
-
-    // Validate retry configuration
-    if (retry.attempts < 1) {
-      throw new DatabaseConfigurationError(
-        'Retry attempts must be at least 1',
-        { provided: retry.attempts, minimum: 1 },
-      );
-    }
-
-    if (retry.attempts > 10) {
-      if (this.logger) {
-        this.logger.warn('High retry attempts detected', {
-          correlationId: CorrelationUtils.getCorrelationId(),
-          operation: 'validate_query_configuration',
-          retryAttempts: retry.attempts,
-          warning: 'This may mask underlying issues',
-        });
-      }
-    }
-
-    if (retry.delay < 100) {
-      throw new DatabaseConfigurationError(
-        'Retry delay must be at least 100ms',
-        { provided: retry.delay, minimum: 100 },
-      );
-    }
-
-    if (retry.factor < 1.0) {
-      throw new DatabaseConfigurationError(
-        'Retry factor must be at least 1.0',
-        { provided: retry.factor, minimum: 1.0 },
+          derivation:
+            'two services × max must leave headroom for migrate-at-boot and operator sessions',
+        },
       );
     }
   }
 
   /**
-   * Validates performance configuration
-   */
-  private validatePerformanceConfiguration(
-    perfConfig: DatabaseConfig['performance'],
-  ): void {
-    const { logging } = perfConfig;
-
-    if (logging.slowQueryThreshold < 100) {
-      if (this.logger) {
-        this.logger.warn('Very low slow query threshold detected', {
-          correlationId: CorrelationUtils.getCorrelationId(),
-          operation: 'validate_performance_configuration',
-          slowQueryThreshold: logging.slowQueryThreshold,
-          warning: 'This may generate excessive logs',
-        });
-      }
-    }
-
-    if (logging.slowQueryThreshold > 10000) {
-      if (this.logger) {
-        this.logger.warn('High slow query threshold detected', {
-          correlationId: CorrelationUtils.getCorrelationId(),
-          operation: 'validate_performance_configuration',
-          slowQueryThreshold: logging.slowQueryThreshold,
-          warning: 'You may miss performance issues',
-        });
-      }
-    }
-  }
-
-  /**
-   * Validates environment-specific configuration consistency
+   * Environment-posture check. F404 survives: keyed on APP_ENV via
+   * isDeployedEnv (staging groups with prod), never NODE_ENV.
    */
   validateEnvironmentConsistency(config: ConfigService): void {
-    // F404: this used to switch on NODE_ENV, which cannot express staging
-    // (spelled in APP_ENV) — staging silently fell through to the default
-    // case and got neither the production nor development consistency
-    // checks. isDeployedEnv groups staging with production for these
-    // performance-posture warnings, same rule as main.ts's CSP/CORS/Swagger.
-    const appEnv = (config.get<string>('appEnv') as
-      | 'dev'
-      | 'staging'
-      | 'prod'
-      | undefined) ?? resolveAppEnv();
-    const env = isDeployedEnv(appEnv) ? 'production' : 'development';
+    const appEnv =
+      (config.get<string>('appEnv') as
+        | 'dev'
+        | 'staging'
+        | 'prod'
+        | undefined) ?? resolveAppEnv();
     const dbConfig = config.get<DatabaseConfig>('database');
 
     if (!dbConfig) {
@@ -285,68 +161,17 @@ export class DatabaseValidationService implements OnModuleInit {
       );
     }
 
-    // Environment-specific validation rules
-    switch (env) {
-      case 'production':
-        if (dbConfig.performance.logging.enabled) {
-          if (this.logger) {
-            this.logger.warn(
-              'Detailed logging enabled in production environment',
-              {
-                correlationId: CorrelationUtils.getCorrelationId(),
-                operation: 'validate_environment_consistency',
-                environment: 'production',
-                warning: 'Consider disabling for performance',
-              },
-            );
-          }
-        }
-        if (dbConfig.connectionPool.max < 20) {
-          if (this.logger) {
-            this.logger.warn('Small connection pool detected in production', {
-              correlationId: CorrelationUtils.getCorrelationId(),
-              operation: 'validate_environment_consistency',
-              environment: 'production',
-              maxConnections: dbConfig.connectionPool.max,
-              warning: 'Consider increasing for better performance',
-            });
-          }
-        }
-        break;
-
-      case 'development':
-        if (!dbConfig.performance.logging.enabled) {
-          if (this.logger) {
-            this.logger.warn(
-              'Detailed logging disabled in development environment',
-              {
-                correlationId: CorrelationUtils.getCorrelationId(),
-                operation: 'validate_environment_consistency',
-                environment: 'development',
-                warning: 'Consider enabling for debugging',
-              },
-            );
-          }
-        }
-        if (dbConfig.connectionPool.max > 20) {
-          if (this.logger) {
-            this.logger.warn('Large connection pool detected in development', {
-              correlationId: CorrelationUtils.getCorrelationId(),
-              operation: 'validate_environment_consistency',
-              environment: 'development',
-              maxConnections: dbConfig.connectionPool.max,
-              warning: 'Consider reducing to save resources',
-            });
-          }
-        }
-        break;
-    }
-
+    // Deployed envs share one 100-connection database between two services;
+    // a laptop shares one local database between one API and every script a
+    // session runs. The posture is the same everywhere: SMALL pools are
+    // correct, and only an oversized one is worth a warning (handled above).
+    // The old per-env branches warned prod pools UNDER 20 to "consider
+    // increasing" — deleted as actively harmful advice.
     if (this.logger) {
       this.logger.info('Environment-specific validation completed', {
         correlationId: CorrelationUtils.getCorrelationId(),
         operation: 'validate_environment_consistency',
-        environment: env,
+        environment: isDeployedEnv(appEnv) ? 'production' : 'development',
       });
     }
   }
