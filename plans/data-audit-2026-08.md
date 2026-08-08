@@ -1432,3 +1432,12 @@ outranks another because of the two-row evidence design.
   inside `food` itself, a slot the attribute gate never inspects).
   Task #1 tracks the investigation.
 - GHOST RESTAURANTS: owner unblocked attribution work (was deferred item 6).
+
+## ROUND 2 — attributes layer census (2026-08-06): HEALTHY
+
+The filters users toggle are consistent both directions. Every restaurant
+with community dietary evidence (vegan / vegetarian / gluten free / halal /
+kosher) carries the matching attribute — zero lost hard-toggle coverage.
+The reverse asymmetry (outdoor seating: 801 carriers vs 172 with community
+evidence) is the Google enrichment source doing its job (boolean vocab from
+Places details), not phantom data. No action.
