@@ -800,3 +800,25 @@ architecture, what do best-in-class apps do for parent/child/nested/backward scr
 switching (retention, preloading, priming, transition choreography) that we do not,
 and what does our architecture uniquely lend itself to leverage? Deliverable: a
 rundown of every non-ideal behavior + a plan to the frontier.
+
+## OWNER RULING OA8 (2026-08-08) — OA6.1 CORRECTED: an outcome, not a ban
+
+The owner clarified the intent behind "never skeleton on a revisit": it was never a
+hard rule. The intended target is the INDUSTRY-STANDARD OUTCOME — revisited screens
+load faster than first visits because the system retains/warms them (that is what
+resident state, the frozen last-good body, prewarm and entry retention exist for).
+A skeleton on a revisit is not forbidden; it is a symptom to be engineered away by
+retention, not masked by decree. THE WRONG THING is forcing a heavy screen to paint
+its retained body in the flip frame purely to obey the old reading — if retention
+cannot make the revisit fast, an honest brief skeleton beats a frozen finger.
+Consequence: the OA6.1 latch question dissolves — the paint decision may prefer the
+frozen body when affordable and the skeleton when not, per measurement, with no
+ban either way. The G-SKEL machinery stays (it is the honest cold/heavy face).
+
+OWNER APPROVALS (same ruling): R8 old-system delete pass — APPROVED NOW (the owner
+exercised the burn-in gate); ONE PAINT RESOLVER merge — APPROVED; the six hardcoded
+rowType bypasses — fold into the resolver; OA6.1 latch — superseded by this ruling.
+SaveList history-vs-tile spec contradiction: pending one owner answer (asked).
+ALSO MANDATED: an industry-frontier audit — enumerate every strategy best-practice
+apps use for sheet/screen switching (parent<->parent, parent<->child, nested, back)
+that our landed architecture does not yet leverage, and the plan to get there.
