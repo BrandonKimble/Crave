@@ -99,6 +99,24 @@ describe('PoolRegistry (master plan §14 v2)', () => {
     expect(unconfirmedAdmits.length).toBe(quietBefore);
   });
 
+  it('METERED spend on an unconfirmed window SCREAMS too (round-3: the envelope was the one blind spender)', async () => {
+    const store = new FakeConsumptionStore();
+    const screams: string[] = [];
+    const registry = new PoolRegistry(store, undefined, (poolName) =>
+      screams.push(poolName),
+    );
+    registry.register(
+      minutePool({
+        name: 'campaign.austin-reload',
+        window: { kind: 'grant', amount: 500, denomination: 'billedMicros' },
+      }),
+    );
+    // Window never loaded → unconfirmed. Metering through it must page.
+    const handle = registry.spendPool('campaign.austin-reload');
+    await registry.meterSpend(handle, 5 as never, t0);
+    expect(screams).toEqual(['campaign.austin-reload']);
+  });
+
   it('A GRANT POOL STILL REFUSES on an unconfirmable window — an owner envelope is not ours to spend blind', () => {
     const store = new FakeConsumptionStore();
     const registry = new PoolRegistry(store);

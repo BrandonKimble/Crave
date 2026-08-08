@@ -833,6 +833,25 @@ export class PoolRegistry {
     if (!Number.isFinite(amount) || amount <= 0) {
       return Promise.resolve();
     }
+    // THE METERED PATH SCREAMS TOO (round-3 red team). D149's fail-open
+    // scream fired only on reserve()/admit() — but campaign/grant pools are
+    // consumed exclusively through THIS path, so the one pool family whose
+    // ceiling is an owner's approved envelope was the one family spending
+    // blind with NO scream while its window was unconfirmed. Same callback,
+    // same suppression, same meaning: bookkeeping is blind, a human should
+    // know. (The envelope's real ENFORCEMENT is elsewhere and unaffected —
+    // the atomic spend_campaigns UPDATE; this pool is its ledger mirror.)
+    if (this.isDurable(pool)) {
+      const state = this.durable.get(pool.name);
+      if (
+        (!state ||
+          !state.confirmed ||
+          state.windowKey !== this.windowKeyString(pool, at)) &&
+        this.onUnconfirmedAdmit
+      ) {
+        this.onUnconfirmedAdmit(pool.name);
+      }
+    }
     this.consume(poolName, amount, at);
     return this.isDurable(pool) && this.store !== undefined
       ? this.flushDurable(poolName)
