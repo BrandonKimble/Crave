@@ -874,3 +874,30 @@ resolver + stated exclusions incl. the SaveList TODO), no 'instant' motion. All 
 RED-proven by temporary reintroduction. G-MODAL's deferred falsifier is subsumed by the
 render lane's host-chain coverage plus the suite; the freezeUntilSnap plan kind is NOT
 deleted — it is the hidden family's live routing (R4), not old-system residue.
+
+## OWNER RULINGS OA9 + OA10 (2026-08-08)
+
+OA9 — THE TOGGLE-SEAM PATTERN + THE PLACEHOLDER POLICY. The frontier audit's
+"blank toggle" item is UNWITNESSED by the owner — verify on device before treating
+it as real. If real, the fix is NOT hold-stale-cards (that is the exact
+old-content-lingering feel the owner rejects): it is the SEARCH-RESULTS pattern,
+promoted to a reusable primitive — TWO skeleton variants: (a) initial-load skeleton
+that REPLACES the toggle strip; (b) active-toggle skeleton UNDER the live strip
+(strip stays interactive, results region skeletons). Find the existing search
+implementation; if its shape is not reusable, delete and rebuild it as the shared
+primitive. PLACEHOLDER POLICY (deliberate, temporary): ONE uniform skeleton for
+every page/transition today — page content is not locked in, so
+mirror-the-content is DEFERRED, not rejected; the architecture must make
+per-content skeletons a data change later (the spec's rowType column is that
+seam). Implementation quality must not degrade because the current material is
+uniform.
+
+OA10 — LIST VIEW-MODE (rows|tiles) AS A USER PREFERENCE. Vocabulary correction:
+'history' is wrong; the honest names are ROWS and TILES. Target (Spotify-style):
+the Lists page lets the user switch tile-view <-> row-view; the SaveList sheet
+RENDERS WHATEVER MODE THE USER CHOSE on the Lists page (no switcher on the save
+sheet, probably ever). Rederive the from-scratch ideal shape for this (a
+view-mode preference primitive: one stored preference, both surfaces + both
+skeletons derive from it) and enumerate what changes from today's shape.
+SaveList skeleton resolution: interim = rows (matches today's content); the
+TODO(owner) is answered — the end state is preference-driven on both surfaces.
