@@ -175,7 +175,12 @@ const NavExcludedTrackSurface: React.FC<{ scene: OverlayKey }> = ({ scene }) => 
 
 const TrackSheetRouteSurface: React.FC<{ scene: OverlayKey }> = ({ scene: sceneOverride }) => {
   React.useEffect(() => {
+    if (!__DEV__) {
+      return undefined;
+    }
+    // eslint-disable-next-line no-console
     console.log('[TRACKHOST] surface mounted');
+    // eslint-disable-next-line no-console
     return () => console.log('[TRACKHOST] surface unmounted');
   }, []);
   // RUNG 2 — REAL GEOMETRY + LIVE SCENE: the canonical snap points come from the
