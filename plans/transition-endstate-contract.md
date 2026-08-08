@@ -774,3 +774,29 @@ existed**. Recording it here makes it durable:
 Dispositions: the **cry-wolf check stays on the owner's post-deploy sitting** (a live sim
 observation, not a desk verdict); the **`entity/` and `-cluster` re-home is returned to
 coordinator triage** — not scheduled here.
+
+## OA8 — OA6.1 REFRAMED (owner ruling 2026-08-07): warm revisits are an OUTCOME, not a ban
+
+The owner's actual intent, stated directly: the no-skeleton-on-revisit behavior was
+never a RULE to enforce — it was the natural OUTCOME of an industry-best-practice
+implementation where a visited screen stays loaded/retained/preloaded and therefore
+revisits faster than first visits. Forcing the skeleton to hide on a heavy screen
+purely to obey the old phrasing is WRONG. A revisit may honestly show a skeleton if
+the screen genuinely cannot paint; the goal is an implementation where that is rarely
+needed because retention/prewarming makes revisits cheap. The OA6.1 latch drift
+("was ever resolved while hidden") is therefore not a defect to revert but a question
+subsumed by this reframe: the paint decision should be honest (paint what is
+actually cheap and real), not rule-bound.
+
+OWNER APPROVALS (same ruling): R8 old-system delete, one-paint-resolver merge, the
+six hardcoded rowType bypasses fixed through the resolver, SaveList contradiction
+resolved (rowType question open), and the queued F9400-F9403 absorption — ALL
+approved. Open questions to owner: SaveList skeleton 'history' vs 'tile' (which is
+right?); R8 landing timing vs the imminent ~400-commit prod push (coordinator board
+says post-burn-in; owner approval may supersede — confirm).
+
+NEW MANDATE: an INDUSTRY BEST-PRACTICES audit — given the landed ONE TRACK
+architecture, what do best-in-class apps do for parent/child/nested/backward screen
+switching (retention, preloading, priming, transition choreography) that we do not,
+and what does our architecture uniquely lend itself to leverage? Deliverable: a
+rundown of every non-ideal behavior + a plan to the frontier.
