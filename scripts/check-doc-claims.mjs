@@ -40,6 +40,31 @@ import { fileURLToPath } from 'url';
 
 import { readTrackedFile, skipNote } from './lib/tracked-source.mjs';
 
+// A doc may legitimately reference a file the repo deliberately does NOT
+// track — apps/api/.env, dist/ build artifacts. Locally those exist and the
+// existsSync check passes; in CI's clean checkout they don't, and the gate's
+// verdict depended on which machine ran it (first exposed 2026-08-08, CI run
+// 31269390370: 26 "missing" paths, every one gitignored). The discriminator
+// is the repo's own declaration: a missing path that git check-ignore claims
+// is a valid local-artifact reference; a missing path git does NOT ignore is
+// still a broken claim and stays RED.
+const ignoreCache = new Map();
+function isGitIgnored(relPath) {
+  if (ignoreCache.has(relPath)) return ignoreCache.get(relPath);
+  let ignored = false;
+  try {
+    execFileSync('git', ['check-ignore', '-q', relPath], {
+      cwd: REPO_ROOT,
+      stdio: 'ignore',
+    });
+    ignored = true;
+  } catch {
+    ignored = false;
+  }
+  ignoreCache.set(relPath, ignored);
+  return ignored;
+}
+
 const REPO_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 
 /**
@@ -274,7 +299,8 @@ for (const rel of files) {
         const clean = tok.replace(/[.,;:)]+$/, '');
         if (!isPathClaim(clean)) continue;
         checkedPaths += 1;
-        if (!existsSync(join(REPO_ROOT, clean.split('#')[0].split(':')[0]))) {
+        const relPath = clean.split('#')[0].split(':')[0];
+        if (!existsSync(join(REPO_ROOT, relPath)) && !isGitIgnored(relPath)) {
           failures.push(`${where}: \`${clean}\` — no such path in the working tree.`);
         }
       }
