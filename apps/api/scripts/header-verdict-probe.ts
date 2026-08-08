@@ -75,6 +75,39 @@
  * the raw centre chain, not from the service) — divergence means the law
  * regressed.
  *
+ * NOVEL-TERRAIN SWEEP (2026-08-07, post round-2): six structurally weird
+ * sites, country-to-block. The LAW held everywhere — every ladder walked
+ * finest-centred-clearing-T with no gaps, no flicker rungs, and TODAY ==
+ * PROPOSED at every rung except the documented DC tie (below).
+ *
+ *   Kansas City (state-line straddle): US → Missouri → Jackson(55mi) →
+ *     Kansas City(41mi..block). The centre picks the Missouri side; the
+ *     Kansas twin never falsely claims it.
+ *   Rural Nevada (unincorporated): US → Nevada → Lander(138mi..block).
+ *     The county IS the finest named ground; holding it to block zoom is
+ *     the honest answer, not a defect.
+ *   Honolulu: «this area» from 2760..83mi, then Honolulu. The US outline
+ *     does NOT cover the Honolulu point (its multipolygon excludes Hawaii
+ *     — vendor ground fact), so no country rung exists in the chain. At
+ *     Pacific-scale views «this area» reads fine; noted, not fixed.
+ *   Miami Beach: mid zooms are «this area» over Atlantic-heavy views (US
+ *     holds 0.12-0.18 — the view is mostly ocean; honest), then Florida →
+ *     Miami-Dade → Miami Beach(7mi). Note "Miami" the city never names it:
+ *     the centre is on the Beach, which Miami does not contain. Correct.
+ *
+ * ONE FAMILY OF NAMING ODDITIES, all display-layer, none law:
+ *   New Orleans: 41mi says "New Orleans", 28mi..block says "ORLEANS" — the
+ *     parish (894km2) nests INSIDE the consolidated city (968km2), so the
+ *     finest-by-area walk lands on the county spelling at deep zoom.
+ *   Washington DC: THREE coextensive rungs all 177km2 (Washington the
+ *     Municipality + DC at two levels). Equal area → the name tiebreak
+ *     picks "District of Columbia" lexicographically; users likely expect
+ *     "Washington". (This is also the one place TODAY differs from the
+ *     PROPOSED column — the column's tie order is arbitrary.)
+ *   Plus NY×3 (Manhattan/NYC/state all spelled "New York").
+ * These are the SAME decision: how consolidated/coextensive places RENDER.
+ * The law is not the place to fix spelling; a display-name ruling is.
+ *
  * KNOWN ENVELOPE ARTIFACT, self-healing: Brooklyn names the 28-14mi rungs
  * over a MANHATTAN anchor because its ground is still the sketch-grade
  * envelope rectangle (minted 2026-08-07; real polygon arrives via the
