@@ -1672,6 +1672,13 @@ export class RestaurantLocationEnrichmentService {
       },
     );
 
+    // Post-commit half of the joined-transaction merge (second P2028):
+    // the projections rebuild only after the transaction above has
+    // committed its re-keys.
+    await this.restaurantEntityMergeService.rebuildAfterMerge(
+      updatedCanonical.entityId,
+    );
+
     // §12.6: a merge moved evidence — mark the rescorer dirty (the old
     // market-key bookkeeping around this is dead; §13 presence is geometric).
     await this.rescoreCoordinator.markDirty('location-enrichment');
@@ -1840,6 +1847,11 @@ export class RestaurantLocationEnrichmentService {
         timeout: this.transactionTimeoutMs,
         maxWait: this.transactionMaxWaitMs,
       },
+    );
+
+    // Post-commit half of the joined-transaction merge (second P2028).
+    await this.restaurantEntityMergeService.rebuildAfterMerge(
+      updatedCanonical.entityId,
     );
 
     await this.rescoreCoordinator.markDirty('location-enrichment');

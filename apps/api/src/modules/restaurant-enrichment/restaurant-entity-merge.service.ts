@@ -132,11 +132,29 @@ export class RestaurantEntityMergeService {
       canonicalId: result.entityId,
     });
 
-    await this.projectionRebuildService.rebuildForRestaurants([
-      result.entityId,
-    ]);
+    // POST-COMMIT EFFECT ONLY (second P2028, 2026-08-08): the rebuild opens
+    // its own transaction over core_restaurant_items — rows a joined-tx
+    // caller has just mutated and not yet committed. Running it here while
+    // the caller's transaction is still open re-created the self-deadlock
+    // one call deeper than the first fix. Standalone callers rebuild inline
+    // (their transaction committed above); a caller that passed `tx` OWNS
+    // the post-commit rebuild — see rebuildAfterMerge, which the grounding
+    // lane calls after its transaction closes.
+    if (!params.tx) {
+      await this.projectionRebuildService.rebuildForRestaurants([
+        result.entityId,
+      ]);
+    }
 
     return result;
+  }
+
+  /** The post-commit half of a joined-transaction merge. Callers that passed
+   *  `tx` into mergeDuplicateRestaurant MUST call this after their
+   *  transaction commits, or the canonical's projections go stale until the
+   *  nightly reconciler. */
+  async rebuildAfterMerge(canonicalId: string): Promise<void> {
+    await this.projectionRebuildService.rebuildForRestaurants([canonicalId]);
   }
 
   private async mergeRestaurantEvents(

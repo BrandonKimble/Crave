@@ -36,7 +36,6 @@ type MentionEventGroup = {
 
 type ItemSupportMention = {
   restaurantId: string;
-  foodId: string | null;
   categoryIds: string[];
   mentionedAt: Date;
   sourceUpvotes: number;
@@ -344,12 +343,15 @@ export class ProjectionRebuildService implements OnModuleInit {
           (event.evidenceType === 'menu_item_food' ||
             event.evidenceType === 'food_mention'),
       );
-      if (foodEvent?.isMenuItem === true) {
+      // Any group that MINTS an item (menu_item_food or, since the round-2
+      // 705-pair fix, a direct food_mention) must not ALSO count as a
+      // support mention — that would credit one comment twice on the same
+      // (restaurant, food) row. Support is now purely for category/
+      // attribute-only groups.
+      if (foodEvent) {
         return;
       }
 
-      const supportFoodId =
-        foodEvent?.evidenceType === 'food_mention' ? foodEvent.entityId : null;
       const categoryIds = Array.from(
         new Set(
           group.events
@@ -364,26 +366,16 @@ export class ProjectionRebuildService implements OnModuleInit {
             .map((event) => event.entityId),
         ),
       );
-      if (
-        !supportFoodId &&
-        categoryIds.length === 0 &&
-        foodAttributeIds.length === 0
-      ) {
+      if (categoryIds.length === 0 && foodAttributeIds.length === 0) {
         return;
       }
 
       mentions.push({
         restaurantId: group.restaurantId,
-        foodId: supportFoodId,
         categoryIds,
-        mentionedAt:
-          foodEvent?.mentionedAt ?? group.events[0]?.mentionedAt ?? new Date(0),
-        sourceUpvotes:
-          foodEvent?.sourceUpvotes ?? group.events[0]?.sourceUpvotes ?? 0,
-        sourceDocumentId:
-          foodEvent?.sourceDocumentId ??
-          group.events[0]?.sourceDocumentId ??
-          null,
+        mentionedAt: group.events[0]?.mentionedAt ?? new Date(0),
+        sourceUpvotes: group.events[0]?.sourceUpvotes ?? 0,
+        sourceDocumentId: group.events[0]?.sourceDocumentId ?? null,
         foodAttributeIds,
       });
     });
@@ -400,11 +392,20 @@ export class ProjectionRebuildService implements OnModuleInit {
     const items = new Map<string, RestaurantItemProjection>();
 
     mentionGroups.forEach((group) => {
+      // A DIRECT food claim mints the connection whether or not it is a
+      // specific menu item. "34th st cafe has a killer salad" is a real,
+      // searchable claim about salad at that restaurant; the old
+      // menu_item-only predicate silently discarded 705 (restaurant, food)
+      // pairs of exactly this shape — 12.4% of food_mention-bearing pairs
+      // produced NOTHING (round-2 census; owner ruled 2026-08-06 they
+      // project as the family-level link, with the specific dish arriving
+      // only when the source names one — which extraction already handles).
       const foodEvent = group.events.find(
         (event) =>
           event.entityType === 'food' &&
-          event.isMenuItem === true &&
-          event.evidenceType === 'menu_item_food',
+          ((event.isMenuItem === true &&
+            event.evidenceType === 'menu_item_food') ||
+            event.evidenceType === 'food_mention'),
       );
       if (!foodEvent) {
         return;
@@ -488,8 +489,6 @@ export class ProjectionRebuildService implements OnModuleInit {
       }
 
       restaurantItems.forEach((aggregate) => {
-        const matchesFood =
-          support.foodId !== null && aggregate.foodId === support.foodId;
         const matchesCategory =
           support.categoryIds.length > 0 &&
           support.categoryIds.some((categoryId) =>
@@ -501,14 +500,14 @@ export class ProjectionRebuildService implements OnModuleInit {
             aggregate.baseFoodAttributes.includes(attributeId),
           );
 
-        if (!matchesFood && !matchesCategory && !matchesAttribute) {
+        if (!matchesCategory && !matchesAttribute) {
           return;
         }
 
         if (
           support.foodAttributeIds.length > 0 &&
           !matchesAttribute &&
-          (matchesFood || matchesCategory)
+          matchesCategory
         ) {
           return;
         }

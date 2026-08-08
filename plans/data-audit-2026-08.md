@@ -1596,3 +1596,30 @@ The flagged "junk entities" are correct extractions, verified against source:
 The flag was a SHAPE judgment (praise-word inside a food name = junk) — the
 same shape-vs-kind error the whole audit catalogues. The kind test (a thing
 a diner orders by name) passes all three. KEEP. No prompt or code change.
+
+## SWEEP COMPLETE + TWO CENSUS FIXES LANDED (2026-08-08)
+
+GHOSTS: campaign total ~700 recovered of the original 1,626 (926 remain,
+6,620 active). The remainder is dominated by honest no_matches — food
+trucks, caterers, pop-ups, and closures Google cannot ground — plus the
+tail cut short twice by the P2028 pair (below). Re-runnable any time:
+the sweep is idempotent and the failure records are now honestly coded.
+
+P2028 ROUND 2: the first fix (merge joins the caller's tx) exposed a
+second level — the merge's POST-MERGE PROJECTION REBUILD opens its own
+transaction over core_restaurant_items rows the still-open caller tx just
+re-keyed. Same self-deadlock, one call deeper. Final shape: the rebuild is
+a POST-COMMIT EFFECT — inline only for standalone merges; joined-tx
+callers call rebuildAfterMerge() after their transaction commits (both
+grounding collision sites wired). 151 tests green.
+
+THE 705 FIX (owner ruling implemented + PROVEN): a direct food_mention now
+MINTS the connection (isCategoryItem=false) instead of being discarded by
+the menu_item-only predicate, and a minting group no longer double-counts
+as a support mention (one claim, once). Executed proof on the mirror:
+"fried fish @ Mr. Catfish", "sweets @ Caffè Panna", "vietnamese beef stew
+@ PHO 63", "italian deli sandwiches @ ALIDORO", "soul food buffet @
+Manna's" — all previously invisible, all minted with mentions=1 after
+rebuildForRestaurants. The full 705 materialize corpus-wide on the next
+full rebuild / nightly reconciler pass. The always-null support foodId
+field and its dead matching arm were removed rather than kept as guards.
