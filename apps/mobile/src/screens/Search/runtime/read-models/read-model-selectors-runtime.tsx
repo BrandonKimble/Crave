@@ -4,15 +4,11 @@ import type { FlashListProps } from '@shopify/flash-list';
 
 import type { FoodResult, RestaurantResult, SearchResponse } from '../../../../types';
 import type { RestaurantResultCardDescriptor } from '../../components/restaurant-result-card-descriptor';
-import type {
-  SearchRouteResultsPolicyExactMatchWriterFacet,
-  SearchRouteResultsPolicyReadModelProjectionFacet,
-} from '../shared/search-route-results-policy-domain-contract';
+import type { SearchRouteResultsPolicyReadModelProjectionFacet } from '../shared/search-route-results-policy-domain-contract';
 import type { SearchResultsBodyAdmissionHandoffPhase } from '../shared/search-results-panel-runtime-state-contract';
 import type { PhaseBMaterializer } from '../scheduler/phase-b-materializer';
 import { commitSearchMountedResultsPreparedRowsTarget } from '../shared/search-mounted-results-data-store';
 import type { ResultsListItem } from './list-read-model-builder';
-import { useSearchResultsExactMatchStateRuntime } from './use-search-results-exact-match-state-runtime';
 import { useSearchResultsFlashListPolicyRuntime } from './use-search-results-flash-list-policy-runtime';
 import { useSearchResultsHydrationKeyApplyRuntime } from './use-search-results-hydration-key-apply-runtime';
 import { useSearchResultsHydrationKeyCommitEmissionRuntime } from './use-search-results-hydration-key-commit-emission-runtime';
@@ -26,8 +22,8 @@ import { useSearchResultsListFooterRuntime } from './use-search-results-list-foo
 import { useSearchResultsListHeaderTitleRuntime } from './use-search-results-list-header-title-runtime';
 import { useSearchResultsListPremeasureRuntime } from './use-search-results-list-premeasure-runtime';
 import { useSearchResultsListRenderItemRuntime } from './use-search-results-list-render-item-runtime';
-import { useSearchResultsSectionedProjectionStateRuntime } from './use-search-results-sectioned-projection-state-runtime';
-import { useSearchResultsSectionedProjectionTelemetryRuntime } from './use-search-results-sectioned-projection-telemetry-runtime';
+import { useSearchResultsListProjectionStateRuntime } from './use-search-results-list-projection-state-runtime';
+import { useSearchResultsListProjectionTelemetryRuntime } from './use-search-results-list-projection-telemetry-runtime';
 import { useSearchResultsPageHeaderRuntime } from '../shared/use-search-results-page-header-runtime';
 
 type UseSearchResultsReadModelSelectorsArgs = {
@@ -65,11 +61,8 @@ type UseSearchResultsReadModelSelectorsArgs = {
   activeOverlayKey: string;
   setHydratedResultsKeySync: (nextHydrationKey: string | null) => void;
   phaseBMaterializerRef: React.MutableRefObject<PhaseBMaterializer>;
-  exactMatchWriter?: SearchRouteResultsPolicyExactMatchWriterFacet;
   readModelProjection?: SearchRouteResultsPolicyReadModelProjectionFacet;
   shouldRetainCommittedResultsForPolicy: boolean;
-  onShowMoreExactDishes?: () => void;
-  onShowMoreExactRestaurants?: () => void;
 };
 
 type ResultsFlashListRuntimeProps = {
@@ -124,11 +117,8 @@ export const useSearchResultsReadModelSelectors = (
     activeOverlayKey,
     setHydratedResultsKeySync,
     phaseBMaterializerRef,
-    exactMatchWriter,
     readModelProjection,
     shouldRetainCommittedResultsForPolicy,
-    onShowMoreExactDishes,
-    onShowMoreExactRestaurants,
   } = args;
 
   const emitRuntimeWriteSpan = React.useCallback(
@@ -147,23 +137,16 @@ export const useSearchResultsReadModelSelectors = (
     searchRequestIdentity: searchRequestId,
   });
 
-  const exactMatchStateRuntime = useSearchResultsExactMatchStateRuntime({
-    results,
-    exactMatchWriter,
-    onShowMoreExactDishes,
-    onShowMoreExactRestaurants,
-  });
-  const resultsProjectionRuntime = useSearchResultsSectionedProjectionStateRuntime({
+  const resultsProjectionRuntime = useSearchResultsListProjectionStateRuntime({
     activeTab,
     dishes,
     restaurants,
-    exactMatchStateRuntime,
     results,
     shouldRetainCommittedResults: shouldRetainCommittedResultsForPolicy,
     readModelProjection,
     searchSurfaceRedrawPhase,
   });
-  useSearchResultsSectionedProjectionTelemetryRuntime({
+  useSearchResultsListProjectionTelemetryRuntime({
     activeTab,
     dishes,
     restaurants,
@@ -253,8 +236,6 @@ export const useSearchResultsReadModelSelectors = (
   const renderListItem = useSearchResultsListRenderItemRuntime({
     renderDishCard,
     renderRestaurantCard,
-    handleShowMoreExactDishes: exactMatchStateRuntime.handleShowMoreExactDishes,
-    handleShowMoreExactRestaurants: exactMatchStateRuntime.handleShowMoreExactRestaurants,
   });
 
   const listHeaderTitle = useSearchResultsListHeaderTitleRuntime({

@@ -1,10 +1,7 @@
-import type { ResultsListItem } from '../read-models/list-read-model-builder';
-import type { SearchResultsExactMatchProjection } from '../read-models/results-read-model-exact-match-state';
 import {
-  buildSearchResultsSectionedProjection,
-  resolveSearchResultsSectionedProjectionCounts,
-  type SearchResultsSectionedProjectionCounts,
-} from '../read-models/results-read-model-sectioned-projection';
+  buildSafeResultsDataByTab,
+  type SearchResultsListRowsByTab,
+} from '../read-models/list-read-model-builder';
 import type {
   ResultsSurfacePolicyRetainedReadModel,
   ResultsSurfacePolicyRowCounts,
@@ -14,48 +11,42 @@ import type {
 export type ResultsSurfaceReadModelPolicySnapshot = {
   activeTab: ResultsSurfacePolicyTab;
   retainedReadModel: ResultsSurfacePolicyRetainedReadModel;
-  exactMatchState: SearchResultsExactMatchProjection;
-  safeResultsDataByTab: ReturnType<
-    typeof buildSearchResultsSectionedProjection
-  >['safeResultsDataByTab'];
-  rowsByTab: {
-    dishes: ResultsListItem[];
-    restaurants: ResultsListItem[];
-  };
-  safeRowCountByTab: SearchResultsSectionedProjectionCounts['safeRowCountByTab'];
-  sectionedRowCountByTab: ResultsSurfacePolicyRowCounts;
+  safeResultsDataByTab: SearchResultsListRowsByTab;
+  rowsByTab: SearchResultsListRowsByTab;
+  rowCountByTab: ResultsSurfacePolicyRowCounts;
   rowCountByTabForSheetPolicy: ResultsSurfacePolicyRowCounts;
-  activeTabSectionedRowCount: number;
+  activeTabRowCount: number;
   hasActiveTabRenderableRows: boolean;
 };
 
+// ONE LIST (owner ruling): the rows a tab renders ARE its safe server-ranked rows —
+// there is no second, "sectioned" row list, so `rowsByTab` and `safeResultsDataByTab`
+// are the same arrays and every count is one count.
 export const createResultsSurfaceReadModelPolicySnapshot = ({
   activeTab,
-  exactMatchState,
   retainedReadModel,
 }: {
   activeTab: ResultsSurfacePolicyTab;
-  exactMatchState: SearchResultsExactMatchProjection;
   retainedReadModel: ResultsSurfacePolicyRetainedReadModel;
 }): ResultsSurfaceReadModelPolicySnapshot => {
-  const sectionedProjection = buildSearchResultsSectionedProjection({
+  const rowsByTab = buildSafeResultsDataByTab({
     dishes: retainedReadModel.dishes,
     restaurants: retainedReadModel.restaurants,
-    exactMatchState,
   });
-  const projectionCounts = resolveSearchResultsSectionedProjectionCounts(sectionedProjection);
-  const activeTabSectionedRowCount = projectionCounts.sectionedRowCountByTab[activeTab];
+  const rowCountByTab = {
+    dishes: rowsByTab.dishes.length,
+    restaurants: rowsByTab.restaurants.length,
+  };
+  const activeTabRowCount = rowCountByTab[activeTab];
 
   return {
     activeTab,
     retainedReadModel,
-    exactMatchState,
-    safeResultsDataByTab: sectionedProjection.safeResultsDataByTab,
-    rowsByTab: sectionedProjection.sectionedRowsByTab,
-    safeRowCountByTab: projectionCounts.safeRowCountByTab,
-    sectionedRowCountByTab: projectionCounts.sectionedRowCountByTab,
-    rowCountByTabForSheetPolicy: projectionCounts.sectionedRowCountByTab,
-    activeTabSectionedRowCount,
-    hasActiveTabRenderableRows: activeTabSectionedRowCount > 0,
+    safeResultsDataByTab: rowsByTab,
+    rowsByTab,
+    rowCountByTab,
+    rowCountByTabForSheetPolicy: rowCountByTab,
+    activeTabRowCount,
+    hasActiveTabRenderableRows: activeTabRowCount > 0,
   };
 };

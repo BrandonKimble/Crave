@@ -7,38 +7,33 @@ import {
 import { usePerfScenarioRuntimeStore } from '../../../../perf/perf-scenario-runtime-store';
 import type { FoodResult, RestaurantResult, SearchResponse } from '../../../../types';
 import type { SearchResultsBodyAdmissionHandoffPhase } from '../shared/search-results-panel-runtime-state-contract';
-import { type ResultsListItem } from './list-read-model-builder';
-import {
-  buildSearchResultsSectionedProjection,
-  resolveSearchResultsSectionedProjectionCounts,
-} from './results-read-model-sectioned-projection';
-import type { useSearchResultsExactMatchStateRuntime } from './use-search-results-exact-match-state-runtime';
+import { buildSafeResultsDataByTab, type ResultsListItem } from './list-read-model-builder';
 import type { SearchRouteResultsPolicyReadModelProjectionFacet } from '../shared/search-route-results-policy-domain-contract';
 
 const getNowMs = (): number =>
   typeof performance?.now === 'function' ? performance.now() : Date.now();
 
-type SearchResultsSectionedProjectionStateRuntimeArgs = {
+type SearchResultsListProjectionStateRuntimeArgs = {
   activeTab: 'dishes' | 'restaurants';
   dishes: FoodResult[];
   restaurants: RestaurantResult[];
-  exactMatchStateRuntime: ReturnType<typeof useSearchResultsExactMatchStateRuntime>;
   results: SearchResponse | null;
   shouldRetainCommittedResults: boolean;
   readModelProjection?: SearchRouteResultsPolicyReadModelProjectionFacet;
   searchSurfaceRedrawPhase: SearchResultsBodyAdmissionHandoffPhase;
 };
 
-export const useSearchResultsSectionedProjectionStateRuntime = ({
+// ONE LIST (owner ruling): the projection is a pass-through of the server's ranked rows.
+// It neither reorders nor partitions — `rowsByTab` IS `safeResultsDataByTab`.
+export const useSearchResultsListProjectionStateRuntime = ({
   activeTab,
   dishes,
   restaurants,
-  exactMatchStateRuntime,
   results,
   shouldRetainCommittedResults,
   readModelProjection,
   searchSurfaceRedrawPhase,
-}: SearchResultsSectionedProjectionStateRuntimeArgs) => {
+}: SearchResultsListProjectionStateRuntimeArgs) => {
   const scenarioConfig = usePerfScenarioRuntimeStore((state) => state.activeConfig);
   const searchSurfaceRedrawPhaseRef = React.useRef(searchSurfaceRedrawPhase);
   searchSurfaceRedrawPhaseRef.current = searchSurfaceRedrawPhase;
@@ -59,27 +54,22 @@ export const useSearchResultsSectionedProjectionStateRuntime = ({
           durationMs: Number(buildDurationMs.toFixed(3)),
           handoffPhase: searchSurfaceRedrawPhaseRef.current,
           activeTab,
-          dishesCount: policySnapshot.safeRowCountByTab.dishes,
-          restaurantsCount: policySnapshot.safeRowCountByTab.restaurants,
+          dishesCount: policySnapshot.rowCountByTab.dishes,
+          restaurantsCount: policySnapshot.rowCountByTab.restaurants,
         });
       }
       return {
         buildDurationMs,
-        safeResultsDataByTab: policySnapshot.safeResultsDataByTab,
-        sectionedRowsByTab: policySnapshot.rowsByTab,
-        projectionCounts: {
-          safeRowCountByTab: policySnapshot.safeRowCountByTab,
-          sectionedRowCountByTab: policySnapshot.sectionedRowCountByTab,
-        },
+        rowsByTab: policySnapshot.rowsByTab,
+        rowCountByTab: policySnapshot.rowCountByTab,
       };
     }
 
-    const sectionedProjection = buildSearchResultsSectionedProjection({
-      dishes,
-      restaurants,
-      exactMatchState: exactMatchStateRuntime,
-    });
-    const projectionCounts = resolveSearchResultsSectionedProjectionCounts(sectionedProjection);
+    const rowsByTab = buildSafeResultsDataByTab({ dishes, restaurants });
+    const rowCountByTab = {
+      dishes: rowsByTab.dishes.length,
+      restaurants: rowsByTab.restaurants.length,
+    };
     const buildDurationMs = getNowMs() - buildStartedAtMs;
     if (isPerfScenarioAttributionActive(scenarioConfig)) {
       logPerfScenarioAttributionEvent('WorkSpan', scenarioConfig, {
@@ -89,21 +79,17 @@ export const useSearchResultsSectionedProjectionStateRuntime = ({
         durationMs: Number(buildDurationMs.toFixed(3)),
         handoffPhase: searchSurfaceRedrawPhaseRef.current,
         activeTab,
-        dishesCount: projectionCounts.safeRowCountByTab.dishes,
-        restaurantsCount: projectionCounts.safeRowCountByTab.restaurants,
+        dishesCount: rowCountByTab.dishes,
+        restaurantsCount: rowCountByTab.restaurants,
       });
     }
     return {
       buildDurationMs,
-      ...sectionedProjection,
-      projectionCounts,
+      rowsByTab,
+      rowCountByTab,
     };
   }, [
     dishes,
-    exactMatchStateRuntime.exactDishesOnPage,
-    exactMatchStateRuntime.exactRestaurantsOnPage,
-    exactMatchStateRuntime.showAllExactDishes,
-    exactMatchStateRuntime.showAllExactRestaurants,
     activeTab,
     readModelProjection,
     restaurants,
@@ -112,27 +98,24 @@ export const useSearchResultsSectionedProjectionStateRuntime = ({
     shouldRetainCommittedResults,
   ]);
 
-  const activeSafeResultsData = listProjection.safeResultsDataByTab[activeTab];
-  const activeSectionedRows = listProjection.sectionedRowsByTab[activeTab];
+  const activeSafeResultsData = listProjection.rowsByTab[activeTab];
 
   return React.useMemo(
     () => ({
       activeSafeResultsData,
       buildDurationMs: listProjection.buildDurationMs,
       activeSafeResultsCount: activeSafeResultsData.length,
-      activeSectionedRowCount: activeSectionedRows.length,
-      safeResultsCountByTab: listProjection.projectionCounts.safeRowCountByTab,
-      rowsByTab: listProjection.sectionedRowsByTab as {
+      safeResultsCountByTab: listProjection.rowCountByTab,
+      rowsByTab: listProjection.rowsByTab as {
         dishes: ResultsListItem[];
         restaurants: ResultsListItem[];
       },
     }),
     [
       activeSafeResultsData,
-      activeSectionedRows.length,
       listProjection.buildDurationMs,
-      listProjection.projectionCounts.safeRowCountByTab,
-      listProjection.sectionedRowsByTab,
+      listProjection.rowCountByTab,
+      listProjection.rowsByTab,
     ]
   );
 };

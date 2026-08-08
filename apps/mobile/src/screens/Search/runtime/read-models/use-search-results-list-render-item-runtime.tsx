@@ -1,15 +1,12 @@
 import React from 'react';
-import { Pressable, useWindowDimensions, View } from 'react-native';
+import { useWindowDimensions, View } from 'react-native';
 import type { FlashListProps } from '@shopify/flash-list';
 
-import { Text } from '../../../../components';
 import { SceneLoadingSurface } from '../../../../components/skeletons';
-import { colors as themeColors } from '../../../../constants/theme';
 import type { FoodResult, RestaurantResult } from '../../../../types';
 import { markRevealCommitRowRender } from '../../../../perf/reveal-commit-attribution';
 import { SEARCH_RESULTS_BANDS } from '../shared/search-results-page-bands';
 import { logger } from '../../../../utils';
-import styles from '../../styles';
 import type { ResultsListItem, ResultsMountedRestaurantCardRow } from './list-read-model-builder';
 import type { RestaurantResultCardDescriptor } from '../../components/restaurant-result-card-descriptor';
 
@@ -40,15 +37,11 @@ type SearchResultsListRenderItemRuntimeArgs = {
     index: number,
     preparedDescriptor?: RestaurantResultCardDescriptor | null
   ) => React.ReactElement | null;
-  handleShowMoreExactDishes: () => void;
-  handleShowMoreExactRestaurants: () => void;
 };
 
 export const useSearchResultsListRenderItemRuntime = ({
   renderDishCard,
   renderRestaurantCard,
-  handleShowMoreExactDishes,
-  handleShowMoreExactRestaurants,
 }: SearchResultsListRenderItemRuntimeArgs) =>
   React.useCallback<NonNullable<FlashListProps<ResultsListItem>['renderItem']>>(
     ({ item, index }) => {
@@ -71,45 +64,11 @@ export const useSearchResultsListRenderItemRuntime = ({
             mountedRestaurantRow.preparedDescriptor
           );
         }
-
-        if (item.kind === 'section') {
-          return (
-            <View style={[styles.resultItem, index === 0 && styles.firstResultItem]}>
-              <Text style={[styles.resultMetaText, { color: themeColors.textMuted }]}>
-                {item.label}
-              </Text>
-            </View>
-          );
-        }
-
-        if (item.kind === 'show_more_exact') {
-          const onPress =
-            item.tab === 'dishes' ? handleShowMoreExactDishes : handleShowMoreExactRestaurants;
-          const label =
-            item.hiddenCount === 1
-              ? 'Show 1 more exact match'
-              : `Show ${item.hiddenCount} more exact matches`;
-          return (
-            <Pressable
-              onPress={onPress}
-              style={[styles.resultItem, index === 0 && styles.firstResultItem]}
-            >
-              <Text style={[styles.resultMetaText, { color: themeColors.secondaryAccent }]}>
-                {label}
-              </Text>
-            </Pressable>
-          );
-        }
       }
 
       return 'foodId' in item
         ? renderDishCard(item as FoodResult, index)
         : renderRestaurantCard(item as RestaurantResult, index);
     },
-    [
-      handleShowMoreExactDishes,
-      handleShowMoreExactRestaurants,
-      renderDishCard,
-      renderRestaurantCard,
-    ]
+    [renderDishCard, renderRestaurantCard]
   );

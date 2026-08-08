@@ -19,11 +19,9 @@ export const useSearchRootSearchSceneListItemTransportRuntime = () => {
     (layout: { size?: number; span?: number }, item: ResultsListItem) => {
       if (item && typeof item === 'object' && 'kind' in item) {
         layout.size =
-          item.kind === 'section'
-            ? SEARCH_RESULTS_ROW_KIND_HEIGHTS.section
-            : item.kind === 'mounted_restaurant_card'
-              ? SEARCH_RESULTS_ROW_KIND_HEIGHTS.mountedRestaurantCard
-              : SEARCH_RESULTS_ROW_KIND_HEIGHTS.kindFallback;
+          item.kind === 'mounted_restaurant_card'
+            ? SEARCH_RESULTS_ROW_KIND_HEIGHTS.mountedRestaurantCard
+            : SEARCH_RESULTS_ROW_KIND_HEIGHTS.kindFallback;
         return;
       }
       layout.size =

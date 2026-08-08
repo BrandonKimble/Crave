@@ -2,19 +2,14 @@ import { logger } from '../../../../utils';
 import type { FoodResult, RestaurantResult } from '../../../../types';
 import type { RestaurantResultCardDescriptor } from '../../components/restaurant-result-card-descriptor';
 
-export type ResultsSectionRow = {
-  kind: 'section';
-  key: string;
-  label: string;
-};
-
-export type ResultsShowMoreRow = {
-  kind: 'show_more_exact';
-  key: string;
-  tab: 'dishes' | 'restaurants';
-  hiddenCount: number;
-};
-
+// THE ONE-LIST LAW (owner ruling, plans/concept-graph.md §10, adjudication a2eedea3a):
+// search results are ONE continuous list ranked by Crave Score. `exactMatch` is ROW
+// METADATA (the card renders a provenance chip from it) — never a grouping. There is no
+// section row, no divider, no exact-vs-broader section header, and no
+// collapse-at-5 "show more exact" affordance: tiers are an ADMISSION mechanism on the
+// server, and the client renders the server's rank order verbatim. Reintroducing a
+// section/divider row here must fail to typecheck — that is why no such variant exists
+// in `ResultsListItem`.
 export type ResultsMountedRestaurantCardRow = {
   kind: 'mounted_restaurant_card';
   key: string;
@@ -36,8 +31,6 @@ export type ResultsListItem =
   | FoodResult
   | RestaurantResult
   | ResultsMountedRestaurantCardRow
-  | ResultsSectionRow
-  | ResultsShowMoreRow
   | ResultsPendingBlockRow;
 
 const EMPTY_DISHES: FoodResult[] = [];
@@ -69,89 +62,20 @@ export const buildSafeResultsData = ({
   return filtered.length > 0 ? filtered : EMPTY_RESULTS;
 };
 
-type BuildSectionedResultsDataArgs = {
-  activeTab: 'dishes' | 'restaurants';
-  safeResultsData: ReadonlyArray<FoodResult | RestaurantResult>;
-  exactDishesOnPage: number | null;
-  exactRestaurantsOnPage: number | null;
-  showAllExactDishes: boolean;
-  showAllExactRestaurants: boolean;
-  exactVisibleLimit: number;
+export type SearchResultsListRowsByTab = {
+  dishes: Array<FoodResult | RestaurantResult>;
+  restaurants: Array<FoodResult | RestaurantResult>;
 };
 
-export const buildSectionedResultsData = ({
-  activeTab,
-  safeResultsData,
-  exactDishesOnPage,
-  exactRestaurantsOnPage,
-  showAllExactDishes,
-  showAllExactRestaurants,
-  exactVisibleLimit,
-}: BuildSectionedResultsDataArgs): ResultsListItem[] => {
-  const isDishesTab = activeTab === 'dishes';
-  const exactCountRaw = isDishesTab ? exactDishesOnPage : exactRestaurantsOnPage;
-  const exactCount =
-    typeof exactCountRaw === 'number' && Number.isFinite(exactCountRaw) && exactCountRaw > 0
-      ? Math.floor(exactCountRaw)
-      : 0;
-
-  if (exactCount <= 0 || safeResultsData.length <= exactCount) {
-    return safeResultsData.slice();
-  }
-
-  const exactAll = safeResultsData.slice(0, exactCount);
-  const relaxedAll = safeResultsData.slice(exactCount);
-  const showAllExact = isDishesTab ? showAllExactDishes : showAllExactRestaurants;
-  const exactVisible = showAllExact ? exactAll : exactAll.slice(0, exactVisibleLimit);
-  const hiddenCount = Math.max(0, exactAll.length - exactVisible.length);
-
-  const rows: ResultsListItem[] = [
-    { kind: 'section', key: `${activeTab}-section-exact`, label: 'Exact matches' },
-    ...exactVisible,
-  ];
-
-  if (hiddenCount > 0 && !showAllExact) {
-    rows.push({
-      kind: 'show_more_exact',
-      key: `${activeTab}-show-more-exact`,
-      tab: activeTab,
-      hiddenCount,
-    });
-  }
-
-  if (relaxedAll.length > 0) {
-    rows.push({
-      kind: 'section',
-      key: `${activeTab}-section-broader`,
-      label: 'Broader matches',
-    });
-    rows.push(...relaxedAll);
-  }
-
-  return rows;
-};
-
-type BuildHydratedResultsDataArgs = {
-  sectionedResultsData: ReadonlyArray<ResultsListItem>;
-  maxHydratedRows: number | null;
-};
-
-export const buildHydratedResultsData = ({
-  sectionedResultsData,
-  maxHydratedRows,
-}: BuildHydratedResultsDataArgs): ResultsListItem[] => {
-  if (maxHydratedRows == null) {
-    return sectionedResultsData as ResultsListItem[];
-  }
-  const normalizedMaxRows = Number.isFinite(maxHydratedRows)
-    ? Math.max(0, Math.floor(maxHydratedRows))
-    : sectionedResultsData.length;
-  const targetCount = Math.min(normalizedMaxRows, sectionedResultsData.length);
-  if (targetCount <= 0) {
-    return [];
-  }
-  if (targetCount >= sectionedResultsData.length) {
-    return sectionedResultsData as ResultsListItem[];
-  }
-  return sectionedResultsData.slice(0, targetCount) as ResultsListItem[];
-};
+/** THE list read model: both tabs' rows, in the order the server ranked them. No
+ *  partitioning, no truncation — the projection IS the safe pass-through. */
+export const buildSafeResultsDataByTab = ({
+  dishes,
+  restaurants,
+}: {
+  dishes: ReadonlyArray<FoodResult> | null | undefined;
+  restaurants: ReadonlyArray<RestaurantResult> | null | undefined;
+}): SearchResultsListRowsByTab => ({
+  dishes: buildSafeResultsData({ activeTab: 'dishes', dishes, restaurants }),
+  restaurants: buildSafeResultsData({ activeTab: 'restaurants', dishes, restaurants }),
+});

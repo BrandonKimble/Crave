@@ -1,9 +1,9 @@
 import React from 'react';
 
 import type { SearchResponse } from '../../../../types';
-import type { useSearchResultsSectionedProjectionStateRuntime } from './use-search-results-sectioned-projection-state-runtime';
+import type { useSearchResultsListProjectionStateRuntime } from './use-search-results-list-projection-state-runtime';
 
-type SearchResultsSectionedProjectionTelemetryRuntimeArgs = {
+type SearchResultsListProjectionTelemetryRuntimeArgs = {
   activeTab: 'dishes' | 'restaurants';
   dishes: Array<unknown>;
   restaurants: Array<unknown>;
@@ -11,10 +11,10 @@ type SearchResultsSectionedProjectionTelemetryRuntimeArgs = {
   resultsIdentityKey: string | null;
   shouldHydrateResultsForRender: boolean;
   emitRuntimeWriteSpan: (payload: Record<string, unknown>) => void;
-  projectionStateRuntime: ReturnType<typeof useSearchResultsSectionedProjectionStateRuntime>;
+  projectionStateRuntime: ReturnType<typeof useSearchResultsListProjectionStateRuntime>;
 };
 
-export const useSearchResultsSectionedProjectionTelemetryRuntime = ({
+export const useSearchResultsListProjectionTelemetryRuntime = ({
   activeTab,
   dishes,
   restaurants,
@@ -23,7 +23,7 @@ export const useSearchResultsSectionedProjectionTelemetryRuntime = ({
   shouldHydrateResultsForRender,
   emitRuntimeWriteSpan,
   projectionStateRuntime,
-}: SearchResultsSectionedProjectionTelemetryRuntimeArgs) => {
+}: SearchResultsListProjectionTelemetryRuntimeArgs) => {
   const searchRequestId = results?.metadata?.searchRequestId ?? null;
   const responsePage = results?.metadata?.page ?? 1;
   const requestVersionKey = `${searchRequestId ?? 'no-request'}::${
@@ -38,7 +38,6 @@ export const useSearchResultsSectionedProjectionTelemetryRuntime = ({
     }
     previousBuildKeyRef.current = requestVersionKey;
     const durationMs = projectionStateRuntime.buildDurationMs;
-    const sectionedRowCount = projectionStateRuntime.activeSectionedRowCount;
     const safeResultsCount = projectionStateRuntime.activeSafeResultsCount;
 
     emitRuntimeWriteSpan({
@@ -48,19 +47,17 @@ export const useSearchResultsSectionedProjectionTelemetryRuntime = ({
       resultsIdentityKey,
       activeTab,
       durationMs,
-      sectionedRowCount,
       safeResultsCount,
       shouldHydrateResultsForRender,
-        });
+    });
   }, [
     activeTab,
     emitRuntimeWriteSpan,
     projectionStateRuntime.activeSafeResultsCount,
-    projectionStateRuntime.activeSectionedRowCount,
     projectionStateRuntime.buildDurationMs,
     requestVersionKey,
     resultsIdentityKey,
-      searchRequestId,
+    searchRequestId,
     shouldHydrateResultsForRender,
   ]);
 };

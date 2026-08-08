@@ -23,11 +23,7 @@ import type {
   ResultsListItem,
   ResultsMountedRestaurantCardRow,
 } from '../read-models/list-read-model-builder';
-import { buildSearchResultsSectionedProjection } from '../read-models/results-read-model-sectioned-projection';
-import {
-  createSearchResultsExactMatchOwnerController,
-  toSearchResultsExactMatchProjection,
-} from '../read-models/results-read-model-exact-match-state';
+import { buildSafeResultsDataByTab } from '../read-models/list-read-model-builder';
 import type {
   SearchResultsBodyAdmissionActiveList,
   SearchResultsBodyAdmissionSnapshot,
@@ -115,13 +111,9 @@ export type SearchMountedResultsRowsViewKeyArgs = {
 };
 
 export type SearchMountedResultsRowsPreparationKeyArgs = SearchMountedResultsRowsViewKeyArgs & {
-  exactDishesOnPage: number | null;
-  exactRestaurantsOnPage: number | null;
   resultsDataIdentityKey: string | null;
   resultsDataVersion: number;
   resultsRequestKey: string | null;
-  showAllExactDishes: boolean;
-  showAllExactRestaurants: boolean;
 };
 
 export type PrepareSearchMountedResultsRowsSnapshotArgs = SearchMountedResultsRowsViewKeyArgs & {
@@ -153,8 +145,6 @@ export type SearchMountedResultsRowsSnapshot = {
     paddingBottom: number;
     paddingTop: number;
   };
-  handleShowMoreExactDishes: () => void;
-  handleShowMoreExactRestaurants: () => void;
   headerHeight: number;
   preparationKey: string | null;
   restaurantCardDescriptorsById: Map<string, RestaurantResultCardDescriptor>;
@@ -203,8 +193,6 @@ export type SearchMountedResultsListDataSnapshot = {
   secondaryExtraData: unknown;
 };
 
-const NOOP_SHOW_MORE_EXACT = (): void => {};
-
 const EMPTY_SEARCH_MOUNTED_RESULTS_DATA_SNAPSHOT: SearchMountedResultsDataSnapshot = {
   activeTab: null,
   precomputedMarkerProjectionByTab: null,
@@ -244,7 +232,6 @@ const EMPTY_SEARCH_MOUNTED_RESULTS_LIST_DATA_SNAPSHOT: SearchMountedResultsListD
 
 const listeners = new Set<() => void>();
 let snapshot = EMPTY_SEARCH_MOUNTED_RESULTS_DATA_SNAPSHOT;
-const exactMatchController = createSearchResultsExactMatchOwnerController();
 
 // Seeded marker source: a single restaurant whose geometry should populate the map markers
 // independently of any committed results (e.g. a profile opened from an autocomplete suggestion
@@ -287,13 +274,10 @@ const EMPTY_SEARCH_MOUNTED_RESULTS_ROWS: {
 const EMPTY_RESTAURANT_CARD_DESCRIPTORS = new Map<string, RestaurantResultCardDescriptor>();
 const mountedRowsProjectionByResults = new WeakMap<
   SearchResponse,
-  Map<
-    string,
-    {
-      dishes: ResultsListItem[];
-      restaurants: ResultsListItem[];
-    }
-  >
+  {
+    dishes: ResultsListItem[];
+    restaurants: ResultsListItem[];
+  }
 >();
 
 export const createEmptySearchMountedResultsRowsAdmission = (
@@ -315,8 +299,6 @@ const EMPTY_SEARCH_MOUNTED_RESULTS_ROWS_SNAPSHOT: SearchMountedResultsRowsSnapsh
     paddingBottom: 0,
     paddingTop: 0,
   },
-  handleShowMoreExactDishes: NOOP_SHOW_MORE_EXACT,
-  handleShowMoreExactRestaurants: NOOP_SHOW_MORE_EXACT,
   headerHeight: 0,
   preparationKey: null,
   restaurantCardDescriptorsById: EMPTY_RESTAURANT_CARD_DESCRIPTORS,
@@ -355,8 +337,6 @@ const areSearchMountedResultsRowsSnapshotsStructurallyEqual = (
     left.contentContainerStyle,
     right.contentContainerStyle
   ) &&
-  left.handleShowMoreExactDishes === right.handleShowMoreExactDishes &&
-  left.handleShowMoreExactRestaurants === right.handleShowMoreExactRestaurants &&
   left.headerHeight === right.headerHeight &&
   left.resultsIdentityKey === right.resultsIdentityKey &&
   left.resultsRequestKey === right.resultsRequestKey &&
@@ -365,7 +345,6 @@ const areSearchMountedResultsRowsSnapshotsStructurallyEqual = (
 const rowListeners = new Set<() => void>();
 const listDataListeners = new Set<() => void>();
 let rowsSnapshot = EMPTY_SEARCH_MOUNTED_RESULTS_ROWS_SNAPSHOT;
-let lastRowsPreparationInput: PrepareSearchMountedResultsRowsSnapshotArgs | null = null;
 let mountedResultsListDataSnapshot = EMPTY_SEARCH_MOUNTED_RESULTS_LIST_DATA_SNAPSHOT;
 let mountedResultsListDecorationsSnapshot: {
   primaryListHeaderComponent?: SearchMountedResultsListHeaderComponent;
@@ -538,29 +517,11 @@ const areSearchMountedResultsBodyLayoutSnapshotsEqual = (
   left.targetSnapPoints === right.targetSnapPoints &&
   left.viewportHeight === right.viewportHeight;
 
-const createMountedRowsProjectionCacheKey = ({
-  exactDishesOnPage,
-  exactRestaurantsOnPage,
-  showAllExactDishes,
-  showAllExactRestaurants,
-}: {
-  exactDishesOnPage: number | null;
-  exactRestaurantsOnPage: number | null;
-  showAllExactDishes: boolean;
-  showAllExactRestaurants: boolean;
-}): string =>
-  [
-    `exactD:${exactDishesOnPage ?? 'null'}`,
-    `exactR:${exactRestaurantsOnPage ?? 'null'}`,
-    `showD:${showAllExactDishes ? '1' : '0'}`,
-    `showR:${showAllExactRestaurants ? '1' : '0'}`,
-  ].join('|');
-
+// ONE LIST (owner ruling): rows are the server's ranked rows, so the projection depends
+// on nothing but the results object identity — one cache entry per response.
 const resolveMountedRowsProjection = ({
-  exactMatchProjection,
   mountedResults,
 }: {
-  exactMatchProjection: ReturnType<typeof toSearchResultsExactMatchProjection>;
   mountedResults: SearchResponse | null;
 }): {
   dishes: ResultsListItem[];
@@ -569,25 +530,18 @@ const resolveMountedRowsProjection = ({
   if (mountedResults == null) {
     return EMPTY_SEARCH_MOUNTED_RESULTS_ROWS;
   }
-  const cacheKey = createMountedRowsProjectionCacheKey(exactMatchProjection);
-  let rowsByCacheKey = mountedRowsProjectionByResults.get(mountedResults);
-  if (rowsByCacheKey == null) {
-    rowsByCacheKey = new Map();
-    mountedRowsProjectionByResults.set(mountedResults, rowsByCacheKey);
-  }
-  const cachedRowsByTab = rowsByCacheKey.get(cacheKey);
+  const cachedRowsByTab = mountedRowsProjectionByResults.get(mountedResults);
   if (cachedRowsByTab != null) {
     return cachedRowsByTab;
   }
-  const rowsByTab = buildSearchResultsSectionedProjection({
+  const rowsByTab = buildSafeResultsDataByTab({
     dishes: mountedResults.dishes ?? [],
     restaurants: mountedResults.restaurants ?? [],
-    exactMatchState: exactMatchProjection,
-  }).sectionedRowsByTab as {
+  }) as {
     dishes: ResultsListItem[];
     restaurants: ResultsListItem[];
   };
-  rowsByCacheKey.set(cacheKey, rowsByTab);
+  mountedRowsProjectionByResults.set(mountedResults, rowsByTab);
   return rowsByTab;
 };
 
@@ -609,22 +563,14 @@ export const createSearchMountedResultsRowsViewKey = ({
   ].join('|');
 
 export const createSearchMountedResultsRowsPreparationKey = ({
-  exactDishesOnPage,
-  exactRestaurantsOnPage,
   resultsDataVersion,
   resultsRequestKey,
-  showAllExactDishes,
-  showAllExactRestaurants,
   ...viewArgs
 }: SearchMountedResultsRowsPreparationKeyArgs): string =>
   [
     createSearchMountedResultsRowsViewKey(viewArgs),
     `request:${resultsRequestKey ?? 'null'}`,
     `version:${resultsDataVersion}`,
-    `exactD:${exactDishesOnPage ?? 'null'}`,
-    `exactR:${exactRestaurantsOnPage ?? 'null'}`,
-    `showD:${showAllExactDishes ? '1' : '0'}`,
-    `showR:${showAllExactRestaurants ? '1' : '0'}`,
   ].join('|');
 
 export const getSearchMountedResultsDataSnapshot = (): SearchMountedResultsDataSnapshot => snapshot;
@@ -1074,12 +1020,6 @@ export const publishSearchMountedResultsRowsSnapshot = (
     )
       ? 'contentContainerStyle'
       : null,
-    rowsSnapshot.handleShowMoreExactDishes !== nextSnapshot.handleShowMoreExactDishes
-      ? 'handleShowMoreExactDishes'
-      : null,
-    rowsSnapshot.handleShowMoreExactRestaurants !== nextSnapshot.handleShowMoreExactRestaurants
-      ? 'handleShowMoreExactRestaurants'
-      : null,
     rowsSnapshot.headerHeight !== nextSnapshot.headerHeight ? 'headerHeight' : null,
     rowsSnapshot.resultsIdentityKey !== nextSnapshot.resultsIdentityKey
       ? 'resultsIdentityKey'
@@ -1325,30 +1265,16 @@ const prepareSearchMountedResultsRowsSnapshotInner = ({
   resultsDataSnapshot = snapshot,
   ...viewArgs
 }: PrepareSearchMountedResultsRowsSnapshotArgs): boolean => {
-  lastRowsPreparationInput = {
-    ...viewArgs,
-    resultsDataSnapshot,
-  };
   const startedAtMs = nowMs();
   const mountedResults = resultsDataSnapshot.results;
-  const exactMatchProjection = toSearchResultsExactMatchProjection(
-    exactMatchController.updateResults(mountedResults)
-  );
   const viewKey = createSearchMountedResultsRowsViewKey(viewArgs);
   const preparationKey = createSearchMountedResultsRowsPreparationKey({
     ...viewArgs,
-    exactDishesOnPage: exactMatchProjection.exactDishesOnPage,
-    exactRestaurantsOnPage: exactMatchProjection.exactRestaurantsOnPage,
     resultsDataIdentityKey: resultsDataSnapshot.resultsDataIdentityKey,
     resultsDataVersion: resultsDataSnapshot.version,
     resultsRequestKey: resultsDataSnapshot.resultsRequestKey,
-    showAllExactDishes: exactMatchProjection.showAllExactDishes,
-    showAllExactRestaurants: exactMatchProjection.showAllExactRestaurants,
   });
-  const fullRowsByTab = resolveMountedRowsProjection({
-    exactMatchProjection,
-    mountedResults,
-  });
+  const fullRowsByTab = resolveMountedRowsProjection({ mountedResults });
   const restaurantCardDescriptorsById = prepareRestaurantCardDescriptorsById({
     preparationKey,
     restaurants: fullRowsByTab.restaurants,
@@ -1386,8 +1312,6 @@ const prepareSearchMountedResultsRowsSnapshotInner = ({
       paddingBottom: admission.renderRowCount > 0 ? RESULTS_BOTTOM_PADDING : 0,
       paddingTop: 0,
     },
-    handleShowMoreExactDishes: showMoreSearchMountedResultsExactDishes,
-    handleShowMoreExactRestaurants: showMoreSearchMountedResultsExactRestaurants,
     headerHeight: viewArgs.headerHeight,
     preparationKey,
     restaurantCardDescriptorsById,
@@ -1412,20 +1336,6 @@ const prepareSearchMountedResultsRowsSnapshotInner = ({
   });
   return didPublish;
 };
-
-export function showMoreSearchMountedResultsExactDishes(): void {
-  exactMatchController.showMoreExactDishes();
-  if (lastRowsPreparationInput != null) {
-    prepareSearchMountedResultsRowsSnapshot(lastRowsPreparationInput);
-  }
-}
-
-export function showMoreSearchMountedResultsExactRestaurants(): void {
-  exactMatchController.showMoreExactRestaurants();
-  if (lastRowsPreparationInput != null) {
-    prepareSearchMountedResultsRowsSnapshot(lastRowsPreparationInput);
-  }
-}
 
 export const useSearchMountedResultsDataSnapshot = (): SearchMountedResultsDataSnapshot =>
   React.useSyncExternalStore(

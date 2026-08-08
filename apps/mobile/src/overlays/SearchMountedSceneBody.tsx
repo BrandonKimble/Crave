@@ -1187,19 +1187,9 @@ const SearchMountedResultsListDataLeaf = React.memo(
         } as never) as React.ReactElement | null,
       [sceneBodyContentRef]
     );
-    const handleShowMoreExactDishes = React.useCallback(
-      () => getSearchMountedResultsRowsSnapshot().handleShowMoreExactDishes(),
-      []
-    );
-    const handleShowMoreExactRestaurants = React.useCallback(
-      () => getSearchMountedResultsRowsSnapshot().handleShowMoreExactRestaurants(),
-      []
-    );
     const baseRenderItem = useSearchResultsListRenderItemRuntime({
       renderDishCard: localRenderCard as never,
       renderRestaurantCard: localRenderCard as never,
-      handleShowMoreExactDishes,
-      handleShowMoreExactRestaurants,
     });
     // IDENTITY-STABLE renderItem (perf attribution 2026-07-13): the admission-counter
     // key used to ride the dep array, so EVERY rows re-prep minted a new renderItem →

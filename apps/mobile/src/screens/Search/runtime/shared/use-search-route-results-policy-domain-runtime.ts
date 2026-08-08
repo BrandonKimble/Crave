@@ -80,7 +80,6 @@ export const useSearchRouteResultsPolicyDomainRuntime = ({
       foregroundPolicyPublicationAuthority,
       readModelPolicyController,
       readModelPolicyWriters: {
-        exactMatch: readModelPolicyController.getExactMatchController(),
         projection: readModelPolicyController,
         retainedResults: readModelPolicyController.getRetainedResultsController(),
       },

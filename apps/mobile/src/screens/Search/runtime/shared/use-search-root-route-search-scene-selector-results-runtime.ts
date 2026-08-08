@@ -55,7 +55,6 @@ export const useSearchRootRouteSearchSceneSelectorResultsRuntime = ({
     phaseBMaterializerRef: routeSearchSceneDataRuntime.routeSearchScenePhaseBMaterializerRef,
     renderDishCard: routeSearchSceneCardRenderRuntime.renderDishCard,
     renderRestaurantCard: routeSearchSceneCardRenderRuntime.renderRestaurantCard,
-    exactMatchWriter: readModelPolicyWriters.exactMatch,
     readModelProjection: readModelPolicyWriters.projection,
     shouldRetainCommittedResultsForPolicy:
       routeSearchSceneDataRuntime.routeSearchSceneSearchSheetContentLane.kind !== 'docked_scene',

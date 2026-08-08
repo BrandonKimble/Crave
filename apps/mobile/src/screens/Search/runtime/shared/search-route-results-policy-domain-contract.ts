@@ -4,7 +4,6 @@ import type { ResultsPresentationAuthority } from './results-presentation-author
 import type { ResultsPresentationSurfaceAuthority } from './results-presentation-surface-authority';
 import type { SearchMapSourceFramePort } from '../map/search-map-source-frame-port';
 import type { ResultsSurfaceReadModelPolicyController } from './results-surface-read-model-policy-controller';
-import type { SearchResultsExactMatchOwnerController } from '../read-models/results-read-model-exact-match-state';
 import type { SearchResultsRetainedResultsController } from './results-retained-read-model-controller';
 import type { ResultsSurfacePolicyResults } from './results-surface-policy-controller';
 import type { SearchForegroundPolicyDomainController } from './search-foreground-policy-domain-controller';
@@ -15,16 +14,6 @@ import type { SearchSuggestionPanelStateController } from './search-suggestion-p
 export type SearchRouteResultsPolicySheetSink = Pick<
   RouteShellSceneInputLane,
   'publishRouteSceneSheetPolicyInputs'
->;
-
-export type SearchRouteResultsPolicyExactMatchWriterFacet = Pick<
-  SearchResultsExactMatchOwnerController,
-  | 'getSnapshot'
-  | 'getProjection'
-  | 'updateResults'
-  | 'showMoreExactDishes'
-  | 'showMoreExactRestaurants'
-  | 'reset'
 >;
 
 export type SearchRouteResultsPolicyRetainedResultsWriterFacet = Pick<
@@ -38,7 +27,6 @@ export type SearchRouteResultsPolicyReadModelProjectionFacet = Pick<
 >;
 
 export type SearchRouteResultsPolicyReadModelWriterFacets = {
-  exactMatch: SearchRouteResultsPolicyExactMatchWriterFacet;
   projection: SearchRouteResultsPolicyReadModelProjectionFacet;
   retainedResults: SearchRouteResultsPolicyRetainedResultsWriterFacet;
 };

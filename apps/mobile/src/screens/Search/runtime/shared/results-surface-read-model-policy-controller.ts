@@ -1,8 +1,4 @@
 import {
-  createSearchResultsExactMatchOwnerController,
-  type SearchResultsExactMatchOwnerController,
-} from '../read-models/results-read-model-exact-match-state';
-import {
   createSearchResultsRetainedResultsController,
   type SearchResultsRetainedResultsController,
 } from './results-retained-read-model-controller';
@@ -24,7 +20,6 @@ export type ResultsSurfaceReadModelPolicyController = {
     results: ResultsSurfacePolicyResults;
     shouldRetainCommittedResults: boolean;
   }) => void;
-  getExactMatchController: () => SearchResultsExactMatchOwnerController;
   getRetainedResultsController: () => SearchResultsRetainedResultsController<ResultsSurfacePolicyResults>;
   readSnapshot: (args: {
     activeTab: ResultsSurfacePolicyTab;
@@ -32,9 +27,6 @@ export type ResultsSurfaceReadModelPolicyController = {
     shouldRetainCommittedResults: boolean;
   }) => ResultsSurfaceReadModelPolicySnapshot;
   reset: (results: ResultsSurfacePolicyResults) => void;
-  showMoreExactDishes: () => void;
-  showMoreExactRestaurants: () => void;
-  updateExactMatchResults: (results: ResultsSurfacePolicyResults) => void;
 };
 
 export const createResultsSurfaceReadModelPolicyController = ({
@@ -42,7 +34,6 @@ export const createResultsSurfaceReadModelPolicyController = ({
 }: ResultsSurfaceReadModelPolicyControllerOptions = {}): ResultsSurfaceReadModelPolicyController => {
   const retainedResultsController =
     createSearchResultsRetainedResultsController<ResultsSurfacePolicyResults>(initialResults);
-  const exactMatchController = createSearchResultsExactMatchOwnerController();
 
   return {
     commitResults({ results, shouldRetainCommittedResults }) {
@@ -50,14 +41,11 @@ export const createResultsSurfaceReadModelPolicyController = ({
         results,
         shouldRetainCommittedResults,
       });
-      exactMatchController.updateResults(results);
     },
-    getExactMatchController: () => exactMatchController,
     getRetainedResultsController: () => retainedResultsController,
     readSnapshot({ activeTab, results, shouldRetainCommittedResults }) {
       return createResultsSurfaceReadModelPolicySnapshot({
         activeTab,
-        exactMatchState: exactMatchController.getProjection(),
         retainedReadModel: retainedResultsController.readRetainedReadModel({
           results,
           shouldRetainCommittedResults,
@@ -66,16 +54,6 @@ export const createResultsSurfaceReadModelPolicyController = ({
     },
     reset(results) {
       retainedResultsController.reset(results);
-      exactMatchController.reset();
-    },
-    showMoreExactDishes() {
-      exactMatchController.showMoreExactDishes();
-    },
-    showMoreExactRestaurants() {
-      exactMatchController.showMoreExactRestaurants();
-    },
-    updateExactMatchResults(results) {
-      exactMatchController.updateResults(results);
     },
   };
 };

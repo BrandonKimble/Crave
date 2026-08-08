@@ -67,10 +67,10 @@ export const resolveSearchResultsBand = (activeTab: 'dishes' | 'restaurants') =>
 // duplicating (and able to silently drift from) the estimates above. One home:
 // dish/restaurant match the per-tab estimates exactly (a kind-tagged
 // mounted_restaurant_card row is the same visual height as a shape-only
-// restaurant row); section and the untyped-kind fallback have no per-tab
-// estimate to duplicate, so they live here as their own facts.
+// restaurant row); the untyped-kind fallback has no per-tab estimate to
+// duplicate, so it lives here as its own fact. There is no section height:
+// the one-list law leaves no section row to measure.
 export const SEARCH_RESULTS_ROW_KIND_HEIGHTS = {
-  section: 44,
   mountedRestaurantCard: SEARCH_RESULTS_BANDS.restaurants.estimatedRowHeight,
   kindFallback: 88,
   dish: SEARCH_RESULTS_BANDS.dishes.estimatedRowHeight,
