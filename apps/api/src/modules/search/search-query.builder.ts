@@ -319,8 +319,8 @@ export class SearchQueryBuilder {
       const normalized = (plan.ranking.restaurantOrder || '').toLowerCase();
       const direction = normalized.includes('asc') ? 'ASC' : 'DESC';
       return normalized.includes('rising')
-        ? Prisma.sql`rrx.rising DESC NULLS LAST, rrx.crave_score_exact ${Prisma.raw(direction)}, rrx.crave_score ${Prisma.raw(direction)}, rrx.total_upvotes ${Prisma.raw(direction)}, rrx.restaurant_id ASC`
-        : Prisma.sql`rrx.crave_score_exact ${Prisma.raw(direction)}, rrx.crave_score ${Prisma.raw(direction)}, rrx.total_upvotes ${Prisma.raw(direction)}, rrx.restaurant_id ASC`;
+        ? Prisma.sql`rrx.rising DESC NULLS LAST, rrx.crave_score_exact ${Prisma.raw(direction)}, rrx.total_upvotes ${Prisma.raw(direction)}, rrx.restaurant_id ASC`
+        : Prisma.sql`rrx.crave_score_exact ${Prisma.raw(direction)}, rrx.total_upvotes ${Prisma.raw(direction)}, rrx.restaurant_id ASC`;
     })();
 
     const restaurantOrder = this.resolveRestaurantOrderSql(
@@ -2027,21 +2027,21 @@ location_aggregates AS (
       return {
         sql: Prisma.sql`fc.connection_rising DESC NULLS LAST, fc.connection_crave_score_exact ${Prisma.raw(
           direction,
-        )}, fc.connection_crave_score ${Prisma.raw(
-          direction,
         )}, fc.total_upvotes ${Prisma.raw(
           direction,
         )}, fc.mention_count ${Prisma.raw(direction)}, fc.connection_id ASC`,
-        preview: `fc.connection_rising DESC NULLS LAST, fc.connection_crave_score_exact ${direction}, fc.connection_crave_score ${direction}, fc.total_upvotes ${direction}, fc.mention_count ${direction}, fc.connection_id ASC`,
+        preview: `fc.connection_rising DESC NULLS LAST, fc.connection_crave_score_exact ${direction}, fc.total_upvotes ${direction}, fc.mention_count ${direction}, fc.connection_id ASC`,
       };
     }
     return {
-      // HIGH-PRECISION: connection_crave_score_exact (percentile_rank) leads so map pins order by the true
-      // score, not the rounded display value; display score + upvotes + mention + id are stable tiebreaks.
-      sql: Prisma.sql`fc.connection_crave_score_exact ${Prisma.raw(direction)}, fc.connection_crave_score ${Prisma.raw(direction)}, fc.total_upvotes ${Prisma.raw(
+      // HIGH-PRECISION: connection_crave_score_exact (percentile_rank) is THE
+      // score key. The rounded display score left the ORDER BY (2026-08-08):
+      // it is derived from the exact key by rounding, so it can never split a
+      // tie the exact key left — upvotes + mentions + id are the tiebreaks.
+      sql: Prisma.sql`fc.connection_crave_score_exact ${Prisma.raw(direction)}, fc.total_upvotes ${Prisma.raw(
         direction,
       )}, fc.mention_count ${Prisma.raw(direction)}, fc.connection_id ASC`,
-      preview: `fc.connection_crave_score_exact ${direction}, fc.connection_crave_score ${direction}, fc.total_upvotes ${direction}, fc.mention_count ${direction}, fc.connection_id ASC`,
+      preview: `fc.connection_crave_score_exact ${direction}, fc.total_upvotes ${direction}, fc.mention_count ${direction}, fc.connection_id ASC`,
     };
   }
 
