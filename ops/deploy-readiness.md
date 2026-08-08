@@ -68,6 +68,20 @@ scale the worker back.
 
 ## Deploy-sequence bindings (must happen IN this order)
 
+RAIL ORDER LAW (from the account-deletion session's three-rail analysis): NEVER ship
+apps/site ahead of api. Order: api+worker → site → mobile. Site must be NAMED on the
+deploy (`./scripts/rig/deploy.sh api worker site` — bare deploy.sh defaults to api worker
+only), its /healthz carries no commit so post-deploy curl the live privacy page and grep
+the 30-day sentence. Mobile copy ships via EAS (store-gated); the stale-copy window is
+UNDERSTATEMENT-safe (old copy says "cannot be undone" while restore exists) — close it
+with an OTA JS update rather than waiting on store review.
+
+PROD BASELINE NOTE: prod already runs 3584ccb11 (fork 2's owner-directed pushes tonight,
+staging-verified, --force past a CI red owned by since-fixed gates). The push delta is
+HEAD minus that. JWT_SECRET is now REQUIRED on api+worker per env (validator refuses
+boot — already set staging+prod; a missing one crash-loops). If staging P3009s: known
+shape — stray unfinished \_prisma_migrations baseline row; mark finished.
+
 1. Push main → staging deploy → staging /health commit == HEAD.
 2. Staging smoke: naive-column count → 0 (timestamptz proof), create-poll (Gemini
    degrade), delete-account→restore round-trip (crosses Clerk), photo upload
@@ -83,16 +97,23 @@ scale the worker back.
 
 ## Master POST-deploy checklist
 
-0. SEQUENCED DATA OPS (extraction): prod ghost recovery — scripts/reground-ghosts.ts
-   --limit=100 (measure) → remainder + --tombstone-closed (Places spend; comparator
-   screaming EXPECTED per D149); ONE RUN_FULL_PROJECTION_REBUILD=1 worker one-shot;
-   measure chooser first-set acceptance on prod ledger. Tom tom: wipe prod
-   probed_regions (~4 rows, cache); pg_stat_activity ≤~30 now AND after the 03:00 UTC
-   burst. Account-deletion: staging/prod throwaway delete→restore; run
-   `yarn test:db --testPathPattern person-data-coverage` against real corpus; watch
-   for ACCOUNT_DELETED 403 on any route other than restore. Search: confirm
-   unsegmented-residue drain runs (82 rows pending, oldest 08-04); re-run naive-column
-   count on prod+staging.
+0a. Post-boot scheduler proof (account-deletion): confirm the purge + retention jobs
+are REGISTERED on the worker scheduler (not merely that the worker is up) — a purge
+that never runs is silent. Fork 2: run-launch-gate --lang es (~98.7 expected) +
+parity-check es p95. Payments: RC dashboard test-webhook → 200 + TEST event-log row
+(no grant); Stripe portal session mint → URL carries https://craveapp.ai; watch
+external_subscription_id non-user-scoped count staying at 0 (currently 1 known TEST
+fixture row, disposition pending). 0. SEQUENCED DATA OPS (extraction): prod ghost recovery — scripts/reground-ghosts.ts
+--limit=100 (measure) → remainder + --tombstone-closed (Places spend; comparator
+screaming EXPECTED per D149); ONE RUN_FULL_PROJECTION_REBUILD=1 worker one-shot;
+measure chooser first-set acceptance on prod ledger. Tom tom: wipe prod
+probed_regions (~4 rows, cache); pg_stat_activity ≤~30 now AND after the 03:00 UTC
+burst. Account-deletion: staging/prod throwaway delete→restore; run
+`yarn test:db --testPathPattern person-data-coverage` against real corpus; watch
+for ACCOUNT_DELETED 403 on any route other than restore. Search: confirm
+unsegmented-residue drain runs (82 rows pending, oldest 08-04); re-run naive-column
+count on prod+staging.
+
 1. /health on api + worker: commit == HEAD, appEnv correct.
 2. Photo upload end-to-end in prod (Vision verdict arrives, photo goes live);
    confirm a `google_vision` line appears in api_usage_ledger.
