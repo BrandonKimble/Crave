@@ -32,7 +32,10 @@
 CREATE INDEX IF NOT EXISTS "idx_on_demand_requests_entity_id" ON "collection_on_demand_requests" ("entity_id");
 CREATE INDEX IF NOT EXISTS "idx_restaurant_entity_events_input_id" ON "core_restaurant_entity_events" ("input_id");
 CREATE INDEX IF NOT EXISTS "idx_restaurant_events_input_id" ON "core_restaurant_events" ("input_id");
-CREATE INDEX IF NOT EXISTS "idx_entity_satisfies_to_entity_id" ON "entity_satisfies" ("to_entity_id");
+-- idx_entity_satisfies_to_entity_id MOVED to 20260808120000: entity_satisfies
+-- is created by 20260805200000 — a LATER migration — so indexing it here broke
+-- every fresh-chain apply (CI caught it; applied DBs never saw it because their
+-- table predated this file). The index itself is unchanged, just correctly ordered.
 CREATE INDEX IF NOT EXISTS "idx_messages_sender_user_id" ON "messages" ("sender_user_id");
 CREATE INDEX IF NOT EXISTS "idx_photo_reports_user_id" ON "photo_reports" ("user_id");
 CREATE INDEX IF NOT EXISTS "idx_poll_comment_reports_reporter_user_id" ON "poll_comment_reports" ("reporter_user_id");
