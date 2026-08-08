@@ -99,10 +99,18 @@ gate_require_present mounted_list_commit_must_mark \
 # primary/secondaryInitialDrawBatchSize. The INVARIANT is intact — both are
 # Math.min(MAX_PREPARED_ROWS_INITIAL_DRAW_BATCH_SIZE, max(default, rows.length))
 # — so assert the durable constant, not the local variable name.
-gate_require_present mounted_results_flashlist_must_draw \
-  "mounted results FlashList must draw the prepared page-one row batch, not the old small initial batch" \
-  "MAX_PREPARED_ROWS_INITIAL_DRAW_BATCH_SIZE" \
-  "apps/mobile/src/overlays/SearchMountedSceneBody.tsx"
+# DELETED WITH ITS SUBJECT — R8 adjudication (2026-08-08). SearchMountedSceneBody
+# died with the old sheet system; MAX_PREPARED_ROWS_INITIAL_DRAW_BATCH_SIZE has
+# zero hits in the tree. The blank-first-paint class this check guarded is owned
+# by the track now, by MEASUREMENT and by falsifier, not by batch arithmetic:
+# FlashList 2.x converges the full visible window before paint regardless of
+# initial batch (device-proven: rowDistinct=11 drawn in ONE flip frame with the
+# sheet-following drawDistance, track-list-window.ts), the OA1 facts-at-reveal
+# audit refuses a reveal whose rows are not resident (search-surface-runtime),
+# and the render lane's handoff falsifiers pin the flip-frame draw contract
+# (__render__/track-host-handoff.render-spec). The batch-3 overrideProps in
+# use-search-results-flash-list-policy-runtime feed a transport whose renderer is
+# deleted — a vestige queued on the R8 kill-list, not a live regression.
 
 gate_require_present presentation_surface_authority_must_expose \
   "presentation surface authority must expose preparedRows readiness" \
