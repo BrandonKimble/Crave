@@ -3003,3 +3003,7 @@ F9501 | person-data mutation spec re-derived the judgement | STATUS: FIXED — s
 F9503 | census erased_by_hand grep matched prose | STATUS: FIXED — codeMatches (comment-stripped) via scanner-source; RED proven (comments-only source no longer passes).
 F9504 | lives_with_row passed on one shared retain rule | STATUS: FIXED — keptBy names the keeper rule per table; census verifies its verb; RED proven (removing users.user_id:retain reds exactly the 16 dependent columns).
 F9901 | product/profile.md said avatars use Rekognition | STATUS: FIXED — dated additive correction.
+
+F9806 | RevenueCat external-id fallback to entitlementCode (cross-user collidable) | STATUS: HANDED-OFF (2026-08-07, owner-directed) — billing territory belongs to the Payments session; handoff message sent with the fix direction (external id = stable userId always, fail loud on absent identity) + the new billingRail coupling context.
+F9606 | TomTom balance is owner-declared (no vendor balance API) | STATUS: MOOT (2026-08-07, owner-accepted) — the vendor exposes no balance endpoint; owner accepts the declared-credit + measured-burn dashboard model. Operational note: re-declare TOMTOM_PREPAID_CREDIT_USD/_DECLARED_AT after each top-up.
+F9609 | Places worker backstop inert at documented launch topology | STATUS: OWNER-DECISION (2026-08-07) — flagged from plans/ (not judged); revisit when the launch topology is final.
