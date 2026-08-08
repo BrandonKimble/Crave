@@ -1644,6 +1644,7 @@ export class RestaurantLocationEnrichmentService {
           await this.restaurantEntityMergeService.mergeDuplicateRestaurant({
             canonical,
             duplicate: entity,
+            tx,
             canonicalUpdate: {
               ...mergedUpdate,
               primaryLocation: { connect: { locationId: location.locationId } },
@@ -1813,6 +1814,7 @@ export class RestaurantLocationEnrichmentService {
           await this.restaurantEntityMergeService.mergeDuplicateRestaurant({
             canonical,
             duplicate: entity,
+            tx,
             canonicalUpdate: {
               ...mergedUpdate,
               primaryLocation: { connect: { locationId: location.locationId } },

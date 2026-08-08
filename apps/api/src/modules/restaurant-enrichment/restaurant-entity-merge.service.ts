@@ -50,10 +50,21 @@ export class RestaurantEntityMergeService {
     this.logger = loggerService.setContext('RestaurantEntityMergeService');
   }
 
+  /**
+   * @param params.tx JOIN THE CALLER'S TRANSACTION instead of opening a rival
+   *  one. Ghost-sweep P2028 (2026-08-08): the grounding lane wraps its
+   *  location re-point and this merge in one transaction; this method then
+   *  opened its OWN interactive transaction, whose location updates blocked
+   *  on the outer transaction's uncommitted row locks — a self-deadlock that
+   *  expired both 15-minute budgets and killed the sweep mid-run. Nested
+   *  INDEPENDENT transactions over the same rows are never safe; a caller
+   *  already holding a transaction must pass it in.
+   */
   async mergeDuplicateRestaurant(params: {
     canonical: RestaurantEntity;
     duplicate: RestaurantEntity;
     canonicalUpdate: Prisma.EntityUpdateInput;
+    tx?: Prisma.TransactionClient;
   }): Promise<RestaurantEntity> {
     const { canonical, duplicate, canonicalUpdate } = params;
     if (canonical.entityId === duplicate.entityId) {
@@ -67,53 +78,55 @@ export class RestaurantEntityMergeService {
       duplicateId: duplicate.entityId,
     });
 
-    const result = await this.prisma.$transaction(
-      async (tx) => {
-        // Same identity locks the creation path takes (H3 — round-12
-        // audit: the plan asserted this, the code didn't do it).
-        await acquireIdentityMergeLocks(tx, 'restaurant', [
-          entityLockKey(canonical.name, EntityType.restaurant),
-          entityLockKey(duplicate.name, EntityType.restaurant),
-        ]);
-        await this.mergeRestaurantEvents(
-          tx,
-          canonical.entityId,
-          duplicate.entityId,
-        );
-        await this.mergeRestaurantEntityEvents(
-          tx,
-          canonical.entityId,
-          duplicate.entityId,
-        );
-        await this.rehomeRestaurantEntityReferences(
-          tx,
-          canonical.entityId,
-          duplicate.entityId,
-        );
-        await this.mergeConnections(tx, canonical.entityId, duplicate.entityId);
-        await this.mergeLocations(tx, canonical.entityId, duplicate.entityId);
+    const runMerge = async (
+      tx: Prisma.TransactionClient,
+    ): Promise<RestaurantEntity> => {
+      // Same identity locks the creation path takes (H3 — round-12
+      // audit: the plan asserted this, the code didn't do it).
+      await acquireIdentityMergeLocks(tx, 'restaurant', [
+        entityLockKey(canonical.name, EntityType.restaurant),
+        entityLockKey(duplicate.name, EntityType.restaurant),
+      ]);
+      await this.mergeRestaurantEvents(
+        tx,
+        canonical.entityId,
+        duplicate.entityId,
+      );
+      await this.mergeRestaurantEntityEvents(
+        tx,
+        canonical.entityId,
+        duplicate.entityId,
+      );
+      await this.rehomeRestaurantEntityReferences(
+        tx,
+        canonical.entityId,
+        duplicate.entityId,
+      );
+      await this.mergeConnections(tx, canonical.entityId, duplicate.entityId);
+      await this.mergeLocations(tx, canonical.entityId, duplicate.entityId);
 
-        const updatedCanonical = await tx.entity.update({
-          where: { entityId: canonical.entityId },
-          data: canonicalUpdate,
-        });
+      const updatedCanonical = await tx.entity.update({
+        where: { entityId: canonical.entityId },
+        data: canonicalUpdate,
+      });
 
-        // Alias bank + archive + score prune + redirect flatten: ONE
-        // contract shared with the food merge (round-12 audit — the two
-        // copy-pasted tails had diverged; see finalizeMergeCompletion).
-        await finalizeMergeCompletion(
-          tx,
-          canonical.entityId,
-          duplicate.entityId,
+      // Alias bank + archive + score prune + redirect flatten: ONE
+      // contract shared with the food merge (round-12 audit — the two
+      // copy-pasted tails had diverged; see finalizeMergeCompletion).
+      await finalizeMergeCompletion(tx, canonical.entityId, duplicate.entityId);
+
+      return updatedCanonical;
+    };
+
+    const result = params.tx
+      ? await runMerge(params.tx)
+      : await this.prisma.$transaction(
+          runMerge,
+          // Explicit budget (round-10 violence red team): the default 5s
+          // killed large merges permanently-but-silently. Matches the
+          // rebuild's budget.
+          { timeout: 15 * 60 * 1000, maxWait: 30_000 },
         );
-
-        return updatedCanonical;
-      },
-      // Explicit budget (round-10 violence red team): the default 5s
-      // killed large merges permanently-but-silently. Matches the
-      // rebuild's budget.
-      { timeout: 15 * 60 * 1000, maxWait: 30_000 },
-    );
 
     this.logger.info('Restaurant entity merge completed', {
       canonicalId: result.entityId,
