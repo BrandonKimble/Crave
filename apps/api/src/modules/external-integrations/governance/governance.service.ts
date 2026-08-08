@@ -295,7 +295,13 @@ export class GovernanceService implements OnModuleInit {
     // §16 on reservationTtlMs: K3-shaped operational bounds — "how long a
     // leaked reservation may hold capacity before expiry reclaims it".
     // 60s ≈ one synchronous call; 120s ≈ a paged/batched dispatch.
-    const TOMTOM_VENDOR_QPS = 5; // K4 vendor fact (same fact as VENDOR_QPS_SPACING_MS)
+    // OWNER-CHECKED 2026-08-07: the TomTom dashboard reports "QPS limits
+    // not available for this key" — the standard pay-as-you-go tier exposes
+    // no per-key ceiling, so the vendor's published Search-API default
+    // (~5 QPS, the bottom of their documented 5-50 range) is the honest
+    // conservative read. Raising this requires a plan that exposes QPS
+    // management, not a code change. (Same fact as VENDOR_QPS_SPACING_MS.)
+    const TOMTOM_VENDOR_QPS = 5;
     const TOMTOM_PER_MINUTE = TOMTOM_VENDOR_QPS * 60;
     this.pools.register({
       name: 'tomtom.reverseGeocode',
