@@ -4541,3 +4541,29 @@ into the live erase+retention paths once it can pass (it becomes the permanent r
   new Sentry issues, fixes mechanical on main w/ mutation-proofs, briefs owner in
   ops/sentry-briefs.md. Cloud routine rejected (no Sentry connector at claude.ai level; local
   has repo + service-access creds).
+
+## D148 — deleted-identity ideal shape: OWNER APPROVED (2026-08-07)
+
+Owner approved design C (data-level): at DELETION time, atomically stash
+{username, displayName, avatarUrl} into a new `users.deleted_identity JSONB` (CHECK:
+deleted_at IS NOT NULL OR deleted_identity IS NULL) and null the visible columns —
+NULL is unique-safe (username is nullable citext; no tombstone needed). Restore swaps
+back (P2002-guarded 409; username_history already blocks squatting — verified). The
+LOAD-BEARING 3-liner: syncFromClerkClaims must skip the displayName/avatar backfill
+when deletedAt is set (else the next authed request resurrects the name from claims).
+purgeAccount adds deletedIdentity: DbNull (existing nulls become idempotent no-ops;
+keep the heldNames read from username_history as-is). Census: deleted_identity →
+PERSON_DATA_RULES null_column (a real executed rule, better than the erased_by_hand
+grep-coupling). DELETE check-author-identity.ts + its registry entry + fixtures
+(F9481: proven vacuous — its grep matches exactly its own 8 exemptions; loop body
+never runs). Replace with a DB-backed invariant: deleteAccount → assertShellIsAnonymous
+passes DURING grace; mutation = reverting the stash-and-null reds. publicAuthorIdentity/
+AUTHOR_SELECT/DELETED_AUTHOR_LABEL/isDeleted STAY (presentation + affordance
+suppression; forgetting becomes cosmetic, not a leak). Owner also blessed the visible
+change: a grace-deleted user signing in sees an anonymous profile until Restore
+(Reddit/Discord behavior). Follow-on hygiene (separate): type the ~10 untyped author
+DTO slots as PublicAuthorIdentity.
+
+STATUS: QUEUED — blocked on the concurrent photo session's pending migration
+(20260807020000_photo_destroy_pending + dirty schema.prisma). Build fires when it lands.
+Already shipped from the same red-team: F9480 (live share-card leak) fixed + mutation-proven.
