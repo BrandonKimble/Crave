@@ -33,6 +33,7 @@ function makeService(overrides?: {
       overrides?.entitlementMap ?? 'premium:premium_monthly',
     ],
     ['billing.defaultEntitlement', 'premium'],
+    ['revenueCat.apiKey', 'rc-api-test'],
   ]);
   const prisma = {
     billingEventLog: {
@@ -43,6 +44,8 @@ function makeService(overrides?: {
       upsert: jest.fn().mockResolvedValue({}),
       findFirst: jest.fn().mockResolvedValue(null),
       findUnique: jest.fn().mockResolvedValue(null),
+      findMany: jest.fn().mockResolvedValue([]),
+      updateMany: jest.fn().mockResolvedValue({ count: 0 }),
     },
     user: {
       findFirst: jest.fn().mockResolvedValue(overrides?.user ?? null),
@@ -393,6 +396,125 @@ describe('RevenueCat webhook hardening', () => {
     const stable = revenueCatEventIdentity(idless.event);
     Date.now = realNow;
     expect(stable).toBe(revenueCatEventIdentity(idless.event));
+  });
+
+  it('F9960 — TRANSFER to an unresolved gaining user THROWS and revokes NOTHING', async () => {
+    // Old shape: `warn; continue` on the missing gainer, then the revoke loop
+    // ran anyway and the event logged processed — access on NEITHER side.
+    const { service, prisma, entitlements } = makeService({
+      user: { userId: 'uOld' },
+    });
+    // The service resolves users itself via prisma.user.findFirst — mock per
+    // identifier there (the OR clause's first arm carries the identifier).
+    (prisma.user.findFirst as jest.Mock).mockImplementation(
+      ({ where }: any) => {
+        const id = where.OR[0].authProviderUserId;
+        return Promise.resolve(id === 'clerk-old' ? { userId: 'uOld' } : null);
+      },
+    );
+    await expect(
+      service.handleRevenueCatWebhook(
+        rcEvent({
+          type: 'TRANSFER',
+          transferred_from: ['clerk-old'],
+          transferred_to: ['clerk-new-unsynced'],
+          app_user_id: undefined,
+          expiration_at_ms: undefined,
+        }),
+        'Bearer rc-secret',
+      ),
+    ).rejects.toThrow(/gaining account .* has no user/);
+    expect((entitlements.revokeBySource as jest.Mock).mock.calls).toHaveLength(
+      0,
+    ); // <- old code revoked here
+  });
+
+  it('F9961 — TRANSFER re-keys the subscription row to the gainer and unifies the grant stream', async () => {
+    const { service, prisma, entitlements } = makeService({
+      user: { userId: 'uOld' },
+    });
+    (prisma.user.findFirst as jest.Mock).mockImplementation(
+      ({ where }: any) => {
+        const id = where.OR[0].authProviderUserId;
+        return Promise.resolve(
+          id === 'clerk-old'
+            ? { userId: 'uOld' }
+            : id === 'clerk-new'
+              ? { userId: 'uNew' }
+              : null,
+        );
+      },
+    );
+    (prisma.subscription.findMany as jest.Mock).mockResolvedValue([
+      { subscriptionId: 'sub-row-1', externalSubscriptionId: 'txn-orig-1' },
+    ]);
+    const realFetch = global.fetch;
+    global.fetch = jest.fn().mockResolvedValue({
+      ok: true,
+      json: () =>
+        Promise.resolve({
+          subscriber: {
+            entitlements: {
+              premium_monthly: {
+                expires_date: new Date(Date.now() + 30 * 864e5).toISOString(),
+                product_identifier: 'crave.premium.annual',
+              },
+            },
+          },
+        }),
+    }) as never;
+    try {
+      await service.handleRevenueCatWebhook(
+        rcEvent({
+          type: 'TRANSFER',
+          transferred_from: ['clerk-old'],
+          transferred_to: ['clerk-new'],
+          app_user_id: undefined,
+          expiration_at_ms: undefined,
+        }),
+        'Bearer rc-secret',
+      );
+    } finally {
+      global.fetch = realFetch;
+    }
+    // The row moved to the gainer...
+    const rekey = (prisma.subscription.updateMany as jest.Mock).mock
+      .calls[0][0];
+    expect(rekey.data.userId).toBe('uNew'); // <- old code: updateMany never called
+    // ...and the gainer's grant is keyed by the SAME externalSubscriptionId
+    // every future renewal uses (one stream, not transfer:+renewal: pairs).
+    const grant = (entitlements.syncSubscriptionGrant as jest.Mock).mock
+      .calls[0][0];
+    expect(grant.userId).toBe('uNew');
+    expect(grant.sourceRef).toBe('revenuecat:txn-orig-1'); // <- old: revenuecat:transfer:...
+  });
+
+  it('F9961 — the renewal upsert heals row ownership (update carries userId)', async () => {
+    const { service, prisma } = makeService({ user: { userId: 'u1' } });
+    await service.handleRevenueCatWebhook(rcEvent(), 'Bearer rc-secret');
+    const upsert = (prisma.subscription.upsert as jest.Mock).mock.calls[0][0];
+    expect(upsert.update.userId).toBe('u1'); // <- old update block omitted userId
+  });
+
+  it('F9962 — two id-less TRANSFERs differing only in participants hash DIFFERENTLY', () => {
+    const base = {
+      type: 'TRANSFER',
+      event_timestamp_ms: 1754000000000,
+      store: 'APP_STORE',
+      environment: 'PRODUCTION',
+    };
+    const a = revenueCatEventIdentity({
+      ...base,
+      transferred_from: ['clerk-A'],
+      transferred_to: ['clerk-B'],
+    });
+    const b = revenueCatEventIdentity({
+      ...base,
+      transferred_from: ['clerk-C'],
+      transferred_to: ['clerk-D'],
+    });
+    expect(a).toMatch(/^content:/);
+    expect(a).not.toBe(b); // <- old CANONICAL_FIELDS: identical hashes, second swallowed
   });
 
   it('F9806 — id-less events from two users land on DIFFERENT subscription rows', async () => {

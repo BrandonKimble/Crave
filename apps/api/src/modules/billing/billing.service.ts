@@ -692,6 +692,12 @@ export class BillingService {
         },
       },
       update: {
+        // The event's resolved user OWNS the row. Omitting userId here left a
+        // transferred subscription keyed to the LOSING user forever — every
+        // renewal updated status/periods on a row that still said the old
+        // owner, so billingRail mis-railed both sides (F9961).
+        userId: user.userId,
+        externalCustomerId: authId ?? null,
         status,
         entitlementCode,
         productId: payload.event.product_id ?? null,
@@ -767,8 +773,15 @@ export class BillingService {
     for (const toId of toIds) {
       const toUser = await this.lookupUserByAuthIdentifier(toId);
       if (!toUser) {
-        this.logger.warn('RevenueCat transfer target has no user', { toId });
-        continue;
+        // LOUD, and RETRYABLE — exactly like the unresolvable-state arm
+        // below. The old `warn; continue` let the revoke loop run anyway and
+        // logged the event processed: a transfer to a not-yet-synced account
+        // left the customer with access on NEITHER side, permanently
+        // (F9960). A transfer is a move; if the receiving end does not exist
+        // yet, the whole move waits for redelivery.
+        throw new ServiceUnavailableException(
+          `RevenueCat transfer: gaining account (${toId}) has no user yet; refusing to revoke the losing account`,
+        );
       }
       const state = await this.fetchRevenueCatEntitlementState(toId);
       if (!state) {
@@ -781,9 +794,47 @@ export class BillingService {
       targets.push({ userId: toUser.userId, state });
     }
 
+    // A transfer moves the SUBSCRIPTION, not just the grant. The losing
+    // user's billing_subscriptions row must follow (F9961): left behind as
+    // userId=loser/status=active it mis-rails the loser's Manage Subscription
+    // (billingRail sees a live sub) and the gainer's cancel cannot find the
+    // row it needs. RC transfers carry one gaining subscriber (toIds are
+    // aliases of it); if resolution ever yields several distinct internal
+    // users the move is ambiguous and must fail for redelivery, not guess.
+    const gainingUserIds = [...new Set(targets.map((t) => t.userId))];
+    if (gainingUserIds.length > 1) {
+      throw new ServiceUnavailableException(
+        `RevenueCat transfer: transferred_to resolves to ${gainingUserIds.length} distinct users; ambiguous move refused`,
+      );
+    }
+    const gainingUserId = gainingUserIds[0] ?? null;
+
+    const rekeyedExternalIds: string[] = [];
     for (const fromId of fromIds) {
       const fromUser = await this.lookupUserByAuthIdentifier(fromId);
       if (!fromUser) continue;
+      if (gainingUserId && fromUser.userId !== gainingUserId) {
+        const rows = await this.prisma.subscription.findMany({
+          where: {
+            userId: fromUser.userId,
+            provider: SubscriptionProvider.revenuecat,
+          },
+          select: { subscriptionId: true, externalSubscriptionId: true },
+        });
+        if (rows.length > 0) {
+          await this.prisma.subscription.updateMany({
+            where: {
+              subscriptionId: { in: rows.map((r) => r.subscriptionId) },
+            },
+            data: { userId: gainingUserId },
+          });
+          rekeyedExternalIds.push(
+            ...rows
+              .map((r) => r.externalSubscriptionId)
+              .filter((id): id is string => id !== null),
+          );
+        }
+      }
       const revoked = await this.entitlements.revokeBySource({
         userId: fromUser.userId,
         source: 'subscription',
@@ -793,13 +844,24 @@ export class BillingService {
       this.logger.info('RevenueCat transfer: revoked losing account', {
         userId: fromUser.userId,
         grantsRevoked: revoked,
+        subscriptionsRekeyed: rekeyedExternalIds.length,
       });
     }
 
     for (const { userId, state } of targets) {
+      // ONE grant stream per subscription. When the loser's row moved to the
+      // gainer, key the grant by that row's externalSubscriptionId — the SAME
+      // key every future RENEWAL uses — so the transfer grant and the renewal
+      // stream are one grant, not two parallel ones. The synthetic
+      // transfer:<toId>:<product> ref remains only for the genuinely rowless
+      // case (grant existed with no subscription row to move).
+      const sourceRef =
+        rekeyedExternalIds.length === 1
+          ? `revenuecat:${rekeyedExternalIds[0]}`
+          : `revenuecat:${state.transactionRef}`;
       await this.entitlements.syncSubscriptionGrant({
         userId,
-        sourceRef: `revenuecat:${state.transactionRef}`,
+        sourceRef,
         expiresAt: state.expiresAt,
         active: state.expiresAt.getTime() > Date.now(),
         entitlementCode: state.entitlementCode,
@@ -807,6 +869,7 @@ export class BillingService {
       this.logger.info('RevenueCat transfer: resynced gaining account', {
         userId,
         expiresAt: state.expiresAt.toISOString(),
+        sourceRef,
       });
     }
   }

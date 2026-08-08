@@ -36,6 +36,11 @@ const CANONICAL_FIELDS = [
   'environment',
   'price',
   'currency',
+  // TRANSFER events are DEFINED by who loses and who gains — omitting these
+  // made two different id-less transfers hash identically, so the second
+  // delivery was swallowed as a replay of the first (F9962).
+  'transferred_from',
+  'transferred_to',
 ] as const;
 
 /** Stable JSON: object keys sorted, so key order in the payload cannot change
