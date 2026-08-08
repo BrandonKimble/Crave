@@ -436,3 +436,21 @@ judicial rule live (testimony bars EVICTION, not a co-claim hearing —
 first version cost café→coffee). 1,543 surfaces reconciled; es gate 98.7
 (new high). OWED: judge prompt v2 with concept descriptions — single-
 incumbent pairing mis-voted picante/café (two facts hand-banked, logged).
+
+### §9 progress (2026-08-08, commit a8dbe5442)
+
+- §9 rail BUILT: KnowledgeMaintenanceService (sweep→reconcile→satisfies,
+  cron + RUN_KNOWLEDGE_MAINTENANCE_ON_BOOT prod one-shot). Judge v2 live.
+  Red-team catch: the 'both win' verdict was unwritable through the guard
+  (862-claim forever-loop) — addAliases.adjudicated fixes it; drain complete
+  (611 coexist / 22 evict / 211 refused), watermark now reaches offered:0.
+  es gate 98.7 held.
+- LANGUAGE PRE-FLIGHT (measured, $0): Vietnamese tokenizes+folds perfectly
+  (pho / pho bo / pho bo tai) — GREEN, needs only its gold corpus + sweep.
+  Chinese FAILS as feared: unspaced 辣的中国菜 yields ONE whole-string
+  n-gram, no tokens — zh REQUIRES CJK segmentation (char n-grams for han
+  runs, or a segmenter) in the analyzer BEFORE any vocabulary spend.
+- NEXT: author vi gold corpus (150 entries, es methodology) → vi sweep →
+  vi gate; then the zh segmentation build; ko after (spaced, likely
+  vi-shaped — verify with the same pre-flight). Prod one-shot: set
+  RUN_KNOWLEDGE_MAINTENANCE_ON_BOOT=1 on the worker, redeploy, unset.
