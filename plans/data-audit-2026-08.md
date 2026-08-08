@@ -1415,3 +1415,20 @@ table, and zero (connection, document, kind) groups carry more than one row —
 a dish that is both named and used as a category still earns credit ONCE per
 comment. Praise likewise dedupes per (restaurant, mention_key). No dish
 outranks another because of the two-row evidence design.
+
+## OWNER RULINGS (2026-08-06)
+
+- DEAD categories WIRE FIELD: removed same day (618c72111) — shared type,
+  builder, executor, dish list, user-list mapper, poll seed, mobile adapter.
+  The projection COLUMN stays (it is storage). 357 tests green.
+- THE 705 food_mention-only PAIRS — ruled: they should project as a
+  CATEGORY-level link ("this place is praised for salad") unless in-scope
+  context supplies the concrete dish, in which case extraction should have
+  produced the dish and it projects normally. Implement in the projection
+  phase of round 2.
+- JUNK-NAME ENTITIES (flagged by another session): "good taco", "souper
+  soup", "sos" — all VERIFIED live active foods (1-2 events each). "good
+  taco" fuses a judgment into a dish name (describes-vs-judges violation
+  inside `food` itself, a slot the attribute gate never inspects).
+  Task #1 tracks the investigation.
+- GHOST RESTAURANTS: owner unblocked attribution work (was deferred item 6).
