@@ -1,3 +1,4 @@
+import type { BillingRail as SharedBillingRail } from '@crave-search/shared';
 import { SubscriptionProvider, SubscriptionStatus } from '@prisma/client';
 import type { SubscriptionPlatform } from '@prisma/client';
 
@@ -16,15 +17,39 @@ import type { SubscriptionPlatform } from '@prisma/client';
  * DERIVED, never stored: the truth is the `billing_subscriptions` row's
  * provider/platform pair, read at request time. There is no second source.
  */
-export type BillingRail = 'app_store' | 'web';
+/**
+ * The wire union lives in @crave-search/shared (types/billing.ts) so the client
+ * cannot drift from it — see that file for why two hand-kept copies of a rail
+ * enum is a paying-customer-sees-the-paywall bug (F9802). Re-exported here
+ * because every server-side consumer already reaches for this module.
+ */
+export type BillingRail = SharedBillingRail;
 
-/** The statuses that still have something to manage. A cancelled/expired
- *  subscription is not a live rail — there is no portal session to open and
- *  no Apple sheet worth showing; that user is a prospect, not a subscriber. */
-const LIVE_STATUSES: ReadonlySet<SubscriptionStatus> = new Set([
+/**
+ * The statuses that still have something to manage. A cancelled/expired
+ * subscription is not a live rail — there is no portal session to open and no
+ * Apple sheet worth showing; that user is a prospect, not a subscriber.
+ *
+ * EXPORTED AS THE ONE LIST (F9800, 2026-08-07), because "which rows are live"
+ * was being decided in three places and one of them decided WRONG. The profile
+ * read took `subscriptions orderBy createdAt desc take 1` with no status filter
+ * at all, so a NEWER dead row (a cancelled Stripe sub, a lapsed store receipt)
+ * shadowed the live one underneath it — `deriveBillingRail` correctly returned
+ * null for the dead row it was handed, and a paying customer tapping "Manage
+ * subscription" landed on the plans screen being asked to buy what they own.
+ *
+ * The array is the Prisma `status: { in: … }` shape and the Set is the
+ * in-memory membership test; both are derived from this one declaration, so a
+ * new live status (`past_due`, say) is one edit.
+ */
+export const LIVE_SUBSCRIPTION_STATUSES = [
   SubscriptionStatus.active,
   SubscriptionStatus.trialing,
-]);
+] as const;
+
+const LIVE_STATUSES: ReadonlySet<SubscriptionStatus> = new Set(
+  LIVE_SUBSCRIPTION_STATUSES,
+);
 
 export interface BillingRailInput {
   provider: SubscriptionProvider;

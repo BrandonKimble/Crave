@@ -35,7 +35,10 @@ import { QueryPollsDto } from './dto/query-polls.dto';
 import { CreatePollDto } from './dto/create-poll.dto';
 import { CheckPollDuplicateDto } from './dto/check-poll-duplicate.dto';
 import { LLMService } from '../external-integrations/llm/llm.service';
-import { LLMPollAxis } from '../external-integrations/llm/llm.types';
+import {
+  LLMPollAxis,
+  LLMPollSubjectResult,
+} from '../external-integrations/llm/llm.types';
 import {
   EntityTextSearchService,
   type EntitySpan,
@@ -1104,7 +1107,35 @@ export class PollsService {
       );
     }
 
-    const subject = await this.llmService.inferPollSubject(question);
+    // THE POLL SURVIVES A DEAD LLM (F9600, D149).
+    //
+    // Subject inference is an UPGRADE, not a precondition: it decides whether
+    // this question becomes a ranked leaderboard or a discussion thread, and
+    // `inferPollSubject` already answers 'discussion' whenever it cannot tell
+    // (empty question, unparseable response) — that is its documented
+    // fail-closed default, chosen because a pointless empty leaderboard is
+    // worse than a thread.
+    //
+    // A vendor failure is the same fact arriving through a different door. It
+    // used to be the one arrival that threw, so a Gemini outage — or an AI
+    // Studio monthly cap, which poisons until the calendar month rolls — made
+    // "create a poll" 500 for weeks. Nothing about that is the poster's fault
+    // and nothing about it makes their poll unpostable: they get a discussion
+    // thread, which is what an unclassifiable question gets anyway.
+    let subject: LLMPollSubjectResult;
+    try {
+      subject = await this.llmService.inferPollSubject(question);
+    } catch (error) {
+      this.logger.warn(
+        'Poll subject inference failed — creating a discussion poll instead',
+        {
+          error: {
+            message: error instanceof Error ? error.message : String(error),
+          },
+        },
+      );
+      return this.createDiscussionPoll(question, dto, userId, place);
+    }
     const mapped =
       subject.mode === 'ranked' && subject.axis
         ? this.mapAxisToStructured(subject.axis)

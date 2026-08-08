@@ -34,7 +34,11 @@ import { RedisService } from '@liaoliaots/nestjs-redis';
 import { Redis } from 'ioredis';
 import { LoggerService, CorrelationUtils } from '../../../shared';
 import { UsageLedgerService } from '../shared/usage-ledger.service';
-import { GovernanceService } from '../governance/governance.service';
+import {
+  GovernanceService,
+  SpendBudgetClosedError,
+} from '../governance/governance.service';
+import { isApiRuntime } from '../../../shared/utils/process-role';
 import { OpsAlertsService } from '../shared/ops-alerts.service';
 import { msUntilVendorMonthReset } from '../shared/gemini-pricing';
 import {
@@ -2805,11 +2809,72 @@ export class LLMService implements OnModuleInit, OnModuleDestroy {
    * more than expected" now belongs to SpendExpectationMonitorService, which
    * alerts and never refuses.
    */
-  /** Delegates to THE gemini spend gate (GovernanceService). Kept as a thin
-   *  named method because call sites read better, and because the batch path
-   *  once had its own divergent copy of this logic — one implementation now. */
+  /**
+   * Delegates to THE gemini spend gate (GovernanceService). Kept as a thin
+   * named method because call sites read better, and because the batch path
+   * once had its own divergent copy of this logic — one implementation now.
+   *
+   * THE ORIGIN RULE REACHES GEMINI (F9600, D149, 2026-08-07).
+   *
+   * This is the gate injected into GatedGeminiClient, so it runs on EVERY paid
+   * Gemini surface — including the one a person is waiting on. Creating a poll
+   * calls `inferPollSubject` on the request path; with the ceiling asserted
+   * here, an exhausted (or vendor-POISONED, which lasts until the month reset)
+   * pool turned poll creation into a 500 for weeks. That is precisely the bug
+   * D149 exists to kill, and Places already had the cure — see
+   * google-places.service.ts `gateWorkerSpend` for why the PROCESS ROLE, not a
+   * threaded `origin` parameter, is the honest and unforgettable place to draw
+   * the line.
+   *
+   * Where this differs from Places: Places does not consult the pool at all on
+   * a user path. Here we ask and then DECLINE TO OBEY, because the answer is
+   * worth knowing — "a user path spent past the backstop" is exactly the
+   * signal the owner wants, and `admit()` is a read (no reservation, no
+   * metering), so asking costs nothing. A budget refusal becomes a warn-email
+   * deduped per pool per day and the call proceeds; anything else out of the
+   * gate is the gate being BROKEN (unregistered pool, unreachable store) and
+   * still throws, because that is not a budget refusing a person.
+   *
+   * THE POISONED ARM IS NOT A LOOPHOLE. Poison mirrors the vendor's own
+   * refusal, so on that path the user's call reaches Google and Google says
+   * no. We do not add our refusal on top of it; the caller degrades (poll
+   * creation falls back to a discussion poll — polls.service.ts).
+   *
+   * Background Gemini work is unaffected: a worker process still asserts here,
+   * and batch submission asserts the same gate directly
+   * (gemini-batch.service.ts), so the ceiling still binds the biggest spender.
+   */
   async assertSpendBudgetOpen(): Promise<void> {
-    await this.governance.assertGeminiSpendOpen();
+    if (!isApiRuntime()) {
+      await this.governance.assertGeminiSpendOpen();
+      return;
+    }
+    try {
+      await this.governance.assertGeminiSpendOpen();
+    } catch (error) {
+      if (!(error instanceof SpendBudgetClosedError)) {
+        throw error;
+      }
+      const dayKey = new Date().toISOString().slice(0, 10);
+      this.logger.error(
+        'GEMINI SPEND BACKSTOP CLOSED ON A USER PATH — proceeding anyway (D149)',
+        { reason: error.reason },
+      );
+      this.opsAlerts.emit({
+        severity: 'warn',
+        emailOnWarn: true,
+        kind: 'gemini_origin_bypass',
+        title: 'Gemini spend gate bypassed on a user path',
+        body:
+          `A user-originated Gemini call ran while the gemini.monthlySpend ` +
+          `budget was closed (${error.reason}). The call was ALLOWED THROUGH ` +
+          `(D149: a person is never refused by our own counter). If the ` +
+          `reason is 'exhausted', look for a runaway loop — the cap sits at ` +
+          `~10x measured steady state. If it is 'poisoned', the vendor cap ` +
+          `is the real wall: raise it in AI Studio.`,
+        dedupeKey: `gemini_origin_bypass:gemini.monthlySpend:${dayKey}`,
+      });
+    }
   }
 
   /**

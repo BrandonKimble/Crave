@@ -149,7 +149,8 @@ export class PoolRegistrationError extends Error {}
  * Durable window-consumption store (§14.5): one row per (pool, window).
  * `add` must be an ATOMIC increment (concurrent processes compose); `load`
  * returns null for a window with no row yet. Implementations may only throw —
- * the registry translates every failure into fail-closed window state.
+ * the registry translates every failure into UNCONFIRMED window state, which
+ * since D149 means admit-and-scream (grant pools excepted), not refuse.
  */
 export interface PoolConsumptionStore {
   load(
@@ -166,8 +167,9 @@ export interface PoolConsumptionStore {
 /**
  * Per-durable-pool window state. `confirmed` is set ONLY by a successful
  * store load for the current window ("memory agrees with the store");
- * a failed write-through or a window roll clears it → fail closed until the
- * next successful ensureWindow. `unpersisted` is consumption applied in
+ * a failed write-through or a window roll clears it → the window is
+ * UNCONFIRMED until the next successful ensureWindow, which since D149 admits
+ * and pages a human rather than refusing (grant pools still deny). `unpersisted` is consumption applied in
  * memory whose write-through hasn't succeeded yet — flushed before the next
  * load so the stored row is monotonically ≥ everything this process admitted.
  */
@@ -219,8 +221,9 @@ export class PoolRegistry {
     private readonly store?: PoolConsumptionStore,
     /** §24 red team finding 9 ("loud durable-flush failure"): flushDurable
      *  used to swallow a store write failure into `confirmed = false`
-     *  silently — correct for the NEXT reserve() (fails closed, §14.5), but
-     *  a crash before the next successful flush loses the unpersisted
+     *  silently — which since D149 means the next reserve() ADMITS blind
+     *  (§14.5, scream-never-kill), and a crash before the next successful
+     *  flush loses the unpersisted
      *  delta with no signal anyone ever saw. Optional so callers that don't
      *  care (most tests) pay nothing; governance.service.ts wires a
      *  logger.error + critical ops-alert callback. */
@@ -356,9 +359,10 @@ export class PoolRegistry {
    * called at boot and awaited by GovernanceService.draw before reserve (so
    * the first draw after a restart or a month roll sees month-to-date truth).
    * Flushes any unpersisted local consumption FIRST, then loads: the stored
-   * row ends monotonically ≥ everything this process admitted. Never throws;
-   * failure leaves the window unconfirmed → reserve() fails closed (§14.5).
+   * row ends monotonically ≥ everything this process admitted.
    * No-op for perMinute pools and for already-confirmed windows.
+   * Never throws; failure leaves the window unconfirmed → reserve() admits
+   * and fires `onUnconfirmedAdmit` (D149; grant pools still deny).
    */
   /** Last time admit() re-read a pool's durable window (TTL bookkeeping). */
   private readonly lastAdmitRefreshAt = new Map<string, number>();
@@ -416,10 +420,12 @@ export class PoolRegistry {
         } catch (error) {
           // Round-3 C4: continuing here used to CLOBBER the tail at the
           // bottom of this function (residualNow() sees the old window and
-          // returns 0). Bail instead: the window stays unconfirmed,
-          // reserve() fails closed, and the next ensureWindow retries the
-          // tail flush. ALERT on the way out (round 4): a persistent store
-          // failure now wedges the pool into denial — that must be loud.
+          // returns 0). Bail instead: the window stays unconfirmed and the
+          // next ensureWindow retries the tail flush. ALERT on the way out:
+          // since D149 an unconfirmed window ADMITS (scream, never kill), so
+          // a persistent store failure means we are spending against a
+          // balance we cannot read — louder, not quieter, than the old
+          // wedged-into-denial behavior this alert was written for.
           this.onDurableFlushFailure?.(pool.name, error);
           return;
         }
@@ -762,7 +768,7 @@ export class PoolRegistry {
    * settles; the promise is the durable write-through for perMonth/perDay/
    * grant pools (a synchronous durable increment — they are low-rate money).
    * The write-through never rejects: a store failure marks the window
-   * unconfirmed, so the NEXT reserve fails closed (§14.5).
+   * unconfirmed, so the NEXT reserve admits blind and pages (D149).
    */
   reconcile(
     reservationId: string,
@@ -879,7 +885,8 @@ export class PoolRegistry {
   /**
    * Write through this process's unpersisted consumption for a durable pool.
    * Success on an already-confirmed window keeps it confirmed; failure clears
-   * confirmation (fail closed). Never throws.
+   * confirmation — which since D149 means the next admission goes through
+   * blind and loud, not refused. Never throws.
    */
   private async flushDurable(poolName: string): Promise<void> {
     return this.serializeDurable(poolName, async () => {

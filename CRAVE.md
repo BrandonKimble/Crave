@@ -270,7 +270,7 @@ this.gate()` before touching the vendor; free surfaces (batch get/list/
    is measurably ~1.7x under-metered against the BigQuery billing export.
    `spend-currency.ts` makes `LedgerMicros` and `BilledMicros` different
    _types_. Anything that decides when to STOP (monthly pools, campaign
-   envelopes, the backstop derivation) must count `BilledMicros`;
+   envelopes, the fixed backstop windows) must count `BilledMicros`;
    `ReconciliationMultiplierService.gross()` is the only way to produce one
    from a ledger figure. This exists because campaigns were once minted in
    billed dollars and drained in ledger dollars — an $82 envelope spent ~$139
@@ -323,9 +323,15 @@ tightens.
   campaigns' declared-vs-actual history, floored at the 0.25 bootstrap.
 - **Tier 2 — lanes.** Per-lane cost baselines, owned outside this territory.
 - **Tier 3 — the catastrophe backstop.** `gemini.monthlySpend` and
-  `googlePlaces.monthlySpend`: durable, fail-closed monthly dollar windows.
-  The Gemini limit is re-derived nightly as 3× trailing _measured_ spend; the
-  env var only seeds the very first boot. Expected to never fire.
+  `googlePlaces.monthlySpend`: durable monthly dollar windows, FIXED at
+  `GEMINI_MONTHLY_SPEND_CAP_USD` / the Places equivalent (~10x measured
+  steady state) — D149 deleted the nightly re-derivation along with the
+  daily health check that rode the hot path to watch it. They SCREAM, NEVER
+  KILL: a window the store cannot confirm ADMITS and pages a human instead
+  of refusing (grant pools are the one exception and still deny), and a
+  closed budget refuses only BACKGROUND work — the origin rule below means a
+  person is never told no by a number they cannot see. Expected to never
+  fire; a trip is an incident, not scheduling.
 
 `PoolRegistry` is the primitive: reserve → act → reconcile, with
 declared-vs-actual pairs as the estimator-drift instrument. Durable windows
@@ -408,7 +414,8 @@ skips the gate is unrepresentable); `spend-currency.ts`'s branded currencies;
 truth); `llm-audit-policy.ts` (applied to exactly the three ephemeral-reason
 schemas — moderation's semantic reason and the gate's persisted reason are
 correctly exempt); `RedditGovernanceDenialError`'s deliberate non-subclassing;
-`PoolRegistry`'s reserve/act/reconcile and fail-closed store law.
+`PoolRegistry`'s reserve/act/reconcile and its store law (fail-closed until
+D149 rederived it to admit-and-scream for every pool but grants).
 
 **Open proposals:** F114 (zero means closed, not default) · F115 (an
 always-green metric is lying) · F116 (invented priors on a dead surface) ·

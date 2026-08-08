@@ -289,8 +289,14 @@ describe('PoolRegistry (master plan §14 v2)', () => {
     it('does NOT poison another VENDOR — every pool shares credential "default"', () => {
       const registry = new PoolRegistry();
       registry.register(tomtom('reverseGeocode'));
+      // F9610: this fixture used to register 'gemini.tokens', a pool D149
+      // deleted — a test can register any name it likes, so the fixture went
+      // on "proving" cross-vendor isolation using a pool that no longer
+      // exists anywhere. `reddit.requests` is a REAL registered perMinute
+      // pool of a different vendor (governance.service.ts), which is what
+      // this test was always about.
       registry.register({
-        name: 'gemini.tokens',
+        name: 'reddit.requests',
         credential: 'default',
         window: { kind: 'perMinute', limit: 100, denomination: 'quantity' },
         reservationTtlMs: 60_000,
@@ -298,9 +304,11 @@ describe('PoolRegistry (master plan §14 v2)', () => {
 
       registry.poisonWindow('tomtom.reverseGeocode', 30_000, t0);
 
-      // Keying on credential ALONE would have taken Gemini down with TomTom:
+      // Keying on credential ALONE would have taken Reddit down with TomTom:
       // 'default' is the credential string for every vendor in this codebase.
-      expect(registry.reserve('gemini.tokens', 1, 'x', t0).admitted).toBe(true);
+      expect(registry.reserve('reddit.requests', 1, 'x', t0).admitted).toBe(
+        true,
+      );
     });
 
     it('does NOT poison a second KEY for the same vendor (§14.1 sharding)', () => {

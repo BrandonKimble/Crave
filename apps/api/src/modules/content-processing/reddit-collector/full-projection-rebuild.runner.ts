@@ -3,6 +3,7 @@ import { PrismaService } from '../../../prisma/prisma.service';
 import { LoggerService } from '../../../shared';
 import { ProjectionRebuildService } from './projection-rebuild.service';
 import { isEnvFlagEnabled } from '../../../shared/config/env-flag';
+import { resolveProcessRole } from '../../../shared/utils/process-role';
 
 /**
  * ONE-SHOT full projection rebuild (worker boot, env-gated) — the generic
@@ -33,7 +34,15 @@ export class FullProjectionRebuildRunner implements OnApplicationBootstrap {
     if (!isEnvFlagEnabled(process.env.RUN_FULL_PROJECTION_REBUILD)) {
       return;
     }
-    if ((process.env.PROCESS_ROLE || 'api') !== 'worker') {
+    // ONE PROCESS-ROLE READER (F9608). This read the env var itself and
+    // defaulted to 'api', while the canonical reader defaults to 'all' — two
+    // rival answers to "what is this process" that disagree on the unset case
+    // that every dev laptop and every script runs under. The rule this wants
+    // is unchanged and deliberately STRICT: only the dedicated worker service
+    // (PROCESS_ROLE=worker, start:prod:worker) may start a heavy one-shot
+    // drain, so 'all' is not good enough here even though it is
+    // worker-capable for scheduling.
+    if (resolveProcessRole() !== 'worker') {
       this.logger.warn(
         'RUN_FULL_PROJECTION_REBUILD set on a non-worker role — ignoring',
       );

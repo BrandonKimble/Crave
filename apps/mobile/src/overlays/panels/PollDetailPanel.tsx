@@ -83,6 +83,7 @@ import {
   type ThreadItem,
   type ThreadNode,
 } from './pollThreadModel';
+import { useAuth } from '@clerk/clerk-expo';
 import { createProfileQueryOptions } from './profileSceneQueryOptions';
 import { API_BASE_URL } from '../../services/api';
 import { formatRelativeTime } from '../../utils/relative-time';
@@ -630,8 +631,9 @@ export const usePollDetailPanelSpec = ({
   // The bottom tab bar leaves via the DERIVED nav-out rule (nav-out-derivation-store):
   // pollDetail is a child scene, so the nav-push motion fires by construction (§D).
   const { isSignedIn } = useAuthController();
+  const { userId: viewerAuthId } = useAuth();
   const { data: viewerProfile } = useQuery({
-    ...createProfileQueryOptions(),
+    ...createProfileQueryOptions(viewerAuthId),
     enabled: isSignedIn,
   });
   const viewerUserId = viewerProfile?.userId ?? null;

@@ -51,7 +51,6 @@
       "mentionCount": 12,
       "totalUpvotes": 145,
       "lastMentionedAt": "2025-10-24T18:02:00.000Z",
-      "categories": [],
       "foodAttributes": []
     }
   ],

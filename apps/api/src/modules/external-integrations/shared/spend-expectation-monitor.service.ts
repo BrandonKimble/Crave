@@ -44,8 +44,23 @@ import {
  * trend cannot be read from one request. Riding a nightly cron also means the
  * detector cannot slow down the hot path it watches.
  *
- * DEDUPE: one key per vendor per severity per MONTH. The owner gets told once
- * that August is running hot, not thirty times.
+ * DEDUPE: per vendor, per severity, on a window sized to how long the owner
+ * can afford to hear nothing (F9601). It used to be per MONTH for both, which
+ * reads as "tell him once" but behaves as "and then never again": ONE early
+ * false positive — the 1x line is genuinely crossable on day 2 by a single
+ * onboarding — silenced that vendor for the remaining 29 days, including the
+ * day a real loop started. A detector that can be permanently disarmed by
+ * being right early is not a detector.
+ *
+ *   critical (>= 2x) — DAILY. Two-times burn with no deliberate event is a
+ *     loop, and a loop that is still running tomorrow is worth being told
+ *     about again. Alert fatigue is the wrong worry here: at this severity the
+ *     alert stops when the spend stops, so a repeat means it did not.
+ *
+ *   warn (>= 1x) — WEEKLY. This is a trend heads-up, usually explained by
+ *     something the owner did on purpose. Daily would train him to filter it;
+ *     monthly let it disappear. Four chances a month to notice August is hot,
+ *     each carrying the current numbers, is the honest middle.
  */
 @Injectable()
 export class SpendExpectationMonitorService {
@@ -95,7 +110,11 @@ export class SpendExpectationMonitorService {
     const monthStart = new Date(
       Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1),
     );
-    const monthKey = now.toISOString().slice(0, 7);
+    const dayKey = now.toISOString().slice(0, 10);
+    // Week-of-year for the warn window: any stable 7-day bucket works, and
+    // days-since-epoch/7 is one that never disagrees with itself at a year
+    // boundary the way a `YYYY-Wnn` string can.
+    const weekKey = `w${Math.floor(now.getTime() / 604_800_000)}`;
     const results: Array<{
       vendor: WatchedVendor;
       spentUsd: number;
@@ -146,7 +165,7 @@ export class SpendExpectationMonitorService {
             `that didn't stop. Nothing is being refused: the hard backstop ` +
             `sits near 10x expected, so it will not stop this for weeks. ` +
             `Check api_usage_ledger by caller/operation for this month.`,
-          dedupeKey: `spend_vs_expectation_critical:${vendor}:${monthKey}`,
+          dedupeKey: `spend_vs_expectation_critical:${vendor}:${dayKey}`,
         });
       } else if (ratio >= 1) {
         this.opsAlerts.emit({
@@ -160,7 +179,7 @@ export class SpendExpectationMonitorService {
             `this is that, and no action is needed. If you didn't, this is ` +
             `the early warning — nothing is being refused, and you have the ` +
             `rest of the month before it matters.`,
-          dedupeKey: `spend_vs_expectation_warn:${vendor}:${monthKey}`,
+          dedupeKey: `spend_vs_expectation_warn:${vendor}:${weekKey}`,
         });
       }
     }

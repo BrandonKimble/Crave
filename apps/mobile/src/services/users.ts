@@ -1,4 +1,4 @@
-import type { OnboardingAnswers, UserOnboardingProfile } from '@crave-search/shared';
+import type { BillingRail, OnboardingAnswers, UserOnboardingProfile } from '@crave-search/shared';
 import type { AxiosRequestConfig } from 'axios';
 import api from './api';
 import { SILENT, type ApiRequestBehaviorConfig } from './api';
@@ -37,8 +37,12 @@ export interface AccessSummary {
    *
    * The client CANNOT derive this: `source` above says why access exists,
    * never who takes the money. "Manage subscription" dispatches on it.
+   *
+   * The union itself comes from @crave-search/shared (F9802) — it used to be a
+   * second hand-written copy of the server's, and a rail the client had never
+   * heard of falls through to "no rail", i.e. the paywall.
    */
-  billingRail?: 'app_store' | 'web' | null;
+  billingRail?: BillingRail | null;
 }
 
 export interface UserProfile {

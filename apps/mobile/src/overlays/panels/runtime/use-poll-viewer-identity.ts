@@ -2,6 +2,7 @@ import React from 'react';
 import { useQuery } from '@tanstack/react-query';
 
 import { useAuthController } from '../../../hooks/use-auth-controller';
+import { useAuth } from '@clerk/clerk-expo';
 import { createProfileQueryOptions } from '../profileSceneQueryOptions';
 import {
   getPollViewerIdentity,
@@ -20,8 +21,9 @@ import {
  */
 export const usePollViewerIdentityPublication = (): void => {
   const { isSignedIn } = useAuthController();
+  const { userId } = useAuth();
   const { data: viewerProfile } = useQuery({
-    ...createProfileQueryOptions(),
+    ...createProfileQueryOptions(userId),
     enabled: isSignedIn,
   });
   const avatarUrl = viewerProfile?.avatarUrl ?? null;

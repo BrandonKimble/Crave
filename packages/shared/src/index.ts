@@ -18,6 +18,8 @@ export type {
   UserOnboardingProfile,
 } from './types';
 
+export type { BillingRail } from './types/billing';
+
 export { NOTIFICATION_TYPES } from './types/notifications';
 export type { NotificationTypeName } from './types/notifications';
 

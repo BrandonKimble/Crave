@@ -452,8 +452,10 @@ export class GovernanceService implements OnModuleInit {
   /**
    * Boot hydration (§14.5): load each durable pool's current window from the
    * store so month-to-date consumption survives the restart. A failed load
-   * leaves the window unconfirmed — hardClosed pools deny until the store
-   * recovers (ensureWindow retries on every draw). Boot itself never fails.
+   * leaves the window unconfirmed — which since D149 means the pool ADMITS
+   * and `onUnconfirmedAdmit` pages a human (grant pools are the exception and
+   * still deny); ensureWindow retries on every draw. Boot itself never
+   * fails.
    */
   async onModuleInit(): Promise<void> {
     await Promise.all(
@@ -462,7 +464,7 @@ export class GovernanceService implements OnModuleInit {
         const status = this.pools.poolStatus(pool.name);
         if (status.storeConfirmed === false) {
           this.logger.warn(
-            'Durable pool window not store-confirmed at boot (fail-closed until the store recovers)',
+            'Durable pool window not store-confirmed at boot — spending proceeds BLIND and alerts until the store recovers (D149 scream-never-kill; grant pools still deny)',
             { poolName: pool.name },
           );
         } else if (status.storeConfirmed === true) {

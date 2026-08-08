@@ -8,6 +8,7 @@ import {
   isProfileSectionKey,
   type ProfileSectionKey,
 } from '../ProfileSectionsBody';
+import { useAuth } from '@clerk/clerk-expo';
 import { createProfileQueryOptions } from '../profileSceneQueryOptions';
 import { useProfilePanelActionsRuntime } from './profile-panel-actions-runtime';
 import { useProfilePanelIdentityRuntime } from './profile-panel-identity-runtime';
@@ -40,8 +41,9 @@ export const useProfilePanelBodyModelRuntime = ({
 
   // Own profile identity read (getMe) — prewarms with the data lane; feeds the identity chrome
   // (avatar / name / metrics FrostCutout) and yields the userId the shared sections fetch against.
+  const { userId: authUserId } = useAuth();
   const profileQuery = useQuery({
-    ...createProfileQueryOptions(),
+    ...createProfileQueryOptions(authUserId),
     enabled: dataLaneReady,
     subscribed: dataLaneReady,
   });

@@ -74,10 +74,18 @@ describe('SpendExpectationMonitorService.compareToExpectation', () => {
 
   it('2.1x prorated expected → CRITICAL (which emails)', async () => {
     // MUTATION: raise the `ratio >= 2` threshold and this reds.
-    const { places, alerts } = await run(PRORATED_PLACES_USD * 2.1);
+    const { places, alerts, emit } = await run(PRORATED_PLACES_USD * 2.1);
     expect(places?.ratio).toBeGreaterThan(2);
     expect(alerts).toHaveLength(1);
     expect(alerts[0].severity).toBe('critical');
+    // F9601: DAILY. A loop still burning tomorrow is worth being told about
+    // again; a month-wide key said it once and then watched in silence.
+    // MUTATION: widen the key back to `${monthKey}` and this reds.
+    expect(emit).toHaveBeenCalledWith(
+      expect.objectContaining({
+        dedupeKey: 'spend_vs_expectation_critical:google_places:2026-08-15',
+      }),
+    );
   });
 
   it('1.3x prorated expected → WARN, and the warn OPTS IN to email', async () => {
@@ -90,7 +98,13 @@ describe('SpendExpectationMonitorService.compareToExpectation', () => {
       expect.objectContaining({
         kind: 'spend_vs_expectation',
         emailOnWarn: true,
-        dedupeKey: 'spend_vs_expectation_warn:google_places:2026-08',
+        // F9601: WEEKLY, not monthly. A month-wide key meant one early
+        // true-but-benign warn (a city onboarding on day 2) muted this vendor
+        // for the other 29 days — including the day a real loop started.
+        // MUTATION: put `2026-08` back and this reds.
+        dedupeKey: expect.stringMatching(
+          /^spend_vs_expectation_warn:google_places:w\d+$/,
+        ) as unknown as string,
       }),
     );
   });

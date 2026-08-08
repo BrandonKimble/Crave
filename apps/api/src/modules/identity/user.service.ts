@@ -19,7 +19,7 @@ import {
 } from './auth/clerk-auth.service';
 import { EntitlementService } from '../entitlements/entitlement.service';
 import { UserProfileDto } from './dto/user-profile.dto';
-import { deriveBillingRail } from './billing-rail';
+import { deriveBillingRail, LIVE_SUBSCRIPTION_STATUSES } from './billing-rail';
 import { UserStatsService } from './user-stats.service';
 import { UpdateUserProfileDto } from './dto/update-user-profile.dto';
 import { UpdateUserOnboardingDto } from './dto/update-user-onboarding.dto';
@@ -213,7 +213,13 @@ export class UserService {
     const user = await this.prisma.user.findUnique({
       where: { deletedAt: null, userId },
       include: {
+        // LIVE ROWS ONLY (F9800). Without the status filter this took the
+        // NEWEST row of any status, so one cancelled subscription created
+        // after a live one hid it — and the rail derived from a dead row is
+        // null, which routes a paying customer to the paywall. The list is
+        // billing-rail.ts's, the same one billing.service.ts cancels against.
         subscriptions: {
+          where: { status: { in: [...LIVE_SUBSCRIPTION_STATUSES] } },
           orderBy: { createdAt: 'desc' },
           take: 1,
         },

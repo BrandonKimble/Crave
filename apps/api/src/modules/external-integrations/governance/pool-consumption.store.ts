@@ -6,8 +6,9 @@ import type { PoolConsumptionStore } from './pool-registry';
  * §14.5 durable window store, Prisma/Postgres implementation: one row per
  * (pool, window), atomically incremented on write-through (ON CONFLICT DO
  * UPDATE — concurrent processes compose; no read-modify-write race). Errors
- * propagate to the registry, which translates them into fail-closed window
- * state — this class never swallows.
+ * propagate to the registry, which translates them into UNCONFIRMED window
+ * state — admit-and-page since D149, not refuse — and this class never
+ * swallows.
  */
 @Injectable()
 export class PrismaPoolConsumptionStore implements PoolConsumptionStore {

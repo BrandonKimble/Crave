@@ -5,6 +5,7 @@ import { LoggerService } from '../../../shared';
 import { SpendCampaignService } from '../../external-integrations/shared/spend-campaign.service';
 import { ReplayService } from './replay.service';
 import { isEnvFlagEnabled } from '../../../shared/config/env-flag';
+import { resolveProcessRole } from '../../../shared/utils/process-role';
 
 /**
  * CITY RE-EXTRACT (the standing pattern; generalizes the 2026-07-30 Austin
@@ -56,7 +57,15 @@ export class CityReextractRunner implements OnApplicationBootstrap {
     if (!communities.length) {
       return;
     }
-    if ((process.env.PROCESS_ROLE || 'api') !== 'worker') {
+    // ONE PROCESS-ROLE READER (F9608). This read the env var itself and
+    // defaulted to 'api', while the canonical reader defaults to 'all' — two
+    // rival answers to "what is this process" that disagree on the unset case
+    // that every dev laptop and every script runs under. The rule this wants
+    // is unchanged and deliberately STRICT: only the dedicated worker service
+    // (PROCESS_ROLE=worker, start:prod:worker) may start a heavy one-shot
+    // drain, so 'all' is not good enough here even though it is
+    // worker-capable for scheduling.
+    if (resolveProcessRole() !== 'worker') {
       this.logger.warn(
         'REEXTRACT_COMMUNITIES set on a non-worker role — ignoring',
       );

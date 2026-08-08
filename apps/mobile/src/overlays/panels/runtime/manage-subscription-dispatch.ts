@@ -69,7 +69,24 @@ export async function runManageSubscriptionAction(
     return;
   }
 
-  // No live subscription (never subscribed, lapsed, or on a comp): there is
-  // nothing to manage, so show what there IS to buy.
+  if (rail === null || rail === undefined) {
+    // No live subscription (never subscribed, lapsed, or on a comp): there is
+    // nothing to manage, so show what there IS to buy.
+    deps.presentPaywall();
+    return;
+  }
+
+  // EXHAUSTIVENESS (F9802). The two `if`s above used to end in a bare
+  // `presentPaywall()`, so the table's default arm was "anything I don't
+  // recognize is a prospect". The day the server learns a third rail, every
+  // subscriber on it taps Manage subscription and gets asked to buy what they
+  // already own — the paywall failure of F9800/F9801 a third time, and this
+  // one would have shipped silently because a string union widens without
+  // complaint. `never` makes the omission a COMPILE error instead, which is
+  // why the union is single-sourced from @crave-search/shared.
+  const unreachable: never = rail;
+  logger.error('Unknown billing rail — falling back to the plans', {
+    rail: unreachable,
+  });
   deps.presentPaywall();
 }

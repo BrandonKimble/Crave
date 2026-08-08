@@ -179,9 +179,12 @@ export class GeminiBatchService implements OnModuleDestroy {
     // default ≈ 10x measured steady state — D149, 2026-08-07). Batch is
     // background work, so a refusal here reaches a queue, never a person.
     // ONE GATE (2026-07-28). This used to hand-compare a poolStatus()
-    // snapshot, which never re-reads the durable window and treats an
-    // unconfirmed store as zero spent — i.e. fail-OPEN on the path that is
-    // both the default extraction mode and 46.9% of measured spend.
+    // snapshot, which never re-reads the durable window — so a month's spend
+    // could be a boot-time number on the path that is both the default
+    // extraction mode and 46.9% of measured spend. (The other half of that
+    // old complaint, "and it admits on an unconfirmed store", is no longer a
+    // defect: D149 made admit-and-scream the law everywhere but grant pools.
+    // The refusal to re-read was always the real bug.)
     await this.governance.assertGeminiSpendOpen();
     // §24 red team finding 1 ("a breach must stop work"): when this batch
     // belongs to a Tier 1 campaign (resumeContext.campaignId), refuse BEFORE

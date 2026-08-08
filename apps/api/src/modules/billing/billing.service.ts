@@ -28,6 +28,10 @@ import { EntitlementService } from '../entitlements/entitlement.service';
 import { readDefaultEntitlementCode } from '../entitlements/entitlement-config';
 import { RevenueCatEntitlementMap } from './revenuecat-entitlement-map';
 import { revenueCatEventIdentity } from './webhook-event-identity';
+// ONE LIST OF LIVE STATUSES (F9800) — billing-rail.ts owns it, because the
+// rail derivation and every "which row is the live one" query must agree or a
+// paying customer gets shown the buy screen.
+import { LIVE_SUBSCRIPTION_STATUSES } from '../identity/billing-rail';
 
 /**
  * The annual-only free trial, in days (owner ruling 2026-08-03: "~1 week").
@@ -927,7 +931,7 @@ export class BillingService {
         userId: user.userId,
         provider: SubscriptionProvider.stripe,
         status: {
-          in: [SubscriptionStatus.active, SubscriptionStatus.trialing],
+          in: [...LIVE_SUBSCRIPTION_STATUSES],
         },
       },
       orderBy: { createdAt: 'desc' },
@@ -939,7 +943,7 @@ export class BillingService {
           userId: user.userId,
           provider: SubscriptionProvider.revenuecat,
           status: {
-            in: [SubscriptionStatus.active, SubscriptionStatus.trialing],
+            in: [...LIVE_SUBSCRIPTION_STATUSES],
           },
         },
         select: { subscriptionId: true },

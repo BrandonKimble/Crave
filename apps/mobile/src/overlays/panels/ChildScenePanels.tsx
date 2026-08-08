@@ -19,6 +19,7 @@ import type { RouteOverlayNavigationSnapshot } from '../../navigation/runtime/ro
 import { useAppOverlayRouteController } from '../useAppOverlayRouteController';
 import { useAccountActionsRuntime } from './runtime/use-account-actions-runtime';
 import { useManageSubscriptionAction } from './runtime/use-manage-subscription-action';
+import { useAuth } from '@clerk/clerk-expo';
 import { createProfileQueryOptions } from './profileSceneQueryOptions';
 import { usersService, type FollowListUser } from '../../services/users';
 import { UserProfilePanelBody } from './UserProfilePanel';
@@ -121,23 +122,35 @@ const DrillInRow = ({
   testID,
   onPress,
   destructive = false,
+  disabled = false,
 }: {
   label: string;
   testID: string;
   onPress: () => void;
   destructive?: boolean;
+  /** For a row whose destination is not KNOWN yet (see ManageSubscriptionRow):
+   *  waiting is honest, guessing is not. */
+  disabled?: boolean;
 }) => (
   <Pressable
     onPress={onPress}
+    disabled={disabled}
     accessibilityRole="button"
     accessibilityLabel={label}
+    accessibilityState={{ disabled }}
     testID={testID}
     style={styles.drillInRow}
   >
     <Text
       variant="body"
       weight="semibold"
-      style={destructive ? styles.destructiveRowText : styles.bodyText}
+      style={
+        disabled
+          ? styles.disabledRowText
+          : destructive
+            ? styles.destructiveRowText
+            : styles.bodyText
+      }
     >
       {label}
     </Text>
@@ -270,7 +283,11 @@ const BlockedUsersSection = () => {
 const SubscriptionStatusLine = () => {
   // A#9 (residency): quiet while the hosting shell is hidden.
   const subscriptionLive = useShellLiveness();
-  const profileQuery = useQuery({ ...createProfileQueryOptions(), subscribed: subscriptionLive });
+  const { userId } = useAuth();
+  const profileQuery = useQuery({
+    ...createProfileQueryOptions(userId),
+    subscribed: subscriptionLive,
+  });
   const access = profileQuery.data?.access;
   if (access == null) {
     return null;
@@ -296,15 +313,28 @@ const SubscriptionStatusLine = () => {
 // Apple URL was a dead end for the web rail.
 const ManageSubscriptionRow = () => {
   const subscriptionLive = useShellLiveness();
-  const profileQuery = useQuery({ ...createProfileQueryOptions(), subscribed: subscriptionLive });
+  const { userId } = useAuth();
+  const profileQuery = useQuery({
+    ...createProfileQueryOptions(userId),
+    subscribed: subscriptionLive,
+  });
   const handleManageSubscription = useManageSubscriptionAction(
     profileQuery.data?.access?.billingRail
   );
+  // "NOT LOADED YET" IS NOT "NO SUBSCRIPTION" (F9804). `billingRail` is
+  // undefined for both, and the dispatch routes undefined to the paywall — so
+  // tapping this row during the first second after opening settings showed a
+  // Stripe subscriber the plans screen. The two facts are distinguishable
+  // (the query knows), so the row waits instead of guessing: disabled while
+  // the profile is in flight, live the moment an answer exists — including
+  // the answer "null, no rail", which legitimately means the paywall.
+  const railKnown = profileQuery.data?.access !== undefined;
   return (
     <DrillInRow
       label="Manage subscription"
       testID="settings-manage-subscription"
       onPress={handleManageSubscription}
+      disabled={!railKnown}
     />
   );
 };
