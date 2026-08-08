@@ -129,12 +129,7 @@ function createController(
     $queryRaw: jest.fn().mockResolvedValue(grounds),
   };
   const catalog = new PlacesCatalogService(prisma, logger);
-  return new PlacesController(
-    catalog,
-    // viewport-verdict endpoint is not under test here (see polls-feed.spec
-    // for the shared composition's behavior).
-    {} as never,
-  );
+  return new PlacesController(catalog);
 }
 
 function query(view: GeoBbox): PlacesInViewQueryDto {

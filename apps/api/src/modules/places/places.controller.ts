@@ -14,7 +14,6 @@ import { ClerkAuthGuard } from '../identity/auth/clerk-auth.guard';
 import { RateLimitTier } from '../infrastructure/throttler/throttler.decorator';
 import { PlacesInViewQueryDto } from './dto/places-in-view.dto';
 import { PlacesCatalogService } from './places-catalog.service';
-import { ViewportVerdictService } from './viewport-verdict.service';
 
 /**
  * The catalog SLICE read (header subject-store design, ratified 2026-07-21):
@@ -46,42 +45,14 @@ import { ViewportVerdictService } from './viewport-verdict.service';
 @Controller('places')
 @UseGuards(ClerkAuthGuard)
 export class PlacesController {
-  constructor(
-    private readonly catalog: PlacesCatalogService,
-    private readonly viewportVerdict: ViewportVerdictService,
-  ) {}
+  constructor(private readonly catalog: PlacesCatalogService) {}
 
-  /**
-   * The standalone viewport→place-verdict read (home's header): the SAME
-   * law composition the polls feed runs (ViewportVerdictService is the one
-   * implementation). Nulls when nothing under the viewport's centre clears
-   * the header fraction — the client renders its "this area" copy.
-   */
-  // heavyGeoRead, not default (red team 2026-08-02). That tier was created
-  // for exactly this shape and its own comment describes these two endpoints
-  // — they were simply never moved onto it. Authenticated, so this is not an
-  // exposure fix: it is that 100/min of viewport reads is a Postgres-and-
-  // egress bill a human panning a map never approaches.
-  @Get('viewport-verdict')
-  @RateLimitTier('heavyGeoRead')
-  async viewportVerdictRead(
-    @Query() query: PlacesInViewQueryDto,
-  ): Promise<{ placeId: string | null; placeName: string | null }> {
-    if (query.minLat > query.maxLat) {
-      // Latitude is not circular — this shape is malformed, not wrap.
-      throw new BadRequestException('minLat must be <= maxLat');
-    }
-    const verdict = await this.viewportVerdict.resolveViewportVerdict(
-      query.toBbox(),
-    );
-    return {
-      placeId: verdict.headerPlace?.placeId ?? null,
-      placeName: verdict.headerPlace?.name ?? null,
-    };
-  }
-
-  // See viewport-verdict above: in-view additionally EXPANDS the requested
-  // box by the slice margin before serializing every ground it touches.
+  // The slice read: in-view EXPANDS the requested box by the slice margin
+  // before serializing every ground it touches. (A standalone
+  // GET /places/viewport-verdict route lived here until 2026-08-08 — zero
+  // callers ever; the verdict SERVICE is alive through the polls feed and
+  // home feed, but the HTTP mouth was dead and four comments claimed
+  // otherwise. Round-3 red team.)
   @Get('in-view')
   @RateLimitTier('heavyGeoRead')
   async placesInView(

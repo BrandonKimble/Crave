@@ -221,7 +221,7 @@ export class PollsService {
 
     // THE shared viewport→place-verdict seam (ViewportVerdictService): the
     // same placesInView + resolveFeedMembership + resolveHeaderPlace
-    // composition home consumes via GET /places/viewport-verdict.
+    // composition the home feed consumes through the same service.
     const verdict = await this.viewportVerdict.resolveViewportVerdict(view);
 
     // §6 place slicer: options are computed over the UNFILTERED membership

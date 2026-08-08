@@ -26,27 +26,3 @@ export const fetchPlacesInView = async (view: GeoBbox): Promise<PlacesInViewSlic
   });
   return response.data;
 };
-
-/** The server's §2/§2.5 viewport→place verdict (ViewportVerdictService — the
- *  SAME composition the polls feed header rides). Nulls = no covering place
- *  ("this area"). Home's header consumes this; polls keeps reading the verdict
- *  off its own feed response. */
-export type ViewportVerdictResponse = {
-  placeId: string | null;
-  placeName: string | null;
-};
-
-export const fetchViewportVerdict = async (view: GeoBbox): Promise<ViewportVerdictResponse> => {
-  const response = await api.get<ViewportVerdictResponse>('/places/viewport-verdict', {
-    params: {
-      minLat: view.minLat,
-      minLng: view.minLng,
-      maxLat: view.maxLat,
-      maxLng: view.maxLng,
-    },
-  });
-  return {
-    placeId: typeof response.data?.placeId === 'string' ? response.data.placeId : null,
-    placeName: typeof response.data?.placeName === 'string' ? response.data.placeName : null,
-  };
-};

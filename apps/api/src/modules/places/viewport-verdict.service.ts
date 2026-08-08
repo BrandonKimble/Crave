@@ -2,9 +2,10 @@
  * THE viewport→place-verdict seam — the ONE server-side home of the §2/§2.5/§4
  * composition (placesInView → resolveFeedMembership → resolveHeaderPlace +
  * descendant expansion), extracted from the polls feed so home and polls can
- * never fork the law. Polls' queryPolls calls this; the standalone
- * GET /places/viewport-verdict endpoint (home's header) calls this. One law,
- * one implementation.
+ * never fork the law. Polls' queryPolls calls this; the
+ * home feed (home's header) calls this. One law, one implementation. (The
+ * standalone GET /places/viewport-verdict route was deleted 2026-08-08 —
+ * zero callers ever existed.)
  */
 import { Injectable } from '@nestjs/common';
 import { GeoBbox, bboxArea, isTooBigForView } from '@crave-search/shared';
