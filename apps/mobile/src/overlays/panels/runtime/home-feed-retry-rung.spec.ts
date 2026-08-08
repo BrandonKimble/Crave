@@ -17,12 +17,13 @@ describe('home feed retry rung (F4510: the ladder owns exhaustion)', () => {
     jest.useRealTimers();
   });
 
-  const arm = (retryAttempt: number, visible = true) => {
+  const arm = (retryAttempt: number, visible = true, cause?: unknown) => {
     const runRung = jest.fn();
     const timer = scheduleHomeFeedRetryRung({
       retryAttempt,
       isVisible: () => visible,
       runRung,
+      cause,
     });
     return { runRung, timer };
   };
@@ -57,6 +58,18 @@ describe('home feed retry rung (F4510: the ladder owns exhaustion)', () => {
       jest.advanceTimersByTime(60_000);
       expect(runRung).not.toHaveBeenCalled();
     });
+  });
+
+  it('THE HOME 429 CASE (F-429-storm): a rate-limited failure never retries on the 2s rung', () => {
+    // Mutation target: routing this consumer back through the plain rungs
+    // (nextRetryDelayMs) would fire the retry at 2s here and go RED — the
+    // exact amplification that kept the API limiter tripped for polls.
+    const { runRung, timer } = arm(0, true, { response: { status: 429 } });
+    expect(timer).not.toBeNull();
+    jest.advanceTimersByTime(NETWORK_RETRY_BACKOFF_MS[NETWORK_RETRY_BACKOFF_MS.length - 1]);
+    expect(runRung).not.toHaveBeenCalled();
+    jest.advanceTimersByTime(60_000);
+    expect(runRung).toHaveBeenCalledWith(1);
   });
 
   it('arms nothing while the surface is hidden', () => {

@@ -27,17 +27,13 @@ import { subscribeToReconnect } from '../../../store/systemStatusStore';
 import {
   getViewportSubjectState,
   noteCatalogWatermark,
-  subscribeViewportSubjectState,
 } from '../../../store/viewport-subject-store';
 import {
-  NETWORK_RETRY_MAX_ATTEMPTS,
-  nextRetryDelayMs,
-} from '../../../services/retry/network-retry-ladder';
-import {
-  decideFeedRefetch,
   isRateLimitError,
-  RATE_LIMIT_RETRY_DELAY_MS,
-} from '../../../services/retry/feed-refetch-coalescer';
+  NETWORK_RETRY_MAX_ATTEMPTS,
+  resolveRetryDelayMs,
+} from '../../../services/retry/network-retry-ladder';
+import { subscribeSettledBoundsCoalesced } from '../../../store/settled-bounds-coalesced-edge';
 import { logger } from '../../../utils';
 import { logPageSwitchDebug } from '../../../navigation/runtime/pageswitch-debug-flag';
 
@@ -151,13 +147,6 @@ export const usePollsFeedRuntimeController = ({
   // edge, owns failure recovery). Compared by exact value against the subject
   // store's settledBounds to decide a refetch.
   const lastRequestedBoundsRef = React.useRef<MapBounds | null>(null);
-  // THE REFETCH COALESCER (F-429-storm): a pinch-zoom is many settles, and an
-  // uncoalesced settle-edge fired 817 feed fetches in one measured session —
-  // tripping the API limiter, whose 429s the ladder then retried. During
-  // continuous settles: at most one fetch per interval, latest bounds, with a
-  // trailing fetch so the final camera position is never missed.
-  const lastFeedFetchStartedAtRef = React.useRef<number | null>(null);
-  const trailingRefetchTimerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
   const clearScheduledPollFeedRetry = React.useCallback(() => {
     if (retryTimeoutRef.current) {
       clearTimeout(retryTimeoutRef.current);
@@ -273,32 +262,29 @@ export const usePollsFeedRuntimeController = ({
       const skipSpinner = options?.skipSpinner ?? false;
       const retryAttempt = options?.retryAttempt ?? 0;
       let retryScheduled = false;
-      const scheduleRetry = (
-        nextAttempt: number,
-        reason: string,
-        retryDelayOverrideMs?: number
-      ) => {
+      const scheduleRetry = (nextAttempt: number, reason: string, cause?: unknown) => {
         // One pending retry at a time: REPLACE any pending handle before assigning, never
         // overwrite it — an overwritten (orphaned) timer outlives the unmount cleanup.
         clearScheduledPollFeedRetry();
         retryScheduled = true;
+        // THE ladder answers with error-awareness (its 429 clause): a
+        // rate-limited failure waits at least the longest rung, honoring the
+        // server's Retry-After when present. No consumer-local policy here.
+        const delayMs = resolveRetryDelayMs(nextAttempt - 1, cause) ?? 0;
         logBootstrap({
           phase: 'feed-retry-scheduled',
           attempt: nextAttempt,
           maxAttempts: NETWORK_RETRY_MAX_ATTEMPTS,
-          delayMs: nextRetryDelayMs(nextAttempt - 1) ?? 0,
+          delayMs,
           reason,
         });
-        retryTimeoutRef.current = setTimeout(
-          () => {
-            retryTimeoutRef.current = null;
-            void refreshPollFeedRef.current?.({
-              ...(options ?? {}),
-              retryAttempt: nextAttempt,
-            });
-          },
-          retryDelayOverrideMs ?? nextRetryDelayMs(nextAttempt - 1) ?? 0
-        );
+        retryTimeoutRef.current = setTimeout(() => {
+          retryTimeoutRef.current = null;
+          void refreshPollFeedRef.current?.({
+            ...(options ?? {}),
+            retryAttempt: nextAttempt,
+          });
+        }, delayMs);
       };
 
       setPollFeedLoadFailed(false);
@@ -366,13 +352,10 @@ export const usePollsFeedRuntimeController = ({
           !visibilityGateRef.current.isSystemUnavailable &&
           retryAttempt < NETWORK_RETRY_MAX_ATTEMPTS
         ) {
-          // A 429 is the server saying SLOW DOWN — the ladder's 2s rung answers
-          // by speeding the storm back up. Rate-limit failures wait the long
-          // delay regardless of rung (F-429-storm).
           scheduleRetry(
             retryAttempt + 1,
             isRateLimitError(error) ? 'rate-limited' : 'fetch-failed',
-            isRateLimitError(error) ? RATE_LIMIT_RETRY_DELAY_MS : undefined
+            error
           );
         } else if (isLatestRefresh) {
           logBootstrap({ phase: 'feed-retry-give-up', attempts: retryAttempt });
@@ -570,56 +553,17 @@ export const usePollsFeedRuntimeController = ({
       if (!shouldRefetch) {
         return;
       }
-      const decision = decideFeedRefetch({
-        nowMs: Date.now(),
-        lastFetchStartedAtMs: lastFeedFetchStartedAtRef.current,
-        trailingScheduled: trailingRefetchTimerRef.current != null,
-      });
-      if (decision.action === 'already-scheduled') {
-        // The pending trailing fetch reads the LATEST settled bounds at fire
-        // time — this settle's data is already covered.
-        return;
-      }
-      if (decision.action === 'schedule-trailing') {
-        trailingRefetchTimerRef.current = setTimeout(() => {
-          trailingRefetchTimerRef.current = null;
-          // Re-check at fire time: the world may have settled back to the
-          // already-fetched bounds, in which case this is a no-op edge.
-          refetchIfSettledBoundsDiffer('settle-edge');
-        }, decision.delayMs);
-        return;
-      }
-      lastFeedFetchStartedAtRef.current = Date.now();
       void refreshPollFeed({ skipSpinner: hasEverAppliedSliceRef.current });
     };
     refetchIfSettledBoundsDiffer('activation-diff');
-    let lastSeenSettledBounds = getViewportSubjectState().settledBounds;
-    return subscribeViewportSubjectState(() => {
-      const settledBounds = getViewportSubjectState().settledBounds;
-      if (settledBounds === lastSeenSettledBounds) {
-        // A verdict/slice commit, not a settle tick — not this consumer's edge.
-        return;
-      }
-      lastSeenSettledBounds = settledBounds;
-      refetchIfSettledBoundsDiffer('settle-edge');
-    });
+    // THE COALESCED SETTLE EDGE (F-429-storm): the seam delivers at most one
+    // tick per interval during continuous settles, with a trailing tick for
+    // the final rest position; this consumer re-reads the LATEST settled
+    // bounds (and its own diff) inside each tick. Unsubscribing on
+    // hide/unmount disarms any pending trailing tick — the visibility
+    // teardown stays per consumer, in this effect's cleanup.
+    return subscribeSettledBoundsCoalesced(() => refetchIfSettledBoundsDiffer('settle-edge'));
   }, [isSystemUnavailable, refreshPollFeed, visible]);
-
-  // The trailing-refetch timer dies with the feed's visibility and with the
-  // controller — an armed trailing fetch must not fire against a hidden or
-  // unmounted surface.
-  React.useEffect(() => {
-    if (!visible && trailingRefetchTimerRef.current != null) {
-      clearTimeout(trailingRefetchTimerRef.current);
-      trailingRefetchTimerRef.current = null;
-    }
-    return () => {
-      if (trailingRefetchTimerRef.current != null) {
-        clearTimeout(trailingRefetchTimerRef.current);
-        trailingRefetchTimerRef.current = null;
-      }
-    };
-  }, [visible]);
 
   React.useEffect(() => {
     if (!pollIdParam) {

@@ -1,5 +1,5 @@
 import { logger } from '../../../utils';
-import { nextRetryDelayMs } from '../../../services/retry/network-retry-ladder';
+import { resolveRetryDelayMs } from '../../../services/retry/network-retry-ladder';
 
 /**
  * ONE HOME FOR THE HOME FEED'S RETRY RUNG (F4510).
@@ -31,6 +31,13 @@ export type ScheduleHomeFeedRetryRungArgs = {
   isVisible: () => boolean;
   /** Runs the next rung. The caller clears its own timer ref inside this. */
   runRung: (nextRetryAttempt: number) => void;
+  /**
+   * What failed, when something did (the bounds-unavailable path has no
+   * error). The ladder's 429 clause reads it: a rate-limited failure waits at
+   * least the longest rung, honoring the server's Retry-After — passed
+   * through so this consumer can never retry a 429 on the 2s rung.
+   */
+  cause?: unknown;
 };
 
 /**
@@ -42,11 +49,12 @@ export const scheduleHomeFeedRetryRung = ({
   retryAttempt,
   isVisible,
   runRung,
+  cause,
 }: ScheduleHomeFeedRetryRungArgs): ReturnType<typeof setTimeout> | null => {
   if (!isVisible()) {
     return null;
   }
-  const delayMs = nextRetryDelayMs(retryAttempt);
+  const delayMs = resolveRetryDelayMs(retryAttempt, cause);
   if (delayMs == null) {
     // Ladder exhausted: stop paying radio for an outage.
     logger.warn('Home feed retry ladder exhausted', { attempts: retryAttempt });

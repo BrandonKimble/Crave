@@ -18,9 +18,9 @@ import { subscribeToReconnect } from '../../store/systemStatusStore';
 import {
   getViewportSubjectState,
   noteCatalogWatermark,
-  subscribeViewportSubjectState,
   useViewportSubjectVerdict,
 } from '../../store/viewport-subject-store';
+import { subscribeSettledBoundsCoalesced } from '../../store/settled-bounds-coalesced-edge';
 import type { MapBounds } from '../../types';
 import { scheduleHomeFeedRetryRung } from './runtime/home-feed-retry-rung';
 import { logger } from '../../utils';
@@ -387,7 +387,7 @@ const useHomeFeedRuntime = (): void => {
   // in the ladder alone now (home-feed-retry-rung.ts explains what the two
   // hand-maintained copies and their `?? 0` could have cost).
   const armRetryRung = React.useCallback(
-    (retryAttempt: number) =>
+    (retryAttempt: number, cause?: unknown) =>
       scheduleHomeFeedRetryRung({
         retryAttempt,
         isVisible: () => useHomeSceneStateStore.getState().visible,
@@ -395,6 +395,9 @@ const useHomeFeedRuntime = (): void => {
           retryTimeoutRef.current = null;
           void refreshRef.current?.(nextRetryAttempt);
         },
+        // The ladder's 429 clause reads the failure: a rate-limited fetch
+        // waits at least the longest rung (Retry-After honored) — never 2s.
+        cause,
       }),
     []
   );
@@ -449,7 +452,7 @@ const useHomeFeedRuntime = (): void => {
         lastRequestedBoundsRef.current = null;
         // §9.4 ladder (polls parity): quiet backoff retries; a newer refresh
         // (settle / pick / reconnect) supersedes via clearScheduledRetry.
-        retryTimeoutRef.current = armRetryRung(retryAttempt);
+        retryTimeoutRef.current = armRetryRung(retryAttempt, error);
         // Honest failure only when there is nothing to show; a stale feed stands.
         if (useHomeFeedStore.getState().feed == null) {
           useHomeFeedStore.getState().setStatus('failed');
@@ -487,15 +490,11 @@ const useHomeFeedRuntime = (): void => {
       void refreshHomeFeed();
     };
     refetchIfSettledBoundsDiffer(); // activation-diff
-    let lastSeenSettledBounds = getViewportSubjectState().settledBounds;
-    return subscribeViewportSubjectState(() => {
-      const settledBounds = getViewportSubjectState().settledBounds;
-      if (settledBounds === lastSeenSettledBounds) {
-        return;
-      }
-      lastSeenSettledBounds = settledBounds;
-      refetchIfSettledBoundsDiffer(); // settle-edge
-    });
+    // THE COALESCED SETTLE EDGE (F-429-storm, shared with the polls feed): at
+    // most one tick per interval during continuous settles, trailing tick for
+    // the final rest position; the diff above re-reads the LATEST bounds each
+    // tick. The effect's cleanup (hide/unmount) disarms any pending tick.
+    return subscribeSettledBoundsCoalesced(() => refetchIfSettledBoundsDiffer()); // settle-edge
   }, [refreshHomeFeed, visible]);
 
   // An explicit city pick refetches immediately — the camera jump usually
