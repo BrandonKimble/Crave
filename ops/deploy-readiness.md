@@ -25,6 +25,18 @@ silently no-op'd after prettier re-padded columns; this rewrite is asserted.)
 
 ## THE STOP-ITEM — timestamptz migration (Search's find, sequencing ADOPTED)
 
+**RESOLVED-IN-FACT (verified at deploy time, 2026-08-08 ~11:20):** prod and
+staging both read ZERO naive columns (210 timestamptz) and
+`20260805120000_timestamptz_everywhere_actually` is finished=t on BOTH —
+fork 2's staging-verified pushes (prod baseline 3584ccb11) boot-applied it
+without incident. The quiet-window/worker-scale sequencing below was never
+needed; kept for the record. The ONLY migration prod lacks at HEAD is
+`20260805130000_index_every_foreign_key` (13 small FK indexes, sub-second
+builds) — safe boot-apply, no special handling. Spend ops deferred by owner
+ruling (2026-08-08): ghost recovery AND the knowledge-maintenance one-shot
+(step 3c) move to launch prep — 3c gets proven in staging across languages
+first (owner wants iteration before prod).
+
 `20260802060000_timestamptz_everywhere` was resolved-as-applied but NEVER RAN: 155
 columns still naive; the guard (utcInstant) was deleted on the strength of the phantom
 conversion; schema.prisma declares Timestamptz over naive columns TODAY. Search
