@@ -394,6 +394,37 @@ describe('RevenueCat webhook hardening', () => {
     Date.now = realNow;
     expect(stable).toBe(revenueCatEventIdentity(idless.event));
   });
+
+  it('F9806 — id-less events from two users land on DIFFERENT subscription rows', async () => {
+    // The old terminal fallback keyed the row on the bare entitlementCode —
+    // a shared constant — so user B's id-less event upserted user A's row.
+    const keysSeen: string[] = [];
+    for (const [clerkId, userId] of [
+      ['clerk-user-A', 'uuid-A'],
+      ['clerk-user-B', 'uuid-B'],
+    ] as const) {
+      const { service, prisma } = makeService({
+        entitlementMap: 'premium:premium_monthly',
+        user: { userId },
+      });
+      await service.handleRevenueCatWebhook(
+        rcEvent({
+          id: `evt-${clerkId}`,
+          app_user_id: clerkId,
+          transaction_id: undefined,
+          original_transaction_id: undefined,
+        }),
+        'Bearer rc-secret',
+      );
+      const upsert = (prisma.subscription.upsert as jest.Mock).mock.calls[0][0];
+      keysSeen.push(
+        upsert.where.provider_externalSubscriptionId.externalSubscriptionId,
+      );
+    }
+    expect(keysSeen[0]).not.toBe(keysSeen[1]); // <- old code: both 'premium'
+    expect(keysSeen[0]).toContain('uuid-A');
+    expect(keysSeen[1]).toContain('uuid-B');
+  });
 });
 
 describe('revenueCatEventIdentity', () => {

@@ -636,10 +636,19 @@ export class BillingService {
       return;
     }
 
+    // The subscription row is keyed on (provider, externalSubscriptionId), so
+    // this value must be unique PER SUBSCRIPTION. The old terminal fallback
+    // was the bare entitlementCode — a SHARED constant ('premium'), so every
+    // id-less event across ALL users aliased onto one row (and, since
+    // billingRail derives from these rows, mis-railed Manage Subscription
+    // too). The terminal key is now anchored to the stable internal userId:
+    // unique per (user, entitlement), collision-free across users, and the
+    // monotonic guard below compares within one user's row instead of
+    // across everyone's. (F9806)
     const externalSubscriptionId =
       payload.event.original_transaction_id ||
       payload.event.transaction_id ||
-      entitlementCode;
+      `user:${user.userId}:${entitlementCode}`;
 
     // Monotonic guard: RC retries failed deliveries for days, so a stale
     // event can land after a newer one already applied. The last-applied
