@@ -6,6 +6,7 @@ import { EntityAnchorRehomeService } from './entity-anchor-rehome.service';
 import { ConceptSatisfiesService } from './concept-satisfies.service';
 import { DishKnowledgeSynthesisService } from './dish-knowledge-synthesis.service';
 import { AliasManagementService } from './alias-management.service';
+import { WordClaimAdjudicatorService } from './word-claim-adjudicator.service';
 import { PrismaModule } from '../../../prisma/prisma.module';
 import { SharedModule } from '../../../shared/shared.module';
 import { LLMModule } from '../../external-integrations/llm/llm.module';
@@ -27,10 +28,12 @@ import { EntityTextSearchModule } from '../../entity-text-search/entity-text-sea
     MetroAdoptionService,
     DishKnowledgeSynthesisService,
     AliasManagementService,
+    WordClaimAdjudicatorService,
     EntityAnchorRehomeService,
   ],
   exports: [
     ConceptSatisfiesService,
+    WordClaimAdjudicatorService,
     EntityResolutionService,
     MetroAdoptionService,
     AliasManagementService,

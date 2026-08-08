@@ -27,7 +27,16 @@ const ENTITY_ID = 'dddddddd-dddd-4ddd-8ddd-dddddddd9342';
 const LOCALE = 'es';
 
 const prisma = new PrismaClient();
-const service = new LabelSweepService(prisma as never);
+// The adjudicator is only invoked on guard-blocked surfaces; this spec's
+// fixtures never collide, so a throwing stub keeps the seam honest.
+const service = new LabelSweepService(
+  prisma as never,
+  {
+    adjudicate: () => {
+      throw new Error('adjudicator not expected in this spec');
+    },
+  } as never,
+);
 
 function label(form: string): GeneratedLabel {
   return {

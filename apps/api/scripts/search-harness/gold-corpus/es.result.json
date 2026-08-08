@@ -1,17 +1,14 @@
 {
-  "ranAt": "2026-08-08T00:50:31.704Z",
+  "ranAt": "2026-08-08T02:24:25.390Z",
   "lang": "es",
   "corpusVersion": 1,
   "scoreboard": {
-    "overall": 98,
-    "top1SingleConcept": 98,
+    "overall": 98.66666666666667,
+    "top1SingleConcept": 99,
     "negationNonInversion": 100,
     "constraintPreservation": 98.33333333333333,
-    "homographMisGroundings": [
-      "тако→tako[linked]",
-      "chile→chili pepper[gazetteer-exact]"
-    ],
-    "homographMisGroundingsExact": ["chile→chili pepper[gazetteer-exact]"]
+    "homographMisGroundings": ["тако→tako[linked]"],
+    "homographMisGroundingsExact": []
   },
   "results": [
     {
@@ -125,15 +122,6 @@
       "preservation": 1,
       "reasons": [],
       "grounded": [
-        {
-          "entityId": "53df955f-ec55-4392-ba46-e1184c52fafc",
-          "bucket": "food",
-          "type": "food",
-          "span": "barbacoa",
-          "name": "bbq",
-          "tier": "gazetteer-exact",
-          "foldedName": "bbq"
-        },
         {
           "entityId": "5f29f44f-5c1e-47e6-9380-095d374abcf0",
           "bucket": "food",
@@ -754,15 +742,6 @@
           "name": "shrimp",
           "tier": "gazetteer-exact",
           "foldedName": "shrimp"
-        },
-        {
-          "entityId": "b5c058ab-7ab6-4ccb-912a-cc6b366b5ade",
-          "bucket": "food",
-          "type": "food",
-          "span": "camarones",
-          "name": "prawns",
-          "tier": "gazetteer-exact",
-          "foldedName": "prawns"
         }
       ],
       "excluded": [],
@@ -790,9 +769,9 @@
       "reasons": [],
       "grounded": [
         {
-          "entityId": "5dbb584c-790e-4078-acb1-d60185968264",
-          "bucket": "food",
-          "type": "food",
+          "entityId": "c8416d51-a863-4e79-9606-7b6219715376",
+          "bucket": "ingredients",
+          "type": "ingredient",
           "span": "aguacate",
           "name": "avocado",
           "tier": "gazetteer-exact",
@@ -858,9 +837,9 @@
       "reasons": [],
       "grounded": [
         {
-          "entityId": "77490d5e-e33e-4f6e-b1b8-d370755faf1f",
-          "bucket": "food",
-          "type": "food",
+          "entityId": "35e1f3b8-f85d-472b-b378-803fd071eea1",
+          "bucket": "ingredients",
+          "type": "ingredient",
           "span": "arroz",
           "name": "rice",
           "tier": "gazetteer-exact",
@@ -892,9 +871,9 @@
       "reasons": [],
       "grounded": [
         {
-          "entityId": "001a597e-bfd0-4f0a-a1ad-fe63289e1364",
-          "bucket": "food",
-          "type": "food",
+          "entityId": "44c2a929-142b-425d-b161-96c9654b1d75",
+          "bucket": "ingredients",
+          "type": "ingredient",
           "span": "frijoles",
           "name": "beans",
           "tier": "gazetteer-exact",
@@ -960,9 +939,9 @@
       "reasons": [],
       "grounded": [
         {
-          "entityId": "7f5d3f9f-49fc-4c36-b4ab-a797e48495a8",
-          "bucket": "food",
-          "type": "food",
+          "entityId": "ebc36bf2-0cc3-4f1f-b6ed-932204c611af",
+          "bucket": "ingredients",
+          "type": "ingredient",
           "span": "cangrejo",
           "name": "crab",
           "tier": "gazetteer-exact",
@@ -1028,9 +1007,9 @@
       "reasons": [],
       "grounded": [
         {
-          "entityId": "ef0cdc27-b056-465e-9a57-a56b5e7d5693",
-          "bucket": "food",
-          "type": "food",
+          "entityId": "e6f13bba-0c4d-4a5d-9dec-84eb8671993f",
+          "bucket": "ingredients",
+          "type": "ingredient",
           "span": "fresa",
           "name": "strawberry",
           "tier": "gazetteer-exact",
@@ -1137,15 +1116,6 @@
           "name": "cake",
           "tier": "gazetteer-exact",
           "foldedName": "cake"
-        },
-        {
-          "entityId": "bc563494-a8cb-4993-b9df-2469f5a2a2c7",
-          "bucket": "food",
-          "type": "food",
-          "span": "pastel",
-          "name": "pie",
-          "tier": "gazetteer-exact",
-          "foldedName": "pie"
         }
       ],
       "excluded": [],
@@ -1180,15 +1150,6 @@
           "name": "salad",
           "tier": "gazetteer-exact",
           "foldedName": "salad"
-        },
-        {
-          "entityId": "ec254f72-6ee7-4762-a6aa-bf317b9b4097",
-          "bucket": "food",
-          "type": "food",
-          "span": "ensalada",
-          "name": "nikkis salad",
-          "tier": "gazetteer-exact",
-          "foldedName": "nikkis salad"
         }
       ],
       "excluded": [],
@@ -1215,15 +1176,6 @@
       "preservation": 1,
       "reasons": [],
       "grounded": [
-        {
-          "entityId": "042de43d-2fb6-460d-bbea-b8779b79b52a",
-          "bucket": "food",
-          "type": "food",
-          "span": "fideos",
-          "name": "noodles",
-          "tier": "gazetteer-exact",
-          "foldedName": "noodles"
-        },
         {
           "entityId": "04479fba-1c2a-42bb-bb48-b34f35a0bdd8",
           "bucket": "food",
@@ -1707,15 +1659,6 @@
           "foldedName": "sushi"
         },
         {
-          "entityId": "f2e2ce70-e8bf-4972-ad06-2f8a32400754",
-          "bucket": "food",
-          "type": "food",
-          "span": "sushi",
-          "name": "sushi prepared fish",
-          "tier": "gazetteer-exact",
-          "foldedName": "sushi prepared fish"
-        },
-        {
           "entityId": "18218014-dba6-4a77-84bc-3c7b958b6e52",
           "bucket": "restaurantAttributes",
           "type": "restaurant_attribute",
@@ -1897,9 +1840,9 @@
           "foldedName": "mexican breakfast"
         },
         {
-          "entityId": "5142b80a-80ca-4017-8cf8-08f867463134",
-          "bucket": "foodAttributes",
-          "type": "food_attribute",
+          "entityId": "effd2425-4caa-4f9d-92d6-ac1c8c0aa756",
+          "bucket": "food",
+          "type": "food",
           "span": "desayuno",
           "name": "breakfast",
           "tier": "linked",
@@ -1983,6 +1926,15 @@
       "reasons": [],
       "grounded": [
         {
+          "entityId": "12bcdfbd-7736-4d47-82e7-b7cf30b5fa93",
+          "bucket": "food",
+          "type": "food",
+          "span": "pollo",
+          "name": "chicken",
+          "tier": "linked",
+          "foldedName": "chicken"
+        },
+        {
           "entityId": "05708d69-10ff-4482-9818-fa8ec6931225",
           "bucket": "foodAttributes",
           "type": "food_attribute",
@@ -1999,15 +1951,6 @@
           "name": "halal chicken",
           "tier": "gazetteer-exact",
           "foldedName": "halal chicken"
-        },
-        {
-          "entityId": "c9957bd2-edf1-4839-90eb-72442ba7354a",
-          "bucket": "ingredients",
-          "type": "ingredient",
-          "span": "pollo",
-          "name": "chicken",
-          "tier": "linked",
-          "foldedName": "chicken"
         }
       ],
       "excluded": [],
@@ -2042,15 +1985,6 @@
           "name": "sushi",
           "tier": "gazetteer-exact",
           "foldedName": "sushi"
-        },
-        {
-          "entityId": "f2e2ce70-e8bf-4972-ad06-2f8a32400754",
-          "bucket": "food",
-          "type": "food",
-          "span": "sushi",
-          "name": "sushi prepared fish",
-          "tier": "gazetteer-exact",
-          "foldedName": "sushi prepared fish"
         },
         {
           "entityId": "cb919b76-8da1-4a2b-adb6-92cac7809ec0",
@@ -2200,9 +2134,9 @@
           "foldedName": "strawberry ice cream"
         },
         {
-          "entityId": "c372456e-6684-409f-a1de-4cee34bf1641",
-          "bucket": "ingredients",
-          "type": "ingredient",
+          "entityId": "dd390a0b-4199-4e1b-b1df-2fea78f11cc7",
+          "bucket": "food",
+          "type": "food",
           "span": "helado",
           "name": "ice cream",
           "tier": "linked",
@@ -2261,9 +2195,9 @@
           "foldedName": "soup"
         },
         {
-          "entityId": "c9957bd2-edf1-4839-90eb-72442ba7354a",
-          "bucket": "ingredients",
-          "type": "ingredient",
+          "entityId": "12bcdfbd-7736-4d47-82e7-b7cf30b5fa93",
+          "bucket": "food",
+          "type": "food",
           "span": "pollo",
           "name": "chicken",
           "tier": "linked",
@@ -2304,6 +2238,15 @@
           "foldedName": "chicken and rice"
         },
         {
+          "entityId": "12bcdfbd-7736-4d47-82e7-b7cf30b5fa93",
+          "bucket": "food",
+          "type": "food",
+          "span": "pollo",
+          "name": "chicken",
+          "tier": "linked",
+          "foldedName": "chicken"
+        },
+        {
           "entityId": "35e1f3b8-f85d-472b-b378-803fd071eea1",
           "bucket": "ingredients",
           "type": "ingredient",
@@ -2311,15 +2254,6 @@
           "name": "rice",
           "tier": "linked",
           "foldedName": "rice"
-        },
-        {
-          "entityId": "c9957bd2-edf1-4839-90eb-72442ba7354a",
-          "bucket": "ingredients",
-          "type": "ingredient",
-          "span": "pollo",
-          "name": "chicken",
-          "tier": "linked",
-          "foldedName": "chicken"
         }
       ],
       "excluded": [],
@@ -2415,15 +2349,6 @@
           "name": "quiet",
           "tier": "gazetteer-exact",
           "foldedName": "quiet"
-        },
-        {
-          "entityId": "f8a60107-f84c-4c70-ab2a-d55045f3bb47",
-          "bucket": "restaurantAttributes",
-          "type": "restaurant_attribute",
-          "span": "tranquilo",
-          "name": "not too busy",
-          "tier": "gazetteer-exact",
-          "foldedName": "not too busy"
         }
       ],
       "excluded": [],
@@ -2553,15 +2478,6 @@
           "name": "outdoor seating",
           "tier": "gazetteer-exact",
           "foldedName": "outdoor seating"
-        },
-        {
-          "entityId": "df305d0a-9668-4518-8a6e-42eb734042ca",
-          "bucket": "restaurantAttributes",
-          "type": "restaurant_attribute",
-          "span": "terraza",
-          "name": "outdoor bar",
-          "tier": "gazetteer-exact",
-          "foldedName": "outdoor bar"
         }
       ],
       "excluded": [],
@@ -2641,6 +2557,15 @@
           "foldedName": "grilled fish"
         },
         {
+          "entityId": "bcb888b0-d59a-4c2f-956a-ab7374c4cfa5",
+          "bucket": "food",
+          "type": "food",
+          "span": "pescado",
+          "name": "fish",
+          "tier": "linked",
+          "foldedName": "fish"
+        },
+        {
           "entityId": "5e7775c8-82bc-410a-bce3-7b5d05e49249",
           "bucket": "foodAttributes",
           "type": "food_attribute",
@@ -2648,15 +2573,6 @@
           "name": "grilled",
           "tier": "linked",
           "foldedName": "grilled"
-        },
-        {
-          "entityId": "89fcf723-562f-4099-af8f-2c9eec57ab2a",
-          "bucket": "ingredients",
-          "type": "ingredient",
-          "span": "pescado",
-          "name": "fish",
-          "tier": "linked",
-          "foldedName": "fish"
         }
       ],
       "excluded": [],
@@ -2829,15 +2745,6 @@
           "name": "outdoor seating",
           "tier": "gazetteer-exact",
           "foldedName": "outdoor seating"
-        },
-        {
-          "entityId": "df305d0a-9668-4518-8a6e-42eb734042ca",
-          "bucket": "restaurantAttributes",
-          "type": "restaurant_attribute",
-          "span": "terraza",
-          "name": "outdoor bar",
-          "tier": "gazetteer-exact",
-          "foldedName": "outdoor bar"
         }
       ],
       "excluded": [],
@@ -3000,24 +2907,6 @@
       "reasons": [],
       "grounded": [
         {
-          "entityId": "6b829aa2-4a1f-45b1-b304-eb3ace7ba11b",
-          "bucket": "food",
-          "type": "food",
-          "span": "pizza",
-          "name": "pizza pie",
-          "tier": "gazetteer-exact",
-          "foldedName": "pizza pie"
-        },
-        {
-          "entityId": "b33eb888-0acd-432b-bebd-e14d0699ec13",
-          "bucket": "food",
-          "type": "food",
-          "span": "pizza",
-          "name": "pitzas",
-          "tier": "gazetteer-exact",
-          "foldedName": "pitzas"
-        },
-        {
           "entityId": "b3a4c3e8-307f-4694-89b2-9160fcaa0436",
           "bucket": "food",
           "type": "food",
@@ -3068,15 +2957,6 @@
           "name": "sushi",
           "tier": "gazetteer-exact",
           "foldedName": "sushi"
-        },
-        {
-          "entityId": "f2e2ce70-e8bf-4972-ad06-2f8a32400754",
-          "bucket": "food",
-          "type": "food",
-          "span": "sushi",
-          "name": "sushi prepared fish",
-          "tier": "gazetteer-exact",
-          "foldedName": "sushi prepared fish"
         }
       ],
       "excluded": [
@@ -3150,24 +3030,6 @@
       "reasons": [],
       "grounded": [
         {
-          "entityId": "6b829aa2-4a1f-45b1-b304-eb3ace7ba11b",
-          "bucket": "food",
-          "type": "food",
-          "span": "pizza",
-          "name": "pizza pie",
-          "tier": "gazetteer-exact",
-          "foldedName": "pizza pie"
-        },
-        {
-          "entityId": "b33eb888-0acd-432b-bebd-e14d0699ec13",
-          "bucket": "food",
-          "type": "food",
-          "span": "pizza",
-          "name": "pitzas",
-          "tier": "gazetteer-exact",
-          "foldedName": "pitzas"
-        },
-        {
           "entityId": "b3a4c3e8-307f-4694-89b2-9160fcaa0436",
           "bucket": "food",
           "type": "food",
@@ -3215,15 +3077,6 @@
           "name": "salad",
           "tier": "gazetteer-exact",
           "foldedName": "salad"
-        },
-        {
-          "entityId": "ec254f72-6ee7-4762-a6aa-bf317b9b4097",
-          "bucket": "food",
-          "type": "food",
-          "span": "ensalada",
-          "name": "nikkis salad",
-          "tier": "gazetteer-exact",
-          "foldedName": "nikkis salad"
         }
       ],
       "excluded": [
@@ -3537,24 +3390,6 @@
       "reasons": [],
       "grounded": [
         {
-          "entityId": "6b829aa2-4a1f-45b1-b304-eb3ace7ba11b",
-          "bucket": "food",
-          "type": "food",
-          "span": "pizza",
-          "name": "pizza pie",
-          "tier": "gazetteer-exact",
-          "foldedName": "pizza pie"
-        },
-        {
-          "entityId": "b33eb888-0acd-432b-bebd-e14d0699ec13",
-          "bucket": "food",
-          "type": "food",
-          "span": "pizza",
-          "name": "pitzas",
-          "tier": "gazetteer-exact",
-          "foldedName": "pitzas"
-        },
-        {
           "entityId": "b3a4c3e8-307f-4694-89b2-9160fcaa0436",
           "bucket": "food",
           "type": "food",
@@ -3602,15 +3437,6 @@
           "name": "sushi",
           "tier": "gazetteer-exact",
           "foldedName": "sushi"
-        },
-        {
-          "entityId": "f2e2ce70-e8bf-4972-ad06-2f8a32400754",
-          "bucket": "food",
-          "type": "food",
-          "span": "sushi",
-          "name": "sushi prepared fish",
-          "tier": "gazetteer-exact",
-          "foldedName": "sushi prepared fish"
         },
         {
           "entityId": "08630647-825b-439d-8a47-461cf61a7f3d",
@@ -3712,15 +3538,6 @@
           "name": "sugar free",
           "tier": "gazetteer-exact",
           "foldedName": "sugar free"
-        },
-        {
-          "entityId": "30416a46-5507-4114-8309-1ea935bf5dc2",
-          "bucket": "foodAttributes",
-          "type": "food_attribute",
-          "span": "sin azúcar",
-          "name": "unsweet",
-          "tier": "gazetteer-exact",
-          "foldedName": "unsweet"
         }
       ],
       "excluded": [],
@@ -3869,15 +3686,6 @@
           "name": "outdoor seating",
           "tier": "gazetteer-exact",
           "foldedName": "outdoor seating"
-        },
-        {
-          "entityId": "df305d0a-9668-4518-8a6e-42eb734042ca",
-          "bucket": "restaurantAttributes",
-          "type": "restaurant_attribute",
-          "span": "terraza",
-          "name": "outdoor bar",
-          "tier": "gazetteer-exact",
-          "foldedName": "outdoor bar"
         }
       ],
       "excluded": [],
@@ -3980,15 +3788,6 @@
           "name": "quiet",
           "tier": "gazetteer-exact",
           "foldedName": "quiet"
-        },
-        {
-          "entityId": "f8a60107-f84c-4c70-ab2a-d55045f3bb47",
-          "bucket": "restaurantAttributes",
-          "type": "restaurant_attribute",
-          "span": "tranquilo",
-          "name": "not too busy",
-          "tier": "gazetteer-exact",
-          "foldedName": "not too busy"
         }
       ],
       "excluded": [],
@@ -4645,18 +4444,9 @@
       "stratum": "homograph",
       "locale": "es-US",
       "pass": true,
-      "preservation": 0.6666666666666666,
+      "preservation": 0.3333333333333333,
       "reasons": [],
       "grounded": [
-        {
-          "entityId": "10dc6d53-685a-4c2a-a302-d59ade9c5d1e",
-          "bucket": "ingredients",
-          "type": "ingredient",
-          "span": "crema",
-          "name": "cream",
-          "tier": "gazetteer-exact",
-          "foldedName": "cream"
-        },
         {
           "entityId": "5cc72741-a47d-4c7f-9146-684f7eed3d4d",
           "bucket": "ingredients",
@@ -4687,11 +4477,9 @@
       "query": "chile",
       "stratum": "homograph",
       "locale": "es-US",
-      "pass": false,
+      "pass": true,
       "preservation": 1,
-      "reasons": [
-        "MIS-GROUNDED (outside allowed set): chili pepper[gazetteer-exact]"
-      ],
+      "reasons": [],
       "grounded": [
         {
           "entityId": "0cd03ab5-9737-4f69-b7cb-2bc13cd65399",
@@ -4701,15 +4489,6 @@
           "name": "chile",
           "tier": "gazetteer-exact",
           "foldedName": "chile"
-        },
-        {
-          "entityId": "54ed71cc-b13f-44c0-a8cf-cb7cf9a55cd6",
-          "bucket": "ingredients",
-          "type": "ingredient",
-          "span": "chile",
-          "name": "chili pepper",
-          "tier": "gazetteer-exact",
-          "foldedName": "chili pepper"
         }
       ],
       "excluded": [],
@@ -4724,7 +4503,7 @@
         },
         "denseTierUsed": false
       },
-      "misGroundings": ["chili pepper[gazetteer-exact]"],
+      "misGroundings": [],
       "notes": "Pepper vs. the country. The corpus holds 'chilean sea bass' — a country-shaped capture would be the failure."
     },
     {
@@ -4839,9 +4618,9 @@
       "reasons": [],
       "grounded": [
         {
-          "entityId": "3eceef52-8b24-423b-910b-4a8966fa15c7",
-          "bucket": "food",
-          "type": "food",
+          "entityId": "35f25e02-f0c6-4638-972f-79d1fd6febad",
+          "bucket": "ingredients",
+          "type": "ingredient",
           "span": "vino",
           "name": "wine",
           "tier": "gazetteer-exact",
@@ -4873,9 +4652,9 @@
       "reasons": [],
       "grounded": [
         {
-          "entityId": "7e9e2672-1bc5-4ad9-8834-bfd184662955",
-          "bucket": "food",
-          "type": "food",
+          "entityId": "b03c9737-ac4d-4fec-adfb-5bf2d2410304",
+          "bucket": "ingredients",
+          "type": "ingredient",
           "span": "col",
           "name": "cabbage",
           "tier": "gazetteer-exact",
@@ -4907,9 +4686,9 @@
       "reasons": [],
       "grounded": [
         {
-          "entityId": "2109e187-c6da-41a1-b97b-71af33824bfe",
-          "bucket": "food",
-          "type": "food",
+          "entityId": "8098e041-7e60-4857-b176-60f3363c1725",
+          "bucket": "ingredients",
+          "type": "ingredient",
           "span": "miel",
           "name": "honey",
           "tier": "gazetteer-exact",
@@ -5141,18 +4920,9 @@
       "stratum": "homograph",
       "locale": "es-US",
       "pass": true,
-      "preservation": 1,
+      "preservation": 0.5,
       "reasons": [],
       "grounded": [
-        {
-          "entityId": "03a7d01e-dd88-4cf7-ad82-107602ea930f",
-          "bucket": "food",
-          "type": "food",
-          "span": "caldo",
-          "name": "broth",
-          "tier": "gazetteer-exact",
-          "foldedName": "broth"
-        },
         {
           "entityId": "78d7bd8a-97e7-44ae-8a7d-48216af252db",
           "bucket": "food",
@@ -5184,7 +4954,7 @@
       "stratum": "homograph",
       "locale": "es-US",
       "pass": true,
-      "preservation": 1,
+      "preservation": 0.5,
       "reasons": [],
       "grounded": [
         {
@@ -5195,15 +4965,6 @@
           "name": "masa",
           "tier": "gazetteer-exact",
           "foldedName": "masa"
-        },
-        {
-          "entityId": "3b0eb120-1882-4fee-a167-8b1b20be2105",
-          "bucket": "food",
-          "type": "food",
-          "span": "masa",
-          "name": "dough",
-          "tier": "gazetteer-exact",
-          "foldedName": "dough"
         }
       ],
       "excluded": [],
@@ -5409,15 +5170,6 @@
           "name": "sushi",
           "tier": "gazetteer-exact",
           "foldedName": "sushi"
-        },
-        {
-          "entityId": "f2e2ce70-e8bf-4972-ad06-2f8a32400754",
-          "bucket": "food",
-          "type": "food",
-          "span": "sushi",
-          "name": "sushi prepared fish",
-          "tier": "gazetteer-exact",
-          "foldedName": "sushi prepared fish"
         },
         {
           "entityId": "b693becc-a4ce-4b31-b35e-c7f3218a816d",
@@ -5789,24 +5541,6 @@
       "reasons": [],
       "grounded": [
         {
-          "entityId": "6b829aa2-4a1f-45b1-b304-eb3ace7ba11b",
-          "bucket": "food",
-          "type": "food",
-          "span": "pizza",
-          "name": "pizza pie",
-          "tier": "gazetteer-exact",
-          "foldedName": "pizza pie"
-        },
-        {
-          "entityId": "b33eb888-0acd-432b-bebd-e14d0699ec13",
-          "bucket": "food",
-          "type": "food",
-          "span": "pizza",
-          "name": "pitzas",
-          "tier": "gazetteer-exact",
-          "foldedName": "pitzas"
-        },
-        {
           "entityId": "b3a4c3e8-307f-4694-89b2-9160fcaa0436",
           "bucket": "food",
           "type": "food",
@@ -6124,15 +5858,6 @@
           "name": "sandwich",
           "tier": "gazetteer-exact",
           "foldedName": "sandwich"
-        },
-        {
-          "entityId": "a27bd632-a0eb-4d0f-83e1-41a444a05276",
-          "bucket": "food",
-          "type": "food",
-          "span": "sandwich",
-          "name": "sando",
-          "tier": "gazetteer-exact",
-          "foldedName": "sando"
         }
       ],
       "excluded": [],

@@ -1269,13 +1269,14 @@ export class EntityTextSearchService {
       'e',
       options.engineId ?? null,
     );
-    // FOUR INDEXED ARMS, unioned (never OR'd — an OR forces a seq scan of
+    // THREE INDEXED ARMS, unioned (never OR'd — an OR forces a seq scan of
     // the active catalogue per search):
     //   1. identity_key = folded candidate      (N1 name fold symmetry)
     //   2. LOWER(name)  = candidate             (exact typed name)
     //   3. entity_alias.form_folded, locale-chained (N1 alias fold symmetry)
-    //   4. entity_labels.form_folded, locale-chained (labels-as-surfaces,
-    //      N1 fold symmetry — same folded shape as arm 3)
+    // The former arm 4 (entity_labels) is REMOVED — see the claims-registry
+    // note below; labels are display-only and the alias store is the one
+    // guarded surface registry.
     // The legacy `crave_text_array_lower(aliases)` GIN arm was REMOVED here
     // (i18n red team, executed): it was the untyped, UNLOCALED shadow of
     // entity_alias — it re-grounded seeded es forms ('americana') for English
@@ -1299,8 +1300,6 @@ export class EntityTextSearchService {
     // tagged rows are excluded — the conservative side F2 established.
     const localeChain = localeLookupChain(analysis.requestLocale);
     const aliasLocaleFilter = Prisma.sql`AND LOWER(ea.locale) = ANY(${localeChain}::text[])`;
-    // Labels carry a locale on their OWN column, chained through localeChain.
-    const labelLocaleFilter = Prisma.sql`AND LOWER(el.locale) = ANY(${localeChain}::text[])`;
     const matchedFormsSelect = Prisma.sql`
              LOWER(e.name) AS "normName",
              e.identity_key AS "foldedName",
@@ -1311,14 +1310,7 @@ export class EntityTextSearchService {
                  AND ea.status = 'active'
                  ${aliasLocaleFilter}
                  AND ea.form_folded = ANY(${candidates}::text[])
-             ) AS "foldedAliases",
-             ARRAY(
-               SELECT el.form_folded FROM entity_labels el
-               WHERE el.entity_id = e.entity_id
-                 AND el.status = 'active'
-                 ${labelLocaleFilter}
-                 AND el.form_folded = ANY(${candidates}::text[])
-             ) AS "foldedLabels"`;
+             ) AS "foldedAliases"`;
     const rows = await this.prisma.$queryRaw<
       {
         entityId: string;
@@ -1328,7 +1320,6 @@ export class EntityTextSearchService {
         foldedName: string | null;
         normAliases: string[];
         foldedAliases: string[];
-        foldedLabels: string[];
       }[]
     >(Prisma.sql`
       SELECT e.entity_id AS "entityId", e.name, e.type,
@@ -1360,32 +1351,14 @@ export class EntityTextSearchService {
             AND ea.form_folded = ANY(${candidates}::text[])
         )
         ${territoryFilter}
-      UNION
-      SELECT e.entity_id AS "entityId", e.name, e.type,
-             ${matchedFormsSelect}
-      FROM core_entities e
-      WHERE e.status = 'active'::entity_status
-        AND e.type = ANY(${typeArray})
-        -- G3 (launch-gate run 1): the LABELS match arm — 'labels double
-        -- as match surfaces' from the plan, through the SAME locale chain as
-        -- aliases. Buys the tail attributes ('para llevar', 'terraza') whose
-        -- only localized form is the swept/seeded label. When the chain is
-        -- ['und'] (no request locale) no locale-tagged label matches, so the
-        -- arm is naturally inert — no separate NULL gate needed.
-        AND EXISTS (
-          SELECT 1 FROM entity_labels el
-          WHERE el.entity_id = e.entity_id
-            AND el.status = 'active'
-            ${labelLocaleFilter}
-            -- N1 FOLD SYMMETRY: fold BOTH sides. entity_labels.form_folded is
-            -- APP-WRITTEN by canonicalFold (the alias table's exact shape);
-            -- the old LOWER(el.form) compared unfolded stored text against the
-            -- always-folded candidate, so every accented/apostrophe es label
-            -- was unmatchable.
-            AND el.form_folded = ANY(${candidates}::text[])
-        )
-        ${territoryFilter}
     `);
+    // LANE 4 (labels-as-surfaces) REMOVED (claims registry, §9.9, 2026-08-07):
+    // labels are DISPLAY-only again. Every label surface worth grounding was
+    // reconciled into entity_alias through the collision guard + word-claim
+    // adjudicator (scripts/reconcile-surface-claims.ts, 1,543 surfaces), so
+    // the alias store is the ONE claims registry — a surface cannot ground
+    // without passing the claim law. The junk-label class (`taco` on a dish
+    // named "good taco" grounding at confidence 1.0) is structurally gone.
 
     const candidateSet = new Set(candidates);
     const rawSpans: Array<{
@@ -1407,12 +1380,6 @@ export class EntityTextSearchService {
       }
       for (const alias of row.foldedAliases) {
         if (candidateSet.has(alias)) matchedPhrases.add(alias);
-      }
-      // Labels double as match surfaces: a folded label that equals a
-      // candidate is a matched phrase, so the span is attributable (without
-      // this the labels arm returned rows that produced no span).
-      for (const label of row.foldedLabels) {
-        if (candidateSet.has(label)) matchedPhrases.add(label);
       }
       for (const phrase of matchedPhrases) {
         for (const span of candidateSpans.get(phrase) ?? []) {

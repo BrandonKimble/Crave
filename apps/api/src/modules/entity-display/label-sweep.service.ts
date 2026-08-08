@@ -15,6 +15,10 @@ import {
 } from '../content-processing/entity-resolver/entity-identity';
 import { addAliases } from '../content-processing/entity-resolver/entity-alias.service';
 import {
+  WordClaimAdjudicatorService,
+  type ContestedClaim,
+} from '../content-processing/entity-resolver/word-claim-adjudicator.service';
+import {
   NoopLabelGenerator,
   type GeneratedLabel,
   type LabelGenerationRequest,
@@ -75,7 +79,10 @@ export interface SweepResult {
 export class LabelSweepService {
   private readonly logger = new Logger(LabelSweepService.name);
 
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly claimAdjudicator: WordClaimAdjudicatorService,
+  ) {}
 
   /** The locales a sweep is responsible for: every active one except English. */
   sweepLocales(): string[] {
@@ -175,7 +182,20 @@ export class LabelSweepService {
       ? await generator.generate(batch.requests)
       : [];
     const surfaceTally = { offered: 0, banked: 0, blocked: 0 };
-    const written = await this.writeLabels(generated, 'sweep', surfaceTally);
+    const contested: ContestedClaim[] = [];
+    const written = await this.writeLabels(
+      generated,
+      'sweep',
+      surfaceTally,
+      contested,
+    );
+    // CLAIMS REGISTRY (§9.9): a blocked surface is not a dead counter — it is
+    // an appeal. Testimony incumbents are upheld free; inferred-vs-inferred
+    // conflicts get the judge; every verdict is remembered (deprecated), so
+    // no claim is ever re-litigated or silently re-proposed.
+    if (contested.length) {
+      await this.claimAdjudicator.adjudicate(contested);
+    }
     const result: SweepResult = {
       locale,
       due,
@@ -202,6 +222,7 @@ export class LabelSweepService {
     labels: readonly GeneratedLabel[],
     source: 'seed' | 'sweep' | 'manual' | 'synthesis' = 'sweep',
     surfaceTally?: { offered: number; banked: number; blocked: number },
+    contested?: ContestedClaim[],
   ): Promise<number> {
     let written = 0;
     for (const label of labels) {
@@ -274,6 +295,14 @@ export class LabelSweepService {
             if (surfaceTally) {
               surfaceTally.blocked += result.blocked.length;
               surfaceTally.banked += surfaces.length - result.blocked.length;
+            }
+            for (const form of result.blocked) {
+              contested?.push({
+                form,
+                locale,
+                entityId: label.entityId,
+                source: 'vocabulary',
+              });
             }
           });
         } catch (error) {
