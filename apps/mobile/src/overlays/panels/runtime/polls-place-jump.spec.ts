@@ -20,7 +20,6 @@ const place = (placeId: string): PlaceLike => ({
   name: `Place ${placeId}`,
   bbox: { minLat: 30, minLng: -98, maxLat: 30.5, maxLng: -97.5 },
   providerLevelCode: 'Municipality',
-  parentPlaceIds: [],
   ground: {
     rings: [
       [
