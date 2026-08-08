@@ -347,12 +347,11 @@ export class SearchQueryBuilder {
     const restTierSelect = restTierExpr
       ? Prisma.sql`${restTierExpr} AS match_tier,`
       : Prisma.sql`NULL::int AS match_tier,`;
-    const restTierOrder = restTierExpr
-      ? Prisma.sql`${restTierExpr} ASC, `
-      : Prisma.sql``;
-    // OWNER RULING 2026-08-08 (supersedes sectioned ordering): ONE list,
-    // PURE global Crave Score. Tiers decide ADMISSION only (the gate WHERE);
-    // they never order. match_tier stays selected as row metadata.
+    // OWNER RULING 2026-08-08: tier NEVER orders — on the restaurant axis
+    // too (the first cut of this ruling missed the non-pooled sectioned
+    // path here; caught by the rederivation audit, C1). match_tier stays
+    // selected as row metadata; admission is the gate WHERE's job.
+    const restTierOrder = Prisma.sql``;
     const restTierOrderPreview = '';
     const restaurantTopDishOrder = this.resolveTopDishOrderSql(
       plan.ranking.foodOrder,

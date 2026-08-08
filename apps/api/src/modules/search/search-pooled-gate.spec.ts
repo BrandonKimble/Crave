@@ -119,6 +119,18 @@ describe('step-3 pooled richness gate (SQL shape)', () => {
     );
   });
 
+  it('restaurant: tier never orders even on the sectioned-without-pooled path (audit C1)', () => {
+    const data = restaurantData({
+      sectionedRanking: true,
+      exactFoodIds: [SOFT_FOOD_ATTR],
+    });
+    const sql = data.sql.replace(/\s+/g, ' ');
+    // The C1 bug: `restTierExpr ASC` survived the pure-score ruling on this
+    // path only. ORDER BY must carry no tier key in any spelling.
+    expect(sql).not.toMatch(/ORDER BY[^)]*CASE WHEN[^)]*END ASC/);
+    expect(sql).not.toMatch(/ORDER BY[^)]*match_tier/);
+  });
+
   it('restaurant: gate present with window count; PURE score order', () => {
     const data = restaurantData(directives());
     const sql = data.sql.replace(/\s+/g, ' ');
