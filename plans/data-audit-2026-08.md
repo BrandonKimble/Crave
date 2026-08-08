@@ -1441,3 +1441,56 @@ kosher) carries the matching attribute — zero lost hard-toggle coverage.
 The reverse asymmetry (outdoor seating: 801 carriers vs 172 with community
 evidence) is the Google enrichment source doing its job (boolean vocab from
 Places details), not phantom data. No action.
+
+## GHOST RESTAURANT ATTRIBUTION (2026-08-07) — three causes, each proven live
+
+Empirical method: replayed the real grounding pipeline (resolvePlaceForInput,
+through the gated Places client — pennies) for failed ghosts, with and
+without the Austin bias, against live Google.
+
+CAUSE 1 — THE PREDICTION TYPE FILTER kills real food venues (the dominant
+class). "Rebel Cheese" TODAY returns "Rebel Cheese Factory, Austin TX" as
+Google's #1 suggestion — and resolvePlaceForInput still returns NO MATCH,
+because the prediction's types (food_store/store — it is a vegan cheese
+shop with a deli) contain no PREFERRED_PLACE_TYPES entry and
+isRestaurantishPlaceTypes() drops it before adjudication. This is the SAME
+lesson as Gate 2 of the prompt work: a venue's Google TYPE cannot decide
+food-service-ness (Buc-ee's, PlantShed, Quality Seafood), yet the grounding
+lane still uses the cuisine-map-as-gate. 1,134 of the 1,341 failures had a
+candidate carrying food/food_store/restaurant types. The pipeline already
+HAS an LLM adjudicator downstream (candidateSelectionStrategy:
+gemini_staged, restaurant-place-chooser prompt) — the type filter throws
+away candidates before the judge that exists to judge them ever sees them.
+
+CAUSE 2 — WRONG-GEO CANDIDATES AT RUN TIME, NOT REPRODUCIBLE TODAY. The
+July-30 attempt for Rebel Cheese recorded Asheville NC / Nicholasville KY
+candidates; today the same query, even UNBIASED, returns the Austin place
+first. The bias encoding in google-places.service is correct (verified),
+and the live lane passes bias+locale together. Whatever degraded the
+July-30 run (missing bias in the batch lane, or Google index state), it
+cannot be settled retroactively — but it does not need to be, because:
+
+CAUSE 3 — ONE ATTEMPT, FOREVER. enrichRestaurantEntity catches its own
+errors, so BullMQ never retries; the janitor retry arm is weekly, capped,
+and OFF (LOCATION_LIFECYCLE_CRON_ENABLED=false). 90 ghosts were never
+attempted at all (Easy Tiger, Otoko, Garbos among them). A one-shot failure
+on July 30 froze into a permanent ghost.
+
+PROOF THE GHOSTS ARE RECOVERABLE: re-running the real pipeline today with
+proper context matched 3 of 5 sampled ghosts immediately — Easy Tiger (The
+Linc), OTOKO (S Congress), Garbo's (on Mopac). Thai Kun failed correctly
+(permanently closed); Rebel Cheese failed on Cause 1.
+
+FIX SHAPE (round-2 design, not yet implemented):
+  a. Prediction-stage type filter stops being a hard gate — candidates flow
+     to the existing gemini_staged adjudicator, which decides "is this the
+     place the community meant" from name+geo+context (the claim-level
+     test, where it belongs).
+  b. One re-grounding sweep over the 1,341+90 with locale+bias (expected
+     recovery well over half, given 3/5 sampled), tombstoning the
+     195 permanently-closed so autocomplete stops suggesting corpses.
+  c. Failures become retryable: either stop swallowing the error (F354
+     precedent: the queue's attempts:3 is unreachable today) or turn the
+     janitor retry arm ON with a budget.
+  d. Places spend rides the owner-approved envelope; measured recovery rate
+     from (b)'s first 100 decides whether the rest runs.
