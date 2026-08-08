@@ -36,7 +36,6 @@ interface SpendGateCopy {
   titleNoun: string;
   /** Leads every thrown message: '<budgetNoun> spend budget …'. */
   budgetNoun: string;
-  unconfirmedBody: string;
   exhaustedMessage: string;
 }
 
@@ -59,11 +58,21 @@ interface SpendGateHost {
  *
  * A budget refusal is a named type now. Anything else coming out of a gate is,
  * by construction, not a budget refusal.
+ *
+ * D149 (2026-08-07) narrowed WHO can ever see one. A budget refusal is now a
+ * BACKGROUND-ONLY event: it can reach a queue drain, a cron, a batch
+ * submission — never a person waiting on a screen. The gates below still
+ * throw; the call sites decide whether to consult them, and the user-facing
+ * ones do not (see google-places.service.ts's origin rule).
  */
 export class SpendBudgetClosedError extends Error {
   constructor(
     message: string,
-    readonly reason: 'unconfirmed' | 'poisoned' | 'exhausted',
+    /** 'unconfirmed' is GONE (D149): a window the store cannot confirm now
+     *  ADMITS and alerts (pool-registry.admit) instead of refusing, so the
+     *  only two ways a budget says no are the vendor saying no ('poisoned')
+     *  and a worker-only runaway backstop tripping ('exhausted'). */
+    readonly reason: 'poisoned' | 'exhausted',
   ) {
     super(message);
     this.name = 'SpendBudgetClosedError';
@@ -78,19 +87,6 @@ async function assertSpendOpen(
   const verdict = await host.pools.admit(copy.poolName);
   if (verdict.admitted) {
     return;
-  }
-  if (verdict.reason === 'unconfirmed') {
-    host.opsAlerts.emit({
-      severity: 'critical',
-      kind: copy.alertKind,
-      title: `${copy.titleNoun} spend budget cannot be confirmed`,
-      body: copy.unconfirmedBody,
-      dedupeKey: `${copy.alertKind}_unconfirmed:${monthKey}`,
-    });
-    throw new SpendBudgetClosedError(
-      `${copy.budgetNoun} spend budget unconfirmed (durable window failed to load) — refusing to spend against an unknown balance`,
-      'unconfirmed',
-    );
   }
   if (verdict.reason === 'poisoned') {
     const hours = Math.ceil((verdict.retryAfterMs ?? 0) / 3_600_000);
@@ -119,10 +115,8 @@ const GEMINI_SPEND_GATE: SpendGateCopy = {
   alertKind: 'gemini_backstop',
   titleNoun: 'Gemini',
   budgetNoun: 'LLM',
-  unconfirmedBody:
-    'The durable spend window failed to load, so month-to-date spend is unknown. Refusing LLM spend rather than admitting against a window that reads zero.',
   exhaustedMessage:
-    'LLM spend budget exhausted (gemini.monthlySpend Tier-3 backstop) — typed not-now; work stays queued until the month window rolls or the backstop is re-derived',
+    'LLM spend budget exhausted (gemini.monthlySpend runaway backstop, $1,500/mo default) — typed not-now; batch work stays queued until the month window rolls or GEMINI_MONTHLY_SPEND_CAP_USD is raised. At ~10x measured steady-state spend, a trip means a loop, not a busy month',
 };
 
 const PLACES_SPEND_GATE: SpendGateCopy = {
@@ -130,10 +124,8 @@ const PLACES_SPEND_GATE: SpendGateCopy = {
   alertKind: 'places_backstop',
   titleNoun: 'Places',
   budgetNoun: 'Places',
-  unconfirmedBody:
-    'The durable spend window failed to load, so month-to-date Places spend is unknown. Refusing vendor spend rather than admitting against a window that reads zero.',
   exhaustedMessage:
-    'Places spend budget exhausted (googlePlaces.monthlySpend) — typed not-now; enrichment stays queued until the month window rolls or the cap is raised',
+    'Places spend budget exhausted (googlePlaces.monthlySpend runaway backstop, $1,000/mo default) — typed not-now; WORKER enrichment stays queued until the month window rolls or the cap is raised. User-originated Places calls are never refused by this budget (D149)',
 };
 
 const TOMTOM_SPEND_GATE: SpendGateCopy = {
@@ -141,16 +133,9 @@ const TOMTOM_SPEND_GATE: SpendGateCopy = {
   alertKind: 'tomtom_backstop',
   titleNoun: 'TomTom',
   budgetNoun: 'TomTom',
-  unconfirmedBody:
-    'The durable spend window failed to load, so month-to-date TomTom spend is unknown. Refusing vendor spend rather than admitting against a window that reads zero.',
   exhaustedMessage:
     'TomTom spend budget exhausted (tomtom.monthlySpend catastrophe backstop) — typed not-now; probes and polygon draws stay queued until the month window rolls or the cap is raised',
 };
-
-/** §24.4 item 4 / §24.6 K1: the work_class the nightly backstop derivation
- *  writes to spend_unit_costs (SpendAnalyticsService.refreshBackstop). Read
- *  here at boot only — see the gemini.monthlySpend registration comment. */
-const GEMINI_BACKSTOP_WORK_CLASS = 'backstop.gemini';
 
 /**
  * The Resource Governor's runtime seam (master plan §14 v2, Phase-A minimum):
@@ -210,30 +195,60 @@ export class GovernanceService implements OnModuleInit {
     // TomTom month ledgers. perMinute pools stay memory-only (see the
     // registry header for the §16-classified split).
     //
-    // Single fail semantic (owner decision 2026-07-24): a failed durable
-    // flush HARD-CLOSES the pool's window (reserve() refuses with the typed
-    // 'storeFailure' denial) until a flush succeeds again — and it is LOUD:
-    // error log + critical ops alert, deduped per pool per hour.
-    this.pools = new PoolRegistry(store, (poolName, error) => {
-      const message = error instanceof Error ? error.message : String(error);
-      this.logger.error(
-        'DURABLE POOL FLUSH FAILED — window hard-closed (draws refuse) until a flush succeeds; a crash before then loses this delta',
-        { poolName, error: { message } },
-      );
-      this.opsAlerts.emit({
-        severity: 'critical',
-        kind: 'pool_bookkeeping_failure',
-        title: `Pool bookkeeping failure: ${poolName}`,
-        body:
-          `Durable window flush failed for pool '${poolName}' — the window ` +
-          `is hard-closed (all draws refuse with 'storeFailure') until a ` +
-          `flush succeeds. Error: ${message}`,
-        // Dedupe per pool per UTC hour: 'YYYY-MM-DDTHH' bucket.
-        dedupeKey: `pool_bookkeeping_failure:${poolName}:${new Date()
-          .toISOString()
-          .slice(0, 13)}`,
-      });
-    });
+    // SCREAM, NEVER KILL (owner ruling D149, 2026-08-07; replaces the
+    // 2026-07-24 hard-close semantic). A failed durable flush no longer
+    // refuses draws — it pages. Two callbacks, two facts:
+    //   1. the flush itself failed (this delta is at risk of being lost)
+    //   2. a window admitted while unconfirmable (we spent against a
+    //      balance we could not read)
+    // Both are critical, because both mean the money instrumentation is
+    // blind — which is exactly when a human should be looking.
+    this.pools = new PoolRegistry(
+      store,
+      (poolName, error) => {
+        const message = error instanceof Error ? error.message : String(error);
+        this.logger.error(
+          'DURABLE POOL FLUSH FAILED — draws continue (D149 fail-open); a crash before the next successful flush loses this delta',
+          { poolName, error: { message } },
+        );
+        this.opsAlerts.emit({
+          severity: 'critical',
+          kind: 'pool_bookkeeping_failure',
+          title: `Pool bookkeeping failure: ${poolName}`,
+          body:
+            `Durable window flush failed for pool '${poolName}'. Draws ` +
+            `CONTINUE (D149: a store hiccup must not refuse work), so ` +
+            `month-to-date consumption for this pool is under-counted until ` +
+            `a flush succeeds. Error: ${message}`,
+          // Dedupe per pool per UTC hour: 'YYYY-MM-DDTHH' bucket.
+          dedupeKey: `pool_bookkeeping_failure:${poolName}:${new Date()
+            .toISOString()
+            .slice(0, 13)}`,
+        });
+      },
+      (poolName) => {
+        this.logger.error(
+          'POOL ADMITTED AGAINST AN UNCONFIRMED WINDOW — spending against a balance the store could not read (D149 fail-open)',
+          { poolName },
+        );
+        this.opsAlerts.emit({
+          severity: 'critical',
+          kind: 'pool_window_unconfirmed',
+          title: `Spending blind: ${poolName} window unconfirmed`,
+          body:
+            `Pool '${poolName}' admitted a draw while its durable window ` +
+            `could not be confirmed from the store, so its ceiling is not ` +
+            `being enforced right now. This is deliberate (D149: refusing ` +
+            `real work over a DB blip is the worse failure) — but it means ` +
+            `the backstop is OFF for this pool until the store recovers. ` +
+            `Check Postgres and pool_window_consumption.`,
+          // Per pool per UTC day: loud, but not a per-draw storm.
+          dedupeKey: `pool_window_unconfirmed:${poolName}:${new Date()
+            .toISOString()
+            .slice(0, 10)}`,
+        });
+      },
+    );
     // ── TomTom pools (RESHAPED 2026-07-27, owner directive) ────────────────
     //
     // Owner 2026-07-27: "price for TomTom I don't care — the scarce limits
@@ -312,60 +327,31 @@ export class GovernanceService implements OnModuleInit {
       },
       reservationTtlMs: 120_000,
     });
-    // Gemini pool #1 (§22 Phase-A minimum; §14.2 "absorbing the existing TPM
-    // reservation engine as the gemini pool's implementation"): the Redis
-    // CentralizedRateLimiter REMAINS the multi-process admission authority;
-    // this registry entry is the pool's LEDGER — SmartLLMProcessor mirrors
-    // every live draw's declared-vs-actual token pair here (the §14.2
-    // estimator-drift instrument). Limit = the same per-project vendor fact
-    // the limiter reads (AI Studio shows the live limits; published Tier-2
-    // floor 4M TPM is safe for this Tier-3 account, env-overridable — never
-    // guessed).
-    const envMaxTpm = parseInt(process.env.LLM_MAX_TPM || '', 10);
-    this.pools.register({
-      name: 'gemini.tokens',
-      credential: 'default',
-      window: {
-        kind: 'perMinute',
-        limit:
-          Number.isFinite(envMaxTpm) && envMaxTpm > 0 ? envMaxTpm : 4_000_000,
-        denomination: 'quantity',
-      },
-      reservationTtlMs: 60_000,
-    });
-    // §24.1 Tier 3 CATASTROPHE BACKSTOP (demoted 2026-07-24, §24.4 items
-    // 2+4): the gemini MONTHLY DOLLAR budget, in micro-USD, metered from
-    // ACTUAL token counts at the usage-ledger chokepoint (gemini-pricing.ts
-    // K4 rates). No longer "the" work governor — Tier 1 campaigns stop via
-    // their envelope, Tier 2 lanes via cost baselines; this pool is the
-    // last-resort backstop so the system self-stops with a typed not-now
-    // BEFORE the vendor's wall (whose 429s the batch retrier would
-    // otherwise storm against), expected to NEVER fire in healthy
-    // operation. Its LIMIT is fixed at boot from GEMINI_MONTHLY_SPEND_CAP_USD
-    // (see that env var's comment below — it is ONLY the pre-first-
-    // derivation boot value now) and then RE-DERIVED nightly by
-    // SpendAnalyticsService.refreshBackstop as BACKSTOP_MULTIPLE (K1 = 3;
-    // "a bug may cost at most two extra months", §24.1 Tier 3) × the
-    // trailing 30d measured gemini spend, via PoolRegistry.resetLimit — the
-    // visible, measured backstop number replaces the env guess once one
-    // refresh has run. hardClosed + durable: a restart can never forget
-    // spend.
+    // BACKSTOP #1 OF 2 — the gemini MONTHLY DOLLAR runaway stop (D149,
+    // 2026-08-07), in micro-USD, metered from ACTUAL token counts at the
+    // usage-ledger chokepoint (gemini-pricing.ts K4 rates).
     //
-    // GEMINI_MONTHLY_SPEND_CAP_USD: the boot-only seed. Once
-    // SpendAnalyticsService's nightly refresh has written a
-    // 'backstop.gemini' spend_unit_costs row, this env var is DEAD for every
-    // subsequent boot (governance reads the derived row instead) — it only
-    // matters for the very first boot before any derivation has run.
-    // THE FALSY-ZERO TRAP (red team 2026-08-02). `Number(env || '300')` makes
-    // a DELIBERATE 0 become 300: an owner setting the cap to zero to halt
-    // Gemini spend during an incident would restart into a $300 ceiling —
-    // the exact opposite of the instruction. spend-analytics.service.ts had
-    // already written a paragraph about this trap and parsed the same
-    // variable correctly; the file that sets the actual boot limit never got
-    // the fix. One variable, one parser now.
+    // $1,500 is ~10x the MEASURED steady state ($155/mo — see
+    // expected-monthly-spend.ts, which is the number the nightly comparator
+    // actually watches). At that altitude a trip cannot mean "a busy month";
+    // it can only mean a loop calling the vendor forever. That is the whole
+    // job now: everyday spend is WATCHED (comparator alerts at 1x and 2x
+    // expected), not GATED.
+    //
+    // What this replaced: a nightly derivation that recomputed the ceiling as
+    // 3x trailing measured spend, bounded by a floor env var and a ceiling env
+    // var, applied at boot and re-checked daily on the gate's own hot path.
+    // Four moving parts and three env vars to express one number, and the
+    // failure mode was that the ceiling silently TRACKED a runaway upward.
+    // A fixed number an owner can read in one line is strictly better.
+    //
+    // THE FALSY-ZERO TRAP (red team 2026-08-02). `Number(env || '1500')` makes
+    // a DELIBERATE 0 become 1500: an owner setting the cap to zero to halt
+    // Gemini spend during an incident would restart into a live budget — the
+    // exact opposite of the instruction. readSpendCapUsd is the one parser.
     const capUsd = readSpendCapUsd(
       process.env.GEMINI_MONTHLY_SPEND_CAP_USD,
-      300,
+      1500,
     );
     this.pools.register({
       name: 'gemini.monthlySpend',
@@ -377,25 +363,25 @@ export class GovernanceService implements OnModuleInit {
       },
       reservationTtlMs: 60_000,
     });
-    // GOOGLE PLACES MONTHLY SPEND — the catastrophe backstop (owner-priced
-    // 2026-08-01: $200/month, the same shape as gemini.monthlySpend's cap).
+    // BACKSTOP #2 OF 2 — GOOGLE PLACES MONTHLY DOLLAR runaway stop, WORKER
+    // ONLY (D149, 2026-08-07). $1,000 ≈ 10x the measured $100/mo steady
+    // state.
     //
-    // Places had RATE limits (150k/day, 12k/min, Redis-backed and global)
-    // but no DOLLAR ceiling — and at the metered rates those limits permit
-    // roughly $2.5k/day. Rate is not budget. Unlike TomTom, this spend does
-    // NOT converge: TomTom cost is per PLACE and a place is outlined once,
-    // so it asymptotes as your geography fills in, while Places is driven by
-    // user TEXT, which is infinite.
+    // It used to be $200 and it used to be consulted on the USER path. That
+    // combination produced the live organic 500 this whole rederivation came
+    // from: create a poll about a restaurant we haven't seen before, the seed
+    // needs one Places lookup, the month's pool says no, and the person gets
+    // "something went wrong" — for a budget they cannot see, did not set, and
+    // are not responsible for. A person waiting on a screen is never refused
+    // by a number; google-places.service.ts consults this pool only when the
+    // process is the worker (PROCESS_ROLE=worker), where a refusal just
+    // requeues background work.
     //
-    // This is the LAST line, not the everyday control. What keeps us off it
-    // is asking our own catalog first (poll-entity-seed.matchKnownRestaurant)
-    // and remembering misses (vendor_lookup_misses).
-    // Same parser as Gemini above. It used parseFloat, which additionally
-    // accepts trailing junk ("200usd" -> 200) — two spellings of one concept
-    // in one file.
+    // Rate is still not budget: the per-op rate ceilings live in
+    // configuration.ts and shape burst, not spend.
     const placesCapUsd = readSpendCapUsd(
       process.env.GOOGLE_PLACES_MONTHLY_SPEND_CAP_USD,
-      200,
+      1000,
     );
     this.pools.register({
       name: 'googlePlaces.monthlySpend',
@@ -482,7 +468,6 @@ export class GovernanceService implements OnModuleInit {
         }
       }),
     );
-    await this.applyDerivedGeminiBackstop();
     await this.reRegisterCampaignGrants();
   }
 
@@ -498,7 +483,7 @@ export class GovernanceService implements OnModuleInit {
    * spentMicros-to-date so the pool's remaining capacity reflects reality,
    * not a fresh zero. Pilots (estimateMicros null — §24.2) have no envelope
    * to re-register, same as approve() never minting one for them. Non-fatal
-   * per-row (mirrors applyDerivedGeminiBackstop): a bad row must not fail
+   * per-row: a bad row must not fail
    * boot, only skip that one campaign's grant.
    */
   private async reRegisterCampaignGrants(): Promise<void> {
@@ -575,135 +560,6 @@ export class GovernanceService implements OnModuleInit {
   }
 
   /**
-   * §24.4 item 4 / §24.1 Tier 3: at boot, prefer the MEASURED backstop over
-   * the env-seeded guess — read the latest 'backstop.gemini' row
-   * SpendAnalyticsService's nightly refresh wrote to spend_unit_costs
-   * (micro_usd_per_unit = the derived monthly limit in micro-USD, unit=
-   * 'month') and, when present, resetLimit the gemini.monthlySpend pool to
-   * it. §14 discipline: a pool's limit changes only at boot or by this
-   * re-derivation — never mid-window by arbitrary write. Absent a row yet
-   * (fresh install, before the first nightly refresh), the constructor's
-   * GEMINI_MONTHLY_SPEND_CAP_USD boot value stands unchanged — that env var
-   * is ONLY the pre-first-derivation seed. A read failure is non-fatal
-   * (boot must never fail on this); it just leaves the env-seeded limit.
-   */
-  private async applyDerivedGeminiBackstop(): Promise<void> {
-    try {
-      const row = await this.prisma.spendUnitCost.findUnique({
-        where: {
-          workClass_unit: {
-            workClass: GEMINI_BACKSTOP_WORK_CLASS,
-            unit: 'month',
-          },
-        },
-      });
-      if (!row) {
-        // SILENCE HERE IS THE FAILURE MODE. The Tier-3 story is "3x trailing
-        // MEASURED spend", but with no derived row the live limit is the
-        // env seed — an owner guess wearing a derivation's clothes, which
-        // §16 exists to forbid. Absence looked identical to "nothing to
-        // derive", so a nightly that silently stopped producing rows was
-        // invisible. Say so.
-        this.opsAlerts.emit({
-          severity: 'warn',
-          kind: 'gemini_backstop',
-          title: 'Gemini backstop is NOT derived — running on the env seed',
-          body: `No ${GEMINI_BACKSTOP_WORK_CLASS}/month row exists, so the spend cap is the GEMINI_MONTHLY_SPEND_CAP_USD seed rather than a measurement. Check that the nightly spend-analytics refresh is running.`,
-          // Bucketed by day (R1): ops-alerts persists dedupe keys forever,
-          // so a constant key means the alert fires once EVER — a dead
-          // detector wearing an alert's clothes.
-          dedupeKey: `gemini_backstop_underived:${new Date().toISOString().slice(0, 10)}`,
-        });
-        return;
-      }
-      const ageMs = Date.now() - row.refreshedAt.getTime();
-      if (ageMs > 48 * 60 * 60 * 1000) {
-        this.opsAlerts.emit({
-          severity: 'warn',
-          kind: 'gemini_backstop',
-          title: 'Gemini backstop derivation is stale',
-          body: `The derived cap was last refreshed ${Math.round(ageMs / 3_600_000)}h ago. A stale derivation silently governs today's spend with last week's measurement.`,
-          dedupeKey: `gemini_backstop_stale:${new Date().toISOString().slice(0, 10)}`,
-        });
-      }
-      const before = this.pools.poolStatus('gemini.monthlySpend').limit;
-      const after = Math.round(row.microUsdPerUnit);
-      if (after <= 0) {
-        // A derived row exists but is garbage — the env seed silently
-        // governs, which is exactly what the underived alert exists to
-        // prevent. Same severity, distinct key.
-        this.opsAlerts.emit({
-          severity: 'warn',
-          kind: 'gemini_backstop',
-          title: 'Gemini backstop derivation row is corrupt',
-          body: `backstop.gemini/month exists but microUsdPerUnit=${row.microUsdPerUnit}; the env seed is governing.`,
-          dedupeKey: `gemini_backstop_corrupt:${new Date().toISOString().slice(0, 10)}`,
-        });
-        return;
-      }
-      if (after === before) {
-        return;
-      }
-      this.pools.resetLimit('gemini.monthlySpend', after);
-      this.logger.info(
-        'gemini.monthlySpend backstop re-derived from measured spend at boot',
-        {
-          beforeUsd: Math.round(before / 10_000) / 100,
-          afterUsd: Math.round(after / 10_000) / 100,
-        },
-      );
-    } catch (error) {
-      this.logger.warn(
-        'Backstop re-derivation read failed at boot (env-seeded limit stands)',
-        {
-          error: {
-            message: error instanceof Error ? error.message : String(error),
-          },
-        },
-      );
-    }
-  }
-
-  /**
-   * Ledger-only mirror for a pool whose ADMISSION lives elsewhere (Phase-A
-   * gemini absorption): records a declared-vs-actual draw pair without ever
-   * gating the caller. A mirror "denial" is pure divergence telemetry — the
-   * external authority admitted what this process-local window would not —
-   * and is logged, never surfaced.
-   */
-  mirrorDraw(
-    poolName: string,
-    workClass: string,
-    declared: number,
-    actual: number,
-  ): void {
-    try {
-      const reservation = this.pools.reserve(poolName, declared, workClass);
-      if (!reservation.admitted) {
-        this.logger.warn(
-          'Ledger mirror divergence (external authority admitted; local window would deny)',
-          { poolName, workClass, declared, reason: reservation.reason },
-        );
-        return;
-      }
-      // Mirror pools are perMinute (memory-only) — the reconcile promise is a
-      // no-op write-through and never rejects.
-      void this.pools.reconcile(reservation.reservationId, actual);
-    } catch (error) {
-      this.logger.warn(
-        'Ledger mirror failed (telemetry only, caller unaffected)',
-        {
-          poolName,
-          workClass,
-          error: {
-            message: error instanceof Error ? error.message : String(error),
-          },
-        },
-      );
-    }
-  }
-
-  /**
    * Reserve-act-reconcile wrapper for a single vendor call. Returns null on
    * denial (typed not-now — the caller degrades gracefully, e.g. header says
    * "this area" and the mint retries next month).
@@ -720,18 +576,13 @@ export class GovernanceService implements OnModuleInit {
    * measured spend AND is now the default extraction path, so the riskiest
    * gate guarded the biggest spender. Two gates for one budget is the defect;
    * this is the fix.
+   *
+   * D149: the limit is now a FIXED $1,500 (GEMINI_MONTHLY_SPEND_CAP_USD). The
+   * daily "is the derivation still alive" health check that used to ride this
+   * hot path is gone with the derivation it watched — there is nothing left to
+   * go stale.
    */
-  /** Last derived-backstop health check (R2: boot-only checking meant a
-   *  long-lived process never noticed the nightly dying). */
-  private lastBackstopHealthCheckMs = 0;
-
   async assertGeminiSpendOpen(): Promise<void> {
-    // Re-evaluate derivation health at most daily, riding the gate every
-    // caller already passes through — no new scheduler.
-    if (Date.now() - this.lastBackstopHealthCheckMs > 24 * 3_600_000) {
-      this.lastBackstopHealthCheckMs = Date.now();
-      void this.applyDerivedGeminiBackstop();
-    }
     await assertSpendOpen(
       { pools: this.pools, opsAlerts: this.opsAlerts },
       GEMINI_SPEND_GATE,
@@ -747,8 +598,11 @@ export class GovernanceService implements OnModuleInit {
    * while the July accident that prompted all this governance was $323 in
    * one morning. Rate is not budget; this is the budget.
    *
-   * Fail-closed exactly like the Gemini gate: an unconfirmable window
-   * refuses rather than admitting against an unknown balance.
+   * D149 CALLER CONTRACT — WORKER PROCESSES ONLY. This gate throws, and a
+   * throw on a user's request is a 500 for a budget they cannot see. The
+   * single call site (google-places.service.ts) consults it only when the
+   * process serves no HTTP traffic; see `gateWorkerSpend` there for why the
+   * process role is the honest place to draw that line.
    */
   async assertPlacesSpendOpen(): Promise<void> {
     await assertSpendOpen(

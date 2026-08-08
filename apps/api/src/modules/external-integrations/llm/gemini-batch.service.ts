@@ -175,8 +175,9 @@ export class GeminiBatchService implements OnModuleDestroy {
     // submissions locally — queued work refills and drains when the
     // backstop reopens. Expected to never fire in healthy operation: Tier 1
     // campaigns stop via their envelope, Tier 2 lanes via cost baselines;
-    // this pool's limit is BACKSTOP_MULTIPLE × trailing measured monthly
-    // spend, re-derived nightly (governance.service.ts).
+    // this pool's limit is a fixed GEMINI_MONTHLY_SPEND_CAP_USD ($1,500
+    // default ≈ 10x measured steady state — D149, 2026-08-07). Batch is
+    // background work, so a refusal here reaches a queue, never a person.
     // ONE GATE (2026-07-28). This used to hand-compare a poolStatus()
     // snapshot, which never re-reads the durable window and treats an
     // unconfirmed store as zero spent — i.e. fail-OPEN on the path that is

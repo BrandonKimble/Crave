@@ -299,26 +299,12 @@ describe('OpsSummaryService.summary (V2 shape test)', () => {
     expect(summary.sources).toEqual({ ok: true, data: [] });
   });
 
-  it('falls back to the persisted backstop.gemini row when governance is absent', async () => {
-    delete process.env.TOMTOM_PREPAID_CREDIT_USD;
-    delete process.env.TOMTOM_CREDIT_DECLARED_AT;
-    const service = new OpsSummaryService(
-      buildPrisma({
-        unitCostRows: [
-          {
-            workClass: 'backstop.gemini',
-            unit: 'month',
-            microUsdPerUnit: 42_000_000,
-          },
-        ],
-      }) as never,
-      buildOpsAlerts() as never,
-      buildRegistry() as never,
-      buildLogger(),
-    );
-    const summary = await service.summary(NOW);
-    expect(summary.vendors.gemini.backstopLimitMicros).toBe(42_000_000);
-  });
+  // DELETED (D149, 2026-08-07): 'falls back to the persisted backstop.gemini
+  // row when governance is absent'. It asserted a fallback to a
+  // spend_unit_costs row written by the nightly backstop derivation, which
+  // this rederivation deleted — the gemini ceiling is a fixed env-seeded
+  // number now, so the row it read no longer exists and a stale one would
+  // have displayed a ceiling that governs nothing.
 
   it('prices TomTom BY OPERATION — a cheap geocode is not charged the scarce polygon rate', async () => {
     // Every TomTom figure on this dashboard was ~2.8x over-stated because one

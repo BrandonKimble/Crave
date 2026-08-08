@@ -235,7 +235,6 @@ describe('the outage path is wired to the guard (behavioral)', () => {
     const processor = new SmartLLMProcessor(
       logger as never,
       rateLimiter as never,
-      { mirrorDraw: jest.fn() } as never,
     );
     processor.onModuleInit();
     const sleptMs: number[] = [];

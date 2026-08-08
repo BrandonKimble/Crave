@@ -14,19 +14,15 @@ import { GovernanceService } from './governance.service';
 describe('GovernanceService.assertGeminiSpendOpen', () => {
   const build = (
     verdict:
-      | { admitted: true }
+      | { admitted: true; storeUnconfirmed: boolean }
       | {
           admitted: false;
-          reason: 'poisoned' | 'exhausted' | 'unconfirmed';
+          reason: 'poisoned' | 'exhausted';
           retryAfterMs: number | null;
         },
   ) => {
     const emit = jest.fn();
     const self = {
-      // Health re-check TTL: pretend it just ran so the spec exercises the
-      // verdict branches, not the daily refresh.
-      lastBackstopHealthCheckMs: Date.now(),
-      applyDerivedGeminiBackstop: jest.fn().mockResolvedValue(undefined),
       pools: {
         admit: jest.fn().mockResolvedValue(verdict),
         poolStatus: jest.fn().mockReturnValue({ used: 0, limit: 1 }),
@@ -41,7 +37,7 @@ describe('GovernanceService.assertGeminiSpendOpen', () => {
   };
 
   it('admits silently when the pool admits', async () => {
-    const { run, emit } = build({ admitted: true });
+    const { run, emit } = build({ admitted: true, storeUnconfirmed: false });
     await expect(run()).resolves.toBeUndefined();
     expect(emit).not.toHaveBeenCalled();
   });
@@ -54,7 +50,7 @@ describe('GovernanceService.assertGeminiSpendOpen', () => {
    * the only assertion that can go red on that mutation.
    */
   it('admits against gemini.monthlySpend — not some other budget', async () => {
-    const { run, self } = build({ admitted: true });
+    const { run, self } = build({ admitted: true, storeUnconfirmed: false });
     await run();
     expect(self.pools.admit).toHaveBeenCalledWith('gemini.monthlySpend');
   });
@@ -63,7 +59,9 @@ describe('GovernanceService.assertGeminiSpendOpen', () => {
     ['assertPlacesSpendOpen', 'googlePlaces.monthlySpend'],
     ['assertTomtomSpendOpen', 'tomtom.monthlySpend'],
   ] as const)('%s admits against %s', async (method, poolName) => {
-    const admit = jest.fn().mockResolvedValue({ admitted: true });
+    const admit = jest
+      .fn()
+      .mockResolvedValue({ admitted: true, storeUnconfirmed: false });
     const self = { pools: { admit }, opsAlerts: { emit: jest.fn() } };
     await GovernanceService.prototype[method].call(
       self as unknown as GovernanceService,
@@ -71,19 +69,17 @@ describe('GovernanceService.assertGeminiSpendOpen', () => {
     expect(admit).toHaveBeenCalledWith(poolName);
   });
 
-  it('FAILS CLOSED on an unconfirmed store — a budget that cannot prove its balance must not admit', async () => {
-    const { run, emit } = build({
-      admitted: false,
-      reason: 'unconfirmed',
-      retryAfterMs: null,
-    });
-    await expect(run()).rejects.toThrow(/unconfirmed/);
-    expect(emit).toHaveBeenCalledWith(
-      expect.objectContaining({
-        severity: 'critical',
-        dedupeKey: expect.stringContaining('gemini_backstop_unconfirmed:'),
-      }),
-    );
+  // REWRITTEN (D149, 2026-08-07). This used to be 'FAILS CLOSED on an
+  // unconfirmed store — a budget that cannot prove its balance must not
+  // admit'. The owner reversed it: an unconfirmable window ADMITS and the
+  // registry screams (pool-registry.spec.ts covers the scream), so the gate
+  // never sees an 'unconfirmed' verdict at all — the arm is deleted, not
+  // merely bypassed. This asserts the gate stays silent on the admit it now
+  // receives instead.
+  it('an admit carrying storeUnconfirmed passes through silently — the scream belongs to the registry, not a second alert here', async () => {
+    const { run, emit } = build({ admitted: true, storeUnconfirmed: true });
+    await expect(run()).resolves.toBeUndefined();
+    expect(emit).not.toHaveBeenCalled();
   });
 
   it('refuses while vendor-poisoned, with its OWN dedupe key (must not suppress the exhausted alert)', async () => {
@@ -115,15 +111,8 @@ describe('GovernanceService.assertGeminiSpendOpen', () => {
     );
   });
 
-  it('re-runs the derived-backstop health check when the daily TTL has lapsed', async () => {
-    const { run, self } = build({ admitted: true });
-    (self as { lastBackstopHealthCheckMs: number }).lastBackstopHealthCheckMs =
-      Date.now() - 25 * 3_600_000;
-    await run();
-    expect(self.applyDerivedGeminiBackstop).toHaveBeenCalledTimes(1);
-    // And the TTL was stamped BEFORE the async call, so concurrent gates
-    // cannot double-fire it.
-    await run();
-    expect(self.applyDerivedGeminiBackstop).toHaveBeenCalledTimes(1);
-  });
+  // DELETED (D149): 're-runs the derived-backstop health check when the
+  // daily TTL has lapsed'. The gemini ceiling is a fixed env-seeded number
+  // now; the nightly derivation it watched, and the TTL that rode this hot
+  // path to watch it, are both gone.
 });

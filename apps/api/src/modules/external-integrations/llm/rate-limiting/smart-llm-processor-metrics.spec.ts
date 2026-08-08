@@ -53,13 +53,7 @@ describe('SmartLLMProcessor performance metrics (F115: RED-able, not decorative)
         bottleneckType: 'none',
       }),
     };
-    const governance = { mirrorDraw: jest.fn() };
-
-    const processor = new SmartLLMProcessor(
-      logger as any,
-      rateLimiter as any,
-      governance as any,
-    );
+    const processor = new SmartLLMProcessor(logger as any, rateLimiter as any);
     processor.onModuleInit();
     // Sleep between retries is the vendor's reset window — irrelevant to
     // whether the COUNTER moved, and it would make this spec take minutes.

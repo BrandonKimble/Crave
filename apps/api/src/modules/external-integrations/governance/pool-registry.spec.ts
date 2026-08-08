@@ -56,9 +56,17 @@ const minutePool = (over: Partial<PoolConfig> = {}): PoolConfig => ({
 describe('PoolRegistry (master plan §14 v2)', () => {
   const t0 = new Date('2026-07-16T12:00:00Z');
 
-  it('HARD-CLOSE EVERYWHERE (single fail semantic): a flush failure refuses the next draw, and only a successful flush re-opens the pool', async () => {
+  // REWRITTEN (D149, 2026-08-07). This asserted the OLD law: 'HARD-CLOSE
+  // EVERYWHERE (single fail semantic): a flush failure refuses the next draw,
+  // and only a successful flush re-opens the pool'. The owner reversed it — a
+  // store hiccup must not refuse real work — so the same scenario now asserts
+  // the opposite outcome plus the scream that replaces the refusal.
+  it('SCREAM, NEVER KILL: a flush failure ADMITS the next draw and fires onUnconfirmedAdmit', async () => {
     const store = new FakeConsumptionStore();
-    const registry = new PoolRegistry(store);
+    const unconfirmedAdmits: string[] = [];
+    const registry = new PoolRegistry(store, undefined, (poolName) =>
+      unconfirmedAdmits.push(poolName),
+    );
     registry.register(
       minutePool({
         name: 'tomtom.scarcePolygons',
@@ -68,23 +76,42 @@ describe('PoolRegistry (master plan §14 v2)', () => {
     await registry.ensureWindow('tomtom.scarcePolygons', t0);
     const res = registry.reserve('tomtom.scarcePolygons', 5, 'us-seed', t0);
     expect(res.admitted).toBe(true);
-    // RED-provable: the flush fails → the very next draw attempt refuses.
     store.failing = true;
     if (res.admitted) await registry.reconcile(res.reservationId, 5, t0);
-    const denied = registry.reserve('tomtom.scarcePolygons', 1, 'probe', t0);
-    expect(denied.admitted).toBe(false);
-    if (!denied.admitted) expect(denied.reason).toBe('storeFailure');
-    // Still closed while the store stays down (no emergency carve-out).
-    await registry.ensureWindow('tomtom.scarcePolygons', t0);
-    expect(
-      registry.reserve('tomtom.scarcePolygons', 1, 'probe', t0).admitted,
-    ).toBe(false);
-    // A successful flush (via ensureWindow) re-opens the window.
-    store.failing = false;
+    // MUTATION-PROVABLE: restore the storeFailure denial in reserve() and
+    // both of these red.
+    const admitted = registry.reserve('tomtom.scarcePolygons', 1, 'probe', t0);
+    expect(admitted.admitted).toBe(true);
+    expect(unconfirmedAdmits).toEqual(['tomtom.scarcePolygons']);
+    // Still admitting while the store stays down — and still screaming.
     await registry.ensureWindow('tomtom.scarcePolygons', t0);
     expect(
       registry.reserve('tomtom.scarcePolygons', 1, 'probe', t0).admitted,
     ).toBe(true);
+    expect(unconfirmedAdmits.length).toBeGreaterThan(1);
+    // A successful flush stops the screaming (the window is confirmed again).
+    store.failing = false;
+    await registry.ensureWindow('tomtom.scarcePolygons', t0);
+    const quietBefore = unconfirmedAdmits.length;
+    expect(
+      registry.reserve('tomtom.scarcePolygons', 1, 'probe', t0).admitted,
+    ).toBe(true);
+    expect(unconfirmedAdmits.length).toBe(quietBefore);
+  });
+
+  it('A GRANT POOL STILL REFUSES on an unconfirmable window — an owner envelope is not ours to spend blind', () => {
+    const store = new FakeConsumptionStore();
+    const registry = new PoolRegistry(store);
+    registry.register(
+      minutePool({
+        name: 'campaign.austin-reload',
+        window: { kind: 'grant', amount: 500, denomination: 'billedMicros' },
+      }),
+    );
+    // Never loaded → the grant window is unconfirmed.
+    const denied = registry.reserve('campaign.austin-reload', 1, 'probe', t0);
+    expect(denied.admitted).toBe(false);
+    if (!denied.admitted) expect(denied.reason).toBe('storeFailure');
   });
 
   it('reserve→reconcile: refunds over-declares, ledgers declared-vs-actual', () => {
@@ -434,20 +461,24 @@ describe('PoolRegistry (master plan §14 v2)', () => {
       expect(within.admitted).toBe(true);
     });
 
-    it('FAIL CLOSED: a durable pool denies (storeFailure) while the window is unconfirmed — before any load, and after a failed load', async () => {
+    // REWRITTEN (D149): was 'FAIL CLOSED: a durable pool denies
+    // (storeFailure) while the window is unconfirmed'.
+    it('FAIL OPEN, LOUDLY: a durable pool ADMITS while the window is unconfirmed — before any load, and after a failed load', async () => {
       const store = new FakeConsumptionStore();
-      const registry = new PoolRegistry(store);
+      const screams: string[] = [];
+      const registry = new PoolRegistry(store, undefined, (name) =>
+        screams.push(name),
+      );
       registry.register(monthPool());
-      // Never loaded → deny.
+      // Never loaded → admit, and say so.
       const beforeLoad = registry.reserve(
         'tomtom.scarcePolygons',
         1,
         'probe',
         t0,
       );
-      expect(beforeLoad.admitted).toBe(false);
-      if (!beforeLoad.admitted) expect(beforeLoad.reason).toBe('storeFailure');
-      // Load fails → still deny.
+      expect(beforeLoad.admitted).toBe(true);
+      // Load fails → still admit, still screaming.
       store.failing = true;
       await registry.ensureWindow('tomtom.scarcePolygons', t0);
       const afterFailedLoad = registry.reserve(
@@ -456,19 +487,18 @@ describe('PoolRegistry (master plan §14 v2)', () => {
         'probe',
         t0,
       );
-      expect(afterFailedLoad.admitted).toBe(false);
-      if (!afterFailedLoad.admitted) {
-        expect(afterFailedLoad.reason).toBe('storeFailure');
-      }
-      // Store recovers → ensureWindow heals and the pool admits again.
+      expect(afterFailedLoad.admitted).toBe(true);
+      expect(screams.length).toBe(2);
+      // Store recovers → the window is confirmed and the alerting stops.
       store.failing = false;
       await registry.ensureWindow('tomtom.scarcePolygons', t0);
       expect(
         registry.reserve('tomtom.scarcePolygons', 1, 'probe', t0).admitted,
       ).toBe(true);
+      expect(screams.length).toBe(2);
     });
 
-    it('a FAILED write-through fails the window closed; recovery flushes the carried delta so nothing under-counts', async () => {
+    it('a FAILED write-through keeps admitting; recovery flushes the carried delta so nothing under-counts', async () => {
       const store = new FakeConsumptionStore();
       const registry = new PoolRegistry(store);
       registry.register(monthPool());
@@ -477,10 +507,14 @@ describe('PoolRegistry (master plan §14 v2)', () => {
       expect(res.admitted).toBe(true);
       store.failing = true;
       if (res.admitted) await registry.reconcile(res.reservationId, 5, t0);
-      // Write-through failed → fail closed.
-      const denied = registry.reserve('tomtom.scarcePolygons', 1, 'probe', t0);
-      expect(denied.admitted).toBe(false);
-      if (!denied.admitted) expect(denied.reason).toBe('storeFailure');
+      // Write-through failed → D149: admit anyway (the alert is the answer).
+      const admitted = registry.reserve(
+        'tomtom.scarcePolygons',
+        1,
+        'probe',
+        t0,
+      );
+      expect(admitted.admitted).toBe(true);
       // Recovery: ensureWindow flushes the carried 5 THEN loads — the stored
       // row now includes the consumption admitted during the outage.
       store.failing = false;
@@ -534,9 +568,16 @@ describe('PoolRegistry (master plan §14 v2)', () => {
       );
     });
 
-    it('a month roll starts UNCONFIRMED (fail closed) until the new window is loaded', async () => {
+    // REWRITTEN (D149): was 'a month roll starts UNCONFIRMED (fail closed)'.
+    // A month roll is the most routine unconfirmed window there is — the last
+    // thing that should refuse work is the clock ticking over midnight on the
+    // 1st.
+    it('a month roll starts UNCONFIRMED but ADMITS (screaming) until the new window is loaded', async () => {
       const store = new FakeConsumptionStore();
-      const registry = new PoolRegistry(store);
+      const screams: string[] = [];
+      const registry = new PoolRegistry(store, undefined, (name) =>
+        screams.push(name),
+      );
       registry.register(monthPool());
       await registry.ensureWindow('tomtom.scarcePolygons', t0);
       const august = new Date('2026-08-01T00:00:01Z');
@@ -546,10 +587,8 @@ describe('PoolRegistry (master plan §14 v2)', () => {
         'probe',
         august,
       );
-      expect(beforeEnsure.admitted).toBe(false);
-      if (!beforeEnsure.admitted) {
-        expect(beforeEnsure.reason).toBe('storeFailure');
-      }
+      expect(beforeEnsure.admitted).toBe(true);
+      expect(screams).toEqual(['tomtom.scarcePolygons']);
       await registry.ensureWindow('tomtom.scarcePolygons', august);
       expect(
         registry.reserve('tomtom.scarcePolygons', 1, 'probe', august).admitted,
@@ -590,7 +629,7 @@ describe('PoolRegistry (master plan §14 v2)', () => {
     });
   });
 
-  describe('resetLimit (§24.4 Tier-3 backstop re-derivation)', () => {
+  describe('resetLimit (no production caller since D149 — kept as the live-ceiling primitive)', () => {
     it('raises the limit and preserves usage/reservations', () => {
       const registry = new PoolRegistry();
       registry.register({

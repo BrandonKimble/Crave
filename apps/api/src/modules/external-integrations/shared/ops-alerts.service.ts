@@ -13,6 +13,21 @@ export interface EmitOpsAlertParams {
    *  (createMany + skipDuplicates against the ops_alerts.dedupe_key unique
    *  column). Omit only for genuinely one-off alerts. */
   dedupeKey?: string;
+  /**
+   * OPT-IN WARN EMAIL (D149, 2026-08-07).
+   *
+   * A `warn` is a dashboard row: it lands in ops_alerts and waits for
+   * someone to look. That is the right default — most warns are ambient —
+   * but it made the spend-anomaly signals dashboard-only, which is exactly
+   * the "alerts must actually reach him" failure D149 exists to fix.
+   *
+   * Globally emailing every warn would be the other failure (an inbox
+   * nobody reads is the same as no alert), so the choice is per-KIND and
+   * made by the emitter: the spend expectation comparator and the vendor
+   * quota watcher opt in; nothing else does. `critical` always emails and
+   * ignores this flag.
+   */
+  emailOnWarn?: boolean;
 }
 
 export interface OpsAlertRow {
@@ -55,7 +70,8 @@ export class OpsAlertsService implements OnModuleDestroy {
   }
 
   /** Fire-and-forget: persist (dedupe-collapsed) then, for a CRITICAL alert
-   *  with RESEND_API_KEY configured, best-effort email. Never throws. */
+   *  — or a WARN that opted in via `emailOnWarn` — with RESEND_API_KEY
+   *  configured, best-effort email. Never throws. */
   emit(params: EmitOpsAlertParams): void {
     const write = this.prisma.opsAlert
       .createMany({
@@ -73,7 +89,10 @@ export class OpsAlertsService implements OnModuleDestroy {
       .then((result) => {
         // Only email on an actual new insert — a collapsed duplicate must
         // not re-page the owner every tick.
-        if (result.count > 0 && params.severity === 'critical') {
+        const emails =
+          params.severity === 'critical' ||
+          (params.severity === 'warn' && params.emailOnWarn === true);
+        if (result.count > 0 && emails) {
           this.sendEmail(params).catch(() => {
             // sendEmail already logs; this catch only guards the fire-and-
             // forget chain itself.
@@ -137,7 +156,7 @@ export class OpsAlertsService implements OnModuleDestroy {
           from:
             process.env.OPS_ALERT_FROM ?? 'Crave Ops <onboarding@resend.dev>',
           to: [to],
-          subject: `[CRITICAL] ${params.title}`,
+          subject: `[${params.severity.toUpperCase()}] ${params.title}`,
           text: params.body,
         }),
       });

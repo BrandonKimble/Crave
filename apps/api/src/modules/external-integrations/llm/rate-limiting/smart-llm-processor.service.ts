@@ -8,7 +8,6 @@ import {
   ReservationMetrics,
   ReservationResult,
 } from './centralized-rate-limiter.service';
-import { GovernanceService } from '../../governance/governance.service';
 import { RateLimitMetrics, TokenUsage } from './rate-limiting.types';
 import { isProdEnv, resolveAppEnv } from '../../../../shared/config/app-env';
 import {
@@ -87,7 +86,6 @@ export class SmartLLMProcessor implements OnModuleInit {
     @Inject(LoggerService) private readonly loggerService: LoggerService,
     @Inject(CentralizedRateLimiter)
     private readonly centralizedRateLimiter: CentralizedRateLimiter,
-    private readonly governance: GovernanceService,
   ) {
     // ONE resolver (red team 2026-08-02) — five services hand-rolled this.
     const isProd = isProdEnv(resolveAppEnv());
@@ -192,18 +190,14 @@ export class SmartLLMProcessor implements OnModuleInit {
         // 6. Extract and record token usage
         const tokenUsage = this.extractTokenUsage(result);
         let tpmUtilization = 0;
-        // Gemini pool #1 ledger mirror (§14.2/§22 Phase-A): the Redis
-        // limiter above stays the admission authority; the governance
-        // registry records every draw's declared-vs-actual token pair —
-        // the estimator-drift instrument. Never gates, never throws.
-        this.governance.mirrorDraw(
-          'gemini.tokens',
-          'live-generate',
-          estimatedTokens,
-          tokenUsage
-            ? tokenUsage.inputTokens + tokenUsage.outputTokens
-            : estimatedTokens,
-        );
+        // The gemini.tokens ledger mirror lived here until D149 (2026-08-07).
+        // It reserved-and-reconciled against a process-local perMinute window
+        // purely to record declared-vs-actual token pairs — a drift instrument
+        // whose samples were in-memory, never read by anything, and thrown
+        // away on every restart. The Redis CentralizedRateLimiter above is and
+        // always was the admission authority; `estimationBiasTokens` /
+        // `estimationSamples` below measure the same drift where it is
+        // actually consumed.
         if (tokenUsage) {
           await this.rateLimiter.recordTokenUsage(
             tokenUsage.inputTokens,

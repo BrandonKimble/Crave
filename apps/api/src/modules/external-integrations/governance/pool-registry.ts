@@ -11,10 +11,27 @@ import type { BilledMicros } from '../shared/spend-currency';
  * reconcile refunds over-declares / debits under-declares; leaked reservations
  * expire by TTL. Declared-vs-actual pairs are the estimator-drift instrument.
  *
- * Fail policy (single semantic, owner decision 2026-07-24): every pool fails
- * HARD. There are no per-pool carve-outs and no emergency fractions — on any
- * durable-flush failure the affected window is closed (draws refuse) until a
- * flush succeeds again, loudly (error log + critical ops alert).
+ * Fail policy — SCREAM, NEVER KILL (owner ruling D149, 2026-08-07; replaces
+ * the 2026-07-24 "every pool fails HARD" semantic).
+ *
+ * The old law said: a durable window the store cannot CONFIRM refuses every
+ * draw until a flush succeeds. That is correct arithmetic and wrong product.
+ * A Postgres hiccup is not evidence of overspending — it is evidence of a
+ * hiccup — and under the old rule a five-second store blip refused real work,
+ * including work a person was waiting on. The failure we were protecting
+ * against (spending against an unknown balance) costs dollars; the failure we
+ * caused (refusing the user) costs the product.
+ *
+ * So an unconfirmable window now ADMITS, and screams: critical ops alert,
+ * deduped per pool per day, plus the error log that was already there. Two
+ * carve-outs KEEP refusing, because for them a refusal is the honest answer:
+ *   - GRANT pools (campaign envelopes, §14.6) — the ceiling is an OWNER
+ *     DECISION about a specific spend, not a safety rail we invented. Handing
+ *     out capacity we cannot prove exists spends someone's approved envelope
+ *     twice.
+ *   - POISONED credentials — the VENDOR said stop. Admitting is not
+ *     generosity, it is a 429 storm.
+ * Rate pacers (perMinute windows) are unaffected: they were never durable.
  *
  * DURABILITY (§14.5/§16 split — durability leg, 2026-07-20): window
  * CONSUMPTION for perMonth/perDay/grant pools is written through to a
@@ -28,10 +45,12 @@ import type { BilledMicros } from '../shared/spend-currency';
  * for drift samples to survive restarts (§18.5 closed without it).
  * Reservations are never stored — seconds-scale, TTL-expiring (§14.2).
  *
- * Store-failure law (§14.5): a durable pool whose window the store cannot
- * CONFIRM (boot load failed, write-through failed, or the window rolled and
- * no load has succeeded yet) fails CLOSED — reserve() denies with the typed
- * 'storeFailure' reason. This is the one and only failure semantic: hard.
+ * Store-failure law (§14.5, rederived by D149): a durable pool whose window
+ * the store cannot CONFIRM (boot load failed, write-through failed, or the
+ * window rolled and no load has succeeded yet) fails OPEN and LOUD —
+ * reserve()/admit() admit, and `onUnconfirmedAdmit` fires so the caller can
+ * page a human. Grant pools are the exception and still deny with the typed
+ * 'storeFailure' reason.
  */
 
 /**
@@ -90,6 +109,8 @@ export type PoolDenial = {
    *  a vendor 429 has POISONED the CREDENTIAL this pool draws on (§14.5), so
    *  the retry-after is honored across every pool sharing that key — not
    *  just the pool whose request happened to receive the 429. */
+  /** 'storeFailure' now reaches GRANT POOLS ONLY (D149): every other durable
+   *  pool admits on an unconfirmable window and screams instead. */
   reason: 'exhausted' | 'storeFailure' | 'upstreamRateLimited';
   retryAfterMs: number | null;
 };
@@ -207,6 +228,12 @@ export class PoolRegistry {
       poolName: string,
       error: unknown,
     ) => void,
+    /** D149 "scream, never kill": fires when a durable non-grant window
+     *  ADMITS while the store could not confirm it. The registry does not
+     *  know how to page a human; governance.service.ts wires the critical
+     *  ops alert (deduped per pool per day). Optional — most tests pass
+     *  nothing and pay nothing. MUST NOT throw. */
+    private readonly onUnconfirmedAdmit?: (poolName: string) => void,
   ) {}
 
   register<D extends Denomination>(config: PoolConfig<D>): PoolHandle<D> {
@@ -267,11 +294,17 @@ export class PoolRegistry {
   }
 
   /**
-   * §24.4/§24.1 Tier-3: a durable pool's LIMIT changes only at boot
-   * (env-seeded) or here, by the backstop re-derivation job — never
-   * mid-window by arbitrary write. Callers: SpendAnalyticsService's nightly
-   * refresh, after computing BACKSTOP_MULTIPLE × trailing measured monthly
-   * spend (plans/geo-demand-foundation-rebuild.md §24.4 item 4). Rejects a
+   * A durable pool's LIMIT changes only at boot (env-seeded) or here — never
+   * mid-window by arbitrary write.
+   *
+   * NO PRODUCTION CALLER SINCE D149 (2026-08-07). Its one caller was the
+   * nightly backstop re-derivation, which the owner ruled out of existence:
+   * ceilings are fixed env-seeded numbers now, so nothing re-derives one at
+   * runtime. Kept rather than deleted because it is the only honest way to
+   * change a live ceiling without a restart — the shape an ops action would
+   * need — and because the governance specs use it to drive a pool to
+   * exhaustion. If that ops action never arrives, this is a legitimate
+   * deletion candidate. Rejects a
    * pool with no registered window (typo/never-registered) and rejects a
    * grant pool (grants refill only by owner approval, never a derived
    * limit). Does not touch usage/reservations — only the window's capacity;
@@ -472,20 +505,24 @@ export class PoolRegistry {
    * dollar window does not need per-call freshness, but it must not be
    * frozen at boot for a month.
    *
-   * It also fails CLOSED on an unconfirmed store. `ensureWindow`'s catch
-   * leaves `confirmed:false` WITHOUT populating usage, so `windowUsed`
-   * reads 0 — a store hiccup silently reset the month to zero spend. A
-   * budget that cannot prove what it has spent must not admit.
+   * IT FAILS OPEN AND SCREAMS on an unconfirmed store (D149). `ensureWindow`'s
+   * catch leaves `confirmed:false` WITHOUT populating usage, so `windowUsed`
+   * reads 0 — a store hiccup used to look like "the month reset to zero", and
+   * the old rule refused every draw rather than trust that zero. Both readings
+   * are wrong for the same reason: the store's silence says nothing about the
+   * balance. Refusing is the expensive wrong answer (it stops real work,
+   * including a person's), so admission proceeds and `onUnconfirmedAdmit`
+   * pages a human instead. Grant pools keep the refusal — see reserve().
    */
   async admit(
     poolName: string,
     at: Date = new Date(),
     ttlMs = 30_000,
   ): Promise<
-    | { admitted: true }
+    | { admitted: true; storeUnconfirmed: boolean }
     | {
         admitted: false;
-        reason: 'poisoned' | 'exhausted' | 'unconfirmed';
+        reason: 'poisoned' | 'exhausted';
         retryAfterMs: number | null;
       }
   > {
@@ -510,8 +547,13 @@ export class PoolRegistry {
         retryAfterMs: status.poisonedForMs,
       };
     }
-    if (status.storeConfirmed === false) {
-      return { admitted: false, reason: 'unconfirmed', retryAfterMs: null };
+    const storeUnconfirmed = status.storeConfirmed === false;
+    if (storeUnconfirmed) {
+      // Admit — but a window we cannot read is also a window whose `used`
+      // reads 0, so the exhaustion check below is meaningless here. Say so
+      // out loud and let the work through.
+      this.onUnconfirmedAdmit?.(poolName);
+      return { admitted: true, storeUnconfirmed: true };
     }
     if (status.used >= status.limit) {
       return {
@@ -520,7 +562,7 @@ export class PoolRegistry {
         retryAfterMs: status.resetMs,
       };
     }
-    return { admitted: true };
+    return { admitted: true, storeUnconfirmed: false };
   }
 
   listRegistered(): PoolConfig[] {
@@ -564,9 +606,15 @@ export class PoolRegistry {
       }
       this.poisonedUntil.delete(credentialKey);
     }
-    // §14.5 store-failure law (single semantic — every pool fails HARD): a
-    // durable pool whose current window the store has not CONFIRMED fails
-    // closed; a typed 'not now' — never an error, never fail-open.
+    // §14.5 store-failure law, rederived by D149 — SCREAM, NEVER KILL.
+    //
+    // A durable window the store has not CONFIRMED means we cannot prove
+    // month-to-date consumption. For a GRANT pool that is disqualifying: the
+    // envelope is an owner's decision about a specific spend, and handing out
+    // capacity we cannot account for spends it twice. For every other durable
+    // pool the ceiling is a runaway backstop we invented, and refusing real
+    // work because Postgres blinked is the more expensive mistake — so admit,
+    // and page a human on the way through.
     if (this.isDurable(pool)) {
       const key = this.windowKeyString(pool, at);
       const durableState = this.durable.get(pool.name);
@@ -575,10 +623,29 @@ export class PoolRegistry {
         durableState.windowKey !== key ||
         !durableState.confirmed
       ) {
+        if (pool.window.kind === 'grant') {
+          return {
+            admitted: false,
+            reason: 'storeFailure',
+            retryAfterMs: null,
+          };
+        }
+        this.onUnconfirmedAdmit?.(poolName);
+        this.reservationCounter += 1;
+        const unconfirmedId = `res-${this.reservationCounter}`;
+        this.reservations.set(unconfirmedId, {
+          id: unconfirmedId,
+          poolName,
+          declared,
+          reservedAt: at,
+          expiresAt: new Date(at.getTime() + pool.reservationTtlMs),
+          workClass,
+        });
         return {
-          admitted: false,
-          reason: 'storeFailure',
-          retryAfterMs: null,
+          admitted: true,
+          reservationId: unconfirmedId,
+          poolName,
+          declared,
         };
       }
     }

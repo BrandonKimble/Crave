@@ -8,6 +8,8 @@ import { DecisionLedgerService } from './decision-ledger.service';
 import { SpendCampaignService } from './spend-campaign.service';
 import { OpsAlertsService } from './ops-alerts.service';
 import { ReconciliationMultiplierService } from './reconciliation-multiplier.service';
+import { SpendExpectationMonitorService } from './spend-expectation-monitor.service';
+import { VendorQuotaWatcherService } from './vendor-quota-watcher.service';
 
 /**
  * Shared services module for external integrations
@@ -27,6 +29,10 @@ import { ReconciliationMultiplierService } from './reconciliation-multiplier.ser
     DecisionLedgerService,
     SpendCampaignService,
     OpsAlertsService,
+    // D149: the two WATCHERS that replaced the refusals. Both are @Cron-only
+    // and inert outside a scheduler runtime.
+    SpendExpectationMonitorService,
+    VendorQuotaWatcherService,
   ],
   exports: [
     ReconciliationMultiplierService,
@@ -35,6 +41,8 @@ import { ReconciliationMultiplierService } from './reconciliation-multiplier.ser
     DecisionLedgerService,
     SpendCampaignService,
     OpsAlertsService,
+    SpendExpectationMonitorService,
+    VendorQuotaWatcherService,
   ],
 })
 export class SharedServicesModule {}

@@ -2799,10 +2799,11 @@ export class LLMService implements OnModuleInit, OnModuleDestroy {
    * (spend-campaign.service.ts), Tier 2 (steady-state lanes) via per-lane
    * cost baselines (collector-source-registry.ts's recordLaneCost) — so
    * this backstop is expected to NEVER fire in healthy operation. Its limit
-   * is BACKSTOP_MULTIPLE × the trailing measured monthly spend, re-derived
-   * nightly by SpendAnalyticsService (governance.service.ts's
-   * gemini.monthlySpend registration comment); a firing here is an
-   * INCIDENT, not scheduling — "a bug cost at most two extra months."
+   * is a FIXED GEMINI_MONTHLY_SPEND_CAP_USD ($1,500 default ≈ 10x measured
+   * steady state — D149, 2026-08-07, replacing a nightly re-derivation); a
+   * firing here is an INCIDENT, not scheduling. Everyday "are we spending
+   * more than expected" now belongs to SpendExpectationMonitorService, which
+   * alerts and never refuses.
    */
   /** Delegates to THE gemini spend gate (GovernanceService). Kept as a thin
    *  named method because call sites read better, and because the batch path
@@ -3634,7 +3635,7 @@ export class LLMService implements OnModuleInit, OnModuleDestroy {
             msUntilVendorMonthReset(),
           );
           this.logger.error(
-            'GEMINI VENDOR SPEND CAP HIT — spend pool poisoned until the vendor month reset; raise the AI Studio cap to resume (NOTE: GEMINI_MONTHLY_SPEND_CAP_USD only seeds the pool at boot — after the first nightly derivation the backstop comes from spend_unit_costs, bounded by GEMINI_MONTHLY_SPEND_FLOOR_USD/GEMINI_BACKSTOP_MAX_USD)',
+            'GEMINI VENDOR SPEND CAP HIT — spend pool poisoned until the vendor month reset; raise the AI Studio cap to resume (our own ceiling is GEMINI_MONTHLY_SPEND_CAP_USD, a fixed $1,500 default since D149 — there is no derived backstop row any more)',
           );
           const monthKey = new Date().toISOString().slice(0, 7);
           this.opsAlerts.emit({

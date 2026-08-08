@@ -136,8 +136,11 @@ describe('GovernanceService.onModuleInit reRegisterCampaignGrants (§24 red team
   });
 });
 
-describe('GovernanceService durable-flush failure (single fail semantic: hard-close, loudly)', () => {
-  it('a failed durable flush logs at error, emits a critical pool_bookkeeping_failure ops alert (deduped per pool per hour), and hard-closes the pool: the next draw refuses', async () => {
+describe('GovernanceService durable-flush failure (D149: scream, never kill)', () => {
+  // REWRITTEN (D149, 2026-08-07): the tail of this test asserted the
+  // hard-close ('the next draw refuses'). The owner reversed that law — the
+  // alert IS the response now, and the work keeps flowing.
+  it('a failed durable flush logs at error, emits a critical pool_bookkeeping_failure ops alert (deduped per pool per hour), and KEEPS ADMITTING while screaming pool_window_unconfirmed', async () => {
     const { service, logger, opsAlerts, consumptionStore } = buildService([]);
     await service.onModuleInit(); // healthy load → windows confirmed
 
@@ -172,19 +175,38 @@ describe('GovernanceService durable-flush failure (single fail semantic: hard-cl
       /^pool_bookkeeping_failure:gemini\.monthlySpend:\d{4}-\d{2}-\d{2}T\d{2}$/,
     );
 
-    // RED-provable hard-close: flush failure → the draw attempt refuses.
-    const denied = service.pools.reserve('gemini.monthlySpend', 1, 'probe');
-    expect(denied.admitted).toBe(false);
-    if (!denied.admitted) {
-      expect(denied.reason).toBe('storeFailure');
-    }
+    // MUTATION-PROVABLE: restore the storeFailure denial in
+    // PoolRegistry.reserve and this reds.
+    const stillAdmitted = service.pools.reserve(
+      'gemini.monthlySpend',
+      1,
+      'probe',
+    );
+    expect(stillAdmitted.admitted).toBe(true);
 
-    // Store recovers → ensureWindow flushes successfully → draws admit again.
+    // ...and the blind admission is CRITICAL and named, deduped per pool per
+    // UTC day. Removing the onUnconfirmedAdmit wiring reds this.
+    const blind = opsAlerts.emit.mock.calls
+      .map((call: unknown[]) => call[0] as { kind: string; severity: string })
+      .filter((alert) => alert.kind === 'pool_window_unconfirmed');
+    expect(blind).toHaveLength(1);
+    expect(blind[0].severity).toBe('critical');
+    expect((blind[0] as unknown as { dedupeKey: string }).dedupeKey).toMatch(
+      /^pool_window_unconfirmed:gemini\.monthlySpend:\d{4}-\d{2}-\d{2}$/,
+    );
+
+    // Store recovers → ensureWindow flushes successfully → the pool is
+    // confirmed again and the screaming stops.
     consumptionStore.add.mockResolvedValue(undefined);
     await service.pools.ensureWindow('gemini.monthlySpend');
     expect(
       service.pools.reserve('gemini.monthlySpend', 1, 'probe').admitted,
     ).toBe(true);
+    expect(
+      opsAlerts.emit.mock.calls
+        .map((call: unknown[]) => call[0] as { kind: string })
+        .filter((alert) => alert.kind === 'pool_window_unconfirmed'),
+    ).toHaveLength(1);
   });
 });
 

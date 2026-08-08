@@ -350,7 +350,7 @@ export class OpsSummaryService {
       this.pipelineCore(now),
     ]);
 
-    const vendors = await this.vendorsSection(now, spendCore, unitCostRows);
+    const vendors = await this.vendorsSection(now, spendCore);
 
     const perDocRow = unitCostRows.find(
       (row) =>
@@ -614,10 +614,9 @@ export class OpsSummaryService {
   private async vendorsSection(
     now: Date,
     spendCore: SpendCore,
-    unitCostRows: UnitCostRowLite[],
   ): Promise<OpsSummary['vendors']> {
     const geminiMtd = spendCore.monthToDateByService.gemini ?? 0;
-    const backstopLimitMicros = this.geminiBackstopLimitMicros(unitCostRows);
+    const backstopLimitMicros = this.geminiBackstopLimitMicros();
 
     return {
       gemini: {
@@ -639,24 +638,24 @@ export class OpsSummaryService {
     };
   }
 
-  /** Tier-3 ceiling: the live gemini.monthlySpend pool limit when a
-   *  governance graph is present, else the persisted measured-derived
-   *  backstop row (workClass 'backstop.gemini', unit 'month') — the same
-   *  number governance itself boots from. Null when neither exists. */
-  private geminiBackstopLimitMicros(
-    unitCostRows: UnitCostRowLite[],
-  ): number | null {
+  /** The runaway ceiling: the live gemini.monthlySpend pool limit, or null
+   *  when this graph has no governance.
+   *
+   *  It used to fall back to a persisted 'backstop.gemini' spend_unit_costs
+   *  row when governance was absent. That row was written by the nightly
+   *  derivation D149 deleted — the ceiling is a fixed
+   *  GEMINI_MONTHLY_SPEND_CAP_USD now, so there is no derived number for a
+   *  fallback to read, and a stale row would have displayed a ceiling that
+   *  no longer governs anything. */
+  private geminiBackstopLimitMicros(): number | null {
     if (this.governance) {
       try {
         return this.governance.pools.poolStatus('gemini.monthlySpend').limit;
       } catch {
-        // Pool not registered in this graph — fall through to the row.
+        // Pool not registered in this graph.
       }
     }
-    const row = unitCostRows.find(
-      (r) => r.workClass === 'backstop.gemini' && r.unit === 'month',
-    );
-    return row !== undefined ? Math.round(row.microUsdPerUnit) : null;
+    return null;
   }
 
   /** Prepaid credit is invisible to the TomTom API, so the balance is an

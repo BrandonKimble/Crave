@@ -1,9 +1,4 @@
-import {
-  unreconciledBilled,
-  ledgerMicros,
-  scaleBilled,
-  type LedgerMicros,
-} from './spend-currency';
+import { ledgerMicros, type LedgerMicros } from './spend-currency';
 import { Injectable, Optional } from '@nestjs/common';
 import { Cron } from '@nestjs/schedule';
 import { Prisma } from '@prisma/client';
@@ -49,7 +44,6 @@ export type WorkClass =
   | 'pipeline.entities_per_kilodoc'
   | 'google_places.enrichment'
   | 'google_places.regrounding'
-  | 'backstop.gemini'
   // DB-sourced tails (see note above): skuTier / operation are text columns.
   | `google_places.${string}`
   | `tomtomDraw.${string}`;
@@ -87,20 +81,18 @@ export const UNIT_COST_WINDOW_DAYS = 30;
 
 const MS_PER_DAY = 24 * 60 * 60 * 1000;
 
-/**
- * §24.6 K1 — the ONE owner-ratified constant of §24 (master plan §24.1
- * Tier 3): the gemini.monthlySpend catastrophe backstop's limit is
- * BACKSTOP_MULTIPLE × the trailing measured monthly spend. Initial value 3
- * ratified 2026-07-24 — "a bug may cost at most two extra months" (the
- * multiple minus the one month it already spent). Changing this number is
- * an owner re-ratification, exactly like any other K1 price-tag; it is NOT
- * re-derived from data (only the trailing spend it multiplies is).
+/*
+ * BACKSTOP_MULTIPLE / GEMINI_BACKSTOP_WORK_CLASS / refreshBackstop lived here
+ * until D149 (2026-08-07). The gemini ceiling was re-derived nightly as 3x a
+ * winsorized trailing month, growth-clamped, floored and capped by two more
+ * env vars, then written to spend_unit_costs for governance to read at boot.
+ * Owner ruling: everyday spend is WATCHED, not gated — the only surviving
+ * ceiling is a fixed $1,500 runaway stop nobody has to derive, and the
+ * watching now belongs to SpendExpectationMonitorService, which compares the
+ * ledger against expected-monthly-spend.ts and EMAILS. A derivation whose
+ * output was a number the owner could not predict, that silently tracked a
+ * runaway upward, is worse than a number he can read in one line.
  */
-const BACKSTOP_MULTIPLE = 3;
-
-/** work_class the derived gemini backstop is written under (spend_unit_costs,
- *  unit='month') — governance.service.ts reads this exact pair at boot. */
-const GEMINI_BACKSTOP_WORK_CLASS: WorkClass = 'backstop.gemini';
 
 /**
  * §24.4 item 6 replacement for the removed 80%-of-cap warn: warn when
@@ -229,7 +221,6 @@ export class SpendAnalyticsService {
     );
 
     await this.attributeLaneCosts(windowStart, windowEnd);
-    await this.refreshBackstop(windowStart, windowEnd, now);
     await this.logSpendTelemetry(now);
     this.checkTomtomPoolHot(now);
     await this.checkLaneReds(now);
@@ -882,241 +873,6 @@ export class SpendAnalyticsService {
       total += pricedGeminiRow(row);
     }
     return ledgerMicros(total);
-  }
-
-  /**
-   * §24.4 item 4 / §24.1 Tier 3: re-derive the gemini.monthlySpend
-   * catastrophe backstop from trailing-30d MEASURED spend and publish it as
-   * a visible spend_unit_costs row (work_class='backstop.gemini',
-   * unit='month', sample_units=30 — the window length in days, standing in
-   * for the measured sample size per §24.2's row shape). If a live
-   * GovernanceService is present in this process, also apply it immediately
-   * via PoolRegistry.resetLimit (logging old -> new); otherwise the row
-   * alone is enough — governance.service.ts's own boot reads it next
-   * restart. §16: BACKSTOP_MULTIPLE is the only owner number here; the
-   * trailing spend it multiplies is 100% measured.
-   *
-   * RED-TEAM FIX 2026-07-24, REVISED 2026-07-29: the trailing baseline is
-   * a WINSORIZED SUM of the last 30 daily totals (the top k positive days
-   * are capped to the next value down, k = max(1, ceil(10% of n))). The
-   * first fix used a median-of-days, which resists runaways but is ~0 on
-   * this deliberately BURSTY workload (most days have zero spend) — the
-   * derivation silently never produced a row. Growth is additionally
-   * CLAMPED: newLimit = min(derived, previousLimit × BACKSTOP_MULTIPLE) —
-   * the backstop may grow at most ×3 (the SAME K1 that prices the multiple
-   * itself) per night, so a sustained runaway raises the backstop
-   * geometrically SLOWER than it raises spend, and the §24.1 promise ("a bug
-   * costs at most two extra months") degrades gracefully instead of
-   * silently tracking the runaway upward. Shrinking is unclamped — safety
-   * tightens freely, only growth is bounded.
-   */
-  private async refreshBackstop(
-    windowStart: Date,
-    windowEnd: Date,
-    now: Date,
-  ): Promise<void> {
-    const dailyTotals: LedgerMicros[] = [];
-    for (let i = 0; i < UNIT_COST_WINDOW_DAYS; i++) {
-      const start = new Date(windowStart.getTime() + i * MS_PER_DAY);
-      const end = new Date(start.getTime() + MS_PER_DAY);
-      dailyTotals.push(await this.totalGeminiSpendMicros(start, end));
-    }
-    // WINSORIZED SUM, not median-of-days (root-caused 2026-07-29): this
-    // workload is BURSTY by design — batch reloads and 14-day source
-    // cadences mean most trailing days have ZERO gemini spend (measured: 14
-    // of 30 locally). A median over mostly-zero days is ~0, so
-    // derivedLimitMicros was <= 0 and this method silently returned — the
-    // backstop.gemini row NEVER existed and the env seed governed forever,
-    // which is precisely what §16 forbids. The median was the anti-runaway
-    // guard; winsorizing keeps that property without zeroing the
-    // derivation: each day contributes at most the 90th percentile of the
-    // window's POSITIVE days, so a runaway day is capped at "a big normal
-    // day" while real burst spend still counts. The x3 nightly growth clamp
-    // below remains the primary runaway bound.
-    // Cap the top k positive days to the (k+1)-th largest, k = max(1,
-    // ceil(10% of n)) — every runaway-sized day contributes at most a
-    // big-normal day.
-    // A plain floor(n*0.9) index equals n-1 for every n <= 10 — the "p90"
-    // was the MAXIMUM day and capped nothing exactly where this workload
-    // lives (sparse positive days), so a single runaway day could become
-    // the whole baseline (red team F1). With k >= 1 the largest day is
-    // always capped to the next one down; for n = 1 the first-derivation
-    // clamp below is the bound.
-    const positiveDays = dailyTotals
-      .filter((total) => total > 0)
-      .sort((a, b) => a - b);
-    const capCount = Math.max(1, Math.ceil(positiveDays.length * 0.1));
-    const capIndex = Math.max(0, positiveDays.length - 1 - capCount);
-    const p90 = positiveDays.length ? positiveDays[capIndex] : 0;
-    const trailingSpendMicros = ledgerMicros(
-      dailyTotals.reduce((sum, total) => sum + Math.min(total, p90), 0),
-    );
-    // BILLED DOLLARS (red team 2026-08-02). trailingSpendMicros is summed from
-    // pricedGeminiRow — LEDGER dollars. The pool this limit governs is now
-    // metered in BILLED dollars, so deriving the ceiling from ungrossed spend
-    // would set a limit in one currency against a counter in another and make
-    // the effective backstop tighter than intended. Both sides use the same
-    // published ratio; absent reconciliation it is 1 and nothing changes.
-    // The types carry this now: trailingSpendMicros is LedgerMicros, and the
-    // only way to reach the BilledMicros the pool counts is through gross().
-    const trailingBilled =
-      this.reconciliation?.gross('gemini', trailingSpendMicros) ??
-      unreconciledBilled(trailingSpendMicros);
-    const derivedLimitMicros = scaleBilled(trailingBilled, BACKSTOP_MULTIPLE);
-    if (derivedLimitMicros <= 0) {
-      // No measured spend yet in the trailing window — nothing to derive;
-      // the env-seeded boot value stands (§24.4 item 4). SILENCE HERE IS
-      // THE FAILURE MODE the sibling boot-time check in governance.service.ts
-      // (applyDerivedGeminiBackstop) already forbids for the missing-row
-      // case: an owner-seeded value silently outliving the derivation it was
-      // meant to be replaced by looks identical to "nothing to derive yet",
-      // so a nightly that stopped producing real spend (this exact case,
-      // frozen refreshed_at on backstop.gemini/month) is invisible until
-      // someone thinks to look. Say so, same alert shape as governance's.
-      this.opsAlerts.emit({
-        severity: 'warn',
-        kind: 'gemini_backstop',
-        title: 'Gemini backstop refresh produced no derivation this run',
-        body: `The trailing-window winsorized spend derived a non-positive limit (derivedLimitMicros=${derivedLimitMicros}), so backstop.gemini/month was not written this run and the previous value (env seed or a stale derived row) stands unchanged.`,
-        // Bucketed by day (same convention as governance.service.ts's
-        // gemini_backstop_underived): a constant key would fire once ever.
-        dedupeKey: `gemini_backstop_refresh_noop:${now.toISOString().slice(0, 10)}`,
-      });
-      return;
-    }
-    const priorRow = await this.prisma.spendUnitCost.findUnique({
-      where: {
-        workClass_unit: {
-          workClass: GEMINI_BACKSTOP_WORK_CLASS,
-          unit: 'month',
-        },
-      },
-    });
-    // FIRST derivation is clamped too (red team F1): with no prior row the
-    // old code applied no bound at all, so one runaway day in a quiet
-    // window could seed the backstop at 3x that day. The live pool limit
-    // (the env seed governance booted with) stands in as the prior.
-    const previousLimitMicros =
-      priorRow !== null
-        ? Math.round(priorRow.microUsdPerUnit)
-        : (this.governance?.pools.poolStatus('gemini.monthlySpend').limit ??
-          null);
-    const growthClamped =
-      previousLimitMicros !== null && previousLimitMicros > 0
-        ? Math.min(derivedLimitMicros, previousLimitMicros * BACKSTOP_MULTIPLE)
-        : derivedLimitMicros;
-    // FLOOR + ABSOLUTE CEILING (capacity red team, RANK 5). Two failures the
-    // growth clamp alone cannot prevent, both measured:
-    //
-    // NO FLOOR → the backstop BLOCKS legitimate work automatically. After a
-    // quiet month at the measured $155 steady state the derivation lands
-    // ~$465 — which cannot fund a $506 city onboarding plus that month's
-    // collection. The owner's stated requirement (one city per month + full
-    // corpus collection) would be denied by our own safety rail, with no
-    // human decision anywhere. The floor is that requirement, priced.
-    //
-    // NO CEILING → a SUSTAINED runaway ratchets. Winsorizing kills a single
-    // bad day, but 30 bad days lift the limit 3x per night and compound
-    // (3 nights = 27x). The ceiling is the number above which no derivation
-    // is ever trusted without a human.
-    // Parse explicitly: `Number(env) || default` makes a deliberate 0
-    // silently become the default (the falsy-zero trap — caught by the
-    // derivation specs, which set the floor to 0 to isolate the arithmetic).
-    const boundUsd = (raw: string | undefined, fallback: number): number => {
-      if (raw === undefined || raw.trim() === '') return fallback;
-      const parsed = Number(raw);
-      return Number.isFinite(parsed) && parsed >= 0 ? parsed : fallback;
-    };
-    // The floor NEVER outranks an owner-set cap (round-six regression #6):
-    // the floor exists to stop the DERIVATION from starving legitimate work,
-    // not to override a human's explicit ceiling. An owner who sets
-    // GEMINI_MONTHLY_SPEND_CAP_USD below the floor is making the decision
-    // the floor exists to protect — so the effective floor drops to the cap.
-    const ownerCapMicros = Math.round(
-      boundUsd(
-        process.env.GEMINI_MONTHLY_SPEND_CAP_USD,
-        Number.POSITIVE_INFINITY,
-      ) * 1_000_000,
-    );
-    const floorMicros = Math.min(
-      Math.round(
-        boundUsd(process.env.GEMINI_MONTHLY_SPEND_FLOOR_USD, 800) * 1_000_000,
-      ),
-      ownerCapMicros,
-    );
-    const ceilingMicros = Math.round(
-      boundUsd(process.env.GEMINI_BACKSTOP_MAX_USD, 5000) * 1_000_000,
-    );
-    const clampedLimitMicros = Math.min(
-      Math.max(growthClamped, floorMicros),
-      ceilingMicros,
-    );
-    if (clampedLimitMicros !== growthClamped) {
-      this.logger.info('Gemini backstop bounded', {
-        operation: 'refresh_backstop',
-        derivedUsd: derivedLimitMicros / 1e6,
-        growthClampedUsd: growthClamped / 1e6,
-        appliedUsd: clampedLimitMicros / 1e6,
-        boundHit: clampedLimitMicros === ceilingMicros ? 'ceiling' : 'floor',
-      });
-    }
-    await this.prisma.spendUnitCost.upsert({
-      where: {
-        workClass_unit: {
-          workClass: GEMINI_BACKSTOP_WORK_CLASS,
-          unit: 'month',
-        },
-      },
-      create: {
-        workClass: GEMINI_BACKSTOP_WORK_CLASS,
-        unit: 'month',
-        microUsdPerUnit: clampedLimitMicros,
-        sampleUnits: UNIT_COST_WINDOW_DAYS,
-        windowStart,
-        windowEnd,
-      },
-      update: {
-        microUsdPerUnit: clampedLimitMicros,
-        sampleUnits: UNIT_COST_WINDOW_DAYS,
-        windowStart,
-        windowEnd,
-        refreshedAt: now,
-      },
-    });
-    if (this.governance) {
-      try {
-        const before = this.governance.pools.poolStatus(
-          'gemini.monthlySpend',
-        ).limit;
-        if (before !== clampedLimitMicros) {
-          this.governance.pools.resetLimit(
-            'gemini.monthlySpend',
-            clampedLimitMicros,
-          );
-          this.logger.info(
-            'gemini.monthlySpend backstop re-derived (live process)',
-            {
-              beforeUsd: Math.round(before / 10_000) / 100,
-              afterUsd: Math.round(clampedLimitMicros / 10_000) / 100,
-              derivedUsd: Math.round(derivedLimitMicros / 10_000) / 100,
-              trailingSpendMedianBasisUsd:
-                Math.round(trailingSpendMicros / 10_000) / 100,
-              backstopMultiple: BACKSTOP_MULTIPLE,
-              growthClamped: clampedLimitMicros < derivedLimitMicros,
-            },
-          );
-        }
-      } catch (error) {
-        this.logger.warn(
-          'Live backstop resetLimit failed (row still written)',
-          {
-            error: {
-              message: error instanceof Error ? error.message : String(error),
-            },
-          },
-        );
-      }
-    }
   }
 
   /**

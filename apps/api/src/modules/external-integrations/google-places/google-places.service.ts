@@ -16,6 +16,8 @@ import { RateLimitCoordinatorService } from '../shared/rate-limit-coordinator.se
 import { UsageLedgerService } from '../shared/usage-ledger.service';
 import { GovernanceService } from '../governance/governance.service';
 import { ExternalApiService } from '../shared/external-integrations.types';
+import { OpsAlertsService } from '../shared/ops-alerts.service';
+import { isApiRuntime } from '../../../shared/utils/process-role';
 
 export const DEFAULT_PLACE_DETAILS_FIELD_MASK_FIELDS = [
   'id',
@@ -268,6 +270,8 @@ export class GooglePlacesService {
     private readonly rateLimitCoordinator: RateLimitCoordinatorService,
     private readonly usageLedger: UsageLedgerService,
     private readonly governance: GovernanceService,
+    // @Global SharedServicesModule provides this (no module import needed).
+    private readonly opsAlerts: OpsAlertsService,
   ) {
     this.logger = loggerService.setContext('GooglePlacesService');
     this.requestTimeout =
@@ -314,18 +318,17 @@ export class GooglePlacesService {
       );
     }
 
-    // DOLLAR GATE BEFORE THE RATE GATE (capacity re-derivation 2026-08-02):
-    // rate limits shape burst, they are not a budget — the configured
-    // limits permit ~$2.8k/day. googlePlaces.monthlySpend was registered as
-    // the catastrophe backstop but nothing admitted against it.
-    await this.governance.assertPlacesSpendOpen();
+    // Dollar gate before the rate gate — WORKER PROCESSES ONLY (D149; see
+    // gateWorkerSpend). Rate limits shape burst, they are not a budget.
+    await this.gateWorkerSpend();
     const rateLimit = await this.rateLimitCoordinator.requestPermission({
       service: ExternalApiService.GOOGLE_PLACES,
       operation: 'placeDetails',
     });
 
     if (!rateLimit.allowed) {
-      throw this.buildTooManyRequestsError(
+      this.handleRateCeiling(
+        'placeDetails',
         'Google Places rate limit reached. Try again shortly.',
       );
     }
@@ -456,14 +459,16 @@ export class GooglePlacesService {
       throw new BadRequestException('photoName is required');
     }
 
-    // Dollar gate before the rate gate — same order as every other call here.
-    await this.governance.assertPlacesSpendOpen();
+    // Dollar gate before the rate gate — WORKER PROCESSES ONLY (D149; see
+    // gateWorkerSpend). Rate limits shape burst, they are not a budget.
+    await this.gateWorkerSpend();
     const rateLimit = await this.rateLimitCoordinator.requestPermission({
       service: ExternalApiService.GOOGLE_PLACES,
       operation: 'photoMedia',
     });
     if (!rateLimit.allowed) {
-      throw this.buildTooManyRequestsError(
+      this.handleRateCeiling(
+        'photoMedia',
         'Google Places rate limit reached. Try again shortly.',
       );
     }
@@ -540,18 +545,17 @@ export class GooglePlacesService {
       throw new BadRequestException('input is required for autocomplete');
     }
 
-    // DOLLAR GATE BEFORE THE RATE GATE (capacity re-derivation 2026-08-02):
-    // rate limits shape burst, they are not a budget — the configured
-    // limits permit ~$2.8k/day. googlePlaces.monthlySpend was registered as
-    // the catastrophe backstop but nothing admitted against it.
-    await this.governance.assertPlacesSpendOpen();
+    // Dollar gate before the rate gate — WORKER PROCESSES ONLY (D149; see
+    // gateWorkerSpend). Rate limits shape burst, they are not a budget.
+    await this.gateWorkerSpend();
     const rateLimit = await this.rateLimitCoordinator.requestPermission({
       service: ExternalApiService.GOOGLE_PLACES,
       operation: 'autocomplete',
     });
 
     if (!rateLimit.allowed) {
-      throw this.buildTooManyRequestsError(
+      this.handleRateCeiling(
+        'autocomplete',
         'Google Places rate limit reached. Try again shortly.',
       );
     }
@@ -712,18 +716,17 @@ export class GooglePlacesService {
       throw new BadRequestException('input is required for find place');
     }
 
-    // DOLLAR GATE BEFORE THE RATE GATE (capacity re-derivation 2026-08-02):
-    // rate limits shape burst, they are not a budget — the configured
-    // limits permit ~$2.8k/day. googlePlaces.monthlySpend was registered as
-    // the catastrophe backstop but nothing admitted against it.
-    await this.governance.assertPlacesSpendOpen();
+    // Dollar gate before the rate gate — WORKER PROCESSES ONLY (D149; see
+    // gateWorkerSpend). Rate limits shape burst, they are not a budget.
+    await this.gateWorkerSpend();
     const rateLimit = await this.rateLimitCoordinator.requestPermission({
       service: ExternalApiService.GOOGLE_PLACES,
       operation: 'textSearch',
     });
 
     if (!rateLimit.allowed) {
-      throw this.buildTooManyRequestsError(
+      this.handleRateCeiling(
+        'textSearch',
         'Google Places rate limit reached. Try again shortly.',
       );
     }
@@ -933,5 +936,82 @@ export class GooglePlacesService {
 
   private buildTooManyRequestsError(message: string): HttpException {
     return new HttpException(message, HttpStatus.TOO_MANY_REQUESTS);
+  }
+
+  /**
+   * THE ORIGIN RULE (D149, 2026-08-07) — WHO IS ALLOWED TO BE TOLD "NO".
+   *
+   * A person creating a poll about a restaurant we have never seen needs one
+   * Places lookup to seed it. Until today, if the month's $200 Places pool was
+   * spent, that lookup threw and they got a 500 — refused by a budget they
+   * cannot see, did not set, and are not responsible for. That is the bug this
+   * whole rederivation exists to kill: no user action may ever be refused by
+   * budget state.
+   *
+   * Background work is different. A cron or queue drain that is told "not now"
+   * simply runs again next month; nobody is waiting. So the ceiling survives
+   * exactly there.
+   *
+   * WHY THE PROCESS ROLE AND NOT A PARAMETER. The tempting design is an
+   * explicit `origin: 'user' | 'worker'` argument, so forgetting it is a
+   * compile error. But every Places call in this codebase reaches the vendor
+   * through RestaurantLocationEnrichmentService, whose ~4,800 lines are shared
+   * verbatim by the poll-create path and the nightly re-grounding drain —
+   * threading an origin through it would mean an origin parameter on dozens of
+   * internal methods, each of which is a place to pass the wrong one. The
+   * honest, unforgettable fact is one level up and already exists: a process
+   * launched as `PROCESS_ROLE=worker` (package.json start:prod:worker; a
+   * separate Railway service) serves NO HTTP traffic at all, so it is
+   * structurally incapable of refusing a person. `isApiRuntime()` is exactly
+   * its negation — 'api' and the local-dev default 'all' both serve users.
+   *
+   * The consequence to accept, stated plainly: in a combined-role process (a
+   * dev laptop, a script) the Places ceiling is OFF. That is correct under
+   * this law — such a process can be serving a user — and the comparator plus
+   * the ledger still see every dollar.
+   */
+  private async gateWorkerSpend(): Promise<void> {
+    if (isApiRuntime()) {
+      return;
+    }
+    await this.governance.assertPlacesSpendOpen();
+  }
+
+  /**
+   * PER-OPERATION RATE CEILINGS ARE A BUG DETECTOR, NOT A QUEUE (D149).
+   *
+   * The ceilings in configuration.ts were derived from measured peaks and sat
+   * ~10% above real traffic — which meant an ordinary busy minute could 429 a
+   * person mid-search. They are now ~10x measured peak: at that altitude a
+   * trip cannot be "we got popular", only a loop. So the response splits by
+   * origin, the same way the dollar gate does:
+   *   - background: keep refusing (429 → the caller requeues).
+   *   - user-facing: ALERT and PROCEED. The vendor's own quota is the real
+   *     wall, and a warn the owner can see beats a stranger's blank screen.
+   */
+  private handleRateCeiling(operation: string, message: string): void {
+    if (!isApiRuntime()) {
+      throw this.buildTooManyRequestsError(message);
+    }
+    this.logger.error(
+      'PLACES PER-OP RATE CEILING TRIPPED ON A USER PATH — proceeding anyway (D149)',
+      { operation },
+    );
+    this.opsAlerts.emit({
+      severity: 'warn',
+      emailOnWarn: true,
+      kind: 'places_rate_ceiling',
+      title: `Places rate ceiling tripped: ${operation}`,
+      body:
+        `The per-operation rate ceiling for Places '${operation}' was hit by ` +
+        `a user-originated call. The ceiling sits ~10x measured peak traffic, ` +
+        `so this is a runaway-loop signal, not a busy minute. The call was ` +
+        `ALLOWED THROUGH (D149: a person is never refused by our own ` +
+        `counter) — Google's quota is the real wall. Check for a retry loop.`,
+      // Per operation per UTC hour.
+      dedupeKey: `places_rate_ceiling:${operation}:${new Date()
+        .toISOString()
+        .slice(0, 13)}`,
+    });
   }
 }

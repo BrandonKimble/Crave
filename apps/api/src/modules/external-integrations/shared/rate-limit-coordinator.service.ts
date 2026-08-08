@@ -749,7 +749,8 @@ export class RateLimitCoordinatorService implements OnModuleInit {
     // ledger). Nothing reddit-shaped registers or draws here anymore.
 
     // §12.7: the dead LLM registration is gone — LLM admission lives in the
-    // Redis CentralizedRateLimiter (gemini.tokens pool mirrors it, §14.2);
+    // Redis CentralizedRateLimiter — the sole authority (the gemini.tokens
+    // ledger-mirror pool that used to shadow it was deleted by D149);
     // nothing draws LLM through this coordinator.
 
     this.logger.info('Rate limit configurations initialized', {

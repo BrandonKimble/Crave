@@ -376,9 +376,15 @@ prepare/approve/recordSpend · `PromptRegistryService.activate`.
 - The Places `operationLimits` keys, the ledger's `operation`, and the pricing
   table are one vocabulary (`PlacesOperation`) on purpose. There were once
   three, and the cap you would most want to set was the one you could not set.
+  Since D149 those ceilings sit at ~10x measured peak (bug-only altitude) and a
+  trip on a USER path alerts-and-proceeds instead of 429-ing a person; only a
+  worker-origin trip still refuses. Same origin rule as the dollar gate.
 - `spend_unit_costs` is a polymorphic table: most rows are currency, but
-  `pipeline.entities_per_kilodoc` is a ratio and `backstop.gemini/month` is a
-  derived limit. Read the unit column.
+  `pipeline.entities_per_kilodoc` is a ratio. Read the unit column.
+  (`backstop.gemini/month` was a third shape — a derived limit — until D149
+  deleted the derivation; the Gemini ceiling is a fixed
+  `GEMINI_MONTHLY_SPEND_CAP_USD` now. Historical rows may still exist and are
+  read by nothing.)
 - `getMetrics()` on `SmartLLMProcessor` reports hard-coded zeros — do not
   trust it (finding F115).
 
@@ -386,7 +392,8 @@ prepare/approve/recordSpend · `PromptRegistryService.activate`.
 
 No per-vendor retry config on Places (it does not retry — see F117). No LLM
 registration in `RateLimitCoordinator` (LLM admission is the Redis
-`CentralizedRateLimiter`; `gemini.tokens` only mirrors it for drift). No
+`CentralizedRateLimiter` — the `gemini.tokens` ledger-mirror pool that used to
+shadow it was deleted by D149). No
 reddit window in `RateLimitCoordinator` (moved wholesale into the governor —
 one pool, one ledger). No `startCommand` in railway.json. No dev Places probe
 controller (deleted, not gated — it was an unauthenticated spend faucet).

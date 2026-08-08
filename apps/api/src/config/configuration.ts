@@ -551,39 +551,45 @@ export default () => {
       // silent no-op on the most expensive Places call.
       // Record<PlacesOperation, …> — a stray key and a MISSING key are both
       // compile errors, which is what the three-vocabularies bug needed.
-      // DERIVED CEILINGS (owner-ratified basis, 2026-08-03: "the upper
-      // limit of what we might do in a month when live" = one city
-      // onboarding + typical steady collection of every city). Measured
-      // from api_usage_ledger, 45d window incl. the 07-30/31 full-city
-      // onboarding burst — per-minute = the historical peak minute
-      // rounded up to the next 50; per-day = onboarding-day max + steady
-      // p95 day, rounded up to the next thousand. Numbers are
-      // DERIVATIONS of those measurements, not tunables — re-derive from
-      // the ledger before changing.
+      // BUG-ONLY ALTITUDE (D149, 2026-08-07) — 10x the measured peaks below.
+      //
+      // These were sized AT the measured peak (rounded up to the next 50),
+      // which made them a QUEUE: an ordinary busy minute could 429 a person
+      // mid-search to protect a budget. Owner ruling: a ceiling that can stop
+      // a user during normal operation is a bug, not a safety rail. At 10x
+      // measured peak a trip cannot mean "we got popular" — only a runaway
+      // loop — which is what it is now read as: on a user-originated call it
+      // ALERTS and lets the call through (google-places.service.ts
+      // handleRateCeiling); on a worker call it still refuses, and the caller
+      // requeues.
+      //
+      // The measured peaks (api_usage_ledger, 45d window incl. the 07-30/31
+      // full-city onboarding burst) are kept per-line as the DERIVATION BASIS
+      // — re-derive from the ledger before changing either number.
       operationLimits: placesOperationLimits({
         autocomplete: {
-          requestsPerMinute: 500, // measured peak 452/min
-          requestsPerDay: 12_000, // 7,361 burst + 3,680 steady p95
+          requestsPerMinute: 5_000, // 10x measured peak 452/min
+          requestsPerDay: 120_000, // 10x (7,361 burst + 3,680 steady p95)
         },
         placeDetails: {
-          requestsPerMinute: 400, // measured peak 392/min
-          requestsPerDay: 12_000, // 7,565 burst + 4,091 steady p95
+          requestsPerMinute: 4_000, // 10x measured peak 392/min
+          requestsPerDay: 120_000, // 10x (7,565 burst + 4,091 steady p95)
         },
         // Text search is the expensive operation ($0.032/call at the pro
-        // SKU vs placeDetails' $0.017).
+        // SKU vs placeDetails' $0.017) — the DOLLAR backstop is what prices
+        // that now, not this counter.
         textSearch: {
-          requestsPerMinute: 250, // measured peak 226/min
-          requestsPerDay: 8_000, // 5,123 burst + 2,573 steady p95
+          requestsPerMinute: 2_500, // 10x measured peak 226/min
+          requestsPerDay: 80_000, // 10x (5,123 burst + 2,573 steady p95)
         },
         // Photo media (F1256, 2026-08-03). NOT a measurement — there is no
         // ledger history to derive from, because every photo call ever made
         // bypassed the meter. Its only caller is the dev-gallery seeder
-        // (8 photos x a few dozen restaurants), so this is a deliberately
-        // tight CEILING sized to that caller, to be re-derived from
-        // api_usage_ledger once real traffic exists.
+        // (8 photos x a few dozen restaurants); 10x that sizing keeps the
+        // same shape as its siblings until real traffic exists.
         photoMedia: {
-          requestsPerMinute: 120,
-          requestsPerDay: 2_000,
+          requestsPerMinute: 1_200,
+          requestsPerDay: 20_000,
         },
       }),
       defaultRadius: 5_000, // meters — default search radius

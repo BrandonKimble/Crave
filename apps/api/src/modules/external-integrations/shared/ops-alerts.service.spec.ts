@@ -115,6 +115,88 @@ describe('OpsAlertsService (§18.4 dedupe collapse)', () => {
     expect(prisma._rows).toHaveLength(2);
   });
 
+  /**
+   * D149 — WARN EMAILS ARE OPT-IN, PER KIND.
+   *
+   * Before this, a `warn` was a dashboard row and nothing else, which made
+   * every spend-anomaly signal invisible in practice. Emailing ALL warns
+   * would be the opposite failure (an inbox nobody reads), so the emitter
+   * chooses. Each assertion names its mutation.
+   */
+  describe('email routing', () => {
+    const buildEmailing = () => {
+      process.env.RESEND_API_KEY = 'test-key';
+      process.env.OPS_ALERT_EMAIL = 'owner@example.com';
+      const sent: Array<{ subject: string }> = [];
+      const fetchMock = jest
+        .fn()
+        .mockImplementation((_url: string, init: { body: string }) => {
+          sent.push(JSON.parse(init.body) as { subject: string });
+          return Promise.resolve({ ok: true, status: 200 });
+        });
+      (globalThis as { fetch: unknown }).fetch = fetchMock;
+      const service = new OpsAlertsService(
+        buildPrisma() as never,
+        stubLogger() as never,
+      );
+      return { service, sent };
+    };
+    const priorFetch = globalThis.fetch;
+    const priorTo = process.env.OPS_ALERT_EMAIL;
+    afterEach(() => {
+      (globalThis as { fetch: unknown }).fetch = priorFetch;
+      if (priorTo === undefined) delete process.env.OPS_ALERT_EMAIL;
+      else process.env.OPS_ALERT_EMAIL = priorTo;
+    });
+
+    it('a plain warn does NOT email (the default is still a dashboard row)', async () => {
+      const { service, sent } = buildEmailing();
+      service.emit({
+        severity: 'warn',
+        kind: 'ambient',
+        title: 'ambient',
+        body: 'b',
+        dedupeKey: 'ambient:1',
+      });
+      await service.onModuleDestroy();
+      expect(sent).toHaveLength(0);
+    });
+
+    it('a warn with emailOnWarn DOES email, subject-tagged [WARN]', async () => {
+      // MUTATION: drop the emailOnWarn arm in emit() and this reds — the
+      // exact "spend anomalies were dashboard-only" defect D149 names.
+      const { service, sent } = buildEmailing();
+      service.emit({
+        severity: 'warn',
+        emailOnWarn: true,
+        kind: 'spend_vs_expectation',
+        title: 'google_places spend is running hot this month',
+        body: 'b',
+        dedupeKey: 'spend_vs_expectation_warn:google_places:2026-08',
+      });
+      await service.onModuleDestroy();
+      expect(sent).toHaveLength(1);
+      expect(sent[0].subject).toBe(
+        '[WARN] google_places spend is running hot this month',
+      );
+    });
+
+    it('critical still emails without opting in, and keeps its [CRITICAL] tag', async () => {
+      const { service, sent } = buildEmailing();
+      service.emit({
+        severity: 'critical',
+        kind: 'vendor_quota',
+        title: 'Cloudinary aws_rek_moderation is at 96% of its allowance',
+        body: 'b',
+        dedupeKey:
+          'vendor_quota:cloudinary:aws_rek_moderation:critical:2026-08',
+      });
+      await service.onModuleDestroy();
+      expect(sent).toHaveLength(1);
+      expect(sent[0].subject).toContain('[CRITICAL]');
+    });
+  });
+
   it('emit() never throws even when the underlying write rejects', async () => {
     const prisma = {
       opsAlert: {
