@@ -594,6 +594,18 @@ export default () => {
       }),
       defaultRadius: 5_000, // meters — default search radius
     },
+    // Google Cloud Vision — SafeSearch photo moderation (D149-V). A SEPARATE
+    // key from googlePlaces.apiKey on purpose: the two APIs live in the same
+    // GCP project but a Places key is restricted to the Places API, and
+    // sharing one credential across both would mean widening the blast radius
+    // of the most-copied key in the codebase. Absence is NOT a boot failure —
+    // GoogleVisionService fails loud at FIRST USE, so a missing key parks
+    // photos in pending instead of taking the whole API down (see the comment
+    // there).
+    googleVision: {
+      apiKey: resolveSecretEnv('GOOGLE_VISION_API_KEY'),
+      timeout: 15_000, // per-request HTTP timeout (ms)
+    },
     tomtom: {
       apiKey: resolveSecretEnv('TOMTOM_API_KEY'),
       timeout: parseInt(process.env.TOMTOM_TIMEOUT || '10000', 10),

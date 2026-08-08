@@ -84,4 +84,13 @@ export function scaleBilled(
  * the currency module free of a dependency on the ledger — and a drain has to
  * name the service whose ratio applies, so this is where the set belongs.
  */
-export type MeteredService = 'gemini' | 'google_places' | 'tomtom';
+export type MeteredService =
+  | 'gemini'
+  | 'google_places'
+  | 'tomtom'
+  // Google Cloud Vision SafeSearch — photo safety moderation (D149-V,
+  // 2026-08-07). It joined this set the moment moderation stopped being a
+  // Cloudinary prepaid add-on and became a paid API call we make ourselves:
+  // an unmetered vendor call is exactly the shape that lands in the BigQuery
+  // billing export with no ledger counterpart (the F1256 photoMedia lesson).
+  | 'google_vision';

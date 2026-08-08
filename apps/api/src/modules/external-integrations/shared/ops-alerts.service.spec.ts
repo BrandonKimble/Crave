@@ -186,10 +186,9 @@ describe('OpsAlertsService (§18.4 dedupe collapse)', () => {
       service.emit({
         severity: 'critical',
         kind: 'vendor_quota',
-        title: 'Cloudinary aws_rek_moderation is at 96% of its allowance',
+        title: 'Cloudinary credits is at 96% of its allowance',
         body: 'b',
-        dedupeKey:
-          'vendor_quota:cloudinary:aws_rek_moderation:critical:2026-08',
+        dedupeKey: 'vendor_quota:cloudinary:credits:critical:2026-08',
       });
       await service.onModuleDestroy();
       expect(sent).toHaveLength(1);

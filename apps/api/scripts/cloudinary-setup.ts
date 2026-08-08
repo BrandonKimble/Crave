@@ -13,13 +13,16 @@ import { v2 as cloudinary } from 'cloudinary';
  *    transformations; f_auto/q_auto are chained inline at delivery, not
  *    baked in — f_auto is inert inside named transformations).
  * 2. The SIGNED upload preset `crave_ugc_photo`: pins the incoming
- *    downscale, allowed formats, Rekognition moderation, metadata + quality
- *    extraction. Clients can override nothing that isn't in the ticket.
+ *    downscale, allowed formats, metadata + quality extraction. NOT
+ *    moderation — that moved server-side to Google Vision SafeSearch
+ *    (D149-V, 2026-08-07); see GoogleVisionService. Clients can override nothing that isn't in the ticket.
  *
  * MANUAL (Console, one time each — no API exists):
  * - Settings -> Security -> "Strict transformations": ENABLE, then allow
  *   the four t_crave_* named transformations.
- * - Add-ons -> register "Amazon Rekognition AI Moderation" (free tier).
+ * - Add-ons: the "Amazon Rekognition AI Moderation" add-on is NO LONGER USED
+ *   (D149-V). Nothing breaks if it stays registered — the presets no longer
+ *   request it — but it can be de-registered.
  */
 const TRANSFORMATIONS: Record<string, string> = {
   // geometry + crop only; f_auto,q_auto ride inline at delivery
@@ -72,7 +75,18 @@ async function main(): Promise<void> {
     // Cap stored originals (storage credits) — delivery variants are the
     // workhorse; media_metadata must be verified to survive this (E2E).
     transformation: [{ width: 2560, height: 2560, crop: 'limit' }],
-    moderation: 'aws_rek',
+    // EXPLICITLY EMPTY, not omitted — D149-V (2026-08-07). Safety moderation moved OFF
+    // Cloudinary's aws_rek add-on (a 50/month prepaid allowance nothing could
+    // meter) and onto a server-side Google Vision SafeSearch call we make
+    // ourselves on upload-finalize (GoogleVisionService). Re-adding it here
+    // would double-moderate and resurrect the un-watchable quota.
+    //
+    // It is `''` rather than absent because this script's update path is a
+    // PATCH: `update_upload_preset` only changes the fields it is sent, so
+    // simply deleting the line would leave `aws_rek` pinned on the live
+    // preset forever while the code here read as if it were gone. An empty
+    // value is Cloudinary's spelling of "no moderation".
+    moderation: '',
     media_metadata: true,
     quality_analysis: true,
     overwrite: false,
@@ -102,7 +116,9 @@ async function main(): Promise<void> {
     transformation: [
       { width: 512, height: 512, crop: 'fill', gravity: 'auto' },
     ],
-    moderation: 'aws_rek',
+    // Explicitly cleared — see the photo preset above (D149-V); avatars ride
+    // the same server-side SafeSearch call.
+    moderation: '',
     overwrite: true,
     invalidate: true,
     unique_filename: false,
@@ -126,7 +142,8 @@ async function main(): Promise<void> {
   process.stdout.write(
     '\nREMINDERS (Console, manual):\n' +
       '  1. Security -> enable STRICT TRANSFORMATIONS; allow t_crave_thumb/card/gallery/full\n' +
-      '  2. Add-ons -> register Amazon Rekognition AI Moderation (free tier)\n',
+      '  2. Add-ons -> Amazon Rekognition AI Moderation is NO LONGER USED (D149-V);\n' +
+      '     safety moderation is a server-side Google Vision SafeSearch call.\n',
   );
 }
 

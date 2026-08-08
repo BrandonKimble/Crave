@@ -6,19 +6,23 @@ import { LoggerService } from '../../../shared';
 import { OpsAlertsService } from './ops-alerts.service';
 
 /**
- * The keys inside Cloudinary's Admin `usage` response we watch. Both are
- * `{ usage, limit, used_percent }` shaped. `credits` is the plan-wide meter
- * (transformations + storage + bandwidth rolled into one number);
- * `aws_rek_moderation` is the add-on that runs safety moderation on every
- * uploaded photo — the one whose exhaustion would silently stop moderating
- * user uploads.
+ * The keys inside Cloudinary's Admin `usage` response we watch, each
+ * `{ usage, limit, used_percent }` shaped. `credits` is the plan-wide meter:
+ * transformations + storage + bandwidth rolled into one number.
+ *
+ * `aws_rek_moderation` USED TO BE HERE and was deleted with D149-V
+ * (2026-08-07). Safety moderation no longer runs on Cloudinary at all — it is
+ * a metered Google Vision SafeSearch call the API makes itself, so the thing
+ * to watch is SPEND (expected-monthly-spend.ts's `google_vision` line and the
+ * nightly comparator), not a prepaid allowance. Watching a quota nothing
+ * consumes would be a permanently-green instrument, which is worse than none.
  */
-const WATCHED_KEYS = ['credits', 'aws_rek_moderation'] as const;
+const WATCHED_KEYS = ['credits'] as const;
 type WatchedKey = (typeof WATCHED_KEYS)[number];
 
 /** §16-shaped operational thresholds, stated as the decisions they are: 80%
  *  is "start thinking about it, there is still a month left"; 95% is "act
- *  today or moderation stops". Neither is derived from data — there is no
+ *  today or images stop loading". Neither is derived from data — there is no
  *  measured distribution of quota exhaustion to derive from — and both are
  *  the conventional two-stage shape for a consumable. */
 const WARN_FRACTION = 0.8;
@@ -38,9 +42,8 @@ interface CloudinaryUsageBucket {
  * them, and the ledger tells the truth. Cloudinary is not — it is a PREPAID
  * ALLOWANCE. Nothing we log gets closer to "how much is left" than the
  * vendor's own counter, and until now nobody read it. The failure that
- * implies is quiet and bad: `aws_rek_moderation` runs out, uploads stop being
- * safety-moderated, and the first signal is a user seeing something they
- * should never have seen.
+ * implies is quiet and bad: credits run out, image delivery and
+ * transformations stop, and every photo in the app fails to load.
  *
  * So: poll the vendor, hourly, and say so at 80% and 95%.
  *
@@ -80,10 +83,9 @@ export class VendorQuotaWatcherService {
   }
 
   /**
-   * HOURLY, not daily. `aws_rek_moderation` is consumed per upload, so a
-   * burst can cross both thresholds inside one day — and the same single
-   * request also carries `credits`, so watching the faster-moving of the two
-   * costs nothing extra. Gated implicitly: ScheduleModule.forRoot() is only
+   * HOURLY, not daily. Credits are consumed per delivery, so a traffic burst
+   * can cross both thresholds inside one day and a daily read would learn
+   * about it up to 24 hours late. Gated implicitly: ScheduleModule.forRoot() is only
    * registered when isSchedulerRuntime() (src/app.module.ts), so this @Cron
    * is inert outside worker processes.
    */
@@ -127,9 +129,9 @@ export class VendorQuotaWatcherService {
         title: 'Cloudinary quota could not be read',
         body:
           `The hourly quota check could not reach Cloudinary's Admin API, so ` +
-          `the remaining credits and aws_rek_moderation allowance are ` +
-          `UNKNOWN — not zero, not fine. If this persists, photo moderation ` +
-          `could exhaust its allowance without any warning. Error: ${message}`,
+          `the remaining credit allowance is UNKNOWN — not zero, not fine. ` +
+          `If this persists, credits could run out with no warning and every ` +
+          `image in the app would stop loading. Error: ${message}`,
         // Per UTC day: a broken credential shouldn't send 24 emails.
         dedupeKey: `vendor_quota_unreadable:cloudinary:${now
           .toISOString()
@@ -194,12 +196,8 @@ export class VendorQuotaWatcherService {
 
   private quotaBody(key: WatchedKey, percent: number, urgent: boolean): string {
     const consequence =
-      key === 'aws_rek_moderation'
-        ? `When this runs out, uploaded photos stop being safety-moderated — ` +
-          `the pipeline keeps accepting them, so the first visible symptom ` +
-          `would be a user seeing something they shouldn't.`
-        : `When credits run out, image delivery and transformations stop — ` +
-          `photos across the app would fail to load.`;
+      `When credits run out, image delivery and transformations stop — ` +
+      `photos across the app would fail to load.`;
     return (
       `Cloudinary reports ${key} at ${percent}% of the plan allowance. ` +
       `${consequence} ` +

@@ -12,6 +12,8 @@ import { PhotosService } from './photos.service';
 function makeService(overrides?: {
   photo?: Record<string, unknown> | null;
   isFood?: boolean;
+  safetyRejected?: boolean;
+  safetyError?: Error;
   reportThreshold?: number;
   reporterCount?: number;
 }) {
@@ -91,9 +93,25 @@ function makeService(overrides?: {
     destroyAsset: jest.fn().mockResolvedValue(undefined),
     getAsset: jest.fn().mockResolvedValue({ exists: false }),
     extractModerationStatus: jest.fn().mockReturnValue(undefined),
+    isAvatarPublicId: jest.fn().mockReturnValue(false),
   };
   const vision = {
     isFoodContent: jest.fn().mockResolvedValue(overrides?.isFood ?? true),
+  };
+  // SAFETY moderation (D149-V): Google Vision SafeSearch, called by us.
+  // Default = approved; `safetyError` makes every call throw, which is the
+  // fail-CLOSED case the mutation tests below pin down.
+  const safety = {
+    moderateImage: jest.fn().mockImplementation(() => {
+      if (overrides?.safetyError) {
+        return Promise.reject(overrides.safetyError);
+      }
+      return Promise.resolve(
+        overrides?.safetyRejected
+          ? { decision: 'rejected', reason: 'adult:LIKELY', likelihoods: {} }
+          : { decision: 'approved', likelihoods: {} },
+      );
+    }),
   };
   const logger = {
     setContext: () => logger,
@@ -113,6 +131,7 @@ function makeService(overrides?: {
     config as never,
     cloudinary as never,
     vision as never,
+    safety as never,
     {
       resolveSaveableRestaurant: (id: string) =>
         Promise.resolve({ entityId: id, name: 'R', city: null }),
@@ -127,7 +146,7 @@ function makeService(overrides?: {
     } as never,
     logger as never,
   );
-  return { service, prisma, cloudinary, vision };
+  return { service, prisma, cloudinary, vision, safety };
 }
 
 describe('PhotosService lifecycle', () => {
@@ -243,6 +262,80 @@ describe('PhotosService lifecycle', () => {
     });
     const result = await service2.report('u9', 'p1');
     expect(result.hidden).toBe(true);
+  });
+
+  // ── SERVER-SIDE SAFETY MODERATION (D149-V) ─────────────────────────────
+  // Moderation used to be a Cloudinary preset add-on; it is now a Vision
+  // SafeSearch call we make on upload-finalize and on every reconciliation
+  // sweep. These pin the two things that matter: a rejection removes the
+  // photo, and a MODERATOR FAILURE NEVER PUBLISHES ONE.
+
+  it('upload notification runs SafeSearch on the delivery URL; rejected -> destroy_pending -> asset destroyed', async () => {
+    // MUTATION: make safetyVerdict return 'approved' on rejection, or drop
+    // the moderateImage call from applyUploadResult, and this reds.
+    const { service, cloudinary, safety } = makeService({
+      safetyRejected: true,
+    });
+    await service.handleNotification({
+      public_id: 'crave/test/photos/p1',
+      width: 100,
+      bytes: 2000,
+    });
+    expect(safety.moderateImage).toHaveBeenCalledWith('g'); // gallery variant
+    expect(cloudinary.destroyAsset).toHaveBeenCalled();
+  });
+
+  it('SAFETY FAILS CLOSED: a Vision transport error leaves the photo PENDING — never approved', async () => {
+    // THE fail-open mutation. Make safetyVerdict return 'approved' in its
+    // catch (the posture PhotoVisionService's is-food gate correctly takes)
+    // and this reds on both assertions: an unvetted photo would go live.
+    const { service, prisma, vision, safety } = makeService({
+      safetyError: new Error('ECONNRESET'),
+    });
+    await service.handleNotification({
+      public_id: 'crave/test/photos/p1',
+      width: 100,
+      bytes: 2000,
+    });
+    expect(safety.moderateImage).toHaveBeenCalled();
+    // No transition at all: no live, no removed, no destroy_pending.
+    const transitions = prisma.photo.updateMany.mock.calls.filter(
+      ([args]: [{ data?: { status?: string } }]) =>
+        args.data?.status !== undefined,
+    );
+    expect(transitions).toHaveLength(0);
+    // And the is-food gate never even ran — safety is the first door.
+    expect(vision.isFoodContent).not.toHaveBeenCalled();
+  });
+
+  it('the reconciliation sweep is the RETRY ARM: a still-pending row is re-moderated, and an unknown verdict is not counted as settled', async () => {
+    // MUTATION: count an undefined verdict as settled (the lying counter) and
+    // the `0` here reds; drop the safetyVerdict call from reconcilePending
+    // and the moderateImage assertion reds — a photo stuck pending because
+    // Vision was down would stay pending forever.
+    const { service, prisma, cloudinary, safety } = makeService({
+      safetyError: new Error('503 backend unavailable'),
+    });
+    // The asset exists and carries NO Cloudinary verdict — the add-on is gone.
+    cloudinary.getAsset.mockResolvedValue({ exists: true, width: 10 });
+    prisma.photo.findMany.mockImplementation(
+      ({ where }: { where: { status: string } }) =>
+        Promise.resolve(
+          where.status === 'pending'
+            ? [
+                {
+                  photoId: 'p1',
+                  publicId: 'crave/test/photos/p1',
+                  ticketedAt: new Date(),
+                },
+              ]
+            : [],
+        ),
+    );
+    prisma.photo.findUnique.mockResolvedValue({ status: 'pending' });
+    const settled = await service.reconcilePending(0, 25);
+    expect(safety.moderateImage).toHaveBeenCalled();
+    expect(settled).toBe(0);
   });
 
   it('report: a photo INVISIBLE to the reporter 404s (no private-photo oracle, no hiding what you can’t see)', async () => {

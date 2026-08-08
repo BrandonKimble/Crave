@@ -8,6 +8,10 @@ import { CloudinaryService } from '../src/modules/photos/cloudinary.service';
 import { SaveableEntityResolver } from '../src/modules/entities/saveable-entity.resolver';
 import { PhotoVisionService } from '../src/modules/photos/photo-vision.service';
 import { PhotosService } from '../src/modules/photos/photos.service';
+import { HttpService } from '@nestjs/axios';
+import axios from 'axios';
+import { GoogleVisionService } from '../src/modules/external-integrations/google-vision/google-vision.service';
+import { UsageLedgerService } from '../src/modules/external-integrations/shared/usage-ledger.service';
 import type { PrismaService } from '../src/prisma/prisma.service';
 import type { LoggerService } from '../src/shared';
 
@@ -55,11 +59,22 @@ async function main(): Promise<void> {
     generateForCaller: async () => 'YES',
   } as unknown as import('../src/modules/external-integrations/llm/llm.service').LLMService;
   const vision = new PhotoVisionService(fakeLlm, fakeLogger);
+  // SAFETY moderation is REAL here (D149-V): the whole point of this probe
+  // is that a live upload settles, and settling now depends on our own Vision
+  // SafeSearch call rather than a Cloudinary preset add-on. It writes a real
+  // google_vision ledger line, which is a fraction of a cent per run.
+  const safety = new GoogleVisionService(
+    new HttpService(axios.create()),
+    fakeConfig,
+    new UsageLedgerService(prisma, fakeLogger),
+    fakeLogger,
+  );
   const photos = new PhotosService(
     prisma,
     fakeConfig,
     cloudinary,
     vision,
+    safety,
     new SaveableEntityResolver(prisma),
     fakeLogger,
   );

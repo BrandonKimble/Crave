@@ -28,7 +28,11 @@
 /** Vendors the comparator watches. These are the `service` values written to
  *  api_usage_ledger (`api_usage_events.service`), so the join is exact — not
  *  a display-name mapping that can drift. */
-export type WatchedVendor = 'gemini' | 'google_places' | 'tomtom';
+export type WatchedVendor =
+  | 'gemini'
+  | 'google_places'
+  | 'tomtom'
+  | 'google_vision';
 
 export interface VendorExpectation {
   /** Expected spend in whole US dollars for a full month of NORMAL
@@ -87,6 +91,28 @@ export const EXPECTED_MONTHLY_SPEND_USD: Record<
    * worth an email.
    */
   tomtom: { expectedMonthlyUsd: 76 },
+
+  /**
+   * ESTIMATE — $5/month, and labelled as one. RE-MEASURE after launch.
+   *
+   * This is the ONE number in this file that is not a measurement, because
+   * there is nothing yet to measure: server-side SafeSearch moderation
+   * (D149-V, 2026-08-07) has never run in production, and the thing it
+   * replaced — Cloudinary's aws_rek add-on — was a prepaid allowance with no
+   * per-call record, so its history cannot be converted into ours.
+   *
+   * The arithmetic, stated so it can be checked rather than trusted: one
+   * SafeSearch call per uploaded photo (plus one per avatar change) at
+   * $1.50/1,000 (vendor-pricing.ts) means ~3,300 uploads a month to reach $5.
+   * At launch volume the real figure is likely CENTS, so this expectation is
+   * deliberately loose — it exists to catch a runaway (a retry loop
+   * re-moderating the same photo), not to forecast a bill.
+   *
+   * The honest edit when real data exists: derive it from
+   * `SELECT count(*) FROM api_usage_ledger WHERE service='google_vision'`
+   * over a steady-state month. Do not nudge it to silence an alert.
+   */
+  google_vision: { expectedMonthlyUsd: 5 },
 };
 
 /** Every vendor the comparator iterates. Derived from the record so adding a

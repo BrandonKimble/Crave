@@ -1,5 +1,6 @@
-/* eslint-disable @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-member-access */
-import { BadRequestException } from '@nestjs/common';
+/* eslint-disable @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-unsafe-call */
+import { BadRequestException, ConflictException } from '@nestjs/common';
+import { Prisma } from '@prisma/client';
 import { PERSON_DATA_RULES } from './person-data/person-data-class';
 import { AccountDeletionService } from './account-deletion.service';
 import { reservedUsernameHash } from './reserved-username-hash';
@@ -127,6 +128,10 @@ const user = {
   userId: 'u-del-1',
   email: 'Person@Example.com',
   authProviderUserId: 'clerk-del-1',
+  // A full visible identity — the thing D148's stash-and-null has to move.
+  username: 'oldhandle',
+  displayName: 'Alice Realname',
+  avatarUrl: 'https://example.invalid/alice.jpg',
 } as never;
 
 describe('AccountDeletionService', () => {
@@ -162,10 +167,24 @@ describe('AccountDeletionService', () => {
     // The deadline is set, and it is the ONLY authority the purge reads.
     expect(update.data.purgeDueAt).toBeInstanceOf(Date);
     expect(update.data.purgeDueAt.getTime()).toBeGreaterThan(Date.now());
-    // Nothing identifying is touched yet.
+    // NOTHING IS DESTROYED — but the identity MOVES (D148). The visible name
+    // columns go null in this same statement and the originals are stashed for
+    // restore, so the grace window is recoverable AND anonymous at once. What
+    // must still be untouched is everything the way BACK IN depends on: the
+    // email and the Clerk pointer.
     expect(update.data.email).toBeUndefined();
-    expect(update.data.username).toBeUndefined();
     expect(update.data.authProviderUserId).toBeUndefined();
+    expect(update.data.username).toBeNull();
+    expect(update.data.displayName).toBeNull();
+    expect(update.data.avatarUrl).toBeNull();
+    expect(update.data.deletedIdentity).toEqual({
+      username: 'oldhandle',
+      displayName: 'Alice Realname',
+      avatarUrl: 'https://example.invalid/alice.jpg',
+    });
+    // ...and it is ONE statement: a crash between a stash and a null would
+    // leave either a visible name on a dead account or an unrestorable one.
+    expect(prisma.user.update).toHaveBeenCalledTimes(1);
   });
 
   it('the PURGE is where the account actually dies', async () => {
@@ -237,16 +256,65 @@ describe('AccountDeletionService', () => {
     expect(eraser.erase).toHaveBeenCalledWith('u-del-1');
   });
 
-  it('restore clears BOTH the tombstone and the deadline', async () => {
+  it('restore clears BOTH the tombstone and the deadline, and gives the name back', async () => {
     const { service, prisma } = makeService();
     await service.restoreAccount({
       userId: 'u-del-1',
       deletedAt: new Date(),
+      deletedIdentity: {
+        username: 'oldhandle',
+        displayName: 'Alice Realname',
+        avatarUrl: 'https://example.invalid/alice.jpg',
+      },
     } as never);
     const data = prisma.user.update.mock.calls[0][0].data;
     // purgeDueAt is what the cron reads; clearing deletedAt alone would leave
     // a restored account scheduled for destruction at its original deadline.
-    expect(data).toEqual({ deletedAt: null, purgeDueAt: null });
+    // D148: the identity comes back with it — restoring the account to a blank
+    // profile is not an undo — and the stash is emptied, because a stash on a
+    // live row is what the database CHECK forbids.
+    expect(data).toEqual({
+      deletedAt: null,
+      purgeDueAt: null,
+      deletedIdentity: Prisma.DbNull,
+      username: 'oldhandle',
+      displayName: 'Alice Realname',
+      avatarUrl: 'https://example.invalid/alice.jpg',
+    });
+  });
+
+  it('a restore whose stash is missing or malformed still restores the account', async () => {
+    // JSONB is an open shape; a row from an older build has no stash at all.
+    // Refusing the ONE route a panicking person reaches, over a column that
+    // only exists to be a convenience, would be the wrong trade.
+    const { service, prisma } = makeService();
+    await service.restoreAccount({
+      userId: 'u-del-1',
+      deletedAt: new Date(),
+      deletedIdentity: 'not an object',
+    } as never);
+    const data = prisma.user.update.mock.calls[0][0].data;
+    expect(data.deletedAt).toBeNull();
+    expect(data.username).toBeNull();
+  });
+
+  it('a stashed handle that is somehow taken is a clean 409, never a 500', async () => {
+    // Belt only: username_history already blocks squatting while the window is
+    // open. But "your handle is taken" is an answer; a 500 is not.
+    const userUpdate = jest.fn().mockRejectedValue(
+      new Prisma.PrismaClientKnownRequestError('unique', {
+        code: 'P2002',
+        clientVersion: '5',
+      }),
+    );
+    const { service } = makeService({ userUpdate });
+    await expect(
+      service.restoreAccount({
+        userId: 'u-del-1',
+        deletedAt: new Date(),
+        deletedIdentity: { username: 'oldhandle' },
+      } as never),
+    ).rejects.toBeInstanceOf(ConflictException);
   });
 
   it('restoring a live account is a no-op, not an error', async () => {

@@ -14,6 +14,10 @@ import {
   type SignedUploadTicket,
 } from './cloudinary.service';
 import { PhotoVisionService } from './photo-vision.service';
+import {
+  GoogleVisionService,
+  ImageModerationUnavailableError,
+} from '../external-integrations/google-vision/google-vision.service';
 import { SaveableEntityResolver } from '../entities/saveable-entity.resolver';
 
 /** `uploadedAt` is the client-facing field name (unchanged contract); it is
@@ -54,13 +58,24 @@ type PhotoRow = Prisma.PhotoGetPayload<{ select: typeof PHOTO_DTO_SELECT }>;
  * The UGC photo lifecycle (plans/images-ideal-shape.md steps 1-2):
  *
  *   ticket (row created PENDING, public_id minted server-side)
- *     -> device uploads DIRECTLY to Cloudinary (signed; preset pins
- *        moderation/incoming-transform/metadata extraction)
- *     -> Cloudinary webhooks: upload notification fills dimensions/focus
- *        score; moderation notification decides safety (takenAt is
+ *     -> device uploads DIRECTLY to Cloudinary (signed; preset pins the
+ *        incoming transform + metadata extraction)
+ *     -> Cloudinary upload webhook fills dimensions/focus score (takenAt is
  *        client-supplied at ticket time — stored originals are stripped)
- *     -> safety approved -> async is-food gate (Gemini, fail-open)
+ *     -> SAFETY: we call Google Vision SafeSearch ourselves on the delivery
+ *        URL (D149-V — moderation used to be a Cloudinary preset add-on;
+ *        see GoogleVisionService for why it moved). Fail-CLOSED: any error
+ *        leaves the row pending for the reconciliation sweep to retry.
+ *     -> safety approved -> async is-food gate (Gemini, fail-OPEN)
  *     -> LIVE (or REMOVED, Cloudinary asset destroyed)
+ *
+ * THE TWO CLASSIFIERS FAIL IN OPPOSITE DIRECTIONS, ON PURPOSE:
+ *   SAFETY (Vision SafeSearch) errs to PENDING-RETRY — a photo nobody has
+ *     vetted must never go live, so a broken moderator delays photos.
+ *   IS-FOOD (Gemini) errs to LIVE — topicality is a quality preference, not
+ *     a harm, so a broken classifier must not block legitimate photos.
+ * A single "fail open" or "fail closed" rule for both would be wrong for one
+ * of them.
  *
  * Webhooks retry only 3x then give up, so PhotoReconciliationService sweeps
  * stale pending rows via the Admin API. Reports: threshold auto-hide, never
@@ -76,6 +91,7 @@ export class PhotosService {
     private readonly configService: ConfigService,
     private readonly cloudinary: CloudinaryService,
     private readonly vision: PhotoVisionService,
+    private readonly safety: GoogleVisionService,
     private readonly saveableEntities: SaveableEntityResolver,
     loggerService: LoggerService,
   ) {
@@ -178,22 +194,36 @@ export class PhotosService {
     const publicId = this.cloudinary.avatarPublicIdFor(userId);
     const asset = await this.cloudinary.getAsset(publicId);
     if (!asset.exists) return { status: 'missing' as const };
-    if (asset.moderationStatus === 'approved') {
+    const version = asset.version ?? Math.floor(Date.now() / 1000);
+    // Avatars ride the SAME server-side moderator as photos (D149-V) — they
+    // were on the same retired Cloudinary add-on. A legacy `rejected` still
+    // counts; approval is ours to decide.
+    const verdict =
+      asset.moderationStatus === 'rejected'
+        ? 'rejected'
+        : await this.safetyVerdict(
+            this.cloudinary.buildAvatarUrl(userId, version),
+            { userId, surface: 'avatar' },
+          );
+    if (verdict === 'approved') {
       await this.prisma.user.updateMany({
         where: { userId, deletedAt: null },
-        data: {
-          avatarUrl: this.cloudinary.buildAvatarUrl(
-            userId,
-            asset.version ?? Math.floor(Date.now() / 1000),
-          ),
-        },
+        data: { avatarUrl: this.cloudinary.buildAvatarUrl(userId, version) },
       });
       this.logger.info('Avatar updated (confirm)', { userId });
       return { status: 'approved' as const };
     }
-    if (asset.moderationStatus === 'rejected') {
+    if (verdict === 'rejected') {
+      try {
+        await this.cloudinary.destroyAsset(publicId);
+      } catch {
+        // rejection already leaves the OLD avatar in place; the asset is
+        // unreferenced either way.
+      }
       return { status: 'rejected' as const };
     }
+    // Unknown verdict: the old avatar stays and the client can confirm
+    // again. Never 'approved' on a moderator failure.
     return { status: 'pending' as const };
   }
 
@@ -203,12 +233,20 @@ export class PhotosService {
     const publicId = payload.public_id as string;
     const userId = publicId.split('/').pop();
     if (!userId) return;
-    const status = this.cloudinary.extractModerationStatus(payload);
+    const version =
+      typeof payload.version === 'number'
+        ? payload.version
+        : Math.floor(Date.now() / 1000);
+    // Legacy aws_rek rejections still count; otherwise we moderate (D149-V).
+    const legacy = this.cloudinary.extractModerationStatus(payload);
+    const status =
+      legacy === 'rejected'
+        ? 'rejected'
+        : await this.safetyVerdict(
+            this.cloudinary.buildAvatarUrl(userId, version),
+            { userId, surface: 'avatar' },
+          );
     if (status === 'approved') {
-      const version =
-        typeof payload.version === 'number'
-          ? payload.version
-          : Math.floor(Date.now() / 1000);
       // updateMany + deletedAt guard: a deletion between upload and this
       // webhook must never re-populate scrubbed PII (and a missing row is a
       // no-op, not a 500 that makes Cloudinary retry pointlessly).
@@ -259,8 +297,17 @@ export class PhotosService {
       return;
     }
     if (type === 'moderation') {
+      // LEGACY, AND DELIBERATELY ONE-WAY (D149-V). Cloudinary no longer runs
+      // moderation for us, but notifications for uploads made BEFORE the
+      // preset changed can still arrive. We honor a `rejected` verdict —
+      // a rejection is never fabricated and a second opinion that says
+      // "unsafe" is worth acting on — and IGNORE `approved`, because
+      // approval must come from the moderator we actually run. An ignored
+      // approval costs one reconciliation cycle, not a wrong decision.
       const status = this.cloudinary.extractModerationStatus(payload);
-      await this.applyModerationResult(photo.photoId, publicId, status);
+      if (status === 'rejected') {
+        await this.applyModerationResult(photo.photoId, publicId, status);
+      }
       return;
     }
     this.logger.info('Ignored Cloudinary notification', {
@@ -287,12 +334,14 @@ export class PhotosService {
           undefined,
       },
     });
-    // Some uploads carry the moderation verdict inline (sync add-ons).
-    const inlineStatus = this.cloudinary.extractModerationStatus(payload);
-    if (inlineStatus && inlineStatus !== 'pending') {
-      const publicId = payload.public_id as string;
-      await this.applyModerationResult(photoId, publicId, inlineStatus);
-    }
+    // THE UPLOAD NOTIFICATION IS WHERE SAFETY NOW HAPPENS (D149-V). The
+    // bytes exist and the delivery URL resolves, so this is the earliest
+    // moment Vision can read the image. Previously this branch only forwarded
+    // a verdict Cloudinary's aws_rek add-on had already made inline.
+    const publicId = payload.public_id as string;
+    const urls = this.cloudinary.buildUrls(publicId);
+    const verdict = await this.safetyVerdict(urls.gallery, { photoId });
+    await this.applyModerationResult(photoId, publicId, verdict);
   }
 
   /** Safety verdict -> is-food gate -> live/removed. Every transition is a
@@ -349,6 +398,57 @@ export class PhotosService {
       }
     }
     // pending/undefined: leave for the reconciliation cron.
+  }
+
+  /**
+   * THE SAFETY VERDICT (D149-V). Runs Vision SafeSearch against a delivery
+   * URL and translates it into the vocabulary applyModerationResult already
+   * speaks, so the entire downstream state machine — conditional
+   * transitions, is-food gate, destroy_pending on reject — is untouched.
+   *
+   * `undefined` means UNKNOWN, and undefined is what every failure returns.
+   * applyModerationResult's last line leaves an undefined verdict pending for
+   * the reconciliation cron, which is precisely the retry. There is no branch
+   * in this method that can produce 'approved' without Google saying so.
+   */
+  private async safetyVerdict(
+    imageUrl: string,
+    logContext: Record<string, unknown>,
+  ): Promise<'approved' | 'rejected' | undefined> {
+    try {
+      const verdict = await this.safety.moderateImage(imageUrl);
+      if (verdict.decision === 'rejected') {
+        this.logger.warn('Safety moderation rejected image', {
+          ...logContext,
+          reason: verdict.reason,
+        });
+        return 'rejected';
+      }
+      return 'approved';
+    } catch (error) {
+      const transient =
+        error instanceof ImageModerationUnavailableError
+          ? error.transient
+          : true;
+      const message = error instanceof Error ? error.message : String(error);
+      // A PERMANENT failure (missing key, disabled API, unreadable image) is
+      // an outage of safety moderation dressed as a quiet retry loop — it
+      // logs at ERROR so it surfaces, while a transient one is ordinary
+      // weather. Neither approves anything.
+      const detail = { ...logContext, transient, error: { message } };
+      if (transient) {
+        this.logger.warn(
+          'Safety moderation unavailable — photo stays pending (cron retries)',
+          detail,
+        );
+      } else {
+        this.logger.error(
+          'Safety moderation is BROKEN — photos will stay pending until fixed',
+          detail,
+        );
+      }
+      return undefined;
+    }
   }
 
   /** Conditional state transition — returns whether THIS caller won. */
@@ -548,12 +648,29 @@ export class PhotosService {
             focusScore: asset.focusScore ?? undefined,
           },
         });
+        // SAFETY IS OURS TO DECIDE NOW (D149-V). The Admin API's
+        // `moderationStatus` is only still consulted for a legacy `rejected`
+        // left by the retired aws_rek add-on; everything else gets a live
+        // Vision verdict. This is also the RETRY arm: a row that stayed
+        // pending because Vision was down gets asked again here, every 10
+        // minutes, forever — which is what makes fail-closed survivable.
+        const verdict =
+          asset.moderationStatus === 'rejected'
+            ? 'rejected'
+            : await this.safetyVerdict(
+                this.cloudinary.buildUrls(photo.publicId).gallery,
+                { photoId: photo.photoId },
+              );
         await this.applyModerationResult(
           photo.photoId,
           photo.publicId,
-          asset.moderationStatus,
+          verdict,
         );
-        settled += 1;
+        // Only a real verdict SETTLES anything. Counting an unknown verdict
+        // as settled would report a clean sweep while the row is still
+        // pending — the counter would say the cron is working precisely when
+        // it isn't.
+        if (verdict !== undefined) settled += 1;
       } catch (error) {
         failed += 1;
         this.logger.warn(

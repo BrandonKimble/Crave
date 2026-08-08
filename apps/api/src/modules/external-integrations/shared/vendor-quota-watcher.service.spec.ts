@@ -11,8 +11,13 @@ const usageMock = cloudinary.api.usage as unknown as jest.Mock;
  * Cloudinary is the one vendor whose remaining allowance we cannot compute
  * from our own ledger — it is prepaid, and the vendor's counter is the only
  * truth. Nothing read it until D149. The failure it protects against is the
- * quiet one: aws_rek_moderation runs out, uploads stop being safety-checked,
- * and the first symptom is a user seeing something they shouldn't.
+ * quiet one: credits run out and every image in the app stops loading.
+ *
+ * BANKING (D149-V, 2026-08-07): `aws_rek_moderation` is GONE from the watched
+ * set. Safety moderation is a metered Google Vision call now, so that key
+ * measures a quota nothing consumes — a permanently-green instrument. The
+ * last test in this file is the guard: it feeds the watcher an aws_rek bucket
+ * pinned at 100% and asserts SILENCE.
  */
 describe('VendorQuotaWatcherService.checkCloudinary', () => {
   const NOW = new Date('2026-08-15T00:00:00Z');
@@ -56,8 +61,7 @@ describe('VendorQuotaWatcherService.checkCloudinary', () => {
   it('>=95% of an allowance is CRITICAL (which emails)', async () => {
     // MUTATION: raise CRITICAL_FRACTION above 0.96 and this reds.
     usageMock.mockResolvedValue({
-      credits: { used_percent: 10 },
-      aws_rek_moderation: { usage: 96, limit: 100 },
+      credits: { usage: 96, limit: 100 },
     });
     const { service, emit } = build();
     await service.checkCloudinary(NOW);
@@ -66,8 +70,7 @@ describe('VendorQuotaWatcherService.checkCloudinary', () => {
     expect(alerts[0].severity).toBe('critical');
     expect(emit).toHaveBeenCalledWith(
       expect.objectContaining({
-        dedupeKey:
-          'vendor_quota:cloudinary:aws_rek_moderation:critical:2026-08',
+        dedupeKey: 'vendor_quota:cloudinary:credits:critical:2026-08',
       }),
     );
   });
@@ -77,7 +80,6 @@ describe('VendorQuotaWatcherService.checkCloudinary', () => {
     // 0.79 and the silence case reds.
     usageMock.mockResolvedValue({
       credits: { used_percent: 85 },
-      aws_rek_moderation: { usage: 79, limit: 100 },
     });
     const { service, emit } = build();
     await service.checkCloudinary(NOW);
@@ -111,7 +113,20 @@ describe('VendorQuotaWatcherService.checkCloudinary', () => {
   it('an unmetered key (no limit, no used_percent) is skipped, not reported as 0%', async () => {
     usageMock.mockResolvedValue({
       credits: {},
-      aws_rek_moderation: { usage: 5 },
+    });
+    const { service, emit } = build();
+    await service.checkCloudinary(NOW);
+    expect(emit).not.toHaveBeenCalled();
+  });
+
+  it('IGNORES aws_rek_moderation entirely — the retired add-on cannot alert (D149-V)', async () => {
+    // MUTATION: put 'aws_rek_moderation' back into WATCHED_KEYS and this
+    // reds. Cloudinary keeps reporting the bucket for a registered add-on
+    // whether or not any preset requests it, so a stale watch would email the
+    // owner about an allowance that no longer protects anything.
+    usageMock.mockResolvedValue({
+      credits: { used_percent: 3 },
+      aws_rek_moderation: { usage: 100, limit: 100 },
     });
     const { service, emit } = build();
     await service.checkCloudinary(NOW);

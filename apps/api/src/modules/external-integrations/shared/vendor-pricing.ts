@@ -75,6 +75,28 @@ export function tomtomCostMicrosPerDraw(operation: string | null): number {
 }
 
 /**
+ * GOOGLE CLOUD VISION — SafeSearch Detection (D149-V).
+ *
+ * K4 vendor fact, fetched 2026-08-07 from cloud.google.com/vision/pricing:
+ * SafeSearch Detection is $1.50 per 1,000 images for units 1,001–5,000,000;
+ * the FIRST 1,000 units per month are free.
+ *
+ * We price every call at the paid rate and IGNORE the free tier — the same
+ * conservative posture the TomTom cheap-draw rate takes. An estimate may only
+ * err safe, and a free tier that silently absorbs the first thousand calls
+ * would make the comparator read low for exactly the volumes where a runaway
+ * is still cheap enough to catch early.
+ *
+ * One image = one unit = one feature request. We ask for exactly one feature
+ * (SAFE_SEARCH_DETECTION), so requests and units are the same count; if a
+ * second feature is ever added to that call, this becomes per-feature and
+ * this comment is the place that has to change.
+ */
+export const visionSafeSearchCostMicrosPerImage = Math.round(
+  (1.5 * 1_000_000) / 1_000,
+); // $1.50/1k → 1,500 micro-USD per image
+
+/**
  * Google Places API (New), entry-tier per-1,000-requests pricing (K4,
  * fetched 2026-07-25 from developers.google.com/maps/billing-and-pricing/
  * pricing — tiered pricing; we price at the entry tier). SKU strings match

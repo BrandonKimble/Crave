@@ -7,6 +7,7 @@ import { pricedGeminiRow } from './gemini-pricing';
 import {
   placesCostMicrosPerCall,
   tomtomCostMicrosPerDraw,
+  visionSafeSearchCostMicrosPerImage,
 } from './vendor-pricing';
 import {
   EXPECTED_MONTHLY_SPEND_USD,
@@ -203,6 +204,22 @@ export class SpendExpectationMonitorService {
           total +
           placesCostMicrosPerCall(row.skuTier ?? null, row.operation) *
             (row.requestCount ?? 0),
+        0,
+      );
+    }
+    if (vendor === 'google_vision') {
+      // Flat per-image rate, so a sum of request counts is the whole story.
+      // NOTE this branch is EXPLICIT rather than left to fall through to the
+      // TomTom tail below: that tail is a default, and a new vendor silently
+      // priced at the TomTom polygon rate would be wrong by 2x with nothing
+      // to notice it.
+      const rows = await this.prisma.apiUsageEvent.findMany({
+        where: { service: 'google_vision', createdAt: { gte: start, lt: end } },
+        select: { requestCount: true },
+      });
+      return rows.reduce(
+        (total, row) =>
+          total + (row.requestCount ?? 0) * visionSafeSearchCostMicrosPerImage,
         0,
       );
     }

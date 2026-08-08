@@ -3,11 +3,25 @@ import { LoggerService } from '../../shared';
 import { LLMService } from '../external-integrations/llm/llm.service';
 
 /**
- * The IS-FOOD gate (product/images.md moderation): Rekognition covers
- * safety only, so food-vs-not rides a Gemini flash-lite vision call against
- * the THUMB variant (~30KB — pennies per thousand). Runs async in the
- * moderation pipeline after safety approval; fail posture is documented on
- * classify().
+ * The IS-FOOD gate (product/images.md moderation): the safety moderator
+ * (Google Vision SafeSearch — see GoogleVisionService) covers HARM only, so
+ * food-vs-not rides a Gemini flash-lite vision call against the THUMB variant
+ * (~30KB — pennies per thousand). Runs after safety approval.
+ *
+ * ── FAIL-OPEN, AND WHY THAT IS RIGHT *HERE* ONLY (D149-V, 2026-08-07) ─────
+ * This classifier errs toward LIVE. The safety moderator errs toward
+ * PENDING-RETRY. The asymmetry is the whole design and neither side should be
+ * "made consistent" with the other:
+ *
+ *   Alice photographs her birria. Gemini is having an outage. The worst case
+ *   of failing open is that a picture of her dog reaches a restaurant gallery
+ *   until a report hides it — a quality miss. The worst case of failing open
+ *   on SAFETY is a user seeing something harmful that nobody vetted, which no
+ *   amount of availability buys back.
+ *
+ * So: topicality errs toward availability, safety errs toward retry. A
+ * broken is-food gate must never block a legitimate photo; a broken safety
+ * moderator must never publish an unvetted one.
  */
 @Injectable()
 export class PhotoVisionService {
@@ -22,7 +36,8 @@ export class PhotoVisionService {
 
   /** true = plausibly food/drink/menu/restaurant content; false = clearly
    *  not. Fail-OPEN on infra errors (a broken classifier must not block
-   *  legitimate photos — safety is Rekognition's job, this is topicality). */
+   *  legitimate photos — safety is GoogleVisionService's job and fails
+   *  CLOSED; this is topicality). See the class comment for the asymmetry. */
   async isFoodContent(thumbUrl: string): Promise<boolean> {
     try {
       const imageResponse = await fetch(thumbUrl);
