@@ -24,10 +24,10 @@ export const useSearchResultsPanelOnDemandNoticeRuntime = ({
   return React.useMemo(() => {
     const metadata = (resolvedResults?.metadata ?? {}) as OnDemandNoticeMetadata;
 
-    // The subject store's §2 verdict is the area authority once committed —
-    // it gates the area label in BOTH arms of the pure core (place name or
-    // 'this area'); the response-metadata name (displayPlaceName) serves
-    // STRICTLY pre-first-commit.
+    // The subject store's verdict is the ONLY area authority (one naming
+    // authority, 2026-08-08 — the response-metadata displayPlaceName
+    // fallback is deleted): place name or 'this area', and pre-first-commit
+    // the copy renders 'this area' rather than a stale server name.
     const verdictAreaLabel = subjectVerdict
       ? subjectVerdict.kind === 'place'
         ? subjectVerdict.placeName
