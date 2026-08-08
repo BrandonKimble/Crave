@@ -185,7 +185,6 @@ export type CreatePollPayload = {
   targetRestaurantName?: string;
   targetFoodAttributeName?: string;
   targetRestaurantAttributeName?: string;
-  sessionToken?: string;
 };
 
 const normalizePollList = (payload: unknown): Poll[] => {

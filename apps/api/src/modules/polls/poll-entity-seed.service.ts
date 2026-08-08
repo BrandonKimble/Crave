@@ -254,7 +254,6 @@ export class PollEntitySeedService {
     entityId?: string | null;
     name?: string | null;
     place: PollPlaceContext;
-    sessionToken?: string;
   }): Promise<ResolvedEntity> {
     if (params.entityId) {
       return this.assertEntityType(params.entityId, EntityType.restaurant);
@@ -301,7 +300,6 @@ export class PollEntitySeedService {
       region: params.place.region ?? undefined,
       countryCode: params.place.countryCode ?? undefined,
       locationBias: params.place.center,
-      sessionToken: params.sessionToken,
     });
 
     if (!match) {

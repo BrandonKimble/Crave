@@ -112,6 +112,7 @@ export interface GooglePlaceDetailsOptions {
   fields?: string[];
   language?: string;
   region?: string;
+  /** See GooglePlaceAutocompleteOptions.sessionToken — no producer by decision 2026-08-07 (F9520). */
   sessionToken?: string;
   includeRaw?: boolean;
 }
@@ -208,6 +209,12 @@ export interface GooglePlacesV1AutocompleteResponse {
 
 export interface GooglePlaceAutocompleteOptions {
   language?: string;
+  /**
+   * Google's Places session token. The gateway keeps the ability to send one
+   * because it is the vendor request's own shape — but NOTHING in this repo
+   * produces a token: no producer by decision 2026-08-07, sessions don't pay
+   * at one-autocomplete-per-session. See FINDINGS F9520.
+   */
   sessionToken?: string;
   components?: {
     country?: string;
@@ -224,6 +231,7 @@ export interface GooglePlaceAutocompleteOptions {
 export interface GoogleFindPlaceOptions {
   fields?: string[];
   language?: string;
+  /** See GooglePlaceAutocompleteOptions.sessionToken — no producer by decision 2026-08-07 (F9520). */
   sessionToken?: string;
   includeRaw?: boolean;
   locationBias?: {

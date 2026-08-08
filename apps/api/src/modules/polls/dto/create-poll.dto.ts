@@ -102,8 +102,4 @@ export class CreatePollDto {
   @IsString()
   @MaxLength(140)
   targetRestaurantAttributeName?: string;
-
-  @IsOptional()
-  @IsString()
-  sessionToken?: string;
 }

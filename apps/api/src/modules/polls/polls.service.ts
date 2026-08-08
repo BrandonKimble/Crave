@@ -925,7 +925,6 @@ export class PollsService {
           entityId: dto.targetRestaurantId ?? null,
           name: dto.targetRestaurantName ?? null,
           place: placeContext,
-          sessionToken: dto.sessionToken,
         });
         targetRestaurantId = restaurant.entityId;
         question = this.buildPollQuestion(topicType, restaurant.name);

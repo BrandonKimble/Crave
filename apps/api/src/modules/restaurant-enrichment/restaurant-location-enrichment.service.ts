@@ -97,10 +97,20 @@ interface MatchMetadata {
   redirectedFromBusinessStatus?: string;
 }
 
+// NO PLACES SESSION TOKEN, BY DECISION (2026-08-07, audit F9520). This type
+// used to carry a `sessionToken` that was threaded through every autocomplete /
+// find-place call and dropped at the concluding getPlaceDetails — no caller
+// anywhere ever produced one, so it billed nothing and hid a trap: "finishing"
+// the client half would have made billing WORSE. Google's session pricing pays
+// off when ONE session absorbs many keystrokes before a details call; our
+// grounding is one-shot (one query, one autocomplete, one details), so a
+// session saves at most the autocomplete line — ceiling ~$20 even at scale,
+// less than the cost of minting, threading and metering the tokens. If this
+// ever returns, it must arrive WITH a per-keystroke client producer, not as a
+// server-side field waiting for one.
 export interface RestaurantEnrichmentOptions {
   force?: boolean;
   dryRun?: boolean;
-  sessionToken?: string;
   query?: string;
   sourceText?: string;
   sourceLocale?: {
@@ -536,7 +546,6 @@ export class RestaurantLocationEnrichmentService {
     region?: string;
     countryCode?: string;
     locationBias?: { lat: number; lng: number; radiusMeters?: number };
-    sessionToken?: string;
   }): Promise<{
     place: GooglePlacesV1Place;
     matchMetadata: MatchMetadata;
@@ -557,7 +566,6 @@ export class RestaurantLocationEnrichmentService {
       },
       locationBias: params.locationBias,
       countryCode: params.countryCode,
-      sessionToken: params.sessionToken,
       query: params.name,
     });
 
@@ -567,11 +575,6 @@ export class RestaurantLocationEnrichmentService {
 
     const ranked = await this.collectAutocompleteCandidates(
       searchContext.query,
-      {
-        locationBias: searchContext.locationBias,
-        countryCode: searchContext.countryCode,
-        sessionToken: params.sessionToken,
-      },
       searchContext,
     );
     let matchSource: 'autocomplete' | 'find_place' = 'autocomplete';
@@ -579,11 +582,6 @@ export class RestaurantLocationEnrichmentService {
       autocompleteRanked: ranked,
       entity,
       context: searchContext,
-      options: {
-        locationBias: searchContext.locationBias,
-        countryCode: searchContext.countryCode,
-        sessionToken: params.sessionToken,
-      },
     });
     const {
       selection,
@@ -814,7 +812,6 @@ export class RestaurantLocationEnrichmentService {
     try {
       const ranked = await this.collectAutocompleteCandidates(
         searchContext.query,
-        options,
         searchContext,
       );
 
@@ -823,7 +820,6 @@ export class RestaurantLocationEnrichmentService {
         autocompleteRanked: ranked,
         entity,
         context: searchContext,
-        options,
       });
       const {
         selection,
@@ -2785,13 +2781,11 @@ export class RestaurantLocationEnrichmentService {
     autocompleteRanked: RankedCandidate[];
     entity: RestaurantEntity;
     context?: EnrichmentSearchContext;
-    options?: RestaurantEnrichmentOptions;
   }): Promise<CandidateSelectionResult> {
     const flow = await this.runGeminiSelectionFlow({
       autocompleteRanked: params.autocompleteRanked,
       entity: params.entity,
       context: params.context,
-      options: params.options ?? {},
     });
     return flow.selection;
   }
@@ -2952,7 +2946,6 @@ export class RestaurantLocationEnrichmentService {
     autocompleteRanked: RankedCandidate[];
     entity: RestaurantEntity;
     context?: EnrichmentSearchContext;
-    options: RestaurantEnrichmentOptions;
   }): Promise<GeminiSelectionFlowResult> {
     const strategy: CandidateSelectionResult['strategy'] = 'gemini_staged';
 
@@ -2992,7 +2985,6 @@ export class RestaurantLocationEnrichmentService {
       retryAutocompleteAttempted = true;
       retryAutocompleteRanked = await this.collectAutocompleteCandidates(
         retryQuery,
-        params.options,
         params.context,
       );
       if (retryAutocompleteRanked.length > 0) {
@@ -3036,7 +3028,6 @@ export class RestaurantLocationEnrichmentService {
       params.context ?? {
         query: params.entity.name ?? null,
       },
-      params.options,
     );
     const finalEvaluation = await this.evaluateGeminiCandidateSet(
       {
@@ -3074,17 +3065,12 @@ export class RestaurantLocationEnrichmentService {
   private async collectFallbackSearchCandidates(
     entity: RestaurantEntity,
     context: EnrichmentSearchContext,
-    options: RestaurantEnrichmentOptions,
   ): Promise<{
     attempted: boolean;
     status?: string;
     ranked: RankedCandidate[];
   }> {
-    const fallbackResult = await this.tryFindPlaceFallback(
-      entity,
-      context,
-      options,
-    );
+    const fallbackResult = await this.tryFindPlaceFallback(entity, context);
     if (fallbackResult) {
       return {
         attempted: true,
@@ -3102,7 +3088,6 @@ export class RestaurantLocationEnrichmentService {
 
   private async collectAutocompleteCandidates(
     query: string,
-    options: RestaurantEnrichmentOptions,
     context?: EnrichmentSearchContext,
   ): Promise<RankedCandidate[]> {
     if (!query.trim()) {
@@ -3113,7 +3098,6 @@ export class RestaurantLocationEnrichmentService {
       query,
       {
         language: 'en',
-        sessionToken: options.sessionToken,
         locationBias: context?.locationBias,
         includeRaw: false,
       },
@@ -3834,7 +3818,6 @@ export class RestaurantLocationEnrichmentService {
   private async tryFindPlaceFallback(
     entity: RestaurantEntity,
     context: EnrichmentSearchContext,
-    options: RestaurantEnrichmentOptions,
   ): Promise<{ status: string; ranked: RankedCandidate[] } | null> {
     if (!context.query) {
       return null;
@@ -3845,7 +3828,6 @@ export class RestaurantLocationEnrichmentService {
         context.query,
         {
           language: 'en',
-          sessionToken: options.sessionToken,
           includeRaw: false,
           fields: [
             'id',
