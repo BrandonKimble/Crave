@@ -283,6 +283,17 @@ jobs:
       - name: Install ripgrep
         run: sudo apt-get update -qq && sudo apt-get install -y -qq ripgrep
 
+      # WIRED 2026-08-07 (F8900). THE GATES' OWN GATE, AND IT RUNS FIRST.
+      # Every shell guard in this job now scans through scripts/lib/gate-runner.sh,
+      # whose one job is that a MISSING OR BROKEN TOOL can never read as "no
+      # match → clean". A library making that claim untested would be the same
+      # always-green disease one level up, so this suite mutates the conditions
+      # deliberately — rg removed from PATH, a rotted regex (exit 2), a scan path
+      # that no longer exists — and each must produce RED. Proven RED against a
+      # self-mutation of the library the day it was written.
+      - name: 'Static guard: gate-runner library mutation proof'
+        run: bash scripts/lib/gate-runner.test.sh
+
       - name: 'Static guard: enforce no-bypass-search-runtime'
         run: scripts/no-bypass-search-runtime.sh
 

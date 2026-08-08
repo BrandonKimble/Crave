@@ -8,6 +8,7 @@
   },
   "scripts": {
     "app-route:delete-gate": "bash ./scripts/app-route-runtime-delete-gate.sh",
+    "gate:lib-test": "bash ./scripts/lib/gate-runner.test.sh",
     "search-demand:rebuild": "yarn workspace api search-demand:rebuild",
     "search-demand:fixtures": "yarn workspace api search-demand:fixtures",
     "dev": "turbo run dev",

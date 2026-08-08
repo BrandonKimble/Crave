@@ -6,17 +6,21 @@ set -euo pipefail
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$REPO_ROOT"
 
+# F8900 (2026-08-07): the trigger test was `rg -q …` with a `grep -Eq` fallback.
+# Both fold EVERY non-zero exit into "not a dependency change → skip", so a
+# rotted pattern silently SKIPS the only dependency audit this repo has and the
+# commit sails through. gate_grep_quiet returns only 0/1 and fails the gate on
+# anything else. The rg-or-grep either-or existed to tolerate a missing tool,
+# which is the swallow itself — grep is now simply required.
+source "$REPO_ROOT/scripts/lib/gate-runner.sh"
+gate_init deps-check fast
+gate_require_tool git grep
+
 changed_files="$(git diff --cached --name-only)"
 
 needs_check=0
-if command -v rg >/dev/null 2>&1; then
-  if echo "$changed_files" | rg -q '^(package\.json|yarn\.lock|apps/[^/]+/package\.json|packages/[^/]+/package\.json)$'; then
-    needs_check=1
-  fi
-else
-  if echo "$changed_files" | grep -Eq '^(package\.json|yarn\.lock|apps/[^/]+/package\.json|packages/[^/]+/package\.json)$'; then
-    needs_check=1
-  fi
+if printf '%s\n' "$changed_files" | gate_grep_quiet -E '^(package\.json|yarn\.lock|apps/[^/]+/package\.json|packages/[^/]+/package\.json)$'; then
+  needs_check=1
 fi
 
 if [[ "$needs_check" != "1" ]]; then
@@ -26,8 +30,7 @@ fi
 echo "deps-check: running knip (dependency hygiene)…"
 knip_bin="$REPO_ROOT/node_modules/.bin/knip"
 if [[ ! -x "$knip_bin" ]]; then
-  echo "deps-check: knip is not installed. Run 'yarn install'." >&2
-  exit 1
+  gate_fail_hard "knip is not installed. Run 'yarn install'."
 fi
 
 # DISCOVER THE WORKSPACES — DO NOT HAND-WRITE THEM (F2060/F2501).
@@ -55,9 +58,7 @@ done < <(git ls-files '*package.json' | grep -v '/node_modules/')
 # nothing would otherwise run knip over an empty set, exit 0, and report the
 # dependency surface clean while covering none of it.
 if [[ ${#workspaces[@]} -eq 0 ]]; then
-  echo "deps-check: FAILED — resolved ZERO workspaces from \`git ls-files '*package.json'\`." >&2
-  echo "  Either the manifests moved or this discovery is broken; both mean this gate covers nothing." >&2
-  exit 1
+  gate_fail_hard "resolved ZERO workspaces from \`git ls-files '*package.json'\` — either the manifests moved or this discovery is broken; both mean this gate covers nothing."
 fi
 
 echo "deps-check: auditing $(( ${#workspaces[@]} / 2 )) workspace(s)."

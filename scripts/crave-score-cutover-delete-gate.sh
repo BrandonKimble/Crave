@@ -57,67 +57,21 @@ set -euo pipefail
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT_DIR"
 
-fail() {
-  echo "crave-score-cutover-delete-gate: $1" >&2
-  exit 1
-}
-
-# TOOL PRECONDITION (F8500, 2026-08-07). `if rg …; then` treats EVERY non-zero
-# rg exit as "no match → clean" — but exit 2 is an invalid regex and 127 is rg
-# not installed. So a rotted pattern or a machine without ripgrep made every
-# negative ban below PASS having scanned nothing (the exact class the sibling
-# no-bypass-search-runtime.sh and app-route-runtime-delete-gate.sh were already
-# hardened against; these two delete-gates were wired in the same D37 sweep but
-# never inherited the defense). Missing tooling is a FAILURE, never a pass.
-if ! command -v rg >/dev/null 2>&1; then
-  fail "ripgrep (rg) is not installed — this gate cannot verify anything; refusing a green that means nothing (brew install ripgrep)"
-fi
-
-# A negative ban: any match is a failure. Exit 1 (no match) is the ONLY pass;
-# exit 2 (bad regex) and anything else are hard failures, not silent greens.
-scan_active() {
-  local pattern="$1"
-  local description="$2"
-  shift 2
-  local status
-  set +e
-  rg -n "$pattern" "$@" >/tmp/crave-score-delete-gate.out
-  status=$?
-  set -e
-  if [[ "$status" -eq 0 ]]; then
-    cat /tmp/crave-score-delete-gate.out >&2
-    fail "$description"
-  elif [[ "$status" -eq 1 ]]; then
-    : # no match — the ban holds
-  elif [[ "$status" -eq 2 ]]; then
-    fail "invalid rg pattern (\`$pattern\`) — the scan for '$description' did not run"
-  else
-    fail "rg exited with status $status scanning for '$description' — check not performed"
-  fi
-}
-
-# A required symbol: exit 0 (present) is the pass. Exit 1 (genuinely absent) is
-# the designed failure; exit 2/other means the TOOL broke, reported distinctly
-# so a rotted pattern is never misread as a missing symbol.
-require_active() {
-  local pattern="$1"
-  local description="$2"
-  shift 2
-  local status
-  set +e
-  rg -n "$pattern" "$@" >/tmp/crave-score-delete-gate.out
-  status=$?
-  set -e
-  if [[ "$status" -eq 0 ]]; then
-    : # present
-  elif [[ "$status" -eq 1 ]]; then
-    fail "$description"
-  elif [[ "$status" -eq 2 ]]; then
-    fail "invalid rg pattern (\`$pattern\`) — the required-symbol check for '$description' did not run"
-  else
-    fail "rg exited with status $status checking for '$description' — check not performed"
-  fi
-}
+# TOOL PRECONDITION + SOUND SCANNING VOCABULARY (F8900, 2026-08-07).
+#
+# This gate used to carry its own `fail` / `scan_active` / `require_active` —
+# ~60 lines that were a verbatim copy of the same helpers in
+# search-results-prepared-rows-delete-gate.sh, themselves written to close
+# F8500: `if rg …; then` treats EVERY non-zero rg exit as "no match → clean",
+# but exit 2 is an invalid regex and 127 is rg not installed, so a rotted
+# pattern or a machine without ripgrep made every negative ban PASS having
+# scanned nothing. Six gates each grew their own copy of the fix, which is a
+# convention, not a mechanism. The vocabulary now lives once, in
+# scripts/lib/gate-runner.sh, where a broken tool has no shape in which it can
+# produce a pass — and where scripts/lib/gate-runner.test.sh proves it RED.
+source "$ROOT_DIR/scripts/lib/gate-runner.sh"
+gate_init crave-score-cutover-delete-gate fast
+gate_require_tool rg
 
 ACTIVE_PATHS=(
   "apps/api/src"
@@ -127,36 +81,43 @@ ACTIVE_PATHS=(
   "apps/api/prisma/schema.prisma"
 )
 
-scan_active "contextualScore|contextualPercentile|restaurantContextualScore|topDishContextual|contextual_score|contextual_percentile|restaurant_contextual_score|top_dish_contextual" \
+gate_ban_absent old_contextual_public_score_fields \
   "old contextual public score fields still exist in active code or search types" \
+  "contextualScore|contextualPercentile|restaurantContextualScore|topDishContextual|contextual_score|contextual_percentile|restaurant_contextual_score|top_dish_contextual" \
   "${ACTIVE_PATHS[@]}"
 
-scan_active "core_display_rank_scores|DisplayRankScore|\\bRankScore(Module|Service|Refresh|Queue|Worker)?\\b|rank-score|rank_score" \
+gate_ban_absent old_display_rank_score_owner \
   "old display-rank score owner still exists in active code or schema" \
+  "core_display_rank_scores|DisplayRankScore|\\bRankScore(Module|Service|Refresh|Queue|Worker)?\\b|rank-score|rank_score" \
   "${ACTIVE_PATHS[@]}"
 
-scan_active "PERCENT_RANK" \
+gate_ban_absent score_producing_paths_must_not \
   "score-producing paths must not use PERCENT_RANK after Crave Score cutover" \
+  "PERCENT_RANK" \
   "apps/api/src/modules/search" \
   "apps/api/src/modules/content-processing/public-crave-score"
 
-scan_active "LEAST\\(100" \
+gate_ban_absent public_crave_score_raw_quality \
   "public Crave Score raw quality must remain unconstrained before display projection" \
+  "LEAST\\(100" \
   "apps/api/src/modules/content-processing/public-crave-score"
 
-scan_active "getQualityColor|qualityScore|restaurantQualityScore|foodQualityScore" \
+gate_ban_absent mobile_search_lists_public_display \
   "mobile/search/lists public display paths still reference old raw quality score or color names" \
+  "getQualityColor|qualityScore|restaurantQualityScore|foodQualityScore" \
   "apps/mobile/src" \
   "apps/api/src/modules/search" \
   "apps/api/src/modules/user-lists" \
   "packages/shared/src/types/search.ts"
 
-scan_active "rebuildAllScores\\(\\{" \
+gate_ban_absent public_crave_score_rebuilds_must \
   "public Crave Score rebuilds must stay globally calibrated and must not pass scoped market/subject filters" \
+  "rebuildAllScores\\(\\{" \
   "apps/api/src"
 
-scan_active "craveScore:\\s*[^,\n]+\\?\\?\\s*(0|60)" \
+gate_ban_absent public_score_payloads_must_not \
   "public score payloads must not synthesize fake 0/60 Crave Scores" \
+  "craveScore:\\s*[^,\n]+\\?\\?\\s*(0|60)" \
   "apps/api/src/modules/search" \
   "apps/api/src/modules/user-lists" \
   "apps/mobile/src"
@@ -167,14 +128,16 @@ scan_active "craveScore:\\s*[^,\n]+\\?\\?\\s*(0|60)" \
 # that painted unscored restaurants as the worst tier. The dish/connection
 # ranked contracts stay non-null (they throw on unscored input); what stays
 # banned is OPTIONALITY — an absent key hides the question null answers.
-scan_active "craveScore\\?:" \
+gate_ban_absent cravescore_must_be_present_number \
   "craveScore must be present (number, or number|null for restaurants) — optionality hides the unscored case instead of answering it (F758)" \
+  "craveScore\\?:" \
   "packages/shared/src/types/search.ts" \
   "apps/mobile/src/screens/Search/components/search-map.tsx"
 
 # ([^.0-9]|$) bounds the literal so fixture decimals (0.99) don't match as "0".
-scan_active "craveScore[^\\n]*(\\?\\?|:)\\s*(0|60)([^.0-9]|$)|Number\\([^\\n]*craveScore[^\\n]*\\)" \
+gate_ban_absent active_readers_must_reject_missing \
   "active readers must reject missing Crave Scores instead of coercing them to fake numbers" \
+  "craveScore[^\\n]*(\\?\\?|:)\\s*(0|60)([^.0-9]|$)|Number\\([^\\n]*craveScore[^\\n]*\\)" \
   "apps/api/src/modules/search" \
   "apps/api/src/modules/user-lists" \
   "apps/mobile/src"
@@ -183,22 +146,23 @@ scan_active "craveScore[^\\n]*(\\?\\?|:)\\s*(0|60)([^.0-9]|$)|Number\\([^\\n]*cr
 # header. Its integrity is enforced by score-bucket-palette.json + the sprite
 # generators reading the same file, not by string-matching a curve here.
 
-if ! rg -n "core_public_entity_scores|PublicEntityScore" \
-  "apps/api/prisma/schema.prisma" \
-  >/dev/null; then
-  fail "Prisma schema must define the stable public Crave Score table"
-fi
+# F8900: these three were `if ! rg …; then fail`. The `!` inverts rg's 0/1 but
+# SWALLOWS exit 2 (rotted pattern / unreadable path) and 127 into "present → no
+# fail" — the F8800 polarity of the same swallow. gate_require_present
+# discriminates every status, so a broken check goes RED instead of green.
+gate_require_present schema_public_entity_scores \
+  "Prisma schema must define the stable public Crave Score table" \
+  "core_public_entity_scores|PublicEntityScore" \
+  "apps/api/prisma/schema.prisma"
 
-if ! rg -n "craveScore" \
-  "packages/shared/src/types/search.ts" \
-  >/dev/null; then
-  fail "shared search payloads must expose craveScore"
-fi
+gate_require_present shared_payload_exposes_crave_score \
+  "shared search payloads must expose craveScore" \
+  "craveScore" \
+  "packages/shared/src/types/search.ts"
 
-if ! rg -n "validate-crave-score-fixtures" \
-  "apps/api/package.json" \
-  >/dev/null; then
-  fail "API package must expose the Crave Score fixture harness"
-fi
+gate_require_present api_exposes_crave_score_fixture_harness \
+  "API package must expose the Crave Score fixture harness" \
+  "validate-crave-score-fixtures" \
+  "apps/api/package.json"
 
-echo "crave-score-cutover-delete-gate: pass"
+gate_summary "pass"

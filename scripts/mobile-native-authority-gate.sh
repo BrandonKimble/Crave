@@ -87,8 +87,24 @@ read_app_json() {
     process.stdout.write(v === undefined || v === null ? "" : String(v));
   ' "$APP_JSON" "$1"
 }
+# F8900: this was `plutil … || true`, which returns the empty string both when
+# the key is genuinely absent (a real finding) and when plutil BROKE. The two
+# are different facts. plutil exits 1 for a missing key; anything else means the
+# plist could not be read at all, and a comparison against an unread plist is
+# not evidence.
 read_plist() {
-  plutil -extract "$1" raw -o - "$INFO_PLIST" 2>/dev/null || true
+  local out status
+  set +e
+  out="$(plutil -extract "$1" raw -o - "$INFO_PLIST" 2>&1)"
+  status=$?
+  set -e
+  if [[ "$status" -eq 0 ]]; then
+    printf '%s' "$out"
+  elif [[ "$status" -eq 1 ]]; then
+    printf ''
+  else
+    gate_fail_hard "plutil exited $status reading '$1' from $INFO_PLIST — the plist could not be read, so no comparison against it is evidence."
+  fi
 }
 
 for key in NSLocalNetworkUsageDescription NSCameraUsageDescription; do

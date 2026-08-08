@@ -48,6 +48,15 @@ set -euo pipefail
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT_DIR"
 
+# F8900 (2026-08-07): the per-root floors were computed with `grep -c … || true`
+# and the per-file class lookup used a bare `grep -q`, whose non-zero-is-no-match
+# reading folds a BROKEN grep into "no @run-by declared". Both now go through the
+# shared vocabulary, which discriminates grep's exit 1 (ran, found none) from
+# anything else (did not run). find/grep/sed are this gate's tools; absent = FAIL.
+source "$ROOT_DIR/scripts/lib/gate-runner.sh"
+gate_init scripts-containment-gate accumulate
+gate_require_tool find grep sed sort
+
 VALID_CLASSES="operational gate harness dead-scaffolding bless library"
 
 # THE FENCE IS EVERY SHELL PROGRAM IN THE REPO, NOT ONE DIRECTORY (F1653, 2026-08-04).
@@ -75,16 +84,10 @@ done < <(
 # this scan ever loses the tree, every assertion below becomes vacuously true.
 # PER-ROOT floors, because a whole-repo total can stay above a single floor while
 # one root silently contributes zero (which is exactly how maestro/ went unscanned).
-scripts_seen="$(printf '%s\n' "${SCRIPT_FILES[@]}" | grep -c '^scripts/' || true)"
-maestro_seen="$(printf '%s\n' "${SCRIPT_FILES[@]}" | grep -c '^maestro/' || true)"
-if [[ "$scripts_seen" -lt 40 ]]; then
-  echo "scripts-containment-gate: scan found only ${scripts_seen} scripts under scripts/ — it has lost the tree; the assertions below would be vacuously green." >&2
-  exit 1
-fi
-if [[ "$maestro_seen" -lt 1 ]]; then
-  echo "scripts-containment-gate: scan found NO scripts under maestro/ — the F1653 widening has lost that root; scripts there would be unfenced again." >&2
-  exit 1
-fi
+scripts_seen="$(gate_count_matching "$(printf '%s\n' "${SCRIPT_FILES[@]}")" '^scripts/')"
+maestro_seen="$(gate_count_matching "$(printf '%s\n' "${SCRIPT_FILES[@]}")" '^maestro/')"
+gate_require_floor "scripts under scripts/ (the assertions below would be vacuously green)" "$scripts_seen" 40
+gate_require_floor "scripts under maestro/ (the F1653 widening has lost that root; scripts there would be unfenced again)" "$maestro_seen" 1
 
 undeclared=()
 bogus=()
@@ -104,7 +107,7 @@ for file in "${SCRIPT_FILES[@]}"; do
     continue
   fi
 
-  if ! printf '%s' "$head_block" | grep -q '@run-by:'; then
+  if ! printf '%s' "$head_block" | gate_grep_quiet '@run-by:'; then
     missing_runby+=("$file")
   fi
 done
@@ -133,4 +136,5 @@ if [[ "$failed" -ne 0 ]]; then
   exit 1
 fi
 
-echo "scripts-containment-gate: pass (${#SCRIPT_FILES[@]} scripts, all classified)."
+GATE_CHECKS="${#SCRIPT_FILES[@]}"
+gate_summary "pass (${#SCRIPT_FILES[@]} scripts, all classified)."

@@ -42,11 +42,20 @@ set -euo pipefail
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT_DIR"
 
+# F8900 (2026-08-07): the row parse and the NEXT-ACTION extraction both ended in
+# `|| true`. For the extraction that is deliberate and documented below (grep's
+# exit 1 must not kill the report) — but `|| true` cannot tell exit 1 from exit
+# 127, so on a machine without grep the parse yielded zero rows. That trips the
+# floor, so this gate fails closed today; it is migrated so the guarantee comes
+# from the vocabulary rather than from the direction one comparison points.
+source "$ROOT_DIR/scripts/lib/gate-runner.sh"
+gate_init findings-ledger-gate accumulate
+gate_require_tool grep sed
+
 LEDGER="audit/FINDINGS.md"
 
 if [[ ! -f "$LEDGER" ]]; then
-  echo "findings-ledger-gate: $LEDGER not found." >&2
-  exit 1
+  gate_fail_hard "$LEDGER not found."
 fi
 
 TERMINAL_STATUSES="FIXED DELETED OWNER-DECISION MOOT"
@@ -59,7 +68,7 @@ ALL_STATUSES="$TERMINAL_STATUSES $OPEN_STATUSES"
 mapfile_lines=()
 while IFS= read -r line; do
   mapfile_lines+=("$line")
-done < <(grep -nE '^[A-Za-z0-9_./-]+ \| ' "$LEDGER" || true)
+done < <(gate_grep_extract "$(cat "$LEDGER")" -nE '^[A-Za-z0-9_./-]+ \| ')
 
 row_count="${#mapfile_lines[@]}"
 
@@ -67,10 +76,7 @@ row_count="${#mapfile_lines[@]}"
 # renamed prefix), every check below would run over zero rows and pass
 # vacuously — exactly the disease this audit exists to kill. The ledger has
 # 825+ data rows; anything under 800 means the parse, not the ledger, broke.
-if [[ "$row_count" -lt 800 ]]; then
-  echo "findings-ledger-gate: parsed only ${row_count} data rows from $LEDGER — the parse has lost the table, so every check below would be vacuously green." >&2
-  exit 1
-fi
+gate_require_floor "data rows from $LEDGER (every check below would be vacuously green)" "$row_count" 800
 
 bogus_status=()
 missing_status=()
@@ -86,7 +92,14 @@ for entry in "${mapfile_lines[@]}"; do
   # (rows quoting other docs' prose, e.g. "BUILD STATUS: COMPLETE", can
   # contain an earlier false match inside a quoted field — the trailer this
   # gate writes is always the LAST one on the line).
-  status_token="$(printf '%s' "$content" | grep -oE 'STATUS: [A-Z][A-Z-]*' | tail -1 | sed -E 's/^STATUS: //')"
+  # F8900 (2026-08-07): this was a bare `grep -oE … ` inside `set -e`. A row
+  # whose STATUS trailer does not match (e.g. `STATUS: (see next row after fix)`)
+  # made grep exit 1, which KILLED THE SCRIPT MID-LOOP — the gate exited 1 having
+  # printed NOTHING, indistinguishable from a crash and naming no row. That is
+  # the same disease as the swallow, one polarity over: a gate that cannot say
+  # why it failed. gate_grep_extract yields empty on exit 1 (which then lands in
+  # the bogus-status report below, naming the row) and FAILS on any other status.
+  status_token="$(gate_grep_extract "$content" -oE 'STATUS: [A-Z][A-Z-]*' | tail -1 | sed -E 's/^STATUS: //')"
 
   if [[ -z "$status_token" ]]; then
     missing_status+=("line ${line_no} (${fid}): no 'STATUS: <TOKEN>' trailer found")
@@ -122,7 +135,7 @@ for entry in "${mapfile_lines[@]}"; do
     # say why it failed is the same disease as one that cannot fail at all.
     # The tolerant form also accepts a parenthetical before the colon, e.g.
     # `NEXT ACTION (question/options, spend semantics): ...`.
-    next_action="$(printf '%s' "$content" | grep -oE 'NEXT ACTION[^:]*:.*$' | tail -1 | sed -E 's/^NEXT ACTION[^:]*: ?//' || true)"
+    next_action="$(gate_grep_extract "$content" -oE 'NEXT ACTION[^:]*:.*$' | tail -1 | sed -E 's/^NEXT ACTION[^:]*: ?//')"
     next_action_trimmed="$(printf '%s' "$next_action" | sed -E 's/^[[:space:]]+|[[:space:]]+$//g')"
     if [[ -z "$next_action_trimmed" || "${#next_action_trimmed}" -lt 8 ]]; then
       missing_next_action+=("line ${line_no} (${fid}): STATUS: ${status_token} is OPEN-bucket but carries no discernible NEXT ACTION")

@@ -123,15 +123,14 @@ function deriveProbes() {
     let rep = files.find((f) => !isGlob(f) && existsSync(join(PKG, f)));
     if (!rep) {
       rep = srcFiles.find(
-        (f) =>
-          files.some((g) => minimatch(f, g)) && !excluded.some((g) => minimatch(f, g)),
+        (f) => files.some((g) => minimatch(f, g)) && !excluded.some((g) => minimatch(f, g))
       );
     }
     if (!rep) {
       failures.push(
         `.eslintrc.js has an override scoped to ${JSON.stringify(files)} that ` +
           `configures a restricted rule but matches NO file on disk — it reads as ` +
-          `protection and guards nothing. Fix the globs or delete the block.`,
+          `protection and guards nothing. Fix the globs or delete the block.`
       );
       continue;
     }
@@ -145,7 +144,7 @@ if (PROBES.length === 0) {
   console.error(
     'FAIL: derived ZERO probe scopes from .eslintrc.js overrides. Either no ' +
       'override configures a restricted rule (the bans were deleted), or the ' +
-      'config could not be parsed — a gate with nothing to probe measures nothing.',
+      'config could not be parsed — a gate with nothing to probe measures nothing.'
   );
   process.exit(1);
 }
@@ -202,13 +201,17 @@ function staleOverrideTargets() {
   return [...new Set(stale)];
 }
 
-function printConfig(relPath) {
-  const out = execFileSync(
-    'npx',
-    ['eslint', '--print-config', relPath],
-    { cwd: PKG, encoding: 'utf8', maxBuffer: 32 * 1024 * 1024 },
-  );
+function printConfigIn(cwd, relPath) {
+  const out = execFileSync('npx', ['eslint', '--print-config', relPath], {
+    cwd,
+    encoding: 'utf8',
+    maxBuffer: 32 * 1024 * 1024,
+  });
   return JSON.parse(out);
+}
+
+function printConfig(relPath) {
+  return printConfigIn(PKG, relPath);
 }
 
 /** The identifying key of one ban entry, stable across formatting. */
@@ -250,23 +253,21 @@ for (const rel of [BASELINE_FILE, ...PROBES, ...SCOPED_PROBES]) {
   if (!existsSync(join(PKG, rel))) {
     console.error(
       `FAIL: probe file ${rel} does not exist. This gate measures nothing ` +
-        `until every probe resolves — a missing probe is a silent green.`,
+        `until every probe resolves — a missing probe is a silent green.`
     );
     process.exit(1);
   }
 }
 
 const baseConfig = printConfig(BASELINE_FILE);
-const baseline = new Map(
-  RESTRICTED_RULES.map((r) => [r, banKeys(baseConfig.rules?.[r])]),
-);
+const baseline = new Map(RESTRICTED_RULES.map((r) => [r, banKeys(baseConfig.rules?.[r])]));
 
 const totalBaseline = [...baseline.values()].reduce((n, s) => n + s.size, 0);
 if (totalBaseline === 0) {
   console.error(
     'FAIL: the baseline file carries ZERO restricted-rule bans. Either the ' +
       'bans were deleted, or BASELINE_FILE now matches an override — both ' +
-      'mean this gate is comparing against nothing.',
+      'mean this gate is comparing against nothing.'
   );
   process.exit(1);
 }
@@ -277,7 +278,7 @@ for (const stale of staleOverrideTargets()) {
   failures.push(
     `.eslintrc.js scopes a config block to \`${stale}\`, which does not ` +
       `exist. A block targeting a deleted file protects nothing while reading ` +
-      `as protection — delete the entry or fix the path.`,
+      `as protection — delete the entry or fix the path.`
   );
 }
 
@@ -303,7 +304,7 @@ for (const probe of PROBES) {
           `\`${rule}\` — ${lost.join(', ')}. ESLint REPLACES rule options, it ` +
           `does not merge them, so this ban does not exist for this file. ` +
           `Restate it in the override, or move the override's own entries to a ` +
-          `rule the baseline does not use.`,
+          `rule the baseline does not use.`
       );
     }
   }
@@ -329,22 +330,130 @@ for (const floor of SCOPED_FLOORS) {
           `config does not carry — ${missing.join(', ')}. This ban is SCOPED (it ` +
           `is not in the repo-wide baseline), so the superset check cannot see it; ` +
           `an override that drops it from this scope must red HERE. Restate the ban ` +
-          `in the scope's override.`,
+          `in the scope's override.`
       );
     }
   }
   scopedRequired += floor.requiredKeys.length;
 }
 
+/**
+ * ── SEVERITY FLOOR (F9100/F9101) ─────────────────────────────────────────────
+ *
+ * THE SECOND WAY A RULE STOPS EXISTING. Everything above proves a ban is not
+ * silently DROPPED. It says nothing about a ban that is silently DEMOTED — and
+ * demotion is the same outcome, because nothing in this repo fails on warnings.
+ * `eslint` exits 0 with any number of them; `yarn lint` (turbo) exits 0; the
+ * lefthook staged-lint commands exit 0. A safety rule at `warn` is a comment
+ * with a severity field.
+ *
+ * That is exactly how the repo ended up with two standards: the ROOT config held
+ * no-floating-promises / no-unsafe-call / no-unused-vars / no-explicit-any at
+ * `warn`, apps/api ran `recommendedTypeChecked`, and nothing anywhere compared
+ * the two. The split was invisible because no instrument could show RED on it.
+ *
+ * THE MUTATION THIS MUST CATCH: change any severity below back to 'warn' — in
+ * the root `.eslintrc.js` or in a flat config — and this gate must fail. Proven
+ * live rather than asserted: demoting `@typescript-eslint/no-floating-promises`
+ * to 'warn' at root reds ROOT_FLOOR, and demoting it in
+ * packages/shared/eslint.config.mjs reds that package's floor.
+ *
+ * DECLARED EXCEPTIONS ARE NOT PROBED, DELIBERATELY. apps/mobile and apps/api each
+ * restate some of these at `warn` in their OWN config, with a measured count in a
+ * comment beside it. Probing them would force either a lie or a permanent RED;
+ * the point of this floor is that lax is never the inherited DEFAULT and never
+ * silent. When a package burns its count to zero it deletes its restatement and
+ * inherits the floor — add it to PACKAGE_FLOORS then.
+ */
+const SAFETY_SEVERITY_FLOOR = [
+  '@typescript-eslint/no-floating-promises',
+  '@typescript-eslint/no-misused-promises',
+  '@typescript-eslint/require-await',
+  '@typescript-eslint/no-unsafe-assignment',
+  '@typescript-eslint/no-unsafe-call',
+  '@typescript-eslint/no-unsafe-member-access',
+  '@typescript-eslint/no-unsafe-return',
+  '@typescript-eslint/no-unsafe-argument',
+  '@typescript-eslint/no-explicit-any',
+  '@typescript-eslint/no-unused-vars',
+];
+
+/** The four the ROOT config itself declares — the standard everything inherits. */
+const ROOT_FLOOR_RULES = [
+  '@typescript-eslint/no-floating-promises',
+  '@typescript-eslint/no-unsafe-call',
+  '@typescript-eslint/no-explicit-any',
+  '@typescript-eslint/no-unused-vars',
+];
+
+/**
+ * Flat-config packages that meet the full floor with no exceptions, and a probe
+ * file whose EFFECTIVE config is measured (not the source text) — same standard
+ * of evidence as the ban checks above.
+ */
+const PACKAGE_FLOORS = [
+  { pkg: 'packages/shared', probe: 'src/index.ts' },
+  { pkg: 'apps/site', probe: 'src/router.ts' },
+];
+
+/** 'error' | 'warn' | 'off', from any of eslint's severity spellings. */
+function severityOf(entry) {
+  const raw = Array.isArray(entry) ? entry[0] : entry;
+  if (raw === 2 || raw === 'error') return 'error';
+  if (raw === 1 || raw === 'warn') return 'warn';
+  if (raw === 0 || raw === 'off') return 'off';
+  return undefined;
+}
+
+{
+  // The root config is read DIRECTLY, not through --print-config on a mobile
+  // file: mobile declares its own (documented, counted) severities for these,
+  // so a merged view would report mobile's answer and never see a root demotion.
+  const rootRules = pkgRequire(join(REPO_ROOT, '.eslintrc.js')).rules ?? {};
+  for (const rule of ROOT_FLOOR_RULES) {
+    const sev = severityOf(rootRules[rule]);
+    if (sev !== 'error') {
+      failures.push(
+        `.eslintrc.js declares \`${rule}\` at ${sev ?? 'NOTHING'} — the root ` +
+          `standard must be 'error'. Nothing in this repo fails on warnings, so a ` +
+          `safety rule at 'warn' does not exist; demoting it here quietly relaxes ` +
+          `every package that inherits this file.`
+      );
+    }
+  }
+}
+
+for (const { pkg, probe } of PACKAGE_FLOORS) {
+  const abs = join(REPO_ROOT, pkg, probe);
+  if (!existsSync(abs)) {
+    failures.push(
+      `FAIL: severity-floor probe ${pkg}/${probe} does not exist. A missing probe ` +
+        `is a silent green — repoint it at a real source file in that package.`
+    );
+    continue;
+  }
+  const cfg = printConfigIn(join(REPO_ROOT, pkg), probe);
+  for (const rule of SAFETY_SEVERITY_FLOOR) {
+    const sev = severityOf(cfg.rules?.[rule]);
+    if (sev !== 'error') {
+      failures.push(
+        `${pkg}/${probe}: \`${rule}\` is ${sev ?? 'NOT CONFIGURED'} in this file's ` +
+          `effective config — the floor is 'error'. This package carries no declared ` +
+          `exception, so either restore the severity or move the package to a ` +
+          `documented, COUNTED exception the way apps/mobile does.`
+      );
+    }
+  }
+}
+
 if (failures.length) {
-  console.error(
-    'lint-ban-inheritance FAILED:\n' +
-      failures.map((f) => `  - ${f}`).join('\n'),
-  );
+  console.error('lint-ban-inheritance FAILED:\n' + failures.map((f) => `  - ${f}`).join('\n'));
   process.exit(1);
 }
 console.log(
   `lint-ban-inheritance OK — ${PROBES.length} override scopes each carry all ` +
     `${totalBaseline} baseline ban(s); ${SCOPED_FLOORS.length} scoped floor(s) ` +
-    `assert ${scopedRequired} additional scoped ban(s) over ${SCOPED_PROBES.length} probe(s).`,
+    `assert ${scopedRequired} additional scoped ban(s) over ${SCOPED_PROBES.length} probe(s); ` +
+    `the severity floor holds ${ROOT_FLOOR_RULES.length} root rule(s) at error and ` +
+    `${SAFETY_SEVERITY_FLOOR.length} rule(s) across ${PACKAGE_FLOORS.length} flat-config package(s).`
 );
