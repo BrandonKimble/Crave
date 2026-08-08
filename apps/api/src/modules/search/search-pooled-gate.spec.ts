@@ -106,9 +106,10 @@ describe('step-3 pooled richness gate (SQL shape)', () => {
     expect(sql).not.toContain('pooled_gate AS');
   });
 
-  it('dish: tier orders first, then score (page 1 fills with all-word rows)', () => {
+  it('dish: PURE score order — tier admits, never orders (owner ruling 2026-08-08)', () => {
     const sql = dishSqlText(directives());
-    expect(sql).toContain('ORDER BY fc.pooled_tier ASC,');
+    expect(sql).not.toContain('ORDER BY fc.pooled_tier');
+    expect(sql).toMatch(/ORDER BY[^;]*crave/i);
   });
 
   it('B1: ONE gate arm — openness is membership, so the window count is openness-aware (gateFull is gone)', () => {
@@ -118,14 +119,14 @@ describe('step-3 pooled richness gate (SQL shape)', () => {
     );
   });
 
-  it('restaurant: gate present with window count and tier-first order', () => {
+  it('restaurant: gate present with window count; PURE score order', () => {
     const data = restaurantData(directives());
     const sql = data.sql.replace(/\s+/g, ' ');
     expect(sql).toContain('OVER () AS pooled_full_count');
     // Same as the dish gate: the threshold is a BOUND operand, not a literal.
     expect(sql).toMatch(/rrx\.match_tier = 0 OR rrx\.pooled_full_count < \?/);
     expect(data.values).toContain(25);
-    expect(sql).toContain('ORDER BY rrx.match_tier ASC,');
+    expect(sql).not.toContain('ORDER BY rrx.match_tier');
   });
 
   it('restaurant: the HYDRATE path never gates (executor already decided on the open set)', () => {

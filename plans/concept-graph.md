@@ -13,9 +13,12 @@ Everything in §8 was executed; nothing is asserted from plausibility.
 
 ## 0. THE INVARIANT (do not violate)
 
-Results order by the **Crave Score**, greatest-to-least (or `rising`), within a tier.
-Never by relevance, cosine, or RRF. The only ORDER BY keys anywhere are
-`match_tier ASC, crave_score_exact DESC, crave_score DESC, upvotes, mentions, id`.
+Results order by the **Crave Score**, greatest-to-least (or `rising`) — PURE
+and GLOBAL (owner ruling 2026-08-08, supersedes the former tier-first order).
+Never by relevance, cosine, RRF, or tier. The only ORDER BY keys anywhere are
+`crave_score_exact DESC, crave_score DESC, upvotes, mentions, id`. Tiers
+decide ADMISSION only (who enters the page when it cannot fill) and ride as
+row metadata; they never order.
 
 Two consequences that drive every decision:
 

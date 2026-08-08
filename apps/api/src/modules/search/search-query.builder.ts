@@ -350,7 +350,10 @@ export class SearchQueryBuilder {
     const restTierOrder = restTierExpr
       ? Prisma.sql`${restTierExpr} ASC, `
       : Prisma.sql``;
-    const restTierOrderPreview = restTierExpr ? 'match_tier ASC, ' : '';
+    // OWNER RULING 2026-08-08 (supersedes sectioned ordering): ONE list,
+    // PURE global Crave Score. Tiers decide ADMISSION only (the gate WHERE);
+    // they never order. match_tier stays selected as row metadata.
+    const restTierOrderPreview = '';
     const restaurantTopDishOrder = this.resolveTopDishOrderSql(
       plan.ranking.foodOrder,
     );
@@ -417,7 +420,7 @@ ranked_restaurants AS (
 	  ${minimumVotesWhereSql}
   ) rrx
   ${pooledRestGateWhereSql}
-  ORDER BY rrx.match_tier ASC, ${pooledOuterOrderSql}
+  ORDER BY ${pooledOuterOrderSql}
   OFFSET ${pagination.skip}
   LIMIT ${pagination.take}
 )`
@@ -931,16 +934,9 @@ filtered_connections AS (
       : exactIds.length
         ? Prisma.sql`, CASE WHEN fc.food_id = ANY(${exactIds}::uuid[]) THEN 0 ELSE 1 END AS match_tier`
         : Prisma.sql`, NULL::int AS match_tier`;
-    const tierOrderSql = pooledGate
-      ? Prisma.sql`fc.pooled_tier ASC, `
-      : exactIds.length
-        ? Prisma.sql`CASE WHEN fc.food_id = ANY(${exactIds}::uuid[]) THEN 0 ELSE 1 END ASC, `
-        : Prisma.sql``;
-    const tierOrderPreview = pooledGate
-      ? 'pooled_tier ASC, '
-      : exactIds.length
-        ? 'match_tier ASC, '
-        : '';
+    // OWNER RULING 2026-08-08: tier never orders — admission only.
+    const tierOrderSql = Prisma.sql``;
+    const tierOrderPreview = '';
 
     // THE GATE (owner ruling 2026-08-01: page 1 fills with all-word matches;
     // partial admitted only when they cannot fill it). ONE PASS, window
@@ -994,7 +990,7 @@ FROM (
   FROM filtered_connections fci
 ) fc
 ${pooledGateWhereSql}
-ORDER BY fc.pooled_tier ASC, ${order.sql}
+ORDER BY ${order.sql}
 OFFSET ${pagination.skip}
 LIMIT ${pagination.take}`
       : Prisma.sql`
