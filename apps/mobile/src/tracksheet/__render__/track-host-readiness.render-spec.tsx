@@ -103,6 +103,31 @@ describe('readiness / skeleton / prewarm / entry-stamp / liveness — host wirin
     expect(findAllByType(renderer, 'published-row')[0].props.id).toBe('r2-row');
   });
 
+  it("a PENDING mounted body paints its SceneBodyReadyGate face on the track, never blank (the host provides SceneBodySceneKeyContext with the LEG's scene)", async () => {
+    // The mock userProfile body renders the REAL SceneBodyReadyGate with an
+    // unready query. The gate resolves its material ONLY through
+    // SceneBodySceneKeyContext — with no provider it renders NULL (the
+    // blank-pending bug this pins). RED-proven by mutation: removing the
+    // provider from rendererForMountedEntry fails the surface assertion below.
+    harness.world.mountedBodyPendingScenes.add('userProfile');
+    harness.world.routeState.overlayRouteStack = [{ entryId: 'u1' }];
+    await setFrame({ presentedSceneKey: 'userProfile', presentedEntryId: 'u1' });
+    // The mounted destination has "real rows", so the switch defers (handoff
+    // frame); release the real body at the paint boundary.
+    await flushFrame();
+    const pendingFaces = findAllByType(renderer, 'scene-loading-surface');
+    expect(pendingFaces).toHaveLength(1);
+    // The variant is the scene's declared material, resolved from the LEG's own
+    // scene key — not a hardcoded rowType and not the presented-scene shortcut.
+    expect(pendingFaces[0].props.rowType).toBe('profile');
+    // While pending, the gate replaces the body content (no blank, no rows).
+    expect(findAllByType(renderer, 'mounted-body')).toHaveLength(0);
+    // The gate must not have barked "could not resolve a foundation skeleton".
+    expect(
+      errorSpy.mock.calls.filter((call) => String(call[0]).includes('[FOUNDATION]'))
+    ).toHaveLength(0);
+  });
+
   it('G-PREWARM: the press-down signal mounts a cold resident leg BEFORE the switch commits (chrome built early, presented body unchanged)', async () => {
     const pollsTitle = () =>
       renderer.root.findAll((node) => node.type === 'leg-title' && node.props.scene === 'polls');

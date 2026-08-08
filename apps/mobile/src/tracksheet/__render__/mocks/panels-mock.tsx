@@ -14,6 +14,12 @@ import {
   BottomSheetSceneStackBodyDataActivityContext,
   BottomSheetSceneStackBodyIsActiveContext,
 } from '../../../overlays/BottomSheetSceneStackBodyActivityContext';
+// The REAL gate, deliberately un-mocked: its pending face resolves the scene's
+// foundation material through SceneBodySceneKeyContext, which the TRACK host
+// must provide (the old host was the only other provider — blank-pending bug,
+// skeleton-path audit 2026-08-08). Its own imports ride this lane's existing
+// module map (skeletons → surfaces-mock, scene-foundation-spec → runtime-mock).
+import { SceneBodyReadyGate } from '../../../overlays/SceneBodyReadyGate';
 
 type BodyProps = { entry?: { entryId?: string } | null };
 
@@ -25,7 +31,14 @@ const makeBody = (scene: string): React.FC<BodyProps> => {
       ...activity,
       isActive,
     });
-    return <mounted-body scene={scene} entryId={entry?.entryId ?? null} />;
+    const marker = <mounted-body scene={scene} entryId={entry?.entryId ?? null} />;
+    if (harness.world.mountedBodyPendingScenes.has(scene)) {
+      // An unready panel query: the gate must paint the scene's DECLARED
+      // pending material (never blank) — which requires the host-provided
+      // scene-key context.
+      return <SceneBodyReadyGate pending>{marker}</SceneBodyReadyGate>;
+    }
+    return marker;
   };
   Body.displayName = `MockBody(${scene})`;
   return Body;

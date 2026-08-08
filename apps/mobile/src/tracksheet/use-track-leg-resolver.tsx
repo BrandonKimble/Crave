@@ -33,6 +33,7 @@ import { getPersistentHeaderDescriptor } from '../navigation/runtime/app-route-p
 import { useAppRouteSceneRuntime } from '../navigation/runtime/AppRouteSceneRuntimeProvider';
 import { OVERLAY_HORIZONTAL_PADDING } from '../overlays/overlay-chrome-metrics';
 import { SceneBodyFoundationSurface } from '../overlays/SceneBodyFoundationSurface';
+import { SceneBodySceneKeyContext } from '../overlays/SceneBodyReadyGate';
 import { SceneLoadingSurface } from '../components/skeletons';
 import {
   BottomSheetSceneStackBodyDataActivityContext,
@@ -294,32 +295,41 @@ export const useTrackLegResolver = ({
         });
       }
       return (
-        <BottomSheetSceneStackBodyDataActivityContext.Provider value={activity}>
-          <BottomSheetSceneStackBodyRenderActivityContext.Provider value={activity}>
-            <BottomSheetSceneStackBodyIsActiveContext.Provider value={isPresented}>
-              {/* THE REAL FOUNDATION (rung 4): white plate + FrostCutout store —
+        // THE GATE'S SCENE RESOLUTION (skeleton-path audit, 2026-08-08): mounted
+        // bodies gate their pending queries through SceneBodyReadyGate, which
+        // resolves its foundation skeleton ONLY via this context — and the only
+        // other provider is the old host (BottomSheetSceneStackHost), dark behind
+        // the flip. Without it, a pending body on the track rendered NULL (blank
+        // white) instead of its declared material. Per-LEG scene, not the
+        // presented scene: a hidden retained leg must carry its own key.
+        <SceneBodySceneKeyContext.Provider value={legScene}>
+          <BottomSheetSceneStackBodyDataActivityContext.Provider value={activity}>
+            <BottomSheetSceneStackBodyRenderActivityContext.Provider value={activity}>
+              <BottomSheetSceneStackBodyIsActiveContext.Provider value={isPresented}>
+                {/* THE REAL FOUNDATION (rung 4): white plate + FrostCutout store —
                 profile stats / home bands punch through to the kit's frost; the
                 strip law sees its plate. Zero scroll offset: the cell itself
                 rides the track. */}
-              <SceneBodyFoundationSurface
-                scrollOffset={zeroScrollOffset}
-                sceneKey={legScene as SheetSceneKey}
-              >
-                {/* padding INSIDE the surface so the white plate spans the full
-                  cell (padded-outside left frost gutters at the margins). */}
-                <View
-                  style={
-                    sceneMountedBodyIsEdgeToEdge(legScene) ? undefined : styles.mountedBodyInset
-                  }
+                <SceneBodyFoundationSurface
+                  scrollOffset={zeroScrollOffset}
+                  sceneKey={legScene as SheetSceneKey}
                 >
-                  <ChromeProbeBoundary label={`${legScene}.body`}>
-                    <Body entry={legEntry ?? undefined} />
-                  </ChromeProbeBoundary>
-                </View>
-              </SceneBodyFoundationSurface>
-            </BottomSheetSceneStackBodyIsActiveContext.Provider>
-          </BottomSheetSceneStackBodyRenderActivityContext.Provider>
-        </BottomSheetSceneStackBodyDataActivityContext.Provider>
+                  {/* padding INSIDE the surface so the white plate spans the full
+                  cell (padded-outside left frost gutters at the margins). */}
+                  <View
+                    style={
+                      sceneMountedBodyIsEdgeToEdge(legScene) ? undefined : styles.mountedBodyInset
+                    }
+                  >
+                    <ChromeProbeBoundary label={`${legScene}.body`}>
+                      <Body entry={legEntry ?? undefined} />
+                    </ChromeProbeBoundary>
+                  </View>
+                </SceneBodyFoundationSurface>
+              </BottomSheetSceneStackBodyIsActiveContext.Provider>
+            </BottomSheetSceneStackBodyRenderActivityContext.Provider>
+          </BottomSheetSceneStackBodyDataActivityContext.Provider>
+        </SceneBodySceneKeyContext.Provider>
       );
     };
     mountedRendererCacheRef.current.set(legEntryKey, { entry: legEntry, render });

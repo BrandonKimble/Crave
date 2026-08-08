@@ -219,6 +219,11 @@ const buildWorld = () => {
     chromeAcks,
     gestureSettles,
     deliveredActivity: new Map<string, unknown>(),
+    // Scenes whose mock mounted body renders the REAL SceneBodyReadyGate with an
+    // unready query (pending=true). Default empty: other specs' body/skeleton
+    // counts are untouched. The gate falsifier adds a scene here to prove the
+    // track host provides SceneBodySceneKeyContext (blank-pending regression).
+    mountedBodyPendingScenes: new Set<string>(),
     nextSnapOutcome: null as
       | null
       | ((
