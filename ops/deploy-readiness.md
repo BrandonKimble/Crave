@@ -10,16 +10,16 @@ session reports arrive; the deploy fires only when every row is READY.
 (Last full refresh 2026-08-08 ~03:00 — the coordinator's earlier table edits
 silently no-op'd after prettier re-padded columns; this rewrite is asserted.)
 
-| Session                      | Status                                                                | Remaining                                                           |
-| ---------------------------- | --------------------------------------------------------------------- | ------------------------------------------------------------------- |
-| 📌02 red team (coordinator)  | READY                                                                 | doc-truth lane finishing (plans/\* corrections in tree)             |
-| 📌01 tom tom (fork)          | READY — F9963 landed                                                  | none                                                                |
-| Payments                     | READY — F9806 + transfer trio (98cc8d681)                             | RC dashboard eyeball = OWNER-only                                   |
-| 📌03 account-deletion        | READY — F9964 + property spec + plan rewrite                          | none                                                                |
-| 📌05 extraction (fork 2)     | READY — F9968, §10 adjudications, batch guards (b0db25258)            | none                                                                |
-| extraction (fork) — DB audit | NEAR-READY — F9965/66/67 landed (3a1506c55)                           | F9976 austin-resume; choreography plan pass; query-deps annotations |
-| 📌07 Search                  | NEAR-READY — FK idx, dietary wall, plan pass, scream/cron-gate landed | divider removal (one-list ruling); duplicate indexes                |
-| 📌06 Wave-4 (tracksheet)     | NEAR-READY — console.log gated; B4 owned                              | banner + contract edits (their next turn; post-deploy-safe)         |
+| Session                      | Status                                                                | Remaining                                                   |
+| ---------------------------- | --------------------------------------------------------------------- | ----------------------------------------------------------- |
+| 📌02 red team (coordinator)  | READY                                                                 | doc-truth lane finishing (plans/\* corrections in tree)     |
+| 📌01 tom tom (fork)          | READY — F9963 landed                                                  | none                                                        |
+| Payments                     | READY — F9806 + transfer trio (98cc8d681)                             | RC dashboard eyeball = OWNER-only                           |
+| 📌03 account-deletion        | READY — F9964 + property spec + plan rewrite                          | none                                                        |
+| 📌05 extraction (fork 2)     | READY — F9968, §10 adjudications, batch guards (b0db25258)            | none                                                        |
+| extraction (fork) — DB audit | READY — F9976 artifact-as-authority + all plan passes (43b1488f5)     | none                                                        |
+| 📌07 Search                  | NEAR-READY — FK idx, dietary wall, plan pass, scream/cron-gate landed | divider removal (one-list ruling); duplicate indexes        |
+| 📌06 Wave-4 (tracksheet)     | NEAR-READY — console.log gated; B4 owned                              | banner + contract edits (their next turn; post-deploy-safe) |
 
 ## THE STOP-ITEM — timestamptz migration (Search's find, sequencing ADOPTED)
 
