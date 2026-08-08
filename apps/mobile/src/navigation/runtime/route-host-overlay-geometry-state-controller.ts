@@ -4,10 +4,7 @@ type Listener = () => void;
 
 export type RouteHostOverlayGeometryBinding = Pick<
   SearchRootOverlaySessionGeometryRuntime,
-  | 'searchBarTop'
-  | 'navBarTopForSnaps'
-  | 'navBarCutoutHeight'
-  | 'bottomNavHiddenTranslateY'
+  'searchBarTop' | 'navBarTopForSnaps' | 'navBarCutoutHeight' | 'bottomNavHiddenTranslateY'
 > | null;
 
 export type RouteHostOverlayGeometryAuthority = {
@@ -72,5 +69,4 @@ export class RouteHostOverlayGeometryStateController {
 }
 
 export const createRouteHostOverlayGeometryStateController =
-  (): RouteHostOverlayGeometryStateController =>
-    new RouteHostOverlayGeometryStateController();
+  (): RouteHostOverlayGeometryStateController => new RouteHostOverlayGeometryStateController();

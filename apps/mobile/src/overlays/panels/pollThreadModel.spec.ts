@@ -9,12 +9,15 @@ const c = (id: string, parentId: string | null, loggedAt = '2026-01-01T00:00:00Z
     parentCommentId: parentId,
     loggedAt,
     user: { userId: id, username: id, displayName: id },
-  } as unknown as PollComment);
+  }) as unknown as PollComment;
 
 describe('buildThreadTree', () => {
   // Flatten a tree into [id, depth] render order (children after each node) for assertions.
   const flatten = (nodes: ThreadNode[]): [string, number][] =>
-    nodes.flatMap((n) => [[n.comment.commentId, n.depth] as [string, number], ...flatten(n.children)]);
+    nodes.flatMap((n) => [
+      [n.comment.commentId, n.depth] as [string, number],
+      ...flatten(n.children),
+    ]);
 
   it('nests replies as children with increasing depth (collapse-independent)', () => {
     const tree = buildThreadTree([c('a', null), c('b', 'a'), c('c', 'b')]);
@@ -66,17 +69,19 @@ describe('buildThreadTree', () => {
       c('g', 'f'),
     ]);
     const byId = Object.fromEntries(
-      flatten(tree).map(([id]) => id).map((id) => {
-        const find = (nodes: ThreadNode[]): ThreadNode | undefined => {
-          for (const n of nodes) {
-            if (n.comment.commentId === id) return n;
-            const hit = find(n.children);
-            if (hit) return hit;
-          }
-          return undefined;
-        };
-        return [id, find(tree)!];
-      })
+      flatten(tree)
+        .map(([id]) => id)
+        .map((id) => {
+          const find = (nodes: ThreadNode[]): ThreadNode | undefined => {
+            for (const n of nodes) {
+              if (n.comment.commentId === id) return n;
+              const hit = find(n.children);
+              if (hit) return hit;
+            }
+            return undefined;
+          };
+          return [id, find(tree)!];
+        })
     );
     expect(byId.f.depth).toBe(5);
     expect(byId.f.mentionUser).toBeNull();

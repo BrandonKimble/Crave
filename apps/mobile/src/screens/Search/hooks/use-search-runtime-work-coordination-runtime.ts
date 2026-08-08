@@ -18,40 +18,39 @@ export type SearchRuntimeWorkCoordinationRuntime = {
   phaseBMaterializerRef: React.MutableRefObject<PhaseBMaterializer>;
 };
 
-export const useSearchRuntimeWorkCoordinationRuntime =
-  (): SearchRuntimeWorkCoordinationRuntime => {
-    const frameBudgetGovernorRef = React.useRef<ReturnType<
-      typeof createFrameBudgetGovernor
-    > | null>(null);
-    if (!frameBudgetGovernorRef.current) {
-      frameBudgetGovernorRef.current = createFrameBudgetGovernor();
-    }
+export const useSearchRuntimeWorkCoordinationRuntime = (): SearchRuntimeWorkCoordinationRuntime => {
+  const frameBudgetGovernorRef = React.useRef<ReturnType<typeof createFrameBudgetGovernor> | null>(
+    null
+  );
+  if (!frameBudgetGovernorRef.current) {
+    frameBudgetGovernorRef.current = createFrameBudgetGovernor();
+  }
 
-    const runtimeWorkSchedulerRef = React.useRef<RuntimeWorkScheduler | null>(null);
-    if (!runtimeWorkSchedulerRef.current) {
-      runtimeWorkSchedulerRef.current = new RuntimeWorkScheduler(frameBudgetGovernorRef.current);
-    }
+  const runtimeWorkSchedulerRef = React.useRef<RuntimeWorkScheduler | null>(null);
+  if (!runtimeWorkSchedulerRef.current) {
+    runtimeWorkSchedulerRef.current = new RuntimeWorkScheduler(frameBudgetGovernorRef.current);
+  }
 
-    const phaseBMaterializerRef = React.useRef<PhaseBMaterializer | null>(null);
-    if (!phaseBMaterializerRef.current) {
-      phaseBMaterializerRef.current = createPhaseBMaterializer(runtimeWorkSchedulerRef.current);
-    }
+  const phaseBMaterializerRef = React.useRef<PhaseBMaterializer | null>(null);
+  if (!phaseBMaterializerRef.current) {
+    phaseBMaterializerRef.current = createPhaseBMaterializer(runtimeWorkSchedulerRef.current);
+  }
 
-    React.useEffect(
-      () => () => {
-        phaseBMaterializerRef.current?.resetHydrationCommit();
-        runtimeWorkSchedulerRef.current?.stopFrameLoop();
-        runtimeWorkSchedulerRef.current?.clear();
-      },
-      []
-    );
+  React.useEffect(
+    () => () => {
+      phaseBMaterializerRef.current?.resetHydrationCommit();
+      runtimeWorkSchedulerRef.current?.stopFrameLoop();
+      runtimeWorkSchedulerRef.current?.clear();
+    },
+    []
+  );
 
-    return React.useMemo(
-      () => ({
-        runtimeWorkSchedulerRef:
-          runtimeWorkSchedulerRef as React.MutableRefObject<RuntimeWorkScheduler>,
-        phaseBMaterializerRef: phaseBMaterializerRef as React.MutableRefObject<PhaseBMaterializer>,
-      }),
-      [phaseBMaterializerRef, runtimeWorkSchedulerRef]
-    );
-  };
+  return React.useMemo(
+    () => ({
+      runtimeWorkSchedulerRef:
+        runtimeWorkSchedulerRef as React.MutableRefObject<RuntimeWorkScheduler>,
+      phaseBMaterializerRef: phaseBMaterializerRef as React.MutableRefObject<PhaseBMaterializer>,
+    }),
+    [phaseBMaterializerRef, runtimeWorkSchedulerRef]
+  );
+};

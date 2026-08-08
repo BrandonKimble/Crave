@@ -31,8 +31,7 @@ export const createRouteSceneRegistryControllerRuntime =
       sceneInputAuthority: routeSceneInputController.authority,
       sceneInputLane: createRouteSceneInputLane({
         sceneInputActions: routeSceneInputController.actions,
-        scenePolicyInputAuthority:
-          routeSearchScenePolicyController.inputAuthority,
+        scenePolicyInputAuthority: routeSearchScenePolicyController.inputAuthority,
       }),
       dispose: () => {
         routeSceneInputController.dispose();

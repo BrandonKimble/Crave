@@ -12,7 +12,6 @@ import type { AppRouteSheetSnapSessionActions } from './app-route-sheet-snap-ses
 export type AppSearchRouteCommandActions = {
   openAppSearchRouteResults: (args: {
     snap: Exclude<OverlaySheetSnap, 'hidden'>;
-    mode?: 'spring' | 'instant';
     // Phase 2 — the redraw transactionId of the search results transaction driving
     // this reveal. Threaded into the switch so the controller links the redraw txn
     // (gate marks) to the minted settleToken (content plane). See the contract.
@@ -95,11 +94,9 @@ export const createAppSearchRouteCommandActions = ({
 }): AppSearchRouteCommandActions => {
   const openAppSearchRouteResults = ({
     snap,
-    mode,
     contentReadinessTransactionId,
   }: {
     snap: Exclude<OverlaySheetSnap, 'hidden'>;
-    mode?: 'spring' | 'instant';
     contentReadinessTransactionId?: string | null;
   }): void => {
     // S-C.3 (plans/s-c-de-special-search.md): ONE rule — presenting a session is a PUSH; a
@@ -116,7 +113,7 @@ export const createAppSearchRouteCommandActions = ({
       targetSceneKey: 'search',
       sheetTransitionKind: 'topLevelSwitch',
       sheetOpenerSource: 'routeCommand',
-      sheetMotion: { kind: 'snapTo', snap, mode },
+      sheetMotion: { kind: 'snapTo', snap },
       contentReadinessTransactionId: contentReadinessTransactionId ?? null,
       routeAction: isInSessionRePresent ? ('preserve' as const) : ('push' as const),
     });

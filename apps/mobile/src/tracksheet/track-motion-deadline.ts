@@ -213,6 +213,13 @@ export const reduceMotionDeadline = (
   }
 };
 
+// F9402 DISPOSITION (R8, the finding's "annotate" arm): the two selectors
+// below have NO live consumer — they are the falsifier suite's OBSERVATION
+// PORT (the spec asserts suspension/episode semantics through them, and
+// elapsedForeground is deliberately private). Deleting them would force the
+// spec to re-implement the arithmetic it exists to falsify. If a live
+// consumer ever arrives it uses these; nothing else may re-derive them.
+
 /** Foreground-only time left before the backstop degrades the episode. */
 export const motionDeadlineRemainingMs = (
   state: MotionDeadlineState,

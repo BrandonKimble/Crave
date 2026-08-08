@@ -50,32 +50,27 @@ export class RouteSceneLayoutAssemblyRuntime {
   }: {
     routeHostFoundationRuntime: RouteHostFoundationRuntime;
   }) {
-    this.routeSceneLayoutNavFrameRuntime =
-      createRouteSceneLayoutNavFrameStateController({
-        routeHostVisualRuntimeAuthority:
-          routeHostFoundationRuntime.routeHostVisualRuntimeAuthority,
-      });
+    this.routeSceneLayoutNavFrameRuntime = createRouteSceneLayoutNavFrameStateController({
+      routeHostVisualRuntimeAuthority: routeHostFoundationRuntime.routeHostVisualRuntimeAuthority,
+    });
     this.routeSceneLayoutSearchBarFrameRuntime =
       createRouteSceneLayoutSearchBarFrameStateController({
         routeHostOverlayGeometryAuthority:
           routeHostFoundationRuntime.routeHostOverlayGeometryAuthority,
       });
-    this.routeSceneLayoutFrameRuntime =
-      createRouteSceneLayoutFrameStateController({
-        routeSceneLayoutNavFrameAuthority:
-          this.routeSceneLayoutNavFrameRuntime.routeSceneLayoutNavFrameAuthority,
-        routeSceneLayoutSearchBarFrameAuthority:
-          this.routeSceneLayoutSearchBarFrameRuntime.routeSceneLayoutSearchBarFrameAuthority,
-      });
+    this.routeSceneLayoutFrameRuntime = createRouteSceneLayoutFrameStateController({
+      routeSceneLayoutNavFrameAuthority:
+        this.routeSceneLayoutNavFrameRuntime.routeSceneLayoutNavFrameAuthority,
+      routeSceneLayoutSearchBarFrameAuthority:
+        this.routeSceneLayoutSearchBarFrameRuntime.routeSceneLayoutSearchBarFrameAuthority,
+    });
     this.routeSceneLayoutShellRuntime = createRouteSceneLayoutShellStateController({
       routeSceneLayoutFrameAuthority:
         this.routeSceneLayoutFrameRuntime.routeSceneLayoutFrameAuthority,
     });
-    this.routeSceneLayoutSnapPointsRuntime =
-      createRouteSceneLayoutSnapPointsStateController({
-        routeSharedSheetVisualAuthority:
-          routeHostFoundationRuntime.routeSharedSheetVisualAuthority,
-      });
+    this.routeSceneLayoutSnapPointsRuntime = createRouteSceneLayoutSnapPointsStateController({
+      routeSharedSheetVisualAuthority: routeHostFoundationRuntime.routeSharedSheetVisualAuthority,
+    });
     this.routeSceneLayoutSheetRuntime = createRouteSceneLayoutSheetStateController({
       routeSceneLayoutSnapPointsAuthority:
         this.routeSceneLayoutSnapPointsRuntime.routeSceneLayoutSnapPointsAuthority,
@@ -86,8 +81,7 @@ export class RouteSceneLayoutAssemblyRuntime {
       routeSceneLayoutSheetAuthority:
         this.routeSceneLayoutSheetRuntime.routeSceneLayoutSheetAuthority,
     });
-    this.routeSceneLayoutAuthority =
-      this.routeSceneLayoutRuntime.routeSceneLayoutAuthority;
+    this.routeSceneLayoutAuthority = this.routeSceneLayoutRuntime.routeSceneLayoutAuthority;
   }
 
   public dispose(): void {

@@ -232,3 +232,18 @@ delay knob — which is itself evidence the machinery is honest rather than stag
 A softer variant needing no edit: cold-launch with the API dead and push a restaurant
 from a map pin — you get the published spec's own seed skeleton (face #7), which
 demonstrates the panel-side flow but not Branch A.
+
+---
+
+## R8 EXECUTION UPDATE (2026-08-08)
+
+Items 2-5 of the cleanup plan are DONE (owner-approved via OA8, executed in the R8
+delete pass): the old subtree + flip off-branch are deleted (faces #13/#14 gone; the
+whole gorhom-era shared-sheet runtime family went with them); the two paint deciders
+are merged into ONE total `resolveTrackPaint` (tracksheet/track-paint-resolver.ts,
+OA8 semantics — the readiness ledger and its drifted latch are deleted, `hasFrozenBody`
+IS the latch); the six hardcoded rowTypes ride `resolveSceneLoadingMaterial` (SaveList
+keeps 'history' behind a TODO(owner) — spec contradiction still owed a ruling); the
+spec-excluded fallback barks in dev. The grep-invariant suite
+(scripts/check-tracksheet-invariants.mjs, CI-wired) keeps all of it dead/canonical.
+Item 1 (SceneBodyReadyGate provider) had already landed pre-R8.

@@ -97,8 +97,7 @@ const areSnapRequestsEqual = (
 ): boolean =>
   left?.snap === right?.snap &&
   (left?.token ?? null) === (right?.token ?? null) &&
-  (left?.settleToken ?? null) === (right?.settleToken ?? null) &&
-  (left?.mode ?? 'spring') === (right?.mode ?? 'spring');
+  (left?.settleToken ?? null) === (right?.settleToken ?? null);
 
 const didDispatchPlane = (
   previous: AppRouteScenePlaneDispatchState | null,
@@ -122,21 +121,6 @@ const resolveSheetMotionSceneKey = (
   transitionState.transitionContract?.sheetHostSceneKey ??
   transitionState.transitionContract?.sheetIntent?.sceneKey ??
   resolveTargetSceneKey(transitionState);
-
-const resolveSheetMotionMode = (
-  motion: RouteSceneSwitchSheetMotionPlan
-): OverlaySheetSnapRequest['mode'] | undefined => {
-  switch (motion.kind) {
-    case 'snapTo':
-    case 'promoteAtLeast':
-    case 'hide':
-      return motion.mode;
-    case 'preserveLiveY':
-    case 'none':
-    default:
-      return undefined;
-  }
-};
 
 type AppRouteSceneMotionExecutorInput = {
   sheetMotionTargetRegistry: AppRouteSceneSheetMotionTargetRegistry;
@@ -304,7 +288,6 @@ export class AppRouteSceneMotionExecutor {
       snapTo: request.snap,
       token: this.sheetMotionCommandToken,
       settleToken: request.settleToken ?? null,
-      mode: request.mode,
       ...(shellSnapPoints != null ? { snapPoints: shellSnapPoints } : {}),
     };
     // [pageswitch] content-lag attribution: the sheet-motion dispatch instant (the JS write the
@@ -313,7 +296,6 @@ export class AppRouteSceneMotionExecutor {
       t: Math.round(performance.now()),
       scene: target.sceneKey,
       snapTo: request.snap,
-      mode: request.mode,
       snapPoints: shellSnapPoints,
     });
   }
@@ -462,7 +444,6 @@ export class AppRouteSceneMotionExecutor {
         snap: transitionContract.sheetSnapTarget,
         token: transitionContract.transitionToken,
         settleToken: transitionContract.settleToken,
-        mode: resolveSheetMotionMode(transitionContract.sheetTransitionPlan.motion),
       };
     }
 

@@ -89,6 +89,12 @@ import { API_BASE_URL } from '../../services/api';
 import { formatRelativeTime } from '../../utils/relative-time';
 import { ChromeTitleText, toSingleLineText } from '../ChromeTitleText';
 import { resolveUserDisplayName } from '../../utils/user-display-name';
+import { resolveSceneLoadingMaterial } from '../../navigation/runtime/scene-foundation-spec';
+
+// OA2/G-SKEL (R8): the loading material comes from the scene's foundation
+// row through the ONE resolver — never a call-site rowType literal.
+// Non-null by construction: 'pollDetail' has a foundation row.
+const POLL_DETAIL_LOADING_MATERIAL = resolveSceneLoadingMaterial('pollDetail')!;
 
 const SCREEN_HEIGHT = Dimensions.get('window').height;
 const ACCENT = themeColors.primary;
@@ -1278,7 +1284,7 @@ export const usePollDetailPanelSpec = ({
     // a self-contained frosted backing so its holes still read as frosted windows. insetX={0}: the
     // list's contentContainerStyle already insets the body by OVERLAY_HORIZONTAL_PADDING, so the
     // holes must NOT re-inset (else they double-pad).
-    <SceneLoadingSurface rowType="comment" insetX={0} />
+    <SceneLoadingSurface rowType={POLL_DETAIL_LOADING_MATERIAL.rowType} insetX={0} />
   ) : (
     <View style={styles.emptyComments}>
       <MessageCircle size={20} color={themeColors.textMuted} strokeWidth={1.8} />

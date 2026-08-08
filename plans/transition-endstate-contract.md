@@ -822,3 +822,55 @@ SaveList history-vs-tile spec contradiction: pending one owner answer (asked).
 ALSO MANDATED: an industry-frontier audit — enumerate every strategy best-practice
 apps use for sheet/screen switching (parent<->parent, parent<->child, nested, back)
 that our landed architecture does not yet leverage, and the plan to get there.
+
+## R8 RE-DERIVATION CHECKPOINT (2026-08-08, the old-system delete pass — executed under OA8)
+
+THE DELETE LANDED and the render lane (18+ falsifiers over the real host chain) stayed
+green through every stage — the proof the old tree was dark, as a test result. Census:
+the flip's off-branch subtree (SearchOverlayRouteGateHost → SearchOverlayRouteSheetSurfaceHost
+→ SearchRouteSceneStackBottomSheetSurfaceHost → BottomSheetSceneStackHost, with the S2
+skeleton legs and the old SceneBodySceneKeyContext provider site), the P5 bundle authority
+(SearchMountedScenePageBundleAuthority + SearchMountedSceneBody — its publish had become a
+write to a store with zero subscribers; the model owner's publication deleted with it),
+PersistentSheetHeaderHost, the body-layer family (BottomSheetSceneStackBodyLayer/DecorLayers/
+bodyLayerContract/bodyLayerSkip/ListBodySurface/useBottomSheetSceneStackBodyContentRuntime/
+sceneFlashListPropsMerge), the ENTIRE gorhom-era shared-sheet runtime family
+(useBottomSheetSharedRuntime + its ten satellites incl. the snap-execution runtime whose
+'instant' teleport branch died with it, BottomSheetScrollContainer,
+bottomSheetMomentumReboundMath), the transition-lane player + host-token adapter,
+OneTrackPrototype, and the flip store's `on` field (debug HUD + row A/B levers survive:
+live attribution instruments, not scaffolding). The `mode:'spring'|'instant'` plumbing is
+gone from every type and pass-through (OA5 kill-list obligation discharged).
+
+ONE PAINT RESOLVER (approved OA8): resolveTrackPaint(track-paint-resolver.ts) is the single
+total decision — frozen when affordable, skeleton when not, live when resident; every
+commit paints. CONTRACT SHARPENING: the readiness LEDGER is deleted, not merged — its
+latch ("has shown content") was provably redundant with "a frozen last-good body exists"
+(a body can only be frozen because a live one was built), so the store that has the body
+IS the latch, and OA6.1's old no-skeleton-on-revisit reading is structurally gone: the
+facts type carries no history axis, so a rule-bound frozen frame is unrepresentable
+(mutation M4). 4 mutations RED-proven in the pure spec; the handoff plan
+(planTrackEntryHandoff) stays its own module — it answers affordability, the resolver
+consumes its verdict. The six hardcoded rowTypes now ride resolveSceneLoadingMaterial
+(SaveList 'history' kept behind TODO(owner) pending the ruling); the spec-excluded
+skeleton fallback barks in dev.
+
+ONE PRESENTED AUTHORITY (opener item 1): TrackPresentedEntryLatch (host-owned, written at
+the one commit that decides what is painted) replaces the four refs; the page consumes the
+switch edge one-shot (consumeEntrySwitch), the resolver and callbacks read the key.
+τ-DOMAIN STATED ONCE (opener item 2): tauIsInHiddenDomain (track-entry-hidden.ts, JS
+predicate of the native domain authority) replaces planEntrySwitch's two inline `tau >= 0`.
+
+F9400 was already fixed; F9401 remains NATIVE-gated (untouched — no native edits in R8);
+F9402 resolved on the finding's "annotate" arm for the two deadline selectors (they are the
+falsifier suite's observation port) and by DELETION for hasShownContent (died with the
+ledger); F9403 closed — list-lane legs emit a liveness sample at build, RED-proven
+(mutating the activity derivation now barks presented-suspended for polls#root/home#root).
+
+THE GREP-INVARIANT SUITE (PART 4) is scripts/check-tracksheet-invariants.mjs, wired into
+CI: no deleted old-host import, no scene-keyed scroll-memory write in tracksheet/, one
+skeleton material resolver (rowType literals only in the spec/skeleton library/track
+resolver + stated exclusions incl. the SaveList TODO), no 'instant' motion. All four
+RED-proven by temporary reintroduction. G-MODAL's deferred falsifier is subsumed by the
+render lane's host-chain coverage plus the suite; the freezeUntilSnap plan kind is NOT
+deleted — it is the hidden family's live routing (R4), not old-system residue.

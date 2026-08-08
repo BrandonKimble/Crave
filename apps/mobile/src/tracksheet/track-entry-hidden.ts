@@ -93,3 +93,13 @@ export const resolveHiddenPresentation = (args: {
   }
   return { scene: args.frameScene, entryId: args.frameEntryId, deferred: false };
 };
+
+/**
+ * THE HIDDEN-DOMAIN MEMBERSHIP FACT, stated ONCE (R8 opener item 2). The
+ * domain authority (ios/TrackScrollKit/Sources/TrackDomainRange.h) owns τ's
+ * legal range; on the JS side the only domain question anyone may ask is
+ * "is this τ below collapsed (τ=0), i.e. inside the hidden excursion?" —
+ * and this predicate is the one place that states it. planEntrySwitch's two
+ * former inline `tau >= 0` re-derivations read this instead.
+ */
+export const tauIsInHiddenDomain = (tau: number): boolean => tau < 0;

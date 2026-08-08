@@ -17,10 +17,7 @@ const areRouteSceneLayoutSearchBarFramesEqual = (
   left: RouteSceneLayoutSearchBarFrameSnapshot,
   right: RouteSceneLayoutSearchBarFrameSnapshot
 ): boolean =>
-  left === right ||
-  (left != null &&
-    right != null &&
-    left.searchBarTop === right.searchBarTop);
+  left === right || (left != null && right != null && left.searchBarTop === right.searchBarTop);
 
 const resolveRouteSceneLayoutSearchBarFrameSnapshot = (
   routeHostOverlayGeometry: RouteHostOverlayGeometryBinding
@@ -56,12 +53,9 @@ export class RouteSceneLayoutSearchBarFrameStateController {
       getSnapshot: () => this.snapshot,
     };
     this.recompute(false);
-    this.unsubscribeRouteHostOverlayGeometry =
-      routeHostOverlayGeometryAuthority.subscribe(() => {
-        this.setRouteHostOverlayGeometry(
-          routeHostOverlayGeometryAuthority.getSnapshot()
-        );
-      });
+    this.unsubscribeRouteHostOverlayGeometry = routeHostOverlayGeometryAuthority.subscribe(() => {
+      this.setRouteHostOverlayGeometry(routeHostOverlayGeometryAuthority.getSnapshot());
+    });
   }
 
   public dispose(): void {
@@ -91,9 +85,7 @@ export class RouteSceneLayoutSearchBarFrameStateController {
       this.routeHostOverlayGeometry
     );
 
-    if (
-      areRouteSceneLayoutSearchBarFramesEqual(this.snapshot, nextSnapshot)
-    ) {
+    if (areRouteSceneLayoutSearchBarFramesEqual(this.snapshot, nextSnapshot)) {
       return;
     }
 

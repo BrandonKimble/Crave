@@ -58,12 +58,9 @@ export class RouteSceneLayoutNavFrameStateController {
       getSnapshot: () => this.snapshot,
     };
     this.recompute(false);
-    this.unsubscribeRouteHostVisualRuntime =
-      routeHostVisualRuntimeAuthority.subscribe(() => {
-        this.setRouteHostVisualRuntime(
-          routeHostVisualRuntimeAuthority.getSnapshot()
-        );
-      });
+    this.unsubscribeRouteHostVisualRuntime = routeHostVisualRuntimeAuthority.subscribe(() => {
+      this.setRouteHostVisualRuntime(routeHostVisualRuntimeAuthority.getSnapshot());
+    });
   }
 
   public dispose(): void {
@@ -78,9 +75,7 @@ export class RouteSceneLayoutNavFrameStateController {
     };
   }
 
-  private setRouteHostVisualRuntime(
-    routeHostVisualRuntime: RouteHostVisualRuntime
-  ): void {
+  private setRouteHostVisualRuntime(routeHostVisualRuntime: RouteHostVisualRuntime): void {
     if (this.routeHostVisualRuntime === routeHostVisualRuntime) {
       return;
     }
@@ -89,9 +84,7 @@ export class RouteSceneLayoutNavFrameStateController {
   }
 
   private recompute(notify: boolean): void {
-    const nextSnapshot = resolveRouteSceneLayoutNavFrameSnapshot(
-      this.routeHostVisualRuntime
-    );
+    const nextSnapshot = resolveRouteSceneLayoutNavFrameSnapshot(this.routeHostVisualRuntime);
 
     if (areRouteSceneLayoutNavFramesEqual(this.snapshot, nextSnapshot)) {
       return;

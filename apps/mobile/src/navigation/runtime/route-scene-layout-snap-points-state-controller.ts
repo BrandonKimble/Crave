@@ -3,8 +3,7 @@ import type { RouteSharedSheetVisualBinding } from './route-shared-sheet-visual-
 
 type Listener = () => void;
 
-export type RouteSceneLayoutSnapPointsSnapshot =
-  SearchRouteSceneLayoutState['snapPoints'] | null;
+export type RouteSceneLayoutSnapPointsSnapshot = SearchRouteSceneLayoutState['snapPoints'] | null;
 
 export type RouteSceneLayoutSnapPointsAuthority = {
   subscribe: (listener: Listener) => () => void;
@@ -53,12 +52,9 @@ export class RouteSceneLayoutSnapPointsStateController {
       getSnapshot: () => this.snapshot,
     };
     this.recompute(false);
-    this.unsubscribeRouteSharedSheetVisual =
-      routeSharedSheetVisualAuthority.subscribe(() => {
-        this.setRouteSharedSheetVisual(
-          routeSharedSheetVisualAuthority.getSnapshot()
-        );
-      });
+    this.unsubscribeRouteSharedSheetVisual = routeSharedSheetVisualAuthority.subscribe(() => {
+      this.setRouteSharedSheetVisual(routeSharedSheetVisualAuthority.getSnapshot());
+    });
   }
 
   public dispose(): void {
@@ -73,9 +69,7 @@ export class RouteSceneLayoutSnapPointsStateController {
     };
   }
 
-  private setRouteSharedSheetVisual(
-    routeSharedSheetVisual: RouteSharedSheetVisualBinding
-  ): void {
+  private setRouteSharedSheetVisual(routeSharedSheetVisual: RouteSharedSheetVisualBinding): void {
     if (this.routeSharedSheetVisual === routeSharedSheetVisual) {
       return;
     }
@@ -85,9 +79,7 @@ export class RouteSceneLayoutSnapPointsStateController {
   }
 
   private recompute(notify: boolean): void {
-    const nextSnapshot = resolveRouteSceneLayoutSnapPointsSnapshot(
-      this.routeSharedSheetVisual
-    );
+    const nextSnapshot = resolveRouteSceneLayoutSnapPointsSnapshot(this.routeSharedSheetVisual);
 
     if (areRouteSceneLayoutSnapPointsEqual(this.snapshot, nextSnapshot)) {
       return;
@@ -107,7 +99,9 @@ export class RouteSceneLayoutSnapPointsStateController {
 
 export const createRouteSceneLayoutSnapPointsStateController = ({
   routeSharedSheetVisualAuthority,
-}: ConstructorParameters<typeof RouteSceneLayoutSnapPointsStateController>[0]): RouteSceneLayoutSnapPointsStateController =>
+}: ConstructorParameters<
+  typeof RouteSceneLayoutSnapPointsStateController
+>[0]): RouteSceneLayoutSnapPointsStateController =>
   new RouteSceneLayoutSnapPointsStateController({
     routeSharedSheetVisualAuthority,
   });

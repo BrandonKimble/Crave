@@ -1,4 +1,3 @@
-import { getTrackFlipState } from '../../tracksheet/track-flip-store';
 import type { BottomSheetRuntimeModel } from '../../overlays/useBottomSheetRuntime';
 import { runOnUI, type SharedValue } from 'react-native-reanimated';
 import type {
@@ -419,23 +418,10 @@ const syncRuntimeConfigSharedValues = (
   runOnUI(syncRuntimeConfigSharedValuesOnUI)(values, snapshot);
 };
 
-// THE PUBLICATION IS A MIRROR, NOT A CONTROL (attributed 2026-08-01).
-// In the gorhom era sheetY WAS the sheet's position, so seeding it MOVED the
-// sheet — these seed paths are from that world. Under ONE TRACK the sheet's
-// position is the track's contentOffset, and this value is only a published
-// MIRROR of it. Seeding it therefore moves nothing; it just lies to every
-// consumer for a few frames. That is the owner's search chrome that "shrinks
-// right when I click, expands again, then shrinks when the sheet actually
-// slides up": the seed teleported the mirror to the destination snap, the
-// chrome reacted, the track's real publication overwrote it back, and then
-// the actual spring ran. One value, two writers, and the second one was a
-// ghost limb. Under the flip, only the track writes it.
-const seedSheetYOnUI = (sheetY: SharedValue<number>, value: number): void => {
-  'worklet';
-  sheetY.value = value;
-};
-
-const shouldSeedPublishedSheetY = (): boolean => !getTrackFlipState().on;
+// THE PUBLICATION IS A MIRROR, NOT A CONTROL (attributed 2026-08-01; R8
+// 2026-08-08): sheetY is a published MIRROR of the track's contentOffset —
+// only the track writes it. The gorhom-era seed paths (seedSheetYOnUI /
+// shouldSeedPublishedSheetY) died with the old sheet system.
 
 class AppRouteSheetHostAuthorityController {
   private bodySnapshot: AppRouteSheetHostSurfaceBodySnapshot =
@@ -451,14 +437,6 @@ class AppRouteSheetHostAuthorityController {
     EMPTY_APP_ROUTE_SHEET_HOST_SURFACE_SNAPSHOT;
 
   private sharedRuntimeModel: BottomSheetRuntimeModel | null = null;
-
-  private unregisterSheetMotionTarget: (() => void) | null = null;
-
-  private registeredSheetRuntimeModel: SheetRuntimeModel | null = null;
-
-  private registeredSheetMotionCommandValue:
-    | SheetRuntimeModel['snapController']['motionCommand']
-    | null = null;
 
   private currentSnap: OverlaySheetSnap = 'hidden';
 
@@ -645,7 +623,6 @@ class AppRouteSheetHostAuthorityController {
       const runtimeConfigChanged = this.recomputeRuntimeConfig(false, resolvedSurfaceInput);
       const motionRuntimeChanged = this.recomputeMotionRuntime(false, resolvedSurfaceInput);
       const bodyChanged = this.recomputeBody(false, resolvedSurfaceInput, false, false);
-      this.syncSheetMotionTarget(resolvedSurfaceInput);
       this.syncInitialVisibleSnap(resolvedSurfaceInput);
       this.recomputeSurface(true);
       this.notifyBatchedSurfaceLaneListeners({
@@ -658,8 +635,6 @@ class AppRouteSheetHostAuthorityController {
   }
 
   public dispose(): void {
-    this.unregisterSheetMotionTarget?.();
-    this.unregisterSheetMotionTarget = null;
     this.unsubscribers.forEach((unsubscribe) => {
       unsubscribe();
     });
@@ -1096,7 +1071,6 @@ class AppRouteSheetHostAuthorityController {
         const runtimeConfigChanged = this.recomputeRuntimeConfig(false, resolvedSurfaceInput);
         const motionRuntimeChanged = this.recomputeMotionRuntime(false, resolvedSurfaceInput);
         const bodyChanged = this.recomputeBody(false, resolvedSurfaceInput, false, false);
-        this.syncSheetMotionTarget(resolvedSurfaceInput);
         this.syncInitialVisibleSnap(resolvedSurfaceInput);
         this.recomputeSurface(notify);
         this.notifyBatchedSurfaceLaneListeners({
@@ -1117,7 +1091,6 @@ class AppRouteSheetHostAuthorityController {
         const resolvedSurfaceInput = this.getResolvedSurfaceInput();
         const runtimeConfigChanged = this.recomputeRuntimeConfig(false, resolvedSurfaceInput);
         this.recomputeMotionRuntime(false, resolvedSurfaceInput);
-        this.syncSheetMotionTarget(resolvedSurfaceInput);
         this.syncInitialVisibleSnap(resolvedSurfaceInput);
         this.notifyBatchedSurfaceLaneListeners({
           bodyChanged: false,
@@ -1135,7 +1108,6 @@ class AppRouteSheetHostAuthorityController {
       const runtimeConfigChanged = this.recomputeRuntimeConfig(false, resolvedSurfaceInput);
       const motionRuntimeChanged = this.recomputeMotionRuntime(false, resolvedSurfaceInput);
       const bodyChanged = this.recomputeBody(false, resolvedSurfaceInput, false, false);
-      this.syncSheetMotionTarget(resolvedSurfaceInput);
       this.syncInitialVisibleSnap(resolvedSurfaceInput);
       this.notifyBatchedSurfaceLaneListeners({
         bodyChanged,
@@ -1256,11 +1228,7 @@ class AppRouteSheetHostAuthorityController {
         nextSheetYValue != null &&
         previousSheetYValue !== nextSheetYValue;
       if (shouldSeedIncomingSheetPosition) {
-        const inheritedSheetY = previousSheetYValue.value;
-        nextSheetYValue.value = inheritedSheetY;
-        if (shouldSeedPublishedSheetY()) {
-          runOnUI(seedSheetYOnUI)(nextSheetYValue, inheritedSheetY);
-        }
+        nextSheetYValue.value = previousSheetYValue.value;
       }
       this.bodySnapshot = nextSnapshot;
       if (notify && notifyBody) {
@@ -1339,52 +1307,6 @@ class AppRouteSheetHostAuthorityController {
     });
   }
 
-  private syncSheetMotionTarget(resolvedSurfaceInput = this.getResolvedSurfaceInput()): void {
-    withSearchNavSwitchRuntimeAttribution('sheetHost', 'syncSheetMotionTarget', () => {
-      // THE SEAT SOCKET (residents rung 4): with the track flip ON, the TRACK
-      // HOST is the registered 'sheetHost' motion target — this provider-level
-      // registrant sat OUTSIDE the flip gate (XII red team 3) and would
-      // co-register; last-registrant-wins would then be a mount-order coin
-      // flip. One target per world.
-      if (getTrackFlipState().on) {
-        this.unregisterSheetMotionTarget?.();
-        this.unregisterSheetMotionTarget = null;
-        this.registeredSheetRuntimeModel = null;
-        this.registeredSheetMotionCommandValue = null;
-        return;
-      }
-      const { activeRenderableShellSpec, resolvedRuntimeModel } = resolvedSurfaceInput;
-      const motionCommandValue = this.resolveMountedSheetMotionCommandValue(resolvedSurfaceInput);
-      if (
-        this.registeredSheetRuntimeModel === resolvedRuntimeModel &&
-        this.registeredSheetMotionCommandValue === motionCommandValue
-      ) {
-        return;
-      }
-      this.unregisterSheetMotionTarget?.();
-      this.unregisterSheetMotionTarget = null;
-      this.registeredSheetRuntimeModel = resolvedRuntimeModel;
-      this.registeredSheetMotionCommandValue = motionCommandValue;
-      if (resolvedRuntimeModel == null || motionCommandValue == null) {
-        return;
-      }
-      this.unregisterSheetMotionTarget =
-        this.input.routeSceneMotionRuntime.registerSheetMotionTarget({
-          sceneKey: 'sheetHost',
-          motionCommandValue,
-          resolveCurrentSnapTarget: this.resolveCurrentSnapTarget,
-        });
-      const seedSnap = this.resolveSheetRuntimeRegistrationSeedSnap(resolvedSurfaceInput);
-      const initialSheetY = activeRenderableShellSpec?.snapPoints[seedSnap];
-      const mountedSheetYValue = this.resolveMountedSheetYValue(resolvedSurfaceInput);
-      if (typeof initialSheetY === 'number' && mountedSheetYValue != null) {
-        if (shouldSeedPublishedSheetY()) {
-          runOnUI(seedSheetYOnUI)(mountedSheetYValue, initialSheetY);
-        }
-      }
-    });
-  }
-
   private scheduleInitialVisibleSnapBootstrap({
     dispatchKey,
     snap,
@@ -1440,21 +1362,6 @@ class AppRouteSheetHostAuthorityController {
         ? sheetSnapSessionSnapshot.homeSeatSnap
         : sheetSnapSessionSnapshot.contentSeatSnap;
     return seatSnap === 'hidden' ? null : seatSnap;
-  }
-
-  private resolveSheetRuntimeRegistrationSeedSnap(
-    resolvedSurfaceInput = this.getResolvedSurfaceInput()
-  ): OverlaySheetSnap {
-    const initialSnap = this.resolveSheetRuntimeInitialSnap(resolvedSurfaceInput);
-    if (!resolvedSurfaceInput.visible) {
-      return initialSnap;
-    }
-    if (this.currentSnap !== 'hidden') {
-      return this.currentSnap;
-    }
-    return (
-      this.resolvePostureSeatSeedSnap(resolvedSurfaceInput.activeSemanticOverlayKey) ?? initialSnap
-    );
   }
 
   private resolveSheetRuntimeInitialSnap(
@@ -1522,68 +1429,11 @@ class AppRouteSheetHostAuthorityController {
         return;
       }
       this.initialVisibleSnapDispatchKey = initialVisibleSnapDispatchKey;
-      const desiredSheetY = activeRenderableShellSpec.snapPoints[desiredSnap];
-      const mountedSheetYValue = this.resolveMountedSheetYValue(resolvedSurfaceInput);
-      if (typeof desiredSheetY === 'number' && mountedSheetYValue != null) {
-        if (shouldSeedPublishedSheetY()) {
-          runOnUI(seedSheetYOnUI)(mountedSheetYValue, desiredSheetY);
-        }
-      }
-
       this.scheduleInitialVisibleSnapBootstrap({
         dispatchKey: initialVisibleSnapDispatchKey,
         snap: desiredSnap,
       });
     });
-  }
-
-  private readonly resolveCurrentSnapTarget = (): OverlaySheetSnap => {
-    const sharedSheetState =
-      this.input.routeSharedSheetPresentationRuntime.getSnapshot().sheetState;
-    if (sharedSheetState !== 'hidden') {
-      return sharedSheetState;
-    }
-    return this.currentSnap;
-  };
-
-  private shouldUseMountedSheetRuntimeReseedLane(
-    resolvedSurfaceInput: AppRouteSheetHostResolvedSurfaceInput
-  ): boolean {
-    return (
-      this.bodySnapshot.hasRenderableSheetSurface &&
-      this.bodySnapshot.motionStateEntry != null &&
-      resolvedSurfaceInput.activeSemanticOverlayKey === 'search' &&
-      resolvedSurfaceInput.activeSceneKey === this.bodySnapshot.activeSceneKey
-    );
-  }
-
-  private getMountedSheetRuntimeReseedMotionStateEntry(
-    resolvedSurfaceInput: AppRouteSheetHostResolvedSurfaceInput
-  ): NonNullable<AppRouteSheetHostSurfaceBodySnapshot['motionStateEntry']> | null {
-    if (!this.shouldUseMountedSheetRuntimeReseedLane(resolvedSurfaceInput)) {
-      return null;
-    }
-    return this.bodySnapshot.motionStateEntry;
-  }
-
-  private resolveMountedSheetMotionCommandValue(
-    resolvedSurfaceInput: AppRouteSheetHostResolvedSurfaceInput
-  ): SheetRuntimeModel['snapController']['motionCommand'] | null {
-    return (
-      this.getMountedSheetRuntimeReseedMotionStateEntry(resolvedSurfaceInput)?.motionCommandValue ??
-      resolvedSurfaceInput.resolvedRuntimeModel?.snapController.motionCommand ??
-      null
-    );
-  }
-
-  private resolveMountedSheetYValue(
-    resolvedSurfaceInput: AppRouteSheetHostResolvedSurfaceInput
-  ): SheetRuntimeModel['presentationState']['sheetY'] | null {
-    return (
-      this.getMountedSheetRuntimeReseedMotionStateEntry(resolvedSurfaceInput)?.sheetYValue ??
-      resolvedSurfaceInput.resolvedRuntimeModel?.presentationState.sheetY ??
-      null
-    );
   }
 
   private readonly handleDragStateChange = (isDragging: boolean): void => {

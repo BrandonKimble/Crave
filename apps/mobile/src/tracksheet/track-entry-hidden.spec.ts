@@ -16,7 +16,6 @@
 import { resolveHiddenPresentation } from './track-entry-hidden';
 import { makeTrackEntryKey } from './track-entry-identity';
 import { TrackEntryScrollMemory } from './track-entry-scroll-memory';
-import { TrackEntryReadinessLedger } from './track-entry-readiness';
 import { planEntrySwitch } from './track-entry-switch';
 
 describe('deferred swap at the screen edge (A2)', () => {
@@ -112,20 +111,8 @@ describe('hide preserves the entry (R2 composition)', () => {
     expect(backAtTop.hadMemory).toBe(true);
   });
 
-  it('hide never touches the readiness latch', () => {
-    const ledger = new TrackEntryReadinessLedger();
-    const entry = makeTrackEntryKey('pollDetail', 'e-9');
-    ledger.present(entry, true); // latched: has shown content
-    // The hide family (plan + presentation decision) has no ledger access at
-    // all — the latch survives by construction; assert the fact it protects:
-    resolveHiddenPresentation({
-      frameScene: 'home',
-      frameEntryId: null,
-      paintedScene: 'pollDetail',
-      paintedEntryId: 'e-9',
-      hideInFlight: true,
-      edgeCleared: false,
-    });
-    expect(ledger.hasShownContent(entry)).toBe(true);
-  });
+  // R8: the "hide never touches the readiness latch" falsifier is RETIRED with
+  // its subject — the readiness ledger is deleted (track-paint-resolver.ts is
+  // stateless; the frozen-world store is the latch, and the hide family never
+  // receives it, so the property is unrepresentable rather than guarded).
 });

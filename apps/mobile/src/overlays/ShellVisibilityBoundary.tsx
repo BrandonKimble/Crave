@@ -2,10 +2,7 @@ import React from 'react';
 import { StyleSheet, View } from 'react-native';
 
 import type { ResidencyManagedSceneKey } from './shell-residency-registry';
-import {
-  getShellResidencySnapshot,
-  subscribeShellResidency,
-} from './shell-residency-manager';
+import { getShellResidencySnapshot, subscribeShellResidency } from './shell-residency-manager';
 
 // ─── THE SHELL VISIBILITY BOUNDARY (L3 — the one-writer derivation surface) ─────────
 //

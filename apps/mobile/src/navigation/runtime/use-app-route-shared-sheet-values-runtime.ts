@@ -50,14 +50,14 @@ export const useAppRouteSharedSheetValuesRuntime = ({
 
   const sheetTranslateY = useSharedValue(
     initialSharedSheetVisible
-      ? snapPoints[initialSharedSheetPosition] ?? screenHeight
+      ? (snapPoints[initialSharedSheetPosition] ?? screenHeight)
       : screenHeight
   );
   const sheetScrollOffset = useSharedValue(0);
   const sheetMomentum = useSharedValue(false);
 
-  const syncSnapPoints: AppRouteSharedSheetValuesRuntime['syncSnapPoints'] =
-    React.useCallback((input) => {
+  const syncSnapPoints: AppRouteSharedSheetValuesRuntime['syncSnapPoints'] = React.useCallback(
+    (input) => {
       const nextSnapPoints = calculateSnapPoints(
         input.screenHeight,
         input.searchBarTop,
@@ -82,7 +82,9 @@ export const useAppRouteSharedSheetValuesRuntime = ({
       currentSnapPoints.middle = nextSnapPoints.middle;
       currentSnapPoints.collapsed = nextSnapPoints.collapsed;
       currentSnapPoints.hidden = nextSnapPoints.hidden;
-    }, []);
+    },
+    []
+  );
 
   return React.useMemo(
     () => ({

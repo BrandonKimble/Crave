@@ -1,7 +1,6 @@
 import React from 'react';
 
 import { TrackSheetRouteHost } from '../tracksheet/TrackSheetRouteHost';
-import { useTrackFlipState } from '../tracksheet/track-flip-store';
 import { StyleSheet, View } from 'react-native';
 import type { AppRouteSceneDisplayTargetRegistry } from '../navigation/runtime/app-route-scene-display-target-registry';
 import type { RouteShellSceneInputLane } from '../navigation/runtime/app-route-scene-runtime';
@@ -16,19 +15,12 @@ import type {
   SearchOverlayLocalRestaurantSheetHostAuthority,
   SearchOverlayShellHostAuthority,
 } from '../screens/Search/runtime/shared/search-root-host-authority-contract';
-import type { AppRouteSheetHostRuntime } from '../navigation/runtime/app-route-sheet-host-runtime-contract';
 import { SearchOverlayChromeHost } from './SearchOverlayChromeHost';
 import RestaurantRouteSceneInputHost from './RestaurantRouteSceneInputHost';
-import { SearchOverlayRouteGateHost } from './SearchOverlayRouteGateHost';
-import { SearchOverlayRouteSheetSurfaceHost } from './SearchOverlayRouteSheetSurfaceHost';
 import { SearchOverlayShellHost } from './SearchOverlayShellHost';
 import { NavSilhouetteHost } from './NavSilhouetteHost';
 import { SearchResultsExternalPreMeasureHost } from './SearchResultsPreMeasureHost';
 import { logPerfScenarioStackAttribution } from '../perf/perf-scenario-attribution';
-import {
-  areAppRouteSheetHostRuntimesFieldEqual,
-  markAppRouteSheetHostRuntimeDiffs,
-} from '../navigation/runtime/app-route-sheet-host-runtime-contract';
 
 export type AppOverlayRouteHostRuntime = {
   overlayChromeHostAuthority: SearchOverlayChromeHostAuthority;
@@ -43,7 +35,6 @@ export type AppOverlayRouteHostRuntime = {
     AppRouteSheetSnapSessionActions,
     'getRouteSceneSwitchSceneSnap'
   >;
-  routeSheetHostRuntime: AppRouteSheetHostRuntime;
 };
 
 const markAppOverlayRouteHostPropDiff = (field: string, left: unknown, right: unknown): void => {
@@ -66,9 +57,7 @@ const AppOverlayRouteHost = ({
   routeOverlayTransitionActions,
   routeSheetSnapSessionAuthority,
   routeSheetSnapSessionActions,
-  routeSheetHostRuntime,
 }: AppOverlayRouteHostRuntime) => {
-  const trackFlip = useTrackFlipState();
   return (
     <View pointerEvents="box-none" style={StyleSheet.absoluteFill}>
       <>
@@ -78,14 +67,9 @@ const AppOverlayRouteHost = ({
           overlayLocalRestaurantSheetHostAuthority={overlayLocalRestaurantSheetHostAuthority}
           routeSceneInputLane={routeSceneInputLane}
         />
-        {/* THE FLIP (rung 5): the old sheet system renders ONLY when the track
-            flip is off (crave://tracksheet-host?on=0 = emergency rollback).
-            Deletion of the old system follows after burn-in. */}
-        {trackFlip.on ? null : (
-          <SearchOverlayRouteGateHost overlayGateHostAuthority={overlayGateHostAuthority}>
-            <SearchOverlayRouteSheetSurfaceHost routeSheetHostRuntime={routeSheetHostRuntime} />
-          </SearchOverlayRouteGateHost>
-        )}
+        {/* R8 (2026-08-08): the old sheet system (SearchOverlayRouteGateHost →
+            BottomSheetSceneStackHost) is DELETED. The track host is the one
+            sheet system; the flip's off-branch died with it. */}
         <TrackSheetRouteHost />
         <NavSilhouetteHost
           overlayGateHostAuthority={overlayGateHostAuthority}
@@ -150,11 +134,6 @@ const areAppOverlayRouteHostPropsEqual = (
     previousProps.routeSheetSnapSessionActions,
     nextProps.routeSheetSnapSessionActions
   );
-  markAppRouteSheetHostRuntimeDiffs(
-    'app_overlay_route_host_props_diff',
-    previousProps.routeSheetHostRuntime,
-    nextProps.routeSheetHostRuntime
-  );
 
   return (
     previousProps.overlayChromeHostAuthority === nextProps.overlayChromeHostAuthority &&
@@ -166,19 +145,7 @@ const areAppOverlayRouteHostPropsEqual = (
     previousProps.routeSceneInputLane === nextProps.routeSceneInputLane &&
     previousProps.routeOverlayTransitionActions === nextProps.routeOverlayTransitionActions &&
     previousProps.routeSheetSnapSessionAuthority === nextProps.routeSheetSnapSessionAuthority &&
-    previousProps.routeSheetSnapSessionActions === nextProps.routeSheetSnapSessionActions &&
-    // BAIL-OUT (perf attribution 2026-07-12): the runtime bundle is a MERGE object whose
-    // wrapper identity churns even when every field is stable, so compare by FIELD — a fresh
-    // wrapper with identical members bails instead of cascading the 12-level chain. The
-    // comparison has ONE home (app-route-sheet-host-runtime-contract), which is also where
-    // `routeSceneDisplayTargetRegistry` is deliberately EXCLUDED: it is a singleton
-    // constructed once (app-route-scene-runtime.ts) and threaded unchanged for process
-    // lifetime, so comparing it per field can never be false. This host compares it as a
-    // top-level prop above, which is a real guard; a second always-true one is not (F1486).
-    areAppRouteSheetHostRuntimesFieldEqual(
-      previousProps.routeSheetHostRuntime,
-      nextProps.routeSheetHostRuntime
-    )
+    previousProps.routeSheetSnapSessionActions === nextProps.routeSheetSnapSessionActions
   );
 };
 

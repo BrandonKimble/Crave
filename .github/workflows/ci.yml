@@ -151,6 +151,16 @@ jobs:
       - name: 'Static guard: no orphan StyleSheet key under screens/Search'
         run: node scripts/check-search-styles-orphan-keys.mjs
 
+      # R8 (2026-08-08): the old sheet system is DELETED and the track's
+      # one-authority laws are grep-invariants now (contract PART 4). Four
+      # checks, each RED-proven by temporary reintroduction: no import of a
+      # deleted old-host module; no scene-keyed scroll-memory write in
+      # tracksheet/ (G-ENTRY); one skeleton material resolver — no rowType
+      # literal outside the foundation spec + stated exclusions (OA2); and no
+      # 'instant' sheet motion (OA5 — every sheet glides).
+      - name: 'Static guard: tracksheet R8 invariants (old system stays dead)'
+        run: node scripts/check-tracksheet-invariants.mjs
+
       # And this one asks whether a declared ARGUMENT is read. TypeScript checks
       # only that an argument is SUPPLIED; eslint sees only the identifiers a
       # binding pattern NAMES — so a property present in an args TYPE but absent

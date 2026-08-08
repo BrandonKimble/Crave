@@ -1,6 +1,4 @@
-import {
-  type RouteShellSceneInputLane,
-} from './route-scene-registry-authority-runtime';
+import { type RouteShellSceneInputLane } from './route-scene-registry-authority-runtime';
 import type { AppRouteSceneInputAuthority } from './app-route-scene-input-registry';
 import { createRouteSceneRegistryControllerRuntime } from './route-scene-registry-controller-runtime';
 import type { RouteScenePolicyAuthority } from './route-scene-policy-authority-contract';

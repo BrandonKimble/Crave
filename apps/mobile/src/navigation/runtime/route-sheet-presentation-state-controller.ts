@@ -55,12 +55,9 @@ export class RouteSheetPresentationStateController {
       getSnapshot: () => this.snapshot,
     };
     this.recompute(false);
-    this.unsubscribeRouteSharedSheetVisual =
-      routeSharedSheetVisualAuthority.subscribe(() => {
-        this.setRouteSharedSheetVisual(
-          routeSharedSheetVisualAuthority.getSnapshot()
-        );
-      });
+    this.unsubscribeRouteSharedSheetVisual = routeSharedSheetVisualAuthority.subscribe(() => {
+      this.setRouteSharedSheetVisual(routeSharedSheetVisualAuthority.getSnapshot());
+    });
   }
 
   public dispose(): void {
@@ -75,9 +72,7 @@ export class RouteSheetPresentationStateController {
     };
   }
 
-  private setRouteSharedSheetVisual(
-    routeSharedSheetVisual: RouteSharedSheetVisualBinding
-  ): void {
+  private setRouteSharedSheetVisual(routeSharedSheetVisual: RouteSharedSheetVisualBinding): void {
     if (this.routeSharedSheetVisual === routeSharedSheetVisual) {
       return;
     }
@@ -107,7 +102,9 @@ export class RouteSheetPresentationStateController {
 
 export const createRouteSheetPresentationStateController = ({
   routeSharedSheetVisualAuthority,
-}: ConstructorParameters<typeof RouteSheetPresentationStateController>[0]): RouteSheetPresentationStateController =>
+}: ConstructorParameters<
+  typeof RouteSheetPresentationStateController
+>[0]): RouteSheetPresentationStateController =>
   new RouteSheetPresentationStateController({
     routeSharedSheetVisualAuthority,
   });

@@ -35,10 +35,7 @@
 //     where it is (preserveLiveY — the body swaps back with no shell motion); terminalDismiss
 //     hides the sheet.
 
-import type {
-  BottomSheetMotionCommand,
-  BottomSheetSnap,
-} from '../../overlays/bottomSheetMotionTypes';
+import type { BottomSheetSnap } from '../../overlays/bottomSheetMotionTypes';
 import type { OverlayKey } from '../../overlays/types';
 import type {
   RouteSceneSwitchSheetMotionPlan,
@@ -75,7 +72,6 @@ export type SheetMotionDescriptorRule =
   | {
       kind: 'rememberedDetent';
       fallbackSnap: Exclude<BottomSheetSnap, 'hidden'>;
-      mode?: BottomSheetMotionCommand['mode'];
     }
   | { kind: 'postureSeat' };
 
@@ -374,7 +370,7 @@ export const materializeSheetMotionDescriptorRule = ({
     rememberedSnap === 'middle' || rememberedSnap === 'expanded'
       ? rememberedSnap
       : rule.fallbackSnap;
-  return { kind: 'snapTo', snap: resolvedSnap, ...(rule.mode != null ? { mode: rule.mode } : {}) };
+  return { kind: 'snapTo', snap: resolvedSnap };
 };
 
 // F1381: the ONE key-building expression for the duplicate-row invariant — the __DEV__ bark

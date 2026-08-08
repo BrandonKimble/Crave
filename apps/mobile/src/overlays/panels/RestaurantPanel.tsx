@@ -46,6 +46,11 @@ import { useFavoriteHeart } from '../../hooks/use-favorite-heart';
 import CraveScoreText from '../../screens/Search/components/CraveScoreText';
 import { ChromeTitleText, toSingleLineText } from '../ChromeTitleText';
 import { RestaurantHoursCard } from '../../features/restaurant-hours/RestaurantHoursCard';
+import { resolveSceneLoadingMaterial } from '../../navigation/runtime/scene-foundation-spec';
+
+// OA2/G-SKEL (R8): the loading material comes from the scene's foundation
+// row through the ONE resolver — never a call-site rowType literal.
+const RESTAURANT_LOADING_MATERIAL = resolveSceneLoadingMaterial('restaurant')!;
 import {
   RestaurantMentionsView,
   RestaurantOverviewMentions,
@@ -822,7 +827,7 @@ export const useRestaurantPanelSpec = ({
       // structure-matched dish-card skeleton (mirrors the dish list) instead of a bare spinner.
       return (
         <View style={[styles.loadingEmptyState, { minHeight: emptyAreaMinHeight }]}>
-          <SceneLoadingSurface rowType="dish" />
+          <SceneLoadingSurface rowType={RESTAURANT_LOADING_MATERIAL.rowType} />
         </View>
       );
     }
@@ -843,7 +848,7 @@ export const useRestaurantPanelSpec = ({
   const renderSeedSkeleton = React.useCallback(
     () => (
       <View style={[styles.loadingEmptyState, { minHeight: emptyAreaMinHeight }]}>
-        <SceneLoadingSurface rowType="dish" />
+        <SceneLoadingSurface rowType={RESTAURANT_LOADING_MATERIAL.rowType} />
       </View>
     ),
     [emptyAreaMinHeight]

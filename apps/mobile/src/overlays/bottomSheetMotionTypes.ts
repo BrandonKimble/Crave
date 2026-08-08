@@ -19,7 +19,6 @@ export type BottomSheetMotionCommand = {
   token: number;
   settleToken?: number | null;
   velocity?: number;
-  mode?: 'spring' | 'instant';
   /**
    * Atomic shell+target commit: the TARGET scene's authoritative snap points, resolved by the
    * motion dispatcher from the scene-descriptor authority at dispatch time. When present, the

@@ -135,12 +135,12 @@ export const useAppRouteSceneChromeTransitionRuntime = ({
 
   const { searchChromeOpacity, searchChromeScale, searchBarInputAnimatedStyle } =
     useAppRouteSceneChromeSheetProgressRuntime({
-    expandedSnap,
-    middleSnap,
-    sheetTranslateY,
-    transitionProgressOverride: overlayChromeTransitionProgress,
-    visibilityProgressOverride: overlayChromeVisibilityProgress,
-  });
+      expandedSnap,
+      middleSnap,
+      sheetTranslateY,
+      transitionProgressOverride: overlayChromeTransitionProgress,
+      visibilityProgressOverride: overlayChromeVisibilityProgress,
+    });
 
   return React.useMemo(
     () => ({

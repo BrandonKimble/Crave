@@ -15,6 +15,7 @@
 
 import type { TrackEntryKey } from './track-entry-identity';
 import { computeOutgoingScroll } from './track-entry-scroll-memory';
+import { tauIsInHiddenDomain } from './track-entry-hidden';
 
 type ScrollMemoryReader = {
   read: (entryKey: TrackEntryKey) => number | null;
@@ -53,8 +54,12 @@ export const planEntrySwitch = (args: {
   // the term there would overwrite the outgoing entry's real remembered offset
   // with ~0. The true offset was snapshotted at hide START
   // (saveScrollForPresentedEntry, before the excursion moved τ).
+  // ONE domain statement (R8): both decisions below hang on the same fact —
+  // the switch is committing inside the hidden excursion — read from the
+  // domain authority's JS predicate, never re-derived from τ inline.
+  const inHiddenDomain = tauIsInHiddenDomain(tau);
   const save =
-    outgoingEntryKey != null && tau >= 0
+    outgoingEntryKey != null && !inHiddenDomain
       ? { entryKey: outgoingEntryKey, offset: computeOutgoingScroll(tau, trackH, sigma) }
       : null;
   const remembered = memory.read(incomingEntryKey);
@@ -63,7 +68,7 @@ export const planEntrySwitch = (args: {
     incomingEntryKey,
     restoreOffset: remembered ?? 0,
     hadMemory: remembered != null,
-    immediateRestore: tau >= 0,
+    immediateRestore: !inHiddenDomain,
   };
 };
 

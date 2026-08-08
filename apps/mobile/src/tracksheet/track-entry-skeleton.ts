@@ -19,5 +19,19 @@ export type TrackSkeletonMaterial = {
 
 const FALLBACK_MATERIAL: TrackSkeletonMaterial = { rowType: 'restaurant', withStripHoles: false };
 
-export const trackSkeletonMaterialForScene = (sceneKey: string): TrackSkeletonMaterial =>
-  resolveSceneLoadingMaterial(sceneKey as OverlayKey) ?? FALLBACK_MATERIAL;
+export const trackSkeletonMaterialForScene = (sceneKey: string): TrackSkeletonMaterial => {
+  const material = resolveSceneLoadingMaterial(sceneKey as OverlayKey);
+  if (material == null && __DEV__) {
+    // LOUD FALLBACK (R8, skeleton-path audit finding 3): a spec-excluded scene
+    // painting the substitute material as a presented track leg used to be
+    // silent — a 'search' leg would quietly wear a restaurant skeleton. The
+    // substitution stays (the decision must be total) but it now barks.
+    // eslint-disable-next-line no-console
+    console.error(
+      `[track-skeleton] scene '${sceneKey}' has no foundation loading material — ` +
+        `painting the fallback ('restaurant'). If this scene can be a presented ` +
+        `leg, give it a foundation-spec skeleton row.`
+    );
+  }
+  return material ?? FALLBACK_MATERIAL;
+};

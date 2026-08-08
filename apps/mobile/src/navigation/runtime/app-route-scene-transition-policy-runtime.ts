@@ -167,8 +167,9 @@ const MODAL_SCENES = new Set<OverlayKey>(['price', 'scoreInfo']);
 // The degenerate polls@collapsed home seam is same-scene ('gesture'), never this branch.
 //
 // P5 (page-switch-master-plan.md §6-P5 / owner req 2e): `search` is now SEEDED. The search leg
-// is NEVER-NULL (SearchResultsPageBundleHost renders a real results-skeleton page when the
-// bundle hasn't published), so a forward open into search hard-swaps to that skeleton in the
+// is NEVER-NULL (R8 note: SearchResultsPageBundleHost died with the old host; on the track the
+// guarantee is the leg resolver's total paint decision — resolveTrackPaint always names a
+// body, skeleton included), so a forward open into search hard-swaps to that skeleton in the
 // same frame — no held-outgoing crossfade, no 'content' plane, and therefore NO
 // SCENE_READINESS_LIVENESS watchdog lane for scene:'search' (the old ~615ms anomaly). The
 // reveal JOIN is untouched: the {cards, nativeMarkerFrame, sheet} readiness collector still

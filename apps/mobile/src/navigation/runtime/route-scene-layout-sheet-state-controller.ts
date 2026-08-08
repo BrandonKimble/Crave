@@ -3,10 +3,7 @@ import type { RouteSceneLayoutSnapPointsAuthority } from './route-scene-layout-s
 
 type Listener = () => void;
 
-export type RouteSceneLayoutSheetSnapshot = Pick<
-  SearchRouteSceneLayoutState,
-  'snapPoints'
-> | null;
+export type RouteSceneLayoutSheetSnapshot = Pick<SearchRouteSceneLayoutState, 'snapPoints'> | null;
 
 export type RouteSceneLayoutSheetAuthority = {
   subscribe: (listener: Listener) => () => void;
@@ -26,9 +23,7 @@ const areRouteSceneLayoutSheetsEqual = (
     left.snapPoints.hidden === right.snapPoints.hidden);
 
 const createRouteSceneLayoutSheetSnapshot = (
-  routeSceneLayoutSnapPointsSnapshot: ReturnType<
-    RouteSceneLayoutSnapPointsAuthority['getSnapshot']
-  >
+  routeSceneLayoutSnapPointsSnapshot: ReturnType<RouteSceneLayoutSnapPointsAuthority['getSnapshot']>
 ): RouteSceneLayoutSheetSnapshot =>
   routeSceneLayoutSnapPointsSnapshot == null
     ? null
@@ -54,19 +49,19 @@ export class RouteSceneLayoutSheetStateController {
   }: {
     routeSceneLayoutSnapPointsAuthority: RouteSceneLayoutSnapPointsAuthority;
   }) {
-    this.routeSceneLayoutSnapPointsSnapshot =
-      routeSceneLayoutSnapPointsAuthority.getSnapshot();
+    this.routeSceneLayoutSnapPointsSnapshot = routeSceneLayoutSnapPointsAuthority.getSnapshot();
     this.routeSceneLayoutSheetAuthority = {
       subscribe: (listener) => this.subscribe(listener),
       getSnapshot: () => this.snapshot,
     };
     this.recompute(false);
-    this.unsubscribeRouteSceneLayoutSnapPoints =
-      routeSceneLayoutSnapPointsAuthority.subscribe(() => {
+    this.unsubscribeRouteSceneLayoutSnapPoints = routeSceneLayoutSnapPointsAuthority.subscribe(
+      () => {
         this.setRouteSceneLayoutSnapPointsSnapshot(
           routeSceneLayoutSnapPointsAuthority.getSnapshot()
         );
-      });
+      }
+    );
   }
 
   public dispose(): void {
@@ -86,10 +81,7 @@ export class RouteSceneLayoutSheetStateController {
       RouteSceneLayoutSnapPointsAuthority['getSnapshot']
     >
   ): void {
-    if (
-      this.routeSceneLayoutSnapPointsSnapshot ===
-      routeSceneLayoutSnapPointsSnapshot
-    ) {
+    if (this.routeSceneLayoutSnapPointsSnapshot === routeSceneLayoutSnapPointsSnapshot) {
       return;
     }
     this.routeSceneLayoutSnapPointsSnapshot = routeSceneLayoutSnapPointsSnapshot;

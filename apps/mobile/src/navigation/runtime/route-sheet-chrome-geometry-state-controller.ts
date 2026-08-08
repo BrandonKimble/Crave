@@ -29,8 +29,7 @@ const resolveChromeGeometrySnapshot = (
     ? null
     : {
         navBarCutoutHeight: routeHostOverlayGeometry.navBarCutoutHeight,
-        bottomNavHiddenTranslateY:
-          routeHostOverlayGeometry.bottomNavHiddenTranslateY,
+        bottomNavHiddenTranslateY: routeHostOverlayGeometry.bottomNavHiddenTranslateY,
       };
 
 export class RouteSheetChromeGeometryStateController {
@@ -58,12 +57,9 @@ export class RouteSheetChromeGeometryStateController {
       getSnapshot: () => this.snapshot,
     };
     this.recompute(false);
-    this.unsubscribeRouteHostOverlayGeometry =
-      routeHostOverlayGeometryAuthority.subscribe(() => {
-        this.setRouteHostOverlayGeometry(
-          routeHostOverlayGeometryAuthority.getSnapshot()
-        );
-      });
+    this.unsubscribeRouteHostOverlayGeometry = routeHostOverlayGeometryAuthority.subscribe(() => {
+      this.setRouteHostOverlayGeometry(routeHostOverlayGeometryAuthority.getSnapshot());
+    });
   }
 
   public dispose(): void {
@@ -90,9 +86,7 @@ export class RouteSheetChromeGeometryStateController {
   }
 
   private recompute(notify: boolean): void {
-    const nextSnapshot = resolveChromeGeometrySnapshot(
-      this.routeHostOverlayGeometry
-    );
+    const nextSnapshot = resolveChromeGeometrySnapshot(this.routeHostOverlayGeometry);
 
     if (areChromeGeometrySnapshotsEqual(this.snapshot, nextSnapshot)) {
       return;
@@ -112,7 +106,9 @@ export class RouteSheetChromeGeometryStateController {
 
 export const createRouteSheetChromeGeometryStateController = ({
   routeHostOverlayGeometryAuthority,
-}: ConstructorParameters<typeof RouteSheetChromeGeometryStateController>[0]): RouteSheetChromeGeometryStateController =>
+}: ConstructorParameters<
+  typeof RouteSheetChromeGeometryStateController
+>[0]): RouteSheetChromeGeometryStateController =>
   new RouteSheetChromeGeometryStateController({
     routeHostOverlayGeometryAuthority,
   });

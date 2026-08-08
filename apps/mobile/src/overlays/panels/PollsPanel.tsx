@@ -51,6 +51,12 @@ import { PollsHeaderTitleText } from './pollsHeaderVisuals';
 import { useSearchNavSwitchCommitAttribution } from '../../screens/Search/runtime/shared/use-search-nav-switch-commit-attribution';
 import { logPerfScenarioSearchRequestLifecycle } from '../../perf/perf-scenario-attribution';
 import { MonogramAvatar } from '../../components/MonogramAvatar';
+import { resolveSceneLoadingMaterial } from '../../navigation/runtime/scene-foundation-spec';
+
+// OA2/G-SKEL (R8): the loading material comes from the scene's foundation
+// row through the ONE resolver — never a call-site rowType literal.
+// Non-null by construction: 'polls' has a foundation row.
+const POLLS_LOADING_MATERIAL = resolveSceneLoadingMaterial('polls')!;
 
 const ACCENT = themeColors.primary;
 const BORDER = themeColors.border;
@@ -699,7 +705,7 @@ export const usePollsPanelListSceneParts = (): {
       // so the loading frame reads as content, not a bare spinner. Collapsed: keep the compact
       // spinner — a full skeleton list would overflow the small collapsed sheet.
       if (isExpandedSurface) {
-        return <SceneLoadingSurface rowType="restaurant" />;
+        return <SceneLoadingSurface rowType={POLLS_LOADING_MATERIAL.rowType} />;
       }
       return (
         <View style={styles.loaderCentered}>

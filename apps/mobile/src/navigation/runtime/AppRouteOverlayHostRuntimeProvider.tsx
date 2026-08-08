@@ -6,7 +6,6 @@ import {
   type AppRouteOverlayHostAuthorityController,
 } from './app-route-overlay-host-authority-controller';
 import type { AppRouteOverlayHostPublicationLane } from './app-route-overlay-host-runtime-contract';
-import { useAppRouteSheetHostOwner } from './AppRouteSheetHostRuntimeProvider';
 import { useAppRouteSceneRuntime } from './AppRouteSceneRuntimeProvider';
 
 const AppRouteOverlayHostPublicationLaneContext =
@@ -18,7 +17,6 @@ const AppRouteOverlayHostRuntimeBoundary = React.memo(function AppRouteOverlayHo
   controller: AppRouteOverlayHostAuthorityController;
 }) {
   const routeSceneRuntime = useAppRouteSceneRuntime();
-  const routeSheetHostRuntimeOwner = useAppRouteSheetHostOwner();
   const authoritySurface = controller.authoritySurface;
   // F1362: subscribe on the publication VERSION, not the search-interaction ref
   // directly — the ref is unchanged when only `overlayLocalRestaurantSheetHostAuthority`
@@ -32,23 +30,11 @@ const AppRouteOverlayHostRuntimeBoundary = React.memo(function AppRouteOverlayHo
   );
   const searchInteractionRef = authoritySurface.getSearchInteractionRefSnapshot();
 
-  // BAIL-OUT FIX (perf attribution 2026-07-12): this merge used to be an inline spread
-  // minting a NEW routeSheetHostRuntime object on every boundary render — every host in
-  // the 12-level overlay chain memo-compares this prop (or its inline children) by
-  // identity, so one fresh object here cascaded a full-tree re-render (measured
-  // 40-112ms/commit) on every surface publish during submit/dismiss choreography.
-  const routeSheetHostRuntime = React.useMemo(
-    () =>
-      searchInteractionRef == null
-        ? null
-        : {
-            ...routeSheetHostRuntimeOwner,
-            searchInteractionRef,
-          },
-    [routeSheetHostRuntimeOwner, searchInteractionRef]
-  );
-
-  if (routeSheetHostRuntime == null) {
+  // R8 (2026-08-08): the merged routeSheetHostRuntime object died with the old
+  // sheet subtree (its only consumer). The mount gate it used to carry stays:
+  // the host still mounts only once the search interaction ref is published —
+  // the same boot ordering the old merge enforced.
+  if (searchInteractionRef == null) {
     return null;
   }
 
@@ -65,7 +51,6 @@ const AppRouteOverlayHostRuntimeBoundary = React.memo(function AppRouteOverlayHo
       routeOverlayTransitionActions={routeSceneRuntime.routeOverlayTransitionActions}
       routeSheetSnapSessionAuthority={routeSceneRuntime.routeSheetSnapSessionAuthority}
       routeSheetSnapSessionActions={routeSceneRuntime.routeSheetSnapSessionActions}
-      routeSheetHostRuntime={routeSheetHostRuntime}
     />
   );
 });

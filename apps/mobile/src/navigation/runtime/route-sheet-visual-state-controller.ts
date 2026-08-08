@@ -1,7 +1,5 @@
 import type { SearchRouteSheetVisualSelectionSnapshot } from '../../screens/Search/runtime/shared/search-route-sheet-visual-selection-snapshot-contract';
-import {
-  EMPTY_SEARCH_ROUTE_SHEET_VISUAL_SELECTION_SNAPSHOT,
-} from '../../screens/Search/runtime/shared/search-route-sheet-visual-selection-snapshot-contract';
+import { EMPTY_SEARCH_ROUTE_SHEET_VISUAL_SELECTION_SNAPSHOT } from '../../screens/Search/runtime/shared/search-route-sheet-visual-selection-snapshot-contract';
 import type { RouteSheetChromeVisualAuthority } from './route-sheet-chrome-visual-state-controller';
 import type { RouteSheetPresentationAuthority } from './route-sheet-presentation-state-controller';
 
@@ -28,13 +26,9 @@ export type RouteSheetVisualAuthority = {
 };
 
 export class RouteSheetVisualStateController {
-  private routeSheetPresentationState: ReturnType<
-    RouteSheetPresentationAuthority['getSnapshot']
-  >;
+  private routeSheetPresentationState: ReturnType<RouteSheetPresentationAuthority['getSnapshot']>;
 
-  private routeSheetChromeVisualState: ReturnType<
-    RouteSheetChromeVisualAuthority['getSnapshot']
-  >;
+  private routeSheetChromeVisualState: ReturnType<RouteSheetChromeVisualAuthority['getSnapshot']>;
 
   private snapshot: SearchRouteSheetVisualSelectionSnapshot =
     EMPTY_SEARCH_ROUTE_SHEET_VISUAL_SELECTION_SNAPSHOT;
@@ -61,18 +55,12 @@ export class RouteSheetVisualStateController {
       getSnapshot: () => this.snapshot,
     };
     this.recompute(false);
-    this.unsubscribeRouteSheetPresentation =
-      routeSheetPresentationAuthority.subscribe(() => {
-        this.setRouteSheetPresentationState(
-          routeSheetPresentationAuthority.getSnapshot()
-        );
-      });
-    this.unsubscribeRouteSheetChromeVisual =
-      routeSheetChromeVisualAuthority.subscribe(() => {
-        this.setRouteSheetChromeVisualState(
-          routeSheetChromeVisualAuthority.getSnapshot()
-        );
-      });
+    this.unsubscribeRouteSheetPresentation = routeSheetPresentationAuthority.subscribe(() => {
+      this.setRouteSheetPresentationState(routeSheetPresentationAuthority.getSnapshot());
+    });
+    this.unsubscribeRouteSheetChromeVisual = routeSheetChromeVisualAuthority.subscribe(() => {
+      this.setRouteSheetChromeVisualState(routeSheetChromeVisualAuthority.getSnapshot());
+    });
   }
 
   public dispose(): void {
@@ -89,9 +77,7 @@ export class RouteSheetVisualStateController {
   }
 
   private setRouteSheetPresentationState(
-    routeSheetPresentationState: ReturnType<
-      RouteSheetPresentationAuthority['getSnapshot']
-    >
+    routeSheetPresentationState: ReturnType<RouteSheetPresentationAuthority['getSnapshot']>
   ): void {
     if (this.routeSheetPresentationState === routeSheetPresentationState) {
       return;
@@ -102,9 +88,7 @@ export class RouteSheetVisualStateController {
   }
 
   private setRouteSheetChromeVisualState(
-    routeSheetChromeVisualState: ReturnType<
-      RouteSheetChromeVisualAuthority['getSnapshot']
-    >
+    routeSheetChromeVisualState: ReturnType<RouteSheetChromeVisualAuthority['getSnapshot']>
   ): void {
     if (this.routeSheetChromeVisualState === routeSheetChromeVisualState) {
       return;
@@ -139,7 +123,9 @@ export class RouteSheetVisualStateController {
 export const createRouteSheetVisualStateController = ({
   routeSheetPresentationAuthority,
   routeSheetChromeVisualAuthority,
-}: ConstructorParameters<typeof RouteSheetVisualStateController>[0]): RouteSheetVisualStateController =>
+}: ConstructorParameters<
+  typeof RouteSheetVisualStateController
+>[0]): RouteSheetVisualStateController =>
   new RouteSheetVisualStateController({
     routeSheetPresentationAuthority,
     routeSheetChromeVisualAuthority,

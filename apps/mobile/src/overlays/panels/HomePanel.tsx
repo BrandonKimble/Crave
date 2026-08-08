@@ -39,6 +39,12 @@ import {
 } from './runtime/home-shelf-rows';
 import { PollsHeaderTitleText } from './pollsHeaderVisuals';
 import { requestMapCameraFlyToBbox } from '../../store/map-camera-command-store';
+import { resolveSceneLoadingMaterial } from '../../navigation/runtime/scene-foundation-spec';
+
+// OA2/G-SKEL (R8): the loading material comes from the scene's foundation
+// row through the ONE resolver — never a call-site rowType literal.
+// Non-null by construction: 'home' has a foundation row.
+const HOME_LOADING_MATERIAL = resolveSceneLoadingMaterial('home')!;
 
 const SURFACE = themeColors.surface;
 
@@ -586,7 +592,7 @@ const useHomeShelfListProps = (): TrackSheetListProps<HomeShelfRow> => {
 
   const ListEmptyComponent = React.useMemo(() => {
     if (status === 'loading' || status === 'idle') {
-      return <SceneLoadingSurface rowType="tile" />;
+      return <SceneLoadingSurface rowType={HOME_LOADING_MATERIAL.rowType} />;
     }
     if (status === 'failed') {
       return (

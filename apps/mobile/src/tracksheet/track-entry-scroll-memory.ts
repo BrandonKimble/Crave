@@ -32,7 +32,4 @@ export class TrackEntryScrollMemory {
   /** Scroll memory deliberately SURVIVES element eviction (depth-K retention
    * drops the React instance, not the remembered offset) — call this only for
    * identities that can never return. */
-  forget(entryKey: TrackEntryKey): void {
-    this.offsets.delete(entryKey);
-  }
 }

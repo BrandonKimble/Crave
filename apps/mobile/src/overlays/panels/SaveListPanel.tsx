@@ -489,6 +489,11 @@ export const SaveListMountedSceneBody = React.memo((_props: MountedSceneBodyProp
         // Row skeleton; inherits the 20px horizontal inset from the body
         // transport's contentContainer, so no extra insetX (see the tile-grid
         // double-pad gotcha that used to live here).
+        // TODO(owner): SaveList skeleton contradiction — this call site ships
+        // rowType="history" while the scene's foundation row declares 'tile'
+        // (scene-foundation-spec.ts saveList.skeleton). The owner is ruling
+        // which is right (OA8 open question); until then today's behavior is
+        // kept deliberately. Allowlisted in scripts/check-tracksheet-invariants.
         <SceneLoadingSurface rowType="history" insetX={0} />
       ) : regularRows.length ? (
         <View style={styles.rowList}>

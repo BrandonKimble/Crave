@@ -85,11 +85,9 @@ import { auditTrackEntryLiveness, type TrackEntryLivenessSample } from './track-
 import { TrackEntryRetention, TRACK_CHILD_RETENTION_DEPTH } from './track-entry-retention';
 import { deriveTrackEntryBodyActivity } from './track-entry-activity';
 import { planTrackEntryHandoff, TrackEntryResidencyLedger } from './track-entry-handoff';
-import {
-  isResolutionReady,
-  resolutionHasRealRows,
-  TrackEntryReadinessLedger,
-} from './track-entry-readiness';
+import { isResolutionReady, resolutionHasRealRows } from './track-entry-readiness';
+import { resolveTrackPaint } from './track-paint-resolver';
+import type { TrackPresentedEntryLatch } from './track-presented-authority';
 import { trackSkeletonMaterialForScene } from './track-entry-skeleton';
 import { planTrackLegBody, resolveTrackLegRowSurfaceKind } from './track-leg-plan';
 
@@ -170,10 +168,14 @@ export const useTrackLegResolver = ({
   scene,
   entryId,
   entry,
+  presentedLatch,
 }: {
   scene: OverlayKey;
   entryId: string | null;
   entry?: OverlayRouteEntry | null;
+  /** THE ONE presented-entry authority (R8): host-owned, read here instead of
+   * a second live ref mirroring the same fact. */
+  presentedLatch: TrackPresentedEntryLatch;
 }) => {
   // THE PARTS LANE, MEASURED. These two hooks run on EVERY host render whichever
   // scene is presented — so a switch cost that lives here is NOT explained by
@@ -242,8 +244,8 @@ export const useTrackLegResolver = ({
   );
   // G-ACTIVITY live read: cached render closures must never capture a
   // presented-flag (stale) nor an all-true (the pre-R2 defect) — they read the
-  // current commit's presented entry through this ref at invoke time.
-  const presentedEntryKeyLiveRef = React.useRef<TrackEntryKey | null>(null);
+  // current commit's presented entry through the host-owned latch at invoke
+  // time (R8: the second live ref that mirrored it is deleted).
   // ── THE LIVENESS PROBE (G-LIVENESS, R5) — dev-only runtime falsifier ────────
   // Samples are what the render closures ACTUALLY DELIVERED to the bodies'
   // activity contexts (recorded at invoke time, tagged with the render seq) —
@@ -281,7 +283,7 @@ export const useTrackLegResolver = ({
       // captured (a captured all-true was the pre-R2 defect; a captured
       // presented-flag would freeze). The live ref reads the current commit's
       // presented entry.
-      const isPresented = presentedEntryKeyLiveRef.current === legEntryKey;
+      const isPresented = presentedLatch.entryKey === legEntryKey;
       const activity = deriveTrackEntryBodyActivity(legScene, isPresented);
       if (__DEV__) {
         // G-LIVENESS sample: the activity as DELIVERED, at invoke time.
@@ -390,7 +392,10 @@ export const useTrackLegResolver = ({
   // legs with depth-K LRU (K=3): pushing B over A keeps A's leg — hook state,
   // strip selection, scroll — alive for a byte-exact pop-back.
   const isResidentScene = sceneIsResidentTrackScene(scene);
-  const presentedEntryKey = makeTrackEntryKey(scene, isResidentScene ? null : entryId);
+  // THE PRESENTED KEY comes from the host's latch (one authority). The latch
+  // was committed with this commit's painted (scene, entryId) before this hook
+  // ran, so it is exactly makeTrackEntryKey(scene, resident ? null : entryId).
+  const presentedEntryKey = presentedLatch.entryKey;
   const visitedResidentsRef = React.useRef(new Set<OverlayKey>());
   if (isResidentScene) {
     visitedResidentsRef.current.add(scene);
@@ -430,11 +435,11 @@ export const useTrackLegResolver = ({
     new Map<TrackEntryKey, { scene: OverlayKey; entry: OverlayRouteEntry | null }>()
   );
   const childRetentionRef = React.useRef(new TrackEntryRetention(TRACK_CHILD_RETENTION_DEPTH));
-  // ── THE READINESS AXIS STATE (G-READY + OA6.1, R2) ──
-  // The ledger latches "this entry has shown content"; the last-good store is the
-  // OA6.1 frozen world — when a latched entry's lane momentarily resolves to
-  // nothing, its previous body renders, never a skeleton.
-  const readinessLedgerRef = React.useRef(new TrackEntryReadinessLedger());
+  // ── THE FROZEN WORLD (OA6.1 → OA8) ──
+  // The last-good store: a live body, once built, is recorded here so a later
+  // commit can paint it without the entry's live resolution. R8: the readiness
+  // LEDGER is deleted — "has shown content" is subsumed by "a frozen body
+  // exists" (track-paint-resolver.ts header), held by the store that has it.
   const lastGoodListRef = React.useRef(new Map<TrackEntryKey, ResolvedLegList>());
   // ── THE PRESS-UP HANDOFF STATE (touch-latency rung) ──
   // residencyLedger: WHOSE ROWS ARE MOUNTED right now — one slot, because the
@@ -453,7 +458,6 @@ export const useTrackLegResolver = ({
   /** The data array each entry presented last time (identity only, dev probe). */
   const lastPresentedDataRef = React.useRef(new Map<TrackEntryKey, readonly unknown[]>());
   const [handoffSeq, bumpHandoffSeq] = React.useReducer((n: number) => n + 1, 0);
-  presentedEntryKeyLiveRef.current = presentedEntryKey;
   if (!isResidentScene) {
     // Refresh the stored entry value each render (params can update in place —
     // the algebra preserves entryId across param writes). G-HIDDEN: during a
@@ -469,7 +473,6 @@ export const useTrackLegResolver = ({
       legTitleCacheRef.current.delete(evictedKey);
       stripElementCacheRef.current.delete(evictedKey);
       mountedRendererCacheRef.current.delete(evictedKey);
-      readinessLedgerRef.current.forget(evictedKey);
       residencyLedgerRef.current.forget(evictedKey);
       lastGoodListRef.current.delete(evictedKey);
       livenessSamplesRef.current.delete(evictedKey);
@@ -579,52 +582,36 @@ export const useTrackLegResolver = ({
     legEntry: OverlayRouteEntry | null
   ): ResolvedLegList => {
     const { source, resolution, published, parts } = resolveLegBodyPlan(legEntryKey, legScene);
-    if (legIsHandingOff(legEntryKey)) {
-      // THE HANDOFF FRAME: the flip has committed — chrome, presented entry,
-      // a11y, the txn's paint ack — over a body the page can produce WITHOUT
-      // the destination's live resolution. The real body is the NEXT commit
-      // (released at the paint boundary above).
-      //
-      // OA6.1 LIVES HERE, not in an exemption from the deferral: an entry that
-      // has shown content has a FROZEN last-good body, and that is what the
-      // flip frame paints — never a skeleton. The skeleton is only ever the
-      // body of an entry that has never had one. This is why a revisit can
-      // defer (paying none of the destination's CURRENT first screenful) and
-      // still never flash.
-      //
-      // The readiness ledger is deliberately NOT consulted: this is not a
-      // readiness verdict, and latching an entry as "content" on a frame that
-      // is not showing its current content would corrupt the frozen-world fact.
-      // Residency is likewise NOT written — nothing of the destination's real
-      // body is mounted by this frame, which is the entire claim.
-      const frozen = lastGoodListRef.current.get(legEntryKey);
+    // ── THE ONE PAINT DECISION (R8 / OA8): frozen when affordable, skeleton
+    // when not, live when resident. resolveTrackPaint is the single total
+    // resolver — the readiness ledger's present() and the handoff's inline
+    // frozen/skeleton branch (the two rival deciders) are merged into it.
+    const isHandingOff = legIsHandingOff(legEntryKey);
+    const frozen = lastGoodListRef.current.get(legEntryKey);
+    const paint = resolveTrackPaint({
+      isHandingOff,
+      ready: isResolutionReady(resolution),
+      hasFrozenBody: frozen != null,
+    });
+    if (isHandingOff) {
       // WHICH BODY the handoff frame painted, RECORDED (not asserted) where the
-      // choice is made. The probe used to refuse to name it on the grounds that
-      // naming a body it had not looked at would be a lie — but looking is free
-      // right here, and the distinction is load-bearing: a frozen body IS the
-      // destination's own rows.
-      handoffBodyRef.current = frozen != null ? 'frozen' : 'skeleton';
-      if (frozen != null) {
-        return frozen;
-      }
-      return { data: ['skeleton'], renderItem: rendererForSkeleton(legScene) };
+      // choice is made — a frozen body IS the destination's own rows, and the
+      // [PERF] line must not conflate the two.
+      handoffBodyRef.current = paint.body === 'frozen' ? 'frozen' : 'skeleton';
     }
-    const phase = readinessLedgerRef.current.present(legEntryKey, isResolutionReady(resolution));
-    if (phase !== 'content') {
-      if (phase === 'frozen') {
-        // OA6.1: content is never replaced by a skeleton when content exists — a
-        // latched entry whose lane momentarily resolves to nothing keeps its
-        // frozen last-good body.
-        const frozen = lastGoodListRef.current.get(legEntryKey);
-        if (frozen != null) {
-          return frozen;
-        }
-      }
-      // THE SKELETON (G-READY cold visit + G-SKEL variant-as-data): a cold leg is
-      // a REAL sheet body whose one item renders THE ONE loading material (the
-      // cutout plate — THE SKELETON SHEET laws), shaped by the scene's foundation
-      // spec. Painted in the SAME commit as the switch — the switch never waits
-      // on data; readiness flips it to real rows (two-phase).
+    if (paint.body === 'frozen' && frozen != null) {
+      // The frozen world (OA6.1 as OA8 reframed it): the frame shows the
+      // entry's last-good body — on the handoff flip frame AND on a live
+      // resolution gap alike. Residency is NOT written: nothing of the
+      // entry's real body is mounted by this frame.
+      return frozen;
+    }
+    if (paint.body !== 'live') {
+      // THE SKELETON (G-READY cold visit + G-SKEL variant-as-data): a REAL
+      // sheet body whose one item renders THE ONE loading material, shaped by
+      // the scene's foundation spec — painted in the SAME commit as the
+      // switch. OA8: reachable on a revisit too, when no frozen body is
+      // affordable — an honest brief skeleton beats a frozen finger.
       return { data: ['skeleton'], renderItem: rendererForSkeleton(legScene) };
     }
     let list: ResolvedLegList;
@@ -663,7 +650,28 @@ export const useTrackLegResolver = ({
         renderItem: rendererForMountedEntry(legEntryKey, legScene, legEntry),
       };
     }
-    lastGoodListRef.current.set(legEntryKey, list);
+    if (paint.freezeLiveBody) {
+      // The write that makes 'frozen' affordable later, on the condition the
+      // resolver STATED (freezeLiveBody) — not a drifted second condition.
+      lastGoodListRef.current.set(legEntryKey, list);
+    }
+    // F9403 (R8): the LIST-LANE liveness sample. Mounted bodies record what
+    // their render closure delivered; list-lane legs (polls/home published/
+    // parts rows) deliver their activity implicitly by being built as the
+    // page's rows — sample it at build time so a presented-but-suspended
+    // polls/home body can show RED instead of being structurally exempt.
+    if (__DEV__ && (source === 'published' || source === 'parts')) {
+      const legIsPresented = legEntryKey === presentedEntryKey;
+      const listLaneActivity = deriveTrackEntryBodyActivity(legScene, legIsPresented);
+      livenessSamplesRef.current.set(legEntryKey, {
+        entryKey: legEntryKey,
+        renderedAsPresented: legIsPresented,
+        shouldRunDataLane: listLaneActivity.shouldRunDataLane,
+        shouldSubscribeDataLane: listLaneActivity.shouldSubscribeDataLane,
+        shouldRenderExpandedContent: listLaneActivity.shouldRenderExpandedContent,
+        seq: renderSeqRef.current,
+      });
+    }
     // THE RESIDENCY FACT, written where it happens and nowhere else: this
     // entry's real rows are the ones mounted in the page's single FlashList.
     // Only the presented leg qualifies — a hidden leg's list props are built

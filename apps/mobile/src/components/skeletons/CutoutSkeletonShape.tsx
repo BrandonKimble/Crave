@@ -31,10 +31,7 @@ export const CutoutSkeletonShape: React.FC<CutoutSkeletonShapeProps> = ({
   borderRadius,
   style,
 }) => (
-  <FrostCutout
-    borderRadius={borderRadius ?? height / 2}
-    style={[{ width, height }, style]}
-  >
+  <FrostCutout borderRadius={borderRadius ?? height / 2} style={[{ width, height }, style]}>
     <View style={{ width, height }} pointerEvents="none">
       <CutoutSkeletonSurface
         holes={[{ x: 0, y: 0, width, height, borderRadius: borderRadius ?? height / 2 }]}

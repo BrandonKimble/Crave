@@ -66,6 +66,7 @@ import {
   noteTrackPressSubtreeRender,
 } from './track-press-phase-probe';
 import { computeOutgoingScroll, TrackEntryScrollMemory } from './track-entry-scroll-memory';
+import type { TrackPresentedEntryLatch } from './track-presented-authority';
 import { executeEntrySwitch, planEntrySwitch, TrackRestoreCoordinator } from './track-entry-switch';
 
 // ─── TrackSheetPage — THE sheet-page standard ──────────────────────────────────
@@ -277,6 +278,10 @@ export type TrackSheetPageProps = {
    * switch while every entry keeps its own scroll. Entry-keyed (G-ENTRY):
    * revisiting the same SCENE under a different entry is a different identity. */
   presentedEntryKey: TrackEntryKey;
+  /** THE ONE presented-entry authority (R8): host-owned latch; the page reads
+   * the current key inside callbacks and consumes the switch edge from it —
+   * its former current+prev ref pair is deleted. */
+  presentedLatch: TrackPresentedEntryLatch;
   /** THE PUBLICATION BRIDGE (acceptance inventory §5.8): mirror the track into
    * the app-wide shared sheet values — every legacy subscriber (search chrome
    * transition, scrim, dismiss plane, origin capture) rides the track. */
@@ -325,6 +330,7 @@ export function TrackSheetPage({
   debugHud = false,
   commandsRef,
   presentedEntryKey,
+  presentedLatch,
   publicationBindings,
   onGestureSettle,
   onSettle,
@@ -727,7 +733,7 @@ export function TrackSheetPage({
         // The EXACT term the switch formula saves, read at hide START where
         // the JS mirrors are settled (hides launch from rest).
         entryScrollMemoryRef.current.save(
-          presentedEntryKeyRef.current,
+          presentedLatch.entryKey,
           computeOutgoingScroll(tau.value, trackH, physics.sigma.value)
         );
       },
@@ -780,6 +786,11 @@ export function TrackSheetPage({
     return () => {
       commandsRef.current = null;
     };
+    // presentedLatch is the host-owned authority read AT INVOKE time (the
+    // whole point — a dep on .entryKey would rebuild commands per switch and
+    // freeze the value the callbacks must read live). Same discipline as the
+    // ref.current reads this replaced (R8).
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [commandsRef, physics, tau, trackH]);
 
   // THE CHROME IS CONTENT, AND IT EXISTS TWICE (two-surfaces fix, 2026-08-01).
@@ -1137,7 +1148,7 @@ export function TrackSheetPage({
     (entryKey: TrackEntryKey, height: number) => {
       // Only the PRESENTED leg's geometry feeds the physics (hidden legs are
       // display-detached; their sizes are not the sheet's).
-      if (entryKey !== presentedEntryKeyRef.current) {
+      if (entryKey !== presentedLatch.entryKey) {
         return;
       }
       physics.contentHeight.value = height;
@@ -1158,6 +1169,9 @@ export function TrackSheetPage({
       // posture is always legal, so every seat is reachable by construction.
       // The JS inset and the reachability re-assert are DELETED, not moved.
     },
+    // presentedLatch: live-read authority, deliberately not a dep (see the
+    // commands effect above — R8).
+    // eslint-disable-next-line react-hooks/exhaustive-deps
     [physics.contentHeight]
   );
 
@@ -1179,16 +1193,16 @@ export function TrackSheetPage({
   // page only executes the plan.
   const entryScrollMemoryRef = React.useRef(new TrackEntryScrollMemory());
   const restoreCoordinatorRef = React.useRef(new TrackRestoreCoordinator());
-  const presentedEntryKeyRef = React.useRef<TrackEntryKey>(presentedEntryKey);
-  presentedEntryKeyRef.current = presentedEntryKey;
-  const prevEntryKeyRef = React.useRef<TrackEntryKey | null>(presentedEntryKey);
   React.useLayoutEffect(() => {
-    const entryKey = presentedEntryKey;
-    const prev = prevEntryKeyRef.current;
-    if (prev === entryKey) {
+    // THE SWITCH EDGE comes from the host's latch, consumed ONCE (R8): an
+    // effect re-run for unrelated deps (physics rebind, tau identity) reads
+    // null and cannot replay the switch — the job the prev-ref pair used to do.
+    const edge = presentedLatch.consumeEntrySwitch();
+    if (edge == null) {
       return;
     }
-    prevEntryKeyRef.current = entryKey;
+    const entryKey = edge.to;
+    const prev = edge.from;
     // THE ENTRY SWAP: one track, one scroll view, one posture. Nothing
     // attaches, re-binds, or changes owner — the sheet does not move because
     // there is nothing for it to move to. Only the data changes.
@@ -1256,19 +1270,21 @@ export function TrackSheetPage({
         });
       });
     }
-  }, [presentedEntryKey, tau, trackH, attachToTag, applyPin, physics]);
+  }, [presentedEntryKey, presentedLatch, tau, trackH, attachToTag, applyPin, physics]);
   // Attach-gated one-shot (G-RESTORE c): the restore applies only after the
   // track attaches, only for the entry that scheduled it, at most once — a
   // remembered 0 still applies (consumeOnAttach returns 0, not null, for it).
   React.useEffect(
     () =>
       physics.subscribeAttached(() => {
-        const offset = restoreCoordinatorRef.current.consumeOnAttach(presentedEntryKeyRef.current);
+        const offset = restoreCoordinatorRef.current.consumeOnAttach(presentedLatch.entryKey);
         const nativePhysics = NativeModules.TrackScrollPhysics;
         if (offset != null && nativePhysics?.refuse != null && trackTagRef.current != null) {
           nativePhysics.refuse(trackTagRef.current, offset);
         }
       }),
+    // presentedLatch: live-read authority, deliberately not a dep (R8).
+    // eslint-disable-next-line react-hooks/exhaustive-deps
     [physics]
   );
 

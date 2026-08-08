@@ -15,10 +15,6 @@ import type {
   SearchRouteSceneBodyTransportSpec,
   SearchRouteSceneChromePublication,
 } from '../../../../overlays/searchOverlayRouteHostContract';
-import {
-  publishSearchResultsPageBundle,
-  type SearchResultsPageBundleRenderObject,
-} from '../../../../overlays/SearchMountedScenePageBundleAuthority';
 import { syncSearchResultsPreMeasureOverlay } from '../../../../overlays/SearchResultsPreMeasureHost';
 import { useSearchRootRouteSearchSceneDataRuntime } from './use-search-root-route-search-scene-data-runtime';
 import { useSearchRootRouteSearchSceneReadModelRuntime } from './use-search-root-route-search-scene-read-model-runtime';
@@ -146,33 +142,12 @@ export const useSearchRouteSearchSceneModelOwner = ({
       routeSearchSceneSurfacePanelStateRuntime.shouldShowInteractionLoadingState,
     searchScenePanelSurfaceRenderRuntime: routeSearchScenePanelSurfaceRenderRuntime,
   });
-  // P5: the shouldPublishResultsPageBundle docked-scene gate is DELETED — the bundle
-  // publishes whenever this model owner is mounted, so the search leg is never headerless/null
-  // (SR1 unscoped): at home (docked lane) the leg is idle/invisible but stays WARM, and a
-  // mid-motion presentation of 'search' finds a real page instead of frost. The bundle has no
-  // header lane — the results header rides the persistent-header registry
-  // (search-results-header-live-state.tsx); the page frame reserves the header lane instead.
-  const routeSearchSceneResultsPageBundle = React.useMemo<SearchResultsPageBundleRenderObject>(
-    () => ({
-      underlayComponent: routeSearchScenePanelSurfaceRenderRuntime.underlayComponent,
-      backgroundComponent: routeSearchScenePanelSurfaceRenderRuntime.backgroundComponent ?? null,
-      overlayComponent: routeSearchScenePanelSurfaceRenderRuntime.overlayComponent ?? null,
-    }),
-    [
-      routeSearchScenePanelSurfaceRenderRuntime.backgroundComponent,
-      routeSearchScenePanelSurfaceRenderRuntime.overlayComponent,
-      routeSearchScenePanelSurfaceRenderRuntime.underlayComponent,
-    ]
-  );
-  React.useLayoutEffect(() => {
-    publishSearchResultsPageBundle(routeSearchSceneResultsPageBundle);
-  }, [routeSearchSceneResultsPageBundle]);
-  React.useLayoutEffect(
-    () => () => {
-      publishSearchResultsPageBundle(null);
-    },
-    []
-  );
+  // R8 (2026-08-08): the results page-bundle publication is DELETED with its
+  // only reader — SearchResultsPageBundleHost lived inside the old
+  // BottomSheetSceneStackHost subtree, dark behind the flip since rung 5. On
+  // the track, the search leg's surfaces ride the scene-input lane and the
+  // persistent-header registry; publishing the bundle had become a write to a
+  // store with zero subscribers.
   const shouldRunExternalPreMeasure =
     routeSearchSceneReadModelRuntime.routeSearchSceneResultsReadModelSelectors
       .isResultsHydrationSettled &&

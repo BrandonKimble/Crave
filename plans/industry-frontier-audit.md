@@ -1,233 +1,438 @@
-# Industry-Frontier Audit — bottom-sheet navigation (track)
+# Industry-Frontier Audit v2 — the track vs. best-in-class screen switching
 
-Mandated by OA8 (`plans/transition-endstate-contract.md:798-802`): are we using the
-strategies best-in-class apps use for screen switching; what does our architecture
-uniquely enable; where did old plans write rules the industry treats as outcomes;
-what's the plan to the frontier.
+Mandated by OA8 (`plans/transition-endstate-contract.md:798-824`). Owner intent,
+verbatim spirit: "you first visit a screen maybe it shows a skeleton but the next time
+you visit that screen it's still there, like preloaded... do the frontier of what is
+possible and ideal in the industry... What does the architecture we landed on lend
+itself to leverage?"
 
-Sources cited inline: react-native-screens (`detachInactiveScreens`, `freezeOnBlur`),
-React 19.2 `<Activity>` (react.dev), TanStack Query stale-while-revalidate defaults
-(tanstack.com), FlashList v2 (shopify.engineering), instant.page prefetch canon,
-Next.js `Link` prefetch, RN `Pressable` feedback-delay issue (facebook/react-native#29376),
-Bill Chung skeleton-perception research (uxdesign.cc), expo-image docs, Apple
-`UISheetPresentationController`, Airbnb motion-engineering.
+v1 of this file (git history, commit 4af349f6d) covered the gap table, the ONE TRACK
+leverage argument, the rules-as-outcomes census, and a first ladder. v2 supersedes it:
+it keeps those findings (folded in below), completes the topic enumeration the mandate
+demands (cache tiering, image pipeline, offscreen suspension, progressive rendering,
+choreography norms, interaction prediction, skeleton norms, virtualization tuning,
+cold-start restoration), and adds the old-plans-astray audit, the ranked plan, and the
+five user-felt gaps.
 
----
+Comparables throughout: Instagram/Airbnb/Yelp/Google Maps-class list-heavy mobile apps;
+react-native-screens (`detachInactiveScreens`/`freezeOnBlur`), React 19.2 `<Activity>`,
+TanStack Query SWR defaults, FlashList v2, instant.page / Next.js `Link` press-intent
+prefetch canon, expo-image, Apple `UISheetPresentationController`, Bill Chung
+skeleton-perception research.
 
-## Part 1 — Gap table by switch type
-
-| Switch type | Industry norm | What we do (file:line) | Gap | Verdict |
-|---|---|---|---|---|
-| **parent↔parent** (tab↔tab) | react-navigation keeps inactive tab screens mounted (`detachInactiveScreens=false` on tabs); RN default does NOT freeze the top-2 stack screens so back-swipe always finds a live screen | Resident chrome stack: all top-level layers mounted, opacity-flipped on the same commit as the switch — `plans/transition-endstate-contract.md:539-541`, `:216-217`. Top-level tab = one entry forever, chrome pins to `scene#root` — `:297-310` | We match/exceed the norm: react-navigation still pays a *screen-focus* transition; ours is an opacity flip on already-mounted layers | **AHEAD** |
-| **parent→child** (push into a detail/thread) | `react-native-screens` mounts the new screen and animates in; no native prefetch-on-touch-down analogue exists for RN nav — that's a web-only pattern (instant.page, Next `Link`) | Press-DOWN prewarm: `onPressIn` → `requestTrackScenePrewarm` — `apps/mobile/src/screens/Search/components/SearchBottomNav.tsx:86-88`, consumed at `use-track-leg-resolver.tsx:398-426` (adds the leg to `legs` memo, builds chrome/title/skeleton renderer early) | None — this is the instant.page 65ms-touchstart canon, applied to native nav, which the RN ecosystem does not do natively | **AHEAD of RN norm, AT-PAR with web-prefetch canon** |
-| **child→child** (thread→thread, card→card at same depth) | React Query stale-while-revalidate: cached data renders instantly, background refetch is silent (tanstack.com "important defaults") | Depth-3 LRU retention (`track-entry-retention.ts:16`, `TRACK_CHILD_RETENTION_DEPTH=3`) + entry-keyed `lastGoodListRef` frozen-body fallback (`use-track-leg-resolver.tsx:666`, `:618-621`) — but EVERY switch's destination is non-resident by construction (`track-entry-handoff.ts:57-58`: "the destination of ANY switch is non-resident, so EVERY switch defers"), so the first frame after a switch is always a deferred frozen/skeleton frame, never the resident view itself | The mechanism is SWR-shaped (frozen last-good stands in for cache), but our `staleTime` census (Part 4b) shows we never tuned the data layer to match — most panel queries either default to `staleTime:0` or use ad-hoc per-panel values (60s/30s/300s) with no shared policy | **PARTIALLY AHEAD** — retention beats RN screens' un-keyed detach; data freshness policy is unbuilt |
-| **deep nesting** (3+ levels) | React Query `gcTime` (default 5 min) bounds how long anything off-screen survives; `<Activity>` (React 19.2) explicitly recommended for pre-rendering "likely next" screens at low priority | Depth-3 LRU with an explicit eviction sweep that deletes retained entry/title/strip/renderer/readiness/residency/`lastGoodList` but **scroll memory deliberately survives eviction** (`use-track-leg-resolver.tsx:467-477`) | RN screens has no per-screen retention depth at all (native-view GC is OS-driven); we have an explicit, tuned K=3 with a scroll-memory exception carved out on purpose | **AHEAD** — a bespoke retention policy RN doesn't offer |
-| **backward** (pop back) | `react-native-screens` freeze integration deliberately does NOT freeze the top two stack screens, "so back-swipe always has a live previous screen" — platform norm is "previous screen stays warm" | Same depth-3 retention + frozen last-good body serves backward switches identically to forward ones — no special-cased "previous screen" path; OA8 explicitly reframes this as the *intended* outcome (`:798-802`) | None structurally; the open item is Part 3's rules-as-bans, which used to force this warmth to hide itself | **AT-PAR, now correctly unblocked by OA8** |
-
-**Where we're uniquely ahead, restated:** press-down prewarm on `onPressIn` *is* the
-instant.page touchstart canon applied to native tab navigation, something
-react-navigation does not do by default. Entry identity (`sceneKey#entryId`) plus
-depth-3 LRU plus scroll-memory-surviving-eviction is a strictly richer retention model
-than `detachInactiveScreens`, which is a binary per-screen flag with no depth budget.
-The frozen-last-good-body mechanism (`use-track-leg-resolver.tsx:618-621`,
-`track-entry-handoff.ts:606`) *is* "stale pixels beat a skeleton," the top of the
-show-something hierarchy from the choreography research — implemented at the
-scene-body layer, independent of whether the data layer (React Query) is tuned to
-match it.
+All code paths under `/Users/brandonkimble/Crave/Crave/apps/mobile/src/` unless rooted.
 
 ---
 
-## Part 2 — The leverage question: ONE TRACK
+## Part 1 — The playbook, topic by topic
 
-The contract's core move (`plans/transition-endstate-contract.md:23-41`) is a single
-scroll view where τ *is* the scroll offset — every scene is a row in one continuous
-track, not a stack of independently-mounted screens. This inverts the industry's unit
-of retention:
+Each row: the industry norm → what we do (file:line) → gap verdict → what our
+architecture uniquely enables → cost to close.
 
-- **react-native-screens retains at the VIEW layer** — a screen is a native view;
-  `detachInactiveScreens`/`freezeOnBlur` decide whether that view stays attached/live.
-  The retained thing is a subtree of native views.
-- **Our track retains at the STATE layer** — `sceneKey#entryId` keys a bundle of
-  readiness/scroll-position/last-good-rows/title/chrome state
-  (`plans/transition-endstate-contract.md:169-177`), and the mounted renderer is
-  rebuilt from that state on demand (`use-track-leg-resolver.tsx:260-337`).
+### 1.1 View/screen retention + back-stack state restoration
 
-**What this makes uniquely cheap:**
-- **Single-frame data swaps.** Because there is one scroll view and one presented-entry
-  pointer, a switch is a pointer update plus an opacity/paint-residency handoff on the
-  SAME commit (`track-entry-handoff.ts:129-148` decision tree; rAF release at
-  `use-track-leg-resolver.tsx:561-574`) — never a navigator transaction spanning two
-  independently-animating screen containers.
-- **Posture preserved by construction.** τ-as-scroll-offset means the sheet's
-  collapsed/expanded posture is never a separate piece of state to resync after a
-  switch — it falls out of the one scroll view's offset (`:147-157`, `:341-348`). RN
-  screens has no analogous guarantee; posture (e.g. modal presentation style) is
-  re-derived per screen.
-- **Press-down speculative work is cheap and safe.** Because prewarming a resident leg
-  only adds it to a memo (builds chrome/skeleton/title state) rather than mounting a
-  second competing scroll view, it can't race the active list — the rejected
-  alternative in the contract explicitly names "a second mounted list lane... the
-  ancestor of every hard bug of this arc" (`:652-659`). instant.page's touch-down
-  prefetch has no such collision risk to avoid in the first place (it prefetches an
-  HTTP response, not a live scrollable render), so our architecture had to solve a
-  harder version of the same idea and did.
+**Norm.** Tab navigators keep inactive tabs mounted (react-navigation default);
+best-in-class apps (Instagram, YouTube) retain each tab's full view tree AND scroll
+position forever within a session; stacks retain the previous 1–2 screens live so
+back always finds warm pixels. Cold launch restores the last route + scroll near-state
+from disk (Instagram resumes mid-feed).
 
-**What this makes hard:**
-- **Per-screen native view retention** (react-native-screens' actual mechanism) isn't
-  available — there is no second native view to detach/freeze; everything lives inside
-  the one FlashList, and hidden mounted bodies are "structurally unmounted" on the
-  one-list page per the contract's own honesty note (`:331-334`). This is why MVCP is
-  disabled unconditionally track-wide (`TrackSheetPage.tsx:1365`) rather than per-scene
-  like the polls feed — there's only one list to configure, not N screen-owned lists.
-- **Shared-element continuity** (SwiftUI `matchedGeometryEffect`, Reanimated
-  `sharedTransitionTag`) assumes two independently-mounted screens with a geometry
-  interpolation between them. In ONE TRACK, "child→parent" isn't two screens
-  crossfading, it's a re-presented row in the same list — there's no natural anchor for
-  an element to fly between two separate view hierarchies, because there aren't two.
-  Any shared-element move here has to be built as a custom overlay animation keyed to
-  the same entry-identity system, not adopted off the shelf from either platform's
-  primitive (flagged honestly in Part 4e).
+**Us.** Resident set = 5 tabs retained forever (`use-track-leg-resolver.tsx:394-397,
+684-690`; residency declared in `scene-foundation-spec.ts:252-362`) + depth-3 LRU for
+children (`track-entry-retention.ts:16-49`). Entry identity `sceneKey#entryId`
+(`track-entry-identity.ts:26`) keys scroll memory, readiness, frozen bodies, chrome.
+Scroll memory deliberately survives eviction (`track-entry-scroll-memory.ts:32-37`,
+sweep exception at `use-track-leg-resolver.tsx:476`). **But retention is STATE-layer,
+not VIEW-layer**: only the presented leg's rows are ever mounted — one FlashList fed by
+`presentedLeg` only (`TrackSheetPage.tsx:1347-1367`; honesty note, contract `:331-334`).
+Chrome (title/strip) stays mounted and opacity-flips (`TrackSheetPage.tsx:1022-1038`).
+No session restoration: cold launch starts at the root; nothing persists route stack or
+scroll to disk (only zustand search/onboarding slices persist, `store/searchStore.ts:100-181`).
+
+**Gap.** PARTIAL. Retention model is richer than the RN norm (K=3 with a scroll-memory
+carve-out beats a binary detach flag), but the retained thing is state, so a revisit
+still pays the first-screenful render (the D1 correction's honest residual, contract
+`:704-709`). Cold-launch restoration is MISSING entirely.
+
+**Leverage.** Entry identity is exactly the serialization key a restore system needs —
+persisting `{entryKey → scrollOffset, route stack}` at background and replaying it at
+boot is a bolt-on, not a redesign.
+
+**Cost.** Second-paint-lane (true view retention): a real rung, previously rejected
+(contract `:657-659`) — see 1.6. Cold-launch restore: small-medium (persist stack +
+offsets on AppState background; replay through existing revealRoute + scroll memory).
+
+### 1.2 Render-ahead / prefetch on prediction signals
+
+**Norm.** Web canon: prefetch on hover/press-down (instant.page's ~65ms-before-tap
+window, Next `Link`). Native best-in-class: prefetch DATA for the likely next screen on
+touch-down or on cell-appear (Instagram prefetches profile data when a username row
+renders); some apps pre-render the next view tree at low priority (React `<Activity>`'s
+stated use case).
+
+**Us.** Press-DOWN prewarm exists and is genuinely ahead of the RN norm:
+`onPressIn → requestTrackScenePrewarm` (`SearchBottomNav.tsx:86-88`), drained at
+`use-track-leg-resolver.tsx:406-426`. But it warms **structure only** — first-visit
+resident legs get chrome/title/skeleton renderer built early; it fetches NO data, warms
+NO images, and is a no-op for already-visited residents and ALL child pushes
+(`track-entry-prewarm.ts:34-38`; child-push prewarm ruled out by construction, contract
+`:373-374`). No adjacency prefetch, no likelihood model, no idle warm of other tracks
+(subagent sweep confirmed; the only other predictive machinery is search-internal,
+`use-direct-search-map-source-controller.ts:176-177,2661-2682`).
+
+**Gap.** PARTIAL — the trigger is frontier-grade; the payload is thin.
+
+**Leverage.** The prewarm signal is a ready-made bus. Because prewarm only touches a
+memo (no second scroll view), hanging MORE work on it — `queryClient.prefetchQuery` for
+the destination's primary query, `Image.prefetch` for its first-screenful thumbs — is
+collision-free by construction. Child pushes: the tap target usually KNOWS the id at
+press-down (poll card knows its pollId); an `onPressIn` data-prefetch on card rows is
+the Instagram pattern and needs no entry identity to exist yet.
+
+**Cost.** LOW for tab prewarm payload (one registry: scene → prefetch fn). LOW-MEDIUM
+for card-row press-in prefetch (per-surface wiring, but each is ~5 lines into
+react-query).
+
+### 1.3 Cache tiering: memory → disk → network, stale-while-revalidate
+
+**Norm.** Three tiers everywhere at the frontier: in-memory query cache renders
+instantly; a disk layer (persisted query cache) hydrates at boot so even a cold launch
+paints last-known content; network revalidates silently behind stale content. TanStack's
+own mobile guidance: raise `staleTime`/`gcTime`, add `persistQueryClient` +
+AsyncStorage/MMKV persister.
+
+**Us.** react-query v5 with **library defaults** — no `defaultOptions` at all
+(`App.tsx:71-88`): `staleTime: 0`, `gcTime: 5min`. Per-panel ad-hoc staleTimes
+(20s/30s/60s/300s scattered; census in subagent report) with no shared policy. **No
+persistence plugin anywhere** — the query cache dies with the process. The app's real
+SWR analogue is the frozen last-good body (`lastGoodListRef`,
+`use-track-leg-resolver.tsx:438,600,618,666`) — stale PIXELS, not stale DATA: it
+survives only in memory and only per entry.
+
+**Gap.** This is the LARGEST structural gap. The track holds scene state warm for its
+whole retention window while the data cache underneath expires in 5 minutes — a revisit
+inside the retention window can eat a full network refetch behind the frozen body. And
+cold launch always starts from zero: no disk tier at all, while every comparable app
+paints last-session content instantly.
+
+**Leverage.** The track never needs the data layer's cooperation to paint (frozen
+bodies + skeleton are total), so tuning react-query is pure upside with no
+choreography risk. Entry identity again gives the natural persistence scope.
+
+**Cost.** LOW for defaults (`staleTime: 30-60s`, `gcTime: 24h` on track-hosted
+queries + a one-page policy). MEDIUM for `persistQueryClient` + MMKV (add the
+persister, buster on app version, throttle; ~a day incl. verification).
+
+### 1.4 Image pipeline
+
+**Norm.** Thumbnail-first / blurhash placeholders (Instagram's tiny-preview-in-payload
+pattern), decode-ahead of the visible window, explicit priorities, memory+disk cache
+policy, prefetch tied to the same intent signals as data.
+
+**Us.** expo-image in ~5 surfaces, RN `Image` still in ~8 (avatars, poll heroes —
+census in subagent report). Props used: `recyclingKey` (2 sites), `transition={180}`,
+`contentFit`. **Zero** `blurhash`/`placeholder`, `priority`, `cachePolicy`,
+`Image.prefetch`, decode-ahead, or memory budget anywhere (grep-confirmed). Thumb vs
+card variants chosen statically per surface. One nice request-coalescer: 16ms
+dataloader over `POST /photos/strips` (`use-card-photo-strip.ts:11-67`).
+
+**Gap.** MISSING tier. Cards pop from blank to photo; nothing warms images on the
+prewarm signal the scene layer already enjoys.
+
+**Cost.** LOW-MEDIUM: standardize on expo-image, `cachePolicy="memory-disk"` +
+`priority` at the two recyclingKey sites first, blurhash needs a backend column
+(compute at upload in the images pipeline — coordinate with `product/images.md`),
+`Image.prefetch` wired to press-in.
+
+### 1.5 Offscreen rendering / suspension
+
+**Norm.** react-native-screens `freezeOnBlur` / React `<Activity mode="hidden">`: hidden
+screens keep state but stop rendering and defer effects at low priority. Native apps
+suspend offscreen view controllers.
+
+**Us.** Structural suspension by construction: hidden legs' rows simply aren't in the
+tree (one list, presented leg only), and the activity object gates data lanes to the
+presented leg (`track-entry-activity.ts:27-40`, delivered via contexts at
+`use-track-leg-resolver.tsx:306-308`; liveness audit `track-entry-liveness.ts:43-85`
+proves delivered==derived). Hidden chrome is opacity-0 + pointerEvents none
+(`TrackSheetPage.tsx:1034-1035`) — deliberately not display:none (100ms Yoga relayout,
+`:1406-1413`). Home/polls parts hooks DO run on every host render regardless of
+presentation (`use-track-leg-resolver.tsx:183-184`) — that's the deliberate "warm data"
+story, not a leak.
+
+**Gap.** NONE worth closing. We meet the norm's goal (no hidden work) by a stronger
+mechanism (absence, not freezing). `<Activity>` would be a regression here; evaluate it
+only for non-track surfaces with no retention story (v1's verdict, kept).
+
+### 1.6 Progressive / priority rendering (above-fold first)
+
+**Norm.** Paint the above-fold shell in the tap frame; stream below-fold and heavy
+content in later commits. iOS apps commit the view controller instantly and populate
+cells as data lands.
+
+**Us.** This IS the press-up handoff after the D1 correction: every switch defers — the
+flip frame paints chrome + (frozen body | skeleton), real rows land next commit at the
+rAF boundary (`track-entry-handoff.ts:129-185`, `use-track-leg-resolver.tsx:532-574`).
+Honest [PERF] span: press→first-paint + press→real-rows, one anchor
+(`track-entry-prewarm.ts:151-216`).
+
+**Gap.** PARTIAL, and this is the honest residual the contract itself names
+(`:704-709`): the deferred real-rows commit renders the WHOLE first screenful at once —
+there is no row-level progressive fill, and a heavy scene's revisit can still be slow.
+The industry's answer is paint residency for >1 screen (the "second lane") or
+incremental row mounting. Our architecture rejected the second lane for good reasons
+(rival scroll views — "the ancestor of every hard bug of this arc", contract
+`:657-659`).
+
+**Leverage/alternative.** ONE TRACK offers a cheaper path than a second live list: a
+**snapshot tier**. Because a switch is an atomic data swap under stable chrome, the
+outgoing/incoming visuals are perfectly still — capture a native snapshot
+(`UIView.snapshotView` / `react-native-view-shot`) of each entry's rows at switch-out,
+and let the deferred frame paint the SNAPSHOT (a single image = guaranteed one-frame
+paint, exactly the "one body the page can always paint") instead of re-rendering the
+frozen list spec. This is what iOS itself does for app-switcher cards and what
+snapshot-based navigators do. It makes revisit first-frames O(1) regardless of scene
+weight — the thing the second lane was for — without a rival scroll view. The dead
+`prepared-snapshot-presentation-architecture-audit.md` chased this with a whole
+transaction machine; the track reduces it to "one image per entry, swapped like the
+frozen body."
+
+**Cost.** MEDIUM (native snapshot capture + an image row type in the leg resolver +
+staleness rules). Only worth it if the revisit measurement (the contract's open number)
+shows frozen-body renders are actually slow on heavy scenes. MEASURE FIRST.
+
+### 1.7 Transition choreography norms
+
+**Norm.** For TAB switches, best-in-class apps move NOTHING: no slide, no crossfade —
+content swaps in place under persistent chrome (Instagram, YouTube, Maps). Pushes get a
+platform slide or a sheet spring; dismissals are user-paced and interruptible; springs
+are critically damped; 60/120fps is table stakes.
+
+**Us.** Exactly the norm, and cleaner than most: tab switch = same-commit data swap +
+chrome opacity flip, no animation (`TrackSheetPage.tsx:1005-1038`); every postural move
+is one critically damped native spring (OA5 — glide universal, teleport unrepresentable);
+dismiss is user-paced with swap at the screen-edge τ-crossing (A2/R4); interrupts are
+finger-owned (THE FINGER OWNS TAU); frame-rate math measures intervals (F889/F5806);
+60fps is a hard requirement held through the red teams.
+
+**Gap.** NONE on mechanics. The owner's punchlist items (strip/choreography "still
+bad", memory: track-visual-punchlist) are polish/tuning on this substrate, not a
+missing mechanism.
+
+### 1.8 Interaction prediction beyond press-down
+
+**Norm.** Frontier apps predict from scroll velocity (prefetch cells about to appear —
+FlashList drawDistance is the crude version), from adjacency (warm the next tab over),
+and from likelihood (Instagram's ranked prefetch). Gesture-driven pre-commit: begin
+preparing the destination when a back-swipe STARTS, commit or abort at release.
+
+**Us.** drawDistance overscan is tuned (1.6/1.9 below). Nothing else: no adjacency, no
+idle warm, no gesture-start speculation.
+
+**Gap.** MISSING, but deliberately low-priority: with 5 residents warm forever and
+press-down prewarm, the marginal value of likelihood models is small at our scene
+count. The one worthwhile piece is idle-time warm: after boot settles
+(InteractionManager idle), touch each resident's primary query once so the FIRST visit
+to each tab is data-warm — that plus 1.2's payload closes the owner's "next time you
+visit it's still there" for first visits too.
+
+**Cost.** LOW (one idle task calling the same prefetch registry as 1.2).
+
+### 1.9 Skeleton / placeholder norms
+
+**Norm.** The hierarchy: stale content > content-under-cover > skeleton > spinner >
+blank. Skeletons appear ONLY on genuinely cold surfaces, shaped like the content,
+shimmering L→R (reads faster than pulse, Chung); never on warm revisits — as an
+OUTCOME of retention, which is exactly OA8's reframe.
+
+**Us.** The hierarchy is implemented and mostly honest: frozen last-good bodies win
+wherever they exist; skeleton is the cold face with per-scene rowType variants
+(G-SKEL/OA2); the skeleton-path audit proved the skeleton is near-unreachable BECAUSE
+retention works (`plans/skeleton-path-audit.md:7-77`). Known defects, all already
+queued/fixed: the 4 blank pending bodies (SceneBodyReadyGate context — FIXED,
+uncommitted per audit status note), 6 hardcoded rowTypes + SaveList spec contradiction
+(R8, owner-approved), two paint deciders → one paint resolver (R8, owner-approved),
+silent spec-excluded fallback (make loud). The ONE live norm violation is the polls
+toggle seam: literal bare white for a measured 340–650ms
+(`polls-feed-runtime-controller.ts:107-111`; cost admitted in
+`plans/strip-wave-finger-test-checklist.md:22`) — bottom of the hierarchy, enforced by
+a copied ban (Part 3).
+
+**Gap.** One surface (toggle seam) + the queued R8 hygiene. Shimmer-direction polish is
+real but minor.
+
+### 1.10 List virtualization tuning
+
+**Norm.** Tune render-ahead to the VISIBLE window, not the screen; disable MVCP on
+re-sortable lists; recycle by type; estimated sizes.
+
+**Us.** Better than most: drawDistance derives from the sheet's actual visible height
+(`clamp(round(visibleHeight*0.5), 200, screenH)`, `track-list-window.ts:94-142`,
+consumed off settledTau at `TrackSheetPage.tsx:1277-1286`) — a posture-aware overscan
+almost nobody bothers with. MVCP disabled (`:1365`). No `estimatedItemSize` — FlashList
+v2 doesn't need it.
+
+**Gap.** NONE material.
 
 ---
 
-## Part 3 — Rules written as outcomes in old plans
+## Part 2 — What ONE TRACK uniquely lends itself to (plain UX terms)
 
-OA6.1 is the known case (`:287-295`, reframed by OA8 at `:778-802`: "warm revisits are
-an OUTCOME, not a ban... the no-skeleton-on-revisit behavior was never a RULE to
-enforce — it was the natural OUTCOME of an industry-best-practice implementation").
-Grepping `plans/` for the same species (loading/preload/retention phrased as
-prohibition rather than as a measured consequence) turns up more:
+The industry retains SCREENS (native view subtrees). We retain IDENTITY (entry-keyed
+state under one scroll view). That inversion makes a family of experiences cheap that
+screen-stack apps find hard:
 
-| file:line | rule as written | should be read as |
-|---|---|---|
-| `plans/page-switch-master-plan.md:91` | "retained round-trip (Favorites→Profile→Favorites) shows content both times, **no skeleton blink**" | Outcome of retention working, not a ban to enforce independent of whether retention actually holds — this is OA6.1's direct ancestor |
-| `plans/toggle-strip-and-edit-charter.md:102` | "NO skeleton sheet between toggle-driven slices" | Currently implemented as literal bare-white (`isFeedSliceAwaiting`, `polls-feed-runtime-controller.ts:107-111`) — the ban is enforced even though SWR (frozen old rows, not blank) is the industry outcome the retention story elsewhere claims to want |
-| `plans/strip-wave-finger-test-checklist.md:22` | "(bare white between, never a skeleton). Measured gap ~340-650ms — decide later" | This one **admits the cost in writing** and defers the decision — a live TODO, not settled doctrine; it is the strongest evidence the "never a skeleton" phrasing was never actually validated against the stale-pixels-beat-blank hierarchy |
-| `plans/wave3-conformance-audit.md:34`, `plans/wave2-finger-test-checklist.md:36`, `plans/toggle-strip-rebuild-ledger.md:416`, `plans/wave3-corrections-charter.md:57` | variations of "no skeleton, ever" for the toggle seam | Same rule restated four times across four docs — the ban propagated by copy, not by re-derivation from outcome |
-| `plans/canonical-transition-finish-plan.md:124` | "No skeletons needed (restaurant has a SquircleSpinner...non-blank)" | A DIFFERENT and inconsistent outcome — sanctions spinners, which the choreography hierarchy (stale pixels > skeleton > spinner > blank) ranks BELOW skeletons; shows the doctrine drifted even within itself |
+1. **Switches that are literally one frame.** Because a switch is a pointer swap + an
+   opacity flip in one commit, there is no navigator transaction, no two containers to
+   coordinate, no transition to interrupt badly. Users feel "the content just IS the
+   other thing." Screen-stack apps approximate this with animation-duration:0 and still
+   pay screen-focus lifecycle.
+2. **Posture that never resets.** The sheet's height/detent is τ — one number in one
+   scroll view. Switch tabs, push a child, come back: the sheet is where you left it by
+   construction, not by resync code. Sheet-per-screen apps fight this forever.
+3. **Speculation with no collision risk.** Prewarm adds a leg to a memo; it cannot race
+   the live list because there is only one list. Web prefetch has this safety (it
+   fetches bytes, not views); native screen-stacks don't (pre-rendering a screen means
+   a second live hierarchy). We get web-grade speculative safety in native nav.
+4. **Snapshot-based instant revisits are a bolt-on, not an architecture** (1.6): stable
+   chrome + atomic swaps mean an entry's pixels are still and capturable at exactly one
+   moment. Screen-stack apps need a presentation-transaction machine for this (we built
+   and deleted one, 260KB of plan); the track needs an image cache keyed by the entry
+   identity we already have.
+5. **Session restore falls out of entry identity** (1.1): the whole UI state of "where
+   the user was" is a small serializable set of entry keys + offsets + a route stack.
+6. **One place to enforce every law.** A11y announcements, skeleton variants, world
+   joins, scroll memory — each is one required column or one ledger because there is
+   one track. In a screen-stack app each of these is N screens' local discipline.
 
-**Net finding:** the "no skeleton on a warm path" instinct appears independently in at
-least six documents. Every one of them writes it as a *rule to satisfy* rather than a
-*measurement to take* — and one of them (`strip-wave-finger-test-checklist.md:22`)
-explicitly logs the actual user cost (340–650ms of bare white) of over-literally
-enforcing it, which is worse for the user than the skeleton it was written to prevent.
-The toggle seam is the one place today where the letter of an old ban is actively
-producing a WORSE outcome than the pattern it was trying to protect.
-
----
-
-## Part 4 — Sequenced ladder to the frontier
-
-Ordered by (a) how directly it changes what a user sees, (b) how cheap it is given
-what Part 2 already made cheap.
-
-**(a) Stale-while-revalidate at the feed layer — HIGH payoff, LOW cost.**
-The toggle seam (`isFeedSliceAwaiting`) is the one place in the audited surfaces that
-still shows bare white instead of the retained-row pattern the rest of the system
-already uses (frozen last-good body). `polls-feed-runtime-controller.ts` already HAS
-the SWR mechanism for every other refetch path (`skipSpinner`, old rows stand while
-new ones load, `:521-522`) — the toggle path is the one spot that deliberately
-bypasses it per the ban in Part 3. Fix is in-pattern with code that already exists
-elsewhere in the same file; the 340–650ms gap the team already measured becomes the
-before/after number.
-
-**(b) staleTime/gcTime tuning — MEDIUM payoff, LOW cost.**
-Every query without an explicit override runs on the RQ v5 default (`staleTime: 0`,
-`gcTime: 5min`) — confirmed by reading `App.tsx:71-88` (no `defaultOptions`). Only one
-`gcTime` is configured anywhere in the app (`profileSceneQueryOptions.ts:33`, 10 min).
-This is directly undercutting the track's own retention story: the track can keep an
-entry's SCENE state (scroll position, readiness, frozen rows) alive for a depth-3
-window, but the underlying React Query cache backing that panel's data can garbage
-collect in 5 minutes regardless — a revisit inside the retention window can still
-trigger a full network refetch behind the frozen body. Raising `gcTime` on
-track-hosted panel queries to match or exceed the retention depth's typical dwell time
-closes that mismatch; this is exactly TanStack's own documented "mobile apps should
-raise defaults" guidance.
-
-**(c) blurhash/expo-image priming — MEDIUM payoff, LOW-MEDIUM cost.**
-Zero `blurhash`, zero `priority`, zero `cachePolicy` anywhere in the app (confirmed by
-grep). `recyclingKey` is set in exactly two places (`PhotoStrip.tsx:140`,
-`ListsPanel.tsx:148`) but nothing else expo-image offers is used. Nothing in
-`tracksheet/` renders an image directly — all imagery lives in panel bodies, so the
-track's prewarm has no image-warming hook. Cards currently pop from nothing to loaded
-photo with no placeholder; a blurhash on card/list images plus `Image.prefetch` fired
-from the same `onPressIn` prewarm signal that already exists (`SearchBottomNav.tsx:86-88`)
-would extend the "instant.page canon" already built for scene state to images too —
-this is genuinely free to wire onto an existing trigger.
-
-**(d) Shimmer style per perceived-duration research — LOW payoff, LOW cost.**
-Bill Chung's finding is that L-to-R shimmer reads as shorter than a pulse for the same
-actual duration. Since the skeleton-path audit found the skeleton window is
-"structurally near-unreachable" for 12 of the scenes and reachable for ~1 frame
-elsewhere (`plans/skeleton-path-audit.md:9-21`), this only matters for the
-still-real skeleton windows (published-lane family: pollDetail/pollCreation/restaurant)
-and the toggle seam once (a) replaces its bare white with a real skeleton or SWR frame.
-Worth doing alongside (a), not before it.
-
-**(e) Child→parent shared-element continuity — SPECULATIVE, flag experimental honestly.**
-Reanimated's `sharedTransitionTag` is still experimental behind a Fabric flag (4.2+);
-SwiftUI `matchedGeometryEffect` is the native benchmark but has no RN equivalent at
-production maturity. Per Part 2, ONE TRACK doesn't have two independently-mounted
-screens to interpolate between, so even a mature library primitive wouldn't drop in —
-this would be custom-built on entry identity, is high-cost, high-risk (the reject
-history in the contract at `:652-659` shows this codebase has already burned time on a
-structurally similar idea — a second competing render lane — and rejected it). Do not
-sequence this before (a)-(d); it's a "someday, prove the library first" item, not a
-near-term move.
-
-**(f) `<Activity>` / freeze evaluation for NON-track surfaces only — LOW urgency, scoped.**
-React 19.2's `<Activity>` (hidden preserves state, low-priority re-render, ~2x memory)
-is the closest first-party analogue to what the track already does by hand for scene
-state. It should NOT be evaluated for the track itself — the track's bespoke
-entry-identity + depth-3 retention + frozen-body system is more precise than
-`<Activity>`'s coarser hidden/visible binary, and replacing hand-tuned machinery with a
-generic primitive here would be a regression, not an upgrade. It's worth evaluating
-for surfaces OUTSIDE the track that have no retention story at all today (e.g. modal
-overlays, standalone non-sheet screens) where the memory cost is easy to bound and
-there's no existing bespoke system to disturb.
+What it makes HARD (stated honestly, kept from v1): per-screen native view retention
+(no second native view exists to freeze), and off-the-shelf shared-element transitions
+(no two hierarchies to interpolate between — any hero-motion is custom overlay work
+keyed on entry identity; do not sequence before the ladder below).
 
 ---
 
-## Part 5 — Top 5 moves, by user-felt payoff
+## Part 3 — Where the old plans were led astray
 
-1. **Fix the toggle seam's bare-white gap (4a).** A user switching Live↔Results
-   currently sees ~340–650ms of blank space where every other switch in the app shows
-   retained content. This is the single largest, already-measured, already-in-pattern
-   fix available — it makes the toggle behave like every other switch already does.
+Full lineage: engine-design → pillars → increment-1 → canonical-finish →
+canonical-master → final-master → page-switch → page-composition (ONE TRACK) →
+world-derivation → residents-cutover → endstate-contract. Eight "canonical/final/
+master" docs in six weeks; three superseded within a day of being declared canonical;
+supersession banners only retro-added by the 2026-08-03 truth audit.
 
-2. **Raise `gcTime` on track-hosted queries (4b).** Right now a user can revisit a
-   panel inside the track's own retention window and still eat a full network
-   refetch, because the data cache expires faster (5min default) than the scene state
-   the track is holding onto. Fixing this makes "warm revisit" true end-to-end, not
-   just at the scene-state layer — closes the exact gap OA8's ruling assumes is
-   already closed.
+The recurring failure patterns, each with its exhibit:
 
-3. **Wire image prefetch onto the existing press-down signal (4c).** The prewarm
-   trigger that already makes scene switches feel instant (`onPressIn`) does nothing
-   for the photos inside those scenes today. A user who presses a tab currently gets
-   instant scene state but photos still pop in cold — extending the same trigger to
-   `Image.prefetch` + blurhash closes the last visible "it just appeared" moment on a
-   prewarmed screen.
+1. **Rules written where outcomes belonged.** "No skeleton on revisit" appears in ≥6
+   docs (`page-switch-master-plan.md:91`, `toggle-strip-and-edit-charter.md:102`,
+   `wave3-conformance-audit.md:34`, `wave2-finger-test-checklist.md:36`,
+   `toggle-strip-rebuild-ledger.md:416`, `wave3-corrections-charter.md:57`), copied
+   never re-derived; one doc measured the enforcement cost (340–650ms bare white,
+   `strip-wave-finger-test-checklist.md:22`) and deferred anyway. OA8 corrected this
+   ~4 months late. The toggle seam still pays it today. And
+   `canonical-transition-finish-plan.md:124` sanctioned SPINNERS ("no skeletons
+   needed") — the doctrine drifted against itself.
+2. **Architecture-scale plans for one-line bugs.** `canonical-transition-finish-plan.md`
+   Phase 5 self-documents that the whole revealRoute/childAnchor architecture was
+   unneeded — the fix was one missing `prepareSearchSessionEntry` call (`:139-146`).
+3. **Acceptance gated on evidence that didn't exist.** `canonical-sheet-transition-
+   master-plan.md` gated phases on the `[lodev]` harness — which never existed in the
+   repo. Plans passed on unrunnable checks.
+4. **Primitives orphaned by substrate swaps.** `child-transition-primitive.md`'s
+   SceneBodyReadyGate resolved its scene from a context only the OLD host provided;
+   when the track became default, four scenes rendered blank for months
+   (`skeleton-path-audit.md:89-108`). Pattern: land a primitive, replace the floor
+   under it, never re-home it. R8's whole reason to exist.
+5. **Dead vocabulary kept "for stability."** The crossfade was correctly retired
+   (`transition-engine-final-master-plan.md:27-40`, the 0.75-midpoint leak) but its
+   three-mode ContentMode union was kept, confusing the next month of planning.
+6. **The biggest doc was the deadest.** `prepared-snapshot-presentation-architecture-
+   audit.md` (260KB): 94 of 211 modules it asserts in the present tense don't exist;
+   the machine was deleted wholesale. Yet its INSTINCT (snapshot-based presentation)
+   was frontier-correct — it failed on mechanism (a transaction machine) not on goal;
+   1.6 shows the track makes the goal cheap now.
+7. **Fixing the case nobody complained about.** The press-up handoff D1 correction
+   (contract `:682-709`): the first cut keyed the exemption on paint HISTORY, so every
+   revisit — the measured complaint — still blocked. Metric D2 would have gone green
+   by definition. Both were caught by independent audit, not by the rung's own tests.
+8. **The data layer was never planned at all.** Zero mentions of staleTime/gcTime
+   policy, cache persistence, or image prefetch across the ENTIRE arc until this
+   audit. Every plan fought at the render layer while the layer below (data) and above
+   (images) stayed at framework defaults. This is where the frontier gap actually is.
 
-4. **Retire the toggle seam's "never a skeleton" ban text once (1) ships (Part 3).**
-   Not a runtime change — a documentation change that stops six different plan files
-   from re-deriving a rule that was already shown to cost the user 340-650ms of blank
-   space. Prevents the next feature from copying the same ban into a seventh document.
+Where the planning was RIGHT and the industry confirms it: hard-swap over crossfade;
+seats/policy-as-data; one motion primitive; entry identity; killing the second list
+lane; measuring composited output not intent.
 
-5. **Add `priority`/`cachePolicy` tuning to the two existing `recyclingKey` sites
-   (4c, smaller half).** `PhotoStrip.tsx:140` and `ListsPanel.tsx:148` already do image
-   recycling correctly; they're the cheapest place to prove out `priority="high"` +
-   `cachePolicy="memory-disk"` before rolling it wider, with a fast, low-risk
-   before/after on scroll-in image pop.
+---
 
-**Summary:** the track's own machinery — entry identity, depth-3 retention with
-scroll-memory-surviving-eviction, frozen-last-good bodies, and press-down prewarm — is
-already at or ahead of what react-native-screens and the web's prefetch-on-intent
-canon offer, and OA8 correctly recognized that the old "never show a skeleton on
-revisit" phrasing was describing an outcome of that machinery, not a rule to chase
-independently. The real gaps are one layer up and down from that machinery: the
-React Query cache backing panel data isn't tuned to match the retention window it
-sits behind (staleTime/gcTime), images have zero priming despite a ready-made trigger
-to hang it on, and one surface (the toggle seam) still enforces the literal old ban
-with a measured, admitted cost instead of using the SWR pattern already proven
-elsewhere in the same file.
+## Part 4 — Ranked get-to-frontier plan (leverage ÷ cost)
+
+Measure-first note: items 5–6 are gated on the contract's own open measurement
+(revisit press→real-rows on device); 1–4 need no measurement to justify.
+
+1. **Toggle-seam SWR (kill the bare white).** The one norm violation a user hits daily.
+   `polls-feed-runtime-controller.ts` already has skipSpinner/old-rows-stand for every
+   other refetch path; route the toggle through it. Before/after number already exists
+   (340–650ms → 0). Retire the six-doc ban text in the same commit. LOW cost, HIGH felt.
+2. **React-query policy + defaults.** One `defaultOptions` block (staleTime 30–60s,
+   gcTime ≥ 24h for track-hosted panels), one written policy page, collapse the ad-hoc
+   per-panel values into it. Makes "warm revisit" true end-to-end instead of
+   scene-state-only. LOW cost, HIGH felt (silent refetch storms disappear).
+3. **Prewarm payload: data + images on the existing signals.** A scene→prefetch
+   registry drained by the SAME press-down prewarm; `onPressIn` prefetch on card rows
+   (pollId/restaurantId known at press-down); idle-time warm of resident primaries
+   after boot (1.8). LOW-MEDIUM cost, HIGH felt on first visits and child pushes.
+4. **Image pipeline pass.** expo-image everywhere, `cachePolicy="memory-disk"` +
+   `priority` at the recyclingKey sites first, `Image.prefetch` from the registry in
+   (3), blurhash column when the images pipeline is next touched. LOW-MEDIUM cost,
+   MEDIUM-HIGH felt (photos stop popping).
+5. **Persisted query cache (the disk tier).** `persistQueryClient` + MMKV, app-version
+   buster. Cold launch paints last-session content like every comparable app. MEDIUM
+   cost. Sequence after (2) so persistence persists a tuned cache, not staleTime:0.
+6. **Cold-launch session restore.** Persist route stack + entry scroll offsets at
+   background; replay at boot through revealRoute + existing scroll memory. MEDIUM
+   cost. Pairs with (5) — restoring position without data is a skeleton parade.
+7. **Snapshot tier for revisit first-frames (conditional).** Only if the device
+   measurement shows heavy-scene revisits still slow after 1–5: per-entry native
+   snapshot painted in the deferred frame (1.6). MEDIUM cost, replaces the rejected
+   second-lane rung at a fraction of its risk.
+8. **R8 + one-paint-resolver (already owner-approved).** Not frontier work but the
+   hygiene that keeps the skeleton/frozen decision one honest mechanism; the six
+   rowTypes and the SaveList ruling ride along. Scheduled independently of this audit.
+9. **Shimmer direction + skeleton polish.** L→R shimmer, loud spec-excluded fallback.
+   LOW cost, LOW felt — ride along with (1).
+10. **Shared-element hero motion.** Custom, entry-identity-keyed overlay work; the one
+    frontier item our architecture makes HARDER. Someday-list; prove appetite on one
+    surface (restaurant card → restaurant sheet) before generalizing.
+
+---
+
+## Part 5 — The five gaps a user actually FEELS
+
+1. **Alice flips Live↔Results on the polls tab and the sheet goes blank-white for
+   half a second** — the only moment in the app where switching shows *nothing*. Every
+   other switch shows the old content until the new is ready. (Fix: ladder #1.)
+2. **Bob visits Profile, hops to Lists, comes back 6 minutes later — and watches his
+   own profile refetch from the network** behind a frozen frame, sometimes with fields
+   flickering as they revalidate. The track remembered his screen; the data cache
+   forgot his data. (Fix: #2.)
+3. **Carol presses a poll card and the thread arrives, but the comment data starts
+   fetching only AFTER her finger lifts** — the ~200ms her press-down window offered
+   is thrown away, and the avatars pop in cold after that. (Fix: #3 + #4.)
+4. **Dan force-quits at night; in the morning the app opens to a cold root with
+   skeletons everywhere** — Instagram would have shown him last night's feed
+   instantly and refreshed it silently. We have no disk tier and no restore. (Fix:
+   #5 + #6.)
+5. **Eve returns to a heavy, photo-dense screen and the flip is instant but the rows
+   take a beat to arrive** — the deferred frame shows the frozen body, then the real
+   rows re-render as one big commit. Usually fine; on the heaviest scenes it's the
+   residual slowness the contract already flagged. (Measure; fix with #7 only if the
+   number says so.)
+
+**Bottom line.** The track itself is at or ahead of the frontier on every switching
+mechanic that the arc actually planned — retention model, press-down prewarm trigger,
+choreography, suspension, virtualization, skeleton honesty. The gaps are the layers the
+arc never planned: the DATA tier (untuned, unpersisted), the IMAGE tier (unprimed), one
+copied-ban surface (toggle seam), and session restore. All four are cheap relative to
+what's already built, and three of them bolt onto signals and identities the track
+already provides.

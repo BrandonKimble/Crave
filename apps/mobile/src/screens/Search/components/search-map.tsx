@@ -501,39 +501,39 @@ const SearchMapViewScene = React.memo(
       [cameraRef]
     );
     return (
-    <View ref={mapHostViewRef} style={styles.mapViewport} onLayout={onLayout}>
-      <MapboxGL.MapView
-        ref={mapRef}
-        style={[styles.map, MARKER_VIEW_OVERSCAN_STYLE]}
-        styleURL={styleURL}
-        logoEnabled={false}
-        attributionEnabled={false}
-        scaleBarEnabled={false}
-        gestureSettings={{ panDecelerationFactor: MAP_PAN_DECELERATION_FACTOR }}
-        {...(handleMapViewPress ? { onPress: handleMapViewPress } : {})}
-        {...({
-          onTouchStartCapture: handleTouchStart,
-          onTouchEndCapture: handleTouchEnd,
-          onTouchCancelCapture: handleTouchEnd,
-        } as Record<string, unknown>)}
-        onDidFinishLoadingStyle={handleMapLoadedStyle}
-        onDidFinishLoadingMap={handleMapLoadedMap}
-        onDidFinishRenderingFrame={handleDidFinishRenderingFrame}
-        onDidFinishRenderingFrameFully={handleDidFinishRenderingFrameFully}
-      >
-        <MapboxGL.Images
-          images={{
-            [STYLE_PIN_OUTLINE_IMAGE_ID]: pinAsset,
-            [STYLE_PIN_SHADOW_IMAGE_ID]: pinShadowAsset,
-            [STYLE_PIN_FILL_IMAGE_ID]: { image: pinFillAsset, sdf: true },
-            // All pre-baked pin badge sprites (bucket × rank|score), each a
-            // single 84px (3x) file → scale:3 renders at ~28pt with icon-size:1.
-            ...PIN_BADGE_IMAGE_ENTRIES,
-            // Pre-baked circle dot sprites (10 buckets + highlighted).
-            ...DOT_IMAGE_ENTRIES,
-          }}
-        />
-        {/*
+      <View ref={mapHostViewRef} style={styles.mapViewport} onLayout={onLayout}>
+        <MapboxGL.MapView
+          ref={mapRef}
+          style={[styles.map, MARKER_VIEW_OVERSCAN_STYLE]}
+          styleURL={styleURL}
+          logoEnabled={false}
+          attributionEnabled={false}
+          scaleBarEnabled={false}
+          gestureSettings={{ panDecelerationFactor: MAP_PAN_DECELERATION_FACTOR }}
+          {...(handleMapViewPress ? { onPress: handleMapViewPress } : {})}
+          {...({
+            onTouchStartCapture: handleTouchStart,
+            onTouchEndCapture: handleTouchEnd,
+            onTouchCancelCapture: handleTouchEnd,
+          } as Record<string, unknown>)}
+          onDidFinishLoadingStyle={handleMapLoadedStyle}
+          onDidFinishLoadingMap={handleMapLoadedMap}
+          onDidFinishRenderingFrame={handleDidFinishRenderingFrame}
+          onDidFinishRenderingFrameFully={handleDidFinishRenderingFrameFully}
+        >
+          <MapboxGL.Images
+            images={{
+              [STYLE_PIN_OUTLINE_IMAGE_ID]: pinAsset,
+              [STYLE_PIN_SHADOW_IMAGE_ID]: pinShadowAsset,
+              [STYLE_PIN_FILL_IMAGE_ID]: { image: pinFillAsset, sdf: true },
+              // All pre-baked pin badge sprites (bucket × rank|score), each a
+              // single 84px (3x) file → scale:3 renders at ~28pt with icon-size:1.
+              ...PIN_BADGE_IMAGE_ENTRIES,
+              // Pre-baked circle dot sprites (10 buckets + highlighted).
+              ...DOT_IMAGE_ENTRIES,
+            }}
+          />
+          {/*
           The camera is UNCONTROLLED for center/zoom/heading/pitch. Those used to
           be controlled props (centerCoordinate/zoomLevel/...), which made rnmapbox
           rebuild and re-apply a CameraStop carrying the LAST programmatic center
@@ -554,61 +554,61 @@ const SearchMapViewScene = React.memo(
           mid-gesture fought the user's pinch). Completion ids ride the imperative
           stops; onCameraAnimationComplete still receives them.
         */}
-        <MapboxGL.Camera
-          ref={attachCameraHostRef}
-          defaultSettings={{
-            centerCoordinate: mapCenter ?? USA_FALLBACK_CENTER,
-            zoomLevel: mapZoom ?? USA_FALLBACK_ZOOM,
-          }}
-          padding={cameraPadding ?? ZERO_CAMERA_PADDING}
-          followUserLocation={isFollowingUser}
-          followZoomLevel={13}
-          followPitch={0}
-          followHeading={0}
-          animationMode="none"
-          animationDuration={0}
-          onCameraAnimationComplete={handleCameraAnimationComplete}
-        />
-        <React.Fragment>
-          <MapboxGL.ShapeSource
-            id={OVERLAY_Z_ANCHOR_SOURCE_ID}
-            shape={EMPTY_POINT_FEATURES as FeatureCollection<Point, RestaurantFeatureProperties>}
-          >
-            <MapboxGL.SymbolLayer
-              id={OVERLAY_Z_ANCHOR_LAYER_ID}
-              sourceID={OVERLAY_Z_ANCHOR_SOURCE_ID}
-              style={OVERLAY_Z_ANCHOR_STYLE}
-            />
-            {/* ATTR: no slot, no anchor = default-top placement (above everything) — avoids the
+          <MapboxGL.Camera
+            ref={attachCameraHostRef}
+            defaultSettings={{
+              centerCoordinate: mapCenter ?? USA_FALLBACK_CENTER,
+              zoomLevel: mapZoom ?? USA_FALLBACK_ZOOM,
+            }}
+            padding={cameraPadding ?? ZERO_CAMERA_PADDING}
+            followUserLocation={isFollowingUser}
+            followZoomLevel={13}
+            followPitch={0}
+            followHeading={0}
+            animationMode="none"
+            animationDuration={0}
+            onCameraAnimationComplete={handleCameraAnimationComplete}
+          />
+          <React.Fragment>
+            <MapboxGL.ShapeSource
+              id={OVERLAY_Z_ANCHOR_SOURCE_ID}
+              shape={EMPTY_POINT_FEATURES as FeatureCollection<Point, RestaurantFeatureProperties>}
+            >
+              <MapboxGL.SymbolLayer
+                id={OVERLAY_Z_ANCHOR_LAYER_ID}
+                sourceID={OVERLAY_Z_ANCHOR_SOURCE_ID}
+                style={OVERLAY_Z_ANCHOR_STYLE}
+              />
+              {/* ATTR: no slot, no anchor = default-top placement (above everything) — avoids the
                   fragile aboveLayerID="continent-label" target-missing failure proven via gate0 */}
-            <MapboxGL.SymbolLayer
-              id={SEARCH_LABELS_Z_ANCHOR_LAYER_ID}
-              slot={undefined}
-              sourceID={OVERLAY_Z_ANCHOR_SOURCE_ID}
-              style={OVERLAY_Z_ANCHOR_STYLE}
-              belowLayerID={OVERLAY_Z_ANCHOR_LAYER_ID}
-            />
-            <MapboxGL.SymbolLayer
-              id={SEARCH_PINS_Z_ANCHOR_LAYER_ID}
-              slot={undefined}
-              sourceID={OVERLAY_Z_ANCHOR_SOURCE_ID}
-              style={OVERLAY_Z_ANCHOR_STYLE}
-              belowLayerID={SEARCH_LABELS_Z_ANCHOR_LAYER_ID}
-            />
-          </MapboxGL.ShapeSource>
-          {markerSceneProps ? <SearchMapMarkerScene {...markerSceneProps} /> : null}
-          <ScaleProbeLayer />
-          {userLocationLayerProps ? (
-            <UserLocationLayers
-              userLocationFeatureCollection={userLocationLayerProps.featureCollection}
-              accuracyRingFeatureCollection={userLocationLayerProps.accuracyRingFeatureCollection}
-              userLocationVisualSpec={userLocationLayerProps.visualSpec}
-              shouldAnimatePulse={userLocationLayerProps.shouldAnimatePulse}
-            />
-          ) : null}
-        </React.Fragment>
-      </MapboxGL.MapView>
-    </View>
+              <MapboxGL.SymbolLayer
+                id={SEARCH_LABELS_Z_ANCHOR_LAYER_ID}
+                slot={undefined}
+                sourceID={OVERLAY_Z_ANCHOR_SOURCE_ID}
+                style={OVERLAY_Z_ANCHOR_STYLE}
+                belowLayerID={OVERLAY_Z_ANCHOR_LAYER_ID}
+              />
+              <MapboxGL.SymbolLayer
+                id={SEARCH_PINS_Z_ANCHOR_LAYER_ID}
+                slot={undefined}
+                sourceID={OVERLAY_Z_ANCHOR_SOURCE_ID}
+                style={OVERLAY_Z_ANCHOR_STYLE}
+                belowLayerID={SEARCH_LABELS_Z_ANCHOR_LAYER_ID}
+              />
+            </MapboxGL.ShapeSource>
+            {markerSceneProps ? <SearchMapMarkerScene {...markerSceneProps} /> : null}
+            <ScaleProbeLayer />
+            {userLocationLayerProps ? (
+              <UserLocationLayers
+                userLocationFeatureCollection={userLocationLayerProps.featureCollection}
+                accuracyRingFeatureCollection={userLocationLayerProps.accuracyRingFeatureCollection}
+                userLocationVisualSpec={userLocationLayerProps.visualSpec}
+                shouldAnimatePulse={userLocationLayerProps.shouldAnimatePulse}
+              />
+            ) : null}
+          </React.Fragment>
+        </MapboxGL.MapView>
+      </View>
     );
   },
   (previousProps, nextProps) =>

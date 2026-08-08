@@ -31,10 +31,8 @@ export class RouteHostFoundationRuntime {
   public readonly routeHostVisualRuntimeAuthority: RouteHostVisualRuntimeStateController['routeHostVisualRuntimeAuthority'];
 
   constructor() {
-    this.routeHostOverlayGeometryRuntime =
-      createRouteHostOverlayGeometryStateController();
-    this.routeSharedSheetVisualRuntime =
-      createRouteSharedSheetVisualStateController();
+    this.routeHostOverlayGeometryRuntime = createRouteHostOverlayGeometryStateController();
+    this.routeSharedSheetVisualRuntime = createRouteSharedSheetVisualStateController();
     this.routeHostVisualRuntime = createRouteHostVisualRuntimeStateController();
     this.routeHostSyncLane = {
       syncRouteHostOverlayGeometryRuntime: (routeHostOverlayGeometryRuntime) => {
@@ -48,9 +46,7 @@ export class RouteHostFoundationRuntime {
         );
       },
       syncRouteHostVisualRuntime: (routeHostVisualRuntime) => {
-        this.routeHostVisualRuntime.syncRouteHostVisualRuntime(
-          routeHostVisualRuntime
-        );
+        this.routeHostVisualRuntime.syncRouteHostVisualRuntime(routeHostVisualRuntime);
       },
     };
     this.routeHostOverlayGeometryAuthority =
@@ -68,5 +64,5 @@ export class RouteHostFoundationRuntime {
   }
 }
 
-export const createRouteHostFoundationRuntime =
-  (): RouteHostFoundationRuntime => new RouteHostFoundationRuntime();
+export const createRouteHostFoundationRuntime = (): RouteHostFoundationRuntime =>
+  new RouteHostFoundationRuntime();

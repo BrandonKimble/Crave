@@ -25,9 +25,7 @@ const areRouteSceneLayoutShellsEqual = (
     left.searchBarTop === right.searchBarTop);
 
 const createRouteSceneLayoutShellSnapshot = (
-  routeSceneLayoutFrameSnapshot: ReturnType<
-    RouteSceneLayoutFrameAuthority['getSnapshot']
-  >
+  routeSceneLayoutFrameSnapshot: ReturnType<RouteSceneLayoutFrameAuthority['getSnapshot']>
 ): RouteSceneLayoutShellSnapshot =>
   routeSceneLayoutFrameSnapshot == null
     ? null
@@ -38,9 +36,7 @@ const createRouteSceneLayoutShellSnapshot = (
       };
 
 export class RouteSceneLayoutShellStateController {
-  private routeSceneLayoutFrameSnapshot: ReturnType<
-    RouteSceneLayoutFrameAuthority['getSnapshot']
-  >;
+  private routeSceneLayoutFrameSnapshot: ReturnType<RouteSceneLayoutFrameAuthority['getSnapshot']>;
 
   private snapshot: RouteSceneLayoutShellSnapshot = null;
 
@@ -61,12 +57,9 @@ export class RouteSceneLayoutShellStateController {
       getSnapshot: () => this.snapshot,
     };
     this.recompute(false);
-    this.unsubscribeRouteSceneLayoutFrame =
-      routeSceneLayoutFrameAuthority.subscribe(() => {
-        this.setRouteSceneLayoutFrameSnapshot(
-          routeSceneLayoutFrameAuthority.getSnapshot()
-        );
-      });
+    this.unsubscribeRouteSceneLayoutFrame = routeSceneLayoutFrameAuthority.subscribe(() => {
+      this.setRouteSceneLayoutFrameSnapshot(routeSceneLayoutFrameAuthority.getSnapshot());
+    });
   }
 
   public dispose(): void {
@@ -82,9 +75,7 @@ export class RouteSceneLayoutShellStateController {
   }
 
   private setRouteSceneLayoutFrameSnapshot(
-    routeSceneLayoutFrameSnapshot: ReturnType<
-      RouteSceneLayoutFrameAuthority['getSnapshot']
-    >
+    routeSceneLayoutFrameSnapshot: ReturnType<RouteSceneLayoutFrameAuthority['getSnapshot']>
   ): void {
     if (this.routeSceneLayoutFrameSnapshot === routeSceneLayoutFrameSnapshot) {
       return;
@@ -94,9 +85,7 @@ export class RouteSceneLayoutShellStateController {
   }
 
   private recompute(notify: boolean): void {
-    const nextSnapshot = createRouteSceneLayoutShellSnapshot(
-      this.routeSceneLayoutFrameSnapshot
-    );
+    const nextSnapshot = createRouteSceneLayoutShellSnapshot(this.routeSceneLayoutFrameSnapshot);
 
     if (areRouteSceneLayoutShellsEqual(this.snapshot, nextSnapshot)) {
       return;

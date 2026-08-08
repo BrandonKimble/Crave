@@ -105,11 +105,7 @@ const AppShellMainStack = React.memo(function AppShellMainStack() {
   return (
     <Stack.Navigator screenOptions={{ headerShown: false }}>
       {MAIN_STACK_SCENE_DEFINITIONS.map((scene) => (
-        <Stack.Screen
-          key={scene.routeName}
-          name={scene.routeName}
-          component={scene.component}
-        />
+        <Stack.Screen key={scene.routeName} name={scene.routeName} component={scene.component} />
       ))}
     </Stack.Navigator>
   );

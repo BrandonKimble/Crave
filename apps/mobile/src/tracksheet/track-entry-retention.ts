@@ -43,8 +43,4 @@ export class TrackEntryRetention {
   get size(): number {
     return this.order.length;
   }
-
-  delete(entryKey: TrackEntryKey): void {
-    this.order = this.order.filter((key) => key !== entryKey);
-  }
 }

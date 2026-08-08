@@ -35,7 +35,9 @@ describe('search response cache keys fold in the request locale (F1950)', () => 
   });
 
   it('does not share a cache entry across two requests with the same payload but different locales', async () => {
-    const payload = { query: 'tacos', entities: {} } as Parameters<typeof searchService.naturalSearch>[0];
+    const payload = { query: 'tacos', entities: {} } as Parameters<
+      typeof searchService.naturalSearch
+    >[0];
 
     currentLocale = 'en-US';
     await searchService.naturalSearch(payload);

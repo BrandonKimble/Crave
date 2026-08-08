@@ -38,8 +38,7 @@ const resolveRouteSceneLayoutFrameSnapshot = ({
   routeSceneLayoutNavFrameSnapshot: RouteSceneLayoutNavFrameSnapshot;
   routeSceneLayoutSearchBarFrameSnapshot: RouteSceneLayoutSearchBarFrameSnapshot;
 }): RouteSceneLayoutFrameSnapshot =>
-  routeSceneLayoutNavFrameSnapshot == null ||
-  routeSceneLayoutSearchBarFrameSnapshot == null
+  routeSceneLayoutNavFrameSnapshot == null || routeSceneLayoutSearchBarFrameSnapshot == null
     ? null
     : {
         navBarHeight: routeSceneLayoutNavFrameSnapshot.navBarHeight,
@@ -69,8 +68,7 @@ export class RouteSceneLayoutFrameStateController {
     routeSceneLayoutNavFrameAuthority: RouteSceneLayoutNavFrameAuthority;
     routeSceneLayoutSearchBarFrameAuthority: RouteSceneLayoutSearchBarFrameAuthority;
   }) {
-    this.routeSceneLayoutNavFrameSnapshot =
-      routeSceneLayoutNavFrameAuthority.getSnapshot();
+    this.routeSceneLayoutNavFrameSnapshot = routeSceneLayoutNavFrameAuthority.getSnapshot();
     this.routeSceneLayoutSearchBarFrameSnapshot =
       routeSceneLayoutSearchBarFrameAuthority.getSnapshot();
     this.routeSceneLayoutFrameAuthority = {
@@ -78,12 +76,9 @@ export class RouteSceneLayoutFrameStateController {
       getSnapshot: () => this.snapshot,
     };
     this.recompute(false);
-    this.unsubscribeRouteSceneLayoutNavFrame =
-      routeSceneLayoutNavFrameAuthority.subscribe(() => {
-        this.setRouteSceneLayoutNavFrameSnapshot(
-          routeSceneLayoutNavFrameAuthority.getSnapshot()
-        );
-      });
+    this.unsubscribeRouteSceneLayoutNavFrame = routeSceneLayoutNavFrameAuthority.subscribe(() => {
+      this.setRouteSceneLayoutNavFrameSnapshot(routeSceneLayoutNavFrameAuthority.getSnapshot());
+    });
     this.unsubscribeRouteSceneLayoutSearchBarFrame =
       routeSceneLayoutSearchBarFrameAuthority.subscribe(() => {
         this.setRouteSceneLayoutSearchBarFrameSnapshot(
@@ -118,22 +113,17 @@ export class RouteSceneLayoutFrameStateController {
   private setRouteSceneLayoutSearchBarFrameSnapshot(
     routeSceneLayoutSearchBarFrameSnapshot: RouteSceneLayoutSearchBarFrameSnapshot
   ): void {
-    if (
-      this.routeSceneLayoutSearchBarFrameSnapshot ===
-      routeSceneLayoutSearchBarFrameSnapshot
-    ) {
+    if (this.routeSceneLayoutSearchBarFrameSnapshot === routeSceneLayoutSearchBarFrameSnapshot) {
       return;
     }
-    this.routeSceneLayoutSearchBarFrameSnapshot =
-      routeSceneLayoutSearchBarFrameSnapshot;
+    this.routeSceneLayoutSearchBarFrameSnapshot = routeSceneLayoutSearchBarFrameSnapshot;
     this.recompute(true);
   }
 
   private recompute(notify: boolean): void {
     const nextSnapshot = resolveRouteSceneLayoutFrameSnapshot({
       routeSceneLayoutNavFrameSnapshot: this.routeSceneLayoutNavFrameSnapshot,
-      routeSceneLayoutSearchBarFrameSnapshot:
-        this.routeSceneLayoutSearchBarFrameSnapshot,
+      routeSceneLayoutSearchBarFrameSnapshot: this.routeSceneLayoutSearchBarFrameSnapshot,
     });
 
     if (areRouteSceneLayoutFramesEqual(this.snapshot, nextSnapshot)) {
@@ -155,7 +145,9 @@ export class RouteSceneLayoutFrameStateController {
 export const createRouteSceneLayoutFrameStateController = ({
   routeSceneLayoutNavFrameAuthority,
   routeSceneLayoutSearchBarFrameAuthority,
-}: ConstructorParameters<typeof RouteSceneLayoutFrameStateController>[0]): RouteSceneLayoutFrameStateController =>
+}: ConstructorParameters<
+  typeof RouteSceneLayoutFrameStateController
+>[0]): RouteSceneLayoutFrameStateController =>
   new RouteSceneLayoutFrameStateController({
     routeSceneLayoutNavFrameAuthority,
     routeSceneLayoutSearchBarFrameAuthority,

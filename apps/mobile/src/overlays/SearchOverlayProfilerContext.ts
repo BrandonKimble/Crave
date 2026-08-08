@@ -1,7 +1,8 @@
 import React from 'react';
 
-const SearchOverlayProfilerContext =
-  React.createContext<React.ProfilerOnRenderCallback | null>(null);
+const SearchOverlayProfilerContext = React.createContext<React.ProfilerOnRenderCallback | null>(
+  null
+);
 
 export const SearchOverlayProfilerProvider = SearchOverlayProfilerContext.Provider;
 

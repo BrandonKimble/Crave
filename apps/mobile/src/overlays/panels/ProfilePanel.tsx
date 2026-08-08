@@ -4,8 +4,10 @@ import { Feather } from '@expo/vector-icons';
 import { Text } from '../../components';
 import { colors as themeColors } from '../../constants/theme';
 import { registerPersistentHeaderDescriptor } from '../../navigation/runtime/app-route-persistent-header-registry';
-import { useBottomSheetSceneStackBodyIsActive,
-  useBottomSheetSceneStackBodyRenderActivity } from '../BottomSheetSceneStackBodyActivityContext';
+import {
+  useBottomSheetSceneStackBodyIsActive,
+  useBottomSheetSceneStackBodyRenderActivity,
+} from '../BottomSheetSceneStackBodyActivityContext';
 import { useSearchOverlayProfilerRender } from '../SearchOverlayProfilerContext';
 import { FrostCutout } from '../SceneBodyFoundationSurface';
 import { ChromeTitleText, toSingleLineText } from '../ChromeTitleText';
@@ -94,7 +96,11 @@ const ProfileIdentityChrome = React.memo(
             {!identityResolved ? (
               <>
                 <CutoutSkeletonShape width={160} height={20} style={styles.identitySkeletonName} />
-                <CutoutSkeletonShape width={100} height={12} style={styles.identitySkeletonUsername} />
+                <CutoutSkeletonShape
+                  width={100}
+                  height={12}
+                  style={styles.identitySkeletonUsername}
+                />
               </>
             ) : (
               <>

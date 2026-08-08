@@ -16,12 +16,11 @@
 // (`hasRealRows`) because the two-phase cold-flip PERF probe measures rows
 // arrival, not lane arrival.
 //
-// OA6.1 (skeleton vs frozen world): the skeleton is legal ONLY while an entry
-// has never had content. Once an entry's lane existed, a later resolution gap
-// presents the FROZEN last-good body, never a skeleton — content is never
-// replaced by a skeleton when content exists. The ledger latches that fact.
-
-import type { TrackEntryKey } from './track-entry-identity';
+// R8/OA8 (2026-08-08): the READINESS LEDGER that used to live here is DELETED.
+// Its latch ("has shown content") existed only to pick frozen-vs-skeleton on a
+// resolution gap, and OA8 made that decision the one paint resolver's job
+// (track-paint-resolver.ts) keyed on "a frozen body EXISTS" — the store that
+// has the body is the latch. What remains here are the resolution FACTS.
 
 export type TrackEntryBodyResolution =
   /** No lane produced a body for this entry this commit. */
@@ -40,34 +39,3 @@ export const isResolutionReady = (resolution: TrackEntryBodyResolution): boolean
  * internal loading is the scene's declared state — the host does not reach in). */
 export const resolutionHasRealRows = (resolution: TrackEntryBodyResolution): boolean =>
   resolution.kind === 'mounted' || (resolution.kind === 'list' && resolution.rowCount > 0);
-
-export type TrackEntryBodyPhase = 'content' | 'skeleton' | 'frozen';
-
-export class TrackEntryReadinessLedger {
-  private readonly latched = new Set<TrackEntryKey>();
-
-  /**
-   * The one paint decision, made at the commit that switches (G-READY):
-   *   ready               → 'content'  (and the entry latches: it has content)
-   *   not ready, unlatched → 'skeleton' (cold first visit — same commit, no wait)
-   *   not ready, latched   → 'frozen'  (OA6.1: never skeleton after content)
-   * Never returns "wait": every commit paints a body.
-   */
-  present(entryKey: TrackEntryKey, ready: boolean): TrackEntryBodyPhase {
-    if (ready) {
-      this.latched.add(entryKey);
-      return 'content';
-    }
-    return this.latched.has(entryKey) ? 'frozen' : 'skeleton';
-  }
-
-  hasShownContent(entryKey: TrackEntryKey): boolean {
-    return this.latched.has(entryKey);
-  }
-
-  /** Eviction hygiene: a child entryId never returns (re-push mints a new id),
-   * so its latch may be dropped with its leg. Residents are never forgotten. */
-  forget(entryKey: TrackEntryKey): void {
-    this.latched.delete(entryKey);
-  }
-}

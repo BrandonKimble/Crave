@@ -60,10 +60,9 @@ export type RouteSceneSwitchSheetMotionPlan =
   | {
       kind: 'promoteAtLeast';
       snap: Exclude<BottomSheetSnap, 'hidden'>;
-      mode?: BottomSheetMotionCommand['mode'];
     }
-  | { kind: 'snapTo'; snap: BottomSheetSnap; mode?: BottomSheetMotionCommand['mode'] }
-  | { kind: 'hide'; mode?: BottomSheetMotionCommand['mode'] }
+  | { kind: 'snapTo'; snap: BottomSheetSnap }
+  | { kind: 'hide' }
   | { kind: 'none' };
 
 export type RouteSceneSwitchSheetContentHandoff =

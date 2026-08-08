@@ -127,9 +127,7 @@ export class AppRouteSceneMotionController implements AppRouteSceneMotionRuntime
           sheetTransitionKind: 'bootstrap',
           sheetOpenerSource: 'routeCommand',
           sheetMotion:
-            request.snap === 'hidden'
-              ? { kind: 'hide', mode: request.mode }
-              : { kind: 'snapTo', snap: request.snap, mode: request.mode },
+            request.snap === 'hidden' ? { kind: 'hide' } : { kind: 'snapTo', snap: request.snap },
           contentHandoff: 'swapImmediately',
           chromeVisibilityTarget: PRESERVE_ROUTE_SCENE_SWITCH_CHROME_TARGET,
           routeAction: 'preserve',

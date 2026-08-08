@@ -39,34 +39,28 @@ export class RouteSheetVisualAssemblyRuntime {
     routeHostFoundationRuntime: RouteHostFoundationRuntime;
   }) {
     this.routeSheetPresentationRuntime = createRouteSheetPresentationStateController({
-      routeSharedSheetVisualAuthority:
-        routeHostFoundationRuntime.routeSharedSheetVisualAuthority,
+      routeSharedSheetVisualAuthority: routeHostFoundationRuntime.routeSharedSheetVisualAuthority,
     });
-    this.routeSheetChromeGeometryRuntime =
-      createRouteSheetChromeGeometryStateController({
-        routeHostOverlayGeometryAuthority:
-          routeHostFoundationRuntime.routeHostOverlayGeometryAuthority,
-      });
-    this.routeSheetChromeMotionRuntime =
-      createRouteSheetChromeMotionStateController({
-        routeHostVisualRuntimeAuthority:
-          routeHostFoundationRuntime.routeHostVisualRuntimeAuthority,
-      });
-    this.routeSheetChromeVisualRuntime =
-      createRouteSheetChromeVisualStateController({
-        routeSheetChromeGeometryAuthority:
-          this.routeSheetChromeGeometryRuntime.routeSheetChromeGeometryAuthority,
-        routeSheetChromeMotionAuthority:
-          this.routeSheetChromeMotionRuntime.routeSheetChromeMotionAuthority,
-      });
+    this.routeSheetChromeGeometryRuntime = createRouteSheetChromeGeometryStateController({
+      routeHostOverlayGeometryAuthority:
+        routeHostFoundationRuntime.routeHostOverlayGeometryAuthority,
+    });
+    this.routeSheetChromeMotionRuntime = createRouteSheetChromeMotionStateController({
+      routeHostVisualRuntimeAuthority: routeHostFoundationRuntime.routeHostVisualRuntimeAuthority,
+    });
+    this.routeSheetChromeVisualRuntime = createRouteSheetChromeVisualStateController({
+      routeSheetChromeGeometryAuthority:
+        this.routeSheetChromeGeometryRuntime.routeSheetChromeGeometryAuthority,
+      routeSheetChromeMotionAuthority:
+        this.routeSheetChromeMotionRuntime.routeSheetChromeMotionAuthority,
+    });
     this.routeSheetVisualRuntime = createRouteSheetVisualStateController({
       routeSheetPresentationAuthority:
         this.routeSheetPresentationRuntime.routeSheetPresentationAuthority,
       routeSheetChromeVisualAuthority:
         this.routeSheetChromeVisualRuntime.routeSheetChromeVisualAuthority,
     });
-    this.routeSheetVisualAuthority =
-      this.routeSheetVisualRuntime.routeSheetVisualAuthority;
+    this.routeSheetVisualAuthority = this.routeSheetVisualRuntime.routeSheetVisualAuthority;
   }
 
   public dispose(): void {

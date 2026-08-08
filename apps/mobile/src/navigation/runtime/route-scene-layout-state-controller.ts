@@ -52,8 +52,7 @@ const createRouteSceneLayoutSnapshot = ({
   routeSceneLayoutSheetSnapshot: RouteSceneLayoutSheetSnapshot;
 }): RouteSceneLayoutSnapshot => ({
   routeSceneLayout:
-    routeSceneLayoutShellSnapshot == null ||
-    routeSceneLayoutSheetSnapshot == null
+    routeSceneLayoutShellSnapshot == null || routeSceneLayoutSheetSnapshot == null
       ? null
       : {
           navBarHeight: routeSceneLayoutShellSnapshot.navBarHeight,
@@ -68,8 +67,7 @@ export class RouteSceneLayoutStateController {
 
   private routeSceneLayoutSheetSnapshot: RouteSceneLayoutSheetSnapshot;
 
-  private routeSceneLayoutSnapshot: RouteSceneLayoutSnapshot =
-    EMPTY_ROUTE_SCENE_LAYOUT_SNAPSHOT;
+  private routeSceneLayoutSnapshot: RouteSceneLayoutSnapshot = EMPTY_ROUTE_SCENE_LAYOUT_SNAPSHOT;
 
   private readonly sceneLayoutListeners = new Set<Listener>();
 
@@ -87,25 +85,18 @@ export class RouteSceneLayoutStateController {
     routeSceneLayoutSheetAuthority: OutputAuthority<RouteSceneLayoutSheetSnapshot>;
   }) {
     this.routeSceneLayoutShellSnapshot = routeSceneLayoutShellAuthority.getSnapshot();
-    this.routeSceneLayoutSheetSnapshot =
-      routeSceneLayoutSheetAuthority.getSnapshot();
+    this.routeSceneLayoutSheetSnapshot = routeSceneLayoutSheetAuthority.getSnapshot();
     this.routeSceneLayoutAuthority = {
       subscribe: (listener) => this.subscribeTo(listener),
       getSnapshot: () => this.routeSceneLayoutSnapshot,
     };
     this.recompute(false);
-    this.unsubscribeRouteSceneLayoutShell =
-      routeSceneLayoutShellAuthority.subscribe(() => {
-        this.setRouteSceneLayoutShellSnapshot(
-          routeSceneLayoutShellAuthority.getSnapshot()
-        );
-      });
-    this.unsubscribeRouteSceneLayoutSheet =
-      routeSceneLayoutSheetAuthority.subscribe(() => {
-        this.setRouteSceneLayoutSheetSnapshot(
-          routeSceneLayoutSheetAuthority.getSnapshot()
-        );
-      });
+    this.unsubscribeRouteSceneLayoutShell = routeSceneLayoutShellAuthority.subscribe(() => {
+      this.setRouteSceneLayoutShellSnapshot(routeSceneLayoutShellAuthority.getSnapshot());
+    });
+    this.unsubscribeRouteSceneLayoutSheet = routeSceneLayoutSheetAuthority.subscribe(() => {
+      this.setRouteSceneLayoutSheetSnapshot(routeSceneLayoutSheetAuthority.getSnapshot());
+    });
   }
 
   public dispose(): void {
@@ -148,10 +139,7 @@ export class RouteSceneLayoutStateController {
     });
 
     if (
-      areRouteSceneLayoutSnapshotsEqual(
-        this.routeSceneLayoutSnapshot,
-        nextRouteSceneLayoutSnapshot
-      )
+      areRouteSceneLayoutSnapshotsEqual(this.routeSceneLayoutSnapshot, nextRouteSceneLayoutSnapshot)
     ) {
       return;
     }

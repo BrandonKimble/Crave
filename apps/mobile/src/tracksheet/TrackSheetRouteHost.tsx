@@ -29,6 +29,7 @@ import type { OverlayKey } from '../overlays/types';
 import { getSearchStartupGeometrySeed } from '../screens/Search/runtime/shared/search-startup-geometry-seed-runtime';
 import { TrackSheetPage } from './TrackSheetPage';
 import { resolveHiddenPresentation } from './track-entry-hidden';
+import { TrackPresentedEntryLatch } from './track-presented-authority';
 import { getTrackMotionAuthority } from './track-motion-authority';
 import { ChromeProbeBoundary, renderListLeader } from './track-sheet-chrome-parts';
 import { runTrackCommitTxnBridge } from './track-txn-bridge';
@@ -46,9 +47,8 @@ import { useTrackA11yAnnouncer } from './use-track-a11y-announcer';
 
 // ─── TrackSheetRouteHost — THE PRODUCTION SHEET HOST ──────────────────────────
 //
-// This file IS the sheet the app renders through. `track-flip-store.ts:12` ships
-// `on: true` and this host is mounted unconditionally; the strangler completed at
-// rung 5 (see "THE FLIP" below). It owns the scene's registered persistent-header
+// This file IS the sheet the app renders through — the ONLY sheet system since
+// R8 deleted the old host subtree (the rung-5 flip and its off-branch are gone). It owns the scene's registered persistent-header
 // descriptor (Title + Strip from the registry), the calculateSnapPoints geometry
 // riding the track, scene switching, and the real scene bodies.
 //
@@ -62,9 +62,10 @@ import { useTrackA11yAnnouncer } from './use-track-a11y-announcer';
 // frame, resolve the presented (scene, entry), build the chrome, hand the page a
 // plan.
 //
-// The deep link is the EMERGENCY ROLLBACK + debug-visuals toggle, not the way in:
+// The deep link is the debug-visuals toggle (R8: the on=0 rollback died with
+// the old system):
 //
-//   crave://tracksheet-host?on=0   (rollback to the old host; on=1 restores; scene: any OverlayKey)
+//   crave://tracksheet-host?debug=1|0  ·  crave://tracksheet-host?row=bare|full
 //
 // F877 (2026-08-03): this header used to read "migration RUNG 1 (dev-flagged parallel
 // host) … The old sheet host is untouched; this renders above it behind a dev deep link"
@@ -77,9 +78,6 @@ const DEEP_LINK_HOST = 'tracksheet-host';
 
 export const TrackSheetRouteHost: React.FC = () => {
   assertMountedBodyAgreement();
-  // THE FLIP (rung 5): the track host is the DEFAULT. The deep link is the
-  // emergency rollback + debug-visuals toggle (see track-flip-store).
-  const state = useTrackFlipState();
   // THE ONE native edge subscription for the whole track (motion controller):
   // mounted once, at the root, feeding the motion authority.
   useNativeHiddenEdgeSource();
@@ -88,11 +86,6 @@ export const TrackSheetRouteHost: React.FC = () => {
     const handleUrl = (url: string | null) => {
       if (!url || !url.includes(DEEP_LINK_HOST)) {
         return;
-      }
-      if (/[?&]on=(0|false)/i.test(url)) {
-        setTrackFlipState({ on: false });
-      } else if (/[?&]on=(1|true)/i.test(url)) {
-        setTrackFlipState({ on: true });
       }
       const rowProbeMatch = /[?&]row=(bare|full)/i.exec(url);
       if (rowProbeMatch != null) {
@@ -118,8 +111,8 @@ export const TrackSheetRouteHost: React.FC = () => {
       // z at the SIBLING level: zIndex only competes among siblings, and the
       // production stack (z 90) is THIS wrapper's sibling — an inner z was
       // silently losing whenever the sheets overlapped (anti-trap round 3).
-      style={[StyleSheet.absoluteFill, styles.hostAboveStack, !state.on && styles.hidden]}
-      pointerEvents={state.on ? 'box-none' : 'none'}
+      style={[StyleSheet.absoluteFill, styles.hostAboveStack]}
+      pointerEvents="box-none"
     >
       <NavExcludedTrackSurface scene={'polls' as OverlayKey} />
     </View>
@@ -300,10 +293,14 @@ const TrackSheetRouteSurface: React.FC<{ scene: OverlayKey }> = ({ scene: sceneO
   // target); the paint decision is pure (resolveHiddenPresentation). The
   // txn's 'boundary' join input — declared by the stager for freeze plans —
   // is offered HERE, so the reveal joins exactly at the edge.
-  const paintedRef = React.useRef<{ scene: OverlayKey; entryId: string | null }>({
-    scene,
-    entryId: sceneEntryId ?? null,
-  });
+  // THE ONE PRESENTED AUTHORITY (R8 opener item 1): the last-painted entry,
+  // host-owned, handed down — replaces the four presented-refs (paintedRef
+  // here, the resolver's live ref, the page's current+prev pair).
+  const presentedLatchRef = React.useRef<TrackPresentedEntryLatch | null>(null);
+  if (presentedLatchRef.current == null) {
+    presentedLatchRef.current = new TrackPresentedEntryLatch(scene, sceneEntryId ?? null);
+  }
+  const presentedLatch = presentedLatchRef.current;
   const clearedTxnRef = React.useRef<unknown>(null);
   const [, bumpEdgeSeq] = React.useReducer((n: number) => n + 1, 0);
   React.useEffect(
@@ -330,14 +327,15 @@ const TrackSheetRouteSurface: React.FC<{ scene: OverlayKey }> = ({ scene: sceneO
   const presentation = resolveHiddenPresentation({
     frameScene: scene,
     frameEntryId: sceneEntryId ?? null,
-    paintedScene: paintedRef.current.scene,
-    paintedEntryId: paintedRef.current.entryId,
+    paintedScene: presentedLatch.paintedScene,
+    paintedEntryId: presentedLatch.paintedEntryId,
     hideInFlight,
     edgeCleared: clearedTxnRef.current === liveTxnForHide,
   });
   const paintedScene = presentation.scene as OverlayKey;
   const paintedEntryId = presentation.entryId;
-  paintedRef.current = { scene: paintedScene, entryId: paintedEntryId };
+  // ONE write site: the commit that decides what is painted.
+  presentedLatch.commitPainted(paintedScene, paintedEntryId);
 
   const activeEntry = React.useMemo(() => {
     if (paintedEntryId == null) {
@@ -361,6 +359,7 @@ const TrackSheetRouteSurface: React.FC<{ scene: OverlayKey }> = ({ scene: sceneO
       entryId={paintedEntryId}
       snapPoints={snapPoints}
       entry={activeEntry}
+      presentedLatch={presentedLatch}
     />
   );
 };
@@ -371,6 +370,7 @@ type TrackScenePageProps = {
   entryId: string | null;
   snapPoints: ReturnType<typeof getSearchStartupGeometrySeed>['routeOverlaySnapPoints'];
   entry?: OverlayRouteEntry | null;
+  presentedLatch: TrackPresentedEntryLatch;
 };
 
 /** Shared chrome + page assembly for every scene page. The MOTION half of this
@@ -495,6 +495,7 @@ const UnifiedTrackScenePage: React.FC<TrackScenePageProps> = ({
   entryId,
   snapPoints,
   entry,
+  presentedLatch,
 }) => {
   const debugVisuals = useTrackFlipState().debug;
   const {
@@ -510,7 +511,12 @@ const UnifiedTrackScenePage: React.FC<TrackScenePageProps> = ({
     sharedSheetPublicationBindings,
     onGestureSettle,
   } = useTrackScenePageChrome(scene, snapPoints);
-  const { presentedEntryKey, legs } = useTrackLegResolver({ scene, entryId, entry });
+  const { presentedEntryKey, legs } = useTrackLegResolver({
+    scene,
+    entryId,
+    entry,
+    presentedLatch,
+  });
   // G-A11Y: the swap IS the navigation event. The host states it (announce +
   // move the cursor to the destination's header) because nothing else can —
   // one persistent list emits no screen change. Decision: track-a11y-plan.ts.
@@ -529,6 +535,7 @@ const UnifiedTrackScenePage: React.FC<TrackScenePageProps> = ({
         onGrabHandlePress={onGrabHandlePress}
         legs={legs}
         presentedEntryKey={presentedEntryKey}
+        presentedLatch={presentedLatch}
         headerFocusRef={headerFocusRef}
         debugHud={debugVisuals}
         commandsRef={commandsRef}
@@ -548,7 +555,6 @@ const UnifiedTrackScenePage: React.FC<TrackScenePageProps> = ({
 
 const styles = StyleSheet.create({
   root: { ...StyleSheet.absoluteFillObject, zIndex: 91 },
-  hidden: { opacity: 0 },
   hostAboveStack: { zIndex: 91 },
   fallbackTitle: { fontSize: 20, fontWeight: '700', color: '#0f172a' },
 });

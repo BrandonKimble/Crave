@@ -60,8 +60,7 @@ export const usePerfScaleProbeStore = create<ScaleProbeState>((set) => ({
       collide: collide === true,
       generation: state.generation + 1,
     })),
-  clearProbe: () =>
-    set((state) => ({ markerCount: 0, generation: state.generation + 1 })),
+  clearProbe: () => set((state) => ({ markerCount: 0, generation: state.generation + 1 })),
 }));
 
 // Cheap deterministic hash → [0,1) for per-index jitter (no Math.random).

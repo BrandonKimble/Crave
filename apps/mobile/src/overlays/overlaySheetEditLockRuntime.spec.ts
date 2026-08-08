@@ -2,10 +2,13 @@
 // (same reason jest.sentry-stub.js exists for @sentry/react-native). `makeMutable`'s
 // only contract this file relies on is "returns a mutable { value }" — stub exactly that.
 jest.mock('react-native-reanimated', () => ({
-  makeMutable: <T,>(initial: T) => ({ value: initial }),
+  makeMutable: <T>(initial: T) => ({ value: initial }),
 }));
 
-import { acquireOverlaySheetEditLock, overlaySheetEditLockValue } from './overlaySheetEditLockRuntime';
+import {
+  acquireOverlaySheetEditLock,
+  overlaySheetEditLockValue,
+} from './overlaySheetEditLockRuntime';
 
 // F1484: the lock used to be a `Set<string>`, so two acquisitions of the SAME token
 // yielded two releases and the FIRST release dropped the key — silently unlocking a

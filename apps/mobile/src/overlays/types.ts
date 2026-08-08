@@ -34,7 +34,6 @@ export type OverlaySheetSnapRequest = {
   snap: OverlaySheetSnap;
   token?: number | null;
   settleToken?: number | null;
-  mode?: 'spring' | 'instant';
 };
 
 export type SnapProfile = {
