@@ -130,3 +130,54 @@ describe('GeminiBatchService.submit (§24 red team finding 1)', () => {
     expect(spendCampaigns.isDispatchable).not.toHaveBeenCalled();
   });
 });
+
+/**
+ * F-async (2026-08-08): the last two bare status writes are now GUARDED
+ * conditional transitions. Mutation proof: a cancel racing a TERMINAL state
+ * must no-op (updateMany count 0, no throw, record kept) — before the fix,
+ * cancel() stamped 'failed' over 'ingested', erasing a completed PAID
+ * ingest. Weaken the where-clause back to bare {jobId} and the terminal
+ * assertion below goes red.
+ */
+describe('GeminiBatchService.cancel — terminal states are unclobberable', () => {
+  function buildCancelHarness(updateManyCount: number) {
+    const updateMany = jest.fn().mockResolvedValue({ count: updateManyCount });
+    const prisma = {
+      llmBatchJob: {
+        findUnique: jest.fn().mockResolvedValue({ providerJobName: null }),
+        updateMany,
+      },
+    };
+    const service = new GeminiBatchService(
+      prisma as never,
+      stubLogger() as never,
+      { record: jest.fn() } as never,
+      { assertGeminiSpendOpen: jest.fn() } as never,
+      { isDispatchable: jest.fn() } as never,
+      { batchTransportOps: () => ({ cancel: jest.fn() }) } as never,
+    );
+    return { service, updateMany };
+  }
+
+  it('cancel writes only through a live-state precondition', async () => {
+    const { service, updateMany } = buildCancelHarness(1);
+    await service.cancel('job-1');
+    const where = (
+      updateMany.mock.calls[0] as [{ where: { status?: { in?: string[] } } }]
+    )[0].where;
+    // THE GUARD ITSELF: the write must carry a status precondition that
+    // excludes every terminal state. Bare {jobId} (the old shape) fails here.
+    expect(where.status?.in).toEqual(
+      expect.arrayContaining(['pending', 'submitted']),
+    );
+    expect(where.status?.in ?? []).not.toContain('succeeded');
+    expect(where.status?.in ?? []).not.toContain('ingested');
+    expect(where.status?.in ?? []).not.toContain('failed');
+  });
+
+  it('a cancel racing a terminal state no-ops without throwing', async () => {
+    const { service, updateMany } = buildCancelHarness(0);
+    await expect(service.cancel('job-terminal')).resolves.toBeUndefined();
+    expect(updateMany).toHaveBeenCalledTimes(1);
+  });
+});

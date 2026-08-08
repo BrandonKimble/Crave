@@ -368,10 +368,25 @@ export class GeminiBatchService implements OnModuleDestroy {
     if (job?.providerJobName) {
       await this.batchOps.cancel(job.providerJobName);
     }
-    await this.prisma.llmBatchJob.update({
-      where: { jobId },
+    // GUARDED: cancel only overtakes LIVE states — a job that already
+    // reached a terminal state ('succeeded'/'ingested'/'failed') keeps its
+    // truth; stamping 'failed' over 'ingested' would erase a completed,
+    // PAID ingest from the record.
+    const cancelled = await this.prisma.llmBatchJob.updateMany({
+      where: {
+        jobId,
+        status: {
+          in: ['pending', 'submitting', 'submitted', 'ingesting', 'persisting'],
+        },
+      },
       data: { status: 'failed', error: 'cancelled', completedAt: new Date() },
     });
+    if (cancelled.count === 0) {
+      this.logger.warn(
+        'Batch cancel no-oped — job already in a terminal state; record kept',
+        { jobId },
+      );
+    }
   }
 
   @Cron(CronExpression.EVERY_5_MINUTES)
@@ -775,14 +790,24 @@ export class GeminiBatchService implements OnModuleDestroy {
         );
       } else {
         // Back to 'succeeded' so the cron retries ingestion (bounded above).
-        await this.prisma.llmBatchJob.update({
-          where: { jobId },
+        // GUARDED like every sibling write: only the 'ingesting' claim-holder
+        // may requeue — a reclaimed job's late failure must not resurrect a
+        // row whose state was decided elsewhere (same unguarded-status-write
+        // class the async-integrity doc exists to kill).
+        const requeued = await this.prisma.llmBatchJob.updateMany({
+          where: { jobId, status: 'ingesting' },
           data: {
             status: 'succeeded',
             error: causeChain,
             leaseExpiresAt: null,
           },
         });
+        if (requeued.count === 0) {
+          this.logger.error(
+            'Batch ingest retry write no-oped — claim was gone (reclaimed mid-ingest); not resurrecting',
+            { jobId, purpose },
+          );
+        }
       }
       throw error;
     } finally {
