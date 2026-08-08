@@ -1,18 +1,17 @@
 {
-  "ranAt": "2026-08-04T14:16:53.394Z",
+  "ranAt": "2026-08-08T00:50:31.704Z",
   "lang": "es",
   "corpusVersion": 1,
   "scoreboard": {
-    "overall": 77.33333333333333,
-    "top1SingleConcept": 81,
+    "overall": 98,
+    "top1SingleConcept": 98,
     "negationNonInversion": 100,
-    "constraintPreservation": 65,
+    "constraintPreservation": 98.33333333333333,
     "homographMisGroundings": [
       "тако→tako[linked]",
-      "sopa→pork and pineapple sopa[linked]",
-      "sal→salsa[linked]"
+      "chile→chili pepper[gazetteer-exact]"
     ],
-    "homographMisGroundingsExact": []
+    "homographMisGroundingsExact": ["chile→chili pepper[gazetteer-exact]"]
   },
   "results": [
     {
@@ -126,6 +125,15 @@
       "preservation": 1,
       "reasons": [],
       "grounded": [
+        {
+          "entityId": "53df955f-ec55-4392-ba46-e1184c52fafc",
+          "bucket": "food",
+          "type": "food",
+          "span": "barbacoa",
+          "name": "bbq",
+          "tier": "gazetteer-exact",
+          "foldedName": "bbq"
+        },
         {
           "entityId": "5f29f44f-5c1e-47e6-9380-095d374abcf0",
           "bucket": "food",
@@ -700,51 +708,18 @@
       "query": "pulpo",
       "stratum": "single_noun",
       "locale": "es-US",
-      "pass": false,
-      "preservation": 0,
-      "reasons": ["NOT GROUNDED: octopus"],
-      "grounded": [],
-      "excluded": [],
-      "unresolved": ["pulpo"],
-      "analysis": {
-        "script": "latin",
-        "requestLocale": "es-US",
-        "detectedLocale": {
-          "tag": "es-US",
-          "confidence": 0.5,
-          "source": "request-prior"
-        },
-        "denseTierUsed": true
-      },
-      "misGroundings": [],
-      "notes": "TRANSLATION BRIDGE. No 'pulpo' row exists — only the M4 dense tier can reach octopus. The plan's headline dense result."
-    },
-    {
-      "id": "sn-22",
-      "query": "camarones",
-      "stratum": "single_noun",
-      "locale": "es-US",
       "pass": true,
-      "preservation": 0,
-      "reasons": ["parked (allowed for this entry)"],
+      "preservation": 1,
+      "reasons": [],
       "grounded": [
         {
-          "entityId": "13c8e4b6-d673-4206-bdd3-68a6bc711f92",
+          "entityId": "d85c0a5f-475a-4cbd-9042-8c35c38be3a4",
           "bucket": "food",
           "type": "food",
-          "span": "camarones",
-          "name": "camarones enchilados",
-          "tier": "linked",
-          "foldedName": "camarones enchilados"
-        },
-        {
-          "entityId": "a9fb6a4e-ceaf-4931-8c6a-e7bf433f87dc",
-          "bucket": "food",
-          "type": "food",
-          "span": "camarones",
-          "name": "camaron machete",
-          "tier": "linked",
-          "foldedName": "camaron machete"
+          "span": "pulpo",
+          "name": "octopus",
+          "tier": "gazetteer-exact",
+          "foldedName": "octopus"
         }
       ],
       "excluded": [],
@@ -757,7 +732,50 @@
           "confidence": 0.5,
           "source": "request-prior"
         },
-        "denseTierUsed": true
+        "denseTierUsed": false
+      },
+      "misGroundings": [],
+      "notes": "TRANSLATION BRIDGE. No 'pulpo' row exists — only the M4 dense tier can reach octopus. The plan's headline dense result."
+    },
+    {
+      "id": "sn-22",
+      "query": "camarones",
+      "stratum": "single_noun",
+      "locale": "es-US",
+      "pass": true,
+      "preservation": 1,
+      "reasons": [],
+      "grounded": [
+        {
+          "entityId": "7eeb7cb1-5653-46e7-a24b-af91cd5e85cd",
+          "bucket": "food",
+          "type": "food",
+          "span": "camarones",
+          "name": "shrimp",
+          "tier": "gazetteer-exact",
+          "foldedName": "shrimp"
+        },
+        {
+          "entityId": "b5c058ab-7ab6-4ccb-912a-cc6b366b5ade",
+          "bucket": "food",
+          "type": "food",
+          "span": "camarones",
+          "name": "prawns",
+          "tier": "gazetteer-exact",
+          "foldedName": "prawns"
+        }
+      ],
+      "excluded": [],
+      "unresolved": [],
+      "analysis": {
+        "script": "latin",
+        "requestLocale": "es-US",
+        "detectedLocale": {
+          "tag": "es-US",
+          "confidence": 0.5,
+          "source": "request-prior"
+        },
+        "denseTierUsed": false
       },
       "misGroundings": [],
       "notes": "TRANSLATION BRIDGE. No 'camarones' row (only 'camarones enchilados' compound)."
@@ -777,7 +795,7 @@
           "type": "food",
           "span": "aguacate",
           "name": "avocado",
-          "tier": "linked",
+          "tier": "gazetteer-exact",
           "foldedName": "avocado"
         }
       ],
@@ -791,7 +809,7 @@
           "confidence": 0.5,
           "source": "request-prior"
         },
-        "denseTierUsed": true
+        "denseTierUsed": false
       },
       "misGroundings": [],
       "notes": "TRANSLATION BRIDGE. R5-5: es-AR/es-CL say 'palta' — a regional alias row, not a fix here."
@@ -802,17 +820,17 @@
       "stratum": "single_noun",
       "locale": "es-US",
       "pass": true,
-      "preservation": 0,
-      "reasons": ["parked (allowed for this entry)"],
+      "preservation": 1,
+      "reasons": [],
       "grounded": [
         {
-          "entityId": "26edd852-3de5-4dc8-ac45-601662cb69a9",
+          "entityId": "bcb888b0-d59a-4c2f-956a-ab7374c4cfa5",
           "bucket": "food",
           "type": "food",
           "span": "pescado",
-          "name": "pescado con espinacas",
-          "tier": "linked",
-          "foldedName": "pescado con espinacas"
+          "name": "fish",
+          "tier": "gazetteer-exact",
+          "foldedName": "fish"
         }
       ],
       "excluded": [],
@@ -825,7 +843,7 @@
           "confidence": 0.5,
           "source": "request-prior"
         },
-        "denseTierUsed": true
+        "denseTierUsed": false
       },
       "misGroundings": [],
       "notes": "TRANSLATION BRIDGE."
@@ -836,44 +854,17 @@
       "stratum": "single_noun",
       "locale": "es-US",
       "pass": true,
-      "preservation": 0,
-      "reasons": ["parked (allowed for this entry)"],
+      "preservation": 1,
+      "reasons": [],
       "grounded": [
         {
-          "entityId": "f420f55a-6b64-4ee6-8deb-16852ea2e014",
+          "entityId": "77490d5e-e33e-4f6e-b1b8-d370755faf1f",
           "bucket": "food",
           "type": "food",
           "span": "arroz",
-          "name": "arroz bomba",
-          "tier": "linked",
-          "foldedName": "arroz bomba"
-        },
-        {
-          "entityId": "c5a61758-acdb-405f-8031-d3400697690f",
-          "bucket": "food",
-          "type": "food",
-          "span": "arroz",
-          "name": "arroz con gandules",
-          "tier": "linked",
-          "foldedName": "arroz con gandules"
-        },
-        {
-          "entityId": "e62dbaf0-f54b-4367-b546-2816b5e58099",
-          "bucket": "food",
-          "type": "food",
-          "span": "arroz",
-          "name": "arroz negro",
-          "tier": "linked",
-          "foldedName": "arroz negro"
-        },
-        {
-          "entityId": "0802cd79-388f-4b9f-b917-e87fe69d2db2",
-          "bucket": "food",
-          "type": "food",
-          "span": "arroz",
-          "name": "arroz chaufa",
-          "tier": "linked",
-          "foldedName": "arroz chaufa"
+          "name": "rice",
+          "tier": "gazetteer-exact",
+          "foldedName": "rice"
         }
       ],
       "excluded": [],
@@ -886,7 +877,7 @@
           "confidence": 0.5,
           "source": "request-prior"
         },
-        "denseTierUsed": true
+        "denseTierUsed": false
       },
       "misGroundings": [],
       "notes": "TRANSLATION BRIDGE."
@@ -897,26 +888,17 @@
       "stratum": "single_noun",
       "locale": "es-US",
       "pass": true,
-      "preservation": 0,
-      "reasons": ["parked (allowed for this entry)"],
+      "preservation": 1,
+      "reasons": [],
       "grounded": [
         {
-          "entityId": "041c1e3c-a979-450f-8810-61e2167423f9",
+          "entityId": "001a597e-bfd0-4f0a-a1ad-fe63289e1364",
           "bucket": "food",
           "type": "food",
           "span": "frijoles",
-          "name": "charro beans",
-          "tier": "linked",
-          "foldedName": "charro beans"
-        },
-        {
-          "entityId": "54866f17-45d6-4406-83a5-35c78e33120c",
-          "bucket": "food",
-          "type": "food",
-          "span": "frijoles",
-          "name": "frijoles with duck consome",
-          "tier": "linked",
-          "foldedName": "frijoles with duck consome"
+          "name": "beans",
+          "tier": "gazetteer-exact",
+          "foldedName": "beans"
         }
       ],
       "excluded": [],
@@ -929,7 +911,7 @@
           "confidence": 0.5,
           "source": "request-prior"
         },
-        "denseTierUsed": true
+        "denseTierUsed": false
       },
       "misGroundings": [],
       "notes": "TRANSLATION BRIDGE."
@@ -939,12 +921,22 @@
       "query": "langosta",
       "stratum": "single_noun",
       "locale": "es-US",
-      "pass": false,
-      "preservation": 0,
-      "reasons": ["NOT GROUNDED: lobster"],
-      "grounded": [],
+      "pass": true,
+      "preservation": 1,
+      "reasons": [],
+      "grounded": [
+        {
+          "entityId": "9824acb9-4b92-42fb-b84b-5c3cc5a54103",
+          "bucket": "food",
+          "type": "food",
+          "span": "langosta",
+          "name": "lobster",
+          "tier": "gazetteer-exact",
+          "foldedName": "lobster"
+        }
+      ],
       "excluded": [],
-      "unresolved": ["langosta"],
+      "unresolved": [],
       "analysis": {
         "script": "latin",
         "requestLocale": "es-US",
@@ -953,7 +945,7 @@
           "confidence": 0.5,
           "source": "request-prior"
         },
-        "denseTierUsed": true
+        "denseTierUsed": false
       },
       "misGroundings": [],
       "notes": "TRANSLATION BRIDGE."
@@ -973,7 +965,7 @@
           "type": "food",
           "span": "cangrejo",
           "name": "crab",
-          "tier": "linked",
+          "tier": "gazetteer-exact",
           "foldedName": "crab"
         }
       ],
@@ -987,7 +979,7 @@
           "confidence": 0.125,
           "source": "request-prior"
         },
-        "denseTierUsed": true
+        "denseTierUsed": false
       },
       "misGroundings": [],
       "notes": "TRANSLATION BRIDGE."
@@ -997,12 +989,22 @@
       "query": "helado",
       "stratum": "single_noun",
       "locale": "es-US",
-      "pass": false,
-      "preservation": 0,
-      "reasons": ["NOT GROUNDED: ice cream"],
-      "grounded": [],
+      "pass": true,
+      "preservation": 1,
+      "reasons": [],
+      "grounded": [
+        {
+          "entityId": "dd390a0b-4199-4e1b-b1df-2fea78f11cc7",
+          "bucket": "food",
+          "type": "food",
+          "span": "helado",
+          "name": "ice cream",
+          "tier": "gazetteer-exact",
+          "foldedName": "ice cream"
+        }
+      ],
       "excluded": [],
-      "unresolved": ["helado"],
+      "unresolved": [],
       "analysis": {
         "script": "latin",
         "requestLocale": "es-US",
@@ -1011,7 +1013,7 @@
           "confidence": 0.16666666666666666,
           "source": "detector"
         },
-        "denseTierUsed": true
+        "denseTierUsed": false
       },
       "misGroundings": [],
       "notes": "TRANSLATION BRIDGE to a MULTI-WORD English concept — dense must bridge across token count."
@@ -1021,18 +1023,18 @@
       "query": "fresa",
       "stratum": "single_noun",
       "locale": "es-US",
-      "pass": false,
-      "preservation": 0,
-      "reasons": ["NOT GROUNDED: strawberry"],
+      "pass": true,
+      "preservation": 1,
+      "reasons": [],
       "grounded": [
         {
-          "entityId": "41633a10-e76f-414c-9548-278495637382",
-          "bucket": "restaurants",
-          "type": "restaurant",
+          "entityId": "ef0cdc27-b056-465e-9a57-a56b5e7d5693",
+          "bucket": "food",
+          "type": "food",
           "span": "fresa",
-          "name": "Fresa's - South First",
-          "tier": "linked",
-          "foldedName": "fresas south first"
+          "name": "strawberry",
+          "tier": "gazetteer-exact",
+          "foldedName": "strawberry"
         }
       ],
       "excluded": [],
@@ -1055,12 +1057,22 @@
       "query": "sandía",
       "stratum": "single_noun",
       "locale": "es-US",
-      "pass": false,
-      "preservation": 0,
-      "reasons": ["NOT GROUNDED: watermelon"],
-      "grounded": [],
+      "pass": true,
+      "preservation": 1,
+      "reasons": [],
+      "grounded": [
+        {
+          "entityId": "7f5a885a-1c56-4a76-9af1-694e55aa1c4d",
+          "bucket": "food",
+          "type": "food",
+          "span": "sandía",
+          "name": "watermelon",
+          "tier": "gazetteer-exact",
+          "foldedName": "watermelon"
+        }
+      ],
       "excluded": [],
-      "unresolved": ["sandía"],
+      "unresolved": [],
       "analysis": {
         "script": "latin",
         "requestLocale": "es-US",
@@ -1069,7 +1081,7 @@
           "confidence": 1,
           "source": "detector"
         },
-        "denseTierUsed": true
+        "denseTierUsed": false
       },
       "misGroundings": [],
       "notes": "TRANSLATION BRIDGE + accent (N1 fold must not break the residue text)."
@@ -1080,17 +1092,17 @@
       "stratum": "single_noun",
       "locale": "es-US",
       "pass": true,
-      "preservation": 0,
-      "reasons": ["parked (allowed for this entry)"],
+      "preservation": 1,
+      "reasons": [],
       "grounded": [
         {
-          "entityId": "697da8ca-7c35-48cf-ba63-c767d0462f28",
+          "entityId": "45d6ca0c-10c9-4ff8-9cb6-1322dca4966c",
           "bucket": "food",
           "type": "food",
           "span": "bistec",
-          "name": "gringa bistec",
-          "tier": "linked",
-          "foldedName": "gringa bistec"
+          "name": "steak",
+          "tier": "gazetteer-exact",
+          "foldedName": "steak"
         }
       ],
       "excluded": [],
@@ -1103,7 +1115,7 @@
           "confidence": 0.5,
           "source": "request-prior"
         },
-        "denseTierUsed": true
+        "denseTierUsed": false
       },
       "misGroundings": [],
       "notes": "TRANSLATION BRIDGE."
@@ -1114,35 +1126,26 @@
       "stratum": "single_noun",
       "locale": "es-US",
       "pass": true,
-      "preservation": 0,
-      "reasons": ["parked (allowed for this entry)"],
+      "preservation": 1,
+      "reasons": [],
       "grounded": [
         {
-          "entityId": "ce4328ab-94e1-421f-b5c6-8aedc1381cb0",
+          "entityId": "2049826a-2960-467f-b0e1-281611f0c7d7",
           "bucket": "food",
           "type": "food",
           "span": "pastel",
-          "name": "pastelon",
-          "tier": "linked",
-          "foldedName": "pastelon"
+          "name": "cake",
+          "tier": "gazetteer-exact",
+          "foldedName": "cake"
         },
         {
-          "entityId": "f4ab33e5-aeb6-4d1c-b4f2-5319d037ab26",
+          "entityId": "bc563494-a8cb-4993-b9df-2469f5a2a2c7",
           "bucket": "food",
           "type": "food",
           "span": "pastel",
-          "name": "pastelon with beef",
-          "tier": "linked",
-          "foldedName": "pastelon with beef"
-        },
-        {
-          "entityId": "3de44395-2828-45d3-be43-b68280fceb6f",
-          "bucket": "food",
-          "type": "food",
-          "span": "pastel",
-          "name": "pastel de nata",
-          "tier": "linked",
-          "foldedName": "pastel de nata"
+          "name": "pie",
+          "tier": "gazetteer-exact",
+          "foldedName": "pie"
         }
       ],
       "excluded": [],
@@ -1155,7 +1158,7 @@
           "confidence": 0.5,
           "source": "request-prior"
         },
-        "denseTierUsed": true
+        "denseTierUsed": false
       },
       "misGroundings": [],
       "notes": "TRANSLATION BRIDGE."
@@ -1165,12 +1168,31 @@
       "query": "ensalada",
       "stratum": "single_noun",
       "locale": "es-US",
-      "pass": false,
-      "preservation": 0,
-      "reasons": ["NOT GROUNDED: salad"],
-      "grounded": [],
+      "pass": true,
+      "preservation": 1,
+      "reasons": [],
+      "grounded": [
+        {
+          "entityId": "8015f56b-c984-49d7-b031-c0037d542454",
+          "bucket": "food",
+          "type": "food",
+          "span": "ensalada",
+          "name": "salad",
+          "tier": "gazetteer-exact",
+          "foldedName": "salad"
+        },
+        {
+          "entityId": "ec254f72-6ee7-4762-a6aa-bf317b9b4097",
+          "bucket": "food",
+          "type": "food",
+          "span": "ensalada",
+          "name": "nikkis salad",
+          "tier": "gazetteer-exact",
+          "foldedName": "nikkis salad"
+        }
+      ],
       "excluded": [],
-      "unresolved": ["ensalada"],
+      "unresolved": [],
       "analysis": {
         "script": "latin",
         "requestLocale": "es-US",
@@ -1179,7 +1201,7 @@
           "confidence": 0.5,
           "source": "request-prior"
         },
-        "denseTierUsed": true
+        "denseTierUsed": false
       },
       "misGroundings": [],
       "notes": "TRANSLATION BRIDGE."
@@ -1194,13 +1216,31 @@
       "reasons": [],
       "grounded": [
         {
+          "entityId": "042de43d-2fb6-460d-bbea-b8779b79b52a",
+          "bucket": "food",
+          "type": "food",
+          "span": "fideos",
+          "name": "noodles",
+          "tier": "gazetteer-exact",
+          "foldedName": "noodles"
+        },
+        {
           "entityId": "04479fba-1c2a-42bb-bb48-b34f35a0bdd8",
           "bucket": "food",
           "type": "food",
           "span": "fideos",
           "name": "fideo",
-          "tier": "linked",
+          "tier": "gazetteer-exact",
           "foldedName": "fideo"
+        },
+        {
+          "entityId": "86cc04ee-4fc8-4a8d-b49e-e3f5b06aac7f",
+          "bucket": "food",
+          "type": "food",
+          "span": "fideos",
+          "name": "noodle",
+          "tier": "gazetteer-exact",
+          "foldedName": "noodle"
         }
       ],
       "excluded": [],
@@ -1223,18 +1263,18 @@
       "query": "mariscos",
       "stratum": "single_noun",
       "locale": "es-US",
-      "pass": false,
-      "preservation": 0,
-      "reasons": ["NOT GROUNDED: seafood"],
+      "pass": true,
+      "preservation": 1,
+      "reasons": [],
       "grounded": [
         {
-          "entityId": "246655de-c015-427a-a09b-7f84b5a91822",
+          "entityId": "f43fa2e2-d94d-4ebe-8136-698ff755d869",
           "bucket": "food",
           "type": "food",
           "span": "mariscos",
-          "name": "gateau marissa",
-          "tier": "linked",
-          "foldedName": "gateau marissa"
+          "name": "seafood",
+          "tier": "gazetteer-exact",
+          "foldedName": "seafood"
         }
       ],
       "excluded": [],
@@ -1247,7 +1287,7 @@
           "confidence": 0.5,
           "source": "request-prior"
         },
-        "denseTierUsed": true
+        "denseTierUsed": false
       },
       "misGroundings": [],
       "notes": "TRANSLATION BRIDGE. Target exists as food AND restaurant_attribute — either is correct."
@@ -1257,18 +1297,18 @@
       "query": "postre",
       "stratum": "single_noun",
       "locale": "es-US",
-      "pass": false,
-      "preservation": 0,
-      "reasons": ["NOT GROUNDED: dessert"],
+      "pass": true,
+      "preservation": 1,
+      "reasons": [],
       "grounded": [
         {
-          "entityId": "6b5f32b9-d6c2-4c53-9b33-4daa87485921",
+          "entityId": "ab672d04-3263-4080-9827-3f35a7a83c71",
           "bucket": "food",
           "type": "food",
           "span": "postre",
-          "name": "latin american pastry",
-          "tier": "linked",
-          "foldedName": "latin american pastry"
+          "name": "dessert",
+          "tier": "gazetteer-exact",
+          "foldedName": "dessert"
         }
       ],
       "excluded": [],
@@ -1281,7 +1321,7 @@
           "confidence": 0.5,
           "source": "request-prior"
         },
-        "denseTierUsed": true
+        "denseTierUsed": false
       },
       "misGroundings": [],
       "notes": "TRANSLATION BRIDGE (category noun — dense is weakest on abstractions; park is tolerable, a WRONG dish is not)."
@@ -1291,18 +1331,18 @@
       "query": "café",
       "stratum": "single_noun",
       "locale": "es-US",
-      "pass": false,
-      "preservation": 0,
-      "reasons": ["NOT GROUNDED: coffee"],
+      "pass": true,
+      "preservation": 1,
+      "reasons": [],
       "grounded": [
         {
-          "entityId": "6cf742e4-e734-40e1-b225-01a1a61130ff",
-          "bucket": "restaurantAttributes",
-          "type": "restaurant_attribute",
+          "entityId": "926935db-c5d9-45f8-8618-05fb6a9fd3e9",
+          "bucket": "food",
+          "type": "food",
           "span": "café",
-          "name": "cafe",
+          "name": "coffee",
           "tier": "gazetteer-exact",
-          "foldedName": "cafe"
+          "foldedName": "coffee"
         }
       ],
       "excluded": [],
@@ -1330,13 +1370,13 @@
       "reasons": [],
       "grounded": [
         {
-          "entityId": "19c7cbed-43a9-4a8d-8096-eeeb99377eaa",
+          "entityId": "12bcdfbd-7736-4d47-82e7-b7cf30b5fa93",
           "bucket": "food",
           "type": "food",
           "span": "pollo",
-          "name": "pollo",
+          "name": "chicken",
           "tier": "gazetteer-exact",
-          "foldedName": "pollo"
+          "foldedName": "chicken"
         }
       ],
       "excluded": [],
@@ -1352,25 +1392,25 @@
         "denseTierUsed": false
       },
       "misGroundings": [],
-      "notes": "A9 TWIN: 'pollo' AND 'chicken' both exist as food rows — evidence mass is split across an unmerged cross-language twin. Grounding 'pollo' is correct TODAY; the twin belongs in the judge-merge queue."
+      "notes": "A9 TWIN: 'pollo' AND 'chicken' both exist as food rows — evidence mass is split across an unmerged cross-language twin. Grounding 'pollo' is correct TODAY; the twin belongs in the judge-merge queue. | RE-AUTHORED 2026-08-07: pollo merged into chicken."
     },
     {
       "id": "sn-40",
       "query": "camarón",
       "stratum": "single_noun",
       "locale": "es-US",
-      "pass": false,
-      "preservation": 0,
-      "reasons": ["NOT GROUNDED: shrimp"],
+      "pass": true,
+      "preservation": 1,
+      "reasons": [],
       "grounded": [
         {
-          "entityId": "0010a979-017f-4375-81de-2b3f6a77eeda",
-          "bucket": "food",
-          "type": "food",
+          "entityId": "c04eaa3a-b107-4efb-932c-bd5358175bfc",
+          "bucket": "ingredients",
+          "type": "ingredient",
           "span": "camarón",
-          "name": "sango de camarones",
-          "tier": "linked",
-          "foldedName": "sango de camarones"
+          "name": "shrimp",
+          "tier": "gazetteer-exact",
+          "foldedName": "shrimp"
         }
       ],
       "excluded": [],
@@ -1383,7 +1423,7 @@
           "confidence": 0.5,
           "source": "request-prior"
         },
-        "denseTierUsed": true
+        "denseTierUsed": false
       },
       "misGroundings": [],
       "notes": "TRANSLATION BRIDGE, SINGULAR + accent — the Spanish-morphology half of sn-22."
@@ -1393,22 +1433,49 @@
       "query": "tacos vegetarianos baratos",
       "stratum": "compound",
       "locale": "es-US",
-      "pass": false,
-      "preservation": 0.5,
-      "reasons": ["NOT GROUNDED: vegetarian"],
+      "pass": true,
+      "preservation": 1,
+      "reasons": [],
       "grounded": [
+        {
+          "entityId": "e01829f2-0a43-4ee9-ad75-857284eda918",
+          "bucket": "food",
+          "type": "food",
+          "span": "tacos vegetarianos",
+          "name": "vegetarian taco",
+          "tier": "gazetteer-exact",
+          "foldedName": "vegetarian taco"
+        },
         {
           "entityId": "b5494f8d-dbec-4da8-addb-a967d8932e7b",
           "bucket": "food",
           "type": "food",
           "span": "tacos",
           "name": "tacos",
-          "tier": "gazetteer-exact",
+          "tier": "linked",
           "foldedName": "tacos"
+        },
+        {
+          "entityId": "550daee9-22c0-4f37-8263-addf3d0e9b2c",
+          "bucket": "food",
+          "type": "food",
+          "span": "vegetarianos",
+          "name": "vegetarian",
+          "tier": "linked",
+          "foldedName": "vegetarian"
+        },
+        {
+          "entityId": "b693becc-a4ce-4b31-b35e-c7f3218a816d",
+          "bucket": "restaurantAttributes",
+          "type": "restaurant_attribute",
+          "span": "baratos",
+          "name": "affordable",
+          "tier": "gazetteer-exact",
+          "foldedName": "affordable"
         }
       ],
       "excluded": [],
-      "unresolved": ["vegetarianos baratos"],
+      "unresolved": [],
       "analysis": {
         "script": "latin",
         "requestLocale": "es-US",
@@ -1417,7 +1484,7 @@
           "confidence": 0.5,
           "source": "request-prior"
         },
-        "denseTierUsed": true
+        "denseTierUsed": false
       },
       "misGroundings": [],
       "notes": "The plan's named failure. 'baratos' is a PRICE DIRECTIVE, not an entity — M4b's directive vocabulary, deliberately not asserted as a concept."
@@ -1432,13 +1499,13 @@
       "reasons": [],
       "grounded": [
         {
-          "entityId": "b3a4c3e8-307f-4694-89b2-9160fcaa0436",
+          "entityId": "2e7a4935-78b6-4ead-b4cf-0012df8a3956",
           "bucket": "food",
           "type": "food",
-          "span": "pizza",
-          "name": "pizza",
+          "span": "pizza sin gluten",
+          "name": "gluten free pizza",
           "tier": "gazetteer-exact",
-          "foldedName": "pizza"
+          "foldedName": "gluten free pizza"
         },
         {
           "entityId": "14f90924-0338-480f-a9a7-ea01d64d1242",
@@ -1455,8 +1522,17 @@
           "type": "food_attribute",
           "span": "sin gluten",
           "name": "gluten free",
-          "tier": "gazetteer-exact",
+          "tier": "linked",
           "foldedName": "gluten free"
+        },
+        {
+          "entityId": "822c42f9-9e5f-4f5a-9df2-ad62ebebd46f",
+          "bucket": "restaurantAttributes",
+          "type": "restaurant_attribute",
+          "span": "pizza",
+          "name": "pizza",
+          "tier": "linked",
+          "foldedName": "pizza"
         }
       ],
       "excluded": [],
@@ -1487,23 +1563,23 @@
           "entityId": "9aaa952b-64ca-41e5-821c-615076f4168c",
           "bucket": "restaurantAttributes",
           "type": "restaurant_attribute",
-          "span": "mexicana",
+          "span": "comida mexicana",
           "name": "mexican",
           "tier": "gazetteer-exact",
           "foldedName": "mexican"
         },
         {
-          "entityId": "f3425f58-61a6-4d8e-ba18-d56e6e97c49e",
-          "bucket": "ingredients",
-          "type": "ingredient",
+          "entityId": "b693becc-a4ce-4b31-b35e-c7f3218a816d",
+          "bucket": "restaurantAttributes",
+          "type": "restaurant_attribute",
           "span": "barata",
-          "name": "bara",
-          "tier": "linked",
-          "foldedName": "bara"
+          "name": "affordable",
+          "tier": "gazetteer-exact",
+          "foldedName": "affordable"
         }
       ],
       "excluded": [],
-      "unresolved": ["comida"],
+      "unresolved": [],
       "analysis": {
         "script": "latin",
         "requestLocale": "es-US",
@@ -1512,7 +1588,7 @@
           "confidence": 0.5,
           "source": "request-prior"
         },
-        "denseTierUsed": true
+        "denseTierUsed": false
       },
       "misGroundings": [],
       "notes": "Seeded cuisine label 'mexicana'. 'comida'/'barata' are carrier + directive."
@@ -1522,10 +1598,19 @@
       "query": "restaurante italiano romántico",
       "stratum": "compound",
       "locale": "es-US",
-      "pass": false,
-      "preservation": 0.5,
-      "reasons": ["NOT GROUNDED: italian"],
+      "pass": true,
+      "preservation": 1,
+      "reasons": [],
       "grounded": [
+        {
+          "entityId": "9f109755-4025-44ab-8cdc-5b8a9eb7ec73",
+          "bucket": "restaurantAttributes",
+          "type": "restaurant_attribute",
+          "span": "italiano",
+          "name": "italian",
+          "tier": "gazetteer-exact",
+          "foldedName": "italian"
+        },
         {
           "entityId": "65a80396-ea4d-44d6-876c-b17a258a3326",
           "bucket": "restaurantAttributes",
@@ -1537,7 +1622,7 @@
         }
       ],
       "excluded": [],
-      "unresolved": ["restaurante italiano"],
+      "unresolved": ["restaurante"],
       "analysis": {
         "script": "latin",
         "requestLocale": "es-US",
@@ -1561,18 +1646,27 @@
       "reasons": [],
       "grounded": [
         {
+          "entityId": "d5deecd4-a9b8-4875-8dba-495bb50f8306",
+          "bucket": "food",
+          "type": "food",
+          "span": "tacos veganos",
+          "name": "vegan taco",
+          "tier": "gazetteer-exact",
+          "foldedName": "vegan taco"
+        },
+        {
           "entityId": "b5494f8d-dbec-4da8-addb-a967d8932e7b",
           "bucket": "food",
           "type": "food",
           "span": "tacos",
           "name": "tacos",
-          "tier": "gazetteer-exact",
+          "tier": "linked",
           "foldedName": "tacos"
         },
         {
-          "entityId": "a1fafbb5-06bc-474d-9c47-65f7a7bd1716",
-          "bucket": "foodAttributes",
-          "type": "food_attribute",
+          "entityId": "44f51d4e-d1fc-4aca-b839-5f15fee651d8",
+          "bucket": "restaurantAttributes",
+          "type": "restaurant_attribute",
           "span": "veganos",
           "name": "vegan",
           "tier": "linked",
@@ -1599,9 +1693,9 @@
       "query": "sushi japonés",
       "stratum": "compound",
       "locale": "es-US",
-      "pass": false,
-      "preservation": 0.5,
-      "reasons": ["NOT GROUNDED: japanese"],
+      "pass": true,
+      "preservation": 1,
+      "reasons": [],
       "grounded": [
         {
           "entityId": "dfcea5a8-359f-410c-9ca6-85f4196ff8b2",
@@ -1611,10 +1705,28 @@
           "name": "sushi",
           "tier": "gazetteer-exact",
           "foldedName": "sushi"
+        },
+        {
+          "entityId": "f2e2ce70-e8bf-4972-ad06-2f8a32400754",
+          "bucket": "food",
+          "type": "food",
+          "span": "sushi",
+          "name": "sushi prepared fish",
+          "tier": "gazetteer-exact",
+          "foldedName": "sushi prepared fish"
+        },
+        {
+          "entityId": "18218014-dba6-4a77-84bc-3c7b958b6e52",
+          "bucket": "restaurantAttributes",
+          "type": "restaurant_attribute",
+          "span": "japonés",
+          "name": "japanese",
+          "tier": "gazetteer-exact",
+          "foldedName": "japanese"
         }
       ],
       "excluded": [],
-      "unresolved": ["japonés"],
+      "unresolved": [],
       "analysis": {
         "script": "latin",
         "requestLocale": "es-US",
@@ -1623,7 +1735,7 @@
           "confidence": 0.5,
           "source": "request-prior"
         },
-        "denseTierUsed": true
+        "denseTierUsed": false
       },
       "misGroundings": [],
       "notes": "MORPHOLOGY: seeded 'japonesa' (fem), queried masculine + accent."
@@ -1647,200 +1759,13 @@
           "foldedName": "ramen"
         },
         {
-          "entityId": "d9667e84-717c-4329-ac55-3cf283ff345c",
-          "bucket": "food",
-          "type": "food",
+          "entityId": "45d744fc-4c83-4a0d-9e23-616a83d70bc9",
+          "bucket": "restaurantAttributes",
+          "type": "restaurant_attribute",
           "span": "coreano",
           "name": "korean",
-          "tier": "linked",
+          "tier": "gazetteer-exact",
           "foldedName": "korean"
-        }
-      ],
-      "excluded": [],
-      "unresolved": [],
-      "analysis": {
-        "script": "latin",
-        "requestLocale": "es-US",
-        "detectedLocale": {
-          "tag": "es-US",
-          "confidence": 0.5,
-          "source": "request-prior"
-        },
-        "denseTierUsed": true
-      },
-      "misGroundings": [],
-      "notes": "MORPHOLOGY: seeded 'coreana'."
-    },
-    {
-      "id": "cp-08",
-      "query": "pizza vegetariana",
-      "stratum": "compound",
-      "locale": "es-US",
-      "pass": true,
-      "preservation": 1,
-      "reasons": [],
-      "grounded": [
-        {
-          "entityId": "b3a4c3e8-307f-4694-89b2-9160fcaa0436",
-          "bucket": "food",
-          "type": "food",
-          "span": "pizza",
-          "name": "pizza",
-          "tier": "gazetteer-exact",
-          "foldedName": "pizza"
-        },
-        {
-          "entityId": "6f332d26-e126-462c-a58e-0b8954687be6",
-          "bucket": "foodAttributes",
-          "type": "food_attribute",
-          "span": "vegetariana",
-          "name": "vegetarian",
-          "tier": "linked",
-          "foldedName": "vegetarian"
-        }
-      ],
-      "excluded": [],
-      "unresolved": [],
-      "analysis": {
-        "script": "latin",
-        "requestLocale": "es-US",
-        "detectedLocale": {
-          "tag": "es-US",
-          "confidence": 0.5,
-          "source": "request-prior"
-        },
-        "denseTierUsed": true
-      },
-      "misGroundings": [],
-      "notes": "THE PLAN'S RECORDED MISS (M4b thesis test): feminine 'vegetariana' was not seeded. Kept as a standing morphology probe."
-    },
-    {
-      "id": "cp-09",
-      "query": "comida tailandesa picante",
-      "stratum": "compound",
-      "locale": "es-US",
-      "pass": true,
-      "preservation": 1,
-      "reasons": [],
-      "grounded": [
-        {
-          "entityId": "d5912bd2-54c8-41a1-86c5-d3328abeaca4",
-          "bucket": "foodAttributes",
-          "type": "food_attribute",
-          "span": "picante",
-          "name": "spicy",
-          "tier": "linked",
-          "foldedName": "spicy"
-        },
-        {
-          "entityId": "7f76e097-988f-4ae2-aff6-a4fdc177a2e4",
-          "bucket": "restaurantAttributes",
-          "type": "restaurant_attribute",
-          "span": "tailandesa",
-          "name": "thai",
-          "tier": "gazetteer-exact",
-          "foldedName": "thai"
-        }
-      ],
-      "excluded": [],
-      "unresolved": ["comida"],
-      "analysis": {
-        "script": "latin",
-        "requestLocale": "es-US",
-        "detectedLocale": {
-          "tag": "es-US",
-          "confidence": 0.5,
-          "source": "request-prior"
-        },
-        "denseTierUsed": true
-      },
-      "misGroundings": [],
-      "notes": "'picante' is the P3 cross-language CONCEPT normalization case (picante→spicy) — spine seeding territory, not dish."
-    },
-    {
-      "id": "cp-10",
-      "query": "desayuno mexicano",
-      "stratum": "compound",
-      "locale": "es-US",
-      "pass": false,
-      "preservation": 0,
-      "reasons": ["NOT GROUNDED: breakfast, mexican"],
-      "grounded": [],
-      "excluded": [],
-      "unresolved": ["desayuno mexicano"],
-      "analysis": {
-        "script": "latin",
-        "requestLocale": "es-US",
-        "detectedLocale": {
-          "tag": "es-US",
-          "confidence": 0.5,
-          "source": "request-prior"
-        },
-        "denseTierUsed": true
-      },
-      "misGroundings": [],
-      "notes": "Bridge noun + seeded cuisine, masculine form."
-    },
-    {
-      "id": "cp-11",
-      "query": "mariscos peruanos",
-      "stratum": "compound",
-      "locale": "es-US",
-      "pass": false,
-      "preservation": 0.5,
-      "reasons": ["NOT GROUNDED: seafood"],
-      "grounded": [
-        {
-          "entityId": "a5ec9b4b-ef69-4b8b-a5a9-1ecaddd54a6f",
-          "bucket": "restaurantAttributes",
-          "type": "restaurant_attribute",
-          "span": "mariscos peruanos",
-          "name": "peruvian",
-          "tier": "linked",
-          "foldedName": "peruvian"
-        }
-      ],
-      "excluded": [],
-      "unresolved": [],
-      "analysis": {
-        "script": "latin",
-        "requestLocale": "es-US",
-        "detectedLocale": {
-          "tag": "es-US",
-          "confidence": 0.5,
-          "source": "request-prior"
-        },
-        "denseTierUsed": true
-      },
-      "misGroundings": [],
-      "notes": "Bridge noun + seeded cuisine ('peruana'), masculine plural."
-    },
-    {
-      "id": "cp-12",
-      "query": "pollo halal",
-      "stratum": "compound",
-      "locale": "es-US",
-      "pass": true,
-      "preservation": 1,
-      "reasons": [],
-      "grounded": [
-        {
-          "entityId": "19c7cbed-43a9-4a8d-8096-eeeb99377eaa",
-          "bucket": "food",
-          "type": "food",
-          "span": "pollo",
-          "name": "pollo",
-          "tier": "gazetteer-exact",
-          "foldedName": "pollo"
-        },
-        {
-          "entityId": "05708d69-10ff-4482-9818-fa8ec6931225",
-          "bucket": "foodAttributes",
-          "type": "food_attribute",
-          "span": "halal",
-          "name": "halal",
-          "tier": "gazetteer-exact",
-          "foldedName": "halal"
         }
       ],
       "excluded": [],
@@ -1856,7 +1781,249 @@
         "denseTierUsed": false
       },
       "misGroundings": [],
-      "notes": "Source-faithful noun + an identical-in-both-languages dietary spine word."
+      "notes": "MORPHOLOGY: seeded 'coreana'."
+    },
+    {
+      "id": "cp-08",
+      "query": "pizza vegetariana",
+      "stratum": "compound",
+      "locale": "es-US",
+      "pass": false,
+      "preservation": 0.5,
+      "reasons": ["NOT GROUNDED: vegetarian"],
+      "grounded": [
+        {
+          "entityId": "f8fa5dd1-8043-469d-bbb5-6af5ef8e819c",
+          "bucket": "food",
+          "type": "food",
+          "span": "pizza vegetariana",
+          "name": "veggie pizza",
+          "tier": "gazetteer-exact",
+          "foldedName": "veggie pizza"
+        },
+        {
+          "entityId": "822c42f9-9e5f-4f5a-9df2-ad62ebebd46f",
+          "bucket": "restaurantAttributes",
+          "type": "restaurant_attribute",
+          "span": "pizza",
+          "name": "pizza",
+          "tier": "linked",
+          "foldedName": "pizza"
+        }
+      ],
+      "excluded": [],
+      "unresolved": [],
+      "analysis": {
+        "script": "latin",
+        "requestLocale": "es-US",
+        "detectedLocale": {
+          "tag": "es-US",
+          "confidence": 0.5,
+          "source": "request-prior"
+        },
+        "denseTierUsed": false
+      },
+      "misGroundings": [],
+      "notes": "THE PLAN'S RECORDED MISS (M4b thesis test): feminine 'vegetariana' was not seeded. Kept as a standing morphology probe."
+    },
+    {
+      "id": "cp-09",
+      "query": "comida tailandesa picante",
+      "stratum": "compound",
+      "locale": "es-US",
+      "pass": true,
+      "preservation": 1,
+      "reasons": [],
+      "grounded": [
+        {
+          "entityId": "ca15d0cc-13d5-4e38-8d2b-95dc4dd28808",
+          "bucket": "foodAttributes",
+          "type": "food_attribute",
+          "span": "picante",
+          "name": "pungent",
+          "tier": "gazetteer-exact",
+          "foldedName": "pungent"
+        },
+        {
+          "entityId": "d5912bd2-54c8-41a1-86c5-d3328abeaca4",
+          "bucket": "foodAttributes",
+          "type": "food_attribute",
+          "span": "picante",
+          "name": "spicy",
+          "tier": "gazetteer-exact",
+          "foldedName": "spicy"
+        },
+        {
+          "entityId": "7f76e097-988f-4ae2-aff6-a4fdc177a2e4",
+          "bucket": "restaurantAttributes",
+          "type": "restaurant_attribute",
+          "span": "comida tailandesa",
+          "name": "thai",
+          "tier": "gazetteer-exact",
+          "foldedName": "thai"
+        }
+      ],
+      "excluded": [],
+      "unresolved": [],
+      "analysis": {
+        "script": "latin",
+        "requestLocale": "es-US",
+        "detectedLocale": {
+          "tag": "es-US",
+          "confidence": 0.5,
+          "source": "request-prior"
+        },
+        "denseTierUsed": false
+      },
+      "misGroundings": [],
+      "notes": "'picante' is the P3 cross-language CONCEPT normalization case (picante→spicy) — spine seeding territory, not dish."
+    },
+    {
+      "id": "cp-10",
+      "query": "desayuno mexicano",
+      "stratum": "compound",
+      "locale": "es-US",
+      "pass": true,
+      "preservation": 1,
+      "reasons": [],
+      "grounded": [
+        {
+          "entityId": "5582b739-817d-48e6-8a2c-8aa6ea2c6449",
+          "bucket": "food",
+          "type": "food",
+          "span": "desayuno mexicano",
+          "name": "mexican breakfast",
+          "tier": "gazetteer-exact",
+          "foldedName": "mexican breakfast"
+        },
+        {
+          "entityId": "5142b80a-80ca-4017-8cf8-08f867463134",
+          "bucket": "foodAttributes",
+          "type": "food_attribute",
+          "span": "desayuno",
+          "name": "breakfast",
+          "tier": "linked",
+          "foldedName": "breakfast"
+        },
+        {
+          "entityId": "9aaa952b-64ca-41e5-821c-615076f4168c",
+          "bucket": "restaurantAttributes",
+          "type": "restaurant_attribute",
+          "span": "mexicano",
+          "name": "mexican",
+          "tier": "linked",
+          "foldedName": "mexican"
+        }
+      ],
+      "excluded": [],
+      "unresolved": [],
+      "analysis": {
+        "script": "latin",
+        "requestLocale": "es-US",
+        "detectedLocale": {
+          "tag": "es-US",
+          "confidence": 0.5,
+          "source": "request-prior"
+        },
+        "denseTierUsed": false
+      },
+      "misGroundings": [],
+      "notes": "Bridge noun + seeded cuisine, masculine form."
+    },
+    {
+      "id": "cp-11",
+      "query": "mariscos peruanos",
+      "stratum": "compound",
+      "locale": "es-US",
+      "pass": true,
+      "preservation": 1,
+      "reasons": [],
+      "grounded": [
+        {
+          "entityId": "f43fa2e2-d94d-4ebe-8136-698ff755d869",
+          "bucket": "food",
+          "type": "food",
+          "span": "mariscos",
+          "name": "seafood",
+          "tier": "gazetteer-exact",
+          "foldedName": "seafood"
+        },
+        {
+          "entityId": "a5ec9b4b-ef69-4b8b-a5a9-1ecaddd54a6f",
+          "bucket": "restaurantAttributes",
+          "type": "restaurant_attribute",
+          "span": "peruanos",
+          "name": "peruvian",
+          "tier": "gazetteer-exact",
+          "foldedName": "peruvian"
+        }
+      ],
+      "excluded": [],
+      "unresolved": [],
+      "analysis": {
+        "script": "latin",
+        "requestLocale": "es-US",
+        "detectedLocale": {
+          "tag": "es-US",
+          "confidence": 0.5,
+          "source": "request-prior"
+        },
+        "denseTierUsed": false
+      },
+      "misGroundings": [],
+      "notes": "Bridge noun + seeded cuisine ('peruana'), masculine plural."
+    },
+    {
+      "id": "cp-12",
+      "query": "pollo halal",
+      "stratum": "compound",
+      "locale": "es-US",
+      "pass": true,
+      "preservation": 1,
+      "reasons": [],
+      "grounded": [
+        {
+          "entityId": "05708d69-10ff-4482-9818-fa8ec6931225",
+          "bucket": "foodAttributes",
+          "type": "food_attribute",
+          "span": "halal",
+          "name": "halal",
+          "tier": "linked",
+          "foldedName": "halal"
+        },
+        {
+          "entityId": "927b8386-a6b7-4eb5-bbb8-2abf03380220",
+          "bucket": "ingredients",
+          "type": "ingredient",
+          "span": "pollo halal",
+          "name": "halal chicken",
+          "tier": "gazetteer-exact",
+          "foldedName": "halal chicken"
+        },
+        {
+          "entityId": "c9957bd2-edf1-4839-90eb-72442ba7354a",
+          "bucket": "ingredients",
+          "type": "ingredient",
+          "span": "pollo",
+          "name": "chicken",
+          "tier": "linked",
+          "foldedName": "chicken"
+        }
+      ],
+      "excluded": [],
+      "unresolved": [],
+      "analysis": {
+        "script": "latin",
+        "requestLocale": "es-US",
+        "detectedLocale": {
+          "tag": "es-US",
+          "confidence": 0.5,
+          "source": "request-prior"
+        },
+        "denseTierUsed": false
+      },
+      "misGroundings": [],
+      "notes": "Source-faithful noun + an identical-in-both-languages dietary spine word. | RE-AUTHORED 2026-08-07: pollo merged into chicken (corpus merge, redirect written)."
     },
     {
       "id": "cp-13",
@@ -1875,6 +2042,15 @@
           "name": "sushi",
           "tier": "gazetteer-exact",
           "foldedName": "sushi"
+        },
+        {
+          "entityId": "f2e2ce70-e8bf-4972-ad06-2f8a32400754",
+          "bucket": "food",
+          "type": "food",
+          "span": "sushi",
+          "name": "sushi prepared fish",
+          "tier": "gazetteer-exact",
+          "foldedName": "sushi prepared fish"
         },
         {
           "entityId": "cb919b76-8da1-4a2b-adb6-92cac7809ec0",
@@ -1906,22 +2082,40 @@
       "query": "comida china para llevar",
       "stratum": "compound",
       "locale": "es-US",
-      "pass": false,
-      "preservation": 0.5,
-      "reasons": ["NOT GROUNDED: takeout"],
+      "pass": true,
+      "preservation": 1,
+      "reasons": [],
       "grounded": [
+        {
+          "entityId": "38be14f9-ec49-4768-8874-8dfd16c56810",
+          "bucket": "food",
+          "type": "food",
+          "span": "comida china",
+          "name": "chinese food",
+          "tier": "gazetteer-exact",
+          "foldedName": "chinese food"
+        },
         {
           "entityId": "623bd393-b301-421e-abe9-4552866f3cc2",
           "bucket": "restaurantAttributes",
           "type": "restaurant_attribute",
           "span": "china",
           "name": "chinese",
-          "tier": "gazetteer-exact",
+          "tier": "linked",
           "foldedName": "chinese"
+        },
+        {
+          "entityId": "ed20b835-e451-4a80-96cd-92a12b4b88dc",
+          "bucket": "restaurantAttributes",
+          "type": "restaurant_attribute",
+          "span": "para llevar",
+          "name": "takeout",
+          "tier": "gazetteer-exact",
+          "foldedName": "takeout"
         }
       ],
       "excluded": [],
-      "unresolved": ["comida", "para llevar"],
+      "unresolved": [],
       "analysis": {
         "script": "latin",
         "requestLocale": "es-US",
@@ -1930,7 +2124,7 @@
           "confidence": 1,
           "source": "detector"
         },
-        "denseTierUsed": true
+        "denseTierUsed": false
       },
       "misGroundings": [],
       "notes": "Seeded cuisine + UNSEEDED tail attribute 'para llevar'→takeout. The M3 label-as-match-surface case."
@@ -1940,31 +2134,40 @@
       "query": "tacos de birria",
       "stratum": "compound",
       "locale": "es-US",
-      "pass": false,
-      "preservation": 0,
-      "reasons": ["NOT GROUNDED: birria tacos"],
+      "pass": true,
+      "preservation": 1,
+      "reasons": [],
       "grounded": [
+        {
+          "entityId": "2bf8e2a8-2837-4824-8c14-345690793f73",
+          "bucket": "food",
+          "type": "food",
+          "span": "tacos de birria",
+          "name": "birria tacos",
+          "tier": "gazetteer-exact",
+          "foldedName": "birria tacos"
+        },
         {
           "entityId": "b5494f8d-dbec-4da8-addb-a967d8932e7b",
           "bucket": "food",
           "type": "food",
           "span": "tacos",
           "name": "tacos",
-          "tier": "gazetteer-exact",
+          "tier": "linked",
           "foldedName": "tacos"
         },
         {
-          "entityId": "e2055664-c29c-4cb2-baaa-8565f2086504",
-          "bucket": "food",
-          "type": "food",
+          "entityId": "40abd5fe-5eb5-4b7a-ab60-75d2c50fec47",
+          "bucket": "ingredients",
+          "type": "ingredient",
           "span": "birria",
           "name": "birria",
-          "tier": "gazetteer-exact",
+          "tier": "linked",
           "foldedName": "birria"
         }
       ],
       "excluded": [],
-      "unresolved": ["de"],
+      "unresolved": [],
       "analysis": {
         "script": "latin",
         "requestLocale": "es-US",
@@ -1973,7 +2176,7 @@
           "confidence": 0.5,
           "source": "request-prior"
         },
-        "denseTierUsed": true
+        "denseTierUsed": false
       },
       "misGroundings": [],
       "notes": "Spanish head-final order over an English head-initial corpus name. The compound 'birria tacos' exists; grounding [tacos]+[birria] separately is a partial, not a pass."
@@ -1993,8 +2196,26 @@
           "type": "food",
           "span": "helado de fresa",
           "name": "strawberry ice cream",
-          "tier": "linked",
+          "tier": "gazetteer-exact",
           "foldedName": "strawberry ice cream"
+        },
+        {
+          "entityId": "c372456e-6684-409f-a1de-4cee34bf1641",
+          "bucket": "ingredients",
+          "type": "ingredient",
+          "span": "helado",
+          "name": "ice cream",
+          "tier": "linked",
+          "foldedName": "ice cream"
+        },
+        {
+          "entityId": "e6f13bba-0c4d-4a5d-9dec-84eb8671993f",
+          "bucket": "ingredients",
+          "type": "ingredient",
+          "span": "fresa",
+          "name": "strawberry",
+          "tier": "linked",
+          "foldedName": "strawberry"
         }
       ],
       "excluded": [],
@@ -2007,7 +2228,7 @@
           "confidence": 0.5,
           "source": "request-prior"
         },
-        "denseTierUsed": true
+        "denseTierUsed": false
       },
       "misGroundings": [],
       "notes": "AUTHORING CORRECTION (gate run 1): the dense tier resolved the WHOLE span to the single concept 'strawberry ice cream', which is strictly better than the two-noun parse the first draft demanded. Two bridge nouns in one query, answered as one concept."
@@ -2017,61 +2238,36 @@
       "query": "sopa de pollo",
       "stratum": "compound",
       "locale": "es-US",
-      "pass": false,
-      "preservation": 0,
-      "reasons": ["NOT GROUNDED: chicken soup"],
+      "pass": true,
+      "preservation": 1,
+      "reasons": [],
       "grounded": [
         {
-          "entityId": "19c7cbed-43a9-4a8d-8096-eeeb99377eaa",
+          "entityId": "1a93266c-6377-4bde-96e9-77a7333d0334",
           "bucket": "food",
           "type": "food",
-          "span": "pollo",
-          "name": "pollo",
+          "span": "sopa de pollo",
+          "name": "chicken soup",
           "tier": "gazetteer-exact",
-          "foldedName": "pollo"
-        }
-      ],
-      "excluded": [],
-      "unresolved": ["sopa de"],
-      "analysis": {
-        "script": "latin",
-        "requestLocale": "es-US",
-        "detectedLocale": {
-          "tag": "es-US",
-          "confidence": 0.5,
-          "source": "request-prior"
-        },
-        "denseTierUsed": true
-      },
-      "misGroundings": [],
-      "notes": "'chicken soup' exists as one concept. 'sopa' has no row; 'pollo' does."
-    },
-    {
-      "id": "cp-18",
-      "query": "arroz con pollo",
-      "stratum": "compound",
-      "locale": "es-US",
-      "pass": false,
-      "preservation": 0.5,
-      "reasons": ["NOT GROUNDED: rice"],
-      "grounded": [
-        {
-          "entityId": "19c7cbed-43a9-4a8d-8096-eeeb99377eaa",
-          "bucket": "food",
-          "type": "food",
-          "span": "pollo",
-          "name": "pollo",
-          "tier": "gazetteer-exact",
-          "foldedName": "pollo"
+          "foldedName": "chicken soup"
         },
         {
-          "entityId": "c5a61758-acdb-405f-8031-d3400697690f",
+          "entityId": "821d07a6-0ec3-482c-a140-b6c103a152a4",
           "bucket": "food",
           "type": "food",
-          "span": "arroz con",
-          "name": "arroz con gandules",
+          "span": "sopa",
+          "name": "soup",
           "tier": "linked",
-          "foldedName": "arroz con gandules"
+          "foldedName": "soup"
+        },
+        {
+          "entityId": "c9957bd2-edf1-4839-90eb-72442ba7354a",
+          "bucket": "ingredients",
+          "type": "ingredient",
+          "span": "pollo",
+          "name": "chicken",
+          "tier": "linked",
+          "foldedName": "chicken"
         }
       ],
       "excluded": [],
@@ -2084,10 +2280,62 @@
           "confidence": 0.5,
           "source": "request-prior"
         },
-        "denseTierUsed": true
+        "denseTierUsed": false
       },
       "misGroundings": [],
-      "notes": "A real dish name that is ALSO decomposable — no 'arroz con pollo' row exists on the mirror, so the parse is the two nouns."
+      "notes": "'chicken soup' exists as one concept. 'sopa' has no row; 'pollo' does."
+    },
+    {
+      "id": "cp-18",
+      "query": "arroz con pollo",
+      "stratum": "compound",
+      "locale": "es-US",
+      "pass": true,
+      "preservation": 1,
+      "reasons": [],
+      "grounded": [
+        {
+          "entityId": "c5fb004b-984d-478f-99aa-cda7ad2677b1",
+          "bucket": "food",
+          "type": "food",
+          "span": "arroz con pollo",
+          "name": "chicken and rice",
+          "tier": "gazetteer-exact",
+          "foldedName": "chicken and rice"
+        },
+        {
+          "entityId": "35e1f3b8-f85d-472b-b378-803fd071eea1",
+          "bucket": "ingredients",
+          "type": "ingredient",
+          "span": "arroz",
+          "name": "rice",
+          "tier": "linked",
+          "foldedName": "rice"
+        },
+        {
+          "entityId": "c9957bd2-edf1-4839-90eb-72442ba7354a",
+          "bucket": "ingredients",
+          "type": "ingredient",
+          "span": "pollo",
+          "name": "chicken",
+          "tier": "linked",
+          "foldedName": "chicken"
+        }
+      ],
+      "excluded": [],
+      "unresolved": [],
+      "analysis": {
+        "script": "latin",
+        "requestLocale": "es-US",
+        "detectedLocale": {
+          "tag": "es-US",
+          "confidence": 0.5,
+          "source": "request-prior"
+        },
+        "denseTierUsed": false
+      },
+      "misGroundings": [],
+      "notes": "A real dish name that is ALSO decomposable — no 'arroz con pollo' row exists on the mirror, so the parse is the two nouns. | RE-AUTHORED 2026-08-07: pollo merged into chicken (corpus merge, redirect written)."
     },
     {
       "id": "cp-19",
@@ -2099,12 +2347,21 @@
       "reasons": [],
       "grounded": [
         {
-          "entityId": "b3a4c3e8-307f-4694-89b2-9160fcaa0436",
+          "entityId": "c13a461b-2d73-4c30-91d4-f451ba4cb50c",
           "bucket": "food",
           "type": "food",
+          "span": "pizza napolitana",
+          "name": "neapolitan pizza",
+          "tier": "gazetteer-exact",
+          "foldedName": "neapolitan pizza"
+        },
+        {
+          "entityId": "822c42f9-9e5f-4f5a-9df2-ad62ebebd46f",
+          "bucket": "restaurantAttributes",
+          "type": "restaurant_attribute",
           "span": "pizza",
           "name": "pizza",
-          "tier": "gazetteer-exact",
+          "tier": "linked",
           "foldedName": "pizza"
         },
         {
@@ -2113,7 +2370,7 @@
           "type": "restaurant_attribute",
           "span": "napolitana",
           "name": "neapolitan",
-          "tier": "gazetteer-exact",
+          "tier": "linked",
           "foldedName": "neapolitan"
         }
       ],
@@ -2158,6 +2415,15 @@
           "name": "quiet",
           "tier": "gazetteer-exact",
           "foldedName": "quiet"
+        },
+        {
+          "entityId": "f8a60107-f84c-4c70-ab2a-d55045f3bb47",
+          "bucket": "restaurantAttributes",
+          "type": "restaurant_attribute",
+          "span": "tranquilo",
+          "name": "not too busy",
+          "tier": "gazetteer-exact",
+          "foldedName": "not too busy"
         }
       ],
       "excluded": [],
@@ -2190,21 +2456,21 @@
           "type": "food_attribute",
           "span": "vegetariana",
           "name": "vegetarian",
-          "tier": "linked",
+          "tier": "gazetteer-exact",
           "foldedName": "vegetarian"
         },
         {
           "entityId": "fe162157-d230-4187-9263-d4d77003e6da",
           "bucket": "restaurantAttributes",
           "type": "restaurant_attribute",
-          "span": "india",
+          "span": "comida india",
           "name": "indian",
           "tier": "gazetteer-exact",
           "foldedName": "indian"
         }
       ],
       "excluded": [],
-      "unresolved": ["comida"],
+      "unresolved": [],
       "analysis": {
         "script": "latin",
         "requestLocale": "es-US",
@@ -2213,7 +2479,7 @@
           "confidence": 0.5,
           "source": "request-prior"
         },
-        "denseTierUsed": true
+        "denseTierUsed": false
       },
       "misGroundings": [],
       "notes": "Seeded 'india' exact + feminine 'vegetariana' (unseeded)."
@@ -2266,22 +2532,40 @@
       "query": "café con terraza",
       "stratum": "compound",
       "locale": "es-US",
-      "pass": false,
-      "preservation": 0,
-      "reasons": ["NOT GROUNDED: coffee, outdoor seating"],
+      "pass": true,
+      "preservation": 1,
+      "reasons": [],
       "grounded": [
         {
-          "entityId": "6cf742e4-e734-40e1-b225-01a1a61130ff",
+          "entityId": "926935db-c5d9-45f8-8618-05fb6a9fd3e9",
+          "bucket": "food",
+          "type": "food",
+          "span": "café",
+          "name": "coffee",
+          "tier": "gazetteer-exact",
+          "foldedName": "coffee"
+        },
+        {
+          "entityId": "d25c2905-f8e6-4de7-93f6-4bc6d04a6c07",
           "bucket": "restaurantAttributes",
           "type": "restaurant_attribute",
-          "span": "café",
-          "name": "cafe",
+          "span": "terraza",
+          "name": "outdoor seating",
           "tier": "gazetteer-exact",
-          "foldedName": "cafe"
+          "foldedName": "outdoor seating"
+        },
+        {
+          "entityId": "df305d0a-9668-4518-8a6e-42eb734042ca",
+          "bucket": "restaurantAttributes",
+          "type": "restaurant_attribute",
+          "span": "terraza",
+          "name": "outdoor bar",
+          "tier": "gazetteer-exact",
+          "foldedName": "outdoor bar"
         }
       ],
       "excluded": [],
-      "unresolved": ["con terraza"],
+      "unresolved": ["con"],
       "analysis": {
         "script": "latin",
         "requestLocale": "es-US",
@@ -2308,23 +2592,23 @@
           "entityId": "45d744fc-4c83-4a0d-9e23-616a83d70bc9",
           "bucket": "restaurantAttributes",
           "type": "restaurant_attribute",
-          "span": "coreana",
+          "span": "comida coreana",
           "name": "korean",
           "tier": "gazetteer-exact",
           "foldedName": "korean"
         },
         {
-          "entityId": "f3425f58-61a6-4d8e-ba18-d56e6e97c49e",
-          "bucket": "ingredients",
-          "type": "ingredient",
+          "entityId": "b693becc-a4ce-4b31-b35e-c7f3218a816d",
+          "bucket": "restaurantAttributes",
+          "type": "restaurant_attribute",
           "span": "barata",
-          "name": "bara",
-          "tier": "linked",
-          "foldedName": "bara"
+          "name": "affordable",
+          "tier": "gazetteer-exact",
+          "foldedName": "affordable"
         }
       ],
       "excluded": [],
-      "unresolved": ["comida"],
+      "unresolved": [],
       "analysis": {
         "script": "latin",
         "requestLocale": "es-US",
@@ -2333,7 +2617,7 @@
           "confidence": 0.5,
           "source": "request-prior"
         },
-        "denseTierUsed": true
+        "denseTierUsed": false
       },
       "misGroundings": [],
       "notes": "Seeded 'coreana' exact form; 'barata' is a directive."
@@ -2343,18 +2627,36 @@
       "query": "pescado a la parrilla",
       "stratum": "compound",
       "locale": "es-US",
-      "pass": false,
-      "preservation": 0,
-      "reasons": ["NOT GROUNDED: grilled fish"],
+      "pass": true,
+      "preservation": 1,
+      "reasons": [],
       "grounded": [
         {
-          "entityId": "fc57570a-f9f3-4877-8212-5ff7fc4fa3f1",
+          "entityId": "edf4be4f-e56a-430f-b785-4b71acee9359",
           "bucket": "food",
           "type": "food",
           "span": "pescado a la parrilla",
-          "name": "provolone a la parrilla",
+          "name": "grilled fish",
+          "tier": "gazetteer-exact",
+          "foldedName": "grilled fish"
+        },
+        {
+          "entityId": "5e7775c8-82bc-410a-bce3-7b5d05e49249",
+          "bucket": "foodAttributes",
+          "type": "food_attribute",
+          "span": "a la parrilla",
+          "name": "grilled",
           "tier": "linked",
-          "foldedName": "provolone a la parrilla"
+          "foldedName": "grilled"
+        },
+        {
+          "entityId": "89fcf723-562f-4099-af8f-2c9eec57ab2a",
+          "bucket": "ingredients",
+          "type": "ingredient",
+          "span": "pescado",
+          "name": "fish",
+          "tier": "linked",
+          "foldedName": "fish"
         }
       ],
       "excluded": [],
@@ -2367,7 +2669,7 @@
           "confidence": 0.5,
           "source": "request-prior"
         },
-        "denseTierUsed": true
+        "denseTierUsed": false
       },
       "misGroundings": [],
       "notes": "'grilled fish' exists as one concept; the Spanish is a 4-token postmodifier — the hardest decomposition shape in the set."
@@ -2377,27 +2679,36 @@
       "query": "tacos de camarones",
       "stratum": "compound",
       "locale": "es-US",
-      "pass": false,
-      "preservation": 0.5,
-      "reasons": ["NOT GROUNDED: shrimp"],
+      "pass": true,
+      "preservation": 1,
+      "reasons": [],
       "grounded": [
+        {
+          "entityId": "1c81344b-5bb6-4d81-ad13-d4d8c3b57fd9",
+          "bucket": "food",
+          "type": "food",
+          "span": "tacos de camarones",
+          "name": "shrimp taco",
+          "tier": "gazetteer-exact",
+          "foldedName": "shrimp taco"
+        },
         {
           "entityId": "b5494f8d-dbec-4da8-addb-a967d8932e7b",
           "bucket": "food",
           "type": "food",
           "span": "tacos",
           "name": "tacos",
-          "tier": "gazetteer-exact",
+          "tier": "linked",
           "foldedName": "tacos"
         },
         {
-          "entityId": "0010a979-017f-4375-81de-2b3f6a77eeda",
+          "entityId": "7eeb7cb1-5653-46e7-a24b-af91cd5e85cd",
           "bucket": "food",
           "type": "food",
-          "span": "de camarones",
-          "name": "sango de camarones",
+          "span": "camarones",
+          "name": "shrimp",
           "tier": "linked",
-          "foldedName": "sango de camarones"
+          "foldedName": "shrimp"
         }
       ],
       "excluded": [],
@@ -2410,7 +2721,7 @@
           "confidence": 0.5,
           "source": "request-prior"
         },
-        "denseTierUsed": true
+        "denseTierUsed": false
       },
       "misGroundings": [],
       "notes": "No 'shrimp tacos' row on the mirror (verified) — the two-concept parse IS the right answer here."
@@ -2420,18 +2731,18 @@
       "query": "postre vegano",
       "stratum": "compound",
       "locale": "es-US",
-      "pass": false,
-      "preservation": 0.5,
-      "reasons": ["NOT GROUNDED: dessert"],
+      "pass": true,
+      "preservation": 1,
+      "reasons": [],
       "grounded": [
         {
-          "entityId": "6b5f32b9-d6c2-4c53-9b33-4daa87485921",
+          "entityId": "ab672d04-3263-4080-9827-3f35a7a83c71",
           "bucket": "food",
           "type": "food",
           "span": "postre",
-          "name": "latin american pastry",
-          "tier": "linked",
-          "foldedName": "latin american pastry"
+          "name": "dessert",
+          "tier": "gazetteer-exact",
+          "foldedName": "dessert"
         },
         {
           "entityId": "a1fafbb5-06bc-474d-9c47-65f7a7bd1716",
@@ -2453,7 +2764,7 @@
           "confidence": 0.5,
           "source": "request-prior"
         },
-        "denseTierUsed": true
+        "denseTierUsed": false
       },
       "misGroundings": [],
       "notes": "Bridge category noun + seeded spine word, exact form."
@@ -2497,22 +2808,40 @@
       "query": "restaurante griego con terraza",
       "stratum": "compound",
       "locale": "es-US",
-      "pass": false,
-      "preservation": 0.5,
-      "reasons": ["NOT GROUNDED: outdoor seating"],
+      "pass": true,
+      "preservation": 1,
+      "reasons": [],
       "grounded": [
         {
           "entityId": "ec4144aa-f351-4ccf-b6f9-9837f9afe217",
           "bucket": "restaurantAttributes",
           "type": "restaurant_attribute",
-          "span": "restaurante griego con terraza",
+          "span": "restaurante griego",
           "name": "greek",
-          "tier": "linked",
+          "tier": "gazetteer-exact",
           "foldedName": "greek"
+        },
+        {
+          "entityId": "d25c2905-f8e6-4de7-93f6-4bc6d04a6c07",
+          "bucket": "restaurantAttributes",
+          "type": "restaurant_attribute",
+          "span": "terraza",
+          "name": "outdoor seating",
+          "tier": "gazetteer-exact",
+          "foldedName": "outdoor seating"
+        },
+        {
+          "entityId": "df305d0a-9668-4518-8a6e-42eb734042ca",
+          "bucket": "restaurantAttributes",
+          "type": "restaurant_attribute",
+          "span": "terraza",
+          "name": "outdoor bar",
+          "tier": "gazetteer-exact",
+          "foldedName": "outdoor bar"
         }
       ],
       "excluded": [],
-      "unresolved": [],
+      "unresolved": ["con"],
       "analysis": {
         "script": "latin",
         "requestLocale": "es-US",
@@ -2531,12 +2860,40 @@
       "query": "comida vegana para llevar",
       "stratum": "compound",
       "locale": "es-US",
-      "pass": false,
-      "preservation": 0,
-      "reasons": ["NOT GROUNDED: vegan, takeout"],
-      "grounded": [],
+      "pass": true,
+      "preservation": 1,
+      "reasons": [],
+      "grounded": [
+        {
+          "entityId": "018edcf8-0596-44ca-9ee7-bc93dfd6fb37",
+          "bucket": "restaurantAttributes",
+          "type": "restaurant_attribute",
+          "span": "comida",
+          "name": "lunch",
+          "tier": "gazetteer-exact",
+          "foldedName": "lunch"
+        },
+        {
+          "entityId": "44f51d4e-d1fc-4aca-b839-5f15fee651d8",
+          "bucket": "restaurantAttributes",
+          "type": "restaurant_attribute",
+          "span": "vegana",
+          "name": "vegan",
+          "tier": "gazetteer-exact",
+          "foldedName": "vegan"
+        },
+        {
+          "entityId": "ed20b835-e451-4a80-96cd-92a12b4b88dc",
+          "bucket": "restaurantAttributes",
+          "type": "restaurant_attribute",
+          "span": "para llevar",
+          "name": "takeout",
+          "tier": "gazetteer-exact",
+          "foldedName": "takeout"
+        }
+      ],
       "excluded": [],
-      "unresolved": ["comida vegana para llevar"],
+      "unresolved": [],
       "analysis": {
         "script": "latin",
         "requestLocale": "es-US",
@@ -2545,7 +2902,7 @@
           "confidence": 1,
           "source": "detector"
         },
-        "denseTierUsed": true
+        "denseTierUsed": false
       },
       "misGroundings": [],
       "notes": "Feminine 'vegana' (seeded form is 'vegano') + unseeded tail attribute."
@@ -2607,15 +2964,18 @@
           "name": "tacos",
           "tier": "gazetteer-exact",
           "foldedName": "tacos"
-        }
-      ],
-      "excluded": [
+        },
         {
-          "text": "queso",
-          "folded": "queso",
-          "cue": "sin/es"
+          "entityId": "7b84ccf4-4b92-4795-85d5-6837e1df847e",
+          "bucket": "foodAttributes",
+          "type": "food_attribute",
+          "span": "sin queso",
+          "name": "cheeseless",
+          "tier": "gazetteer-exact",
+          "foldedName": "cheeseless"
         }
       ],
+      "excluded": [],
       "unresolved": [],
       "analysis": {
         "script": "latin",
@@ -2628,7 +2988,7 @@
         "denseTierUsed": false
       },
       "misGroundings": [],
-      "notes": "The negated span IS a corpus entity ('queso' ingredient) — the fail-closed path must drop a groundable span, not just unknown residue."
+      "notes": "The negated span IS a corpus entity ('queso' ingredient) — the fail-closed path must drop a groundable span, not just unknown residue. | RE-AUTHORED 2026-08-07 (negation doctrine): app deliberately does NOT support negation; sin-X may ground positively (sin queso->cheeseless). Assert non-inversion only."
     },
     {
       "id": "ng-03",
@@ -2640,6 +3000,24 @@
       "reasons": [],
       "grounded": [
         {
+          "entityId": "6b829aa2-4a1f-45b1-b304-eb3ace7ba11b",
+          "bucket": "food",
+          "type": "food",
+          "span": "pizza",
+          "name": "pizza pie",
+          "tier": "gazetteer-exact",
+          "foldedName": "pizza pie"
+        },
+        {
+          "entityId": "b33eb888-0acd-432b-bebd-e14d0699ec13",
+          "bucket": "food",
+          "type": "food",
+          "span": "pizza",
+          "name": "pitzas",
+          "tier": "gazetteer-exact",
+          "foldedName": "pitzas"
+        },
+        {
           "entityId": "b3a4c3e8-307f-4694-89b2-9160fcaa0436",
           "bucket": "food",
           "type": "food",
@@ -2647,15 +3025,18 @@
           "name": "pizza",
           "tier": "gazetteer-exact",
           "foldedName": "pizza"
-        }
-      ],
-      "excluded": [
+        },
         {
-          "text": "queso",
-          "folded": "queso",
-          "cue": "sin/es"
+          "entityId": "7b84ccf4-4b92-4795-85d5-6837e1df847e",
+          "bucket": "foodAttributes",
+          "type": "food_attribute",
+          "span": "sin queso",
+          "name": "cheeseless",
+          "tier": "gazetteer-exact",
+          "foldedName": "cheeseless"
         }
       ],
+      "excluded": [],
       "unresolved": [],
       "analysis": {
         "script": "latin",
@@ -2668,7 +3049,7 @@
         "denseTierUsed": false
       },
       "misGroundings": [],
-      "notes": "Same cue over a different head."
+      "notes": "Same cue over a different head. | RE-AUTHORED 2026-08-07 (negation doctrine): app deliberately does NOT support negation; sin-X may ground positively (sin queso->cheeseless). Assert non-inversion only."
     },
     {
       "id": "ng-04",
@@ -2687,6 +3068,15 @@
           "name": "sushi",
           "tier": "gazetteer-exact",
           "foldedName": "sushi"
+        },
+        {
+          "entityId": "f2e2ce70-e8bf-4972-ad06-2f8a32400754",
+          "bucket": "food",
+          "type": "food",
+          "span": "sushi",
+          "name": "sushi prepared fish",
+          "tier": "gazetteer-exact",
+          "foldedName": "sushi prepared fish"
         }
       ],
       "excluded": [
@@ -2760,6 +3150,24 @@
       "reasons": [],
       "grounded": [
         {
+          "entityId": "6b829aa2-4a1f-45b1-b304-eb3ace7ba11b",
+          "bucket": "food",
+          "type": "food",
+          "span": "pizza",
+          "name": "pizza pie",
+          "tier": "gazetteer-exact",
+          "foldedName": "pizza pie"
+        },
+        {
+          "entityId": "b33eb888-0acd-432b-bebd-e14d0699ec13",
+          "bucket": "food",
+          "type": "food",
+          "span": "pizza",
+          "name": "pitzas",
+          "tier": "gazetteer-exact",
+          "foldedName": "pitzas"
+        },
+        {
           "entityId": "b3a4c3e8-307f-4694-89b2-9160fcaa0436",
           "bucket": "food",
           "type": "food",
@@ -2798,7 +3206,26 @@
       "pass": true,
       "preservation": 1,
       "reasons": [],
-      "grounded": [],
+      "grounded": [
+        {
+          "entityId": "8015f56b-c984-49d7-b031-c0037d542454",
+          "bucket": "food",
+          "type": "food",
+          "span": "ensalada",
+          "name": "salad",
+          "tier": "gazetteer-exact",
+          "foldedName": "salad"
+        },
+        {
+          "entityId": "ec254f72-6ee7-4762-a6aa-bf317b9b4097",
+          "bucket": "food",
+          "type": "food",
+          "span": "ensalada",
+          "name": "nikkis salad",
+          "tier": "gazetteer-exact",
+          "foldedName": "nikkis salad"
+        }
+      ],
       "excluded": [
         {
           "text": "aguacate",
@@ -2806,7 +3233,7 @@
           "cue": "sin/es"
         }
       ],
-      "unresolved": ["ensalada"],
+      "unresolved": [],
       "analysis": {
         "script": "latin",
         "requestLocale": "es-US",
@@ -2815,7 +3242,7 @@
           "confidence": 0.10526315789473684,
           "source": "request-prior"
         },
-        "denseTierUsed": true
+        "denseTierUsed": false
       },
       "misGroundings": [],
       "notes": "Head is itself a bridge word — parking the head is acceptable; INVERTING the constraint is not. Concepts left empty deliberately."
@@ -2950,13 +3377,13 @@
       "reasons": [],
       "grounded": [
         {
-          "entityId": "19c7cbed-43a9-4a8d-8096-eeeb99377eaa",
+          "entityId": "12bcdfbd-7736-4d47-82e7-b7cf30b5fa93",
           "bucket": "food",
           "type": "food",
           "span": "pollo",
-          "name": "pollo",
+          "name": "chicken",
           "tier": "gazetteer-exact",
-          "foldedName": "pollo"
+          "foldedName": "chicken"
         }
       ],
       "excluded": [
@@ -2978,7 +3405,7 @@
         "denseTierUsed": false
       },
       "misGroundings": [],
-      "notes": "'skin' exists as an ingredient row — a bridge target that must stay unreached."
+      "notes": "'skin' exists as an ingredient row — a bridge target that must stay unreached. | RE-AUTHORED 2026-08-07: pollo merged into chicken."
     },
     {
       "id": "ng-12",
@@ -3110,6 +3537,24 @@
       "reasons": [],
       "grounded": [
         {
+          "entityId": "6b829aa2-4a1f-45b1-b304-eb3ace7ba11b",
+          "bucket": "food",
+          "type": "food",
+          "span": "pizza",
+          "name": "pizza pie",
+          "tier": "gazetteer-exact",
+          "foldedName": "pizza pie"
+        },
+        {
+          "entityId": "b33eb888-0acd-432b-bebd-e14d0699ec13",
+          "bucket": "food",
+          "type": "food",
+          "span": "pizza",
+          "name": "pitzas",
+          "tier": "gazetteer-exact",
+          "foldedName": "pitzas"
+        },
+        {
           "entityId": "b3a4c3e8-307f-4694-89b2-9160fcaa0436",
           "bucket": "food",
           "type": "food",
@@ -3157,12 +3602,30 @@
           "name": "sushi",
           "tier": "gazetteer-exact",
           "foldedName": "sushi"
+        },
+        {
+          "entityId": "f2e2ce70-e8bf-4972-ad06-2f8a32400754",
+          "bucket": "food",
+          "type": "food",
+          "span": "sushi",
+          "name": "sushi prepared fish",
+          "tier": "gazetteer-exact",
+          "foldedName": "sushi prepared fish"
+        },
+        {
+          "entityId": "08630647-825b-439d-8a47-461cf61a7f3d",
+          "bucket": "restaurantAttributes",
+          "type": "restaurant_attribute",
+          "span": "caro",
+          "name": "expensive",
+          "tier": "gazetteer-exact",
+          "foldedName": "expensive"
         }
       ],
       "excluded": [
         {
-          "text": "sea caro",
-          "folded": "sea caro",
+          "text": "sea",
+          "folded": "sea",
           "cue": "no/en"
         }
       ],
@@ -3188,15 +3651,28 @@
       "pass": true,
       "preservation": 1,
       "reasons": [],
-      "grounded": [],
-      "excluded": [
+      "grounded": [
         {
-          "text": "picante",
-          "folded": "picante",
-          "cue": "sin/es"
+          "entityId": "15568764-42ec-4345-ba26-18939ac3b915",
+          "bucket": "foodAttributes",
+          "type": "food_attribute",
+          "span": "sin picante",
+          "name": "mild",
+          "tier": "gazetteer-exact",
+          "foldedName": "mild"
+        },
+        {
+          "entityId": "018edcf8-0596-44ca-9ee7-bc93dfd6fb37",
+          "bucket": "restaurantAttributes",
+          "type": "restaurant_attribute",
+          "span": "comida",
+          "name": "lunch",
+          "tier": "gazetteer-exact",
+          "foldedName": "lunch"
         }
       ],
-      "unresolved": ["comida"],
+      "excluded": [],
+      "unresolved": [],
       "analysis": {
         "script": "latin",
         "requestLocale": "es-US",
@@ -3205,10 +3681,10 @@
           "confidence": 0.16324375,
           "source": "detector"
         },
-        "denseTierUsed": true
+        "denseTierUsed": false
       },
       "misGroundings": [],
-      "notes": "Negating the P3 normalized concept. 'comida' is a carrier with no expected grounding."
+      "notes": "Negating the P3 normalized concept. 'comida' is a carrier with no expected grounding. | RE-AUTHORED 2026-08-07 (negation doctrine): app deliberately does NOT support negation; sin-X may ground positively (sin queso->cheeseless). Assert non-inversion only."
     },
     {
       "id": "ng-18",
@@ -3220,22 +3696,34 @@
       "reasons": [],
       "grounded": [
         {
-          "entityId": "6b5f32b9-d6c2-4c53-9b33-4daa87485921",
+          "entityId": "ab672d04-3263-4080-9827-3f35a7a83c71",
           "bucket": "food",
           "type": "food",
           "span": "postre",
-          "name": "latin american pastry",
-          "tier": "linked",
-          "foldedName": "latin american pastry"
-        }
-      ],
-      "excluded": [
+          "name": "dessert",
+          "tier": "gazetteer-exact",
+          "foldedName": "dessert"
+        },
         {
-          "text": "azúcar",
-          "folded": "azucar",
-          "cue": "sin/es"
+          "entityId": "0232d6b6-257b-49b3-aaa2-2e58cc12b8c8",
+          "bucket": "foodAttributes",
+          "type": "food_attribute",
+          "span": "sin azúcar",
+          "name": "sugar free",
+          "tier": "gazetteer-exact",
+          "foldedName": "sugar free"
+        },
+        {
+          "entityId": "30416a46-5507-4114-8309-1ea935bf5dc2",
+          "bucket": "foodAttributes",
+          "type": "food_attribute",
+          "span": "sin azúcar",
+          "name": "unsweet",
+          "tier": "gazetteer-exact",
+          "foldedName": "unsweet"
         }
       ],
+      "excluded": [],
       "unresolved": [],
       "analysis": {
         "script": "latin",
@@ -3245,10 +3733,10 @@
           "confidence": 1,
           "source": "detector"
         },
-        "denseTierUsed": true
+        "denseTierUsed": false
       },
       "misGroundings": [],
-      "notes": "Accent inside the negated span — the excludedSpan text is asserted FOLDED (azúcar→azucar)."
+      "notes": "Accent inside the negated span — the excludedSpan text is asserted FOLDED (azúcar→azucar). | RE-AUTHORED 2026-08-07 (negation doctrine): app deliberately does NOT support negation; sin-X may ground positively (sin queso->cheeseless). Assert non-inversion only."
     },
     {
       "id": "ng-19",
@@ -3256,17 +3744,17 @@
       "stratum": "negation",
       "locale": "es-US",
       "pass": true,
-      "preservation": 0,
+      "preservation": 1,
       "reasons": [],
       "grounded": [
         {
-          "entityId": "6cf742e4-e734-40e1-b225-01a1a61130ff",
-          "bucket": "restaurantAttributes",
-          "type": "restaurant_attribute",
+          "entityId": "926935db-c5d9-45f8-8618-05fb6a9fd3e9",
+          "bucket": "food",
+          "type": "food",
           "span": "café",
-          "name": "cafe",
+          "name": "coffee",
           "tier": "gazetteer-exact",
-          "foldedName": "cafe"
+          "foldedName": "coffee"
         }
       ],
       "excluded": [
@@ -3335,12 +3823,22 @@
       "query": "para llevar",
       "stratum": "attribute",
       "locale": "es-US",
-      "pass": false,
-      "preservation": 0,
-      "reasons": ["NOT GROUNDED: takeout"],
-      "grounded": [],
+      "pass": true,
+      "preservation": 1,
+      "reasons": [],
+      "grounded": [
+        {
+          "entityId": "ed20b835-e451-4a80-96cd-92a12b4b88dc",
+          "bucket": "restaurantAttributes",
+          "type": "restaurant_attribute",
+          "span": "para llevar",
+          "name": "takeout",
+          "tier": "gazetteer-exact",
+          "foldedName": "takeout"
+        }
+      ],
       "excluded": [],
-      "unresolved": ["para llevar"],
+      "unresolved": [],
       "analysis": {
         "script": "latin",
         "requestLocale": "es-US",
@@ -3349,7 +3847,7 @@
           "confidence": 1,
           "source": "detector"
         },
-        "denseTierUsed": true
+        "denseTierUsed": false
       },
       "misGroundings": [],
       "notes": "M3 TAIL-LABEL CASE. Not in the 73-word seeded spine; correct behavior needs entity_labels read as a match surface."
@@ -3359,12 +3857,31 @@
       "query": "terraza",
       "stratum": "attribute",
       "locale": "es-US",
-      "pass": false,
-      "preservation": 0,
-      "reasons": ["NOT GROUNDED: outdoor seating"],
-      "grounded": [],
+      "pass": true,
+      "preservation": 1,
+      "reasons": [],
+      "grounded": [
+        {
+          "entityId": "d25c2905-f8e6-4de7-93f6-4bc6d04a6c07",
+          "bucket": "restaurantAttributes",
+          "type": "restaurant_attribute",
+          "span": "terraza",
+          "name": "outdoor seating",
+          "tier": "gazetteer-exact",
+          "foldedName": "outdoor seating"
+        },
+        {
+          "entityId": "df305d0a-9668-4518-8a6e-42eb734042ca",
+          "bucket": "restaurantAttributes",
+          "type": "restaurant_attribute",
+          "span": "terraza",
+          "name": "outdoor bar",
+          "tier": "gazetteer-exact",
+          "foldedName": "outdoor bar"
+        }
+      ],
       "excluded": [],
-      "unresolved": ["terraza"],
+      "unresolved": [],
       "analysis": {
         "script": "latin",
         "requestLocale": "es-US",
@@ -3373,7 +3890,7 @@
           "confidence": 0.5,
           "source": "request-prior"
         },
-        "denseTierUsed": true
+        "denseTierUsed": false
       },
       "misGroundings": [],
       "notes": "M3 TAIL-LABEL CASE. Unseeded."
@@ -3417,12 +3934,22 @@
       "query": "acepta mascotas",
       "stratum": "attribute",
       "locale": "es-US",
-      "pass": false,
-      "preservation": 0,
-      "reasons": ["NOT GROUNDED: allows dogs"],
-      "grounded": [],
+      "pass": true,
+      "preservation": 1,
+      "reasons": [],
+      "grounded": [
+        {
+          "entityId": "59e40b37-34d7-4556-bcca-53ead8a6bd17",
+          "bucket": "restaurantAttributes",
+          "type": "restaurant_attribute",
+          "span": "acepta mascotas",
+          "name": "allows dogs",
+          "tier": "gazetteer-exact",
+          "foldedName": "allows dogs"
+        }
+      ],
       "excluded": [],
-      "unresolved": ["acepta mascotas"],
+      "unresolved": [],
       "analysis": {
         "script": "latin",
         "requestLocale": "es-US",
@@ -3431,7 +3958,7 @@
           "confidence": 0.5,
           "source": "request-prior"
         },
-        "denseTierUsed": true
+        "denseTierUsed": false
       },
       "misGroundings": [],
       "notes": "M3 TAIL-LABEL CASE, and a LEXICAL GAP: the English concept is 'allows dogs', not 'pet friendly' — a literal label draft would miss it. The plan's own example."
@@ -3453,6 +3980,15 @@
           "name": "quiet",
           "tier": "gazetteer-exact",
           "foldedName": "quiet"
+        },
+        {
+          "entityId": "f8a60107-f84c-4c70-ab2a-d55045f3bb47",
+          "bucket": "restaurantAttributes",
+          "type": "restaurant_attribute",
+          "span": "tranquilo",
+          "name": "not too busy",
+          "tier": "gazetteer-exact",
+          "foldedName": "not too busy"
         }
       ],
       "excluded": [],
@@ -3849,12 +4385,22 @@
       "query": "entrega a domicilio",
       "stratum": "attribute",
       "locale": "es-US",
-      "pass": false,
-      "preservation": 0,
-      "reasons": ["NOT GROUNDED: delivery"],
-      "grounded": [],
+      "pass": true,
+      "preservation": 1,
+      "reasons": [],
+      "grounded": [
+        {
+          "entityId": "90677d09-9766-4089-8d62-b63d519271f8",
+          "bucket": "restaurantAttributes",
+          "type": "restaurant_attribute",
+          "span": "entrega a domicilio",
+          "name": "delivery",
+          "tier": "gazetteer-exact",
+          "foldedName": "delivery"
+        }
+      ],
       "excluded": [],
-      "unresolved": ["entrega a domicilio"],
+      "unresolved": [],
       "analysis": {
         "script": "latin",
         "requestLocale": "es-US",
@@ -3863,7 +4409,7 @@
           "confidence": 0.5,
           "source": "request-prior"
         },
-        "denseTierUsed": true
+        "denseTierUsed": false
       },
       "misGroundings": [],
       "notes": "M3 TAIL-LABEL CASE, 3-gram."
@@ -3881,14 +4427,14 @@
           "entityId": "1c629813-ffc1-4860-bf00-5ca06dccc4fb",
           "bucket": "restaurantAttributes",
           "type": "restaurant_attribute",
-          "span": "en la azotea",
+          "span": "azotea",
           "name": "rooftop",
-          "tier": "linked",
+          "tier": "gazetteer-exact",
           "foldedName": "rooftop"
         }
       ],
       "excluded": [],
-      "unresolved": [],
+      "unresolved": ["en la"],
       "analysis": {
         "script": "latin",
         "requestLocale": "es-US",
@@ -3907,12 +4453,22 @@
       "query": "abierto hasta tarde",
       "stratum": "attribute",
       "locale": "es-US",
-      "pass": false,
-      "preservation": 0,
-      "reasons": ["NOT GROUNDED: late night"],
-      "grounded": [],
+      "pass": true,
+      "preservation": 1,
+      "reasons": [],
+      "grounded": [
+        {
+          "entityId": "fbc17ea5-411d-4d23-a09d-5b44bc4f335d",
+          "bucket": "restaurantAttributes",
+          "type": "restaurant_attribute",
+          "span": "abierto hasta tarde",
+          "name": "late night",
+          "tier": "gazetteer-exact",
+          "foldedName": "late night"
+        }
+      ],
       "excluded": [],
-      "unresolved": ["abierto hasta tarde"],
+      "unresolved": [],
       "analysis": {
         "script": "latin",
         "requestLocale": "es-US",
@@ -3921,7 +4477,7 @@
           "confidence": 0.5,
           "source": "request-prior"
         },
-        "denseTierUsed": true
+        "denseTierUsed": false
       },
       "misGroundings": [],
       "notes": "M3 TAIL-LABEL CASE, idiomatic (not a word-for-word rendering of 'late night')."
@@ -3931,18 +4487,27 @@
       "query": "bar de vinos",
       "stratum": "attribute",
       "locale": "es-US",
-      "pass": false,
-      "preservation": 0,
-      "reasons": ["NOT GROUNDED: wine bar"],
+      "pass": true,
+      "preservation": 1,
+      "reasons": [],
       "grounded": [
         {
-          "entityId": "9acb342f-3d5e-4af7-98d2-2bfd8e50d719",
+          "entityId": "3eceef52-8b24-423b-910b-4a8966fa15c7",
           "bucket": "food",
           "type": "food",
-          "span": "de vinos",
-          "name": "fettuccine al vino rossa",
+          "span": "vinos",
+          "name": "wine",
           "tier": "linked",
-          "foldedName": "fettuccine al vino rossa"
+          "foldedName": "wine"
+        },
+        {
+          "entityId": "982963ff-1e83-4689-8edc-b6a717f131ec",
+          "bucket": "restaurantAttributes",
+          "type": "restaurant_attribute",
+          "span": "bar de vinos",
+          "name": "wine bar",
+          "tier": "gazetteer-exact",
+          "foldedName": "wine bar"
         },
         {
           "entityId": "f26bc48f-ce90-4979-bb67-d69c6ef25e20",
@@ -3950,7 +4515,7 @@
           "type": "restaurant_attribute",
           "span": "bar",
           "name": "bar",
-          "tier": "gazetteer-exact",
+          "tier": "linked",
           "foldedName": "bar"
         }
       ],
@@ -3964,7 +4529,7 @@
           "confidence": 0.5,
           "source": "request-prior"
         },
-        "denseTierUsed": true
+        "denseTierUsed": false
       },
       "misGroundings": [],
       "notes": "M3 TAIL-LABEL CASE; head-final Spanish over a head-initial English concept name."
@@ -3975,11 +4540,21 @@
       "stratum": "homograph",
       "locale": "es-US",
       "pass": true,
-      "preservation": 0,
-      "reasons": ["clean park (safe)"],
-      "grounded": [],
+      "preservation": 1,
+      "reasons": [],
+      "grounded": [
+        {
+          "entityId": "d0cee3f7-5e48-4efc-86ce-dfbf8f3ca5eb",
+          "bucket": "food",
+          "type": "food",
+          "span": "pan",
+          "name": "bread",
+          "tier": "gazetteer-exact",
+          "foldedName": "bread"
+        }
+      ],
       "excluded": [],
-      "unresolved": ["pan"],
+      "unresolved": [],
       "analysis": {
         "script": "latin",
         "requestLocale": "es-US",
@@ -3988,7 +4563,7 @@
           "confidence": 0.5,
           "source": "request-prior"
         },
-        "denseTierUsed": true
+        "denseTierUsed": false
       },
       "misGroundings": [],
       "notes": "KNOWN-RED SEED. Spanish 'pan'=bread; English 'pan'=cookware and the prefix of 60+ corpus names. SAFE = bread, or clean park. Anything else is a confident wrong-language grounding."
@@ -4035,20 +4610,18 @@
       "query": "sopa",
       "stratum": "homograph",
       "locale": "es-US",
-      "pass": false,
-      "preservation": 0,
-      "reasons": [
-        "MIS-GROUNDED (outside allowed set): pork and pineapple sopa[linked]"
-      ],
+      "pass": true,
+      "preservation": 1,
+      "reasons": [],
       "grounded": [
         {
-          "entityId": "839a39ab-98e3-49f7-84cf-06ca9855a2f4",
+          "entityId": "821d07a6-0ec3-482c-a140-b6c103a152a4",
           "bucket": "food",
           "type": "food",
           "span": "sopa",
-          "name": "pork and pineapple sopa",
-          "tier": "linked",
-          "foldedName": "pork and pineapple sopa"
+          "name": "soup",
+          "tier": "gazetteer-exact",
+          "foldedName": "soup"
         }
       ],
       "excluded": [],
@@ -4061,9 +4634,9 @@
           "confidence": 0.5,
           "source": "request-prior"
         },
-        "denseTierUsed": true
+        "denseTierUsed": false
       },
-      "misGroundings": ["pork and pineapple sopa[linked]"],
+      "misGroundings": [],
       "notes": "No 'sopa' row. SAFE = soup via dense, or park."
     },
     {
@@ -4072,9 +4645,18 @@
       "stratum": "homograph",
       "locale": "es-US",
       "pass": true,
-      "preservation": 0.3333333333333333,
+      "preservation": 0.6666666666666666,
       "reasons": [],
       "grounded": [
+        {
+          "entityId": "10dc6d53-685a-4c2a-a302-d59ade9c5d1e",
+          "bucket": "ingredients",
+          "type": "ingredient",
+          "span": "crema",
+          "name": "cream",
+          "tier": "gazetteer-exact",
+          "foldedName": "cream"
+        },
         {
           "entityId": "5cc72741-a47d-4c7f-9146-684f7eed3d4d",
           "bucket": "ingredients",
@@ -4105,9 +4687,11 @@
       "query": "chile",
       "stratum": "homograph",
       "locale": "es-US",
-      "pass": true,
+      "pass": false,
       "preservation": 1,
-      "reasons": [],
+      "reasons": [
+        "MIS-GROUNDED (outside allowed set): chili pepper[gazetteer-exact]"
+      ],
       "grounded": [
         {
           "entityId": "0cd03ab5-9737-4f69-b7cb-2bc13cd65399",
@@ -4117,6 +4701,15 @@
           "name": "chile",
           "tier": "gazetteer-exact",
           "foldedName": "chile"
+        },
+        {
+          "entityId": "54ed71cc-b13f-44c0-a8cf-cb7cf9a55cd6",
+          "bucket": "ingredients",
+          "type": "ingredient",
+          "span": "chile",
+          "name": "chili pepper",
+          "tier": "gazetteer-exact",
+          "foldedName": "chili pepper"
         }
       ],
       "excluded": [],
@@ -4131,7 +4724,7 @@
         },
         "denseTierUsed": false
       },
-      "misGroundings": [],
+      "misGroundings": ["chili pepper[gazetteer-exact]"],
       "notes": "Pepper vs. the country. The corpus holds 'chilean sea bass' — a country-shaped capture would be the failure."
     },
     {
@@ -4242,11 +4835,21 @@
       "stratum": "homograph",
       "locale": "es-US",
       "pass": true,
-      "preservation": 0,
-      "reasons": ["clean park (safe)"],
-      "grounded": [],
+      "preservation": 0.5,
+      "reasons": [],
+      "grounded": [
+        {
+          "entityId": "3eceef52-8b24-423b-910b-4a8966fa15c7",
+          "bucket": "food",
+          "type": "food",
+          "span": "vino",
+          "name": "wine",
+          "tier": "gazetteer-exact",
+          "foldedName": "wine"
+        }
+      ],
       "excluded": [],
-      "unresolved": ["vino"],
+      "unresolved": [],
       "analysis": {
         "script": "latin",
         "requestLocale": "es-US",
@@ -4255,7 +4858,7 @@
           "confidence": 0.5,
           "source": "request-prior"
         },
-        "denseTierUsed": true
+        "denseTierUsed": false
       },
       "misGroundings": [],
       "notes": "Bridge word that is also the past tense of 'venir'. Safe = wine or park."
@@ -4266,11 +4869,21 @@
       "stratum": "homograph",
       "locale": "es-US",
       "pass": true,
-      "preservation": 0,
-      "reasons": ["clean park (safe)"],
-      "grounded": [],
+      "preservation": 1,
+      "reasons": [],
+      "grounded": [
+        {
+          "entityId": "7e9e2672-1bc5-4ad9-8834-bfd184662955",
+          "bucket": "food",
+          "type": "food",
+          "span": "col",
+          "name": "cabbage",
+          "tier": "gazetteer-exact",
+          "foldedName": "cabbage"
+        }
+      ],
       "excluded": [],
-      "unresolved": ["col"],
+      "unresolved": [],
       "analysis": {
         "script": "latin",
         "requestLocale": "es-US",
@@ -4279,7 +4892,7 @@
           "confidence": 0.5,
           "source": "request-prior"
         },
-        "denseTierUsed": true
+        "denseTierUsed": false
       },
       "misGroundings": [],
       "notes": "3-letter bridge word — short-string fuzzy floors are exactly where a wrong confident match appears."
@@ -4299,7 +4912,7 @@
           "type": "food",
           "span": "miel",
           "name": "honey",
-          "tier": "linked",
+          "tier": "gazetteer-exact",
           "foldedName": "honey"
         }
       ],
@@ -4313,7 +4926,7 @@
           "confidence": 0.5,
           "source": "request-prior"
         },
-        "denseTierUsed": true
+        "denseTierUsed": false
       },
       "misGroundings": [],
       "notes": "Bridge word, no English collision — the negative control for this stratum."
@@ -4324,11 +4937,21 @@
       "stratum": "homograph",
       "locale": "es-US",
       "pass": true,
-      "preservation": 0,
-      "reasons": ["clean park (safe)"],
-      "grounded": [],
+      "preservation": 1,
+      "reasons": [],
+      "grounded": [
+        {
+          "entityId": "c83dd3a5-8b9e-4905-a263-2c2ff17b86ec",
+          "bucket": "ingredients",
+          "type": "ingredient",
+          "span": "pera",
+          "name": "pear",
+          "tier": "gazetteer-exact",
+          "foldedName": "pear"
+        }
+      ],
       "excluded": [],
-      "unresolved": ["pera"],
+      "unresolved": [],
       "analysis": {
         "script": "latin",
         "requestLocale": "es-US",
@@ -4337,7 +4960,7 @@
           "confidence": 0.5,
           "source": "request-prior"
         },
-        "denseTierUsed": true
+        "denseTierUsed": false
       },
       "misGroundings": [],
       "notes": "One edit from 'pear' — tests that a LEXICAL near-miss does not masquerade as a translation."
@@ -4357,7 +4980,7 @@
           "type": "ingredient",
           "span": "lima",
           "name": "lime",
-          "tier": "linked",
+          "tier": "gazetteer-exact",
           "foldedName": "lime"
         }
       ],
@@ -4371,7 +4994,7 @@
           "confidence": 0.5,
           "source": "request-prior"
         },
-        "denseTierUsed": true
+        "denseTierUsed": false
       },
       "misGroundings": [],
       "notes": "Fruit vs. the Peruvian capital vs. restaurant proper nouns. R5-4 type-aware admission: a constraint-shaped span must not capture a RESTAURANT."
@@ -4449,18 +5072,18 @@
       "query": "sal",
       "stratum": "homograph",
       "locale": "es-US",
-      "pass": false,
-      "preservation": 0,
-      "reasons": ["MIS-GROUNDED (outside allowed set): salsa[linked]"],
+      "pass": true,
+      "preservation": 1,
+      "reasons": [],
       "grounded": [
         {
-          "entityId": "1d14cf7a-6c36-4b92-aa35-1811e0005127",
-          "bucket": "food",
-          "type": "food",
+          "entityId": "e8dd7bea-2f8b-477a-8dc0-1dee6c821d23",
+          "bucket": "ingredients",
+          "type": "ingredient",
           "span": "sal",
-          "name": "salsa",
-          "tier": "linked",
-          "foldedName": "salsa"
+          "name": "salt",
+          "tier": "gazetteer-exact",
+          "foldedName": "salt"
         }
       ],
       "excluded": [],
@@ -4473,9 +5096,9 @@
           "confidence": 0.5,
           "source": "request-prior"
         },
-        "denseTierUsed": true
+        "denseTierUsed": false
       },
-      "misGroundings": ["salsa[linked]"],
+      "misGroundings": [],
       "notes": "3-letter bridge word; also an English name prefix (Sal's). Type-aware admission case."
     },
     {
@@ -4484,11 +5107,21 @@
       "stratum": "homograph",
       "locale": "es-US",
       "pass": true,
-      "preservation": 0,
-      "reasons": ["clean park (safe)"],
-      "grounded": [],
+      "preservation": 1,
+      "reasons": [],
+      "grounded": [
+        {
+          "entityId": "203c241d-0a21-456c-83cd-2d0338b0c05f",
+          "bucket": "food",
+          "type": "food",
+          "span": "ave",
+          "name": "poultry",
+          "tier": "gazetteer-exact",
+          "foldedName": "poultry"
+        }
+      ],
       "excluded": [],
-      "unresolved": ["ave"],
+      "unresolved": [],
       "analysis": {
         "script": "latin",
         "requestLocale": "es-US",
@@ -4497,7 +5130,7 @@
           "confidence": 0.5,
           "source": "request-prior"
         },
-        "denseTierUsed": true
+        "denseTierUsed": false
       },
       "misGroundings": [],
       "notes": "es 'ave' = bird/poultry; en 'Ave' = Avenue, which appears in thousands of address strings and restaurant names. SAFE = park."
@@ -4508,9 +5141,18 @@
       "stratum": "homograph",
       "locale": "es-US",
       "pass": true,
-      "preservation": 0.5,
+      "preservation": 1,
       "reasons": [],
       "grounded": [
+        {
+          "entityId": "03a7d01e-dd88-4cf7-ad82-107602ea930f",
+          "bucket": "food",
+          "type": "food",
+          "span": "caldo",
+          "name": "broth",
+          "tier": "gazetteer-exact",
+          "foldedName": "broth"
+        },
         {
           "entityId": "78d7bd8a-97e7-44ae-8a7d-48216af252db",
           "bucket": "food",
@@ -4542,7 +5184,7 @@
       "stratum": "homograph",
       "locale": "es-US",
       "pass": true,
-      "preservation": 0.5,
+      "preservation": 1,
       "reasons": [],
       "grounded": [
         {
@@ -4553,6 +5195,15 @@
           "name": "masa",
           "tier": "gazetteer-exact",
           "foldedName": "masa"
+        },
+        {
+          "entityId": "3b0eb120-1882-4fee-a167-8b1b20be2105",
+          "bucket": "food",
+          "type": "food",
+          "span": "masa",
+          "name": "dough",
+          "tier": "gazetteer-exact",
+          "foldedName": "dough"
         }
       ],
       "excluded": [],
@@ -4611,6 +5262,24 @@
           "name": "breakfast tacos",
           "tier": "gazetteer-exact",
           "foldedName": "breakfast tacos"
+        },
+        {
+          "entityId": "b5494f8d-dbec-4da8-addb-a967d8932e7b",
+          "bucket": "food",
+          "type": "food",
+          "span": "tacos",
+          "name": "tacos",
+          "tier": "linked",
+          "foldedName": "tacos"
+        },
+        {
+          "entityId": "5142b80a-80ca-4017-8cf8-08f867463134",
+          "bucket": "foodAttributes",
+          "type": "food_attribute",
+          "span": "breakfast",
+          "name": "breakfast",
+          "tier": "linked",
+          "foldedName": "breakfast"
         },
         {
           "entityId": "1b83fa1e-680d-4292-acf5-b8456d27e415",
@@ -4742,6 +5411,24 @@
           "foldedName": "sushi"
         },
         {
+          "entityId": "f2e2ce70-e8bf-4972-ad06-2f8a32400754",
+          "bucket": "food",
+          "type": "food",
+          "span": "sushi",
+          "name": "sushi prepared fish",
+          "tier": "gazetteer-exact",
+          "foldedName": "sushi prepared fish"
+        },
+        {
+          "entityId": "b693becc-a4ce-4b31-b35e-c7f3218a816d",
+          "bucket": "restaurantAttributes",
+          "type": "restaurant_attribute",
+          "span": "barato",
+          "name": "affordable",
+          "tier": "gazetteer-exact",
+          "foldedName": "affordable"
+        },
+        {
           "entityId": "1b83fa1e-680d-4292-acf5-b8456d27e415",
           "bucket": "restaurantAttributes",
           "type": "restaurant_attribute",
@@ -4749,15 +5436,6 @@
           "name": "quiet",
           "tier": "linked",
           "foldedName": "quiet"
-        },
-        {
-          "entityId": "f3425f58-61a6-4d8e-ba18-d56e6e97c49e",
-          "bucket": "ingredients",
-          "type": "ingredient",
-          "span": "barato",
-          "name": "bara",
-          "tier": "linked",
-          "foldedName": "bara"
         }
       ],
       "excluded": [],
@@ -4980,6 +5658,24 @@
           "name": "el favorito",
           "tier": "linked",
           "foldedName": "el favorito"
+        },
+        {
+          "entityId": "fd5a75b5-7dd4-49f9-9704-e7b272e9bf98",
+          "bucket": "ingredients",
+          "type": "ingredient",
+          "span": "ice",
+          "name": "ice",
+          "tier": "linked",
+          "foldedName": "ice"
+        },
+        {
+          "entityId": "10dc6d53-685a-4c2a-a302-d59ade9c5d1e",
+          "bucket": "ingredients",
+          "type": "ingredient",
+          "span": "cream",
+          "name": "cream",
+          "tier": "linked",
+          "foldedName": "cream"
         }
       ],
       "excluded": [],
@@ -5014,6 +5710,24 @@
           "name": "wine bar",
           "tier": "gazetteer-exact",
           "foldedName": "wine bar"
+        },
+        {
+          "entityId": "f26bc48f-ce90-4979-bb67-d69c6ef25e20",
+          "bucket": "restaurantAttributes",
+          "type": "restaurant_attribute",
+          "span": "bar",
+          "name": "bar",
+          "tier": "linked",
+          "foldedName": "bar"
+        },
+        {
+          "entityId": "35f25e02-f0c6-4638-972f-79d1fd6febad",
+          "bucket": "ingredients",
+          "type": "ingredient",
+          "span": "wine",
+          "name": "wine",
+          "tier": "linked",
+          "foldedName": "wine"
         }
       ],
       "excluded": [],
@@ -5075,6 +5789,24 @@
       "reasons": [],
       "grounded": [
         {
+          "entityId": "6b829aa2-4a1f-45b1-b304-eb3ace7ba11b",
+          "bucket": "food",
+          "type": "food",
+          "span": "pizza",
+          "name": "pizza pie",
+          "tier": "gazetteer-exact",
+          "foldedName": "pizza pie"
+        },
+        {
+          "entityId": "b33eb888-0acd-432b-bebd-e14d0699ec13",
+          "bucket": "food",
+          "type": "food",
+          "span": "pizza",
+          "name": "pitzas",
+          "tier": "gazetteer-exact",
+          "foldedName": "pitzas"
+        },
+        {
           "entityId": "b3a4c3e8-307f-4694-89b2-9160fcaa0436",
           "bucket": "food",
           "type": "food",
@@ -5127,13 +5859,13 @@
       "reasons": [],
       "grounded": [
         {
-          "entityId": "c2c6faca-e692-4557-b7c0-9c79cd66ea01",
+          "entityId": "64ff9303-1978-49d4-80a4-88cf7d8ab997",
           "bucket": "food",
           "type": "food",
-          "span": "curry",
-          "name": "curry",
+          "span": "curry tailandés",
+          "name": "thai curry",
           "tier": "gazetteer-exact",
-          "foldedName": "curry"
+          "foldedName": "thai curry"
         },
         {
           "entityId": "f0766829-a147-4736-a277-041e5cd9ddf5",
@@ -5145,13 +5877,22 @@
           "foldedName": "besos"
         },
         {
-          "entityId": "50866eb6-cd19-45bf-969f-16061dd85244",
-          "bucket": "food",
-          "type": "food",
+          "entityId": "7f76e097-988f-4ae2-aff6-a4fdc177a2e4",
+          "bucket": "restaurantAttributes",
+          "type": "restaurant_attribute",
           "span": "tailandés",
           "name": "thai",
           "tier": "linked",
           "foldedName": "thai"
+        },
+        {
+          "entityId": "5540e5fa-90f7-4b42-9595-6a32fa7d7136",
+          "bucket": "ingredients",
+          "type": "ingredient",
+          "span": "curry",
+          "name": "curry",
+          "tier": "linked",
+          "foldedName": "curry"
         }
       ],
       "excluded": [],
@@ -5297,6 +6038,24 @@
           "name": "korean bbq",
           "tier": "gazetteer-exact",
           "foldedName": "korean bbq"
+        },
+        {
+          "entityId": "45d744fc-4c83-4a0d-9e23-616a83d70bc9",
+          "bucket": "restaurantAttributes",
+          "type": "restaurant_attribute",
+          "span": "korean",
+          "name": "korean",
+          "tier": "linked",
+          "foldedName": "korean"
+        },
+        {
+          "entityId": "980f562b-e754-401f-8913-cae8befc7e66",
+          "bucket": "restaurantAttributes",
+          "type": "restaurant_attribute",
+          "span": "bbq",
+          "name": "bbq",
+          "tier": "linked",
+          "foldedName": "bbq"
         }
       ],
       "excluded": [],
@@ -5365,6 +6124,15 @@
           "name": "sandwich",
           "tier": "gazetteer-exact",
           "foldedName": "sandwich"
+        },
+        {
+          "entityId": "a27bd632-a0eb-4d0f-83e1-41a444a05276",
+          "bucket": "food",
+          "type": "food",
+          "span": "sandwich",
+          "name": "sando",
+          "tier": "gazetteer-exact",
+          "foldedName": "sando"
         }
       ],
       "excluded": [],

@@ -520,12 +520,12 @@
       "query": "pollo",
       "stratum": "single_noun",
       "expected": {
-        "concepts": ["pollo"],
+        "concepts": ["chicken"],
         "excluded": [],
         "mustNotResolve": []
       },
       "park": false,
-      "notes": "A9 TWIN: 'pollo' AND 'chicken' both exist as food rows — evidence mass is split across an unmerged cross-language twin. Grounding 'pollo' is correct TODAY; the twin belongs in the judge-merge queue.",
+      "notes": "A9 TWIN: 'pollo' AND 'chicken' both exist as food rows — evidence mass is split across an unmerged cross-language twin. Grounding 'pollo' is correct TODAY; the twin belongs in the judge-merge queue. | RE-AUTHORED 2026-08-07: pollo merged into chicken.",
       "allowCompositional": true
     },
     {
@@ -1026,12 +1026,12 @@
       "query": "pollo sin piel",
       "stratum": "negation",
       "expected": {
-        "concepts": ["pollo"],
+        "concepts": ["chicken"],
         "excluded": ["piel"],
         "mustNotResolve": ["skin"]
       },
       "park": false,
-      "notes": "'skin' exists as an ingredient row — a bridge target that must stay unreached."
+      "notes": "'skin' exists as an ingredient row — a bridge target that must stay unreached. | RE-AUTHORED 2026-08-07: pollo merged into chicken."
     },
     {
       "id": "ng-12",
