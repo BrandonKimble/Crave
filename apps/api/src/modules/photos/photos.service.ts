@@ -19,6 +19,7 @@ import {
   ImageModerationUnavailableError,
 } from '../external-integrations/google-vision/google-vision.service';
 import { SaveableEntityResolver } from '../entities/saveable-entity.resolver';
+import { OpsAlertsService } from '../external-integrations/shared/ops-alerts.service';
 
 /** `uploadedAt` is the client-facing field name (unchanged contract); it is
  *  sourced from the Photo row's `ticketedAt` (stamped at upload-ticket
@@ -38,6 +39,72 @@ export interface PhotoDto {
 }
 
 const MAX_PENDING_TICKETS_PER_USER = 10;
+
+/**
+ * A pending photo older than this has been costing a paid Vision call every
+ * sweep (~144/day) with nothing to show for it. That is the shape F9703 is
+ * about: fail-closed retry is survivable precisely BECAUSE it is unbounded, so
+ * the bound cannot be "stop retrying" for a failure that is ours — it has to be
+ * "tell somebody". Three days is past any credible vendor outage.
+ */
+const STUCK_PENDING_ALERT_DAYS = 3;
+
+/** The ops-alert kind that doubles as the avatar destroy-retry queue (F9701). */
+const AVATAR_DESTROY_PENDING = 'avatar_destroy_pending';
+
+/**
+ * THE SAFETY VERDICT, AS A TYPE ONLY THIS FILE CAN MINT (F9700).
+ *
+ * The two classifiers fail in opposite directions (see the class doc), and
+ * until now the ONLY thing keeping a future caller from handing the state
+ * machine a hand-written `'approved'` was a comment. `applyModerationResult`
+ * took a bare `string | undefined`: `applyModerationResult(id, pid,
+ * 'approved')` type-checked, compiled, and published an unmoderated photo.
+ *
+ * The brand closes that. `VERDICT_SOURCE` is a module-private symbol, so a
+ * value of this type is unconstructible outside this file — the only producers
+ * are `safetyVerdict()` (which returns `approved` only when Google said so) and
+ * the legacy-rejection constant. `applyModerationResult` is private on top of
+ * that; the type is what makes widening it back to public safe rather than the
+ * silent hole it was.
+ */
+const VERDICT_SOURCE = Symbol('crave.photos.safety-verdict');
+
+export interface SafetyDecision {
+  readonly [VERDICT_SOURCE]: true;
+  readonly decision: 'approved' | 'rejected' | 'unknown';
+  /**
+   * `unknown` only — CAN A RETRY EVER ANSWER DIFFERENTLY?
+   *
+   * `sweep`  — yes: our key, our quota, the network. Retry forever; the sweep
+   *            alerts if "forever" starts to mean it.
+   * `never`  — no: Google read the request and cannot read THIS image. Every
+   *            further sweep buys the same answer at $1.50/1,000 (F9703), so
+   *            the photo settles instead — removed, never approved.
+   */
+  readonly retry: 'sweep' | 'never';
+}
+
+const APPROVED: SafetyDecision = {
+  [VERDICT_SOURCE]: true,
+  decision: 'approved',
+  retry: 'sweep',
+};
+const REJECTED: SafetyDecision = {
+  [VERDICT_SOURCE]: true,
+  decision: 'rejected',
+  retry: 'sweep',
+};
+const UNKNOWN_RETRY: SafetyDecision = {
+  [VERDICT_SOURCE]: true,
+  decision: 'unknown',
+  retry: 'sweep',
+};
+const UNKNOWN_TERMINAL: SafetyDecision = {
+  [VERDICT_SOURCE]: true,
+  decision: 'unknown',
+  retry: 'never',
+};
 
 const PHOTO_DTO_SELECT = {
   photoId: true,
@@ -77,6 +144,12 @@ type PhotoRow = Prisma.PhotoGetPayload<{ select: typeof PHOTO_DTO_SELECT }>;
  * A single "fail open" or "fail closed" rule for both would be wrong for one
  * of them.
  *
+ * AVATARS RIDE THE SAME MODERATOR AND THE SAME DESTROY DISCIPLINE. They have
+ * no Photo row, so a rejected avatar whose Cloudinary destroy fails parks in an
+ * ops-alert queue that the same sweep drains (see destroyAvatarAsset / F9701) —
+ * "unreferenced" was never the same thing as "gone", because the avatar
+ * public_id and its delivery URL are both derivable from the user id.
+ *
  * Webhooks retry only 3x then give up, so PhotoReconciliationService sweeps
  * stale pending rows via the Admin API. Reports: threshold auto-hide, never
  * an approval queue. GPS EXIF is never persisted (only takenAt).
@@ -93,6 +166,7 @@ export class PhotosService {
     private readonly vision: PhotoVisionService,
     private readonly safety: GoogleVisionService,
     private readonly saveableEntities: SaveableEntityResolver,
+    private readonly opsAlerts: OpsAlertsService,
     loggerService: LoggerService,
   ) {
     this.logger = loggerService.setContext('PhotosService');
@@ -200,12 +274,12 @@ export class PhotosService {
     // counts; approval is ours to decide.
     const verdict =
       asset.moderationStatus === 'rejected'
-        ? 'rejected'
+        ? REJECTED
         : await this.safetyVerdict(
             this.cloudinary.buildAvatarUrl(userId, version),
             { userId, surface: 'avatar' },
           );
-    if (verdict === 'approved') {
+    if (verdict.decision === 'approved') {
       await this.prisma.user.updateMany({
         where: { userId, deletedAt: null },
         data: { avatarUrl: this.cloudinary.buildAvatarUrl(userId, version) },
@@ -213,13 +287,8 @@ export class PhotosService {
       this.logger.info('Avatar updated (confirm)', { userId });
       return { status: 'approved' as const };
     }
-    if (verdict === 'rejected') {
-      try {
-        await this.cloudinary.destroyAsset(publicId);
-      } catch {
-        // rejection already leaves the OLD avatar in place; the asset is
-        // unreferenced either way.
-      }
+    if (verdict.decision === 'rejected') {
+      await this.destroyAvatarAsset(userId, version);
       return { status: 'rejected' as const };
     }
     // Unknown verdict: the old avatar stays and the client can confirm
@@ -241,12 +310,12 @@ export class PhotosService {
     const legacy = this.cloudinary.extractModerationStatus(payload);
     const status =
       legacy === 'rejected'
-        ? 'rejected'
+        ? REJECTED
         : await this.safetyVerdict(
             this.cloudinary.buildAvatarUrl(userId, version),
             { userId, surface: 'avatar' },
           );
-    if (status === 'approved') {
+    if (status.decision === 'approved') {
       // updateMany + deletedAt guard: a deletion between upload and this
       // webhook must never re-populate scrubbed PII (and a missing row is a
       // no-op, not a 500 that makes Cloudinary retry pointlessly).
@@ -255,13 +324,65 @@ export class PhotosService {
         data: { avatarUrl: this.cloudinary.buildAvatarUrl(userId, version) },
       });
       if (updated.count === 1) this.logger.info('Avatar updated', { userId });
-    } else if (status === 'rejected') {
-      try {
-        await this.cloudinary.destroyAsset(publicId);
-      } catch {
-        // reconciliation-adjacent cleanup; rejection already CDN-invalidates
-      }
+    } else if (status.decision === 'rejected') {
+      await this.destroyAvatarAsset(userId, version);
       this.logger.warn('Avatar rejected by moderation', { userId });
+    }
+  }
+
+  /**
+   * DESTROY A REJECTED AVATAR — AND PARK IT IF THE DESTROY FAILS (F9701).
+   *
+   * WHAT THIS USED TO BE: a bare `catch {}` whose only comment said the asset
+   * was "unreferenced either way". That was the wrong comfort, twice over. The
+   * avatar public_id is DETERMINISTIC (`.../avatars/{userId}`)
+   * and the delivery URL is derivable, so a rejected image whose destroy threw
+   * stays FETCHABLE by anyone who can construct that URL — the same leak
+   * F9470 fixed for photos (billed storage plus a live copy of the one image
+   * moderation just said nobody should see), except avatars had no row to park
+   * in, so the failure was dropped on the floor.
+   *
+   * THE PARK, WITHOUT A MIGRATION: an unacknowledged `ops_alerts` row IS the
+   * queue. It is durable, it is deduped per user (a stuck avatar is one issue,
+   * not one per attempt), the sweep drains it below, and — unlike a private
+   * table — a destroy that never succeeds is visible to the owner instead of
+   * being a silent leak. A dedicated `pending_asset_destroys` table would be
+   * the tidier home; it needs a migration, and this lane does not need one to
+   * make the promise real.
+   *
+   * `version` is recorded because the destroy is not versioned: it kills
+   * whatever now sits at that public_id. If the user has since uploaded an
+   * avatar that PASSED moderation, that newer asset is what a late retry
+   * would destroy — so the sweep compares versions and stands down.
+   */
+  private async destroyAvatarAsset(
+    userId: string,
+    version: number,
+  ): Promise<void> {
+    const publicId = this.cloudinary.avatarPublicIdFor(userId);
+    try {
+      await this.cloudinary.destroyAsset(publicId);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      this.logger.error(
+        'Failed to destroy rejected avatar (parked, retrying)',
+        {
+          userId,
+          error: { message },
+        },
+      );
+      this.opsAlerts.emit({
+        severity: 'warn',
+        kind: AVATAR_DESTROY_PENDING,
+        title: 'A rejected avatar is still live at Cloudinary',
+        body: [
+          `Moderation rejected the avatar for user ${userId}, but destroying the asset failed.`,
+          `Error: ${message}`,
+          `version=${version}`,
+          'The photo sweep retries this every 10 minutes and acknowledges this alert once the asset is gone. If it is still open tomorrow, the destroy is failing for a reason no retry fixes.',
+        ].join('\n'),
+        dedupeKey: `${AVATAR_DESTROY_PENDING}:${userId}`,
+      });
     }
   }
 
@@ -306,7 +427,7 @@ export class PhotosService {
       // approval costs one reconciliation cycle, not a wrong decision.
       const status = this.cloudinary.extractModerationStatus(payload);
       if (status === 'rejected') {
-        await this.applyModerationResult(photo.photoId, publicId, status);
+        await this.applyModerationResult(photo.photoId, publicId, REJECTED);
       }
       return;
     }
@@ -348,17 +469,17 @@ export class PhotosService {
    *  CONDITIONAL update (where status=pending) — the DB arbitrates races
    *  between webhook, reconciliation, and owner-delete; a settled photo can
    *  never be re-moved or resurrected. */
-  async applyModerationResult(
+  private async applyModerationResult(
     photoId: string,
     publicId: string,
-    moderationStatus: string | undefined,
+    verdict: SafetyDecision,
   ): Promise<void> {
     const photo = await this.prisma.photo.findUnique({
       where: { photoId },
       select: { status: true },
     });
     if (!photo || photo.status !== PhotoStatus.pending) return; // settled
-    if (moderationStatus === 'approved') {
+    if (verdict.decision === 'approved') {
       const urls = this.cloudinary.buildUrls(publicId);
       const isFood = await this.vision.isFoodContent(urls.thumb);
       if (!isFood) {
@@ -380,7 +501,7 @@ export class PhotosService {
       if (flipped) this.logger.info('Photo live', { photoId });
       return;
     }
-    if (moderationStatus === 'rejected') {
+    if (verdict.decision === 'rejected') {
       // pending -> destroy_pending (invisible now) -> removed only once the
       // asset is confirmed destroyed. Never `removed` before the bytes are
       // gone (F9470).
@@ -396,8 +517,30 @@ export class PhotosService {
           reason: 'moderation_rejected',
         });
       }
+      return;
     }
-    // pending/undefined: leave for the reconciliation cron.
+    if (verdict.retry === 'never') {
+      // THE BOUND ON A PAID RETRY (F9703). Google read the request and cannot
+      // read this image — an answer that will not change, bought again every
+      // ten minutes forever if the row just stays pending. So the photo
+      // settles the only way an unvetted photo may: removed, asset destroyed,
+      // never approved. The user's other uploads are untouched, and a photo
+      // Vision cannot fetch is one nothing else can display either.
+      const flipped = await this.transition(
+        photoId,
+        PhotoStatus.pending,
+        PhotoStatus.destroy_pending,
+      );
+      if (flipped) {
+        await this.destroyAndFinalize(photoId, publicId);
+        this.logger.warn('Photo removed', {
+          photoId,
+          reason: 'moderation_unreadable',
+        });
+      }
+      return;
+    }
+    // unknown + retryable: leave for the reconciliation cron.
   }
 
   /**
@@ -406,15 +549,16 @@ export class PhotosService {
    * speaks, so the entire downstream state machine — conditional
    * transitions, is-food gate, destroy_pending on reject — is untouched.
    *
-   * `undefined` means UNKNOWN, and undefined is what every failure returns.
-   * applyModerationResult's last line leaves an undefined verdict pending for
-   * the reconciliation cron, which is precisely the retry. There is no branch
-   * in this method that can produce 'approved' without Google saying so.
+   * `unknown` is what every failure returns, and applyModerationResult leaves
+   * an `unknown`+retryable verdict pending for the reconciliation cron, which
+   * is precisely the retry. There is no branch in this method that can produce
+   * `approved` without Google saying so — and no OTHER method anywhere that
+   * can produce an `approved` SafetyDecision at all (F9700).
    */
   private async safetyVerdict(
     imageUrl: string,
     logContext: Record<string, unknown>,
-  ): Promise<'approved' | 'rejected' | undefined> {
+  ): Promise<SafetyDecision> {
     try {
       const verdict = await this.safety.moderateImage(imageUrl);
       if (verdict.decision === 'rejected') {
@@ -422,21 +566,34 @@ export class PhotosService {
           ...logContext,
           reason: verdict.reason,
         });
-        return 'rejected';
+        return REJECTED;
       }
-      return 'approved';
+      return APPROVED;
     } catch (error) {
-      const transient =
-        error instanceof ImageModerationUnavailableError
-          ? error.transient
-          : true;
+      const unavailable =
+        error instanceof ImageModerationUnavailableError ? error : null;
+      const transient = unavailable ? unavailable.transient : true;
+      // TERMINAL ONLY FOR THE IMAGE'S OWN FAULT (F9703). A permanent failure
+      // that is OURS — no key, a 403, a disabled API — is an outage affecting
+      // every photo, and settling photos on it would turn a config mistake
+      // into mass deletion. Only "Google read the request and cannot read this
+      // image" ends the retry.
+      const terminal =
+        unavailable !== null &&
+        !unavailable.transient &&
+        unavailable.scope === 'image';
       const message = error instanceof Error ? error.message : String(error);
       // A PERMANENT failure (missing key, disabled API, unreadable image) is
       // an outage of safety moderation dressed as a quiet retry loop — it
       // logs at ERROR so it surfaces, while a transient one is ordinary
       // weather. Neither approves anything.
-      const detail = { ...logContext, transient, error: { message } };
-      if (transient) {
+      const detail = { ...logContext, transient, terminal, error: { message } };
+      if (terminal) {
+        this.logger.warn(
+          'Safety moderation cannot read this image — settling it instead of paying to re-ask',
+          detail,
+        );
+      } else if (transient) {
         this.logger.warn(
           'Safety moderation unavailable — photo stays pending (cron retries)',
           detail,
@@ -447,7 +604,7 @@ export class PhotosService {
           detail,
         );
       }
-      return undefined;
+      return terminal ? UNKNOWN_TERMINAL : UNKNOWN_RETRY;
     }
   }
 
@@ -656,7 +813,7 @@ export class PhotosService {
         // minutes, forever — which is what makes fail-closed survivable.
         const verdict =
           asset.moderationStatus === 'rejected'
-            ? 'rejected'
+            ? REJECTED
             : await this.safetyVerdict(
                 this.cloudinary.buildUrls(photo.publicId).gallery,
                 { photoId: photo.photoId },
@@ -666,11 +823,14 @@ export class PhotosService {
           photo.publicId,
           verdict,
         );
-        // Only a real verdict SETTLES anything. Counting an unknown verdict
-        // as settled would report a clean sweep while the row is still
-        // pending — the counter would say the cron is working precisely when
-        // it isn't.
-        if (verdict !== undefined) settled += 1;
+        // Only a real verdict SETTLES anything. Counting a still-retrying
+        // verdict as settled would report a clean sweep while the row is
+        // still pending — the counter would say the cron is working precisely
+        // when it isn't. A TERMINAL unknown does settle the row (it left
+        // pending), so it counts.
+        if (verdict.decision !== 'unknown' || verdict.retry === 'never') {
+          settled += 1;
+        }
       } catch (error) {
         failed += 1;
         this.logger.warn(
@@ -691,7 +851,89 @@ export class PhotosService {
       });
     }
     settled += await this.reconcileDestroyPending(batch);
+    await this.reconcileAvatarDestroys(batch);
+    await this.alertOnStuckPending();
     return settled;
+  }
+
+  /**
+   * THE BOUND ON A FAIL-CLOSED RETRY IS A HUMAN, NOT A LIMIT (F9703).
+   *
+   * A photo whose moderator failure is OURS retries forever, by design — the
+   * alternative (settle it) turns a missing API key into mass deletion. But
+   * forever costs a paid Vision call per row per sweep and, more importantly,
+   * means a user's upload has been invisible for days with nobody told. So the
+   * unbounded retry keeps running and this rings the bell instead.
+   *
+   * Deduped per DAY: a stuck backlog is one issue per day, not one per sweep
+   * (144 of them) and not one that goes quiet after the first ring.
+   */
+  private async alertOnStuckPending(): Promise<void> {
+    const cutoff = new Date(
+      Date.now() - STUCK_PENDING_ALERT_DAYS * 24 * 60 * 60_000,
+    );
+    const stuck = await this.prisma.photo.count({
+      where: { status: PhotoStatus.pending, ticketedAt: { lt: cutoff } },
+    });
+    if (stuck === 0) return;
+    const day = new Date().toISOString().slice(0, 10);
+    this.opsAlerts.emit({
+      severity: 'warn',
+      kind: 'photos_stuck_pending',
+      title: `${stuck} photo(s) stuck pending moderation for over ${STUCK_PENDING_ALERT_DAYS} days`,
+      body: [
+        `${stuck} photo row(s) have been pending since before ${cutoff.toISOString()}.`,
+        'Pending means safety moderation has never returned a verdict, so the sweep re-asks Google every 10 minutes — a paid call each time, per row, indefinitely.',
+        'This is the fail-CLOSED posture working (an unvetted photo is never published), but at this age it is an outage: check GOOGLE_VISION_API_KEY, the Vision API quota, and the api log for "Safety moderation is BROKEN".',
+      ].join('\n'),
+      dedupeKey: `photos_stuck_pending:${day}`,
+    });
+  }
+
+  /**
+   * DRAIN THE PARKED AVATAR DESTROYS (F9701) — the retry half of the promise
+   * `destroyAvatarAsset` makes. Unacknowledged alerts of that kind ARE the
+   * queue; acknowledging one is how "the asset is gone" gets recorded.
+   */
+  private async reconcileAvatarDestroys(batch: number): Promise<void> {
+    const parked = await this.prisma.opsAlert.findMany({
+      where: { kind: AVATAR_DESTROY_PENDING, acknowledgedAt: null },
+      orderBy: { createdAt: 'asc' },
+      take: batch,
+    });
+    for (const alert of parked) {
+      const userId = alert.dedupeKey?.split(':')[1];
+      if (!userId) continue;
+      // A NEWER, APPROVED AVATAR MUST NOT BE COLLATERAL. The destroy is not
+      // versioned — it removes whatever occupies the public_id now — so if the
+      // user has since had an avatar approved at a LATER version, the rejected
+      // bytes were already overwritten and there is nothing left to destroy.
+      // Retrying would delete the good one.
+      const parkedVersion = Number(/version=(\d+)/.exec(alert.body)?.[1] ?? 0);
+      const user = await this.prisma.user.findUnique({
+        where: { userId },
+        select: { avatarUrl: true },
+      });
+      const liveVersion = Number(
+        /\/v(\d+)\//.exec(user?.avatarUrl ?? '')?.[1] ?? 0,
+      );
+      if (liveVersion > parkedVersion) {
+        await this.opsAlerts.acknowledge(alert.alertId);
+        continue;
+      }
+      try {
+        await this.cloudinary.destroyAsset(
+          this.cloudinary.avatarPublicIdFor(userId),
+        );
+        await this.opsAlerts.acknowledge(alert.alertId);
+        this.logger.info('Parked avatar destroy succeeded', { userId });
+      } catch (error) {
+        this.logger.warn('Avatar destroy retry failed, will retry next sweep', {
+          userId,
+          errorMessage: error instanceof Error ? error.message : String(error),
+        });
+      }
+    }
   }
 
   /** Drain rows parked in `destroy_pending` (a delete or moderation-reject

@@ -101,6 +101,19 @@ export class ImageModerationUnavailableError extends Error {
   constructor(
     message: string,
     readonly transient: boolean,
+    /**
+     * WHOSE PROBLEM IT IS — and the only thing that can ever end a retry.
+     *
+     * `service` — our key, our request, the vendor, the network. EVERY photo
+     *   is affected, so nothing about this failure is a fact about the image,
+     *   and no photo may ever be terminated because of it. It retries until a
+     *   human fixes it (and the sweep alerts when that takes too long).
+     * `image` — Google read the request and could not annotate THIS image
+     *   (unfetchable URL, unsupported format). Combined with `transient:
+     *   false` it is the one honest terminal answer: retrying costs a paid
+     *   call per sweep, forever, to be told the same thing (F9703).
+     */
+    readonly scope: 'service' | 'image' = 'service',
   ) {
     super(message);
     this.name = 'ImageModerationUnavailableError';
@@ -211,6 +224,7 @@ export class GoogleVisionService {
           result?.error?.message ?? 'empty response'
         }`,
         false,
+        'image',
       );
     }
     const annotation = result.safeSearchAnnotation;
@@ -221,10 +235,41 @@ export class GoogleVisionService {
       );
     }
 
+    // AN ABSENT OR `UNKNOWN` SCORE IS NOT AN APPROVAL (F9702).
+    //
+    // The loop below ranks a missing category, and `UNKNOWN` itself, at 0 —
+    // the SAFEST possible score — so an annotation of `{}` (present, empty:
+    // exactly what a partially-failed or future-shaped response looks like)
+    // walked past all three categories and returned `approved`. The whole
+    // fail-closed posture of this file was one empty object away from
+    // publishing an unmoderated photo.
+    //
+    // A verdict requires an ANSWER on every deciding category. Anything else
+    // is the moderator not having decided, which is the same event as the
+    // moderator being down — so it takes the same path: throw, stay pending,
+    // ask again. `scope: 'image'` because it is this image Google declined to
+    // score; `transient` because a re-ask can legitimately answer.
+    const undecided = DECIDING_CATEGORIES.filter((category) => {
+      const likelihood = annotation[category];
+      return (
+        !likelihood ||
+        likelihood === 'UNKNOWN' ||
+        LIKELIHOOD_RANK[likelihood] === undefined
+      );
+    });
+    if (undecided.length > 0) {
+      throw new ImageModerationUnavailableError(
+        `Vision SafeSearch did not score ${undecided.join(', ')} ` +
+          `(got ${JSON.stringify(annotation)}) — no verdict, not an approval`,
+        true,
+        'image',
+      );
+    }
+
     const threshold = LIKELIHOOD_RANK[REJECT_AT_OR_ABOVE];
     for (const category of DECIDING_CATEGORIES) {
       const likelihood = annotation[category];
-      const rank = likelihood ? (LIKELIHOOD_RANK[likelihood] ?? 0) : 0;
+      const rank = LIKELIHOOD_RANK[likelihood];
       if (rank >= threshold) {
         return {
           decision: 'rejected',

@@ -12,6 +12,7 @@ import { HttpService } from '@nestjs/axios';
 import axios from 'axios';
 import { GoogleVisionService } from '../src/modules/external-integrations/google-vision/google-vision.service';
 import { UsageLedgerService } from '../src/modules/external-integrations/shared/usage-ledger.service';
+import { OpsAlertsService } from '../src/modules/external-integrations/shared/ops-alerts.service';
 import type { PrismaService } from '../src/prisma/prisma.service';
 import type { LoggerService } from '../src/shared';
 
@@ -76,6 +77,7 @@ async function main(): Promise<void> {
     vision,
     safety,
     new SaveableEntityResolver(prisma),
+    new OpsAlertsService(prisma, fakeLogger),
     fakeLogger,
   );
   const out = (message: string) => process.stdout.write(`${message}\n`);

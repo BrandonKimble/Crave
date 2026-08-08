@@ -5,6 +5,7 @@ import {
   eraseScopeColumns,
   retentionScopeColumns,
   ruleWhere,
+  scopeContradictionsFor,
   retentionWhere,
   subjectRows,
 } from './person-data-scope';
@@ -51,6 +52,36 @@ describe('person-data: DELETE scope must not erase surviving columns (F7500/D146
     expect(retentionWhere(reported, 't')).not.toContain('reporter_user_id');
   });
 
+  it('MUTATION (F9500): a foreign scope column reds even when it shares the verb', () => {
+    // THE ARM THAT COULD NOT FAIL. The erasure check used to ask ONLY "is this
+    // scoped column declared `delete_row`?" — of a list that is the rule's own
+    // column, produced by a branch that only runs when the rule is already
+    // `delete_row`. A tautology: no drift in the compiler could make it red.
+    //
+    // `user_follows` is the proof. BOTH its person columns are `delete_row`,
+    // so widening the erasure scope back to the table's OR was invisible to the
+    // disposition test — while the statement for the FOLLOWER rule would then
+    // also delete rows located by `following_user_id`, other people's follows
+    // toward this person, on a key that is not this rule's. The per-column law
+    // names it.
+    const follower = PERSON_DATA_RULES.find(
+      (r) => r.table === 'user_follows' && r.column === 'follower_user_id',
+    )!;
+    // Live scope: the rule's own column, and clean.
+    expect(eraseScopeColumns(follower)).toEqual(['follower_user_id']);
+    expect(
+      scopeContradictionsFor('erasure', follower, ['follower_user_id']),
+    ).toEqual([]);
+    // Widened scope (the OR): red, by name, with the reason.
+    const widened = scopeContradictionsFor('erasure', follower, [
+      'follower_user_id',
+      'following_user_id',
+    ]);
+    expect(widened.map((c) => [c.offendingColumn, c.why])).toEqual([
+      ['following_user_id', 'foreign-column'],
+    ]);
+  });
+
   it('EXPORT keeps the OR — the question it answers is the other one', () => {
     // The split is the whole design: a subject-access response that omitted the
     // rows where the person is the INVITER (or the blocked, or the followed)
@@ -64,27 +95,21 @@ describe('person-data: DELETE scope must not erase surviving columns (F7500/D146
   });
 
   it('MUTATION: the export OR, handed to these DELETEs, is still both defects', () => {
-    // WHY THIS IS THE MUTATION AND NOT A RE-DERIVATION. The columns below are
-    // read out of the REAL `subjectRows` SQL — the very string the two DELETEs
-    // used to be built from — and judged by the same rule the guard applies:
-    // a scope column whose disposition is not the verb warranting the delete is
-    // a contradiction. So this asks the guard's own question of the OLD scope
-    // and gets the old, red answer, while the live scopes above answer green.
-    // If someone reverts `ruleWhere`/`retentionWhere` to `subjectRows`, these
-    // are exactly the two rows `deleteScopeContradictions()` reports again.
+    // WHY THIS IS THE MUTATION AND NOT A RE-DERIVATION (F9501). The columns
+    // below are read out of the REAL `subjectRows` SQL — the very string the
+    // two DELETEs used to be built from — and handed to `scopeContradictionsFor`,
+    // THE FUNCTION `deleteScopeContradictions()` ITSELF CALLS. This spec used to
+    // re-implement that judgement inline, which proved its own copy rather than
+    // the guard: the copy would have stayed green through any drift in the real
+    // one. Now the only difference between green and red is which scope columns
+    // go in, which is exactly the variable under test.
     const scopeColumns = (sql: string) => [
       ...new Set(
         [...sql.matchAll(/"([a-z_]+)"::text = \$1/g)].map((m) => m[1]),
       ),
     ];
-
-    const offenders = (table: string, warranted: string, sql: string) =>
-      scopeColumns(sql).filter(
-        (column) =>
-          PERSON_DATA_RULES.find(
-            (r) => r.table === table && r.column === column,
-          )?.disposition !== warranted,
-      );
+    const ruleFor = (table: string, column: string) =>
+      PERSON_DATA_RULES.find((r) => r.table === table && r.column === column)!;
 
     // The erasure instance: the OR reaches `invited_by_user_id` (sever), whose
     // row the declaration KEEPS — that is the third party's membership.
@@ -92,7 +117,11 @@ describe('person-data: DELETE scope must not erase surviving columns (F7500/D146
       includeRetained: false,
     })!;
     expect(
-      offenders('user_list_collaborators', 'delete_row', collaboratorOr),
+      scopeContradictionsFor(
+        'erasure',
+        ruleFor('user_list_collaborators', 'user_id'),
+        scopeColumns(collaboratorOr),
+      ).map((c) => c.offendingColumn),
     ).toEqual(['invited_by_user_id']);
 
     // The retention instance: the OR reaches `reporter_user_id`
@@ -101,9 +130,13 @@ describe('person-data: DELETE scope must not erase surviving columns (F7500/D146
       includeRetained: true,
       alias: 't',
     })!;
-    expect(offenders('user_reports', 'retain', reportsOr)).toEqual([
-      'reporter_user_id',
-    ]);
+    expect(
+      scopeContradictionsFor(
+        'retention-horizon',
+        ruleFor('user_reports', 'reported_user_id'),
+        scopeColumns(reportsOr),
+      ).map((c) => c.offendingColumn),
+    ).toEqual(['reporter_user_id']);
 
     // And the live scopes contain NEITHER — the delta this design is.
     expect(scopeColumns(collaboratorOr).length).toBeGreaterThan(1);

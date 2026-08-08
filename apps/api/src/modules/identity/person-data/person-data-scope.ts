@@ -417,10 +417,12 @@ function personNamingRules(
  * Both are gone: the scopes are per-column now. This is what keeps them gone.
  * It reads `eraseScopeColumns` / `retentionScopeColumns` — the EXACT lists the
  * statements are built from, not a second opinion about them — and reports any
- * scoped column whose declared disposition is not the verb that warrants the
- * deletion. Widening a scope therefore widens this in the same edit, which is
- * what makes it able to show RED: restore the OR and both instances come back
- * by name.
+ * scoped column that is not the rule's OWN, or whose declared disposition is
+ * not the verb that warrants the deletion. Widening a scope therefore widens
+ * this in the same edit, which is what makes it able to show RED: restore the
+ * OR and both instances come back by name — and so does any OTHER column the
+ * OR drags in, even one that happens to share the warranting verb (F9500: the
+ * disposition test alone could not fail on the erasure arm at all).
  *
  * It is wired FAIL-CLOSED into the live `erase()` and the live retention
  * `sweep()` (see `assertNoOverbroadDeleteScope`).
@@ -435,6 +437,72 @@ export interface DeleteScopeContradiction {
   offendingColumn: string;
   /** Why that column's row was supposed to survive. */
   offendingDisposition: PersonDataDisposition;
+  /**
+   * WHICH of the two laws the column breaks.
+   *
+   * `foreign-column` — the DELETE is scoped by a column that is not the rule's
+   *   own. This is the per-column law itself (D146), and it is the one that
+   *   catches a re-widening EVEN WHEN the extra column happens to share the
+   *   warranting disposition — the case the disposition test alone reads as
+   *   fine while the statement deletes rows on somebody else's key.
+   * `surviving-disposition` — the column IS declared, but under a verb that
+   *   keeps the row the DELETE destroys (the two F7500 instances).
+   */
+  why: 'foreign-column' | 'surviving-disposition';
+}
+
+/**
+ * THE JUDGEMENT, EXPOSED — one function, no second opinion.
+ *
+ * `deleteScopeContradictions()` builds the live list by handing this the REAL
+ * scope columns; the guard's spec proves it can go red by handing it the OLD
+ * (export-OR) columns. Both therefore ask the same function the same question,
+ * which is the point: a mutation proof that re-implements the judgement is
+ * proving its own copy, not the guard (F9501).
+ *
+ * TWO LAWS, and a column breaking either is reported:
+ *
+ *   1. PER-COLUMN. A rule's statement scopes by the rule's OWN column and
+ *      nothing else. Any other column in the scope means the statement acts on
+ *      rows located by somebody else's key.
+ *   2. WARRANTED VERB. That column must itself be declared under the verb that
+ *      warrants the deletion (`delete_row` for erasure, `retain` for a bounded
+ *      horizon). An UNDECLARED column is the worse case, not a pass: nobody has
+ *      said what happens to it and the DELETE is already acting.
+ *
+ * Law 1 is what makes this arm able to fail at all. Checking only law 2 on the
+ * ERASURE arm was a tautology (F9500): `eraseScopeColumns` returns the rule's
+ * own column, and that arm only runs when the rule is already `delete_row`, so
+ * the disposition compared was the rule's own by construction — a guard that
+ * could not go red no matter how the compiler drifted.
+ */
+export function scopeContradictionsFor(
+  scope: 'erasure' | 'retention-horizon',
+  rule: PersonDataRule,
+  columns: string[] | null,
+): DeleteScopeContradiction[] {
+  const warranted: PersonDataDisposition =
+    scope === 'erasure' ? 'delete_row' : 'retain';
+  const out: DeleteScopeContradiction[] = [];
+  for (const column of columns ?? []) {
+    const disposition = dispositionOf(rule.table, column);
+    const why =
+      column !== rule.column
+        ? ('foreign-column' as const)
+        : disposition !== warranted
+          ? ('surviving-disposition' as const)
+          : null;
+    if (!why) continue;
+    out.push({
+      scope,
+      table: rule.table,
+      onBehalfOf: `${rule.table}.${rule.column}`,
+      offendingColumn: column,
+      offendingDisposition: disposition ?? ('undeclared' as never),
+      why,
+    });
+  }
+  return out;
 }
 
 export function deleteScopeContradictions(): DeleteScopeContradiction[] {
@@ -444,28 +512,15 @@ export function deleteScopeContradictions(): DeleteScopeContradiction[] {
     scope: 'erasure' | 'retention-horizon',
     rule: PersonDataRule,
     columns: string[] | null,
-    warranted: PersonDataDisposition,
   ) => {
-    for (const column of columns ?? []) {
-      const disposition = dispositionOf(rule.table, column);
-      // An UNDECLARED column in a delete scope is the worse case, not a pass:
-      // nobody has said what happens to it, and the DELETE is already acting.
-      if (disposition === warranted) continue;
-      out.push({
-        scope,
-        table: rule.table,
-        onBehalfOf: `${rule.table}.${rule.column}`,
-        offendingColumn: column,
-        offendingDisposition: disposition ?? ('undeclared' as never),
-      });
-    }
+    out.push(...scopeContradictionsFor(scope, rule, columns));
   };
 
   for (const rule of PERSON_DATA_RULES) {
-    // 1. ERASURE — a `delete_row` rule's DELETE may only be scoped by columns
-    //    that are themselves `delete_row`.
+    // 1. ERASURE — a `delete_row` rule's DELETE may only be scoped by the
+    //    rule's OWN column, which must itself be `delete_row`.
     if (rule.disposition === 'delete_row') {
-      check('erasure', rule, eraseScopeColumns(rule), 'delete_row');
+      check('erasure', rule, eraseScopeColumns(rule));
     }
     // 2. RETENTION HORIZON — a bounded `retain` rule's DELETE may only be
     //    scoped by columns that are themselves `retain`. Any other column names
@@ -482,7 +537,7 @@ export function deleteScopeContradictions(): DeleteScopeContradiction[] {
       typeof rule.horizon === 'number' &&
       rule.horizonUnit !== 'column'
     ) {
-      check('retention-horizon', rule, retentionScopeColumns(rule), 'retain');
+      check('retention-horizon', rule, retentionScopeColumns(rule));
     }
   }
 
@@ -507,8 +562,11 @@ export function assertNoOverbroadDeleteScope(): void {
   const lines = contradictions.map(
     (c) =>
       `  [${c.scope}] ${c.onBehalfOf}: DELETE scope reaches ` +
-      `${c.table}.${c.offendingColumn} (${c.offendingDisposition}) — that row ` +
-      `was declared to SURVIVE, and the delete destroys it.`,
+      `${c.table}.${c.offendingColumn} (${c.offendingDisposition}) — ` +
+      (c.why === 'foreign-column'
+        ? 'that is not this rule’s own column, so the statement acts on rows ' +
+          'located by somebody else’s key.'
+        : 'that row was declared to SURVIVE, and the delete destroys it.'),
   );
   throw new Error(
     'person-data: a row-DELETE scope would erase columns the declaration keeps ' +

@@ -65,11 +65,23 @@ describe('GoogleVisionService.moderateImage', () => {
 
   it('VERY_LIKELY racy and VERY_LIKELY violence both reject', async () => {
     const { service, post } = build();
-    post.mockReturnValue(annotation({ racy: 'VERY_LIKELY' }));
+    post.mockReturnValue(
+      annotation({
+        adult: 'VERY_UNLIKELY',
+        violence: 'VERY_UNLIKELY',
+        racy: 'VERY_LIKELY',
+      }),
+    );
     expect((await service.moderateImage('https://img/1')).decision).toBe(
       'rejected',
     );
-    post.mockReturnValue(annotation({ violence: 'VERY_LIKELY' }));
+    post.mockReturnValue(
+      annotation({
+        adult: 'VERY_UNLIKELY',
+        violence: 'VERY_LIKELY',
+        racy: 'VERY_UNLIKELY',
+      }),
+    );
     expect((await service.moderateImage('https://img/1')).decision).toBe(
       'rejected',
     );
@@ -99,7 +111,13 @@ describe('GoogleVisionService.moderateImage', () => {
     // MUTATION: delete the usageLedger.record call and this reds. Moving it
     // after the await reds the failure case below.
     const { service, post, record } = build();
-    post.mockReturnValue(annotation({ adult: 'VERY_UNLIKELY' }));
+    post.mockReturnValue(
+      annotation({
+        adult: 'VERY_UNLIKELY',
+        violence: 'VERY_UNLIKELY',
+        racy: 'VERY_UNLIKELY',
+      }),
+    );
     await service.moderateImage('https://img/1');
     expect(record).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -158,6 +176,72 @@ describe('GoogleVisionService.moderateImage', () => {
     await expect(service.moderateImage('u')).rejects.toThrow(
       ImageModerationUnavailableError,
     );
+  });
+
+  it('MUTATION (F9702): an EMPTY or UNKNOWN annotation is NOT an approval', async () => {
+    // THE DEFECT, EXACTLY. Both of these used to return `approved`: a missing
+    // category and `UNKNOWN` alike ranked 0 — the safest possible score — so
+    // an annotation of `{}` (present, empty: a partially-failed or
+    // future-shaped response) sailed past all three categories and published
+    // an image no moderator had actually looked at.
+    //
+    // MUTATION TO RE-RED IT: delete the `undecided` guard, or rank a missing
+    // category at 0 again, and both assertions below flip to 'approved'.
+    const { service, post } = build();
+
+    post.mockReturnValue(annotation({}));
+    await expect(service.moderateImage('u')).rejects.toMatchObject({
+      transient: true,
+      scope: 'image',
+    });
+
+    post.mockReturnValue(
+      annotation({ adult: 'UNKNOWN', violence: 'UNKNOWN', racy: 'UNKNOWN' }),
+    );
+    await expect(service.moderateImage('u')).rejects.toThrow(
+      ImageModerationUnavailableError,
+    );
+
+    // A PARTIAL answer is also no answer — two scored, one silent.
+    post.mockReturnValue(
+      annotation({ adult: 'VERY_UNLIKELY', racy: 'VERY_UNLIKELY' }),
+    );
+    await expect(service.moderateImage('u')).rejects.toThrow(/violence/);
+
+    // …and a complete answer still approves, so the guard is not just
+    // rejecting everything.
+    post.mockReturnValue(
+      annotation({
+        adult: 'VERY_UNLIKELY',
+        violence: 'UNLIKELY',
+        racy: 'POSSIBLE',
+      }),
+    );
+    expect((await service.moderateImage('u')).decision).toBe('approved');
+  });
+
+  it('a per-image 200 error is scoped to the IMAGE — the only terminal answer', async () => {
+    // The distinction F9703 spends money on: `service` failures (key, quota,
+    // network) are OUR outage and must retry forever; an image Google cannot
+    // read will answer the same way every ten minutes until someone notices
+    // the bill. Only this one may terminate a photo.
+    const { service, post } = build();
+    post.mockReturnValue(
+      of({ data: { responses: [{ error: { message: 'cannot fetch' } }] } }),
+    );
+    await expect(service.moderateImage('u')).rejects.toMatchObject({
+      transient: false,
+      scope: 'image',
+    });
+
+    // A 403 is OURS — never terminal, however permanent it looks.
+    post.mockReturnValue(
+      throwError(() => ({ response: { status: 403 }, message: 'denied' })),
+    );
+    await expect(service.moderateImage('u')).rejects.toMatchObject({
+      transient: false,
+      scope: 'service',
+    });
   });
 
   it('an unconfigured key fails LOUD at first use — and does not approve', async () => {

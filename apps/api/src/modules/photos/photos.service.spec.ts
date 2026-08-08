@@ -1,6 +1,7 @@
 /* eslint-disable @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-member-access */
 import { BadRequestException, NotFoundException } from '@nestjs/common';
 import { PhotosService } from './photos.service';
+import { ImageModerationUnavailableError } from '../external-integrations/google-vision/google-vision.service';
 
 /**
  * Contract tests for the photo lifecycle (mocked Prisma/Cloudinary — the
@@ -73,6 +74,14 @@ function makeService(overrides?: {
       ),
       findMany: jest.fn().mockResolvedValue([]),
     },
+    user: {
+      findUnique: jest.fn().mockResolvedValue({ avatarUrl: null }),
+      updateMany: jest.fn().mockResolvedValue({ count: 1 }),
+    },
+    // The avatar destroy-retry queue (F9701) is unacknowledged ops_alerts.
+    opsAlert: {
+      findMany: jest.fn().mockResolvedValue([]),
+    },
   };
   const cloudinary = {
     publicIdFor: (id: string) => `crave/test/photos/${id}`,
@@ -94,6 +103,10 @@ function makeService(overrides?: {
     getAsset: jest.fn().mockResolvedValue({ exists: false }),
     extractModerationStatus: jest.fn().mockReturnValue(undefined),
     isAvatarPublicId: jest.fn().mockReturnValue(false),
+    avatarPublicIdFor: jest.fn().mockReturnValue('crave/test/avatars/u1'),
+    buildAvatarUrl: jest
+      .fn()
+      .mockReturnValue('https://res/img/upload/t/v99/crave/test/avatars/u1'),
   };
   const vision = {
     isFoodContent: jest.fn().mockResolvedValue(overrides?.isFood ?? true),
@@ -112,6 +125,10 @@ function makeService(overrides?: {
           : { decision: 'approved', likelihoods: {} },
       );
     }),
+  };
+  const opsAlerts = {
+    emit: jest.fn(),
+    acknowledge: jest.fn().mockResolvedValue(undefined),
   };
   const logger = {
     setContext: () => logger,
@@ -144,9 +161,10 @@ function makeService(overrides?: {
           ),
         ),
     } as never,
+    opsAlerts as never,
     logger as never,
   );
-  return { service, prisma, cloudinary, vision, safety };
+  return { service, prisma, cloudinary, vision, safety, opsAlerts };
 }
 
 describe('PhotosService lifecycle', () => {
@@ -190,13 +208,22 @@ describe('PhotosService lifecycle', () => {
     expect(prisma.photo.create).not.toHaveBeenCalled();
   });
 
+  // THE STATE MACHINE IS DRIVEN THROUGH ITS REAL DOOR (F9700). These used to
+  // call `applyModerationResult(id, publicId, 'approved')` with a bare string.
+  // That call site was the hole: any future caller could hand the machine an
+  // approval no moderator ever gave, and the type system had no opinion. The
+  // verdict is a branded type minted only by `safetyVerdict` now, and the
+  // method is private — so the tests drive the upload notification and let the
+  // (mocked) moderator decide, which is also what production does.
+  const uploadNotification = {
+    public_id: 'crave/test/photos/p1',
+    width: 100,
+    bytes: 2000,
+  };
+
   it('moderation approved + is-food -> LIVE (conditional transition from pending)', async () => {
     const { service, prisma } = makeService({ isFood: true });
-    await service.applyModerationResult(
-      'p1',
-      'crave/test/photos/p1',
-      'approved',
-    );
+    await service.handleNotification({ ...uploadNotification });
     const update = prisma.photo.updateMany.mock.calls.find(
       ([args]) =>
         args.data?.status === 'live' && args.where?.status === 'pending',
@@ -205,23 +232,18 @@ describe('PhotosService lifecycle', () => {
   });
 
   it('a LOST transition race never double-settles (updateMany count 0 -> no side effects)', async () => {
-    const { service, prisma, cloudinary } = makeService({ isFood: true });
+    const { service, prisma, cloudinary } = makeService({
+      isFood: true,
+      safetyRejected: true,
+    });
     prisma.photo.updateMany.mockResolvedValue({ count: 0 });
-    await service.applyModerationResult(
-      'p1',
-      'crave/test/photos/p1',
-      'rejected',
-    );
+    await service.handleNotification({ ...uploadNotification });
     expect(cloudinary.destroyAsset).not.toHaveBeenCalled();
   });
 
   it('moderation approved but NOT food -> REMOVED, asset KEPT (auditable false-positives)', async () => {
     const { service, prisma, cloudinary } = makeService({ isFood: false });
-    await service.applyModerationResult(
-      'p1',
-      'crave/test/photos/p1',
-      'approved',
-    );
+    await service.handleNotification({ ...uploadNotification });
     const update = prisma.photo.updateMany.mock.calls.find(
       ([args]) => args.data?.status === 'removed',
     );
@@ -230,20 +252,17 @@ describe('PhotosService lifecycle', () => {
   });
 
   it('safety-REJECTED -> REMOVED + asset destroyed', async () => {
-    const { service, cloudinary } = makeService();
-    await service.applyModerationResult(
-      'p1',
-      'crave/test/photos/p1',
-      'rejected',
-    );
+    const { service, cloudinary } = makeService({ safetyRejected: true });
+    await service.handleNotification({ ...uploadNotification });
     expect(cloudinary.destroyAsset).toHaveBeenCalled();
   });
 
   it('moderation rejected -> REMOVED; settled photos are never re-moved (idempotent replay)', async () => {
     const { service, cloudinary } = makeService({
+      safetyRejected: true,
       photo: { photoId: 'p1', status: 'live', publicId: 'x' },
     });
-    await service.applyModerationResult('p1', 'x', 'rejected');
+    await service.handleNotification({ ...uploadNotification });
     expect(cloudinary.destroyAsset).not.toHaveBeenCalled(); // already settled
   });
 
@@ -336,6 +355,119 @@ describe('PhotosService lifecycle', () => {
     const settled = await service.reconcilePending(0, 25);
     expect(safety.moderateImage).toHaveBeenCalled();
     expect(settled).toBe(0);
+  });
+
+  it('MUTATION (F9701): a rejected AVATAR whose destroy throws is PARKED and retried — never dropped', async () => {
+    // THE DEFECT. Photos got `destroy_pending` in F9470; avatars kept two bare
+    // `catch {}`s whose comment said the asset was "unreferenced either way".
+    // The avatar public_id is `.../avatars/{userId}` and its delivery URL is
+    // derivable, so a rejected image whose destroy failed stayed FETCHABLE —
+    // the exact leak, minus the row to park in.
+    //
+    // MUTATION TO RE-RED: put the `catch {}` back (drop the opsAlerts.emit) and
+    // the park assertion reds; drop `reconcileAvatarDestroys` from the sweep
+    // and the retry assertion reds.
+    const { service, cloudinary, prisma, opsAlerts } = makeService({
+      safetyRejected: true,
+    });
+    cloudinary.isAvatarPublicId.mockReturnValue(true);
+    cloudinary.destroyAsset.mockRejectedValueOnce(new Error('Cloudinary 5xx'));
+
+    await service.handleNotification({
+      public_id: 'crave/test/avatars/u1',
+      version: 99,
+      width: 256,
+    });
+
+    // PARKED: durable, deduped per user, and visible to the owner.
+    const parked = opsAlerts.emit.mock.calls.find(
+      ([a]: [{ kind: string }]) => a.kind === 'avatar_destroy_pending',
+    );
+    expect(parked).toBeDefined();
+    expect(parked[0].dedupeKey).toBe('avatar_destroy_pending:u1');
+    expect(parked[0].body).toContain('version=99');
+
+    // RETRIED: the sweep drains the queue and acknowledges only on success.
+    prisma.opsAlert.findMany.mockResolvedValueOnce([
+      {
+        alertId: 'a1',
+        dedupeKey: 'avatar_destroy_pending:u1',
+        body: 'version=99',
+      },
+    ]);
+    const before = cloudinary.destroyAsset.mock.calls.length;
+    await service.reconcilePending();
+    expect(cloudinary.destroyAsset.mock.calls.length).toBe(before + 1);
+    expect(opsAlerts.acknowledge).toHaveBeenCalledWith('a1');
+  });
+
+  it('F9701: the retry stands down when a NEWER, approved avatar now occupies the id', async () => {
+    // The destroy is not versioned — it kills whatever is at the public_id
+    // now. If the user has since had an avatar APPROVED, retrying would delete
+    // the good one, which is a worse bug than the leak.
+    const { service, cloudinary, prisma, opsAlerts } = makeService();
+    prisma.opsAlert.findMany.mockResolvedValueOnce([
+      {
+        alertId: 'a1',
+        dedupeKey: 'avatar_destroy_pending:u1',
+        body: 'version=99',
+      },
+    ]);
+    prisma.user.findUnique.mockResolvedValueOnce({
+      avatarUrl: 'https://res/img/upload/t/v200/crave/test/avatars/u1',
+    });
+    await service.reconcilePending();
+    expect(cloudinary.destroyAsset).not.toHaveBeenCalled();
+    expect(opsAlerts.acknowledge).toHaveBeenCalledWith('a1');
+  });
+
+  it('F9703: an image Vision can never read SETTLES — a permanent OUR-SIDE failure does not', async () => {
+    // The paid-retry bound. `scope: 'image'` + non-transient is the one answer
+    // that will never change, so re-asking buys the same sentence every ten
+    // minutes forever. It settles (removed, asset destroyed, never approved).
+    const imageError = new ImageModerationUnavailableError(
+      'cannot fetch',
+      false,
+      'image',
+    );
+    const { service, prisma, cloudinary } = makeService({
+      safetyError: imageError,
+    });
+    await service.handleNotification({ ...uploadNotification });
+    const parked = prisma.photo.updateMany.mock.calls.find(
+      ([args]: [{ data?: { status?: string } }]) =>
+        args.data?.status === 'destroy_pending',
+    );
+    expect(parked).toBeDefined();
+    expect(cloudinary.destroyAsset).toHaveBeenCalled();
+
+    // …and the SERVICE-side permanent failure (a 403, a missing key) must NOT
+    // settle anything: that would turn one config mistake into mass deletion.
+    const serviceError = new ImageModerationUnavailableError(
+      'denied',
+      false,
+      'service',
+    );
+    const { service: s2, prisma: p2 } = makeService({
+      safetyError: serviceError,
+    });
+    await s2.handleNotification({ ...uploadNotification });
+    const transitions = p2.photo.updateMany.mock.calls.filter(
+      ([args]: [{ data?: { status?: string } }]) =>
+        args.data?.status !== undefined,
+    );
+    expect(transitions).toHaveLength(0);
+  });
+
+  it('F9703: a backlog stuck pending for days rings the bell (the retry stays unbounded, the silence does not)', async () => {
+    const { service, prisma, opsAlerts } = makeService();
+    prisma.photo.count.mockResolvedValue(7);
+    await service.reconcilePending();
+    const alert = opsAlerts.emit.mock.calls.find(
+      ([a]: [{ kind: string }]) => a.kind === 'photos_stuck_pending',
+    );
+    expect(alert).toBeDefined();
+    expect(alert[0].title).toContain('7 photo(s)');
   });
 
   it('report: a photo INVISIBLE to the reporter 404s (no private-photo oracle, no hiding what you can’t see)', async () => {
@@ -516,16 +648,14 @@ describe('PhotosService lifecycle', () => {
   });
 
   it('F9470: a destroy that THROWS parks the row in destroy_pending (never `removed` while the asset lives) and the sweep retries until the asset is gone', async () => {
-    const { service, prisma, cloudinary } = makeService();
+    const { service, prisma, cloudinary } = makeService({
+      safetyRejected: true,
+    });
 
     // Reject moderation, but the destroy call fails (transient Cloudinary
     // outage). The row must NOT flip to `removed` — the asset is still alive.
     cloudinary.destroyAsset.mockRejectedValueOnce(new Error('Cloudinary 5xx'));
-    await service.applyModerationResult(
-      'p1',
-      'crave/test/photos/p1',
-      'rejected',
-    );
+    await service.handleNotification({ ...uploadNotification });
 
     // Parked, not removed: pending -> destroy_pending happened, but nothing
     // flipped it to `removed` (that would strand the still-present asset — the

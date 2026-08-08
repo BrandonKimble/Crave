@@ -625,7 +625,10 @@ export type ColumnCoverage =
   /**
    * Person data on a row the declaration deliberately KEEPS — under a
    * `retain`, `sever` or `anonymized_by_shell` rule on this same table, whose
-   * basis this column inherits. Census-verified the same way.
+   * basis this column inherits. `keptBy` NAMES that rule's column and the
+   * census verifies THAT rule, not merely that the table has some keeping rule
+   * somewhere (F9504: `users` has one keeper and five rules, so the weaker
+   * check passed sixteen columns on the mere existence of any of them).
    */
   | 'lives_with_row'
   /**
@@ -649,11 +652,45 @@ export interface ColumnCoverageEntry {
   basis: string;
   /** `erased_by_hand` only: path (relative to this file) of the handler. */
   handledBy?: string;
+  /**
+   * `lives_with_row` only: the COLUMN on this same table whose rule keeps the
+   * row. The census resolves it to a real rule and checks that rule's verb, so
+   * removing THE keeper — not just any rule on the table — reds every column
+   * leaning on it.
+   */
+  keptBy?: string;
   /** `awaiting_owner` only: what actually gets written into the column. */
   writer?: string;
   /** `awaiting_owner` only: the disposition this lane would recommend. */
   recommendation?: string;
 }
+
+/**
+ * THE RULE THAT KEEPS THE ROW, per table — the mechanism every
+ * `lives_with_row` claim on that table leans on (F9504).
+ *
+ * One column, named. The bases below already said which rule keeps each row in
+ * prose; prose is not a mechanism, and the census could only check that SOME
+ * keeping rule existed on the table. Now it checks THIS one.
+ */
+const LIVES_WITH_ROW_KEEPER: Record<string, string> = {
+  billing_checkout_sessions: 'user_id',
+  billing_subscriptions: 'user_id',
+  conversations: 'pair_key',
+  messages: 'sender_user_id',
+  photo_reports: 'user_id',
+  photos: 'user_id',
+  poll_comment_reports: 'reporter_user_id',
+  poll_comments: 'user_id',
+  poll_endorsements: 'user_id',
+  poll_topics: 'created_by_user_id',
+  polls: 'created_by_user_id',
+  signal_actors: 'actor_id',
+  signal_demand_daily: 'actor_id',
+  signals: 'actor_id',
+  user_reports: 'reported_user_id',
+  users: 'user_id',
+};
 
 const LIVES_WITH_ROW_BASIS: Record<string, string> = {
   billing_checkout_sessions:
@@ -1033,6 +1070,7 @@ export const COLUMN_COVERAGE: readonly ColumnCoverageEntry[] = [
         column,
         coverage: 'lives_with_row' as const,
         basis: LIVES_WITH_ROW_BASIS[table],
+        keptBy: LIVES_WITH_ROW_KEEPER[table],
       })),
   ),
 
@@ -1162,6 +1200,7 @@ export const COLUMN_COVERAGE: readonly ColumnCoverageEntry[] = [
       table,
       column,
       coverage: 'lives_with_row',
+      keptBy: LIVES_WITH_ROW_KEEPER[table],
       basis:
         `User contribution survives anonymized — owner ruling 2026-08-07, Reddit-model ("contributions stay under a [deleted] byline"). ${what} ` +
         `The byline is severed by a declared rule, not by hope: ${severedBy}.`,
@@ -1186,6 +1225,7 @@ export const COLUMN_COVERAGE: readonly ColumnCoverageEntry[] = [
       table: 'signals',
       column,
       coverage: 'lives_with_row',
+      keptBy: LIVES_WITH_ROW_KEEPER.signals,
       basis:
         'Anonymous-shell metrics — owner ruling 2026-08-07; legitimate only because erasure severs the person link (per-column scoping D146). ' +
         'VERIFIED MECHANISM: the viewport hangs off signals.actor_id, and the only path from an actor to a person is signal_actors.user_id, which is declared `sever` (nulled), with signal_actors.device_key declared `null_column` so the fingerprint cannot re-attach it. The bbox survives as demand geography attached to a pseudonym.',
@@ -1195,6 +1235,7 @@ export const COLUMN_COVERAGE: readonly ColumnCoverageEntry[] = [
     table: 'users',
     column: 'last_sign_in_at',
     coverage: 'lives_with_row',
+    keptBy: LIVES_WITH_ROW_KEEPER.users,
     basis:
       'Anonymous-shell metrics (retention/churn) — owner ruling 2026-08-07; legitimate only because erasure severs the person link (per-column scoping D146). VERIFIED MECHANISM: the anonymize step in account-deletion.service.ts HMACs the email and nulls username/display_name/avatar_url/auth_provider_user_id, and PersonDataEraserService.assertShellIsAnonymous throws if any of them survives — so this timestamp is attached to a shell that names nobody.',
   },
@@ -1210,6 +1251,7 @@ export const COLUMN_COVERAGE: readonly ColumnCoverageEntry[] = [
       table: 'users',
       column,
       coverage: 'lives_with_row',
+      keptBy: LIVES_WITH_ROW_KEEPER.users,
       basis:
         `Anonymous-shell metrics (${what} — city mix and localisation) — owner ruling 2026-08-07; legitimate only because erasure severs the person link (per-column scoping D146). ` +
         'VERIFIED MECHANISM: same as users.last_sign_in_at — the anonymize step strips every identity column on this row and assertShellIsAnonymous fails the purge if it did not.',
@@ -1235,6 +1277,7 @@ export const COLUMN_COVERAGE: readonly ColumnCoverageEntry[] = [
     table: 'polls',
     column: 'metadata',
     coverage: 'lives_with_row',
+    keptBy: LIVES_WITH_ROW_KEEPER.polls,
     basis:
       'Generator provenance on a poll the declaration keeps (polls.created_by_user_id → sever). Owner ruling 2026-08-07 (Q7): keep as-is. HONEST GAP: unlike signals.meta there is no single writer to enforce a shape at — polls.service.ts writes it from several paths — so this is classified by the row’s fate, not by a proven shape. TODO: give it a typed shape when the polls write paths are next consolidated.',
   },

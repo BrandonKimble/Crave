@@ -6,6 +6,7 @@ import {
   type ColumnCoverageEntry,
 } from './person-data-class';
 import { retentionAction, retentionScopeColumns } from './person-data-scope';
+import { codeMatches, stripComments } from '../../../shared/testing/code-only';
 
 /**
  * THE CENSUS — TOTAL CLASSIFICATION (F9310, owner-approved 2026-08-07).
@@ -101,6 +102,38 @@ function coverageFor(
     COLUMN_COVERAGE.find((e) => e.table === table && e.column === column) ??
     COLUMN_COVERAGE.find((e) => e.table === table && e.column === undefined)
   );
+}
+
+/** The verbs that leave the ROW standing — what `lives_with_row` leans on. */
+const KEEPING_DISPOSITIONS = new Set([
+  'retain',
+  'sever',
+  'anonymized_by_shell',
+]);
+
+/**
+ * Every `lives_with_row` entry whose NAMED keeper is missing or does not keep,
+ * given a rule set. Taking the rules as an argument is what lets the mutation
+ * proof below ask this exact function about a declaration with the keeper
+ * removed — the same function the live check runs, not a copy of it.
+ */
+function unsupportedLivesWithRow(
+  rules: readonly (typeof PERSON_DATA_RULES)[number][],
+): string[] {
+  return COLUMN_COVERAGE.filter((e) => e.coverage === 'lives_with_row')
+    .map((e) => {
+      const key = `${e.table}.${e.column ?? '*'}`;
+      if (!e.keptBy) return `${key} (no keptBy)`;
+      const keeper = rules.find(
+        (r) => r.table === e.table && r.column === e.keptBy,
+      );
+      if (!keeper) return `${key} (keptBy ${e.table}.${e.keptBy} is gone)`;
+      if (!KEEPING_DISPOSITIONS.has(keeper.disposition)) {
+        return `${key} (keptBy ${e.table}.${e.keptBy} is ${keeper.disposition} — it keeps nothing)`;
+      }
+      return null;
+    })
+    .filter((k): k is string => k !== null);
 }
 
 describe('person-data census — EVERY column in the schema is classified', () => {
@@ -252,19 +285,31 @@ describe('person-data census — EVERY column in the schema is classified', () =
     expect(unsupported).toEqual([]);
   });
 
-  it('`lives_with_row` leans on a real rule that keeps the row', () => {
-    const keeps = new Set(['retain', 'sever', 'anonymized_by_shell']);
-    const unsupported = COLUMN_COVERAGE.filter(
-      (e) => e.coverage === 'lives_with_row',
-    )
-      .filter(
-        (e) =>
-          ![...(dispositionsByTable.get(e.table) ?? [])].some((d) =>
-            keeps.has(d),
-          ),
-      )
-      .map((e) => `${e.table}.${e.column ?? '*'}`);
-    expect(unsupported).toEqual([]);
+  it('`lives_with_row` leans on THE NAMED rule that keeps the row', () => {
+    // F9504: this used to ask only "does this table have SOME keeping rule?".
+    // `users` carries five rules and exactly one of them keeps the row
+    // (`user_id: retain`); the other four are `null_column` scrubs. So all
+    // sixteen `users` columns passed on the existence of rules that keep
+    // nothing, and deleting the ONE that does would not have reddened any of
+    // them. The claim now names its keeper and the keeper is resolved.
+    expect(unsupportedLivesWithRow(PERSON_DATA_RULES)).toEqual([]);
+  });
+
+  it('MUTATION (F9504): removing THE keeper rule reds every column leaning on it', () => {
+    // The mutation the weaker check slept through. Drop `users.user_id:retain`
+    // — the single rule that keeps the anonymized shell alive — and every
+    // `users` column classified "it lives with the row" must say so, because
+    // the row it names is no longer kept by anything.
+    const without = PERSON_DATA_RULES.filter(
+      (r) => !(r.table === 'users' && r.column === 'user_id'),
+    );
+    const red = unsupportedLivesWithRow(without);
+    expect(red.length).toBeGreaterThan(10);
+    expect(red).toContain(
+      'users.last_sign_in_at (keptBy users.user_id is gone)',
+    );
+    // And ONLY users: other tables lean on their own keepers.
+    expect(red.every((k) => k.startsWith('users.'))).toBe(true);
   });
 
   it('NO table-level entry may KEEP data — an inherited default must be a safe one', () => {
@@ -305,11 +350,52 @@ describe('person-data census — EVERY column in the schema is classified', () =
         broken.push(`${key} (handler missing: ${entry.handledBy})`);
         continue;
       }
-      if (!src.includes(snakeToCamel(entry.column))) {
-        broken.push(`${key} (handler no longer mentions it)`);
+      // CODE, NOT PROSE (F9503). A raw `includes` matches the handler's own
+      // COMMENTS — and D148's stash comment re-mentions username, displayName
+      // and avatarUrl by name, so deleting the anonymize lines would have left
+      // this green on the strength of a sentence describing them. `codeMatches`
+      // strips comments first, which is the one thing that makes "the handler
+      // still does it" a fact rather than a description.
+      const mention = new RegExp(`\\b${snakeToCamel(entry.column)}\\b`);
+      if (!codeMatches(mention, src, entry.handledBy)) {
+        broken.push(`${key} (handler no longer mentions it in CODE)`);
       }
     }
     expect(broken).toEqual([]);
+  });
+
+  it('MUTATION (F9503): a handler that only MENTIONS the column in a comment reds', () => {
+    // The defect was live: D148 added a stash comment to
+    // account-deletion.service.ts naming username / displayName / avatarUrl in
+    // prose, so a raw `includes` would have stayed green with the anonymize
+    // WRITES deleted — the census would have been certifying a sentence.
+    const handler = readFileSync(
+      join(__dirname, '../account-deletion.service.ts'),
+      'utf8',
+    );
+    // `username` is the live instance: the handler names it in PROSE seven
+    // times over and above the writes, so a raw `includes` survives deleting
+    // every one of the writes.
+    const code = stripComments(handler, 'account-deletion.service.ts');
+    const count = (src: string) => (src.match(/\busername\b/g) ?? []).length;
+    expect(count(handler)).toBeGreaterThan(count(code));
+
+    // THE MUTATION: keep the comments, delete the code. The old check reads
+    // this as "the handler still does it"; the code-only one does not.
+    const commentsOnly = handler
+      .split('\n')
+      .filter((l) => l.trim().startsWith('*') || l.trim().startsWith('//'))
+      // Re-marked as line comments: a `*` continuation lifted out of its
+      // enclosing `/** … */` is no longer a comment to any parser.
+      .map((l) => `// ${l.trim().replace(/^[*/]+ ?/, '')}`)
+      .join('\n');
+    expect(commentsOnly).toContain('username');
+    expect(codeMatches(/\busername\b/, commentsOnly)).toBe(false);
+
+    // …while the real handler passes on CODE, and the strip is not just
+    // blanking the file (an empty strip would fail everything, not pass it).
+    expect(codeMatches(/\busername\b/, handler)).toBe(true);
+    expect(code.length).toBeGreaterThan(1000);
   });
 
   it('every `sever` rule targets a NULLABLE column — a declaration that cannot be executed is a lie', () => {

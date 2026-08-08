@@ -276,9 +276,33 @@ export class CloudinaryService {
     }
   }
 
+  /**
+   * DESTROY, AND ACTUALLY LOOK AT THE ANSWER (F9704).
+   *
+   * `uploader.destroy` RESOLVES with `{ result: 'not found' }` — it does not
+   * throw — so the caller's `try/catch` around it was blind to every outcome
+   * except a transport error. A wrong public_id, a already-half-deleted asset,
+   * or any future non-`ok` result read as a successful destroy, and the row
+   * flipped to `removed` with the bytes possibly still live: exactly the leak
+   * `destroy_pending` exists to prevent, one level below it.
+   *
+   * `'not found'` IS SUCCESS. The goal is "the asset is gone"; an asset that
+   * was never there, or that a previous retry already destroyed, satisfies it —
+   * treating it as a failure would park the row forever on a retry that can
+   * never change its answer. Anything else THROWS, so the caller's park-and-
+   * retry machinery sees it.
+   */
   async destroyAsset(publicId: string): Promise<void> {
     this.ensureConfigured();
-    await cloudinary.uploader.destroy(publicId, { invalidate: true });
+    const response = (await cloudinary.uploader.destroy(publicId, {
+      invalidate: true,
+    })) as { result?: string } | undefined;
+    const outcome = response?.result;
+    if (outcome === 'ok' || outcome === 'not found') return;
+    throw new Error(
+      `Cloudinary destroy(${publicId}) returned "${outcome ?? 'no result'}" — ` +
+        'the asset may still exist',
+    );
   }
 
   extractModerationStatus(

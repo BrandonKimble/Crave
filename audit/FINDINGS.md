@@ -2991,3 +2991,15 @@ F9805 | unscoped profile query key | STATUS: FIXED — ['user-profile', userId ?
 F9900 | search README documented deleted categories field | STATUS: FIXED.
 F9902 | CRAVE.md still described the fail-closed nightly backstop | STATUS: FIXED — rewritten to scream-never-kill, consistent with :384.
 F9604 | deleted backstop env dials still set in prod | STATUS: FIXED (orchestrator, railway CLI) — GEMINI_MONTHLY_SPEND_FLOOR_USD + GEMINI_BACKSTOP_MAX_USD removed from api+worker.
+
+# === red-team fix lane 2 (photos/vision/person-data) — all 10 landed (2026-08-07) ===
+F9701 | avatar destroy-failures vanished (the F9470 leak's avatar sibling) | STATUS: FIXED — both bare catch{} route through destroyAvatarAsset(): failure parks in a durable deduped ops_alerts row, the photo sweep drains via reconcileAvatarDestroys() (ack only when the asset is gone; stands down when a NEWER approved avatar occupies the id). Mutation-proven.
+F9702 | empty/UNKNOWN SafeSearch annotation counted as approval | STATUS: FIXED (SAFETY) — every deciding category must carry a scored value; else ImageModerationUnavailableError (transient) → pending-retry. Mutation-proven (lane + orchestrator re-proof: neutering the guard reds).
+F9703 | unbounded paid Vision retry | STATUS: FIXED — error gains scope 'service'|'image': image-scope non-transient (Google read the request, can't read THIS image) settles destroy_pending→removed, never approved; service-scope (missing key/403) retries forever ON PURPOSE (settling would turn a config mistake into mass deletion) + photos_stuck_pending warn after >3d. attempts-column noted as tidier, deliberately deferred (no migration needed).
+F9704 | destroyAsset result never inspected | STATUS: FIXED — 'ok'/'not found' = success; anything else throws into park-and-retry. cloudinary-destroy.spec.ts.
+F9700 | food-vs-safety asymmetry comment-only | STATUS: FIXED — applyModerationResult now takes a symbol-BRANDED SafetyDecision mintable only by safetyVerdict/the legacy constant, method private: hand-feeding 'approved' no longer compiles.
+F9500 | tautological erasure guard arm | STATUS: FIXED — rederived to the per-column law (why:'foreign-column') which CAN fail (user_follows has two delete_row person columns — a re-widened scope is now caught); RED proven in-spec. Not deleted: now fireable.
+F9501 | person-data mutation spec re-derived the judgement | STATUS: FIXED — scopeContradictionsFor() extracted; guard and spec call the same function.
+F9503 | census erased_by_hand grep matched prose | STATUS: FIXED — codeMatches (comment-stripped) via scanner-source; RED proven (comments-only source no longer passes).
+F9504 | lives_with_row passed on one shared retain rule | STATUS: FIXED — keptBy names the keeper rule per table; census verifies its verb; RED proven (removing users.user_id:retain reds exactly the 16 dependent columns).
+F9901 | product/profile.md said avatars use Rekognition | STATUS: FIXED — dated additive correction.
