@@ -1,4 +1,5 @@
-import { formatPriceRangeText, getPriceRangeLabel, getPriceSymbolLabel } from './pricing';
+import * as pricing from './pricing';
+import { formatPriceRangeText, getPriceSymbolLabel } from './pricing';
 
 /**
  * F895: price levels were encoded twice in incompatible representations (display strings +
@@ -13,9 +14,24 @@ import { formatPriceRangeText, getPriceRangeLabel, getPriceSymbolLabel } from '.
  */
 describe('price level formatting', () => {
   it('a single level and the degenerate span [n, n] are the SAME string', () => {
-    for (const level of [1, 2, 3, 4]) {
-      expect(formatPriceRangeText([level, level])).toBe(getPriceRangeLabel(level));
-    }
+    // One formatter, one table: the degenerate span IS the single-level answer.
+    expect(formatPriceRangeText([1, 1])).toBe('$1–$25');
+    expect(formatPriceRangeText([2, 2])).toBe('$25–$50');
+    expect(formatPriceRangeText([3, 3])).toBe('$50–$75');
+    expect(formatPriceRangeText([4, 4])).toBe('$75+');
+  });
+
+  /**
+   * F1019: a per-RESTAURANT dollar band derived from a price LEVEL is a fabricated
+   * observation. The renderer that produced one is gone; these bounds may only label the
+   * filter's own selection. Re-exporting a level -> band helper reds this.
+   */
+  it('exports no level -> dollar-band renderer for a single restaurant', () => {
+    // Each name asserted SEPARATELY: `not.arrayContaining([a, b])` negates the
+    // conjunction, so it passes whenever EITHER is absent — it could never go red here.
+    const exported = Object.keys(pricing);
+    expect(exported).not.toContain('getPriceRangeLabel');
+    expect(exported).not.toContain('PRICE_LEVEL_RANGE_LABELS');
   });
 
   it('a span reads from the low bound of its floor and the high bound of its ceiling', () => {
@@ -33,14 +49,13 @@ describe('price level formatting', () => {
 
   it('out-of-range and non-finite levels clamp instead of producing a broken label', () => {
     expect(formatPriceRangeText([0, 9])).toBe('Any price');
-    expect(getPriceRangeLabel(7)).toBe(getPriceRangeLabel(4));
+    expect(formatPriceRangeText([7, 7])).toBe(formatPriceRangeText([4, 4]));
     expect(getPriceSymbolLabel(0)).toBe('$');
     expect(getPriceSymbolLabel(Number.NaN)).toBe('$');
   });
 
   it('a missing level is a missing label, never a defaulted one', () => {
-    expect(getPriceRangeLabel(null)).toBeUndefined();
-    expect(getPriceRangeLabel(undefined)).toBeUndefined();
     expect(getPriceSymbolLabel(null)).toBeUndefined();
+    expect(getPriceSymbolLabel(undefined)).toBeUndefined();
   });
 });

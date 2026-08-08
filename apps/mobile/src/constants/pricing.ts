@@ -14,6 +14,15 @@ export const PRICE_LEVEL_SYMBOLS: Record<number, string> = {
  * range path. Editing one and not the other produced "$25–$50" sitting next to "$25–$75",
  * with no type error, no failing test, and no other symptom. There is now one table and one
  * formatter; the two paths cannot disagree because they read the same numbers.
+ *
+ * F1019 (2026-08-07) — WHAT THESE BOUNDS MAY LABEL. They describe the PRICE FILTER's own
+ * selection ("you asked for $25–$50 places"), which is the user's stated intent and so is
+ * not an observation about anybody. They must NEVER label a RESTAURANT: a level-derived
+ * dollar band presented on a card reads as an observed price and is fabricated. A
+ * restaurant renders the server's real `priceRangeText`, else the real `priceSymbol` /
+ * `getPriceSymbolLabel` — never a band from this table. The per-restaurant band renderer
+ * that used to live here (`getPriceRangeLabel`) is deleted for exactly that reason; only
+ * `formatPriceRangeText` (filter summary) reads these bounds now.
  */
 type PriceBounds = { min: number | null; max: number | null };
 
@@ -61,16 +70,6 @@ export const formatPriceRangeText = (range: [number, number]): string => {
     max: PRICE_LEVEL_BOUNDS[max]?.max ?? null,
   };
   return formatBounds(bounds) ?? 'Any price';
-};
-
-export const getPriceRangeLabel = (priceLevel?: number | null): string | undefined => {
-  if (priceLevel === null || priceLevel === undefined) {
-    return undefined;
-  }
-
-  const clamped = clampPriceLevel(priceLevel);
-  // F895: rendered from the bounds table, never from a parallel string table.
-  return formatBounds(PRICE_LEVEL_BOUNDS[clamped] ?? { min: null, max: null });
 };
 
 export const getPriceSymbolLabel = (priceLevel?: number | null): string | undefined => {
