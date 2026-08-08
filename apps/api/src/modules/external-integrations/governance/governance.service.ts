@@ -89,15 +89,30 @@ async function assertSpendOpen(
     return;
   }
   if (verdict.reason === 'poisoned') {
-    const hours = Math.ceil((verdict.retryAfterMs ?? 0) / 3_600_000);
-    const message = `${copy.budgetNoun} spend budget poisoned (vendor cap) — reopens in ${hours}h; work stays queued`;
-    host.opsAlerts.emit({
-      severity: 'critical',
-      kind: copy.alertKind,
-      title: `${copy.titleNoun} spend budget poisoned (vendor cap)`,
-      body: `${message}.`,
-      dedupeKey: `${copy.alertKind}_poisoned:${monthKey}`,
-    });
+    const retryAfterMs = verdict.retryAfterMs ?? 0;
+    // A SECONDS-SCALE poison is a rate throttle, not a budget event
+    // (round-3 red team): the 429 cooldown is credential-keyed, so a
+    // routine 1-second TomTom QPS blip poisons the money pool too — and
+    // used to email a critical "vendor cap" alert AND burn the month's
+    // dedupe slot, suppressing the alert for a GENUINE month-long cap. The
+    // typed denied still throws either way (a poisoned credential must not
+    // spend); only the OWNER PAGE is gated on the poison being cap-scale.
+    // 10 minutes is the discriminator: every real vendor-cap detector sets
+    // hours-to-days, every rate throttle sets seconds.
+    const capScale = retryAfterMs > 10 * 60_000;
+    const hours = Math.ceil(retryAfterMs / 3_600_000);
+    const message = capScale
+      ? `${copy.budgetNoun} spend budget poisoned (vendor cap) — reopens in ${hours}h; work stays queued`
+      : `${copy.budgetNoun} spend gate closed by a transient vendor throttle — retries in ${Math.ceil(retryAfterMs / 1000)}s`;
+    if (capScale) {
+      host.opsAlerts.emit({
+        severity: 'critical',
+        kind: copy.alertKind,
+        title: `${copy.titleNoun} spend budget poisoned (vendor cap)`,
+        body: `${message}.`,
+        dedupeKey: `${copy.alertKind}_poisoned:${monthKey}`,
+      });
+    }
     throw new SpendBudgetClosedError(message, 'poisoned');
   }
   host.opsAlerts.emit({
@@ -203,49 +218,70 @@ export class GovernanceService implements OnModuleInit {
     //      balance we could not read)
     // Both are critical, because both mean the money instrumentation is
     // blind — which is exactly when a human should be looking.
+    // IN-MEMORY SCREAM SUPPRESSION (round-3 red team). OpsAlertsService
+    // dedupes through a unique index in the DATABASE BEING WRITTEN TO — so
+    // during the exact outage these callbacks exist for, every admit
+    // attempted an INSERT that failed, logged a second error, and collapsed
+    // nothing: an alert storm whose off-switch was the thing that was down.
+    // The dedupe keys already carry their time bucket, so a bounded seen-set
+    // makes suppression survive the outage; the DB unique index remains the
+    // cross-process backstop for when the store IS up.
+    const screamedKeys = new Set<string>();
+    const screamOnce = (key: string, scream: () => void): void => {
+      if (screamedKeys.has(key)) return;
+      if (screamedKeys.size > 1_000) screamedKeys.clear();
+      screamedKeys.add(key);
+      scream();
+    };
     this.pools = new PoolRegistry(
       store,
       (poolName, error) => {
         const message = error instanceof Error ? error.message : String(error);
-        this.logger.error(
-          'DURABLE POOL FLUSH FAILED — draws continue (D149 fail-open); a crash before the next successful flush loses this delta',
-          { poolName, error: { message } },
-        );
-        this.opsAlerts.emit({
-          severity: 'critical',
-          kind: 'pool_bookkeeping_failure',
-          title: `Pool bookkeeping failure: ${poolName}`,
-          body:
-            `Durable window flush failed for pool '${poolName}'. Draws ` +
-            `CONTINUE (D149: a store hiccup must not refuse work), so ` +
-            `month-to-date consumption for this pool is under-counted until ` +
-            `a flush succeeds. Error: ${message}`,
-          // Dedupe per pool per UTC hour: 'YYYY-MM-DDTHH' bucket.
-          dedupeKey: `pool_bookkeeping_failure:${poolName}:${new Date()
-            .toISOString()
-            .slice(0, 13)}`,
+        const dedupeKey = `pool_bookkeeping_failure:${poolName}:${new Date()
+          .toISOString()
+          .slice(0, 13)}`;
+        screamOnce(dedupeKey, () => {
+          this.logger.error(
+            'DURABLE POOL FLUSH FAILED — draws continue (D149 fail-open); a crash before the next successful flush loses this delta',
+            { poolName, error: { message } },
+          );
+          this.opsAlerts.emit({
+            severity: 'critical',
+            kind: 'pool_bookkeeping_failure',
+            title: `Pool bookkeeping failure: ${poolName}`,
+            body:
+              `Durable window flush failed for pool '${poolName}'. Draws ` +
+              `CONTINUE (D149: a store hiccup must not refuse work), so ` +
+              `month-to-date consumption for this pool is under-counted until ` +
+              `a flush succeeds. Error: ${message}`,
+            // Dedupe per pool per UTC hour: 'YYYY-MM-DDTHH' bucket.
+            dedupeKey,
+          });
         });
       },
       (poolName) => {
-        this.logger.error(
-          'POOL ADMITTED AGAINST AN UNCONFIRMED WINDOW — spending against a balance the store could not read (D149 fail-open)',
-          { poolName },
-        );
-        this.opsAlerts.emit({
-          severity: 'critical',
-          kind: 'pool_window_unconfirmed',
-          title: `Spending blind: ${poolName} window unconfirmed`,
-          body:
-            `Pool '${poolName}' admitted a draw while its durable window ` +
-            `could not be confirmed from the store, so its ceiling is not ` +
-            `being enforced right now. This is deliberate (D149: refusing ` +
-            `real work over a DB blip is the worse failure) — but it means ` +
-            `the backstop is OFF for this pool until the store recovers. ` +
-            `Check Postgres and pool_window_consumption.`,
-          // Per pool per UTC day: loud, but not a per-draw storm.
-          dedupeKey: `pool_window_unconfirmed:${poolName}:${new Date()
-            .toISOString()
-            .slice(0, 10)}`,
+        const dedupeKey = `pool_window_unconfirmed:${poolName}:${new Date()
+          .toISOString()
+          .slice(0, 10)}`;
+        screamOnce(dedupeKey, () => {
+          this.logger.error(
+            'POOL ADMITTED AGAINST AN UNCONFIRMED WINDOW — spending against a balance the store could not read (D149 fail-open)',
+            { poolName },
+          );
+          this.opsAlerts.emit({
+            severity: 'critical',
+            kind: 'pool_window_unconfirmed',
+            title: `Spending blind: ${poolName} window unconfirmed`,
+            body:
+              `Pool '${poolName}' admitted a draw while its durable window ` +
+              `could not be confirmed from the store, so its ceiling is not ` +
+              `being enforced right now. This is deliberate (D149: refusing ` +
+              `real work over a DB blip is the worse failure) — but it means ` +
+              `the backstop is OFF for this pool until the store recovers. ` +
+              `Check Postgres and pool_window_consumption.`,
+            // Per pool per UTC day: loud, but not a per-draw storm.
+            dedupeKey,
+          });
         });
       },
     );
@@ -313,16 +349,11 @@ export class GovernanceService implements OnModuleInit {
       },
       reservationTtlMs: 60_000,
     });
-    this.pools.register({
-      name: 'tomtom.geocode',
-      credential: 'default',
-      window: {
-        kind: 'perMinute',
-        limit: TOMTOM_PER_MINUTE,
-        denomination: 'quantity',
-      },
-      reservationTtlMs: 60_000,
-    });
+    // tomtom.geocode DELETED 2026-08-08 (round-3 red team): the forward
+    // geocode was its only writer, and the forward geocode died with the
+    // per-rung anchored-lookup rederivation — a pool that can never be
+    // drawn is a lie in the ops surface. Historic ledger rows keep their
+    // 'geocode' operation and pricing (vendor-pricing.ts, HISTORICAL).
     this.pools.register({
       name: 'tomtom.scarcePolygons',
       credential: 'default',
@@ -701,7 +732,7 @@ export class GovernanceService implements OnModuleInit {
   > {
     // Durable pools: confirm the current window against the store before
     // admission (no-op for perMinute; heals a boot-time load failure and
-    // loads a freshly-rolled month). Fail-closed denial follows in reserve().
+    // loads a freshly-rolled month). Since D149 the unconfirmed window ADMITS (scream-never-kill); only poison and exhaustion deny.
     await this.pools.ensureWindow(poolName);
     const reservation = this.pools.reserve(poolName, 1, workClass);
     if (!reservation.admitted) {

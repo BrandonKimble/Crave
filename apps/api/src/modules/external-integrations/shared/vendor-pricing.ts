@@ -63,6 +63,9 @@ export function tomtomCostMicrosPerDraw(operation: string | null): number {
     case 'additionalData':
     case 'boundaryGeometry':
       return tomtomScarceCostMicrosPerDraw;
+    // HISTORICAL ONLY (2026-08-08): the forward geocode died with the
+    // per-rung anchored-lookup rederivation; no live caller emits this
+    // operation. The arm prices ledger rows written before that date.
     case 'geocode':
     case 'reverseGeocode':
       return tomtomCheapCostMicrosPerDraw;
