@@ -98,6 +98,12 @@ CRITICAL — active data loss/corruption:
   live ingest (then the unconditional write resurrects it, and
   compaction can delete the run under the evidence).
   > CORRECTION (coordinator plans-audit) 2026-08-08 — C3's class is PARTLY
+> CLOSED 2026-08-08 (1e2f218c4): both relocated sites guarded with the
+> b0db25258 idiom, AND the closure's class-scan caught a THIRD site both
+> audits missed (the item-persist lease heartbeat — a zombie submitter could
+> re-extend a reclaimed lease). C3 is now SCAN-ENFORCED: a spec asserts zero
+> bare `llmBatchJob.update(` calls remain in the file; reintroducing the
+> class REDs the suite. Proven live (planted bare update → RED).
   > RE-OPENED, not closed. Most terminal writes in
   > `apps/api/src/modules/external-integrations/llm/gemini-batch.service.ts`
   > are now guarded `updateMany`s, but TWO bare `llmBatchJob.update()` status
