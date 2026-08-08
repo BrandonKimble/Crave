@@ -83,7 +83,11 @@ EXISTS(unnest(aliases))` defeats the btree entirely — measured as a
    3 of 4 misses are typos, the linker's lane). The decision rests on the
    owner's product ruling and the pipeline mechanics, not this number;
    re-measure on real traffic post-launch. The two formerly-irreducible jobs both leave the hot path:
-   - **Negation: the FEATURE is removed** (owner: people do not search
+   - **Negation: the FEATURE is removed** — ⚠️ SUPERSEDED IN CODE, see the
+     NEGATION note in BUILD STATUS above. A live negation CUE GATE now
+     ships (`query-analyzer.ts`); the accepted-inversion ruling recorded
+     in this bullet is no longer what runs. Kept for the reasoning trail.
+     (owner: people do not search
      "pizza no tomato sauce"). ROUND-2 TRACE, then the RULING: removal
      alone does not ignore a negated phrase — it INVERTS it ("cilantro"
      is an active ingredient, so "tacos no cilantro" grounds cilantro as
@@ -329,27 +333,43 @@ plus one flattening):
 
 change visible results BY DESIGN — the header no longer claims otherwise)
 
-**BUILD STATUS (2026-08-01, all structural steps LANDED + empirically
-verified on the mirror; commits 4a538e49 → 1e50ef3f):** step 1 dietary
-hardness ✅ (earlier); step 2 ✅ untyped exact recall + lemma variant
-probes + single-bucket placement (dietary wins; deterministic order;
-curated list = calibration tail) in the linker chain, 4 specs +
-real-data premises verified; step 3 ✅ pooled window-gate behind
-SEARCH_POOLED_MODE=off|shadow|on (shadow diff harness; relax forced off
-in 'on'), smoke-verified incl. openness-aware gate + hydrate-never-
-gates, 9 shape specs; step 4 ✅ structured grounding
-(SearchConstraints.grounding.food; flat foodIds/exactFoodIds/relevance
-are derived views — the three reconstruction mechanisms are deleted) +
-one evidence-admission authority (evidence-admission.ts, per-consumer
-floors); step 5 ✅ per-word starvation (soft_word_counts in both pooled
-counts → executor → starvedWords on demand context + narrowed
-requests). Zero-per-search-LLM plumbing ✅: unsegmented staging table +
-env-gated async segmenter cron + SEARCH_GAZETTEER_UNDERSTAND=
-off|shadow|on (residue-join rule implemented in 'on'). Calibration
-instruments ✅ built, readings PARKED (calibration-instruments.ts:
-conflicts/junk/threshold; linker-calibration-sweep.ts pre-existing).
-Nothing is FLIPPED: pooled off, gazetteer off, segmenter off — the
-ladder still serves until shadow parity is measured.
+**BUILD STATUS — CORRECTED 2026-08-08. The block that stood here was
+written on 2026-08-01 and described a flag world that no longer exists.
+It ended "Nothing is FLIPPED: pooled off, gazetteer off, segmenter off —
+the ladder still serves", which is the exact OPPOSITE of shipped state,
+and a reader who stops at the status header (as a status header invites)
+was getting the reverse of the truth. Three env names it treated as the
+control surface — `SEARCH_POOLED_MODE`, `SEARCH_GAZETTEER_UNDERSTAND`,
+`SEARCH_DENSE_SIBLINGS_MODE` — now return ZERO hits repo-wide. They were
+deleted at the cutover along with the ladder they gated.**
+
+**What is actually true (verified against the code, 2026-08-08):** every
+structural step is landed AND CUT OVER — there is no flag, no shadow
+mode, and no fallback path. Pooled richness gate: canonical, threshold =
+`POOLED_COVERAGE_THRESHOLD = DEFAULT_PAGE_SIZE`. Gazetteer Understand:
+canonical, zero per-search LLM (`llmMs: 0`). The relaxation ladder:
+deleted outright — no `relaxed_modifiers`, no `canDrop*`, no stage
+probes anywhere in `apps/api/src`. The async segmenter cron is now
+UNCONDITIONAL (`@Cron('*/10 * * * *')`), not env-gated. Structured
+grounding, per-word starvation, the unified linker, the delete-dictionary
+lexicon, the tier-2 similar ring, the stored fame-pin column and the
+SQL open-now predicate are all live and serving.
+
+**NEGATION — this document was wrong, and in the load-bearing direction.**
+§1.1 below records the owner ruling that the negation FEATURE is removed
+and that "no cilantro" grounds cilantro as a POSITIVE ingredient (an
+accepted inversion), and §6's worked example is built on that reading.
+The code does not do this: `query-analyzer.ts` ships a live negation CUE
+GATE (`negationCues` / `negatedSpan` — "a cue that IMMEDIATELY precedes a
+span negates it"), and `search-query-interpretation.service.ts` collects
+negated groups into `excludedSpans` and excludes them from placement, the
+residue-join and the dense tier. So "no cilantro" no longer inverts. The
+decision that changed it is recorded in `plans/multilingual.md` (R5-3,
+NEGATION GATE) and nowhere else; a code comment in
+`search-query.builder.ts` still repeats the stale ruling too. Read the
+gate, not §1.1, as the current behaviour — and note the known open issue
+carried in multilingual.md: the cue gate shreds "no name burgers", which
+is why negation is to be settled jointly with the name arm.
 
 **EMPIRICAL RED TEAM (2026-08-02, real Nest context + mirror DB, no
 mocks) — 6/6 PASS** after one real finding fixed: (1) lemma probe:
@@ -441,7 +461,9 @@ verified on the mirror):**
   dissolved — ring rows ride the dish scan as provenance tier 2
   (scan-admitted, never served, window-counted); similarAvailable is a
   MEASURED count; prepareSimilarPreview + its second pooled execution
-  DELETED. Under SEARCH_DENSE_SIBLINGS_MODE=always (current config)
+  DELETED. Under the dense-siblings behaviour that is now unconditional (the
+  SEARCH_DENSE_SIBLINGS_MODE env name it used to be gated by is DELETED,
+  as line ~455 below already says — this sentence contradicted it)
   the ring is honestly empty (siblings are already members) — parity
   with the old preview. (The mode=expansion open item DISSOLVED when the
   env mode was deleted — 65cae9175.)

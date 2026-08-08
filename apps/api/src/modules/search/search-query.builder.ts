@@ -2263,10 +2263,15 @@ location_aggregates AS (
    *   name/alias join covers synthesis gaps — owner ruling 2026-07-25).
    *   Knowledge fills recall ("gruyere" finds dishes whose canon includes
    *   it even when no Redditor named it).
-   * (The 'exclude' arm was DELETED 2026-07-30 — spec §1.1: free-text
-   * negation is no longer interpreted (owner: accepted-inversion ruling)
-   * and allergen toggles were rejected, so nothing produced exclusion ids.
-   * Include-only ever since.)
+   * (The 'exclude' arm was DELETED 2026-07-30 because nothing produced
+   * exclusion ids: allergen toggles were rejected, and free-text negation
+   * was un-interpreted at the time under the accepted-inversion ruling.
+   * CORRECTED 2026-08-08: that ruling no longer describes the code — a
+   * negation CUE GATE ships in query-analyzer.ts and the interpretation
+   * service collects negated spans into `excludedSpans`. Those exclusions
+   * act at PLACEMENT (a negated span never grounds), not as exclusion ids
+   * on this clause, so include-only remains correct HERE — but do not read
+   * this comment as "the product does not do negation" any more.)
    */
   private buildEffectiveIngredientsClause(ingredientIds: string[]): {
     sql: Prisma.Sql;
