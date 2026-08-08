@@ -313,6 +313,27 @@ module.exports = {
     'react-hooks/exhaustive-deps': 'warn',
     // Mobile-specific rules
     '@typescript-eslint/no-explicit-any': 'warn',
+    // F9100/F9101 — THE ROOT STANDARD IS `error`; THIS IS MOBILE'S MEASURED DEBT.
+    //
+    // The root config now holds the safety rules at ERROR (a warning is a rule
+    // that does not exist — nothing here fails on warnings). apps/site and
+    // packages/shared meet that bar with ZERO exceptions.
+    //
+    // This package does not, YET, and the honest thing is to say so with a number
+    // rather than to inherit lax by default. Measured 2026-08-07 against
+    // `eslint src`: 58 violations across 31 files — 41 `no-unused-vars` (almost
+    // all dead imports), 13 `no-unsafe-call` and 4 `no-floating-promises`. Nine of
+    // them are in `tracksheet/TrackSheetPage.tsx`, under active edit.
+    //
+    // Same staging shape, and same reason, as `exhaustive-deps` above: turning
+    // these red today blocks every commit on a backlog nobody has read, and the
+    // `no-unsafe-call`/`no-floating-promises` sites need real types and real
+    // decisions about who awaits, not a mechanical sweep. A follow-up burns them
+    // down per directory; when the count reaches zero these three lines DELETE and
+    // mobile simply inherits the root standard.
+    '@typescript-eslint/no-unused-vars': ['warn', { argsIgnorePattern: '^_' }],
+    '@typescript-eslint/no-unsafe-call': 'warn',
+    '@typescript-eslint/no-floating-promises': 'warn',
     // THE STANDARD MODAL SURFACE (owner spec, 2026-07-08): every modal renders
     // through OverlayModalSheet (AppModalHost / showAppModal / announceFailureIfOnline;
     // `prompt` covers Alert.prompt flows). The native centered alert and native

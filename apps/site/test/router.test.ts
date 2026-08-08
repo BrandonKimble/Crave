@@ -124,7 +124,8 @@ test('trailing slashes and case do not 302 a real page away', () => {
 test('/healthz answers without any config at all', () => {
   const res = handle('/healthz', UNCONFIGURED);
   assert.equal(res.status, 200);
-  assert.equal(JSON.parse(res.body).status, 'ok');
+  const health = JSON.parse(res.body) as { status?: string };
+  assert.equal(health.status, 'ok');
 });
 
 test('API_ORIGIN trailing slash does not become a double slash', () => {
