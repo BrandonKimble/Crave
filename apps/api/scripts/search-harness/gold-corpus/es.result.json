@@ -1,5 +1,5 @@
 {
-  "ranAt": "2026-08-08T22:54:52.368Z",
+  "ranAt": "2026-08-08T23:29:15.236Z",
   "lang": "es",
   "corpusVersion": 1,
   "scoreboard": {
@@ -2480,6 +2480,24 @@
           "foldedName": "coffee"
         },
         {
+          "entityId": "a39e1db2-ce8f-49d2-8cc5-4c4c18c62985",
+          "bucket": "food",
+          "type": "food",
+          "span": "con",
+          "name": "concha",
+          "tier": "linked",
+          "foldedName": "concha"
+        },
+        {
+          "entityId": "c12bbe35-403e-41a0-a2cb-849268f610d1",
+          "bucket": "food",
+          "type": "food",
+          "span": "con",
+          "name": "consome",
+          "tier": "linked",
+          "foldedName": "consome"
+        },
+        {
           "entityId": "d25c2905-f8e6-4de7-93f6-4bc6d04a6c07",
           "bucket": "restaurantAttributes",
           "type": "restaurant_attribute",
@@ -2490,7 +2508,7 @@
         }
       ],
       "excluded": [],
-      "unresolved": ["con"],
+      "unresolved": [],
       "analysis": {
         "script": "latin",
         "requestLocale": "es-US",
@@ -2738,6 +2756,24 @@
       "reasons": [],
       "grounded": [
         {
+          "entityId": "a39e1db2-ce8f-49d2-8cc5-4c4c18c62985",
+          "bucket": "food",
+          "type": "food",
+          "span": "con",
+          "name": "concha",
+          "tier": "linked",
+          "foldedName": "concha"
+        },
+        {
+          "entityId": "c12bbe35-403e-41a0-a2cb-849268f610d1",
+          "bucket": "food",
+          "type": "food",
+          "span": "con",
+          "name": "consome",
+          "tier": "linked",
+          "foldedName": "consome"
+        },
+        {
           "entityId": "ec4144aa-f351-4ccf-b6f9-9837f9afe217",
           "bucket": "restaurantAttributes",
           "type": "restaurant_attribute",
@@ -2757,7 +2793,7 @@
         }
       ],
       "excluded": [],
-      "unresolved": ["con"],
+      "unresolved": [],
       "analysis": {
         "script": "latin",
         "requestLocale": "es-US",
@@ -3448,6 +3484,51 @@
           "foldedName": "sushi"
         },
         {
+          "entityId": "0578fbbd-5d01-442d-bd43-740ae61481b3",
+          "bucket": "food",
+          "type": "food",
+          "span": "que",
+          "name": "que divino taco",
+          "tier": "linked",
+          "foldedName": "que divino taco"
+        },
+        {
+          "entityId": "77704ddc-d9c2-4197-853a-6b10e14d89dd",
+          "bucket": "food",
+          "type": "food",
+          "span": "que",
+          "name": "quesadilla especial",
+          "tier": "linked",
+          "foldedName": "quesadilla especial"
+        },
+        {
+          "entityId": "6ea4e7ca-1b5a-4f3b-bfae-37ff50c6401f",
+          "bucket": "food",
+          "type": "food",
+          "span": "que",
+          "name": "queso asado",
+          "tier": "linked",
+          "foldedName": "queso asado"
+        },
+        {
+          "entityId": "da6035cd-687a-4baa-9ed2-34705a82848b",
+          "bucket": "food",
+          "type": "food",
+          "span": "que",
+          "name": "quesadilla",
+          "tier": "linked",
+          "foldedName": "quesadilla"
+        },
+        {
+          "entityId": "73366a27-6ad8-4cc3-93d0-a6f37fca774b",
+          "bucket": "food",
+          "type": "food",
+          "span": "que",
+          "name": "quesabirria",
+          "tier": "linked",
+          "foldedName": "quesabirria"
+        },
+        {
           "entityId": "08630647-825b-439d-8a47-461cf61a7f3d",
           "bucket": "restaurantAttributes",
           "type": "restaurant_attribute",
@@ -3464,7 +3545,7 @@
           "cue": "no/en"
         }
       ],
-      "unresolved": ["que"],
+      "unresolved": [],
       "analysis": {
         "script": "latin",
         "requestLocale": "es-US",

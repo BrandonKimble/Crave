@@ -16,6 +16,7 @@ import {
   QueryEntityGroupDto,
   SearchQueryRequestDto,
   MapBoundsDto,
+  toStructuredSearchRequest,
 } from './dto/search-query.dto';
 import {
   LINK_ELIGIBLE_EVIDENCE,
@@ -432,10 +433,12 @@ export class SearchQueryInterpretationService {
         dietaryEntity ??
         [...group.entities].sort(
           (a, b) =>
-            SearchQueryInterpretationService.CROSS_TYPE_PLACEMENT_ORDER.indexOf(
+            SearchQueryInterpretationService.rankIn(
+              SearchQueryInterpretationService.CROSS_TYPE_PLACEMENT_ORDER,
               a.type,
             ) -
-            SearchQueryInterpretationService.CROSS_TYPE_PLACEMENT_ORDER.indexOf(
+            SearchQueryInterpretationService.rankIn(
+              SearchQueryInterpretationService.CROSS_TYPE_PLACEMENT_ORDER,
               b.type,
             ),
         )[0];
@@ -504,10 +507,12 @@ export class SearchQueryInterpretationService {
           subDietary ??
           [...contained].sort(
             (a, b) =>
-              SearchQueryInterpretationService.DECOMPOSED_PLACEMENT_ORDER.indexOf(
+              SearchQueryInterpretationService.rankIn(
+                SearchQueryInterpretationService.DECOMPOSED_PLACEMENT_ORDER,
                 a.type,
               ) -
-              SearchQueryInterpretationService.DECOMPOSED_PLACEMENT_ORDER.indexOf(
+              SearchQueryInterpretationService.rankIn(
+                SearchQueryInterpretationService.DECOMPOSED_PLACEMENT_ORDER,
                 b.type,
               ),
           )[0];
@@ -802,18 +807,13 @@ export class SearchQueryInterpretationService {
     const runnerSim = eligible[1]?.sparseSimilarity ?? 0;
     // ONE definition of the live link decision, imported (F1260) — five
     // harnesses used to replicate this expression by hand.
-    // G2 (launch-gate run 1): 2-3 char spans linked on prefix ('sal'→
-    // salsa, 'col'→coleslaw). Below 4 folded chars only exact/alias
-    // evidence is a claim — the fuzzy tier refuses.
-    const foldedLength = input.normalizedName.replace(/\s+/g, '').length;
-    const shortStringFuzzyBlocked =
-      foldedLength < 4 &&
-      top?.sparseEvidence != null &&
-      top.sparseEvidence !== 'exact' &&
-      top.sparseEvidence !== 'alias';
+    // G2 DELETED (audit H3): the short-string special case was a patch on
+    // the fake 0.94 prefix score. Prefix now carries honest COVERAGE
+    // (typed/name length), so 'sal'→'salsa' scores 0.6 and the calibrated
+    // 0.82 prefix floor rejects it on merit — the length guard is the
+    // floor's job again.
     const linkable =
       top != null &&
-      !shortStringFuzzyBlocked &&
       linkerAdmits({
         topSim,
         runnerSim,
@@ -952,6 +952,14 @@ export class SearchQueryInterpretationService {
           b.type,
         ),
     )[0];
+  }
+
+  /** AUDIT M9: .indexOf() returns -1 for an unlisted type, silently making
+   *  it the HIGHEST priority. rankIn() sends unlisted types to the BACK
+   *  instead — a new EntityType degrades safely until deliberately placed. */
+  private static rankIn(order: EntityType[], type: EntityType): number {
+    const index = order.indexOf(type);
+    return index === -1 ? order.length : index;
   }
 
   private static readonly CROSS_TYPE_PLACEMENT_ORDER: EntityType[] = [
@@ -1153,19 +1161,10 @@ export class SearchQueryInterpretationService {
       ingredients: entities.ingredients,
     });
 
-    return {
-      entities: resolvedEntities,
-      bounds: request.bounds,
-      userLocation: request.userLocation,
-      openNow: request.openNow,
-      dietary: request.dietary,
-      pagination: request.pagination,
-      includeSqlPreview: request.includeSqlPreview,
-      compactResponse: request.compactResponse,
-      priceLevels: request.priceLevels,
-      minimumVotes: request.minimumVotes,
-      sourceQuery: request.query,
-    };
+    // Audit C3: destructuring passthrough — a field the client sent can no
+    // longer be dropped here (this list previously lost includeSimilar,
+    // risingActive, viewportPolygon, userId and the submission context).
+    return toStructuredSearchRequest(request, resolvedEntities);
   }
 
   private applySelectedAutocompleteEntity(

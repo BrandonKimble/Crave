@@ -286,7 +286,7 @@ export class EntityTextSearchService {
       entityId: row.entityId,
       name: row.name,
       type: row.type,
-      similarity: row.exact ? 1 : 0.94,
+      similarity: row.exact ? 1 : folded.length / Math.max(row.name.length, 1),
       evidence: row.exact ? ('exact' as const) : ('prefix' as const),
     }));
   }
@@ -613,6 +613,27 @@ export class EntityTextSearchService {
           for (const lexRow of lexRows) {
             if (!present.has(lexRow.entityId)) bucket.push(lexRow);
           }
+          // AUDIT C2: RE-RANK THE MERGED SET before the per-term cut. The
+          // SQL lane already LIMITed to perTermLimit, so appended lexicon
+          // rows previously sat past the slice boundary — on any query with
+          // a full trigram page (K=5) the ENTIRE edit lane was unreachable
+          // ('vgean' could never reach vegan). One merged set, one order,
+          // one cut: same keys as the SQL ORDER BY (exact, prefix, best
+          // similarity, score) so the merge cannot invert the lane law.
+          bucket.sort(
+            (a, b) =>
+              (b.exactHit ?? 0) - (a.exactHit ?? 0) ||
+              b.prefixHit - a.prefixHit ||
+              Math.max(
+                Number(b.nameSimilarity ?? 0),
+                Number(b.aliasSimilarity ?? 0),
+              ) -
+                Math.max(
+                  Number(a.nameSimilarity ?? 0),
+                  Number(a.aliasSimilarity ?? 0),
+                ) ||
+              Number(b.publicCraveScore ?? 0) - Number(a.publicCraveScore ?? 0),
+          );
           fetchedRowsByTerm.set(term, bucket);
         }
       }
@@ -867,10 +888,14 @@ export class EntityTextSearchService {
             e.name AS "name",
             e.type AS "type",
             CASE WHEN lower(e.name) = v.term THEN 1 ELSE 0 END AS "exactHit",
+            -- AUDIT H3: the prefix score is COVERAGE (typed/name length),
+            -- not a hardcoded 0.94 that sat above every floor and made the
+            -- calibrated prefix floor unable to reject anything ('sal' vs
+            -- 'salsa' is now 0.6, honestly below the 0.82 floor). Same
+            -- honesty fix the contains tier already received.
             CASE
               WHEN lower(e.name) = v.term THEN 1
-              WHEN length(v.term) <= 2 THEN 0.9
-              ELSE 0.94
+              ELSE length(v.term)::real / GREATEST(length(e.name), 1)
             END AS "nameSimilarity",
             0 AS "aliasSimilarity",
             0 AS "ftsRank",

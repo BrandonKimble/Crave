@@ -1,3 +1,4 @@
+import { toStructuredSearchRequest } from './dto/search-query.dto';
 import { isEnvFlagEnabled } from '../../shared/config/env-flag';
 import { Inject, Injectable } from '@nestjs/common';
 import { SearchService } from './search.service';
@@ -338,21 +339,13 @@ export class SearchOrchestrationService {
         return null;
     }
 
+    // Audit C3: this hand-list previously DROPPED an active dietary wall
+    // (plus includeSimilar/risingActive/viewportPolygon) when a user picked
+    // an autocomplete entity — destructuring passthrough makes that class
+    // unrepresentable.
     return {
-      entities,
-      bounds: request.bounds,
-      userLocation: request.userLocation,
-      openNow: request.openNow,
-      pagination: request.pagination,
-      includeSqlPreview: request.includeSqlPreview,
-      compactResponse: request.compactResponse,
-      priceLevels: request.priceLevels,
-      minimumVotes: request.minimumVotes,
-      userId: request.userId,
-      searchRequestId: request.searchRequestId,
+      ...toStructuredSearchRequest(request, entities),
       submissionSource: request.submissionSource ?? 'manual',
-      submissionContext: request.submissionContext,
-      sourceQuery: request.query,
     };
   }
 

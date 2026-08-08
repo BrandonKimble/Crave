@@ -224,15 +224,37 @@ export class DietaryConstraintRegistry {
       };
       return pairs;
     } catch (error) {
-      // Fail toward TODAY'S behavior rather than breaking search: a registry
-      // outage must never take the hot path down. Stale cache beats empty.
-      this.logger.warn('Dietary registry load failed (failing soft)', {
+      // Stale beats empty — but EMPTY IS FORBIDDEN (audit H2): a dietary
+      // wall is a hard promise ("softening vegan is not degradation — it is
+      // a wrong answer", top of this file), and an empty map silently serves
+      // a vegan user non-vegan results on the first request after any
+      // boot+DB-blip. With no stale cache to fall back on, the search FAILS
+      // LOUDLY instead of lying. Boot preload (onModuleInit) makes this
+      // branch unreachable in practice.
+      this.logger.error('Dietary registry load failed', {
         error:
           error instanceof Error
             ? { message: error.message }
             : { message: String(error) },
       });
-      return this.cache?.pairs ?? new Map();
+      if (this.cache) {
+        return this.cache.pairs;
+      }
+      throw new Error(
+        'dietary constraint registry unavailable and no cached copy exists — refusing to serve unwalled results',
+      );
+    }
+  }
+
+  /** Boot preload (audit H2): the registry is ~12 curated rows; loading it
+   *  at startup means the cold-cache fail-closed path above is unreachable
+   *  unless the DB is down AT boot — in which case the app refuses to start
+   *  serving anyway. Failure here only warns; the per-request path retries. */
+  async onModuleInit(): Promise<void> {
+    try {
+      await this.load();
+    } catch {
+      // per-request loads will retry; the fail-closed guard covers the gap
     }
   }
 }

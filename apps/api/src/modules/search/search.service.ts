@@ -1851,7 +1851,11 @@ export class SearchService {
         ...planExpansion.foodIds,
         ...planExpansion.denseSiblingFoodIds,
       ]) {
-        if (id) similar[id] = relevance[id] ?? 1;
+        // AUDIT H5: an unmeasured widened id must NEVER default to 1 —
+        // that is the exact-match value, and it let a relevance-less
+        // sibling outrank calibrated cousins. The conservative default is
+        // the cousin floor; producers that measured a relevance still win.
+        if (id) similar[id] = relevance[id] ?? COUSIN_RELEVANCE;
       }
     }
     const foodGrounding: FoodGrounding = {

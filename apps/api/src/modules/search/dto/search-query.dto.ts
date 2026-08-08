@@ -400,6 +400,27 @@ export type DishResultDto = SharedDishResult;
 export type SearchResponseMetadataDto = SharedSearchResponseMetadata;
 export type SearchResponseDto = SharedSearchResponse;
 
+/**
+ * THE ONE TRANSLATION from a natural request to a structured one (audit C3).
+ * Two hand-copied field lists (interpretation + orchestration) each dropped
+ * fields the client legitimately sent — including an ACTIVE DIETARY WALL on
+ * the autocomplete-selected path (a false claim to a vegan user), plus
+ * includeSimilar and risingActive everywhere. Destructuring passthrough
+ * makes dropping a future field impossible by construction: everything but
+ * `query` rides through verbatim.
+ */
+export function toStructuredSearchRequest(
+  request: NaturalSearchRequestDto,
+  entities: QueryEntityGroupDto,
+): SearchQueryRequestDto {
+  const { query, ...passthrough } = request;
+  return {
+    ...passthrough,
+    entities,
+    sourceQuery: request.sourceQuery ?? query,
+  };
+}
+
 export class NaturalSearchRequestDto {
   @IsString()
   @IsNotEmpty()
