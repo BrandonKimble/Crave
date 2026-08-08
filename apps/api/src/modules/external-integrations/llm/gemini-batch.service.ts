@@ -229,10 +229,19 @@ export class GeminiBatchService implements OnModuleDestroy {
     // half-persisted job.
     const CHUNK = 200;
     for (let i = 0; i < params.items.length; i += CHUNK) {
-      await this.prisma.llmBatchJob.update({
-        where: { jobId: job.jobId },
+      // GUARDED (C3): the heartbeat only extends a lease THIS submitter still
+      // holds. A zombie whose claim was reclaimed must not re-extend the
+      // lease and keep appending items to a job another worker now owns —
+      // abort loudly instead; the reclaim sweeper owns the job's fate.
+      const heartbeat = await this.prisma.llmBatchJob.updateMany({
+        where: { jobId: job.jobId, status: 'persisting' },
         data: { leaseExpiresAt: leaseFromNow() },
       });
+      if (heartbeat.count === 0) {
+        throw new Error(
+          `batch persist aborted: persisting claim on ${job.jobId} was reclaimed mid-write`,
+        );
+      }
       await this.prisma.llmBatchJobItem.createMany({
         data: params.items.slice(i, i + CHUNK).map((item, j) => ({
           jobId: job.jobId,
@@ -245,10 +254,20 @@ export class GeminiBatchService implements OnModuleDestroy {
         })),
       });
     }
-    await this.prisma.llmBatchJob.update({
-      where: { jobId: job.jobId },
+    // GUARDED (C3): the pending handoff is only valid while THIS submitter
+    // holds the 'persisting' claim — a stale submitter whose lease expired
+    // (job reclaimed) must not yank a job another worker already moved past
+    // pending back into the queue.
+    const staged = await this.prisma.llmBatchJob.updateMany({
+      where: { jobId: job.jobId, status: 'persisting' },
       data: { status: 'pending', leaseExpiresAt: null },
     });
+    if (staged.count === 0) {
+      this.logger.error(
+        'Batch pending-handoff no-oped — persisting claim was gone (reclaimed); not re-queueing',
+        { jobId: job.jobId, purpose: params.purpose },
+      );
+    }
 
     // Provider submission is DURABLE-DEFERRED: a failure here (429, network)
     // leaves the job 'pending' for the poller's resumer instead of throwing —
@@ -554,14 +573,24 @@ export class GeminiBatchService implements OnModuleDestroy {
           outcome: 'failed',
         });
       }
-      await this.prisma.llmBatchJob.update({
-        where: { jobId },
+      // GUARDED (C3): a late poller must not stamp 'failed' over a state
+      // another worker already decided — the exact cancel-over-terminal
+      // shape (b0db25258): 'failed' over 'succeeded'/'ingested' erases the
+      // record of completed PAID work.
+      const failedWrite = await this.prisma.llmBatchJob.updateMany({
+        where: { jobId, status: 'submitted' },
         data: {
           status: 'failed',
           error: remote.error ? JSON.stringify(remote.error) : state,
           completedAt: new Date(),
         },
       });
+      if (failedWrite.count === 0) {
+        this.logger.error(
+          'Batch failed-write no-oped — job state was decided elsewhere; record kept',
+          { jobId, state },
+        );
+      }
       this.logger.error('Gemini batch failed', { jobId, state });
       await this.notifyJobFailed(
         jobId,

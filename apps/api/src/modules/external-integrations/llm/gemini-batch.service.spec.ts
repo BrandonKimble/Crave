@@ -1,3 +1,5 @@
+import { readFileSync } from 'fs';
+import { join } from 'path';
 import { GeminiBatchService } from './gemini-batch.service';
 
 /**
@@ -89,8 +91,16 @@ describe('GeminiBatchService.submit (§24 red team finding 1)', () => {
     ).llmBatchJob = {
       ...prisma.llmBatchJob,
       update: jest.fn().mockResolvedValue(undefined),
-      // count:0 short-circuits resumeSubmit before any genAI network call.
-      updateMany: jest.fn().mockResolvedValue({ count: 0 }),
+      // The submitter's OWN 'persisting' claims (heartbeat + pending handoff)
+      // succeed; the 'pending'->submitting claim returns count:0 so
+      // resumeSubmit short-circuits before any genAI network call.
+      updateMany: jest
+        .fn()
+        .mockImplementation((args: { where?: { status?: unknown } }) =>
+          Promise.resolve({
+            count: args?.where?.status === 'persisting' ? 1 : 0,
+          }),
+        ),
     };
 
     const jobId = await service.submit({
@@ -117,8 +127,16 @@ describe('GeminiBatchService.submit (§24 red team finding 1)', () => {
     ).llmBatchJob = {
       ...prisma.llmBatchJob,
       update: jest.fn().mockResolvedValue(undefined),
-      // count:0 short-circuits resumeSubmit before any genAI network call.
-      updateMany: jest.fn().mockResolvedValue({ count: 0 }),
+      // The submitter's OWN 'persisting' claims (heartbeat + pending handoff)
+      // succeed; the 'pending'->submitting claim returns count:0 so
+      // resumeSubmit short-circuits before any genAI network call.
+      updateMany: jest
+        .fn()
+        .mockImplementation((args: { where?: { status?: unknown } }) =>
+          Promise.resolve({
+            count: args?.where?.status === 'persisting' ? 1 : 0,
+          }),
+        ),
     };
 
     await service.submit({
@@ -179,5 +197,22 @@ describe('GeminiBatchService.cancel — terminal states are unclobberable', () =
     const { service, updateMany } = buildCancelHarness(0);
     await expect(service.cancel('job-terminal')).resolves.toBeUndefined();
     expect(updateMany).toHaveBeenCalledTimes(1);
+  });
+});
+
+/**
+ * C3 CLASS CLOSURE (2026-08-08): after b0db25258 + this commit, ZERO bare
+ * `llmBatchJob.update(` status writes remain — every job-status transition
+ * is a conditional updateMany from its expected state. This scan is the
+ * class-level mutation proof: reintroduce any bare update() and it REDs.
+ */
+describe('C3 — no bare llmBatchJob.update() status writes', () => {
+  it('every status transition is a guarded updateMany', () => {
+    const source = readFileSync(
+      join(__dirname, 'gemini-batch.service.ts'),
+      'utf8',
+    );
+    const bareUpdates = source.match(/llmBatchJob\.update\(/g) ?? [];
+    expect(bareUpdates).toEqual([]);
   });
 });
