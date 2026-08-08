@@ -434,8 +434,9 @@ One law, one store: labels display, aliases ground, contested inferred
 claims get the judge, verdicts remembered. Red team found and fixed one
 judicial rule live (testimony bars EVICTION, not a co-claim hearing —
 first version cost café→coffee). 1,543 surfaces reconciled; es gate 98.7
-(new high). OWED: judge prompt v2 with concept descriptions — single-
-incumbent pairing mis-voted picante/café (two facts hand-banked, logged).
+(new high). Judge v2: OWED at this writing, SHIPPED later the same night
+(a8dbe5442) — see §9 progress below; no contradiction, this line is the
+earlier timestamp.
 
 ### §9 progress (2026-08-08, commit a8dbe5442)
 
@@ -454,3 +455,43 @@ incumbent pairing mis-voted picante/café (two facts hand-banked, logged).
   vi gate; then the zh segmentation build; ko after (spaced, likely
   vi-shaped — verify with the same pre-flight). Prod one-shot: set
   RUN_KNOWLEDGE_MAINTENANCE_ON_BOOT=1 on the worker, redeploy, unset.
+
+## 10. ADJUDICATIONS + DISPOSITIONS (owner-proxy audit, 2026-08-08)
+
+**(a) One-list / client divider — RULING STANDS, UI FIX OWED (mobile lane).**
+Provenance: owner, this session, 2026-08-06, verbatim: "I don't want to do
+that [visually sectioning]… keeps everything in one list ranked according to
+score… it's sort of copping out to visually split them," reaffirmed 2026-08-07
+("the tier mechanism… is allowed specifically because" it is admission, "no
+need to have visually two different tiers"). exactMatch stays row metadata.
+The live client divider (list-read-model-builder.ts:108-129,
+sectioned-projection.ts, render-item-runtime.tsx) predates the ruling and now
+violates it — mobile-lane fix, flagged to the owner for scheduling.
+
+**(b) Cousin auto-fill — RULING = AUTO-FILL, code comments were stale, FIXED.**
+Provenance: owner, this session, 2026-08-07, verbatim: "Only when we can't
+[fill a] full page should we start… including the cousins… we're never going
+to retire the chip" — implemented 290d5f244 (pooled_tier=2 arm +
+pooled_eligible_count). The "never silently widens" comment (search.service)
+and the DTO's phantom-mechanism comment were pre-ruling leftovers — both
+rewritten to cite the ruling and the mechanism (this commit).
+
+**(c) Batch rail + llm_prompts registry — DEFERRED, dated 2026-08-08.**
+Deliberate: the three passes are watermark-bounded (<$10 per full re-pay,
+~$0 quiet nights), so batch pricing saves <$5/bump today; registry wiring is
+owed BEFORE any pass's prompt iterates via shadow-replay (the satisfies pass
+declares versioning it cannot replay — that claim stays false until wired).
+Not deploy-blocking; first prompt-iteration on any pass is the trigger.
+
+**(d) Flags declared** in .env.example (this commit); both read through the
+canonical isEnvFlagEnabled reader already.
+**(e) Stale "NOT WIRED TO A CRON" comment fixed** (this commit).
+**(f)** §9.2: prompt-version watermark SHIPPED (d07926e8e); the separate
+"surface-coverage" criterion was superseded by it — plan text stands
+corrected here. lima→lime: applied on LOCAL (hg-13 passes locally); prod
+application rides the DB-audit session's repair pass with the rest of the
+merge class. sin-X demand record: PARKED with gating condition — decide when
+real traffic shows unmet sin-X asks in the demand ledger (needs the launch
+it cannot precede). writeLabels N+1: accepted, dated — offline path, ≤200
+rows/batch, upsert-per-row is the atomic is_default election; revisit only
+if sweep wall-time matters.

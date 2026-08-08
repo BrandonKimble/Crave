@@ -3102,13 +3102,14 @@ export class SearchService {
     return 1_500;
   }
 
-  /** The "include similar dishes" decision (SETTLED, pre-launch.md): the
-   *  client always sends the explicit toggle; the old env mode
-   *  (SEARCH_DENSE_SIBLINGS_MODE) was dead weight for real traffic and is
-   *  DELETED. Chip ON widens membership up front; chip OFF (or absent)
-   *  never silently widens — the tier-2 ring counts what the chip would
-   *  add, and thinness speaks through the demand signal, not through
-   *  serving rows the user opted out of. */
+  /** The "include similar dishes" decision (RE-RULED 2026-08-06, shipped
+   *  290d5f244 — supersedes the pre-launch.md "never silently widens"
+   *  wording): chip ON widens MEMBERSHIP up front (intent door, kept
+   *  forever); chip OFF, the judged tier-2 ring still AUTO-FILLS a page
+   *  that exact+decomposed+partial cannot fill — admission-gated in the
+   *  builder (pooled_tier=2 arm, pooled_eligible_count < threshold), one
+   *  Crave-Score list. Thinness serves judged cousins AND speaks through
+   *  the demand signal; the two are not exclusive. */
   private siblingsWanted(
     request: SearchQueryRequestDto,
     context: 'preProbe' | 'expansion',

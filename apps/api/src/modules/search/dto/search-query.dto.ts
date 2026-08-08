@@ -221,8 +221,10 @@ export class SearchQueryRequestDto {
    * "Include similar" scope toggle (owner-settled product shape): false/absent →
    * exact + category-member instances only; true → dense sibling dishes join the
    * pool (pure Crave-Score ranking either way). When PRESENT this overrides the
-   * server's explicit-toggle law (the old env mode is deleted) — including suppressing the
-   * silent thin-results widening when explicitly false.
+   * server's explicit-toggle law (the old env mode is deleted). The
+   * thin-results widening it references is REAL since 290d5f244: the judged
+   * tier-2 ring auto-fills only when tiers 0-1 cannot fill the page
+   * (owner ruling 2026-08-06); explicitly-false suppresses that auto-fill.
    */
   @IsOptional()
   @IsBoolean()

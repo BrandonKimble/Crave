@@ -35,9 +35,10 @@ import {
  * the active-locale set. Turn on a new locale and every concept ever minted is
  * instantly "due" — no backfill script, no catch-up bucket.
  *
- * NOT WIRED TO A CRON, deliberately: crons are off in this environment and a
- * sweep that quietly starts spending money is not something to leave lying
- * around. `scripts/sweep-entity-labels.ts` is the manual driver.
+ * WIRED TO THE NIGHTLY via KnowledgeMaintenanceService (2026-08-08) —
+ * behind KNOWLEDGE_MAINTENANCE_ENABLED under the global CRONS_ENABLED
+ * kill-switch, so it cannot quietly spend. `scripts/sweep-entity-labels.ts`
+ * remains the manual driver.
  */
 
 /** Concept types that HAVE display labels. Restaurants never do (proper nouns). */
