@@ -88,6 +88,10 @@ shape — stray unfinished \_prisma_migrations baseline row; mark finished.
    (Vision moderation path — staging has GOOGLE_VISION_API_KEY), access payload
    carries billingRail.
 3. Prod deploy → /health commit == HEAD.
+   3b. IMMEDIATELY (elevated per F9967): RUN_FULL_PROJECTION_REBUILD=1 worker one-shot —
+   before it runs, 1,416 prod restaurants show ZERO dishes (rollup exclusion landed
+   ahead of the rebuild that re-mints their real rows). This is now step 3b, not a
+   someday item; unset the flag after the DONE log.
 4. **THEN AND ONLY THEN**: run `yarn ts-node scripts/cloudinary-setup.ts` against the
    live Cloudinary env (flips presets to moderation:'' — flipping before prod runs
    the new code would strand uploads on the old aws_rek wait). One Cloudinary env
