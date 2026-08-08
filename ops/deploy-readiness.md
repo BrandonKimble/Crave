@@ -7,18 +7,18 @@ session reports arrive; the deploy fires only when every row is READY.
 
 ## Session board
 
-| Session                          | Asked      | Status                                               | Open items                                                                      | Holds files?                                                |
-| -------------------------------- | ---------- | ---------------------------------------------------- | ------------------------------------------------------------------------------- | ----------------------------------------------------------- |
-| 📌02 red team (this/coordinator) | —          | READY — queue empty, all findings terminal           | api-lint promotion (owner call, non-blocking)                                   | no                                                          |
-| 📌01 tom tom (fork)              | 2026-08-07 | AWAITING REPORT                                      | ?                                                                               | ?                                                           |
-| extraction (fork) — DB audit     | 2026-08-07 | AWAITING REPORT                                      | ghost-campaign residual? judge-v2 owed; janitor unblock ETA                     | reddit-batch spec, parse-ground spec, maybe main.ts cluster |
-| Payments                         | 2026-08-07 | AWAITING REPORT                                      | F9806 (collidable RC external id); Stripe client rail status; TEST-vs-LIVE keys | ?                                                           |
-| 📌03 Gemini cost                 | 2026-08-07 | AWAITING REPORT                                      | must reconcile with D149 (backstop derivation deleted)                          | ?                                                           |
-| 📌06 Wave-4 audit (tracksheet)   | 2026-08-07 | AWAITING REPORT                                      | absorb F9400–F9403 (4 LOW)                                                      | tracksheet/\*, scene-input-registry                         |
-| 📌07 Search                      | 2026-08-07 | AWAITING REPORT (idle since 08-06)                   | D79 DTO split disposition                                                       | ?                                                           |
-| F9470 chip session               | —          | DONE — work adopted+committed (d804d539c)            | none                                                                            | no                                                          |
-| clearSceneShell chip session     | —          | DONE (committed by its session)                      | none                                                                            | no                                                          |
-| 📌05 extraction (fork 2)         | —          | EXCLUDED per owner (superseded by extraction (fork)) | —                                                                               | —                                                           |
+| Session                          | Asked      | Status                                           | Open items                                                  | Holds files?                                                |
+| -------------------------------- | ---------- | ------------------------------------------------ | ----------------------------------------------------------- | ----------------------------------------------------------- |
+| 📌02 red team (this/coordinator) | —          | READY — queue empty, all findings terminal       | api-lint promotion (owner call, non-blocking)               | no                                                          |
+| 📌01 tom tom (fork)              | 2026-08-07 | AWAITING REPORT                                  | ?                                                           | ?                                                           |
+| extraction (fork) — DB audit     | 2026-08-07 | AWAITING REPORT                                  | ghost-campaign residual? judge-v2 owed; janitor unblock ETA | reddit-batch spec, parse-ground spec, maybe main.ts cluster |
+| Payments                         | 2026-08-07 | REPORT PENDING — F9806 already FIXED (b4205f24b) | Stripe client rail status; TEST-vs-LIVE keys                | ?                                                           |
+| 📌03 Gemini cost                 | 2026-08-07 | AWAITING REPORT                                  | must reconcile with D149 (backstop derivation deleted)      | ?                                                           |
+| 📌06 Wave-4 audit (tracksheet)   | 2026-08-07 | AWAITING REPORT                                  | absorb F9400–F9403 (4 LOW)                                  | tracksheet/\*, scene-input-registry                         |
+| 📌07 Search                      | 2026-08-07 | AWAITING REPORT (idle since 08-06)               | D79 DTO split disposition                                   | ?                                                           |
+| F9470 chip session               | —          | DONE — work adopted+committed (d804d539c)        | none                                                        | no                                                          |
+| clearSceneShell chip session     | —          | DONE (committed by its session)                  | none                                                        | no                                                          |
+| 📌05 extraction (fork 2)         | 2026-08-07 | AWAITING REPORT (owner: include)                 | overlap-ownership split vs extraction (fork)                | ?                                                           |
 
 ## Master PRE-deploy checklist (coordinator-known; sessions append via reports)
 
