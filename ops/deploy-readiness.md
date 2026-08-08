@@ -7,16 +7,19 @@ session reports arrive; the deploy fires only when every row is READY.
 
 ## Session board
 
-| Session                                          | Asked    | Status                                                      | Open items                                                                                 | Holds files? |
-| ------------------------------------------------ | -------- | ----------------------------------------------------------- | ------------------------------------------------------------------------------------------ | ------------ |
-| 📌02 red team (this/coordinator)                 | —        | READY                                                       | api-lint promotion (owner call, non-blocking)                                              | no           |
-| 📌01 tom tom (fork)                              | reported | READY — 0 holds; 2 red-team asks dispatched                 | none blocking; pool cap becomes REAL at deploy (watch item)                                | no           |
-| extraction (fork) — DB audit                     | reported | READY — ungrounded root cause SOLVED+EXECUTED (23.5%→11.9%) | none; 3 red-team asks dispatched; prod DATA sweep is post-deploy                           | no           |
-| 📌03 account-deletion (mislabeled 'Gemini cost') | reported | READY — 0 holds                                             | site 3-artefact simultaneity (rail confirmation pending)                                   | no           |
-| 📌06 Wave-4 (tracksheet)                         | reported | READY — tree clean as of 817af7fa2                          | R8 parked post-burn-in (owner gate); F9400-9403 absorbed post-deploy                       | no           |
-| 📌07 Search                                      | reported | WORKING — 6 open items tasked back (ideal-shape closure)    | STOP-ITEM: timestamptz migration (sequencing adopted, below); 6 items in flight            | no           |
-| Payments                                         | chased   | F9806 FIXED (b4205f24b); full report pending                | Stripe client-rail status; TEST-vs-LIVE keys; portal/webhook env                           | ?            |
-| 📌05 extraction (fork 2)                         | chased   | AWAITING REPORT                                             | entity-alias.service.ts:369 TS2353 (likely theirs — blocks 8 suites); judge-v2 disposition | likely yes   |
+(Last full refresh 2026-08-08 ~03:00 — the coordinator's earlier table edits
+silently no-op'd after prettier re-padded columns; this rewrite is asserted.)
+
+| Session                      | Status                                                                | Remaining                                                           |
+| ---------------------------- | --------------------------------------------------------------------- | ------------------------------------------------------------------- |
+| 📌02 red team (coordinator)  | READY                                                                 | doc-truth lane finishing (plans/\* corrections in tree)             |
+| 📌01 tom tom (fork)          | READY — F9963 landed                                                  | none                                                                |
+| Payments                     | READY — F9806 + transfer trio (98cc8d681)                             | RC dashboard eyeball = OWNER-only                                   |
+| 📌03 account-deletion        | READY — F9964 + property spec + plan rewrite                          | none                                                                |
+| 📌05 extraction (fork 2)     | READY — F9968, §10 adjudications, batch guards (b0db25258)            | none                                                                |
+| extraction (fork) — DB audit | NEAR-READY — F9965/66/67 landed (3a1506c55)                           | F9976 austin-resume; choreography plan pass; query-deps annotations |
+| 📌07 Search                  | NEAR-READY — FK idx, dietary wall, plan pass, scream/cron-gate landed | divider removal (one-list ruling); duplicate indexes                |
+| 📌06 Wave-4 (tracksheet)     | NEAR-READY — console.log gated; B4 owned                              | banner + contract edits (their next turn; post-deploy-safe)         |
 
 ## THE STOP-ITEM — timestamptz migration (Search's find, sequencing ADOPTED)
 
