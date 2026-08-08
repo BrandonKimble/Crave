@@ -83,10 +83,15 @@ gate_require_present mounted_results_must_stage_prepared \
   "stageSearchMountedResultsPreparedRowsTarget" \
   "apps/mobile/src/screens/Search/runtime/shared/search-mounted-results-data-store.ts"
 
+# REPOINTED 2026-08-08: SearchMountedSceneBody.tsx died with the R8 old-host
+# delete (23912fa9e). In the new track system the mounted surface reaches the
+# mark through commitSearchMountedResultsPreparedRowsTarget (the loud-contract
+# entry that refuses a mismatched staged target), called from the read-model
+# selectors runtime when list data lands.
 gate_require_present mounted_list_commit_must_mark \
   "mounted list commit must mark prepared-row readiness after list data reaches the mounted surface" \
-  "markSearchMountedResultsPreparedRowsCommitted" \
-  "apps/mobile/src/overlays/SearchMountedSceneBody.tsx" \
+  "commitSearchMountedResultsPreparedRowsTarget" \
+  "apps/mobile/src/screens/Search/runtime/read-models/read-model-selectors-runtime.tsx" \
   "apps/mobile/src/screens/Search/runtime/shared/search-mounted-results-data-store.ts"
 
 # REPOINTED 2026-08-03 (audit D37 / F704). Was pinned to the identifier
