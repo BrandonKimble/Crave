@@ -317,6 +317,8 @@ SELECT
     SELECT COUNT(*)::int
     FROM core_restaurant_items ci
     WHERE ci.restaurant_id = e.entity_id
+      -- Rollup rows are never dish rows (F9967, all lanes).
+      AND NOT ci.is_category_item
   ) AS dish_count,
   (
     SELECT json_agg(
@@ -389,6 +391,8 @@ JOIN core_entities f ON f.entity_id = c.food_id
 JOIN core_public_entity_scores pcs
   ON pcs.subject_type = 'connection' AND pcs.subject_id = c.connection_id
 WHERE c.restaurant_id = ${restaurantId}::uuid
+  -- Rollup rows are never dish rows (F9967, all lanes).
+  AND NOT c.is_category_item
 ORDER BY pcs.display_score DESC, c.connection_id ASC
 LIMIT 3
 `);

@@ -27,7 +27,10 @@ function makeService(items: any[]) {
     new ListResultsAssembler(
       {} as never,
       {} as never,
-      { getDietaryPairs: () => Promise.resolve(new Map()) } as never,
+      {
+        getDietaryPairs: () => Promise.resolve(new Map()),
+        resolveDietaryWalls: () => Promise.resolve([]),
+      } as never,
     ),
     new UserListMapper(prisma, logger),
     { loadTileImages: () => Promise.resolve(new Map()) } as never,

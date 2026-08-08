@@ -324,7 +324,9 @@ export class ListResultsAssembler {
     // DIETARY WALLS: resolved from the curated registry into the SAME
     // per-projection directive search uses (dish requires the dish-side
     // attribute; a restaurant passes on venue-side OR any qualifying dish).
-    const dietaryWalls = await this.resolveDietaryWalls(dto.dietary);
+    const dietaryWalls = await this.dietaryConstraints.resolveDietaryWalls({
+      dietary: dto.dietary,
+    });
     const directives = dietaryWalls.length ? { dietaryWalls } : undefined;
 
     const exec = isRestaurantAxis
@@ -600,23 +602,5 @@ export class ListResultsAssembler {
         },
       },
     };
-  }
-
-  /** Canonical dietary names → the per-projection wall directive. */
-  private async resolveDietaryWalls(names: string[] | undefined): Promise<
-    Array<{
-      name: string;
-      foodAttributeId?: string;
-      restaurantAttributeId?: string;
-    }>
-  > {
-    const requested = (names ?? [])
-      .map((name) => name.trim().toLowerCase())
-      .filter(Boolean);
-    if (!requested.length) return [];
-    const pairs = await this.dietaryConstraints.getDietaryPairs();
-    return requested
-      .filter((name) => pairs.has(name))
-      .map((name) => ({ name, ...pairs.get(name)! }));
   }
 }

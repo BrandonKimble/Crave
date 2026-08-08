@@ -125,38 +125,19 @@ export class SearchCoverageService {
       );
     }
 
-    // DIETARY WALLS (owner semantics 2026-08-04) — the SAME per-projection
-    // rule the ranked lane applies, so the map slices with the cards: a
-    // venue passes on its own attribute OR any dish carrying the dish-side
-    // one. Names resolve through the curated registry (unknown = ignored).
-    const dietaryNames = Array.isArray(request.dietary)
-      ? request.dietary.map((name) => name.trim().toLowerCase()).filter(Boolean)
-      : [];
-    if (dietaryNames.length) {
-      const pairs = await this.dietaryConstraints.getDietaryPairs();
-      for (const name of dietaryNames) {
-        const pair = pairs.get(name);
-        if (!pair) continue;
-        const arms: Prisma.Sql[] = [];
-        if (pair.restaurantAttributeId) {
-          arms.push(
-            Prisma.sql`e.restaurant_attributes @> ARRAY[${pair.restaurantAttributeId}]::uuid[]`,
-          );
-        }
-        if (pair.foodAttributeId) {
-          arms.push(
-            Prisma.sql`EXISTS (
-              SELECT 1 FROM core_restaurant_items dc
-              WHERE dc.restaurant_id = e.entity_id
-                AND dc.food_attributes @> ARRAY[${pair.foodAttributeId}]::uuid[]
-            )`,
-          );
-        }
-        if (arms.length) {
-          conditions.push(Prisma.sql`(${Prisma.join(arms, ' OR ')})`);
-        }
-      }
-    }
+    // DIETARY WALLS — the ONE shared derivation and the ONE shared SQL, so
+    // the map slices with the cards. This lane used to read request.dietary
+    // only, while the ranked lane also raised walls from query-text
+    // grounding: typing "vegan tacos" without touching the toggle strip gave
+    // a walled card list beside an unwalled map, and the map was the liar.
+    const dietaryWalls = await this.dietaryConstraints.resolveDietaryWalls({
+      dietary: request.dietary,
+      foodAttributeIds,
+      restaurantAttributeIds,
+    });
+    conditions.push(
+      ...DietaryConstraintRegistry.restaurantWallConditions(dietaryWalls, 'e'),
+    );
 
     if (restaurantEntityIds.length) {
       conditions.push(

@@ -143,7 +143,10 @@ function makeHarness(list: ListRow, collaboratorIds: string[] = []) {
     new ListResultsAssembler(
       executor as never,
       {} as never,
-      { getDietaryPairs: () => Promise.resolve(new Map()) } as never,
+      {
+        getDietaryPairs: () => Promise.resolve(new Map()),
+        resolveDietaryWalls: () => Promise.resolve([]),
+      } as never,
     ),
     new UserListMapper(prisma as never, logger as never),
     { loadTileImages: () => Promise.resolve(new Map()) } as never,

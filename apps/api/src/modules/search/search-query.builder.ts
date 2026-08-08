@@ -1,5 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
+import { DietaryConstraintRegistry } from './dietary-constraints';
 import { activeRestaurantEventExistsSql } from '../content-processing/reddit-collector/extraction-scope.service';
 import { EntityScope, FilterClause, QueryPlan } from './dto/search-query.dto';
 import type { SearchExecutionDirectives } from './search-execution-directives';
@@ -234,26 +235,13 @@ export class SearchQueryBuilder {
     // to the query's connection match — a vegan wall asks "is this a
     // vegan-viable venue", not "does the matching dish happen to be
     // vegan" (that is the DISH projection's job).
-    const dietaryRestaurantWallsSql = (directives?.dietaryWalls ?? []).length
-      ? Prisma.sql`AND ${Prisma.join(
-          (directives?.dietaryWalls ?? []).map((wall) => {
-            const arms: Prisma.Sql[] = [];
-            if (wall.restaurantAttributeId) {
-              arms.push(
-                Prisma.sql`r.restaurant_attributes @> ARRAY[${wall.restaurantAttributeId}]::uuid[]`,
-              );
-            }
-            if (wall.foodAttributeId) {
-              arms.push(
-                Prisma.sql`EXISTS (SELECT 1 FROM core_restaurant_items dc WHERE dc.restaurant_id = r.entity_id AND dc.food_attributes @> ARRAY[${wall.foodAttributeId}]::uuid[])`,
-              );
-            }
-            return arms.length
-              ? Prisma.sql`(${Prisma.join(arms, ' OR ')})`
-              : Prisma.sql`TRUE`;
-          }),
-          ' AND ',
-        )}`
+    const dietaryRestaurantWallConditions =
+      DietaryConstraintRegistry.restaurantWallConditions(
+        directives?.dietaryWalls ?? [],
+        'r',
+      );
+    const dietaryRestaurantWallsSql = dietaryRestaurantWallConditions.length
+      ? Prisma.sql`AND ${Prisma.join(dietaryRestaurantWallConditions, ' AND ')}`
       : Prisma.sql``;
     const combinedRestaurantWhereSql = Prisma.sql`${restaurantWhereSql} AND ${inventoryExistsSql} AND ${restaurantAttributeMatchSql} AND ${itemOrSignalMatchSql} ${dietaryRestaurantWallsSql} ${excludeRestaurantsSql} ${restrictRestaurantsSql}`;
     const combinedRestaurantWherePreview =
@@ -572,6 +560,11 @@ LEFT JOIN LATERAL (
 	    JOIN public_connection_scores pcs
 	      ON pcs.subject_id = c.connection_id
     WHERE c.restaurant_id = rr.restaurant_id
+      -- Rollup rows are never dish rows, in EVERY lane (F9967): the profile
+      -- already excludes them, and a restaurant card saying "12 dishes" with
+      -- "taco" on it while the profile shows 5 real dishes is the same data
+      -- contradicting itself on one screen.
+      AND NOT c.is_category_item
       AND ${connectionMatchSql}
   ) sub
 ) td ON true
@@ -792,18 +785,13 @@ LEFT JOIN LATERAL (...matched tags subquery with LIMIT 5...) tm ON ${
     // DIETARY WALLS, dish projection (owner semantics 2026-08-04): a dish
     // serves ONLY when it carries the dish-side attribute itself; a wall
     // with no dish-side entity does not constrain dishes.
-    const dietaryDishWallsSql = (directives?.dietaryWalls ?? []).some(
-      (wall) => wall.foodAttributeId,
-    )
-      ? Prisma.sql`AND ${Prisma.join(
-          (directives?.dietaryWalls ?? [])
-            .filter((wall) => wall.foodAttributeId)
-            .map(
-              (wall) =>
-                Prisma.sql`c.food_attributes @> ARRAY[${wall.foodAttributeId}]::uuid[]`,
-            ),
-          ' AND ',
-        )}`
+    const dietaryDishWallConditions =
+      DietaryConstraintRegistry.dishWallConditions(
+        directives?.dietaryWalls ?? [],
+        'c',
+      );
+    const dietaryDishWallsSql = dietaryDishWallConditions.length
+      ? Prisma.sql`AND ${Prisma.join(dietaryDishWallConditions, ' AND ')}`
       : Prisma.sql``;
     const dishOpenNowSql = this.planRequestsOpenNow(plan)
       ? Prisma.sql`AND ${this.buildOpenNowPredicateSql('sl')}`

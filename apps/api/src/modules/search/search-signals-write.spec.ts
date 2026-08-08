@@ -121,6 +121,7 @@ function createHarness(
     {
       getDietaryIds: () => Promise.resolve(new Set()),
       getDietaryPairs: () => Promise.resolve(new Map()),
+      resolveDietaryWalls: () => Promise.resolve([]),
     } as never, // dietaryConstraints
     {} as never, // onDemandRequestService
     {} as never, // textSanitizer

@@ -267,4 +267,13 @@ describe('step-3 pooled richness gate (SQL shape)', () => {
       'NOT c.is_category_item',
     );
   });
+
+  // F9967: the restaurant CARD's top_dishes/total_dish_count lateral must
+  // agree with the profile — a card saying "12 dishes" with "taco" on it
+  // while the profile shows 5 real dishes is the same data contradicting
+  // itself on one screen. Rollup rows are never dish rows, in EVERY lane.
+  it('restaurant card top-dish lateral excludes rollup rows', () => {
+    const sql = restaurantData({}).sql.replace(/\s+/g, ' ');
+    expect(sql).toContain('NOT c.is_category_item');
+  });
 });

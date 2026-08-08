@@ -66,7 +66,7 @@ function createHarness(rowCount: number) {
   };
   const service = new SearchCoverageService(
     prisma as never,
-    { resolve: () => [] } as never,
+    { resolveDietaryWalls: () => Promise.resolve([]) } as never,
     logger as never,
   );
   return { service, logger, capturedValues };

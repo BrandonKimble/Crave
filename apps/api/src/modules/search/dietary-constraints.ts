@@ -1,6 +1,16 @@
 import { Injectable } from '@nestjs/common';
+import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { LoggerService } from '../../shared';
+
+/** One dietary wall: a canonical name and the entity ids it walls with, per
+ *  projection. A name may lack one side (vegetarian has no venue row today);
+ *  the wall then carries only the arms that exist. */
+export type DietaryWall = {
+  name: string;
+  foodAttributeId?: string;
+  restaurantAttributeId?: string;
+};
 
 /**
  * Dietary hardness (spec §1.3, owner-ratified): a curated lifestyle set of
@@ -18,7 +28,13 @@ import { LoggerService } from '../../shared';
 @Injectable()
 export class DietaryConstraintRegistry {
   private readonly logger: LoggerService;
-  private cache: { ids: Set<string>; expiresAt: number } | null = null;
+  private cache: {
+    pairs: ReadonlyMap<
+      string,
+      { foodAttributeId?: string; restaurantAttributeId?: string }
+    >;
+    expiresAt: number;
+  } | null = null;
   /** The vocabulary is ~10 rows and changes only by curation; 5 minutes
    *  bounds staleness without a per-search query. */
   private static readonly TTL_MS = 5 * 60 * 1000;
@@ -48,16 +64,143 @@ export class DietaryConstraintRegistry {
   /** One dietary WALL per canonical name, with its per-projection ids
    *  (owner semantics 2026-08-04): the DISH projection requires the
    *  dish-side attribute; the RESTAURANT projection passes on venue-side
-   *  attribute OR any dish carrying the dish-side attribute. A name may
-   *  lack one side (vegetarian has no venue row today) — the wall then
-   *  has only the arms that exist. */
+   *  attribute OR any dish carrying the dish-side attribute. */
   async getDietaryPairs(): Promise<
     ReadonlyMap<
       string,
       { foodAttributeId?: string; restaurantAttributeId?: string }
     >
   > {
-    await this.getDietaryIds(); // refresh shared cache window
+    return this.load();
+  }
+
+  async getDietaryIds(): Promise<ReadonlySet<string>> {
+    const pairs = await this.load();
+    const ids = new Set<string>();
+    for (const pair of pairs.values()) {
+      if (pair.foodAttributeId) ids.add(pair.foodAttributeId);
+      if (pair.restaurantAttributeId) ids.add(pair.restaurantAttributeId);
+    }
+    return ids;
+  }
+
+  /**
+   * THE ONE WALL DERIVATION. Every lane that can wall — the ranked cards,
+   * the map coverage, the saved-list assembler — resolves its walls here.
+   *
+   * It has to be one function because the two inputs are not interchangeable
+   * and only one lane used to read both. A wall is raised by the toggle strip
+   * (`dietary: ['vegan']`) OR by the QUERY TEXT grounding to a dietary
+   * attribute ("vegan tacos"). The ranked lane honoured both; map coverage
+   * read the toggle only. So typing "vegan tacos" without touching the strip
+   * returned a walled card list beside an unwalled map — the same search,
+   * two different answers about what is vegan, with the map the one lying.
+   *
+   * Unknown names are ignored (the curated vocabulary is the authority), and
+   * a grounded id activates the WHOLE pair, not just the side it matched.
+   */
+  async resolveDietaryWalls(input: {
+    dietary?: readonly string[] | null;
+    foodAttributeIds?: readonly string[];
+    restaurantAttributeIds?: readonly string[];
+  }): Promise<DietaryWall[]> {
+    const pairs = await this.load();
+    const names = new Set<string>(
+      (input.dietary ?? [])
+        .map((name) => name.trim().toLowerCase())
+        .filter((name) => pairs.has(name)),
+    );
+    const grounded = new Set<string>([
+      ...(input.foodAttributeIds ?? []),
+      ...(input.restaurantAttributeIds ?? []),
+    ]);
+    if (grounded.size) {
+      for (const [name, pair] of pairs) {
+        if (
+          (pair.foodAttributeId && grounded.has(pair.foodAttributeId)) ||
+          (pair.restaurantAttributeId &&
+            grounded.has(pair.restaurantAttributeId))
+        ) {
+          names.add(name);
+        }
+      }
+    }
+    return Array.from(names)
+      .sort()
+      .map((name) => ({ name, ...pairs.get(name)! }));
+  }
+
+  /**
+   * THE RESTAURANT-PROJECTION WALL, as SQL. A venue passes when it carries
+   * the venue-side attribute itself OR any of its dishes carries the
+   * dish-side one — deliberately NOT scoped to the query's connection match,
+   * because a vegan wall asks "is this a vegan-viable venue", not "does the
+   * matching dish happen to be vegan" (that is the dish projection's job).
+   *
+   * Returns one condition per wall so callers can AND them into whatever
+   * WHERE they are already assembling. `entityAlias` is the restaurant-entity
+   * alias in the caller's query (`r` in the ranked builder, `e` in coverage);
+   * that alias was the ONLY difference between the two byte-equivalent copies
+   * this replaces.
+   */
+  static restaurantWallConditions(
+    walls: readonly DietaryWall[],
+    entityAlias: string,
+  ): Prisma.Sql[] {
+    const alias = Prisma.raw(entityAlias);
+    const conditions: Prisma.Sql[] = [];
+    for (const wall of walls) {
+      const arms: Prisma.Sql[] = [];
+      if (wall.restaurantAttributeId) {
+        arms.push(
+          Prisma.sql`${alias}.restaurant_attributes @> ARRAY[${wall.restaurantAttributeId}]::uuid[]`,
+        );
+      }
+      if (wall.foodAttributeId) {
+        arms.push(
+          Prisma.sql`EXISTS (SELECT 1 FROM core_restaurant_items dc WHERE dc.restaurant_id = ${alias}.entity_id AND dc.food_attributes @> ARRAY[${wall.foodAttributeId}]::uuid[])`,
+        );
+      }
+      if (arms.length) {
+        conditions.push(Prisma.sql`(${Prisma.join(arms, ' OR ')})`);
+      }
+    }
+    return conditions;
+  }
+
+  /**
+   * THE DISH-PROJECTION WALL, as SQL. A dish serves only when it carries the
+   * dish-side attribute itself; a wall with no dish-side entity does not
+   * constrain dishes at all.
+   */
+  static dishWallConditions(
+    walls: readonly DietaryWall[],
+    connectionAlias: string,
+  ): Prisma.Sql[] {
+    const alias = Prisma.raw(connectionAlias);
+    return walls
+      .filter((wall) => wall.foodAttributeId)
+      .map(
+        (wall) =>
+          Prisma.sql`${alias}.food_attributes @> ARRAY[${wall.foodAttributeId}]::uuid[]`,
+      );
+  }
+
+  /** The cached primitive. Pairs are what every caller actually needs; the
+   *  id set is DERIVED from them. Previously `getDietaryIds` cached and
+   *  `getDietaryPairs` issued an unconditional second query on top of it —
+   *  so the docblock's "bounds staleness without a per-search query" was
+   *  false on the pairs path, which is the one every dietary search takes. */
+  private async load(): Promise<
+    ReadonlyMap<
+      string,
+      { foodAttributeId?: string; restaurantAttributeId?: string }
+    >
+  > {
+    const now = Date.now();
+    if (this.cache && this.cache.expiresAt > now) {
+      return this.cache.pairs;
+    }
     try {
       const rows = await this.prisma.entity.findMany({
         where: { constraintClass: 'dietary', status: 'active' },
@@ -75,38 +218,21 @@ export class DietaryConstraintRegistry {
           pair.restaurantAttributeId = row.entityId;
         pairs.set(key, pair);
       }
-      return pairs;
-    } catch {
-      return new Map();
-    }
-  }
-
-  async getDietaryIds(): Promise<ReadonlySet<string>> {
-    const now = Date.now();
-    if (this.cache && this.cache.expiresAt > now) {
-      return this.cache.ids;
-    }
-    try {
-      const rows = await this.prisma.entity.findMany({
-        where: { constraintClass: 'dietary', status: 'active' },
-        select: { entityId: true },
-      });
       this.cache = {
-        ids: new Set(rows.map((row) => row.entityId)),
+        pairs,
         expiresAt: now + DietaryConstraintRegistry.TTL_MS,
       };
-      return this.cache.ids;
+      return pairs;
     } catch (error) {
-      // Fail toward TODAY'S behavior (dietary droppable) rather than
-      // breaking search: a registry outage must never take the hot path
-      // down. Stale cache beats empty when we have one.
+      // Fail toward TODAY'S behavior rather than breaking search: a registry
+      // outage must never take the hot path down. Stale cache beats empty.
       this.logger.warn('Dietary registry load failed (failing soft)', {
         error:
           error instanceof Error
             ? { message: error.message }
             : { message: String(error) },
       });
-      return this.cache?.ids ?? new Set();
+      return this.cache?.pairs ?? new Map();
     }
   }
 }

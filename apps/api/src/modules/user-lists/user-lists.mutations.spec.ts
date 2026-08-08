@@ -182,7 +182,10 @@ function makeHarness(opts: {
   const assembler = new ListResultsAssembler(
     executor as never,
     assemblerPrisma as never,
-    { getDietaryPairs: () => Promise.resolve(new Map()) } as never,
+    {
+      getDietaryPairs: () => Promise.resolve(new Map()),
+      resolveDietaryWalls: () => Promise.resolve([]),
+    } as never,
   );
   const mapper = new UserListMapper(prisma as never, logger as never);
   const service = new UserListsService(

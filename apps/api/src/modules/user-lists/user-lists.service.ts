@@ -1279,9 +1279,7 @@ export class UserListsService {
     // → on P2002 (the one honest collision signal) mint again and retry.
     const needsNewSlug = !list.shareSlug || dto?.rotate;
     let shareSlug = list.shareSlug;
-    let updated: Awaited<
-      ReturnType<typeof this.prisma.userList.update>
-    >;
+    let updated: Awaited<ReturnType<typeof this.prisma.userList.update>>;
     if (!needsNewSlug) {
       // Visibility canon: sharing mints/returns the link CAPABILITY and
       // never mutates visibility — a private (unlisted) list stays
