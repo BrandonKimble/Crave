@@ -7,32 +7,59 @@ session reports arrive; the deploy fires only when every row is READY.
 
 ## Session board
 
-| Session                          | Asked      | Status                                           | Open items                                                  | Holds files?                                                |
-| -------------------------------- | ---------- | ------------------------------------------------ | ----------------------------------------------------------- | ----------------------------------------------------------- |
-| 📌02 red team (this/coordinator) | —          | READY — queue empty, all findings terminal       | api-lint promotion (owner call, non-blocking)               | no                                                          |
-| 📌01 tom tom (fork)              | 2026-08-07 | AWAITING REPORT                                  | ?                                                           | ?                                                           |
-| extraction (fork) — DB audit     | 2026-08-07 | AWAITING REPORT                                  | ghost-campaign residual? judge-v2 owed; janitor unblock ETA | reddit-batch spec, parse-ground spec, maybe main.ts cluster |
-| Payments                         | 2026-08-07 | REPORT PENDING — F9806 already FIXED (b4205f24b) | Stripe client rail status; TEST-vs-LIVE keys                | ?                                                           |
-| 📌03 Gemini cost                 | 2026-08-07 | AWAITING REPORT                                  | must reconcile with D149 (backstop derivation deleted)      | ?                                                           |
-| 📌06 Wave-4 audit (tracksheet)   | 2026-08-07 | AWAITING REPORT                                  | absorb F9400–F9403 (4 LOW)                                  | tracksheet/\*, scene-input-registry                         |
-| 📌07 Search                      | 2026-08-07 | AWAITING REPORT (idle since 08-06)               | D79 DTO split disposition                                   | ?                                                           |
-| F9470 chip session               | —          | DONE — work adopted+committed (d804d539c)        | none                                                        | no                                                          |
-| clearSceneShell chip session     | —          | DONE (committed by its session)                  | none                                                        | no                                                          |
-| 📌05 extraction (fork 2)         | 2026-08-07 | AWAITING REPORT (owner: include)                 | overlap-ownership split vs extraction (fork)                | ?                                                           |
+| Session                                          | Asked    | Status                                                      | Open items                                                                                 | Holds files? |
+| ------------------------------------------------ | -------- | ----------------------------------------------------------- | ------------------------------------------------------------------------------------------ | ------------ |
+| 📌02 red team (this/coordinator)                 | —        | READY                                                       | api-lint promotion (owner call, non-blocking)                                              | no           |
+| 📌01 tom tom (fork)                              | reported | READY — 0 holds; 2 red-team asks dispatched                 | none blocking; pool cap becomes REAL at deploy (watch item)                                | no           |
+| extraction (fork) — DB audit                     | reported | READY — ungrounded root cause SOLVED+EXECUTED (23.5%→11.9%) | none; 3 red-team asks dispatched; prod DATA sweep is post-deploy                           | no           |
+| 📌03 account-deletion (mislabeled 'Gemini cost') | reported | READY — 0 holds                                             | site 3-artefact simultaneity (rail confirmation pending)                                   | no           |
+| 📌06 Wave-4 (tracksheet)                         | reported | READY — tree clean as of 817af7fa2                          | R8 parked post-burn-in (owner gate); F9400-9403 absorbed post-deploy                       | no           |
+| 📌07 Search                                      | reported | WORKING — 6 open items tasked back (ideal-shape closure)    | STOP-ITEM: timestamptz migration (sequencing adopted, below); 6 items in flight            | no           |
+| Payments                                         | chased   | F9806 FIXED (b4205f24b); full report pending                | Stripe client-rail status; TEST-vs-LIVE keys; portal/webhook env                           | ?            |
+| 📌05 extraction (fork 2)                         | chased   | AWAITING REPORT                                             | entity-alias.service.ts:369 TS2353 (likely theirs — blocks 8 suites); judge-v2 disposition | likely yes   |
+
+## THE STOP-ITEM — timestamptz migration (Search's find, sequencing ADOPTED)
+
+`20260802060000_timestamptz_everywhere` was resolved-as-applied but NEVER RAN: 155
+columns still naive; the guard (utcInstant) was deleted on the strength of the phantom
+conversion; schema.prisma declares Timestamptz over naive columns TODAY. Search
+committed the idempotent replacement `20260805120000_timestamptz_everywhere_actually`
+(batched per-table ALTERs — fixes the cross-column CHECK failure; carries the
+parallel-worker guard) but it is UNPROVEN and deadlocks vs live writers (ACCESS
+EXCLUSIVE over ~60 tables; rolled back cleanly 4/4 local attempts).
+
+SEQUENCING (adopted): the migration stays in the push. STAGING proves it (quiet DB,
+boot-migrate is the proof). For PROD it must NOT run as a boot race: scale the worker
+to 0 (kills crons AND the setInterval strays), run `railway run -s api -- npx prisma
+migrate deploy` in the quiet window, verify naive-column count → 0
+(`SELECT data_type, count(*) FROM information_schema.columns WHERE table_schema='public'
+AND data_type LIKE 'timestamp%' GROUP BY 1;`), then deploy (boot no-ops it), then
+scale the worker back.
 
 ## Master PRE-deploy checklist (coordinator-known; sessions append via reports)
 
 1. Working tree clean: every session's files committed; `git status` shows nothing
    unexplained. (Blocked on session reports above.)
-2. Full green sweep on the final tree: api jest + mobile jest + both tsc +
+2. Full green sweep on the final tree: api jest + mobile jest (SUITE count, not
+   test count — a compile-failing suite hides from `grep Tests:`) + `yarn test:db`
+   (the GDPR guarantees are DB-backed; unit-only blinds the gate) + both tsc +
    `yarn invariants` (21) + all shell gates (now fail-closed) + `yarn gate:lib-test`.
 3. Env verified in Railway (api + worker): GOOGLE*VISION_API_KEY ✅ (set 2026-08-07);
    RESEND_API_KEY + OPS_ALERT_EMAIL ✅ (verified); deleted dials absent ✅
    (GEMINI_MONTHLY_SPEND_FLOOR_USD / GEMINI_BACKSTOP_MAX_USD removed);
    REEXTRACT*\* must be UNSET (confirm — a set value fires a boot one-shot);
-   LOCATION_LIFECYCLE_CRON_ENABLED stays unset/off (owner-parked).
-4. Migrations in this push (self-apply at container boot, order = timestamp):
-   20260807020000_photo_destroy_pending, 20260807030000_deleted_identity_stash.
+   LOCATION_LIFECYCLE_CRON_ENABLED stays unset/off (owner flips at launch — now
+   gates grounded-place lifecycle ONLY, per the janitor slim-down; the parked $70
+   drain-pace question is OBSOLETE); SIGNAL_AUDIT_HMAC_KEY ✅ verified set (api+worker);
+   RUN_FULL_PROJECTION_REBUILD ✅ unset; COLLECTION_SCHEDULER_ENABLED=false ✅;
+   DATABASE_CONNECTION_POOL_MAX=10 ✅ present — NOTE: becomes REAL at this deploy
+   (was cpus×2+1=73/service; this is the fix for prod's 100/100 lock).
+4. Migrations in this push (self-apply at boot, order = timestamp):
+   20260805000000_drop_subsumed_indexes, 20260805010000_drop_poll_topic_status,
+   20260805120000_timestamptz_everywhere_actually (SEE STOP-ITEM — manual quiet-window
+   run on prod), 20260807020000_photo_destroy_pending,
+   20260807030000_deleted_identity_stash, + Search's incoming FK-index/dup-index
+   migrations.
    Both are lightweight (enum add / nullable column + CHECK) — no parallel-worker
    guard needed per AUTHORING.md. Staging proves them first.
 5. Deploy law: `./scripts/rig/deploy.sh --env staging` → /health commit check →
@@ -42,7 +69,8 @@ session reports arrive; the deploy fires only when every row is READY.
 ## Deploy-sequence bindings (must happen IN this order)
 
 1. Push main → staging deploy → staging /health commit == HEAD.
-2. Staging smoke: create-poll (exercises the new Gemini degrade), photo upload
+2. Staging smoke: naive-column count → 0 (timestamptz proof), create-poll (Gemini
+   degrade), delete-account→restore round-trip (crosses Clerk), photo upload
    (Vision moderation path — staging has GOOGLE_VISION_API_KEY), access payload
    carries billingRail.
 3. Prod deploy → /health commit == HEAD.
@@ -55,6 +83,16 @@ session reports arrive; the deploy fires only when every row is READY.
 
 ## Master POST-deploy checklist
 
+0. SEQUENCED DATA OPS (extraction): prod ghost recovery — scripts/reground-ghosts.ts
+   --limit=100 (measure) → remainder + --tombstone-closed (Places spend; comparator
+   screaming EXPECTED per D149); ONE RUN_FULL_PROJECTION_REBUILD=1 worker one-shot;
+   measure chooser first-set acceptance on prod ledger. Tom tom: wipe prod
+   probed_regions (~4 rows, cache); pg_stat_activity ≤~30 now AND after the 03:00 UTC
+   burst. Account-deletion: staging/prod throwaway delete→restore; run
+   `yarn test:db --testPathPattern person-data-coverage` against real corpus; watch
+   for ACCOUNT_DELETED 403 on any route other than restore. Search: confirm
+   unsegmented-residue drain runs (82 rows pending, oldest 08-04); re-run naive-column
+   count on prod+staging.
 1. /health on api + worker: commit == HEAD, appEnv correct.
 2. Photo upload end-to-end in prod (Vision verdict arrives, photo goes live);
    confirm a `google_vision` line appears in api_usage_ledger.
