@@ -18,6 +18,7 @@ import {
   noteTrackPressPartsCost,
   noteTrackPressPhase,
   noteTrackPressRowInvoke,
+  noteTrackPressRowProbeMode,
   noteTrackPressSubtreeRender,
   peekTrackPressPhaseSpan,
   resetTrackPressPhaseSpan,
@@ -71,6 +72,7 @@ describe('track press phase probe', () => {
     expect(line).toContain('body=frozen');
     expect(line).toContain('dataIdentity=same');
     expect(line).toContain('dataContent=same');
+    expect(line).toContain('rowProbe=full');
     // Each named subtree is reported SEPARATELY so the reader does the
     // subtraction on measured numbers (page - list = the page's own render).
     expect(line).toContain('sub:page=160.0ms/max160.0/0m1u');
@@ -217,6 +219,26 @@ describe('track press phase probe', () => {
     const window = finishTrackPressRowWindow('polls')!;
     expect(window.invokes).toBe(6);
     expect(window.distinct).toBe(3);
+  });
+
+  it('reports the row A/B mode a span was measured under', () => {
+    // A 'bare' measurement filed as 'full' would look like the cards are free.
+    beginTrackPressPhaseSpan('polls', 1000);
+    noteTrackPressRowProbeMode('polls', 'bare');
+    expect(formatTrackPressPhases(finishTrackPressPhaseSpan('polls', 1100)!)).toContain(
+      'rowProbe=bare'
+    );
+  });
+
+  it('splits the JS tail at the txn reveal', () => {
+    beginTrackPressPhaseSpan('polls', 1000);
+    noteTrackPressPhase('polls', 'layout-effect', 1100);
+    noteTrackPressPhase('polls', 'reveal', 1105);
+    noteTrackPressPhase('polls', 'passive-effect', 1128);
+    const line = formatTrackPressPhases(finishTrackPressPhaseSpan('polls', 1237)!);
+    expect(line).toContain('layout-effect->reveal=5ms');
+    expect(line).toContain('reveal->passive=23ms');
+    expect(line).toContain('passive->paint=109ms');
   });
 
   it('formats the row window with an honest hole when nothing mounted', () => {

@@ -53,6 +53,7 @@ import {
 } from './useTrackSheetPhysics';
 import { TrackSheetDockedStrip } from './TrackSheetStrip';
 import { trackEntrySceneKey, type TrackEntryKey } from './track-entry-identity';
+import { useTrackFlipState } from './track-flip-store';
 import {
   projectTrackListRenderedBandPx,
   resolveTrackListDrawDistance,
@@ -61,6 +62,7 @@ import {
 import {
   noteTrackPressChromeBuild,
   noteTrackPressRowInvoke,
+  noteTrackPressRowProbeMode,
   noteTrackPressSubtreeRender,
 } from './track-press-phase-probe';
 import { computeOutgoingScroll, TrackEntryScrollMemory } from './track-entry-scroll-memory';
@@ -1060,6 +1062,8 @@ export function TrackSheetPage({
     [footerHeight, surfaceColor]
   );
 
+  // Dev row A/B mode, read ABOVE the renderer that closes over it (no TDZ).
+  const rowProbeMode = useTrackFlipState().rowProbe;
   // rowRendererCacheRef is declared above the chrome memo (its sweep needs it).
   const rendererForLeg = (leg: TrackSheetLeg) => {
     const cached = rowRendererCacheRef.current.get(leg.entryKey);
@@ -1075,7 +1079,15 @@ export function TrackSheetPage({
     const render = (info: never) => {
       const cell = (
         <View style={[{ backgroundColor: surfaceColor }, leg.rowSurfaceStyle]}>
-          {legRenderItem?.(info) ?? null}
+          {/* THE ROW A/B (track-flip-store, dev deep link ?row=bare). Same list,
+              same window, same row COUNT — only the card's own view tree is
+              gone. The passive->paint delta between the two modes is the cards'
+              native mount cost, measured instead of argued. */}
+          {rowProbeMode === 'bare' ? (
+            <View style={styles.bareProbeRow} />
+          ) : (
+            (legRenderItem?.(info) ?? null)
+          )}
         </View>
       );
       if (!__DEV__) {
@@ -1094,6 +1106,7 @@ export function TrackSheetPage({
       // the progressive-render loop's passes, and those have different fixes.
       const rowIndex = (info as unknown as { index?: number }).index ?? -1;
       noteTrackPressRowInvoke(legSceneKey, rowIndex);
+      noteTrackPressRowProbeMode(legSceneKey, rowProbeMode);
       return (
         <React.Profiler
           id="row"
@@ -1388,6 +1401,8 @@ export function TrackSheetPage({
 
 const styles = StyleSheet.create({
   root: { ...StyleSheet.absoluteFillObject },
+  // Dev row A/B only: a cell with a plausible row height and nothing in it.
+  bareProbeRow: { height: 70 },
   // OPACITY-DETACHED, not display:none (perf, measured): flipping display
   // forces a full Yoga relayout of the leg's whole subtree (~100ms on real
   // scenes); opacity is paint-only, so the flip costs nothing — the old

@@ -94,6 +94,10 @@ export const TrackSheetRouteHost: React.FC = () => {
       } else if (/[?&]on=(1|true)/i.test(url)) {
         setTrackFlipState({ on: true });
       }
+      const rowProbeMatch = /[?&]row=(bare|full)/i.exec(url);
+      if (rowProbeMatch != null) {
+        setTrackFlipState({ rowProbe: rowProbeMatch[1].toLowerCase() as 'bare' | 'full' });
+      }
       if (/[?&]debug=(1|true)/i.test(url)) {
         setTrackFlipState({ debug: true });
       } else if (/[?&]debug=(0|false)/i.test(url)) {
@@ -218,7 +222,7 @@ const TrackSheetRouteSurface: React.FC<{ scene: OverlayKey }> = ({ scene: sceneO
     // the flip's paint, so rows FlashList mounts in a later commit fall outside
     // it by construction (the blind spot that made an early row probe read 0).
     beginTrackPressRowWindow(scene);
-    const committedAtPerfMs = getLiveTransitionTxn()?.marks.committedAt;
+    const committedAtPerfMs = getLiveTransitionTxn()?.marks?.committedAt;
     if (committedAtPerfMs != null) {
       noteTrackPressPhase(
         scene,
@@ -251,8 +255,25 @@ const TrackSheetRouteSurface: React.FC<{ scene: OverlayKey }> = ({ scene: sceneO
   // "native mount" would be an assumption wearing a timing's clothes.
   React.useEffect(() => {
     if (__DEV__) {
+      const nowEpochMs = Date.now();
+      const nowPerfMs =
+        typeof performance !== 'undefined' && typeof performance.now === 'function'
+          ? performance.now()
+          : nowEpochMs;
+      // The reveal, READ off the txn rather than re-derived — same discipline as
+      // committedAt. It lands somewhere inside the JS tail, and knowing WHERE
+      // says whether that tail is the join choreography doing its job or
+      // something else wearing its clothes.
+      const revealedAtPerfMs = getLiveTransitionTxn()?.marks?.revealedAt;
+      if (revealedAtPerfMs != null) {
+        noteTrackPressPhase(
+          scene,
+          'reveal',
+          trackPerfToEpochMs(revealedAtPerfMs, nowEpochMs, nowPerfMs)
+        );
+      }
       noteTrackPressCommit(scene);
-      noteTrackPressPhase(scene, 'passive-effect', Date.now());
+      noteTrackPressPhase(scene, 'passive-effect', nowEpochMs);
     }
   });
 

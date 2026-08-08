@@ -111,8 +111,6 @@ export type AppRouteSceneInputActions = {
   //     entry stamp for the same reason).
   // Only the descriptor's stamp reset used to be documented; the policy reset was not, and
   // publishSceneBody's preserve arm did not actually work.
-  clearSceneShell: (sceneKey: AppRouteSceneInputKey) => void;
-  clearSceneChrome: (sceneKey: AppRouteSceneInputKey) => void;
   clearSceneBody: (sceneKey: AppRouteSceneInputKey) => void;
   clearSceneInput: (sceneKey: AppRouteSceneInputKey) => void;
 };
@@ -158,8 +156,6 @@ export class AppRouteSceneInputController {
     publishSceneShell: this.publishSceneShell.bind(this),
     publishSceneChrome: this.publishSceneChrome.bind(this),
     publishSceneBody: this.publishSceneBody.bind(this),
-    clearSceneShell: this.clearSceneShell.bind(this),
-    clearSceneChrome: this.clearSceneChrome.bind(this),
     clearSceneBody: this.clearSceneBody.bind(this),
     clearSceneInput: this.clearSceneInput.bind(this),
   };
@@ -449,38 +445,6 @@ export class AppRouteSceneInputController {
       },
     });
     this.notifySceneLane(sceneKey, 'body');
-  }
-
-  private clearSceneShell(sceneKey: AppRouteSceneInputKey): void {
-    const previousSceneInput = this.currentSnapshot[sceneKey] ?? null;
-    if (previousSceneInput?.shellSpec == null) {
-      return;
-    }
-
-    this.setSceneInputSnapshotOrClear({
-      sceneKey,
-      snapshot: {
-        ...previousSceneInput,
-        shellSpec: null,
-      },
-    });
-    this.notifySceneLane(sceneKey, 'shell');
-  }
-
-  private clearSceneChrome(sceneKey: AppRouteSceneInputKey): void {
-    const previousSceneInput = this.currentSnapshot[sceneKey] ?? null;
-    if (previousSceneInput?.sceneChrome == null) {
-      return;
-    }
-
-    this.setSceneInputSnapshotOrClear({
-      sceneKey,
-      snapshot: {
-        ...previousSceneInput,
-        sceneChrome: null,
-      },
-    });
-    this.notifySceneLane(sceneKey, 'chrome');
   }
 
   private clearSceneBody(sceneKey: AppRouteSceneInputKey): void {

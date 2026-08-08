@@ -49,6 +49,11 @@ export const TRACK_PRESS_PHASES = [
   'parts',
   'legs-built',
   'layout-effect',
+  // The txn's OWN revealedAt mark, converted into this clock. The tail between
+  // layout-effect and passive-effect holds every other layout effect, every
+  // passive effect, AND the join/reveal choreography — reading the engine's
+  // existing mark says which of those the tail is, instead of assuming.
+  'reveal',
   'passive-effect',
   'paint',
 ] as const;
@@ -78,6 +83,9 @@ export type TrackPressPhaseSpan = {
   rows: number | null;
   /** Which body the flip frame painted. */
   body: string | null;
+  /** The dev row A/B mode this span was measured under ('full' | 'bare'). A
+   *  measurement filed under the wrong mode is worse than no measurement. */
+  rowProbeMode: string;
   // ── THE SUBTREE LEDGER (round 4) ──────────────────────────────────────────
   // Round 3 profiled the ROW and got ZERO on the 159ms frame. Zero is a
   // measurement, and it falsifies the row hypothesis outright — but it does not
@@ -172,6 +180,7 @@ export const beginTrackPressPhaseSpan = (sceneKey: string, pressAtMs: number | n
     rowIndices: new Set(),
     dataIdentity: null,
     dataContent: null,
+    rowProbeMode: 'full',
   };
   if (pressAtMs != null) {
     live.marks.press = pressAtMs;
@@ -213,6 +222,13 @@ export const noteTrackPressPartsCost = (sceneKey: string, durationMs: number): v
 };
 
 /** One React commit of the track host landed while this span was open. */
+export const noteTrackPressRowProbeMode = (sceneKey: string, mode: string): void => {
+  if (live == null || live.sceneKey !== sceneKey) {
+    return;
+  }
+  live.rowProbeMode = mode;
+};
+
 export const noteTrackPressCommit = (sceneKey: string): void => {
   if (live == null || live.sceneKey !== sceneKey) {
     return;
@@ -389,12 +405,14 @@ export const formatTrackPressPhases = (span: TrackPressPhaseSpan): string =>
   // THE SPLIT OF THE BIG ONE: everything left in JS after the host's layout
   // effect (other layout effects, passive effects, any SECOND commit) vs the
   // remainder — the native mount/layout that reaches the screen.
+  `layout-effect->reveal=${gap(span, 'layout-effect', 'reveal')} ` +
+  `reveal->passive=${gap(span, 'reveal', 'passive-effect')} ` +
   `layout-effect->passive=${gap(span, 'layout-effect', 'passive-effect')} ` +
   `passive->paint=${gap(span, 'passive-effect', 'paint')} ` +
   `partsCost=${span.partsMs == null ? '?' : `${span.partsMs.toFixed(1)}ms`} ` +
   `commits=${span.commits} chromeBuilds=${span.chromeBuilds} ` +
   `rows=${span.rows ?? '?'} body=${span.body ?? '?'} rowInvokes=${span.rowInvokes} ` +
-  `rowDistinct=${span.rowIndices.size} ` +
+  `rowDistinct=${span.rowIndices.size} rowProbe=${span.rowProbeMode} ` +
   `dataIdentity=${span.dataIdentity ?? '?'} dataContent=${span.dataContent ?? '?'} ` +
   // Each named subtree, measured independently. Nested ids CONTAIN each other
   // (React's actualDuration includes descendants) — 'page' minus 'list' is the
