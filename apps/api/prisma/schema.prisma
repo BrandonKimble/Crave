@@ -1813,6 +1813,11 @@ enum PhotoStatus {
   pending
   live
   hidden
+  // The row is logically gone (invisible to every reader) but its Cloudinary
+  // asset still exists because a destroy call threw. The reconciliation sweep
+  // retries destroyAsset for these rows and only flips them to `removed` once
+  // the asset is confirmed gone — so no asset can outlive its row (F9470).
+  destroy_pending
   removed
 }
 

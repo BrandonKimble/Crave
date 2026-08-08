@@ -33,7 +33,6 @@ export interface PhotoDto {
   urls: PhotoUrls;
 }
 
-
 const MAX_PENDING_TICKETS_PER_USER = 10;
 
 const PHOTO_DTO_SELECT = {
@@ -333,13 +332,16 @@ export class PhotosService {
       return;
     }
     if (moderationStatus === 'rejected') {
+      // pending -> destroy_pending (invisible now) -> removed only once the
+      // asset is confirmed destroyed. Never `removed` before the bytes are
+      // gone (F9470).
       const flipped = await this.transition(
         photoId,
         PhotoStatus.pending,
-        PhotoStatus.removed,
+        PhotoStatus.destroy_pending,
       );
       if (flipped) {
-        await this.destroyAssetSafely(photoId, publicId);
+        await this.destroyAndFinalize(photoId, publicId);
         this.logger.info('Photo removed', {
           photoId,
           reason: 'moderation_rejected',
@@ -362,7 +364,14 @@ export class PhotosService {
     return result.count === 1;
   }
 
-  private async destroyAssetSafely(
+  /** Destroy the Cloudinary asset for a row already parked in
+   *  `destroy_pending`, then flip it to `removed`. If the destroy throws, the
+   *  row STAYS `destroy_pending` (already invisible to every reader) and the
+   *  reconciliation sweep retries — so the asset can never outlive its row
+   *  (F9470: the old path flipped straight to `removed`, and since the cron
+   *  only re-examined `pending` rows, a failed destroy leaked the asset
+   *  forever — billed storage + a privacy hole via the deterministic URL). */
+  private async destroyAndFinalize(
     photoId: string,
     publicId: string,
   ): Promise<void> {
@@ -375,7 +384,12 @@ export class PhotosService {
           message: error instanceof Error ? error.message : String(error),
         },
       });
+      return; // leave in destroy_pending; the sweep will retry
     }
+    await this.prisma.photo.updateMany({
+      where: { photoId, status: PhotoStatus.destroy_pending },
+      data: { status: PhotoStatus.removed, moderatedAt: new Date() },
+    });
   }
 
   /** Owner delete — the ONLY user-initiated destroy. Conditional: whatever
@@ -387,19 +401,28 @@ export class PhotosService {
     });
     // 404 for missing/removed AND not-yours alike — a 403/404 split would
     // confirm the existence of another user's (possibly private) photo.
+    // Both `removed` AND `destroy_pending` are logically gone to the owner —
+    // 404 either (a destroy_pending row is already draining via the sweep; a
+    // re-delete would just double-process it).
     if (
       !photo ||
       photo.status === PhotoStatus.removed ||
+      photo.status === PhotoStatus.destroy_pending ||
       photo.userId !== userId
     ) {
       throw new NotFoundException('Photo not found');
     }
+    // Park in destroy_pending, then destroy; only `removed` once the asset is
+    // gone (F9470) — a failed destroy leaves a sweep-retried row, not a leak.
     const won = await this.prisma.photo.updateMany({
-      where: { photoId, status: { not: PhotoStatus.removed } },
-      data: { status: PhotoStatus.removed, moderatedAt: new Date() },
+      where: {
+        photoId,
+        status: { notIn: [PhotoStatus.removed, PhotoStatus.destroy_pending] },
+      },
+      data: { status: PhotoStatus.destroy_pending, moderatedAt: new Date() },
     });
     if (won.count === 1) {
-      await this.destroyAssetSafely(photoId, photo.publicId);
+      await this.destroyAndFinalize(photoId, photo.publicId);
       this.logger.info('Photo removed', { photoId, reason: 'owner_deleted' });
     }
   }
@@ -533,10 +556,14 @@ export class PhotosService {
         settled += 1;
       } catch (error) {
         failed += 1;
-        this.logger.warn('Photo reconciliation: one photo failed, sweep continues', {
-          photoId: photo.photoId,
-          errorMessage: error instanceof Error ? error.message : String(error),
-        });
+        this.logger.warn(
+          'Photo reconciliation: one photo failed, sweep continues',
+          {
+            photoId: photo.photoId,
+            errorMessage:
+              error instanceof Error ? error.message : String(error),
+          },
+        );
       }
     }
     if (stale.length > 0) {
@@ -546,7 +573,48 @@ export class PhotosService {
         failed,
       });
     }
+    settled += await this.reconcileDestroyPending(batch);
     return settled;
+  }
+
+  /** Drain rows parked in `destroy_pending` (a delete or moderation-reject
+   *  whose Cloudinary destroy threw). Retry destroyAsset; only on success does
+   *  the row become `removed`. This is what makes the "retry via cron" promise
+   *  real — without it a failed destroy would leak the asset forever (F9470).
+   *  A retry that fails again is logged and left for the next sweep. */
+  private async reconcileDestroyPending(batch: number): Promise<number> {
+    const pending = await this.prisma.photo.findMany({
+      where: { status: PhotoStatus.destroy_pending },
+      select: { photoId: true, publicId: true },
+      orderBy: { moderatedAt: 'asc' },
+      take: batch,
+    });
+    let destroyed = 0;
+    for (const photo of pending) {
+      try {
+        await this.cloudinary.destroyAsset(photo.publicId);
+        await this.prisma.photo.updateMany({
+          where: {
+            photoId: photo.photoId,
+            status: PhotoStatus.destroy_pending,
+          },
+          data: { status: PhotoStatus.removed, moderatedAt: new Date() },
+        });
+        destroyed += 1;
+      } catch (error) {
+        this.logger.warn('Asset destroy retry failed, will retry next sweep', {
+          photoId: photo.photoId,
+          errorMessage: error instanceof Error ? error.message : String(error),
+        });
+      }
+    }
+    if (pending.length > 0) {
+      this.logger.info('Photo destroy-pending sweep', {
+        examined: pending.length,
+        destroyed,
+      });
+    }
+    return destroyed;
   }
 
   private toDto(photo: PhotoRow): PhotoDto {

@@ -421,4 +421,52 @@ describe('PhotosService lifecycle', () => {
     );
     expect(headUpdate).toBeUndefined();
   });
+
+  it('F9470: a destroy that THROWS parks the row in destroy_pending (never `removed` while the asset lives) and the sweep retries until the asset is gone', async () => {
+    const { service, prisma, cloudinary } = makeService();
+
+    // Reject moderation, but the destroy call fails (transient Cloudinary
+    // outage). The row must NOT flip to `removed` — the asset is still alive.
+    cloudinary.destroyAsset.mockRejectedValueOnce(new Error('Cloudinary 5xx'));
+    await service.applyModerationResult(
+      'p1',
+      'crave/test/photos/p1',
+      'rejected',
+    );
+
+    // Parked, not removed: pending -> destroy_pending happened, but nothing
+    // flipped it to `removed` (that would strand the still-present asset — the
+    // exact leak F9470 is about).
+    const removedEarly = prisma.photo.updateMany.mock.calls.find(
+      ([args]) => args.data?.status === 'removed',
+    );
+    expect(removedEarly).toBeUndefined();
+    const parked = prisma.photo.updateMany.mock.calls.find(
+      ([args]) => args.data?.status === 'destroy_pending',
+    );
+    expect(parked).toBeDefined();
+
+    // The reconciliation sweep finds the destroy_pending row; destroy now
+    // succeeds -> asset destroyed AND the row finally becomes `removed`.
+    prisma.photo.findMany.mockImplementation(({ where }: any) =>
+      Promise.resolve(
+        where?.status === 'destroy_pending'
+          ? [{ photoId: 'p1', publicId: 'crave/test/photos/p1' }]
+          : [],
+      ),
+    );
+    const destroyCallsBefore = cloudinary.destroyAsset.mock.calls.length;
+    await service.reconcilePending();
+
+    // Retried exactly once more (the successful attempt).
+    expect(cloudinary.destroyAsset.mock.calls.length).toBe(
+      destroyCallsBefore + 1,
+    );
+    const finalized = prisma.photo.updateMany.mock.calls.find(
+      ([args]) =>
+        args.where?.status === 'destroy_pending' &&
+        args.data?.status === 'removed',
+    );
+    expect(finalized).toBeDefined();
+  });
 });
