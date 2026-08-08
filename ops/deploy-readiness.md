@@ -5,7 +5,7 @@ no open items, no fallback/back-compat/dead code, right abstractions. This file 
 the single visible surface for that coordination. The coordinator updates it as
 session reports arrive; the deploy fires only when every row is READY.
 
-**ALL ROWS READY as of 2026-08-08 ~10:55. Full green sweep running; go/no-go next.**
+**ALL ROWS READY. FULL GREEN SWEEP PASSED 2026-08-08 ~11:20 (commit b1923d7f1):** api jest 220/220 suites (1 skipped by design), test:db 39/39, mobile jest 168/168, both tsc clean, invariants 22/40 proofs green, all 19 gates + gate-runner self-test green. Sweep triage caught 6 spec/doc-side reds (zero code defects) — fixed in b1923d7f1; it also surfaced deploy step 3c (prod knowledge-maintenance one-shot). GO/NO-GO with the owner.
 
 ## Session board
 
