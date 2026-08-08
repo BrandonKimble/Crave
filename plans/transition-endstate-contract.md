@@ -480,7 +480,18 @@ native settle/hidden-depth move (bundled with the next real physics change).
 
 ## ALL DEFERRED ITEMS EXECUTED (2026-08-04) — the ladder is complete
 
-Owner: "do all the deferred items." Done; nothing from the ratified ladder remains.
+Owner: "do all the deferred items." Done.
+
+> **CORRECTION (2026-08-08, claim-vs-reality audit):** the original line here read
+> "nothing from the ratified ladder remains." That is not accurate — one item was
+> **silently substituted**. Shortlist item 3 of `plans/redteam-abstractions.md`,
+> **"one paint resolver"** (merge readiness + skeleton + hidden-presentation into a
+> single total `resolvePaint`, discharging F3's "host wiring unfalsified" debt), was
+> **DISPLACED by the domain authority** — a different pass's finding that landed in
+> the same territory — rather than done. **Disposition: displaced-not-done,
+> re-evaluate after R8.** The press-up handoff has since added a FOURTH paint
+> decision to exactly that glue, which **strengthens** the item rather than
+> retiring it.
 
 64148ea54 ONE SCENE SCHEMA — five dialects (policy Record, three host Sets, the
 scene===key ternaries) collapse into SCENE_DECLARATIONS with every column a
@@ -729,3 +740,37 @@ KILL-LIST (this correction): `TrackEntryPaintLedger` and `TrackEntryHandoffFacts
 (deleted — the wrong fact); `consumeTrackNavPressLatency` (deleted — a consuming, single-mark
 probe); the `press->paint=` fragment of TrackSheetPage's commit-anchored line (deleted —
 second anchor). Nothing else revealed.
+
+## R8 OPENER — QUEUED ITEMS (2026-08-08)
+
+R8 remains the old-SYSTEM delete pass, gated on owner burn-in. Two items are added to
+its opener by the 2026-08-08 claim-vs-reality audit (both are the same class the ladder
+already ruled on — one authority per fact, stated once):
+
+1. **Four presented-refs → ONE host-owned latch.** "Who is presented" is still tracked
+   by four refs across two files: `TrackSheetRouteHost:298`, `use-track-leg-resolver:245`,
+   `TrackSheetPage:1182` and `:1184`. Collapse to a single host-owned latch handed down
+   to the page (the shape §2 of `plans/redteam-abstractions.md` prescribed).
+2. **τ-domain encoded twice → a single statement in the domain authority's header.**
+   `track-entry-switch.ts:57` and `:66` re-derive "we are in the hidden domain" from τ
+   instead of reading the domain authority. State it once, in the authority's header.
+
+Also already assigned to R8: **F9400–F9403 (defined in audit/FINDINGS.md)**.
+
+Additionally queued from the same audit, per the correction above: shortlist item 3
+**"one paint resolver"** — displaced, not done; re-evaluate here.
+
+## CLAIM-VS-REALITY AUDIT WRITE-IN (2026-08-08)
+
+Carried in VERBATIM from the audit (finding B4), because it previously lived only in a
+session transcript that cited `plans/redteam-claims-audit.md` — **a file that never
+existed**. Recording it here makes it durable:
+
+> world-join audit reads {q2RowsResident, q2MapFrameClean} while
+> markRedrawCardsReady/markRedrawNativeMarkerFrameReady offer join inputs directly —
+> genuinely RED-able but can bark on a healthy enter if mounted_hidden precedes the
+> transport ack; five entry points, two lanes, vs the design's three-producers-one-per-input
+
+Dispositions: the **cry-wolf check stays on the owner's post-deploy sitting** (a live sim
+observation, not a desk verdict); the **`entity/` and `-cluster` re-home is returned to
+coordinator triage** — not scheduled here.

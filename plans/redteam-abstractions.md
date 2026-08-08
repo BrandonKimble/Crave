@@ -1,5 +1,37 @@
 # ABSTRACTION RED TEAM — the track sheet transition system
 
+> **STATUS BANNER (2026-08-08) — this document is HISTORY, not current truth.**
+>
+> This is a **2026-08-04 point-in-time critique**. The ladder ratified out of it is
+> **COMPLETE and verified** — see `plans/transition-endstate-contract.md` ("THE TWO
+> AUTHORITIES LANDED", "ALL DEFERRED ITEMS EXECUTED", the G-A11Y / G-ROTATE and
+> press-up-handoff checkpoints) for the landed verdicts and their falsifiers.
+>
+> **EVERY `file:line` CITATION BELOW IS STALE.** The host is now **551 lines** (was
+> 1429 here); the JS settle sampler, `hasClearedScreenEdge`, the 12×200ms retrying
+> snap, the dual `trackHiddenEdgeCleared` subscriptions and the host's hand-kept
+> scene sets are all **deleted or replaced**. Do not navigate from a line number in
+> this file; read `transition-endstate-contract.md` for current truth, then the code.
+>
+> Per-claim verdicts (line refs are to THIS file):
+>
+> | Here | Claim | Verdict 2026-08-08 |
+> | --- | --- | --- |
+> | :155 | host is 1429 lines | STALE — host is **551 lines** (orchestrator extraction landed) |
+> | :41–42 | JS settle sampler is the primary rest signal | STALE — **native spring emits settle**; sampler gone |
+> | :51 | `hasClearedScreenEdge` is a dead JS mirror | **DELETED** |
+> | :85 | three host refs hold motion state | STALE — folded into the **motion authority** |
+> | :117–119 | two hand-rolled `trackHiddenEdgeCleared` subscriptions | STALE — **collapsed to one** |
+> | :127–129 | F2 (redraw born `sheetMotionSettled: true`) | **CLOSED** — the seed asks the authority |
+> | :170–171 | `legScene === 'polls' ? … : …` glue in the host | STALE — **moved out** to the leg/body resolver |
+> | :173–176 | three hand-kept scene sets + `scene === …` conditionals | STALE — **collapsed into `SCENE_DECLARATIONS`** |
+> | :205–211 | hidden depth computed in JS from `Dimensions` | STALE — **derived natively** from live bounds |
+> | :213–217 | the 12×200ms retrying snap | **DELETED** |
+>
+> One shortlist item did **not** land as written: item 3 ("one paint resolver") was
+> silently displaced by the domain authority — see the correction at
+> `transition-endstate-contract.md` ("ALL DEFERRED ITEMS EXECUTED").
+
 2026-08-04. Read against: transition-endstate-contract.md (all checkpoints + end
 red team), every file in apps/mobile/src/tracksheet/, TrackScrollKit/Sources/
 (TrackScrollPhysics.m, TrackShellSlot.m), and the R7 search-side surface
@@ -14,6 +46,8 @@ glide-only (OA5), the world join (OA1), 60fps.
 ---
 
 ## 1. THE MODULE MAP — a rung ledger wearing a module system's clothes
+
+_Verdict 2026-08-08: `hasClearedScreenEdge` DELETED; the settle sampler replaced by a native settle event. The "one paint resolver" fix was DISPLACED by the domain authority, not done — re-evaluate after R8._
 
 **What a from-scratch design looks like.** Given the ratified laws, the pure
 layer has FOUR domain axes, not twelve files:
@@ -69,6 +103,8 @@ scope from the code. The specs are the ledger; move them WITH the code.
 
 ## 2. STATE AUTHORITIES — the echoes are back, one strangler-layer later
 
+_Verdict 2026-08-08: the three host motion refs folded into the motion authority. The four presented-refs → one host-owned latch is still OPEN (queued as an R8 opener)._
+
 **From-scratch:** the system's own history (posture register derivation,
 "every stored echo eventually lied") demands: ONE stored authority per fact,
 everything else derived at read time.
@@ -104,6 +140,8 @@ comment, TrackScrollPhysics.m ~634) no longer needs it.
 ---
 
 ## 3. EVENT/FACT FLOW — there is no motion authority, and F2 is its ghost
+
+_Verdict 2026-08-08: LANDED. Motion authority exists; F2 CLOSED by construction; the dual `trackHiddenEdgeCleared` subscriptions collapsed to one; settle is emitted by the native spring._
 
 **From-scratch:** one MOTION AUTHORITY owning the facts {dragging,
 in-flight target, hidden excursion, pending settle, last rest}, with exactly
@@ -152,6 +190,8 @@ private ledger and names no authority.
 
 ## 4. THE HOST — an orchestrator that also runs three governments
 
+_Verdict 2026-08-08: LANDED. Host 1429 → **551** lines; motion controller, transaction bridge and leg/body resolver extracted (the `legScene === 'polls'` glue with them); the three hand-kept scene sets collapsed into `SCENE_DECLARATIONS`._
+
 TrackSheetRouteHost is 1429 lines. Its legitimate job — select the presented
 entry, build legs, hand the page a plan — is maybe 400 of them. The absorbed
 responsibilities, each a clean extraction seam a from-scratch design would
@@ -190,6 +230,8 @@ falsifiers, which requires them to leave the .tsx.
 ---
 
 ## 5. JS/NATIVE BOUNDARY — facts up, commands down; three leaks
+
+_Verdict 2026-08-08: all three leaks closed — native settle event, hidden depth derived from live native bounds, and the 12×200ms retrying snap DELETED._
 
 **From-scratch contract:** native is the motion engine — owns τ, σ, domain,
 range, springs, detent choice, pin/shell/carve — and exports FACTS as events
@@ -231,6 +273,8 @@ consistency" — paint/policy decisions are correctly JS; only the facts leak.
 ---
 
 ## 6. THE DATA MODEL — five dialects of "declare a scene"
+
+_Verdict 2026-08-08: LANDED as `SCENE_DECLARATIONS` — every column a required literal, parity proven by a 284-test oracle._
 
 **From-scratch:** ONE scene-declaration row consumed everywhere:
 
