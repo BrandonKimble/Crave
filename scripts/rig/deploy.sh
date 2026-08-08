@@ -298,12 +298,33 @@ if [[ "$ENVIRONMENT" == "staging" && -z "$(git status --porcelain)" ]]; then
 fi
 
 deploy_one() {
-  local svc="$1" attempt out
+  local svc="$1" attempt out full_out expected_id landed_id
+  # F9982 SERVICE-PIN (2026-08-08, learned from a 24-minute PROD DB OUTAGE):
+  # one `railway up --service api --environment staging` landed an app image
+  # on postgis-db/PRODUCTION — the CLI resolved the target wrong and the only
+  # tell was the service UUID inside the build-log URL it printed. So the
+  # target is verified by IDENTITY, not by name: resolve the service's UUID
+  # up front from its own env (RAILWAY_SERVICE_ID), and refuse to proceed the
+  # moment the upload's printed URL names any other service. No id resolved =
+  # no deploy; a verification that cannot run is a refusal, not a pass.
+  expected_id="$(railway variables --service "$svc" --environment "$ENVIRONMENT" --kv 2>/dev/null | sed -n 's/^RAILWAY_SERVICE_ID=//p' | head -1)"
+  if [[ -z "$expected_id" ]]; then
+    echo "REFUSED: could not resolve $svc's RAILWAY_SERVICE_ID in $ENVIRONMENT — cannot verify the upload target." >&2
+    exit 1
+  fi
   for attempt in 1 2; do
     echo "==> Deploying $svc to $ENVIRONMENT (attempt $attempt) ..."
     # `|| true`: under `set -euo pipefail` a non-zero railway exit would kill
     # the script HERE, before the retry loop ever sees the failure.
-    out="$(railway up --service "$svc" --environment "$ENVIRONMENT" --ci 2>&1 | tail -1 || true)"
+    full_out="$(railway up --service "$svc" --environment "$ENVIRONMENT" --ci 2>&1 || true)"
+    out="$(tail -1 <<<"$full_out")"
+    landed_id="$(grep -oE '/service/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}' <<<"$full_out" | head -1 | awk -F/ '{print $3}')"
+    if [[ -n "$landed_id" && "$landed_id" != "$expected_id" ]]; then
+      echo "CRITICAL: railway up for $svc/$ENVIRONMENT landed on a DIFFERENT service ($landed_id, expected $expected_id)." >&2
+      echo "  A foreign image is now deploying onto that service. Restore it IMMEDIATELY:" >&2
+      echo "  railway redeploy --service <victim> --environment <env> --from-source --yes" >&2
+      exit 1
+    fi
     # SKIPPED IS CHECKED UNCONDITIONALLY (red-team P0, 2026-08-02, proven live:
     # `railway up` printed "Deploy complete" while Railway SKIPPED the upload —
     # skippedReason "No changes to watched files", because a stale dashboard
