@@ -5,7 +5,7 @@ no open items, no fallback/back-compat/dead code, right abstractions. This file 
 the single visible surface for that coordination. The coordinator updates it as
 session reports arrive; the deploy fires only when every row is READY.
 
-**ALL ROWS READY. FULL GREEN SWEEP PASSED 2026-08-08 ~11:20 (commit b1923d7f1):** api jest 220/220 suites (1 skipped by design), test:db 39/39, mobile jest 168/168, both tsc clean, invariants 22/40 proofs green, all 19 gates + gate-runner self-test green. Sweep triage caught 6 spec/doc-side reds (zero code defects) — fixed in b1923d7f1; it also surfaced deploy step 3c (prod knowledge-maintenance one-shot). GO/NO-GO with the owner.
+**ALL ROWS READY. FULL GREEN SWEEP PASSED 2026-08-08 ~11:20 (commit b1923d7f1):** api jest 220/220 suites (1 skipped by design), test:db 39/39, mobile jest 168/168, both tsc clean, invariants 22/40 proofs green, all 19 gates + gate-runner self-test green. Sweep triage caught 6 spec/doc-side reds (zero code defects) — fixed in b1923d7f1; it also surfaced deploy step 3c (prod knowledge-maintenance one-shot). DEPLOYED TO PRODUCTION 2026-08-08 ~12:52 CDT at 8c8280f81 (api+worker+site, staging-proven, --force past F9981's fixture-only CI red). Post-deploy: rebuild DONE (6,515), Cloudinary/Vision preset flipped, probed_regions wiped, residue drained to 0, connections 13/100, rescore marked dirty (hourly cron consumes; the runner's laptop-script note is stale). INCIDENT F9982: 24-min prod DB outage (wrong-service railway up; restored, data intact). OPEN TAILS: F9981 CI fixture corpus-dependence fix; F9982 deploy.sh service-pin hardening; owner sim pass + RC test event; purge-cron 4AM first-fire check; Wave-4 R8 ships next deploy.
 
 ## Session board
 
