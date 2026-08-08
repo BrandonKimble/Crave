@@ -169,8 +169,13 @@ export class AccountDeletionService {
     // 2. Sign out everywhere — WITHOUT destroying the Clerk identity. That
     //    identity is the ONLY way back in during the window, so deleting it
     //    here is precisely what made the promised grace period impossible.
-    //    Best-effort: every authenticated route already refuses a user whose
-    //    deletedAt is set, so a surviving session reaches nothing.
+    //    Best-effort, and here is the ACCURATE version of the claim that used
+    //    to sit here (F9964). This said "every authenticated route already
+    //    refuses a user whose deletedAt is set", which was true of
+    //    ClerkAuthGuard and FALSE of OptionalClerkAuthGuard — a surviving
+    //    session still reached six public GETs as a personalized viewer. Both
+    //    guards are lifecycle-aware now, so the honest statement is: a
+    //    surviving session reaches nothing a signed-out visitor could not.
     if (user.authProviderUserId) {
       try {
         const { revoked } = await this.clerkAuth.revokeAllSessions(

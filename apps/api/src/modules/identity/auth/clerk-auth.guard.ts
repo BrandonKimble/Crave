@@ -56,6 +56,13 @@ export class ClerkAuthGuard implements CanActivate {
     //
     // The client distinguishes this from an ordinary 403 by the code and can
     // offer "Restore account"; `purgeDueAt` tells it how long is left.
+    //
+    // THE LAW IS A PAIR, AND THIS IS ONLY HALF (F9964). This guard REFUSES a
+    // deleted account; OptionalClerkAuthGuard treats one as ANONYMOUS. Both
+    // are needed for the sentence "a deleted account is a non-identity" to be
+    // true — for a while only this half existed, and a deleted person stayed a
+    // personalized VIEWER on six public GETs while three comments said
+    // otherwise.
     if (
       user.deletedAt &&
       !this.reflector.getAllAndOverride<boolean>(ALLOW_DELETED_ACCOUNT_KEY, [

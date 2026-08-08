@@ -226,8 +226,10 @@ describe('AccountDeletionService', () => {
   it('a Clerk outage still marks the account — the request cannot be refused', async () => {
     // The request destroys nothing, so there is no half-deleted state to fear
     // and no reason to fail a legally-required action on a vendor's outage.
-    // Every authenticated route refuses a user whose deletedAt is set, so a
-    // session we could not revoke reaches nothing.
+    // A session we could not revoke reaches nothing a signed-out visitor
+    // could not: the required guard refuses a deleted account outright, and
+    // the optional guard treats one as anonymous (F9964 — that second half
+    // was missing, and this comment asserted it anyway).
     const { service, prisma } = makeService();
     service['clerkAuth'].revokeAllSessions = jest
       .fn()
