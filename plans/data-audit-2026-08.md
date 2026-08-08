@@ -1623,3 +1623,18 @@ Manna's" — all previously invisible, all minted with mentions=1 after
 rebuildForRestaurants. The full 705 materialize corpus-wide on the next
 full rebuild / nightly reconciler pass. The always-null support foodId
 field and its dead matching arm were removed rather than kept as guards.
+
+## THE TYPE SET DIES ENTIRELY (2026-08-08, owner question)
+
+"If the types are just passed through as data, why do we even need this
+typeset?" — followed to its end, the answer was: we don't. The three
+surviving uses each dissolved: the branch-search membership gate only
+DENIED narrowing to store-typed brands (the brand's own primaryType is
+Google's classification and passes through verbatim now); the off-category
+audit line duplicated data the trail already records verbatim; the size
+stamp described the set itself. The 164-type copy of Google's taxonomy is
+deleted, isRestaurantishPlaceTypes is deleted, and the grounding lane now
+contains ZERO type judgments — the judge reads raw types as evidence,
+full stop. Lifecycle of this idea across one audit: 64-key cuisine map as
+VETO (234 ghosts) -> complete-category HINT (fed one log line) -> nothing.
+Each step was proven, not assumed. 28 tests green.

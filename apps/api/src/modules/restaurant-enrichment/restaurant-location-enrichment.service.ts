@@ -44,7 +44,6 @@ import { RestaurantCuisineExtractionQueueService } from './restaurant-cuisine-ex
 import { RestaurantSecondaryLocationExpansionQueueService } from './restaurant-secondary-location-expansion-queue.service';
 import { OpsAlertsService } from '../external-integrations/shared/ops-alerts.service';
 import {
-  GOOGLE_FOOD_AND_DRINK_PLACE_TYPES,
   GOOGLE_BOOLEAN_ATTRIBUTE_VOCAB,
   GOOGLE_PLACE_TYPE_ATTRIBUTE_CANONICAL_NAMES,
   GOOGLE_PLACE_TYPE_ATTRIBUTE_MAP,
@@ -2446,41 +2445,13 @@ export class RestaurantLocationEnrichmentService {
     } while (pageToken);
   }
 
-  /** Branch-expansion narrowing only: when an already-grounded brand's
-   *  primaryType is a food-and-drink type, restrict the branch search to it
-   *  (a chain's branches share their primaryType). ONE hint set everywhere —
-   *  Google's complete category — since the ghost cleanup killed the 64-key
-   *  cuisine-map-as-classifier and the PREFERRED_PLACE_TYPES const with it. */
+  /** Branch-expansion narrowing: a chain's branches share the brand's own
+   *  primaryType, so the search restricts to it verbatim. No membership
+   *  vetting — primaryType IS Google's classification (a Table A type by API
+   *  contract), and the old food-set gate only DENIED narrowing to
+   *  store-typed brands, the H-E-B error in miniature. */
   private resolveIncludedType(primaryType?: string | null): string | null {
-    if (primaryType && GOOGLE_FOOD_AND_DRINK_PLACE_TYPES.has(primaryType)) {
-      return primaryType;
-    }
-    return null;
-  }
-
-  private normalizePlaceName(value: string): string {
-    return value
-      .normalize('NFD')
-      .replace(/[\u0300-\u036f]/g, '')
-      .toLowerCase()
-      .replace(/['’`]/g, '')
-      .replace(/[^a-z0-9]+/g, ' ')
-      .trim();
-  }
-
-  private isRestaurantishPlaceTypes(types?: string[]): boolean {
-    // HINT, never a veto (ghost attribution 2026-08-07): membership in
-    // Google's complete food-and-drink category ranks candidates for the
-    // chooser; the chooser decides. The old form checked the 64-key cuisine
-    // map and then VETOED the chooser's selection — 234 ghosts carry
-    // `selected_candidate_failed_restaurant_type_gate` trails where the
-    // judge had picked the right place.
-    return (
-      Array.isArray(types) &&
-      types.some((type) =>
-        GOOGLE_FOOD_AND_DRINK_PLACE_TYPES.has(type.toLowerCase()),
-      )
-    );
+    return primaryType?.trim() || null;
   }
 
   private async delay(ms: number): Promise<void> {
@@ -2792,27 +2763,13 @@ export class RestaurantLocationEnrichmentService {
       };
     }
 
-    // THE TYPE GATE IS NO LONGER A VETO (ghost attribution 2026-08-07).
-    // The chooser saw the candidate's types, the source text, and the
-    // market, and selected anyway — overruling that verdict with a type
-    // list is what manufactured 234 ghosts (Rebel Cheese: judge selected
-    // "Rebel Cheese Factory, Austin" three times; the gate rejected it
-    // three times). Gate-2 forensics proved no type list can decide
-    // food-service-ness. The fact is still recorded for audit.
-    if (!this.isRestaurantishPlaceTypes(selected.entry.candidate.types)) {
-      const candidate = selected.entry.candidate;
-      const candidateName =
-        candidate.mainText || candidate.description?.split(',')[0] || '';
-      params.adjudicationTrail.push({
-        placeId: candidate.placeId,
-        candidateName,
-        source: selected.matchSource,
-        sameBusiness: true,
-        reason: 'selected_candidate_outside_food_type_category (accepted)',
-        ...params.extras,
-      });
-    }
-
+    // NO TYPE JUDGMENT OF ANY KIND (2026-08-08, owner question "why do we
+    // even need this typeset?"): the chooser saw the candidate's raw types,
+    // the source text, and the market, and its verdict stands. Candidate
+    // types are recorded verbatim in the match metadata, so any off-category
+    // audit is a query, not a curated set. History: a 64-key cuisine map
+    // vetoed the judge (234 ghosts), then survived as a 164-type "hint" that
+    // fed only a log line — both deleted.
     return {
       selected,
       adjudicationTrail: params.adjudicationTrail,
@@ -3835,9 +3792,6 @@ export class RestaurantLocationEnrichmentService {
       country: storageCountry,
       city: context.city,
       region: context.region,
-      // The hint set the audit log judges against — Google's own complete
-      // food-and-drink category, not the old 64-key cuisine map.
-      foodTypeCategorySize: GOOGLE_FOOD_AND_DRINK_PLACE_TYPES.size,
       attemptedAt: new Date().toISOString(),
       count: ranked.length,
       candidates,
