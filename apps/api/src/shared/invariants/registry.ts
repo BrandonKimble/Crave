@@ -91,7 +91,12 @@ export type EnforcementLevel =
   /** CI refuses, having asked the real database. */
   | 'behaviour'
   /** The editor refuses, before the commit. */
-  | 'lint';
+  | 'lint'
+  /** The DECLARATION refuses — the defect is caught in the schema that
+   *  produces the database, not in the database it produced. A live-database
+   *  check can only find such a defect after someone has already applied it,
+   *  and cannot run without a database at all. */
+  | 'schema';
 
 /** Patch an existing file, or add one that did not exist. */
 export type Mutation =
@@ -422,6 +427,31 @@ export const INVARIANTS: readonly Invariant[] = [
       {
         file: SCRATCH,
         content: "export const off = process.env.X !== 'false';\n",
+      },
+    ],
+  },
+
+  {
+    id: 'schema.every-foreign-key-is-indexed',
+    statement:
+      "Every @relation's referencing columns are the LEADING columns of some index on that model.",
+    incident:
+      'poll_topics carried four un-indexed foreign keys to core_entities: 96,025 sequential scans over 18,284 rows (24,006 per key, four per deleted entity, remainder zero) and 624 million tuples read. Entity deletion was already the expensive operation here — the ~$118 Austin wipe — and had been paying a quadratic trigger tax on top the whole time. Nothing broke, nothing logged, no test went red.',
+    level: 'schema',
+    mechanism: 'scripts/check-foreign-key-indexes.ts over prisma/schema.prisma',
+    check: {
+      command: 'npx ts-node -T scripts/check-foreign-key-indexes.ts',
+      reads: "every @relation fields:[...] against the model's index prefixes",
+    },
+    mutations: [
+      {
+        // The defect as it actually shipped: the model declares the relation
+        // and simply never indexes it. Checking the SCHEMA rather than the
+        // live database is what makes this mutation a file edit at all — a
+        // database check could only find the defect after it was applied.
+        file: 'prisma/schema.prisma',
+        find: '  @@index([targetDishId], map: "idx_poll_topics_target_dish_id")\n',
+        replace: '',
       },
     ],
   },

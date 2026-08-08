@@ -150,6 +150,7 @@ model EntitySatisfies {
 
   @@id([fromEntityId, toEntityId])
   @@index([fromEntityId, relation], map: "idx_entity_satisfies_from_relation")
+  @@index([toEntityId], map: "idx_entity_satisfies_to_entity_id")
   @@map("entity_satisfies")
 }
 
@@ -192,10 +193,10 @@ model EntityAlias {
 /// it. RULING: labels and aliases must NEVER fuse — writing labels into
 /// the alias bag is on the NEVER list.
 model EntityLabel {
-  entityId    String   @map("entity_id") @db.Uuid
+  entityId      String   @map("entity_id") @db.Uuid
   /// Canonical BCP 47 (R5-5). RFC 4647 lookup fallback es-MX → es-419 → es.
-  locale      String
-  form        String   @db.VarChar(255)
+  locale        String
+  form          String   @db.VarChar(255)
   /// APP-WRITTEN canonicalFold(form) — the folded RECALL mirror, the exact
   /// shape entity_alias.form_folded carries. The labels-as-surfaces match arm
   /// (entity-text-search: scanForKnownEntityGroups) folds BOTH sides; without
@@ -204,26 +205,26 @@ model EntityLabel {
   /// was structurally unmatchable. There is NO SQL fold (Postgres Unicode
   /// classes are platform-dependent); write it ONLY via canonicalFold at the
   /// one write site (LabelSweepService.writeLabels).
-  formFolded  String   @map("form_folded") @db.VarChar(255)
+  formFolded    String   @map("form_folded") @db.VarChar(255)
   /// R5-6(a) the Wikidata disambiguator: labels collide across concepts
   /// ("pan"). Drafted by the sweep in the same call; sharpens judge-merge.
-  description String?  @db.VarChar(500)
-  isDefault   Boolean  @default(false) @map("is_default")
-  rank        Int      @default(0)
+  description   String?  @db.VarChar(500)
+  isDefault     Boolean  @default(false) @map("is_default")
+  rank          Int      @default(0)
   /// Vocabulary-prompt version that wrote this row; the sweep re-offers rows
   /// below the generator's current version (one re-pay per prompt bump).
-  promptVersion Int    @default(1) @map("prompt_version")
+  promptVersion Int      @default(1) @map("prompt_version")
   /// R5-10: the sweep and the spine seeder judge by MULTI-SAMPLE CONSENSUS.
   /// Agreement lands 'active'; disagreement lands 'candidate' for human
   /// review; a rejected label is 'deprecated' (remembered as wrong, not
   /// re-proposed). Only 'active' rows are ever displayed.
   /// candidate | active | deprecated.
-  status      String   @default("active")
+  status        String   @default("active")
   /// Provenance: seeded, swept, manual, or synthesis-produced.
-  source      String   @default("seed")
-  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
-  updatedAt   DateTime @default(now()) @map("updated_at") @db.Timestamptz(6)
-  entity      Entity   @relation("EntityLabelEntity", fields: [entityId], references: [entityId], onDelete: Cascade)
+  source        String   @default("seed")
+  createdAt     DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt     DateTime @default(now()) @map("updated_at") @db.Timestamptz(6)
+  entity        Entity   @relation("EntityLabelEntity", fields: [entityId], references: [entityId], onDelete: Cascade)
 
   // Raw-SQL PARTIAL unique (migration 20260804000000):
   // uq_entity_labels_one_default ON (entity_id, locale) WHERE is_default —
@@ -960,6 +961,7 @@ model RestaurantEvent {
   @@index([restaurantId, mentionedAt(sort: Desc)], map: "idx_restaurant_events_restaurant_time")
   @@index([sourceDocumentId], map: "idx_restaurant_events_source_document")
   @@index([extractionRunId], map: "idx_restaurant_events_run")
+  @@index([inputId], map: "idx_restaurant_events_input_id")
   @@map("core_restaurant_events")
 }
 
@@ -990,6 +992,7 @@ model RestaurantEntityEvent {
   @@index([entityId, mentionedAt(sort: Desc)], map: "idx_restaurant_entity_events_entity_time")
   @@index([sourceDocumentId], map: "idx_restaurant_entity_events_source_document")
   @@index([extractionRunId], map: "idx_restaurant_entity_events_run")
+  @@index([inputId], map: "idx_restaurant_entity_events_input_id")
   @@map("core_restaurant_entity_events")
 }
 
@@ -1068,6 +1071,10 @@ model PollTopic {
 
   @@index([placeId], map: "idx_poll_topics_place_id")
   @@index([createdByUserId], map: "idx_poll_topics_created_by_user")
+  @@index([targetDishId], map: "idx_poll_topics_target_dish_id")
+  @@index([targetFoodAttributeId], map: "idx_poll_topics_target_food_attribute_id")
+  @@index([targetRestaurantAttributeId], map: "idx_poll_topics_target_restaurant_attribute_id")
+  @@index([targetRestaurantId], map: "idx_poll_topics_target_restaurant_id")
   @@map("poll_topics")
 }
 
@@ -1449,6 +1456,7 @@ model PollCommentReport {
 
   @@unique([commentId, reporterUserId], map: "poll_comment_reports_comment_reporter_key")
   @@index([commentId], map: "idx_poll_comment_reports_comment")
+  @@index([reporterUserId], map: "idx_poll_comment_reports_reporter_user_id")
   @@map("poll_comment_reports")
 }
 
@@ -1540,6 +1548,7 @@ model Message {
   @@unique([conversationId, senderUserId, clientDedupeId], map: "uq_messages_client_dedupe")
   /// Cursor pagination: messageId tiebreak makes the cursor total-ordered.
   @@index([conversationId, createdAt(sort: Desc), messageId(sort: Desc)], map: "idx_messages_conversation_cursor")
+  @@index([senderUserId], map: "idx_messages_sender_user_id")
   @@map("messages")
 }
 
@@ -1633,6 +1642,7 @@ model UserListItem {
   @@index([restaurantId], map: "idx_user_list_items_restaurant")
   @@index([connectionId], map: "idx_user_list_items_connection")
   @@index([addedByUserId], map: "idx_user_list_items_added_by")
+  @@index([locationId], map: "idx_user_list_items_location_id")
   @@map("user_list_items")
 }
 
@@ -1652,6 +1662,7 @@ model UserListCollaborator {
   // rides this constraint (P2002 = already a member = success, RT-10 precedent).
   @@id([listId, userId], map: "user_list_collaborators_pkey")
   @@index([userId], map: "idx_user_list_collaborators_user")
+  @@index([invitedByUserId], map: "idx_user_list_collaborators_invited_by_user_id")
   @@map("user_list_collaborators")
 }
 
@@ -1852,6 +1863,7 @@ model PhotoReport {
   user      User     @relation(fields: [userId], references: [userId], onDelete: Cascade)
 
   @@unique([photoId, userId], map: "photo_reports_photo_user_key")
+  @@index([userId], map: "idx_photo_reports_user_id")
   @@map("photo_reports")
 }
 
@@ -1910,6 +1922,7 @@ model OnDemandRequest {
   @@index([entityIdentityKey], map: "idx_on_demand_requests_entity_identity")
   @@index([lastSeenAt(sort: Desc)], map: "idx_on_demand_requests_last_seen_at")
   @@index([lastQueuedAt(sort: Desc)], map: "idx_on_demand_requests_last_queued_at")
+  @@index([entityId], map: "idx_on_demand_requests_entity_id")
   @@map("collection_on_demand_requests")
 }
 
