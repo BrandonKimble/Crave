@@ -5,21 +5,23 @@ no open items, no fallback/back-compat/dead code, right abstractions. This file 
 the single visible surface for that coordination. The coordinator updates it as
 session reports arrive; the deploy fires only when every row is READY.
 
+**ALL ROWS READY as of 2026-08-08 ~10:55. Full green sweep running; go/no-go next.**
+
 ## Session board
 
 (Last full refresh 2026-08-08 ~03:00 — the coordinator's earlier table edits
 silently no-op'd after prettier re-padded columns; this rewrite is asserted.)
 
-| Session                      | Status                                                                                   | Remaining                                                   |
-| ---------------------------- | ---------------------------------------------------------------------------------------- | ----------------------------------------------------------- |
-| 📌02 red team (coordinator)  | READY                                                                                    | doc-truth lane finishing (plans/\* corrections in tree)     |
-| 📌01 tom tom (fork)          | READY — F9963 landed                                                                     | none                                                        |
-| Payments                     | READY — F9806 + transfer trio (98cc8d681)                                                | RC dashboard eyeball = OWNER-only                           |
-| 📌03 account-deletion        | READY — F9964 + property spec + plan rewrite                                             | none                                                        |
-| 📌05 extraction (fork 2)     | READY — C3 class closed + scan-enforced (1e2f218c4; found a 3rd site both audits missed) | none                                                        |
-| extraction (fork) — DB audit | READY — F9976 artifact-as-authority + all plan passes (43b1488f5)                        | none                                                        |
-| 📌07 Search                  | NEAR-READY — all 6 tasked items landed; dup-indexes STRUCK (false finding)               | divider removal (crossed messages — last item)              |
-| 📌06 Wave-4 (tracksheet)     | NEAR-READY — console.log gated; B4 owned                                                 | banner + contract edits (their next turn; post-deploy-safe) |
+| Session                      | Status                                                                                   | Remaining                         |
+| ---------------------------- | ---------------------------------------------------------------------------------------- | --------------------------------- |
+| 📌02 red team (coordinator)  | READY — truth pass + orphans + tails all landed                                          | none                              |
+| 📌01 tom tom (fork)          | READY — F9963 landed                                                                     | none                              |
+| Payments                     | READY — F9806 + transfer trio (98cc8d681)                                                | RC dashboard eyeball = OWNER-only |
+| 📌03 account-deletion        | READY — F9964 + property spec + plan rewrite                                             | none                              |
+| 📌05 extraction (fork 2)     | READY — C3 class closed + scan-enforced (1e2f218c4; found a 3rd site both audits missed) | none                              |
+| extraction (fork) — DB audit | READY — F9976 artifact-as-authority + all plan passes (43b1488f5)                        | none                              |
+| 📌07 Search                  | READY — divider removed by coordinator (340fb0262; also fixed a hidden-results bug)      | none                              |
+| 📌06 Wave-4 (tracksheet)     | READY — authorized doc edits applied by coordinator (52b0cb492)                          | none                              |
 
 ## THE STOP-ITEM — timestamptz migration (Search's find, sequencing ADOPTED)
 
