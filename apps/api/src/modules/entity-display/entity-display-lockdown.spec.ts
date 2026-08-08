@@ -45,6 +45,11 @@ type Verdict = 'routed' | 'proper-noun' | 'not-user-facing';
 
 /** file (relative to src/) → why it is allowed to emit a raw `.name`. */
 const ALLOWLIST: Readonly<Record<string, { verdict: Verdict; why: string }>> = {
+  'modules/content-processing/entity-resolver/word-claim-adjudicator.service.ts':
+    {
+      verdict: 'not-user-facing',
+      why: 'claim-judge LLM plumbing — entity names go into the adjudication prompt and log lines, never a user DTO',
+    },
   'modules/entity-display/entity-display.service.ts': {
     verdict: 'routed',
     why: 'THE display function itself — canonical-name fallback and submitToken emission are its contract',

@@ -1,4 +1,5 @@
 import { Global, Module } from '@nestjs/common';
+import { KnowledgeMaintenanceService } from './knowledge-maintenance.service';
 import { EntityResolverModule } from '../content-processing/entity-resolver/entity-resolver.module';
 import { PrismaModule } from '../../prisma/prisma.module';
 import { LLMModule } from '../external-integrations/llm/llm.module';
@@ -18,7 +19,12 @@ import { VocabularyGenerator } from './vocabulary-generator';
 @Global()
 @Module({
   imports: [PrismaModule, LLMModule, EntityResolverModule],
-  providers: [EntityDisplayService, LabelSweepService, VocabularyGenerator],
+  providers: [
+    EntityDisplayService,
+    LabelSweepService,
+    VocabularyGenerator,
+    KnowledgeMaintenanceService,
+  ],
   exports: [EntityDisplayService, LabelSweepService, VocabularyGenerator],
 })
 export class EntityDisplayModule {}

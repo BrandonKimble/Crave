@@ -22,12 +22,7 @@ import 'dotenv/config';
 process.env.PROCESS_ROLE ||= 'api';
 
 import { bootstrap, out } from './search-harness/_shared';
-import { PrismaService } from '../src/prisma/prisma.service';
 import { WordClaimAdjudicatorService } from '../src/modules/content-processing/entity-resolver/word-claim-adjudicator.service';
-import {
-  addAliases,
-  type AliasSource,
-} from '../src/modules/content-processing/entity-resolver/entity-alias.service';
 
 async function main(): Promise<void> {
   const argv = process.argv.slice(2);
@@ -37,62 +32,9 @@ async function main(): Promise<void> {
 
   const app = await bootstrap();
   try {
-    const prisma = app.get(PrismaService);
     const adjudicator = app.get(WordClaimAdjudicatorService);
-
-    // Label-only surfaces: active label on an active entity, absent from the
-    // alias store for that entity, and NOT the entity's own identity (a
-    // proper-noun label is its own display, never a locale search word).
-    const rows = await prisma.$queryRawUnsafe<
-      Array<{ entity_id: string; form: string; locale: string }>
-    >(
-      `SELECT l.entity_id::text AS entity_id, l.form, l.locale
-         FROM entity_labels l
-         JOIN core_entities e ON e.entity_id = l.entity_id AND e.status = 'active'
-        WHERE l.status = 'active'
-          AND l.form_folded <> e.identity_key
-          AND NOT EXISTS (
-            SELECT 1 FROM entity_alias a
-             WHERE a.entity_id = l.entity_id
-               AND a.form_folded = l.form_folded)
-        ORDER BY l.entity_id
-        LIMIT $1`,
-      limit,
-    );
-    out(`label-only surfaces to reconcile: ${rows.length}`);
-
-    let banked = 0;
-    const contested: Array<{
-      form: string;
-      locale: string;
-      entityId: string;
-      source: AliasSource;
-    }> = [];
-    for (const row of rows) {
-      if (dryRun) continue;
-      const result = await prisma.$transaction((tx) =>
-        addAliases(tx, row.entity_id, [
-          { form: row.form, locale: row.locale, source: 'vocabulary' },
-        ]),
-      );
-      if (result.blocked.length) {
-        contested.push({
-          form: row.form,
-          locale: row.locale,
-          entityId: row.entity_id,
-          source: 'vocabulary',
-        });
-      } else {
-        banked += 1;
-      }
-    }
-    out(`banked uncontested: ${banked}`);
-    out(`contested → adjudicator: ${contested.length}`);
-
-    if (contested.length) {
-      const summary = await adjudicator.adjudicate(contested, { dryRun });
-      out(JSON.stringify(summary));
-    }
+    const summary = await adjudicator.reconcileLabelSurfaces({ dryRun, limit });
+    out(JSON.stringify(summary));
   } finally {
     await app.close();
   }

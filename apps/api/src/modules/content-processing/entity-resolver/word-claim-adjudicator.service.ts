@@ -33,7 +33,10 @@ import { canonicalFold } from './entity-identity';
  * court, run OFFLINE over the blocked backlog — never in a request path.
  */
 
-export const CLAIM_JUDGE_PROMPT_VERSION = 1;
+// v2 (2026-08-08): every incumbent listed (v1 showed only the first),
+// plus per-claimant context (sample aliases) — v1 mis-voted picante/café
+// on bare name+type pairs, measured on the launch gate.
+export const CLAIM_JUDGE_PROMPT_VERSION = 2;
 
 /** Claims per LLM call. */
 const PER_CALL = 10;
@@ -75,7 +78,9 @@ interface Claimant {
   entityId: string;
   name: string;
   type: string;
-  description: string | null;
+  /** Up to 3 sample active surfaces — the judge's context for what this
+   *  concept actually is (v1's bare name+type mis-voted picante/café). */
+  context: string[];
   /** True when the claim is testimony or the entity's own identity. */
   testimony: boolean;
   aliasId: string | null;
@@ -149,7 +154,7 @@ export class WordClaimAdjudicatorService {
       }
       if (!judgeable.length) continue;
 
-      let verdicts: Map<number, { target: boolean; incumbent: boolean }>;
+      let verdicts: Map<number, { target: boolean; others: boolean[] }>;
       try {
         verdicts = await this.judge(judgeable);
       } catch (error) {
@@ -171,25 +176,24 @@ export class WordClaimAdjudicatorService {
           continue;
         }
         summary.judged += 1;
-        if (verdict.target && verdict.incumbent) {
-          await this.bank(p.claim, dryRun);
-          summary.bothUpheld += 1;
-        } else if (verdict.target && !verdict.incumbent) {
-          const evictable = p.incumbents.filter((inc) => !inc.testimony);
-          if (!dryRun) {
-            await this.deprecateIncumbents(evictable);
-          }
-          await this.bank(p.claim, dryRun);
-          if (evictable.length === p.incumbents.length) {
-            summary.incumbentEvicted += 1;
-          } else {
-            // Judge doubted the incumbent but testimony protects it: the
-            // newcomer still banks (its merit stood); nothing is evicted.
-            summary.bothUpheld += 1;
-          }
-        } else {
+        if (!verdict.target) {
           await this.refuse(p.claim, dryRun);
           summary.newcomerRefused += 1;
+          continue;
+        }
+        // PER-INCUMBENT verdicts (v2): evict exactly the incumbents the
+        // judge rejected — never a testimony claim (unevictable by law).
+        const evictable = p.incumbents.filter(
+          (inc, k) => verdict.others[k] === false && !inc.testimony,
+        );
+        if (!dryRun && evictable.length) {
+          await this.deprecateIncumbents(evictable);
+        }
+        await this.bank(p.claim, dryRun);
+        if (evictable.length) {
+          summary.incumbentEvicted += 1;
+        } else {
+          summary.bothUpheld += 1;
         }
       }
     }
@@ -201,22 +205,92 @@ export class WordClaimAdjudicatorService {
     return summary;
   }
 
+  /**
+   * LABEL-SURFACE RECONCILIATION — the standing half of the one-registry law.
+   * Any active label surface absent from the alias store (and not the
+   * entity's own identity — a proper-noun label is display, not vocabulary)
+   * is offered through the guard; blocked offers go to adjudication. First
+   * run moved 1,543 (2026-08-08); thereafter this is the drip that keeps
+   * "labels display, aliases ground" true as sweeps mint new labels.
+   */
+  async reconcileLabelSurfaces(
+    options: { dryRun?: boolean; limit?: number } = {},
+  ): Promise<{ offered: number; banked: number } & AdjudicationSummary> {
+    const dryRun = options.dryRun ?? false;
+    const limit = options.limit ?? 100000;
+    const rows = await this.prisma.$queryRawUnsafe<
+      Array<{ entity_id: string; form: string; locale: string }>
+    >(
+      `SELECT l.entity_id::text AS entity_id, l.form, l.locale
+         FROM entity_labels l
+         JOIN core_entities e ON e.entity_id = l.entity_id AND e.status = 'active'
+        WHERE l.status = 'active'
+          AND l.form_folded <> e.identity_key
+          AND NOT EXISTS (
+            SELECT 1 FROM entity_alias a
+             WHERE a.entity_id = l.entity_id
+               AND a.form_folded = l.form_folded)
+        ORDER BY l.entity_id
+        LIMIT $1`,
+      limit,
+    );
+    let banked = 0;
+    const contested: ContestedClaim[] = [];
+    for (const row of rows) {
+      if (dryRun) continue;
+      const result = await this.prisma.$transaction((tx) =>
+        addAliases(tx, row.entity_id, [
+          { form: row.form, locale: row.locale, source: 'vocabulary' },
+        ]),
+      );
+      if (result.blocked.length) {
+        contested.push({
+          form: row.form,
+          locale: row.locale,
+          entityId: row.entity_id,
+          source: 'vocabulary',
+        });
+      } else {
+        banked += 1;
+      }
+    }
+    const summary = contested.length
+      ? await this.adjudicate(contested, { dryRun })
+      : {
+          considered: 0,
+          testimonyUpheld: 0,
+          judged: 0,
+          bothUpheld: 0,
+          incumbentEvicted: 0,
+          newcomerRefused: 0,
+          unjudged: 0,
+        };
+    return { offered: rows.length, banked, ...summary };
+  }
+
   private async entityCard(entityId: string): Promise<Claimant | null> {
     const rows = await this.prisma.$queryRaw<
       Array<{ entity_id: string; name: string; type: string }>
     >`SELECT entity_id::text, name, type::text FROM core_entities
        WHERE entity_id = ${entityId}::uuid AND status = 'active'`;
     const row = rows[0];
-    return row
-      ? {
-          entityId: row.entity_id,
-          name: row.name,
-          type: row.type,
-          description: null,
-          testimony: false,
-          aliasId: null,
-        }
-      : null;
+    if (!row) return null;
+    return {
+      entityId: row.entity_id,
+      name: row.name,
+      type: row.type,
+      context: await this.sampleSurfaces(row.entity_id),
+      testimony: false,
+      aliasId: null,
+    };
+  }
+
+  private async sampleSurfaces(entityId: string): Promise<string[]> {
+    const rows = await this.prisma.$queryRaw<Array<{ form: string }>>`
+      SELECT form FROM entity_alias
+       WHERE entity_id = ${entityId}::uuid AND status = 'active'
+       ORDER BY created_at ASC LIMIT 3`;
+    return rows.map((r) => r.form);
   }
 
   /** Every OTHER active entity currently holding the word, with provenance. */
@@ -246,14 +320,18 @@ export class WordClaimAdjudicatorService {
        WHERE a.form_folded = ${folded} AND a.status = 'active'
          AND e.status = 'active'
          AND a.entity_id <> ${exceptEntityId}::uuid`;
-    return rows.map((row) => ({
-      entityId: row.entity_id,
-      name: row.name,
-      type: row.type,
-      description: null,
-      testimony: row.is_name || TESTIMONY_SOURCES.has(row.source ?? ''),
-      aliasId: row.alias_id,
-    }));
+    const claimants: Claimant[] = [];
+    for (const row of rows) {
+      claimants.push({
+        entityId: row.entity_id,
+        name: row.name,
+        type: row.type,
+        context: await this.sampleSurfaces(row.entity_id),
+        testimony: row.is_name || TESTIMONY_SOURCES.has(row.source ?? ''),
+        aliasId: row.alias_id,
+      });
+    }
+    return claimants;
   }
 
   private async judge(
@@ -262,35 +340,38 @@ export class WordClaimAdjudicatorService {
       target: Claimant | null;
       incumbents: Claimant[];
     }>,
-  ): Promise<Map<number, { target: boolean; incumbent: boolean }>> {
+  ): Promise<Map<number, { target: boolean; others: boolean[] }>> {
+    const card = (c: Claimant | null, label: string) =>
+      `   ${label}: "${c?.name}" [${c?.type}]` +
+      (c?.context.length ? ` — also known as: ${c.context.join(', ')}` : '');
     const prompt = [
       `You judge WORD OWNERSHIP for a food-discovery app's search index.`,
-      `For each numbered case: the WORD is claimed by two concepts. For EACH`,
-      `side, answer whether a real speaker of the word's language genuinely`,
-      `uses THAT word to name THAT concept.`,
+      `For each numbered case: ONE word is claimed by SEVERAL concepts. For`,
+      `EVERY claimant, answer whether a real speaker of the word's language`,
+      `genuinely uses THAT word to name THAT concept.`,
       ``,
       `Rules:`,
-      `- Both sides may be true ("picante" names hot sauce in American English`,
-      `  AND means spicy in Spanish). Different concepts sharing a word is a`,
-      `  fact, not a conflict.`,
-      `- A near-synonym or related concept is NOT the word's meaning: "sopa"`,
-      `  names soup, never a specific branded dish that merely contains soup.`,
+      `- Several claimants may all be right ("picante" names hot sauce in`,
+      `  American English AND means spicy in Spanish). A word naming multiple`,
+      `  concepts is a fact, not a conflict.`,
+      `- Translation counts: if the word IS the claimant's name in the given`,
+      `  locale ("café" is Spanish for coffee), that claimant owns it.`,
+      `- A near-synonym or related concept does NOT own the word: "sopa"`,
+      `  names soup, never a branded dish that merely contains soup.`,
       `- A proper noun / brand only owns a word that IS its name.`,
       `- Dietary and religious terms are never interchangeable.`,
-      `- When unsure on a side, answer false for that side. A refusal costs a`,
-      `  miss; a wrong grant ranks a wrong answer first.`,
+      `- When genuinely unsure about a claimant, answer false for it.`,
       ``,
-      ...items.map(({ claim, target, incumbents }, index) => {
-        const inc = incumbents[0];
-        return (
-          `${index + 1}. WORD "${claim.form}" (locale ${claim.locale})\n` +
-          `   claimant_a: "${target?.name}" [${target?.type}]\n` +
-          `   claimant_b: "${inc?.name}" [${inc?.type}]`
-        );
-      }),
+      ...items.map(({ claim, target, incumbents }, index) =>
+        [
+          `${index + 1}. WORD "${claim.form}" (locale ${claim.locale})`,
+          card(target, 'claimant_a (new)'),
+          ...incumbents.map((inc, k) => card(inc, `incumbent_${k + 1}`)),
+        ].join('\n'),
+      ),
       ``,
-      `Return ONLY JSON matching the schema, one item per case:`,
-      `{"items":[{"n":1,"a_owns_word":true,"b_owns_word":false}]}`,
+      `Return ONLY JSON: for each case, a_owns_word plus incumbents_own_word`,
+      `— one boolean PER incumbent, in the order listed.`,
     ].join('\n');
 
     const text = await this.llm.generateForCaller({
@@ -309,9 +390,12 @@ export class WordClaimAdjudicatorService {
                 properties: {
                   n: { type: 'number' },
                   a_owns_word: { type: 'boolean' },
-                  b_owns_word: { type: 'boolean' },
+                  incumbents_own_word: {
+                    type: 'array',
+                    items: { type: 'boolean' },
+                  },
                 },
-                required: ['n', 'a_owns_word', 'b_owns_word'],
+                required: ['n', 'a_owns_word', 'incumbents_own_word'],
               },
             },
           },
@@ -325,7 +409,7 @@ export class WordClaimAdjudicatorService {
       items?: Array<{
         n?: number;
         a_owns_word?: boolean;
-        b_owns_word?: boolean;
+        incumbents_own_word?: boolean[];
       }>;
     };
     return new Map(
@@ -335,7 +419,7 @@ export class WordClaimAdjudicatorService {
           item.n as number,
           {
             target: item.a_owns_word === true,
-            incumbent: item.b_owns_word === true,
+            others: item.incumbents_own_word ?? [],
           },
         ]),
     );
@@ -346,9 +430,15 @@ export class WordClaimAdjudicatorService {
   private async bank(claim: ContestedClaim, dryRun: boolean): Promise<void> {
     if (dryRun) return;
     await this.prisma.$transaction((tx) =>
-      addAliases(tx, claim.entityId, [
-        { form: claim.form, locale: claim.locale, source: claim.source },
-      ]),
+      addAliases(
+        tx,
+        claim.entityId,
+        [{ form: claim.form, locale: claim.locale, source: claim.source }],
+        // The verdict IS the ownership ruling — a 'both win' is a sanctioned
+        // collision, so the guard defers to it (it blocked every coexistence
+        // verdict otherwise; 862-claim forever-loop, 2026-08-08).
+        { adjudicated: true },
+      ),
     );
   }
 

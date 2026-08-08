@@ -1,5 +1,5 @@
 {
-  "ranAt": "2026-08-08T02:24:25.390Z",
+  "ranAt": "2026-08-08T04:15:12.278Z",
   "lang": "es",
   "corpusVersion": 1,
   "scoreboard": {
@@ -769,9 +769,9 @@
       "reasons": [],
       "grounded": [
         {
-          "entityId": "c8416d51-a863-4e79-9606-7b6219715376",
-          "bucket": "ingredients",
-          "type": "ingredient",
+          "entityId": "5dbb584c-790e-4078-acb1-d60185968264",
+          "bucket": "food",
+          "type": "food",
           "span": "aguacate",
           "name": "avocado",
           "tier": "gazetteer-exact",
@@ -837,9 +837,9 @@
       "reasons": [],
       "grounded": [
         {
-          "entityId": "35e1f3b8-f85d-472b-b378-803fd071eea1",
-          "bucket": "ingredients",
-          "type": "ingredient",
+          "entityId": "77490d5e-e33e-4f6e-b1b8-d370755faf1f",
+          "bucket": "food",
+          "type": "food",
           "span": "arroz",
           "name": "rice",
           "tier": "gazetteer-exact",
@@ -939,9 +939,9 @@
       "reasons": [],
       "grounded": [
         {
-          "entityId": "ebc36bf2-0cc3-4f1f-b6ed-932204c611af",
-          "bucket": "ingredients",
-          "type": "ingredient",
+          "entityId": "7f5d3f9f-49fc-4c36-b4ab-a797e48495a8",
+          "bucket": "food",
+          "type": "food",
           "span": "cangrejo",
           "name": "crab",
           "tier": "gazetteer-exact",
@@ -1007,9 +1007,9 @@
       "reasons": [],
       "grounded": [
         {
-          "entityId": "e6f13bba-0c4d-4a5d-9dec-84eb8671993f",
-          "bucket": "ingredients",
-          "type": "ingredient",
+          "entityId": "ef0cdc27-b056-465e-9a57-a56b5e7d5693",
+          "bucket": "food",
+          "type": "food",
           "span": "fresa",
           "name": "strawberry",
           "tier": "gazetteer-exact",
@@ -1176,6 +1176,15 @@
       "preservation": 1,
       "reasons": [],
       "grounded": [
+        {
+          "entityId": "042de43d-2fb6-460d-bbea-b8779b79b52a",
+          "bucket": "food",
+          "type": "food",
+          "span": "fideos",
+          "name": "noodles",
+          "tier": "gazetteer-exact",
+          "foldedName": "noodles"
+        },
         {
           "entityId": "04479fba-1c2a-42bb-bb48-b34f35a0bdd8",
           "bucket": "food",
@@ -1840,9 +1849,9 @@
           "foldedName": "mexican breakfast"
         },
         {
-          "entityId": "effd2425-4caa-4f9d-92d6-ac1c8c0aa756",
-          "bucket": "food",
-          "type": "food",
+          "entityId": "5142b80a-80ca-4017-8cf8-08f867463134",
+          "bucket": "foodAttributes",
+          "type": "food_attribute",
           "span": "desayuno",
           "name": "breakfast",
           "tier": "linked",
@@ -1926,15 +1935,6 @@
       "reasons": [],
       "grounded": [
         {
-          "entityId": "12bcdfbd-7736-4d47-82e7-b7cf30b5fa93",
-          "bucket": "food",
-          "type": "food",
-          "span": "pollo",
-          "name": "chicken",
-          "tier": "linked",
-          "foldedName": "chicken"
-        },
-        {
           "entityId": "05708d69-10ff-4482-9818-fa8ec6931225",
           "bucket": "foodAttributes",
           "type": "food_attribute",
@@ -1951,6 +1951,15 @@
           "name": "halal chicken",
           "tier": "gazetteer-exact",
           "foldedName": "halal chicken"
+        },
+        {
+          "entityId": "c9957bd2-edf1-4839-90eb-72442ba7354a",
+          "bucket": "ingredients",
+          "type": "ingredient",
+          "span": "pollo",
+          "name": "chicken",
+          "tier": "linked",
+          "foldedName": "chicken"
         }
       ],
       "excluded": [],
@@ -2195,9 +2204,9 @@
           "foldedName": "soup"
         },
         {
-          "entityId": "12bcdfbd-7736-4d47-82e7-b7cf30b5fa93",
-          "bucket": "food",
-          "type": "food",
+          "entityId": "c9957bd2-edf1-4839-90eb-72442ba7354a",
+          "bucket": "ingredients",
+          "type": "ingredient",
           "span": "pollo",
           "name": "chicken",
           "tier": "linked",
@@ -2238,15 +2247,6 @@
           "foldedName": "chicken and rice"
         },
         {
-          "entityId": "12bcdfbd-7736-4d47-82e7-b7cf30b5fa93",
-          "bucket": "food",
-          "type": "food",
-          "span": "pollo",
-          "name": "chicken",
-          "tier": "linked",
-          "foldedName": "chicken"
-        },
-        {
           "entityId": "35e1f3b8-f85d-472b-b378-803fd071eea1",
           "bucket": "ingredients",
           "type": "ingredient",
@@ -2254,6 +2254,15 @@
           "name": "rice",
           "tier": "linked",
           "foldedName": "rice"
+        },
+        {
+          "entityId": "c9957bd2-edf1-4839-90eb-72442ba7354a",
+          "bucket": "ingredients",
+          "type": "ingredient",
+          "span": "pollo",
+          "name": "chicken",
+          "tier": "linked",
+          "foldedName": "chicken"
         }
       ],
       "excluded": [],
@@ -2557,15 +2566,6 @@
           "foldedName": "grilled fish"
         },
         {
-          "entityId": "bcb888b0-d59a-4c2f-956a-ab7374c4cfa5",
-          "bucket": "food",
-          "type": "food",
-          "span": "pescado",
-          "name": "fish",
-          "tier": "linked",
-          "foldedName": "fish"
-        },
-        {
           "entityId": "5e7775c8-82bc-410a-bce3-7b5d05e49249",
           "bucket": "foodAttributes",
           "type": "food_attribute",
@@ -2573,6 +2573,15 @@
           "name": "grilled",
           "tier": "linked",
           "foldedName": "grilled"
+        },
+        {
+          "entityId": "89fcf723-562f-4099-af8f-2c9eec57ab2a",
+          "bucket": "ingredients",
+          "type": "ingredient",
+          "span": "pescado",
+          "name": "fish",
+          "tier": "linked",
+          "foldedName": "fish"
         }
       ],
       "excluded": [],
@@ -4444,9 +4453,18 @@
       "stratum": "homograph",
       "locale": "es-US",
       "pass": true,
-      "preservation": 0.3333333333333333,
+      "preservation": 0.6666666666666666,
       "reasons": [],
       "grounded": [
+        {
+          "entityId": "10dc6d53-685a-4c2a-a302-d59ade9c5d1e",
+          "bucket": "ingredients",
+          "type": "ingredient",
+          "span": "crema",
+          "name": "cream",
+          "tier": "gazetteer-exact",
+          "foldedName": "cream"
+        },
         {
           "entityId": "5cc72741-a47d-4c7f-9146-684f7eed3d4d",
           "bucket": "ingredients",
@@ -4652,9 +4670,9 @@
       "reasons": [],
       "grounded": [
         {
-          "entityId": "b03c9737-ac4d-4fec-adfb-5bf2d2410304",
-          "bucket": "ingredients",
-          "type": "ingredient",
+          "entityId": "7e9e2672-1bc5-4ad9-8834-bfd184662955",
+          "bucket": "food",
+          "type": "food",
           "span": "col",
           "name": "cabbage",
           "tier": "gazetteer-exact",
@@ -4686,9 +4704,9 @@
       "reasons": [],
       "grounded": [
         {
-          "entityId": "8098e041-7e60-4857-b176-60f3363c1725",
-          "bucket": "ingredients",
-          "type": "ingredient",
+          "entityId": "2109e187-c6da-41a1-b97b-71af33824bfe",
+          "bucket": "food",
+          "type": "food",
           "span": "miel",
           "name": "honey",
           "tier": "gazetteer-exact",
@@ -4920,9 +4938,18 @@
       "stratum": "homograph",
       "locale": "es-US",
       "pass": true,
-      "preservation": 0.5,
+      "preservation": 1,
       "reasons": [],
       "grounded": [
+        {
+          "entityId": "03a7d01e-dd88-4cf7-ad82-107602ea930f",
+          "bucket": "food",
+          "type": "food",
+          "span": "caldo",
+          "name": "broth",
+          "tier": "gazetteer-exact",
+          "foldedName": "broth"
+        },
         {
           "entityId": "78d7bd8a-97e7-44ae-8a7d-48216af252db",
           "bucket": "food",
@@ -4954,7 +4981,7 @@
       "stratum": "homograph",
       "locale": "es-US",
       "pass": true,
-      "preservation": 0.5,
+      "preservation": 1,
       "reasons": [],
       "grounded": [
         {
@@ -4965,6 +4992,15 @@
           "name": "masa",
           "tier": "gazetteer-exact",
           "foldedName": "masa"
+        },
+        {
+          "entityId": "3b0eb120-1882-4fee-a167-8b1b20be2105",
+          "bucket": "food",
+          "type": "food",
+          "span": "masa",
+          "name": "dough",
+          "tier": "gazetteer-exact",
+          "foldedName": "dough"
         }
       ],
       "excluded": [],
