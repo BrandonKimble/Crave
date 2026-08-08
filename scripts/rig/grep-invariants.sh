@@ -68,8 +68,12 @@ check_eq "stageTransitionTxn caller files (2 stagers)" 2 \
   "$(grep -rln 'stageTransitionTxn(' $SRC --include='*.ts' --include='*.tsx' 2>/dev/null | grep -v '\.spec\.' | grep -v 'transition-transaction.ts' | wc -l | tr -d ' ')"
 # The gate: paintAck writers live in the host (txn subscription + reconcile) + the
 # player's own reset — two files, no strays
-check_eq "paintAck writer files (host + player)" 2 \
-  "$(file_count 'paintAck.value = ' $SRC)"
+# R8 (2026-08-08): paintAck died with the old host + transition-lane-player. The
+# paint join input is offered by exactly ONE track writer now (track-txn-bridge's
+# offerTransitionJoinInput('paint')); the engine and the search surface runtime own
+# their producer-side offers. The one-writer claim is repointed to the track site.
+check_eq "track paint-offer writer files (txn bridge only)" 1 \
+  "$(grep -rln "offerTransitionJoinInput('paint')" $SRC/tracksheet --include='*.ts' --include='*.tsx' 2>/dev/null | grep -v '\.spec\.' | grep -v '__render__' | wc -l | tr -d ' ')"
 
 echo "=== LENS EXIT (S2/S3) — dead classes stay dead ==="
 # The sibling-world vocabulary is GONE: open-now is a projection over one world.
@@ -94,9 +98,11 @@ check_eq "reservedHeaderHeight references (renamed chromeHeight, computed)" 0 \
   "$(file_count 'reservedHeaderHeight' $SRC)"
 check_eq "retained results header-height authority references" 0 \
   "$(file_count 'publishRetainedResultsHeaderHeight' $SRC)"
-# Guard-presence: the geometry bark is the L1 RED instrument — it must exist.
-check_eq "CHROME-GEOMETRY bark present (host)" 1 \
-  "$(file_count 'CHROME-GEOMETRY' $SRC/overlays/PersistentSheetHeaderHost.tsx)"
+# R8 (2026-08-08): PersistentSheetHeaderHost died with the old sheet system. Its
+# CHROME-GEOMETRY bark's job (the L1 chrome-geometry RED instrument) is owned by
+# the track now: the render lane's host falsifiers + the native shell audit
+# (TrackScrollPhysics auditShell). No JS bark to require — the check's subject is
+# deleted, so the check is deleted WITH its subject, not repointed at a mirror.
 
 echo "=== THE PAGE L2 — one body interpreter; migrated scenes cannot branch ==="
 # Migrated panels may not express pending/error/empty branches — the shell owns the
@@ -126,7 +132,10 @@ check_eq "pinned results loading cover references" 0 \
 check_eq "rows-visibility level references" 0 \
   "$(file_count 'setResultsRowsHiddenForLoading\|resultsRowsVisibleValue' $SRC)"
 # Guard-presence: the pending block is the ONE loading face of the results list.
-check_eq "results_pending_block kind present (builder+cell+fence)" 3 \
+# R8 (2026-08-08): the FENCE lived in SearchMountedSceneBody, which died with the
+# old host — the track's leg resolver owns admission now. Builder + cell remain the
+# pending block's two homes.
+check_eq "results_pending_block kind present (builder+cell)" 2 \
   "$(file_count "'results_pending_block'" $SRC)"
 
 echo "=== TRUNCATION LAW — title style forks stay dead ==="

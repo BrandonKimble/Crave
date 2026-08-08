@@ -1,4 +1,12 @@
 #!/usr/bin/env node
+// R8 NOTE (2026-08-08): this contract checker predates THE COLLAPSE. Host names
+// from the DELETED old sheet system (BottomSheetSceneStackHost, SearchMountedSceneBody,
+// PersistentSheetHeaderHost, the SearchOverlayRoute* hosts) appear below only as
+// profiler-ID allowlist members and event filters — vacuous against current traces
+// (no event carries those ids), harmful to nothing, kept because this rig is the
+// historical map-saga record (CLAUDE.md). A NEW perf contract for the track system
+// must target TrackSheetPage / UnifiedTrackScenePage ids, not these.
+
 // @script-class: operational
 // @run-by: package.json.
 

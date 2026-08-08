@@ -1455,8 +1455,12 @@ complete_dismiss_handoff_extra_callers="$(
 sheet_host_authority_file="$TARGET_PATH/navigation/runtime/app-route-sheet-host-authority-controller.ts"
 if [[ -e "$sheet_host_authority_file" ]]; then
   route_sheet_transition_planner_live_snap_desc="SheetTransitionPlan current-snap resolution must read the live shared sheet state, not policy defaults or persisted snap memory."
+  # R8 repoint (2026-08-08): the old shared-sheet presentation runtime died with the
+  # old host. The LIVE source is now recordSharedSheetSnap — the settle-fact-fed
+  # write the track's motion controller drives; its presence is the same claim
+  # ("current snap comes from the live sheet, not policy/persisted memory").
   gate_require_present route_sheet_transition_planner_live_snap_gate "$route_sheet_transition_planner_live_snap_desc" \
-    "routeSharedSheetPresentationRuntime.getSnapshot().sheetState" --fixed-strings "$sheet_host_authority_file"
+    "recordSharedSheetSnap" --fixed-strings "$sheet_host_authority_file"
   gate_ban_absent route_sheet_transition_planner_live_snap_gate "$route_sheet_transition_planner_live_snap_desc" \
     'resolveCurrentSnapTarget[\s\S]{0,520}\b(hasUserSharedSnap|sharedSnap|resolvePolicyInitialSnap|getPersistentSnap)\b' \
     --pcre2 "$sheet_host_authority_file"
