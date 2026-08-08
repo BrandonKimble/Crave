@@ -4601,3 +4601,14 @@ APPROVED SHAPE:
    and the lying reconcile counter fix. GCP Vision API enabled 2026-08-07 (project crave-467301).
    GCP budgets verified alert-only ($50 dev/$2,500 prod); prod Resend+OPS_ALERT_EMAIL verified
    set on both services.
+
+## D149-V addendum (2026-08-07): the aws_rek watcher line dies with the migration
+
+Sequencing note (owner raised it): Cloudinary aws_rek moderation is STILL LIVE until
+D149-V lands (queued behind the photo session — needs photos.service.ts + the upload
+preset). The hourly vendor-quota-watcher aws_rek line is the BRIDGE for that gap only.
+D149-V's definition now explicitly includes: (1) preset stops pinning aws_rek,
+(2) server-side gated+metered Vision SafeSearch call on upload-finalize,
+(3) DELETE the aws_rek quota key from vendor-quota-watcher.service.ts + its spec
+(watching a quota nothing uses is a vestige). The credits line STAYS (storage/
+bandwidth/transformations remain on Cloudinary).
