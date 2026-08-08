@@ -544,3 +544,21 @@ window-count gate; the scaling lever at 10x corpus); wire DemandVocabulary
 into the nightly rail when launch traffic exists; sweep-scale fixes
 (whole-vocab Set, correlated-count ORDER BY, writeLabels N+1) before any
 100k-concept corpus. Vestige/stale-comment sweep listed in audit output.
+
+### §11 punchlist progress (2026-08-08, commits 23912fa9e/9f17b9e6f/f6eae7f5b)
+
+DONE: C1 (restaurant tier-order, +guard spec), C2 (edit lane reachable —
+merge-rank-cut), C3 (toStructuredSearchRequest destructuring — dietary wall
+can no longer be dropped), H2 (dietary fail-CLOSED + boot preload), H3
+(honest prefix coverage; G2 patch deleted), H4 (sweep omits unmeasured
+tiers; generated file de-laundered), H5 (??1 → cousin floor), H7 (one
+budget authority, Damerau everywhere, edit_budget vestige deleted), M9
+(rankIn — unlisted type goes LAST). Gate 98.7 through every change.
+
+REMAINING, in order: KL-A pass-run ledger (one migration + write-through in
+satisfies/demand/judge — closes starvation, re-judging, unversioned
+verdicts); KL-D containment materialization on the folded key (fixes the
+two-fold divergence, deletes the un-indexable LIKE); H6 resolveFoodWidening
+(one widening resolution per request + memoization); H8 open-now two-mechanism
+verify; stale-comment sweep + dead exports; then structural: entity_surface
+merge, retire aliases[], preview-from-SQL, tokenized surface store.
