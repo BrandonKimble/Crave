@@ -143,9 +143,9 @@ describe('RedditBatchProcessingService (§10 batch-side window proof)', () => {
     expect(result.metrics.postsProcessed).toBe(0);
     // The REVERTED defect returns this with no field at all — a naive
     // reader cannot tell this apart from a legitimate freshness/delta skip.
-    expect(
-      result.details?.refetchGateSummary?.skippedDueToFetchFailure,
-    ).toBe(1);
+    expect(result.details?.refetchGateSummary?.skippedDueToFetchFailure).toBe(
+      1,
+    );
     expect(result.details?.warnings?.[0]).toMatch(/fetch failure/);
     // Transient (non-404) failure: no durable tombstone — left for a future
     // listing to re-surface, per the transient/decisive split.
@@ -163,9 +163,9 @@ describe('RedditBatchProcessingService (§10 batch-side window proof)', () => {
       chronologicalJob(['p1']),
       'corr-1',
     );
-    expect(
-      result.details?.refetchGateSummary?.skippedDueToFetchFailure,
-    ).toBe(1);
+    expect(result.details?.refetchGateSummary?.skippedDueToFetchFailure).toBe(
+      1,
+    );
     expect(
       h.prismaService.collectionRelevanceVerdict.createMany,
     ).toHaveBeenCalledWith(
@@ -193,9 +193,9 @@ describe('RedditBatchProcessingService (§10 batch-side window proof)', () => {
       chronologicalJob(['p1']),
       'corr-1',
     );
-    expect(
-      result.details?.refetchGateSummary?.skippedDueToFetchFailure,
-    ).toBe(1);
+    expect(result.details?.refetchGateSummary?.skippedDueToFetchFailure).toBe(
+      1,
+    );
     expect(
       h.prismaService.collectionRelevanceVerdict.createMany,
     ).toHaveBeenCalledWith(
