@@ -1,159 +1,173 @@
-# Account deletion — the ideal shape (owner-ratified 2026-08-03)
+# Account deletion — the shape, as built (F9970 truth rewrite, 2026-08-07)
 
-Research brief: Apple 5.1.1(v) + its support page, GDPR Art. 17, CCPA 1798.105
-/1798.140, EDPB draft Guidelines 02/2026 on Anonymisation, and the published
-deletion policies of Reddit, Discord, Strava, Yelp, Untappd, Letterboxd.
-Sources are cited in the session record; this file is the DECISION.
+This file was written on 2026-08-03 as a PLAN, while the design was still
+open. It stayed unchanged while the thing it described was built, rederived
+twice, and then rederived again — so by 2026-08-07 it named a dropped SQL
+function as "the foundation", presented a decided question as needing sign-off,
+and carried an addendum superseded the same day it was written.
 
-## What the law actually requires (less than assumed)
+It is now a description of what EXISTS. The dead options are kept, marked, at
+the bottom: a plan that deletes its own history stops being able to explain why
+the shipped thing looks the way it does, and every one of those options was
+discarded for a reason worth not rediscovering.
 
-- **Apple** requires real in-app deletion (not deactivation), easy to find, no
-  "email us". It **explicitly allows a disclosed grace period**, and defers
-  retention questions to privacy law. It mandates exactly one third-party act:
-  revoking Sign in with Apple tokens.
-- **GDPR/CCPA** permit retaining: legally-required financial records, the
-  RECIPIENT's copy of a message, and public content the user authored (freedom
-  of expression / free speech carve-outs) — **provided identity is severed**.
-- **Pseudonymous ≠ anonymous.** A persistent actor id is personal data. The
-  EDPB standard requires defeating singling out, linkability, AND inference.
-
-## Owner rulings (2026-08-03)
-
-| Class | Ruling |
-|---|---|
-| Photos | **KEEP, anonymized.** ⚠️ Requires a ToS content licence — LAUNCH BLOCKER. |
-| Polls, poll comments, endorsements | KEEP, anonymized (+ optional "delete mine too" checkbox in the flow) |
-| Private saved lists | HARD DELETE |
-| DMs | delete the sender's copy; the recipient keeps theirs, de-attributed |
-| Username | **BURN permanently** (impersonation risk beats namespace reuse) |
-| Billing records | RETAIN 7 years, minimized to what tax/AML needs |
-| Push tokens / device fingerprints | DELETE immediately (done 2026-08-02) |
-| Blocks | retain de-identified as a safety record |
-| Signals (raw text + viewport) | DELETE raw; keep only a truly anonymized aggregate |
-| Ban evasion | keep a SALTED ONE-WAY HASH of email/device; never the reversible original |
-| Mechanics | **logically instant, physically deferred: 30-day grace, then hard purge + processor propagation + confirmation email** |
-
-## THE FOUNDATION — built 2026-08-03
-
-`crave_person_data_map()` (SQL function, migration
-`*_person_data_map*`) is **the one definition of "a person's data"**, because
-its consumers are both SQL and TypeScript and a definition that cannot be
-shared gets copied. It classifies every table carrying a person column:
-
-- `person` (39) — the row IS the person's data → delete per-user; truncate wholesale
-- `authored` (6) — content the community built on → keep the row, sever the author
-- `root` (3) — `users` itself, handled explicitly by each caller
-
-This replaces THREE disagreeing definitions: the deletion service's
-hand-written `deleteMany` list, the staging scrub's regex, and
-`preserved-anchors.sql`'s hand-enumerated union. The disagreement was not
-hypothetical — deletion never severed `signal_actors.device_key` or
-`signals.subject_text`, which the scrub itself classifies as hard PII.
-
-**Law: extend the PATTERN or the CASE, never a caller-side list.**
-
-## THE OPEN DESIGN DECISION (needs owner sign-off before build)
-
-All four author columns are `NOT NULL`:
-`photos.user_id`, `poll_comments.user_id`, `poll_endorsements.user_id`,
-`messages.sender_user_id`. Anonymize-in-place therefore needs one of:
-
-**Option A — make them nullable, readers render "Deleted user" on null.**
-Honest (no fake rows), but it creates a NEW law every reader must remember:
-"handle a null author." That is precisely the disease this codebase keeps
-curing — `deletedAt: null` is already remembered at 19 call sites and was
-forgotten in notification-device reads.
-
-**Option B — a Ghost User sentinel row (RECOMMENDED).** One reserved,
-non-addressable user row; authored content repoints to it on deletion.
-Readers keep working unchanged — no new remembering, no null-handling law.
-Precedent: GitLab's Ghost User. Cost: the sentinel must be structurally
-non-addressable (cannot be followed, messaged, blocked, or surfaced in
-search/autocomplete), which is a small, testable set of guards rather than a
-rule spread across every read.
-
-Recommendation: **B**, because it adds one bounded invariant instead of one
-unbounded obligation.
-
-## REMAINING BUILD (ordered by risk)
-
-1. **Signals anonymization** — highest legal exposure, and INDEPENDENT of the
-   deletion work. Raw typed search text + a neighborhood-sized viewport +
-   timestamp keyed to a persistent actor id is re-identifying. Build the
-   anonymized aggregate as a SEPARATE table (drop actor id, coarsen location
-   to a cell with a k-anonymity floor, bucket time to the day, keep only
-   queries seen from k+ distinct actors) and repoint ranking at it, so ranking
-   never reads rows that must later be deleted. Do this even if deletion slips.
-2. **Ghost User + rewire `account-deletion.service.ts` onto the map** —
-   delete `person` rows, repoint `authored` rows, hard-delete identity.
-3. **Grace period mechanics** — logical erasure at confirm (sessions revoked,
-   profile hidden, content de-attributed, push tokens deleted), 30-day restore
-   key, hard purge on expiry.
-4. **Processor propagation** — Clerk (+ SIWA token revocation), Cloudinary,
-   Expo, Sentry, RevenueCat. Apple mandates the SIWA revocation specifically.
-5. **`preserved-anchors.sql` reads the map** instead of its own union.
-6. **ToS content licence for photos** — LAUNCH BLOCKER; the retention ruling
-   above depends on it.
-
-## What is NOT changing
-
-`users` stays as the anonymized shell so content attribution and financial
-audit survive — this is the industry pattern (Reddit, Discord, Strava) and is
-legally sound. The defect was never the pattern; it was that the personal data
-in OTHER tables did not actually die, and that three lists disagreed about
-which tables those were.
+Research base (unchanged, still the citation): Apple 5.1.1(v) + its support
+page, GDPR Art. 17 / Art. 15 / Art. 20 / Art. 5(1)(e), CCPA 1798.105 / 1798.140,
+EDPB Guidelines 02/2026 on Anonymisation, and the published deletion policies of
+Reddit, Discord, Strava, Yelp, Untappd, Letterboxd.
 
 ---
 
-# ADDENDUM — the signals derivation (from scratch, 2026-08-03)
+## The shape
 
-## What the data actually shows (measured, local DB)
+**Deletion is two phases, and the split is the whole design.**
 
-- **26 of 30 distinct search subjects were searched by exactly ONE person.**
-  Only 4 had two distinct actors. So today's `signals` is not aggregate demand
-  evidence — it is a per-person search history. At k=1 it fails "singling out"
-  by definition; no amount of dropping the actor id fixes a row that is unique
-  on its own.
-- Most rows carry NO subject at all: 465 `viewport_dwell` + 77 `entity_view`
-  rows are location traces (a bbox + a time + a persistent actor).
-- **`signal_demand_daily` — the table named like an aggregate — still carries
-  `actor_id` AND `subject_text`.** It is a per-actor daily rollup that retains
-  raw typed text indefinitely. Nothing in the pipeline ever aggregates ACROSS
-  people, which is the only operation that would make this data anonymous.
+| | |
+|---|---|
+| `deleteAccount()` | THE REQUEST. Reversible. Cancels web billing, revokes Clerk **sessions**, stashes the identity and blanks the visible name, marks `deletedAt` + `purgeDueAt`. Destroys nothing. |
+| `purgeAccount()` | THE DEADLINE, 30 days later. Irreversible. Destroys the Clerk identity, burns the handle, propagates to processors, erases the person. |
 
-## The two needs are separable (verified against consumers)
+The client signs the person out immediately after the request, so they land on
+the login screen — the market shape (Discord, Instagram). The closed-account
+takeover is reachable only by signing back **in** during the window.
 
-1. **Global demand** — ranking, and pointing collection at wanted dishes/cities.
-   Needs *how many distinct people* wanted X near Y in a period. It never needs
-   to know WHICH person. (`places-promotion` does not join actors at all.)
-2. **Personal demand** — the taste profile and "your" surfaces. Needs the
-   person by definition (`curated-list-builder.behavioralAttributeIds` joins
-   `user_taste_profile` → `signal_actors` → `users`). This is the person's own
-   data and must die with the account.
+**Restore is an explicit act** (`POST /users/me/restore`, `@AllowDeletedAccount`).
+It was once a side effect of `syncFromClerkClaims`, which the auth guard calls on
+every request — so a background refresh could un-delete an account nobody meant
+to bring back.
 
-Today both are served from one identifiable store, which is why the privacy
-question has no clean answer: the same rows are simultaneously "the corpus's
-demand evidence" and "this person's search history."
+**A deleted account is a non-identity, and that law is a PAIR:**
+`ClerkAuthGuard` REFUSES it (403 `ACCOUNT_DELETED`, carrying the deadline);
+`OptionalClerkAuthGuard` treats it as ANONYMOUS. Both halves are required — for
+a while only the first existed, and a closed account stayed a personalized
+viewer on six public GETs (F9964).
 
-## The ideal shape
+---
 
-Split by LIFECYCLE, because the two needs have different ones:
+## The foundation
 
-- `demand_aggregate` — (subject_key, area_cell, day) → `distinct_actor_count`.
-  No actor id. No free text beyond a normalized subject key. A subject enters
-  ONLY once ≥ k distinct actors have used it (the k-floor is applied at
-  PROMOTION, not at read, so an identifying row never lands here). Genuinely
-  anonymous → retained indefinitely → this is what ranking reads.
-- `personal_activity` — the person's own acts, raw text, precise context.
-  Short TTL (operational: dedupe, abuse detection), deleted on account
-  deletion. Ranking NEVER reads it.
+`PERSON_DATA_RULES` (`person-data-class.ts`) — a **declaration**, one rule per
+person-shaped column, stating what happens to it. Census enforces total
+classification: an unclassified person-shaped column reds the build.
 
-Consequences that fall out for free: deletion no longer has to reason about
-"is this row anonymous enough" (personal_activity just dies); ranking cannot
-regress into reading identifiable rows (it has no access path); and the
-k-anonymity property is enforced at write time by construction rather than
-remembered at each read.
+`person-data-scope.ts` — **the compiler**. The declaration says WHAT; this is
+the single place that turns it into SQL. Three consumers (eraser, exporter,
+retention sweep) ask it rather than each deriving their own answer, which is
+what they used to do and where every defect lived.
 
-**The current design cannot be patched into this.** Dropping `actor_id` from
-`signals` would leave 26/30 subjects still unique on their text+bbox+time.
-The fix is the write path, not the columns.
+The rule type is a **discriminated union**: each disposition carries exactly
+what it needs. Six illegal states are rejected by the compiler rather than by a
+test — a `retain` with no horizon, a horizon with no unit, an acting rule with
+no locator, two locators at once, a `retain` carrying a scope, a kept column
+with no stated basis.
+
+Dispositions: `delete_row`, `sever`, `null_column`, `retain`,
+`anonymized_by_shell`, `not_person`.
+
+Derived from the same declaration, never re-listed:
+- **erasure** (`person-data-eraser.service.ts`) — order is load-bearing:
+  `delete_row` → `null_column` → `sever`, because severing `signal_actors`
+  destroys the mapping `signals.subject_text` is scoped through.
+- **subject access / portability** (`person-data-export.service.ts`, Art. 15/20)
+- **retention horizons** (`retention-horizon.service.ts`, Art. 5(1)(e)) — every
+  retained column states how long, and `'indefinite'` is a word you have to type.
+
+---
+
+## What survives, and why it is lawful
+
+Community content — polls, comments, endorsements, photos — survives with
+authorship severed. Hard deletion would tear holes in other people's threads.
+
+The right that makes this lawful rather than merely convenient: the **ToS content
+licence expressly survives termination** (Section 5.1, irrevocable and perpetual
+as to already-posted content). That clause was missing until 2026-08-07; the
+survival clause listed only indemnification, disclaimers and liability limits.
+
+Demand evidence survives with the PERSON severed, not the act deleted. Data
+*about* the person — onboarding answers, the inferred taste profile — is
+deleted outright.
+
+A deleted author renders as **"Deleted user"** through one server-side function
+(`publicAuthorIdentity`) and one client type, and person-targeting affordances
+refuse. Since D148 the identity columns are blanked at deletion time, so a
+forgetful reader renders a blank rather than a name.
+
+---
+
+## The promise and the mechanism must agree
+
+Three artefacts describe deletion to users: the app's delete copy, `privacy.html`,
+`terms.html`. They are asserted against the code in the same build
+(`account-deletion-promise.spec.ts`), because the defect this whole area was
+bought with was a policy promising a 30-day recoverable window while the code
+destroyed everything inside the request.
+
+**Deploy ordering is a consequence of that, and it is asymmetric:** api/worker
+FIRST, then `apps/site`, then mobile. Site ahead of api republishes exactly that
+defect. `apps/site` is a Railway service via `railway.site.json` but is NOT in
+`deploy.sh`'s default `(api worker)` — it must be named.
+
+---
+
+## Proofs
+
+The guarantees are DB-backed, not unit-mocked; `yarn test:db` is the gate that
+sees them.
+
+- **seed-and-erase** — every acting rule proven to act, against a real database,
+  rolled back. Ground truth for the fixture comes from a source INDEPENDENT of
+  the rule under test, because the first version built the fixture from the rule
+  and so could only ever confirm it.
+- **reversibility** — delete THEN restore is the identity function on the
+  person's row: every physical column diffed. Replaced four assertions that the
+  source did not contain four named calls, which a destructive fifth step of a
+  new kind sailed past.
+- **erasure order**, **third-party survival** (D146), **the k-floor**, **the
+  coverage ledger** (does real data exercise each rule — a production signal,
+  distinct from correctness).
+
+**The lesson this territory produced**, recorded because it caused three of its
+own defects: *a guard that names its cases is a guard that will miss the next
+one.* The dead `check-author-identity` watchdog grepped for a string and matched
+only the files it exempted; the "every authenticated route refuses" claim was
+verified against one guard and asserted of all; the reversibility proof listed
+four calls. Same move each time — verify the case in front of you, then write
+the general sentence. Range over the set, or you are only testing your memory.
+
+---
+
+## Superseded — kept so the reasons are not rediscovered
+
+**`crave_person_data_map()` (SQL function).** Named "THE FOUNDATION" in the
+original plan. Dropped: it classified by column-name REGEX, and a regex answers
+confidently for a column it has never seen. It also mis-classified `signals`,
+`messages` and `user_blocks` as delete-the-row, which would have destroyed the
+demand ledger, recipients' copies of their own DMs, and safety blocks. It had
+zero consumers when it was deleted. Inference survives only as the ADVERSARY:
+the census sweeps an over-broad net and fails the build for anything
+unclassified.
+
+**The Ghost User sentinel.** The original plan's recommended Option B — one
+reserved user row that orphaned content reattaches to, with GitLab as precedent.
+Not built, and not needed: the departing person's own `users` row survives
+ANONYMIZED and already is the ghost (`anonymized_by_shell`). A sentinel would
+have to be kept unfollowable, unmessageable and unsearchable forever; an
+anonymized shell is those things by construction. This is the Reddit/Discord
+shape. `assertShellIsAnonymous` proves the invariant it rests on.
+
+**The four NOT NULL author columns** (`photos.user_id`, `poll_comments.user_id`,
+`poll_endorsements.user_id`, `messages.sender_user_id`) — the original plan's
+open question, since anonymize-in-place appeared to need either a sentinel or a
+schema change. Resolved by the shell: the column keeps pointing at the person's
+own anonymized row, so nothing is nulled and nothing is migrated.
+
+**The signals ADDENDUM** (parallel anonymous demand tables). Superseded the same
+day it was written. A table with the actor grouped away cannot compute demand
+mass, which is DEFINED per actor (`Σ log2(1 + acts)`) — it can only store a
+number baked at promotion time, freezing the recency kernel, kind weights, echo
+exclusion, place lineage and window. It disagreed with `demand-mass.reader` on
+every one of those axes with nothing failing. The concern was always ONE COLUMN,
+so the k-anonymity floor is now the `signal_emittable_terms` VIEW, joined by the
+reads that emit text across people. As a database object it caught a leak in
+code written by someone who had never heard of the rule.
