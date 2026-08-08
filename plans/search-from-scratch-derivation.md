@@ -324,6 +324,8 @@ plus one flattening):
   per-consumer floors.
 - Gazetteer exists but is unused by search; missing ingredient type AND
   structurally one-type-per-span (the §1.1 scanner change).
+  **[FIXED — the gazetteer is now step one of Understand and is canonical;
+  this line records what the audit FOUND, not current state.]**
 - A THIRD projection exists that the derivation missed: see-locations
   (lean single-restaurant + in-view locations, bypasses the ranking
   pipeline entirely). Untouched by this redesign — named here so scope is
@@ -536,8 +538,11 @@ caps; 30-day staging retention. The stop-list is now genuinely gone
 - §1.1 overlap policy (decide at build): DECIDED — contained shorter
   matches are NOT retained as spans; family meaning flows from category
   edges/name variants in Ground instead.
-- DIETARY TOGGLE STRIP: still an OPEN PRODUCT ITEM (no DTO field, no
-  mobile UI) — the query-text dietary lane is live, the toggles are not.
+- DIETARY TOGGLE STRIP: ~~still an OPEN PRODUCT ITEM (no DTO field, no
+  mobile UI)~~ **SHIPPED 2026-08-04 — DTO field, GET /search/dietary-options,
+  and the mobile strip are all live (see the B1-B3 close-out above, which
+  this line contradicted). Per-projection walls: a venue passes on its own
+  attribute OR any qualifying dish; a dish only on its own.**
 - §7.2 similar-chip dissolution: NOT dissolved — it is a second pooled
   execution, now CONCURRENT with the page (latency-neutral-ish);
   true single-execution provenance remains future work.
@@ -645,8 +650,10 @@ cross-type exact).**
   matches as family evidence) — validate on real queries.
 - ~~The richness threshold (today's 10)~~ **RESOLVED (owner, 2026-08-01):
   one full page (DEFAULT_PAGE_SIZE = 25).** Applied to
-  RELAX_STRICT_THRESHOLD immediately; the step-3 gate inherits the same
-  value; re-measure in the calibration tail. Audited: no other bare-10
+  the threshold immediately; the step-3 gate inherits the same value.
+  (The name RELAX_STRICT_THRESHOLD is DEAD — it died with the relaxation
+  ladder. The ruling lives on as `POOLED_COVERAGE_THRESHOLD =
+  DEFAULT_PAGE_SIZE` in search.service.ts.) re-measure in the calibration tail. Audited: no other bare-10
   relax knobs exist in the search module (ON_DEMAND_MIN_RESULTS=1 is a
   different, intentional knob).
 - Primary-entity rule for the search signal when a span grounds to
