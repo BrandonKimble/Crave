@@ -300,7 +300,12 @@ export function retentionWhere(
       ?.map((c) => eq(c, alias))
       .join(' OR ');
   if (!scope) return null;
-  return rule.rowPredicate ? `(${scope}) AND (${rule.rowPredicate})` : scope;
+  // A `retain` rule cannot carry a rowPredicate — the union forbids it, which
+  // is why this reads through a widened view rather than the narrowed one.
+  // Keeping the clause means a future retention that DOES want to narrow gets
+  // it by declaring the field, not by editing this function.
+  const predicate = (rule as { rowPredicate?: string }).rowPredicate;
+  return predicate ? `(${scope}) AND (${predicate})` : scope;
 }
 
 /**

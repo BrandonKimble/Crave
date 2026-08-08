@@ -65,9 +65,21 @@ describe('retention horizon — the promise has a mechanism', () => {
     // you have to type, so the answer is always somebody's decision. This
     // asserts the property the type is meant to guarantee, because a type can
     // be widened back by anyone in a hurry.
-    const undecided = PERSON_DATA_RULES.filter(
-      (rule) => rule.disposition === 'retain' && rule.horizon == null,
-    ).map((rule) => `${rule.table}.${rule.column}`);
+    // TypeScript now narrows this to `never` — `horizon` is REQUIRED on the
+    // retain variants, so a rule without one cannot be written. That is the
+    // win, and it is also why this reads through a widened view: the assertion
+    // survives someone widening the type back, which a compile-time guarantee
+    // alone would not.
+    const undecided = (
+      PERSON_DATA_RULES as ReadonlyArray<{
+        table: string;
+        column: string;
+        disposition: string;
+        horizon?: unknown;
+      }>
+    )
+      .filter((rule) => rule.disposition === 'retain' && rule.horizon == null)
+      .map((rule) => `${rule.table}.${rule.column}`);
     expect(undecided).toEqual([]);
 
     // And 'indefinite' must be a REASON, not a shrug: it keeps a person's data

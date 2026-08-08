@@ -54,78 +54,108 @@ export type PersonDataDisposition =
   /** Deliberately NOT a person's data (a restaurant's phone is the business's). */
   | 'not_person';
 
-export interface PersonDataRule {
-  table: string;
-  column: string;
-  disposition: PersonDataDisposition;
-  /** Optional SQL predicate narrowing the rule to some rows of the table. */
-  rowPredicate?: string;
+/**
+ * WHERE A ROW'S PERSON IS. Exactly one of three, always stated.
+ *
+ * These used to be two optional booleans-and-strings whose ABSENCE meant the
+ * third case. "Neither field is set" is not a declaration — it is a blank that
+ * happens to be interpreted, and the interpretation drifted: the eraser once
+ * read it as "scope by your own column" and emitted `WHERE residue_text =
+ * <uuid>`, a predicate that matches nothing.
+ */
+type PersonLocator =
+  /** THIS column holds the person's id. */
+  | { personKey: true; personScopeSql?: never; classifiedBy?: never }
+  /** The person is reached through a join (signals -> signal_actors). */
+  | { personScopeSql: string; personKey?: never; classifiedBy?: never }
   /**
-   * TRUE when this column IDENTIFIES the person in this table — the key a
-   * row-level action scopes by.
-   *
-   * `delete_row` is a ROW verb declared per COLUMN, so a table with several
-   * person columns produced several DELETEs, each scoping by its own column.
-   * Only one of them was ever a person key; the rest asked things like
-   * "delete rows whose residue_text equals this uuid" and matched nothing.
-   * Harmless only by luck — the one correct statement removed the row first.
-   * Marking the key makes the scope a declaration instead of an accident.
+   * This column NAMES person data but does not LOCATE a person — the table's
+   * key does. A device fingerprint, a push token, a raw residue string.
    */
-  personKey?: boolean;
-  /**
-   * How to reach the person from THIS table when the person key is not a
-   * direct column — e.g. `signals` reaches a person only through
-   * `signal_actors`. `$1` is bound to the user id. Declared, because a join
-   * this important should be written down once, not re-derived per caller.
-   */
-  personScopeSql?: string;
-  /** Why. Required for `retain` and `not_person` — the two that keep data. */
-  basis?: string;
-  /**
-   * HOW LONG, for `retain`. Not optional, and `'indefinite'` is a WORD you
-   * have to type.
-   *
-   * This was `horizonDays?: number`, and the optionality was the bug. Nine
-   * rules retained data; two stated a horizon; the other seven were kept
-   * FOREVER because nobody was ever asked. "Forever" was the silent default
-   * of an omitted field rather than a decision anybody made — and that is the
-   * same failure as a promise with no mechanism, one level earlier: the
-   * promise was never even written down.
-   *
-   * An optional field is an invitation to declare something incomplete that
-   * nothing notices. Making the choice mandatory means a new retained column
-   * cannot be added without someone answering "until when?", and
-   * `'indefinite'` records that the answer was considered rather than skipped.
-   */
-  horizon?: number | 'indefinite';
-  /**
-   * WHAT THE HORIZON EXPIRES: the ROW, or just THIS COLUMN'S VALUE.
-   *
-   * Required whenever `horizon` is a number (the census fails without it), for
-   * the same reason `horizon` itself is required: the answer used to be an
-   * unstated default, and the default was wrong for the first rule that needed
-   * the other one.
-   *
-   * Every bounded horizon until 2026-08-07 sat on a column that NAMES the
-   * person (`billing_subscriptions.user_id`, `user_reports.reported_user_id`),
-   * where "the promise expired" and "delete the row" are the same sentence —
-   * so the sweep only ever learned to DELETE. Then `users.stripe_customer_id`
-   * arrived: a retained VALUE on a row that must never be deleted, because the
-   * anonymized shell is what anchors every retained financial record and every
-   * severed authorship. Handed to a row-DELETE it was harmless only by luck
-   * (`WHERE stripe_customer_id = <a user id>` matches nothing, so the sweep
-   * was a silent no-op reading as enforcement) — and one scope fix away from
-   * deleting the shell.
-   *
-   *   'row'    — the promise is about the RECORD. Delete it. Only legitimate
-   *              on a column that locates the person, since that is what the
-   *              DELETE scopes by.
-   *   'column' — the promise is about the VALUE. Null it, scoping by the
-   *              table's declared person key; the row survives under whatever
-   *              rules govern its other columns.
-   */
-  horizonUnit?: 'row' | 'column';
-}
+  | { classifiedBy: 'table-key'; personKey?: never; personScopeSql?: never };
+
+type RuleIdentity = { table: string; column: string };
+
+/**
+ * THE RULE, AS A UNION — one variant per disposition, carrying exactly what
+ * that disposition needs and nothing it does not.
+ *
+ * This was one interface with six optional fields, and every field that could
+ * be omitted was a way to write a rule nothing would honour. Those were not
+ * hypothetical: `horizonDays` sat on three rules with NO reader at all, and
+ * seven more retained columns had no horizon because omitting one silently
+ * meant forever. A test can catch that after the fact; a type can refuse it.
+ *
+ * What is now unwritable, each of which was reachable before:
+ *   - a `retain` rule with a scope or a row predicate (the sweep ignores both,
+ *     so the author would believe a filter applied that never did);
+ *   - a `retain` with a day-count and no `horizonUnit` — the D146 defect,
+ *     where the sweep assumed DELETE and would have destroyed the anonymized
+ *     shell that anchors every retained financial record;
+ *   - a horizon on `sever`/`null_column`/`anonymized_by_shell`, where nothing
+ *     reads it;
+ *   - an acting rule with no locator, which the compiler had to guess at;
+ *   - a `retain` or `not_person` with no stated basis — the two dispositions
+ *     that KEEP data, where "why" is the whole justification.
+ */
+export type PersonDataRule = RuleIdentity &
+  (
+    | (({
+        disposition: 'delete_row' | 'sever' | 'null_column';
+        /** Narrows the rule to some rows (a personal list, not an editorial one). */
+        rowPredicate?: string;
+        basis?: string;
+      } & PersonLocator) & { horizon?: never; horizonUnit?: never })
+    | {
+        disposition: 'retain';
+        /** Required: keeping a person's data needs a reason. */
+        basis: string;
+        /** Required: forever must be typed, never left blank. */
+        horizon: 'indefinite';
+        personKey?: true;
+        horizonUnit?: never;
+        personScopeSql?: never;
+        rowPredicate?: never;
+        classifiedBy?: never;
+      }
+    | {
+        disposition: 'retain';
+        basis: string;
+        /** Days from the account's purge. */
+        horizon: number;
+        /**
+         * Required WITH a day-count: does the horizon expire the ROW or just
+         * this VALUE? Assuming "row" is what nearly deleted the anonymized
+         * shell.
+         */
+        horizonUnit: 'row' | 'column';
+        personKey?: true;
+        personScopeSql?: never;
+        rowPredicate?: never;
+        classifiedBy?: never;
+      }
+    | {
+        disposition: 'anonymized_by_shell';
+        basis?: string;
+        personKey?: never;
+        personScopeSql?: never;
+        rowPredicate?: never;
+        classifiedBy?: never;
+        horizon?: never;
+        horizonUnit?: never;
+      }
+    | {
+        disposition: 'not_person';
+        /** Required: declaring something NOT a person's needs a reason. */
+        basis: string;
+        personKey?: never;
+        personScopeSql?: never;
+        rowPredicate?: never;
+        classifiedBy?: never;
+        horizon?: never;
+        horizonUnit?: never;
+      }
+  );
 
 /**
  * THE DECLARATION. One row per person-shaped column in the schema.
@@ -154,6 +184,7 @@ export const PERSON_DATA_RULES: readonly PersonDataRule[] = [
     table: 'users',
     column: 'auth_provider_user_id',
     disposition: 'null_column',
+    classifiedBy: 'table-key',
     basis:
       'Clerk identity — destroyed at the provider, so the local pointer must go too.',
   },
@@ -161,6 +192,7 @@ export const PERSON_DATA_RULES: readonly PersonDataRule[] = [
     table: 'users',
     column: 'revenuecat_app_user_id',
     disposition: 'null_column',
+    classifiedBy: 'table-key',
   },
   // MONEY, DECLARED WHERE THE MECHANISM CAN SEE IT (owner ruling 2026-08-07).
   // This was kept by an INLINE COMMENT in the purge — "stripeCustomerId
@@ -356,6 +388,7 @@ export const PERSON_DATA_RULES: readonly PersonDataRule[] = [
     table: 'signal_actors',
     column: 'device_key',
     disposition: 'null_column',
+    classifiedBy: 'table-key',
     basis:
       'Hard-contact fingerprint; retaining it would let the next sign-in on that device re-adopt the actor.',
   },
@@ -460,6 +493,7 @@ export const PERSON_DATA_RULES: readonly PersonDataRule[] = [
     table: 'collection_on_demand_unsegmented_residue',
     column: 'residue_text',
     disposition: 'delete_row',
+    classifiedBy: 'table-key',
     basis:
       'Raw typed search text. Dies with the row (same rule as its user_id).',
   },
@@ -500,12 +534,14 @@ export const PERSON_DATA_RULES: readonly PersonDataRule[] = [
     table: 'notification_devices',
     column: 'expo_push_token',
     disposition: 'delete_row',
+    classifiedBy: 'table-key',
     basis: 'Live push contact. Dies with the device row.',
   },
   {
     table: 'user_devices',
     column: 'device_key',
     disposition: 'delete_row',
+    classifiedBy: 'table-key',
     basis: 'Device fingerprint. Dies with the device row.',
   },
   {
