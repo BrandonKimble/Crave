@@ -25,18 +25,23 @@ describe('account deletion — the promise matches the mechanism', () => {
     'apps/api/src/modules/identity/account-deletion.service.ts',
   );
 
-  it('the request destroys nothing', () => {
-    // The whole grace period rests on this: the identity has to survive the
-    // request, because signing in IS the restore.
-    const request = service.slice(
-      service.indexOf('async deleteAccount('),
-      service.indexOf('async purgeAccount('),
-    );
-    expect(request).not.toMatch(/deleteClerkUser/);
-    expect(request).not.toMatch(/personDataEraser|\.erase\(/);
-    expect(request).not.toMatch(/reservedUsername/);
-    expect(request).not.toMatch(/createHmac/);
-  });
+  // "THE REQUEST DESTROYS NOTHING" MOVED, AND BECAME A PROPERTY.
+  //
+  // It used to live here as four assertions that deleteAccount's SOURCE does
+  // not contain four named calls. That is an enumeration of remembered sins,
+  // and a destructive fifth step of a new kind sails straight past it —
+  // demonstrated: nulling `stripeCustomerId` in the request adds none of the
+  // four strings and the old form stayed green.
+  //
+  // It is now account-deletion-reversible.integration.spec.ts, which asserts
+  // the thing the sentence actually means — delete THEN restore is the
+  // identity function on the person's row, every column compared against a
+  // real database. That test names `stripe_customer_id` when the same mutation
+  // is applied. Nothing about HOW deletion works is enumerated there, so the
+  // fiftieth step is caught by the same assertion as the first.
+  //
+  // What stays HERE is the other half, which a round trip cannot see: that the
+  // irreversible work exists at all, and lives in the purge.
 
   it('the purge is the only thing that destroys', () => {
     const purge = service.slice(service.indexOf('async purgeAccount('));
