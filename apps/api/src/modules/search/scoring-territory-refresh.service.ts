@@ -65,11 +65,16 @@ export class ScoringTerritoryRefreshService {
         tookMs: Date.now() - started,
       });
     } catch (error) {
-      this.logger.warn('Scoring-territory refresh failed', {
-        error: {
-          message: error instanceof Error ? error.message : String(error),
-        },
-      });
+      // logger.error, NOT warn: only .error reaches Sentry, and this is a
+      // DERIVED INDEX the hot path reads. A rebuild that fails every night
+      // leaves the index permanently stale with nobody told — and the
+      // open-now predicate FAILS OPEN on an empty table, so the staleness
+      // hides itself from users too. The Error goes in the error slot so
+      // Sentry gets a stack and groups it, rather than a bare message.
+      this.logger.error(
+        'Scoring-territory refresh failed',
+        error instanceof Error ? error : new Error(String(error)),
+      );
     } finally {
       this.refreshInFlight = false;
     }

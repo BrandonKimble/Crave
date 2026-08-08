@@ -1,9 +1,5 @@
-import {
-  Injectable,
-  OnModuleInit,
-  OnModuleDestroy,
-  Inject,
-} from '@nestjs/common';
+import { Injectable, Inject } from '@nestjs/common';
+import { Cron } from '@nestjs/schedule';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { LoggerService } from '../../shared';
@@ -15,15 +11,10 @@ import { LoggerService } from '../../shared';
 // value): "an evidence-less placeholder gets a month to earn its
 // existence." §18 docket: awaiting batch ratification.
 const THIRTY_DAYS_MS = 30 * 24 * 60 * 60 * 1000;
-const ONE_DAY_MS = 24 * 60 * 60 * 1000;
 
 @Injectable()
-export class OnDemandPlaceholderCleanupService
-  implements OnModuleInit, OnModuleDestroy
-{
+export class OnDemandPlaceholderCleanupService {
   private readonly retentionMs = THIRTY_DAYS_MS;
-  private readonly cadenceMs = ONE_DAY_MS;
-  private cleanupTimer: NodeJS.Timeout | null = null;
   private readonly logger: LoggerService;
 
   constructor(
@@ -33,40 +24,24 @@ export class OnDemandPlaceholderCleanupService
     this.logger = loggerService.setContext('OnDemandPlaceholderCleanupService');
   }
 
-  onModuleInit(): void {
-    // Schedule daily cleanup; fire-and-forget but log failures.
-    void this.runCleanup().catch((error) => {
-      this.logger.error('Initial on-demand placeholder cleanup failed', {
-        error:
-          error instanceof Error
-            ? { message: error.message, stack: error.stack }
-            : { message: String(error) },
-      });
-    });
-
-    this.cleanupTimer = setInterval(() => {
-      void this.runCleanup().catch((error) => {
-        this.logger.error('On-demand placeholder cleanup failed', {
-          error:
-            error instanceof Error
-              ? { message: error.message, stack: error.stack }
-              : { message: String(error) },
-        });
-      });
-    }, this.cadenceMs);
-  }
-
-  onModuleDestroy(): void {
-    if (this.cleanupTimer) {
-      clearInterval(this.cleanupTimer);
-      this.cleanupTimer = null;
-    }
-  }
-
   /**
    * Archive on-demand placeholder restaurants that never produced
    * connections within the retention window (archive-not-delete contract).
    */
+  /**
+   * @Cron, not setInterval. This job scheduled itself from onModuleInit with
+   * a raw timer plus an immediate run at boot, which put it OUTSIDE the one
+   * gate that decides which process runs scheduled work: app.module.ts
+   * registers ScheduleModule only for the scheduler runtime, and says of that
+   * line "this, and nothing else, decides it". That sentence was false here.
+   *
+   * Two consequences, both silent. It ran in EVERY api replica rather than
+   * the worker. And stopCronsForScript only stops SchedulerRegistry jobs, so
+   * a raw interval survived it — meaning every `createApplicationContext`
+   * script fired an entity-ARCHIVING pass at boot. stop-crons.ts predicted
+   * exactly this ("when a fourth member appears..."); this was member four.
+   */
+  @Cron('15 9 * * *')
   async runCleanup(): Promise<void> {
     const cutoff = new Date(Date.now() - this.retentionMs);
     // ARCHIVE, never delete (audit §1): entity rows are FK-load-bearing —

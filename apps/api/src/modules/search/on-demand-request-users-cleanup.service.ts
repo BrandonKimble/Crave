@@ -1,9 +1,5 @@
-import {
-  Injectable,
-  OnModuleInit,
-  OnModuleDestroy,
-  Inject,
-} from '@nestjs/common';
+import { Injectable, Inject } from '@nestjs/common';
+import { Cron } from '@nestjs/schedule';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { LoggerService } from '../../shared';
@@ -12,15 +8,10 @@ import { LoggerService } from '../../shared';
 // quarter — long enough to debug any collection complaint, short enough to
 // not hoard user data. What changes it: owner re-ratify (privacy stance).
 const NINETY_DAYS_MS = 90 * 24 * 60 * 60 * 1000;
-const ONE_DAY_MS = 24 * 60 * 60 * 1000;
 
 @Injectable()
-export class OnDemandRequestUsersCleanupService
-  implements OnModuleInit, OnModuleDestroy
-{
+export class OnDemandRequestUsersCleanupService {
   private readonly retentionMs = NINETY_DAYS_MS;
-  private readonly cadenceMs = ONE_DAY_MS;
-  private cleanupTimer: NodeJS.Timeout | null = null;
   private readonly logger: LoggerService;
 
   constructor(
@@ -32,35 +23,20 @@ export class OnDemandRequestUsersCleanupService
     );
   }
 
-  onModuleInit(): void {
-    void this.runCleanup().catch((error) => {
-      this.logger.error('Initial on-demand request user cleanup failed', {
-        error:
-          error instanceof Error
-            ? { message: error.message, stack: error.stack }
-            : { message: String(error) },
-      });
-    });
-
-    this.cleanupTimer = setInterval(() => {
-      void this.runCleanup().catch((error) => {
-        this.logger.error('On-demand request user cleanup failed', {
-          error:
-            error instanceof Error
-              ? { message: error.message, stack: error.stack }
-              : { message: String(error) },
-        });
-      });
-    }, this.cadenceMs);
-  }
-
-  onModuleDestroy(): void {
-    if (this.cleanupTimer) {
-      clearInterval(this.cleanupTimer);
-      this.cleanupTimer = null;
-    }
-  }
-
+  /**
+   * @Cron, not setInterval. This job scheduled itself from onModuleInit with
+   * a raw timer plus an immediate run at boot, which put it OUTSIDE the one
+   * gate that decides which process runs scheduled work: app.module.ts
+   * registers ScheduleModule only for the scheduler runtime, and says of that
+   * line "this, and nothing else, decides it". That sentence was false here.
+   *
+   * Two consequences, both silent. It ran in EVERY api replica rather than
+   * the worker. And stopCronsForScript only stops SchedulerRegistry jobs, so
+   * a raw interval survived it — meaning every `createApplicationContext`
+   * script fired an entity-ARCHIVING pass at boot. stop-crons.ts predicted
+   * exactly this ("when a fourth member appears..."); this was member four.
+   */
+  @Cron('30 9 * * *')
   async runCleanup(): Promise<void> {
     // Phase C: ask events live on the immutable signals ledger now — no
     // retention pruning here (the deletion story severs signal_actors).
