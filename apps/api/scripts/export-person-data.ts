@@ -16,12 +16,18 @@
  *  1. Verify the requester controls the account's email (reply to the address
  *     on file; never trust the address in the request).
  *  2. Run this with their userId. It writes JSON.
- *  3. Read the `excluded` section before sending. It lists the `retain`
- *     columns the machine export leaves out — financial and safety records.
- *     Those ARE covered by a real Art.15 request: include them by hand, with
- *     the OTHER people in them redacted (a report names its subject; a block
- *     names the blocked). That redaction is the reason this step is human.
- *  4. Deliver out-of-band to the verified address. Delete the local file.
+ *  3. THE MACHINE REDACTS; `excluded` IS AUTHORITATIVE. Every column listed
+ *     there is absent from `tables` by construction — the query projects the
+ *     included columns and nothing else, so a third party named in one of the
+ *     subject's rows (a report's subject, a block's blocked account) is not in
+ *     the file. This step used to say "include them by hand, redacted", which
+ *     was worse than useless: it asked an operator to redact records the
+ *     export had already shipped raw. Do NOT paste withheld columns back in.
+ *  4. Read `excluded` anyway, and answer it in prose. Those `retain` columns
+ *     are still personal data and a real Art.15 request covers them — the
+ *     honest response describes what is held and why (the basis is printed
+ *     with each entry), rather than disclosing rows that name someone else.
+ *  5. Deliver out-of-band to the verified address. Delete the local file.
  */
 import 'dotenv/config';
 process.env.PROCESS_ROLE ||= 'api';
@@ -58,9 +64,9 @@ async function main() {
       `Wrote ${out}: ${Object.keys(payload.tables).length} tables, ${rows} rows.`,
     );
     console.log(
-      `${payload.excluded.length} retained column(s) excluded — read the ` +
-        `"excluded" section and add them by hand, redacted. See the runbook ` +
-        `at the top of this script.`,
+      `${payload.excluded.length} column(s) withheld — they are ABSENT from ` +
+        `the file, not merely listed. Answer the "excluded" section in prose; ` +
+        `do not paste those columns back in. See the runbook at the top.`,
     );
   } finally {
     await app.close();

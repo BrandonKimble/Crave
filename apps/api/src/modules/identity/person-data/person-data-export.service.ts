@@ -36,9 +36,27 @@ import { subjectRows } from './person-data-scope';
  *   - `retain` — kept under a stated legal basis. NOTE these ARE still
  *     personal data and a real Art.15 request covers them; they are excluded
  *     from the machine export because they are financial and safety records
- *     whose disclosure needs a human to check the requester's identity and to
- *     redact the OTHER people in them (a report names its subject; a block
- *     names the blocked). The runbook covers that path.
+ *     whose disclosure needs a human to check the requester's identity. The
+ *     runbook covers that path.
+ *
+ * `excluded` IS TRUE BY CONSTRUCTION, NOT BY CLAIM (F9502).
+ *
+ * The exclusions have always been computed per COLUMN, but the query used to
+ * be `SELECT *` per TABLE — so the payload said it had withheld
+ * `user_reports.reported_user_id` and `user_blocks.blocked_user_id` while
+ * shipping both, raw, next to the sentence claiming otherwise. That is a
+ * disclosure of ANOTHER person's data (Art. 15(4) says a subject-access
+ * response must not adversely affect the rights of others), and the runbook
+ * then told the operator to hand-redact records the machine had already sent.
+ * A manifest that describes a payload it does not control is not a safeguard;
+ * it is a false statement with a process attached.
+ *
+ * So the projection is built FROM the same `excluded` list the payload
+ * reports: physical columns (the catalog `SELECT *` itself expands from),
+ * minus every column this run recorded as withheld. There is no second
+ * opinion to drift — widening the manifest narrows the query in the same
+ * pass, and a column can only appear in the payload by NOT appearing in
+ * `excluded`.
  *
  * DELIVERY IS DELIBERATELY NOT AN ENDPOINT. Handing a full personal-data
  * archive to whoever holds a session token is a data-breach vector — the
@@ -83,16 +101,28 @@ export class PersonDataExportService {
     const byTable = new Map<string, PersonDataRule[]>();
     const excluded: Array<{ table: string; column: string; basis?: string }> =
       [];
+    /**
+     * THE MANIFEST, INDEXED — the same entries, addressable by table.
+     *
+     * Deliberately populated in the loop that builds `excluded`, from the same
+     * push: the projection below and the sentence the subject reads are then
+     * two views of ONE list, and no edit can move one without the other.
+     */
+    const withheld = new Map<string, Set<string>>();
 
     for (const rule of PERSON_DATA_RULES) {
       if (!PersonDataExportService.EXPORTABLE.has(rule.disposition)) {
         // Recorded, not silently dropped: an export that omits things without
-        // saying so is indistinguishable from a complete one.
+        // saying so is indistinguishable from a complete one — and now
+        // WITHHELD, not merely recorded (see the header, F9502).
         excluded.push({
           table: rule.table,
           column: rule.column,
           basis: rule.basis,
         });
+        const set = withheld.get(rule.table) ?? new Set<string>();
+        set.add(rule.column);
+        withheld.set(rule.table, set);
         continue;
       }
       const list = byTable.get(rule.table) ?? [];
@@ -119,9 +149,17 @@ export class PersonDataExportService {
       const where = subjectRows(table, { includeRetained: false });
       if (!where) continue;
 
+      // Outside the try: its own failures are already specific, and wrapping
+      // them in "Export failed for X:" twice reads like two faults.
+      const projection = await this.projection(table, withheld);
+      // Every column of this table is withheld — there is nothing to hand
+      // over, and `SELECT  FROM` is not a query.
+      if (projection.length === 0) continue;
+
       try {
         const rows = await this.prisma.$queryRawUnsafe<unknown[]>(
-          `SELECT * FROM "${table}" WHERE ${where}`,
+          `SELECT ${projection.map((c) => `"${c}"`).join(', ')} ` +
+            `FROM "${table}" WHERE ${where}`,
           userId,
         );
         if (rows.length) tables[table] = rows;
@@ -147,5 +185,51 @@ export class PersonDataExportService {
       tables,
       excluded,
     };
+  }
+
+  /**
+   * THE COLUMNS THIS TABLE MAY HAND OVER — everything it physically has, minus
+   * everything this run's manifest says it withheld.
+   *
+   * WHY THE CATALOG RATHER THAN THE DECLARATION. The declaration classifies
+   * PERSON-shaped columns; it deliberately says nothing about `created_at`, a
+   * list's name, or a report's reason code. Projecting only declared columns
+   * would answer the leak by gutting the export — a subject-access response
+   * made of foreign keys. `SELECT *` expands from `information_schema`, so
+   * subtracting from that same catalog yields exactly the set `SELECT *` would
+   * have returned, less the withheld ones, and nothing is dropped by accident.
+   *
+   * FAIL LOUD ON A NAME THAT DOES NOT EXIST. A withheld column the table does
+   * not have means the declaration and the schema have drifted (a rename), and
+   * the renamed column is now on the include side while the manifest still
+   * names the old one — the exact F9502 falsehood, returning quietly. The
+   * census checks declared names against `schema.prisma`; this checks them
+   * against the database the query actually runs on, which is the one that can
+   * disagree at 3am.
+   */
+  private async projection(
+    table: string,
+    withheld: Map<string, Set<string>>,
+  ): Promise<string[]> {
+    const rows = await this.prisma.$queryRaw<Array<{ column_name: string }>>`
+      SELECT column_name FROM information_schema.columns
+      WHERE table_schema = current_schema() AND table_name = ${table}
+      ORDER BY ordinal_position
+    `;
+    const physical = rows.map((r) => r.column_name);
+    if (physical.length === 0) {
+      throw new Error(`Export failed for ${table}: table has no columns`);
+    }
+    const hidden = withheld.get(table) ?? new Set<string>();
+    const missing = [...hidden].filter((c) => !physical.includes(c));
+    if (missing.length > 0) {
+      throw new Error(
+        `Export failed for ${table}: the manifest withholds ` +
+          `${missing.join(', ')}, which this table does not have. The ` +
+          `declaration and the schema have drifted; a renamed column would ` +
+          `ship while the export claims it was withheld.`,
+      );
+    }
+    return physical.filter((c) => !hidden.has(c));
   }
 }
