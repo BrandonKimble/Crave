@@ -1,4 +1,4 @@
-import { pinSessionTimeZoneUtc } from './prisma.service';
+import { pinConnectionLimit, pinSessionTimeZoneUtc } from './prisma.service';
 
 // THE MECHANISM-LEVEL FIX, and the reason it must not silently regress.
 //
@@ -45,5 +45,34 @@ describe('session timezone pin', () => {
 
   it('leaves an empty url alone (config validation owns that failure)', () => {
     expect(pinSessionTimeZoneUtc('')).toBe('');
+  });
+});
+
+describe('pinConnectionLimit — the pool size reaches the ONLY place Prisma reads it', () => {
+  // The 73-connection incident (2026-08-08): DATABASE_CONNECTION_POOL_MAX
+  // was parsed into config and consumed by NOTHING, so both prod services
+  // ran Prisma's default pool of cpus×2+1 = 73 on Railway's 36-vCPU hosts
+  // and pinned Postgres at its 100-connection ceiling. The knob is real only
+  // as a connection_limit URL parameter — this pins that it gets there.
+  it('appends connection_limit and pool_timeout', () => {
+    expect(
+      pinConnectionLimit('postgresql://u:p@host:5432/db?schema=public', 10),
+    ).toBe(
+      'postgresql://u:p@host:5432/db?schema=public&connection_limit=10&pool_timeout=60',
+    );
+  });
+
+  it('never fights an operator-set connection_limit', () => {
+    const explicit = 'postgresql://u:p@host:5432/db?connection_limit=3';
+    expect(pinConnectionLimit(explicit, 10)).toBe(explicit);
+  });
+
+  it('composes with the timezone pin (the real construction order)', () => {
+    const url = pinConnectionLimit(
+      pinSessionTimeZoneUtc('postgresql://u:p@host:5432/db'),
+      10,
+    );
+    expect(url).toContain('options=-c%20timezone%3DUTC');
+    expect(url).toContain('connection_limit=10');
   });
 });

@@ -35,6 +35,34 @@ export function pinSessionTimeZoneUtc(url: string): string {
   return `${url}${url.includes('?') ? '&' : '?'}options=-c%20timezone%3DUTC`;
 }
 
+/**
+ * Pin the POOL SIZE onto the datasource URL — the only place Prisma reads it.
+ *
+ * THE 73-CONNECTION INCIDENT (diagnosed live, 2026-08-08 03:00 UTC). Prod
+ * Postgres hit its 100-connection ceiling and stayed there: deploys failed
+ * at `prisma migrate deploy`, the API could not have survived a restart, and
+ * a DB restart only cleared it until the next busy cron. The config block
+ * (configuration.ts `database.connectionPool`) parsed
+ * DATABASE_CONNECTION_POOL_MAX=10 faithfully — and NOTHING consumed it: this
+ * service passed only the URL, and Prisma sizes its pool exclusively from a
+ * `connection_limit` URL parameter. So both prod services ran Prisma's
+ * DEFAULT pool of num_cpus × 2 + 1, which on Railway's shared 36-vCPU hosts
+ * is exactly 73 — the fingerprint observed live: 73 idle worker connections,
+ * all opened in one 03:00 cron burst, held forever (Prisma never shrinks its
+ * pool, and every server-side idle timeout is 0). Two services × 73
+ * potential + a handful of operator sessions > 100 = the lockup.
+ *
+ * `pool_timeout` rides along: the config has promised acquire=60s since the
+ * Sequelize era; Prisma's default is 10s, and this makes the promise true.
+ */
+export function pinConnectionLimit(url: string, max: number): string {
+  if (!url) return url;
+  // An explicit connection_limit in the URL is an operator's choice — keep it.
+  if (/[?&]connection_limit=/.test(url)) return url;
+  const sep = url.includes('?') ? '&' : '?';
+  return `${url}${sep}connection_limit=${max}&pool_timeout=60`;
+}
+
 @Injectable()
 export class PrismaService
   extends PrismaClient
@@ -62,8 +90,11 @@ export class PrismaService
     super({
       datasources: {
         db: {
-          url: pinSessionTimeZoneUtc(
-            dbConfig?.url || process.env.DATABASE_URL || '',
+          url: pinConnectionLimit(
+            pinSessionTimeZoneUtc(
+              dbConfig?.url || process.env.DATABASE_URL || '',
+            ),
+            dbConfig?.connectionPool?.max ?? 10,
           ),
         },
       },
