@@ -59,8 +59,10 @@ export class RestaurantEnrichmentQueueService {
         removeOnComplete: true,
         // Failed jobs must not squat on the jobId and silently no-op later
         // enqueues: the worker's error log + the still-placeholder restaurant
-        // row are the durable signal, and the janitor's weekly retry
-        // re-enqueues.
+        // row are the durable signal, and the NEXT MENTION of the restaurant
+        // re-enqueues (retry is mention-driven since the 2026-08-08 janitor
+        // slim-down; the terminal-failure guard in the enrichment service
+        // caps total definitive attempts).
         removeOnFail: true,
         attempts: 3,
         backoff: { type: 'exponential', delay: 5000 },

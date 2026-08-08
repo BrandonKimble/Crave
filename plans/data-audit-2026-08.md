@@ -1661,3 +1661,28 @@ run — compatible with the sweep (transient failures no longer increment
 the count; definitive ones do, so the residual no_matches will age toward
 the threshold arm rather than being re-bought weekly). Flip is
 owner-gated; recommendation stands: ON.
+
+## JANITOR SLIM-DOWN SHIPPED (2026-08-08, owner-ruled)
+
+"Do we even need the janitor?" — mostly no, and the parts we need got
+better homes:
+  - RETRY ARM DELETED: mention-driven retry already exists (every batch
+    enqueues every mentioned restaurant; the worker skips grounded ones;
+    transient failures rethrow into Bull's attempts:3).
+  - ARCHIVE ARM DELETED, replaced by THE MONEY GUARD at the spend
+    chokepoint: enrichment refuses (skipped, zero vendor calls) once
+    enrichment_failure_count reaches the threshold. The ungroundable food
+    truck stays ACTIVE and name-searchable — archiving was the wrong verb —
+    and stops buying lookups. Guard proven by a vendor-call tripwire spec
+    (a Proxy that throws on any Places touch): at-threshold refuses,
+    below-threshold reaches the vendor, retryTerminal (the recovery sweep)
+    and force (moved identity) bypass, unset threshold disables rather than
+    invents.
+  - WHAT REMAINS is the janitor's true name: GROUNDED-PLACE LIFECYCLE —
+    weekly staleness refresh (DETECT) + archive-on-Google's-own-
+    CLOSED_PERMANENTLY + moved-place re-enrich (ACT). The policy
+    integration spec was rewritten for the new shape, including the
+    mutation fixture "resurrecting the ungrounded archive arm turns this
+    red" (ungrounded-many-failures must never be selected).
+Flip LOCATION_LIFECYCLE_CRON_ENABLED=true remains the pre-launch checklist
+item it always was — but now it enables ONLY the grounded lifecycle.

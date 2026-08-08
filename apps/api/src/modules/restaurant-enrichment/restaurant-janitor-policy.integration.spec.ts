@@ -1,22 +1,23 @@
 /**
- * THE ARCHIVE/RETRY POLICY — against a REAL Postgres (integration).
+ * THE GROUNDED-LIFECYCLE POLICY — against a REAL Postgres (integration).
  *
  * Why this file exists (F370/D30): the only spec guarding who gets ARCHIVED
- * was a REGEX SCAN OF SOURCE TEXT. It pinned the column name and the increment
- * shape and asserted nothing about the comparison operator, the threshold, the
- * `status IN ('no_match','error')` filter, or the `google_place_id IS NULL`
- * predicate — the guard the $118 lesson bought. EXECUTED MUTATION: flipping
- * `enrichment_failure_count >= threshold` to `< threshold` makes the janitor
- * archive every HEALTHY placeholder and spare every genuinely failed one, i.e.
- * destroy exactly the entities it exists to preserve — and the old spec stayed
- * 4/4 GREEN. A scan of source is a spelling check; a policy that decides
- * whether an entity is destroyed is BEHAVIOUR, and behaviour is proven by
- * running it.
+ * was a REGEX SCAN OF SOURCE TEXT that stayed green when the archive
+ * comparison was inverted. A policy that decides whether an entity is
+ * destroyed is BEHAVIOUR, and behaviour is proven by running it: every
+ * assertion below is about WHICH ids an arm SELECTED
+ * (`JanitorSummary.selected`).
  *
- * Every case below is a policy STATE and every assertion is about WHICH ids
- * the arm SELECTED (`JanitorSummary.selected`, added for exactly this reason).
- * The mutations named in each case's comment are the fixtures: each turns at
- * least one case RED.
+ * SLIM JANITOR (owner ruling 2026-08-08): the ungrounded retry/archive arms
+ * are DELETED — retry is mention-driven and the money guard lives in the
+ * enrichment service (tested in terminal-failure-guard.spec.ts). What
+ * remains, and what this file proves, is the grounded-place lifecycle:
+ *   - archive ONLY on Google's own verdict — every location
+ *     CLOSED_PERMANENTLY — never a restaurant with any open/unknown
+ *     location, and NEVER an ungrounded placeholder however bad its history
+ *     (ungrounded entities are cheap to keep and carry real evidence; only a
+ *     confirmed corpse is retired);
+ *   - select moved locations for forced re-enrichment.
  *
  * The whole pass runs `dryRun: true` — the SELECTs are the policy, and a dry
  * pass neither archives, enriches, nor spends. The enrichment collaborator is
@@ -30,11 +31,6 @@ import { RestaurantJanitorService } from './restaurant-janitor.service';
 import type { RestaurantLocationEnrichmentService } from './restaurant-location-enrichment.service';
 
 const TEST_TAG = 'itest-janitor-policy';
-const THRESHOLD = 3;
-/** Larger than any realistic backlog, so the retry arm's LIMIT cannot decide
- *  the answer for us — this spec is about the PREDICATE; the cap is a separate
- *  (F366) question. */
-const RETRY_LIMIT = 1_000_000;
 
 const prisma = new PrismaClient();
 
@@ -69,43 +65,33 @@ const janitor = new RestaurantJanitorService(
 type SeedOpts = {
   /** Case name; becomes the entity name, tag-prefixed. */
   label: string;
-  failureCount: number;
-  /** null = no lastEnrichmentAttempt blob at all. */
-  attemptStatus: 'no_match' | 'error' | 'ok' | null;
-  /** false = an ungrounded placeholder (a location row with a NULL place id). */
-  grounded: boolean;
-  /** false = no location rows at all. */
-  hasLocations?: boolean;
-  businessStatus?: string | null;
+  failureCount?: number;
+  /** One entry per location row: its business_status (null = unknown) and
+   *  whether it is grounded (has a google_place_id). */
+  locations: Array<{ businessStatus: string | null; grounded: boolean }>;
+  movedPlaceId?: string;
 };
 
 /** entity_id → label, so assertions read in labels. */
 const labelById = new Map<string, string>();
 
 async function seedRestaurant(opts: SeedOpts): Promise<void> {
-  const metadata =
-    opts.attemptStatus === null
-      ? null
-      : JSON.stringify({
-          lastEnrichmentAttempt: { status: opts.attemptStatus },
-        });
   const [row] = await prisma.$queryRawUnsafe<Array<{ entity_id: string }>>(
-    `INSERT INTO core_entities (name, type, status, enrichment_failure_count,
-                                restaurant_metadata)
-     VALUES ($1, 'restaurant', 'active', $2, $3::jsonb)
+    `INSERT INTO core_entities (name, type, status, enrichment_failure_count)
+     VALUES ($1, 'restaurant', 'active', $2)
      RETURNING entity_id`,
     `${TEST_TAG}:${opts.label}`,
-    opts.failureCount,
-    metadata,
+    opts.failureCount ?? 0,
   );
-  if (opts.hasLocations !== false) {
+  for (const [index, location] of opts.locations.entries()) {
     await prisma.$executeRawUnsafe(
       `INSERT INTO core_restaurant_locations
-         (restaurant_id, google_place_id, business_status)
-       VALUES ($1::uuid, $2, $3)`,
+         (restaurant_id, google_place_id, business_status, moved_place_id)
+       VALUES ($1::uuid, $2, $3, $4)`,
       row.entity_id,
-      opts.grounded ? `${TEST_TAG}-place-${opts.label}` : null,
-      opts.businessStatus ?? null,
+      location.grounded ? `${TEST_TAG}-place-${opts.label}-${index}` : null,
+      location.businessStatus,
+      opts.movedPlaceId ?? null,
     );
   }
   labelById.set(row.entity_id, opts.label);
@@ -141,78 +127,51 @@ beforeAll(async () => {
   }
   await cleanup();
 
-  // ── The archive arm's four axes, one fixture per axis ──────────────────
-  // TERMINAL: failed at/past the threshold, never grounded. The only shape
-  // arm 1 may archive.
-  await seedRestaurant({
-    label: 'terminal-no-match',
-    failureCount: THRESHOLD,
-    attemptStatus: 'no_match',
-    grounded: false,
-  });
-  await seedRestaurant({
-    label: 'terminal-error',
-    failureCount: THRESHOLD + 5,
-    attemptStatus: 'error',
-    grounded: false,
-  });
-  // BELOW THRESHOLD: the comparison-direction fixture.
-  await seedRestaurant({
-    label: 'below-threshold',
-    failureCount: THRESHOLD - 1,
-    attemptStatus: 'no_match',
-    grounded: false,
-  });
-  await seedRestaurant({
-    label: 'never-failed',
-    failureCount: 0,
-    attemptStatus: null,
-    grounded: false,
-  });
-  // GROUNDED: the $118 guard — a place-grounded restaurant is expensive,
-  // verified knowledge and is never archived here, however bad its history.
-  await seedRestaurant({
-    label: 'grounded-but-failing',
-    failureCount: THRESHOLD + 9,
-    attemptStatus: 'error',
-    grounded: true,
-  });
-  // WRONG STATUS: high count, but the last attempt did not fail.
-  await seedRestaurant({
-    label: 'high-count-status-ok',
-    failureCount: THRESHOLD + 2,
-    attemptStatus: 'ok',
-    grounded: false,
-  });
-  // NO LOCATION ROWS AT ALL: arm 2 requires an EXISTS, so this shape falls in
-  // neither arm (the gap F366 checked for and found empty in production).
-  await seedRestaurant({
-    label: 'no-locations',
-    failureCount: 0,
-    attemptStatus: null,
-    grounded: false,
-    hasLocations: false,
-  });
-
-  // ── Arm 3a: every location closed permanently ─────────────────────────
+  // ── The closed arm's axes ──────────────────────────────────────────────
+  // ALL locations confirmed closed → the only archivable shape.
   await seedRestaurant({
     label: 'all-closed',
-    failureCount: 0,
-    attemptStatus: null,
-    grounded: true,
-    businessStatus: 'CLOSED_PERMANENTLY',
+    locations: [
+      { businessStatus: 'CLOSED_PERMANENTLY', grounded: true },
+      { businessStatus: 'CLOSED_PERMANENTLY', grounded: true },
+    ],
+  });
+  // One branch still open → the restaurant lives.
+  await seedRestaurant({
+    label: 'one-branch-open',
+    locations: [
+      { businessStatus: 'CLOSED_PERMANENTLY', grounded: true },
+      { businessStatus: 'OPERATIONAL', grounded: true },
+    ],
+  });
+  // Unknown status is NOT closed — never archive on absence of evidence.
+  await seedRestaurant({
+    label: 'status-unknown',
+    locations: [{ businessStatus: null, grounded: true }],
+  });
+  // UNGROUNDED placeholder with a terrible failure history: with the
+  // ungrounded arms deleted, the janitor must not touch it AT ALL — however
+  // high the count. (Mutation fixture: resurrecting the old archive arm
+  // turns this red.)
+  await seedRestaurant({
+    label: 'ungrounded-many-failures',
+    failureCount: 99,
+    locations: [{ businessStatus: null, grounded: false }],
   });
   await seedRestaurant({
     label: 'open',
-    failureCount: 0,
-    attemptStatus: null,
-    grounded: true,
-    businessStatus: 'OPERATIONAL',
+    locations: [{ businessStatus: 'OPERATIONAL', grounded: true }],
+  });
+
+  // ── The moved arm ──────────────────────────────────────────────────────
+  await seedRestaurant({
+    label: 'moved',
+    locations: [{ businessStatus: 'OPERATIONAL', grounded: true }],
+    movedPlaceId: `${TEST_TAG}-moved-target`,
   });
 
   summary = await janitor.run({
-    noMatchAttemptThreshold: THRESHOLD,
-    retryLimit: RETRY_LIMIT,
+    movedRetryLimit: 1_000_000,
     dryRun: true,
   });
   selected = summary.selected;
@@ -223,70 +182,30 @@ afterAll(async () => {
   await prisma.$disconnect();
 });
 
-describe('archive policy, proven against Postgres', () => {
-  it('selects EXACTLY the ungrounded placeholders whose last attempt failed at or past the threshold', () => {
-    // MUTATION FIXTURES, all four in one assertion:
-    //   `>= threshold` → `< threshold`        : below-threshold/never-failed appear
-    //   drop `google_place_id IS NULL`        : grounded-but-failing appears
-    //   widen `status IN ('no_match','error')`: high-count-status-ok appears
-    //   drop the threshold comparison         : everything ungrounded appears
-    expect(seededLabels(selected.unmatched)).toEqual([
-      'terminal-error',
-      'terminal-no-match',
-    ]);
-  });
-
-  it('spares a place-grounded restaurant however bad its history ($118 law)', () => {
-    expect(seededLabels(selected.unmatched)).not.toContain(
-      'grounded-but-failing',
-    );
-  });
-
-  it('archives a restaurant whose every location is CLOSED_PERMANENTLY, and only that one', () => {
+describe('grounded-lifecycle policy, proven against Postgres', () => {
+  it('archives ONLY restaurants whose every location Google confirmed closed', () => {
+    // MUTATION FIXTURES in one assertion:
+    //   drop the NOT EXISTS open-location clause : one-branch-open appears
+    //   treat NULL status as closed              : status-unknown appears
+    //   resurrect the ungrounded archive arm     : ungrounded-many-failures appears
     expect(seededLabels(selected.closed)).toEqual(['all-closed']);
   });
-});
 
-describe('retry policy, proven against Postgres', () => {
-  it('selects EXACTLY the ungrounded placeholders still under the threshold, and only those with location rows', () => {
-    // `high-count-status-ok` is ungrounded with locations but sits PAST the
-    // threshold, so it is in neither arm — the janitor's own stated split.
-    expect(seededLabels(selected.retryable)).toEqual([
-      'below-threshold',
-      'never-failed',
-    ]);
-  });
-
-  it('the two arms are disjoint — no fixture is both archived and retried', () => {
-    const archive = new Set(seededLabels(selected.unmatched));
-    for (const label of seededLabels(selected.retryable)) {
-      expect(archive.has(label)).toBe(false);
-    }
-  });
-
-  it('a restaurant with no location rows is in neither arm', () => {
-    expect(seededLabels(selected.unmatched)).not.toContain('no-locations');
-    expect(seededLabels(selected.retryable)).not.toContain('no-locations');
-  });
-
-  it('an already-grounded restaurant is never retried (that is Places money for nothing)', () => {
-    expect(seededLabels(selected.retryable)).not.toContain('open');
-    expect(seededLabels(selected.retryable)).not.toContain('all-closed');
-    expect(seededLabels(selected.retryable)).not.toContain(
-      'grounded-but-failing',
+  it('never touches an ungrounded placeholder, however bad its failure history', () => {
+    expect(seededLabels(selected.closed)).not.toContain(
+      'ungrounded-many-failures',
+    );
+    expect(seededLabels(selected.moved)).not.toContain(
+      'ungrounded-many-failures',
     );
   });
-});
 
-describe('the lane reports its own backlog (F366)', () => {
-  it('counts every ungrounded placeholder the predicate matches, not just the capped slice', () => {
-    // The retry arm selects under a LIMIT; the backlog is the same predicate
-    // UNCAPPED. With RETRY_LIMIT far above the corpus the two agree — which is
-    // exactly the case where the lane converges. When they diverge (1,552 on
-    // the mirror vs 25 per WEEKLY pass, measured 2026-08-03) the janitor now
-    // says so in its log, instead of leaving "we are sampling, not
-    // converging" derivable only by querying by hand.
-    expect(summary.ungroundedBacklog).toBe(selected.retryable.length);
-    expect(summary.ungroundedBacklog).toBeGreaterThanOrEqual(2);
+  it('selects moved locations for forced re-enrichment, and only those', () => {
+    expect(seededLabels(selected.moved)).toEqual(['moved']);
+  });
+
+  it('a dry pass reports counts consistent with its selections', () => {
+    expect(summary.archivedClosed).toBe(selected.closed.length);
+    expect(summary.reEnrichedMoved).toBe(selected.moved.length);
   });
 });

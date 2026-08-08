@@ -3386,17 +3386,13 @@ export class UnifiedProcessingService implements OnModuleInit {
     // duplicate enqueues collapse; the worker is idempotent via the
     // hasPlaceId guard.
     //
-    // THIS COMMENT USED TO CLAIM "failures retry with backoff inside the
-    // queue". It does not. `enrichRestaurantEntity` CATCHES its own errors and
-    // RETURNS `{ status: 'error' }`
-    // (restaurant-location-enrichment.service.ts, the outer try/catch), so the
-    // Bull job resolves successfully and BullMQ has nothing to retry — a
-    // failed enrichment is dropped here, permanently, from this lane's point
-    // of view. The only thing that ever tries again is the janitor's retry arm
-    // (restaurant-janitor.service.ts §2), which is weekly, capped at
-    // `retryLimit`, and gated OFF by default
-    // (LOCATION_LIFECYCLE_CRON_ENABLED=false). Plan accordingly: what is
-    // enqueued here gets exactly one attempt.
+    // RETRY IS MENTION-DRIVEN (2026-08-08 janitor slim-down): this enqueue
+    // fires for EVERY restaurant the batch mentions, the worker skips
+    // already-grounded ones, transient failures rethrow so Bull's attempts:3
+    // actually runs, and the enrichment service's terminal-failure guard
+    // stops the spend once definitive failures hit the threshold. So an
+    // ungrounded restaurant re-attempts whenever the community talks about
+    // it again, and a hopeless one quietly stops costing money.
     for (const entityId of restaurantIds) {
       await this.restaurantEnrichmentQueue.queueEnrichment(entityId, {
         sourceLocale: enrichmentContext.sourceLocale ?? null,

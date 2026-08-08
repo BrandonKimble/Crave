@@ -170,6 +170,9 @@ async function main(): Promise<void> {
       sourceLocale: context.sourceLocale ?? undefined,
       countryCode: context.countryCode ?? undefined,
       locationBias: context.locationBias ?? undefined,
+      // Re-attempting known failures after a root-cause fix is this
+      // script's entire purpose — bypass the terminal-failure money guard.
+      retryTerminal: true,
       // sourceText intentionally omitted: the service derives the
       // highest-upvote mention snippet itself now — one implementation
       // for every lane, not a script-local copy.

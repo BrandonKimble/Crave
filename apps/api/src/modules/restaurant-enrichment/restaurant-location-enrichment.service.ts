@@ -109,6 +109,9 @@ interface MatchMetadata {
 // server-side field waiting for one.
 export interface RestaurantEnrichmentOptions {
   force?: boolean;
+  /** Bypass the terminal-failure money guard — for the recovery sweep after a
+   *  root-cause fix, when re-attempting known failures is the entire point. */
+  retryTerminal?: boolean;
   dryRun?: boolean;
   query?: string;
   sourceText?: string;
@@ -780,6 +783,30 @@ export class RestaurantLocationEnrichmentService {
         entityId: entity.entityId,
         status: 'skipped',
         reason: 'already has place-backed location identity',
+      };
+    }
+
+    // THE MONEY GUARD (owner ruling 2026-08-08, janitor slim-down): once a
+    // restaurant has definitively failed grounding `noMatchAttemptThreshold`
+    // times, stop buying lookups for it — mention-driven retry would
+    // otherwise re-purchase autocomplete (+ the expensive textSearch
+    // fallback) on EVERY future mention of an ungroundable name, forever.
+    // Only DEFINITIVE failures increment the counter (transient errors retry
+    // free), the entity stays ACTIVE and name-searchable, and the ghost
+    // recovery sweep bypasses with retryTerminal after a root-cause fix.
+    const terminalThreshold = this.configService.get<number>(
+      'locationLifecycle.noMatchAttemptThreshold',
+    );
+    if (
+      typeof terminalThreshold === 'number' &&
+      (entity.enrichmentFailureCount ?? 0) >= terminalThreshold &&
+      !options.force &&
+      !options.retryTerminal
+    ) {
+      return {
+        entityId: entity.entityId,
+        status: 'skipped',
+        reason: 'terminal grounding-failure threshold reached',
       };
     }
 

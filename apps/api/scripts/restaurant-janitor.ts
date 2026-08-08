@@ -32,8 +32,7 @@ async function main(): Promise<void> {
     const janitor = app.get(RestaurantJanitorService);
     const summary = await janitor.run({
       dryRun: process.env.JANITOR_DRY_RUN === '1',
-      noMatchAttemptThreshold: Number(process.env.JANITOR_THRESHOLD ?? 3),
-      retryLimit: Number(process.env.JANITOR_RETRY_LIMIT ?? 25),
+      movedRetryLimit: Number(process.env.JANITOR_RETRY_LIMIT ?? 25),
     });
     process.stdout.write(`${JSON.stringify(summary)}\n`);
   } finally {
