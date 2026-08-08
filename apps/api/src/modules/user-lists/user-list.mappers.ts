@@ -511,7 +511,6 @@ export class UserListMapper {
         mentionCount: connection.mentionCount ?? 0,
         totalUpvotes: connection.totalUpvotes ?? 0,
         lastMentionedAt: connection.lastMentionedAt?.toISOString() ?? null,
-        categories: connection.categories ?? [],
         foodAttributes: connection.foodAttributes ?? [],
         restaurantPriceLevel: connection.restaurant.priceLevel ?? null,
         restaurantPriceSymbol: null,

@@ -482,7 +482,6 @@ export class PollEntitySeedService {
       data: {
         restaurantId: params.restaurantId,
         foodId: params.foodId,
-        categories: [],
         foodAttributes: params.attributeId ? [params.attributeId] : [],
       },
       select: { connectionId: true },

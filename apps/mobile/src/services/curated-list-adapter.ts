@@ -85,7 +85,6 @@ const mapCuratedItemToFoodResult = (
   rising: item.rising,
   mentionCount: 0,
   totalUpvotes: 0,
-  categories: [],
   foodAttributes: [],
   restaurantCraveScore: 0,
   restaurantLatitude: item.latitude,

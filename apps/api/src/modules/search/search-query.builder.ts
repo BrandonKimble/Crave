@@ -858,7 +858,6 @@ filtered_connections AS (
     c.connection_id,
     c.restaurant_id,
     c.food_id,
-    c.categories,
     c.food_attributes,
     c.is_category_item,
     c.mention_count,
@@ -911,7 +910,7 @@ filtered_connections AS (
 
     const filteredConnectionsCtePreview = `
 filtered_connections AS (
-  SELECT c.connection_id, c.restaurant_id, c.food_id, c.categories, c.food_attributes, c.is_category_item, c.mention_count, c.total_upvotes, c.last_mentioned_at,
+  SELECT c.connection_id, c.restaurant_id, c.food_id, c.food_attributes, c.is_category_item, c.mention_count, c.total_upvotes, c.last_mentioned_at,
          pcs.display_score AS connection_crave_score, pcs.percentile_rank AS connection_crave_score_exact, pcs.rising AS connection_rising, pcs.score_info AS connection_score_info,
          'connection'::text AS score_subject_type, c.connection_id AS score_subject_id,
          f.name AS food_name, f.aliases AS food_aliases,

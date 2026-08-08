@@ -108,7 +108,6 @@ export interface FoodResult {
   mentionCount: number;
   totalUpvotes: number;
   lastMentionedAt?: string | null;
-  categories: string[];
   foodAttributes: string[];
   restaurantPriceLevel?: number | null;
   restaurantPriceSymbol?: string | null;
@@ -293,7 +292,6 @@ export interface DishResult {
   mentionCount: number;
   totalUpvotes: number;
   lastMentionedAt?: string | null;
-  categories: string[];
   foodAttributes: string[];
   restaurant: DishRestaurantData;
 }

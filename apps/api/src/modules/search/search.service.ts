@@ -75,7 +75,6 @@ type RestaurantDishRow = {
   connection_id: string;
   restaurant_id: string;
   food_id: string;
-  categories: string[];
   food_attributes: string[];
   mention_count: number;
   total_upvotes: number;
@@ -1072,7 +1071,6 @@ export class SearchService {
         c.connection_id AS connection_id,
         c.restaurant_id AS restaurant_id,
         c.food_id AS food_id,
-        c.categories AS categories,
         c.food_attributes AS food_attributes,
         c.mention_count AS mention_count,
         c.total_upvotes AS total_upvotes,
@@ -1147,7 +1145,6 @@ export class SearchService {
         lastMentionedAt: row.last_mentioned_at
           ? row.last_mentioned_at.toISOString()
           : null,
-        categories: Array.isArray(row.categories) ? row.categories : [],
         foodAttributes: Array.isArray(row.food_attributes)
           ? row.food_attributes
           : [],

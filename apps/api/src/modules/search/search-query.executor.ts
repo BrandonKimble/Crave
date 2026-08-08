@@ -96,7 +96,6 @@ interface DishQueryRow {
   connection_id: string;
   restaurant_id: string;
   food_id: string;
-  categories: string[];
   food_attributes: string[];
   is_category_item?: boolean;
   mention_count: number;
@@ -1260,7 +1259,6 @@ LIMIT 3
         mentionCount: row.mention_count,
         totalUpvotes: row.total_upvotes,
         lastMentionedAt: row.last_mentioned_at?.toISOString() ?? null,
-        categories: row.categories || [],
         foodAttributes: row.food_attributes || [],
         restaurantPriceLevel: parsedPrice ?? null,
         restaurantPriceSymbol: priceDetails.symbol ?? null,
