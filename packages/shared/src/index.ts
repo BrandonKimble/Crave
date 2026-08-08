@@ -117,6 +117,7 @@ export {
   isTooBigForView,
   probeAnchors,
   probedRegionAnswersAnchor,
+  probedRegionContainsPoint,
   resolveHeaderPlace,
   resolvePlaceCoverage,
   subjectCandidatesInView,

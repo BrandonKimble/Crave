@@ -18,6 +18,7 @@ import {
   MAX_PROBE_ANCHORS,
   PlaceGround,
   PlaceLike,
+  ProbedRegion,
   SubjectCandidate,
   bboxArea,
   METERS_PER_DEGREE_LAT,
@@ -28,6 +29,7 @@ import {
   groundContainsPoint,
   groundCoverageOfView,
   probeAnchors,
+  probedRegionContainsPoint,
   resolveHeaderPlace,
   resolvePlaceCoverage,
   ringShoelaceArea,
@@ -503,6 +505,43 @@ describe('probeAnchors — §2 probe budget (KEPT: probe coverage, not headers)'
     for (const anchor of anchors) {
       expect(anchor.lng).toBeGreaterThan(0.6);
     }
+  });
+
+  it('THE OVERHANG LAW: a place answers only its GROUND, never its rectangle (round-3 red team)', () => {
+    // A diagonal-ish place whose bbox swallows the view centre while its
+    // real ground misses it — the "Round Rock inside Austin's rectangle"
+    // class. As a 'box' region this suppressed the centre anchor and the
+    // place actually there could never be born; as a 'ground' region the
+    // anchor stays unanswered and is probed.
+    const view: GeoBbox = { minLat: 0, minLng: 0, maxLat: 1, maxLng: 1 };
+    const lShapedGround: PlaceGround = [
+      [
+        [0, 0],
+        [1, 0],
+        [1, 0.2],
+        [0.2, 0.2],
+        [0.2, 1],
+        [0, 1],
+      ],
+    ];
+    const asGround: ProbedRegion = {
+      kind: 'ground',
+      ground: lShapedGround,
+      area: 0.36,
+    };
+    // Centre (0.5, 0.5) is in the bbox but NOT in the L.
+    expect(probedRegionContainsPoint(asGround, { lat: 0.5, lng: 0.5 })).toBe(
+      false,
+    );
+    const anchors = probeAnchors(view, [asGround], 3);
+    expect(anchors.length).toBeGreaterThan(0);
+    // RED direction: the same shape as its rectangle DOES suppress — the
+    // difference between these two assertions IS the deleted defect.
+    const asBox: ProbedRegion = {
+      kind: 'box',
+      bbox: { minLat: 0, minLng: 0, maxLat: 1, maxLng: 1 },
+    };
+    expect(probedRegionContainsPoint(asBox, { lat: 0.5, lng: 0.5 })).toBe(true);
   });
 
   it('scale law (§1/§2): over-scale known ground answers NOTHING — country+city sketched, street zoom still probes', () => {

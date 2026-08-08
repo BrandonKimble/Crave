@@ -117,6 +117,12 @@ export function regionCellKey(region: ProbedRegion): string {
   if (region.kind === 'box') {
     return viewportCellKey(region.bbox);
   }
+  if (region.kind === 'ground') {
+    // Ground regions are catalog-derived, judged live from placesInView on
+    // every pass — they are never PERSISTED to probed_regions, so they
+    // never need a storage identity. Reaching here is a programming error.
+    throw new Error('ground regions are not persisted — no cell key exists');
+  }
   const quantum = 360 / 2 ** MAX_CELL_LEVEL;
   const cellLat = Math.floor(region.center.lat / quantum);
   const cellLng = Math.floor(region.center.lng / quantum);
@@ -209,12 +215,21 @@ export class PlacesReconcilerService {
     // bites there — but the law is one law).
     const inView = await this.catalog.placesInView(view);
     const viewArea = bboxArea(view);
-    // Places contribute their (rectangular) extent; probes contribute the
-    // DISC they actually spoke for; a fully-probed viewport contributes
-    // itself. One region list, three honest shapes (one-ground charter P5).
+    // Places contribute their REAL GROUND (round-3 red team, 2026-08-08 —
+    // this was `{kind:'box', bbox}` and was the LAST bbox-judged arm in the
+    // stack: an anchor in a city's rectangle OVERHANG read as answered and
+    // the place actually there could never be born from that zoom band,
+    // exactly the ground-containment "Round Rock in Austin's rectangle"
+    // class). Probes contribute the DISC they actually spoke for; a
+    // fully-probed viewport contributes itself. One region list, three
+    // honest shapes (one-ground charter P5).
     const knownRegions: ProbedRegion[] = [
       ...inView.map(
-        (entry): ProbedRegion => ({ kind: 'box', bbox: entry.bbox }),
+        (entry): ProbedRegion => ({
+          kind: 'ground',
+          ground: entry.ground,
+          area: entry.placeArea,
+        }),
       ),
       ...(await this.freshAskedRegions(view)),
     ];

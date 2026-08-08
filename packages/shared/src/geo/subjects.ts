@@ -262,13 +262,28 @@ export function isTooBigForView(viewArea: number, regionArea: number): boolean {
  */
 export type ProbedRegion =
   | { kind: 'disc'; center: GeoPoint; radiusMeters: number }
-  | { kind: 'box'; bbox: GeoBbox };
+  | { kind: 'box'; bbox: GeoBbox }
+  /**
+   * A place's REAL ground (round-3 red team, 2026-08-08): the third honest
+   * shape. Stored places used to contribute their derived RECTANGLE to the
+   * "already answered" list — the last bbox-judged arm in the stack, and the
+   * exact defect class ground-containment.ts declares dead ("Round Rock
+   * fitted inside Austin's stored rectangle without being inside Austin at
+   * all"). An anchor in a city's bbox OVERHANG read as answered and was
+   * never probed, so a place living in a neighbour's overhang could never
+   * be born from that zoom band. `area` rides along precomputed because the
+   * scale gate compares areas on every anchor and the ring math is not free.
+   */
+  | { kind: 'ground'; ground: PlaceGround; area: number };
 
 /** Cos-weighted degrees², the SAME metric bboxArea uses, so the scale gate
  *  compares like with like. */
 export function probedRegionArea(region: ProbedRegion): number {
   if (region.kind === 'box') {
     return bboxArea(region.bbox);
+  }
+  if (region.kind === 'ground') {
+    return region.area;
   }
   const radiusDeg = region.radiusMeters / METERS_PER_DEGREE_LAT;
   const cosLat = Math.max(Math.cos((region.center.lat * Math.PI) / 180), MIN_COS_LAT);
@@ -281,6 +296,9 @@ export function probedRegionContainsPoint(region: ProbedRegion, point: GeoPoint)
   if (region.kind === 'box') {
     return bboxContainsPoint(region.bbox, point);
   }
+  if (region.kind === 'ground') {
+    return groundContainsPoint(region.ground, point);
+  }
   return pointDistanceMeters(region.center, point) <= region.radiusMeters;
 }
 
@@ -289,6 +307,20 @@ export function probedRegionContainsPoint(region: ProbedRegion, point: GeoPoint)
 export function pointToProbedRegionDistance(point: GeoPoint, region: ProbedRegion): number {
   if (region.kind === 'box') {
     return pointToBboxDistance(point, region.bbox);
+  }
+  if (region.kind === 'ground') {
+    // Ranking-grade only (the "largest uncovered region" proxy): inside is
+    // 0; outside approximates as the nearest ring VERTEX. Under-estimating
+    // an edge-adjacent gap only reorders candidate anchors, never their
+    // answered/unanswered judgment (that is probedRegionContainsPoint).
+    if (groundContainsPoint(region.ground, point)) return 0;
+    let best = Number.POSITIVE_INFINITY;
+    for (const ring of region.ground) {
+      for (const [lng, lat] of ring) {
+        best = Math.min(best, pointDistance(point, { lat, lng }));
+      }
+    }
+    return best;
   }
   const gapMeters = pointDistanceMeters(region.center, point) - region.radiusMeters;
   return gapMeters <= 0 ? 0 : gapMeters / METERS_PER_DEGREE_LAT;
