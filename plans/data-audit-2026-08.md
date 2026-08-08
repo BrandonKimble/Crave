@@ -1388,3 +1388,23 @@ cannot be caught by tests because nothing depends on it, and each is exactly
 the "smaller problem that becomes bigger at scale" class. Round 2 should
 sweep the projection/DTO surface for the whole family rather than fixing them
 one at a time.
+
+## ROUND 2 PHASE 1 — hops 3-4 (2026-08-05): the ghost-restaurant experience
+
+HOP 3 connections -> scores: clean. Every active restaurant is scored
+(6,922/6,922). 110 dish rows lack a public score and ALL 110 are
+zero-mention starved connections — the same class curated picks already
+exclude (F2); nothing a user can reach renders an unscored number.
+
+HOP 4 scores -> the screen: THE GROUNDING BUG HAS A USER-VISIBLE SHAPE.
+Search and the map require a location row with lat + google_place_id +
+address (filtered_locations CTE); the 1,626 ungrounded restaurants have
+none, so they are excluded from every search list, every map pin, every
+ranking surface. But AUTOCOMPLETE only excludes archived entities — so all
+1,626 ARE suggestible by name (verified: Easy Tiger, Otoko, Garbos — all
+lat-less, all active). THE USER EXPERIENCE: type "Easy Tiger", see it
+suggested, tap it — no address, no pin, no hours, and the place never
+appears in any browse or search result. A ghost. ~9,500 events of real
+community testimony are invisible behind these ghosts. This RAISES the
+stakes on deferred item #6 (task #1): it is not just un-spent enrichment,
+it is 23.5% of the restaurant inventory being suggest-able but not usable.
