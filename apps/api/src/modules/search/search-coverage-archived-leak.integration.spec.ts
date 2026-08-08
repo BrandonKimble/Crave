@@ -19,6 +19,7 @@
  */
 import { PrismaClient } from '@prisma/client';
 import { SearchCoverageService } from './search-coverage.service';
+import { DietaryConstraintRegistry } from './dietary-constraints';
 
 const TEST_TAG = 'itest-coverage-archived';
 
@@ -41,12 +42,12 @@ const logger = {
   debug: () => undefined,
 } as never;
 
-// SearchCoverageService gained a DietaryConstraintRegistry dependency; this
-// call site had not been updated. The registry is only consulted for dietary
-// walls, which this leak test does not exercise.
+// The REAL DietaryConstraintRegistry, not a stub: a hand-shaped stub went
+// stale the moment the registry's method was renamed and this spec broke on
+// a TypeError instead of the behaviour it exists to prove.
 const service = new SearchCoverageService(
   prisma as never,
-  { resolve: () => [] } as never,
+  new DietaryConstraintRegistry(prisma as never, logger),
   logger,
 );
 

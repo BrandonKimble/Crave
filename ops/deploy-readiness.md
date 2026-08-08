@@ -46,7 +46,7 @@ scale the worker back.
 1. Working tree clean: every session's files committed; `git status` shows nothing
    unexplained. (Blocked on session reports above.)
 2. Full green sweep on the final tree: api jest + mobile jest (SUITE count, not
-   test count — a compile-failing suite hides from `grep Tests:`) + `yarn test:db`
+   test count — a compile-failing suite hides from `grep Tests:`) + `yarn --cwd apps/api test:db`
    (the GDPR guarantees are DB-backed; unit-only blinds the gate) + both tsc +
    `yarn invariants` (21) + all shell gates (now fail-closed) + `yarn gate:lib-test`.
 3. Env verified in Railway (api + worker): GOOGLE*VISION_API_KEY ✅ (set 2026-08-07);
@@ -97,7 +97,15 @@ shape — stray unfinished \_prisma_migrations baseline row; mark finished.
    before it runs, 1,416 prod restaurants show ZERO dishes (rollup exclusion landed
    ahead of the rebuild that re-mints their real rows). This is now step 3b, not a
    someday item; unset the flag after the DONE log.
-4. **THEN AND ONLY THEN**: run `yarn ts-node scripts/cloudinary-setup.ts` against the
+   3c. KNOWLEDGE-MAINTENANCE one-shot (found in the green-sweep triage 2026-08-08):
+   this push ships lane-4 removal (labels stop grounding, 8f7e4096c) — the
+   label→alias reconcile ran on the LOCAL corpus only (1,543 surfaces), and the
+   spent one-time script was deleted because KnowledgeMaintenanceService's
+   standing loop subsumes it (its step 2 IS reconcileLabelSurfaces). Until it
+   runs on prod, prod label-only surfaces cannot ground. Set
+   RUN_KNOWLEDGE_MAINTENANCE_ON_BOOT=1 on the worker for one boot right after
+   step 3 (alongside 3b), watch the maintenance DONE log, unset.
+4. **THEN AND ONLY THEN**: run `yarn ts-node apps/api/scripts/cloudinary-setup.ts` against the
    live Cloudinary env (flips presets to moderation:'' — flipping before prod runs
    the new code would strand uploads on the old aws_rek wait). One Cloudinary env
    serves all — this is the point of no return for the moderation cutover.
@@ -118,7 +126,7 @@ screaming EXPECTED per D149); ONE RUN_FULL_PROJECTION_REBUILD=1 worker one-shot;
 measure chooser first-set acceptance on prod ledger. Tom tom: wipe prod
 probed_regions (~4 rows, cache); pg_stat_activity ≤~30 now AND after the 03:00 UTC
 burst. Account-deletion: staging/prod throwaway delete→restore; run
-`yarn test:db --testPathPattern person-data-coverage` against real corpus; watch
+`yarn --cwd apps/api test:db --testPathPattern person-data-coverage` against real corpus; watch
 for ACCOUNT_DELETED 403 on any route other than restore. Search: confirm
 unsegmented-residue drain runs (82 rows pending, oldest 08-04); re-run naive-column
 count on prod+staging.

@@ -93,10 +93,6 @@ const ALLOWLIST: Readonly<Record<string, { verdict: Verdict; why: string }>> = {
     verdict: 'proper-noun',
     why: 'place names',
   },
-  'modules/places/tomtom-chain-probe.adapter.ts': {
-    verdict: 'proper-noun',
-    why: 'vendor brand names',
-  },
   'modules/polls/restaurant-mentions.service.ts': {
     verdict: 'proper-noun',
     why: 'restaurant names',

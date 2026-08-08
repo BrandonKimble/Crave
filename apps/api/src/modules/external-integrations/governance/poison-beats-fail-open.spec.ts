@@ -110,7 +110,12 @@ const spendPool = (name: string, credential: string): PoolConfig => ({
 });
 
 describe('poison beats fail-open (D149 precedence)', () => {
-  const t0 = new Date('2026-08-08T12:00:00Z');
+  // The gate under test reads the REAL clock (assertSpendOpen calls
+  // pools.admit(poolName) with no timestamp), so t0 must be the real clock
+  // too. A literal date here was a time bomb: the poison "expired" against
+  // wall time two hours after the literal and the gate test went red with
+  // no code change.
+  const t0 = new Date();
   const POISON_MS = 2 * 60 * 60_000; // cap-scale: 2h, so the gate also alerts.
 
   /**
