@@ -51,20 +51,35 @@ export class RestaurantEntityMergeService {
   }
 
   /**
-   * @param params.tx JOIN THE CALLER'S TRANSACTION instead of opening a rival
-   *  one. Ghost-sweep P2028 (2026-08-08): the grounding lane wraps its
-   *  location re-point and this merge in one transaction; this method then
-   *  opened its OWN interactive transaction, whose location updates blocked
-   *  on the outer transaction's uncommitted row locks — a self-deadlock that
-   *  expired both 15-minute budgets and killed the sweep mid-run. Nested
-   *  INDEPENDENT transactions over the same rows are never safe; a caller
-   *  already holding a transaction must pass it in.
+   * THE SERVICE OWNS THE TRANSACTION — callers cannot pass one (F9966).
+   *
+   * History, because this shape was bought twice: the grounding lane used to
+   * wrap its location re-point and this merge in its own transaction while
+   * this method opened a rival one — a self-deadlock over the same location
+   * rows that expired both 15-minute budgets and killed the ghost sweep
+   * (P2028 #1). The first fix let callers pass `tx` in — which exposed
+   * P2028 #2 (the post-merge projection rebuild still opened its own
+   * transaction against the caller's uncommitted re-keys) and, worse, made
+   * the post-commit rebuild PURE CONVENTION: a fifth tx-passing caller that
+   * forgot it would compile, pass tests, and merge with stale projections.
+   *
+   * So control is inverted. A caller with pre-merge work that must be atomic
+   * with the merge (the grounding lane's location re-point) passes `prepare`,
+   * which runs INSIDE this service's transaction before the merge body; its
+   * return value is merged into canonicalUpdate. The projection rebuild runs
+   * here, after commit, ALWAYS — there is no forgettable path because there
+   * is no other path.
+   *
+   * @param params.prepare caller's pre-merge work, atomic with the merge;
+   *  whatever EntityUpdateInput fields it returns overlay canonicalUpdate.
    */
   async mergeDuplicateRestaurant(params: {
     canonical: RestaurantEntity;
     duplicate: RestaurantEntity;
     canonicalUpdate: Prisma.EntityUpdateInput;
-    tx?: Prisma.TransactionClient;
+    prepare?: (
+      tx: Prisma.TransactionClient,
+    ) => Promise<Prisma.EntityUpdateInput | void>;
   }): Promise<RestaurantEntity> {
     const { canonical, duplicate, canonicalUpdate } = params;
     if (canonical.entityId === duplicate.entityId) {
@@ -81,6 +96,11 @@ export class RestaurantEntityMergeService {
     const runMerge = async (
       tx: Prisma.TransactionClient,
     ): Promise<RestaurantEntity> => {
+      const prepared = params.prepare ? await params.prepare(tx) : undefined;
+      const effectiveCanonicalUpdate: Prisma.EntityUpdateInput = {
+        ...canonicalUpdate,
+        ...(prepared ?? {}),
+      };
       // Same identity locks the creation path takes (H3 — round-12
       // audit: the plan asserted this, the code didn't do it).
       await acquireIdentityMergeLocks(tx, 'restaurant', [
@@ -107,7 +127,7 @@ export class RestaurantEntityMergeService {
 
       const updatedCanonical = await tx.entity.update({
         where: { entityId: canonical.entityId },
-        data: canonicalUpdate,
+        data: effectiveCanonicalUpdate,
       });
 
       // Alias bank + archive + score prune + redirect flatten: ONE
@@ -118,43 +138,27 @@ export class RestaurantEntityMergeService {
       return updatedCanonical;
     };
 
-    const result = params.tx
-      ? await runMerge(params.tx)
-      : await this.prisma.$transaction(
-          runMerge,
-          // Explicit budget (round-10 violence red team): the default 5s
-          // killed large merges permanently-but-silently. Matches the
-          // rebuild's budget.
-          { timeout: 15 * 60 * 1000, maxWait: 30_000 },
-        );
+    const result = await this.prisma.$transaction(
+      runMerge,
+      // Explicit budget (round-10 violence red team): the default 5s
+      // killed large merges permanently-but-silently. Matches the
+      // rebuild's budget.
+      { timeout: 15 * 60 * 1000, maxWait: 30_000 },
+    );
 
     this.logger.info('Restaurant entity merge completed', {
       canonicalId: result.entityId,
     });
 
-    // POST-COMMIT EFFECT ONLY (second P2028, 2026-08-08): the rebuild opens
-    // its own transaction over core_restaurant_items — rows a joined-tx
-    // caller has just mutated and not yet committed. Running it here while
-    // the caller's transaction is still open re-created the self-deadlock
-    // one call deeper than the first fix. Standalone callers rebuild inline
-    // (their transaction committed above); a caller that passed `tx` OWNS
-    // the post-commit rebuild — see rebuildAfterMerge, which the grounding
-    // lane calls after its transaction closes.
-    if (!params.tx) {
-      await this.projectionRebuildService.rebuildForRestaurants([
-        result.entityId,
-      ]);
-    }
+    // POST-COMMIT, ALWAYS (P2028 #2): the rebuild opens its own transaction
+    // over core_restaurant_items rows the merge just re-keyed, so it must
+    // run after the commit above — and because the service owns both the
+    // transaction and this call, no caller can forget it.
+    await this.projectionRebuildService.rebuildForRestaurants([
+      result.entityId,
+    ]);
 
     return result;
-  }
-
-  /** The post-commit half of a joined-transaction merge. Callers that passed
-   *  `tx` into mergeDuplicateRestaurant MUST call this after their
-   *  transaction commits, or the canonical's projections go stale until the
-   *  nightly reconciler. */
-  async rebuildAfterMerge(canonicalId: string): Promise<void> {
-    await this.projectionRebuildService.rebuildForRestaurants([canonicalId]);
   }
 
   private async mergeRestaurantEvents(

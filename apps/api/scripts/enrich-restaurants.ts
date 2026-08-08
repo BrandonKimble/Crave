@@ -15,7 +15,12 @@ import { stopCronsForScript } from '../src/shared/utils/stop-crons';
 interface CliOptions {
   limit: number;
   dryRun: boolean;
+  /** Full re-enrichment of an already-grounded entity (identity changed). */
   force: boolean;
+  /** Re-attempt entities past the terminal-failure money guard (F9965: this
+   *  used to ride --force, conflating "refresh identity" with "disable the
+   *  money guard" — two decisions, two flags). */
+  retryTerminal: boolean;
   entityId?: string;
 }
 
@@ -24,6 +29,7 @@ function parseArgs(argv: string[]): CliOptions {
     limit: 25,
     dryRun: false,
     force: false,
+    retryTerminal: false,
   };
 
   for (const arg of argv) {
@@ -31,6 +37,8 @@ function parseArgs(argv: string[]): CliOptions {
       options.dryRun = true;
     } else if (arg === '--force') {
       options.force = true;
+    } else if (arg === '--retry-terminal') {
+      options.retryTerminal = true;
     } else if (arg.startsWith('--limit=')) {
       const value = Number(arg.split('=')[1]);
       if (Number.isFinite(value) && value > 0) {
@@ -71,6 +79,7 @@ async function bootstrap(): Promise<void> {
       limit: cliOptions.limit,
       dryRun: cliOptions.dryRun,
       force: cliOptions.force,
+      retryTerminal: cliOptions.retryTerminal,
       entityId: cliOptions.entityId,
     });
 

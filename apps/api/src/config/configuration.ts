@@ -244,16 +244,17 @@ export default () => {
       /** DETECT: how many stale locations one weekly pass re-polls. */
       refreshLimit: positiveIntEnv('LOCATION_REFRESH_LIMIT', 250),
       /**
-       * ACT: failed enrichment attempts before an ungrounded placeholder is
-       * archived. This and retryLimit decide who gets ARCHIVED and how much
-       * Places money the retry lane spends — they were the two knobs that
-       * were NOT configurable while the two that matter less were (F365).
+       * THE MONEY GUARD's threshold (janitor slim-down 2026-08-08): DEFINITIVE
+       * grounding failures before enrichment refuses to buy further lookups
+       * for an entity. Nothing is archived on it — the entity stays active and
+       * name-searchable; it just stops costing money. Bypasses: force
+       * (identity changed) and retryTerminal (recovery sweep).
        */
       noMatchAttemptThreshold: positiveIntEnv(
         'LOCATION_NO_MATCH_ATTEMPT_THRESHOLD',
         3,
       ),
-      /** ACT: ungrounded placeholders re-enriched per weekly pass. */
+      /** ACT: moved-place re-enrichments per weekly lifecycle pass. */
       retryLimit: positiveIntEnv('LOCATION_RETRY_LIMIT', 25),
     },
     // NO `logging:` BLOCK. LOG_LEVEL is read straight off process.env by

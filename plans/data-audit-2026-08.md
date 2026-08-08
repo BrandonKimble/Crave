@@ -1686,3 +1686,38 @@ better homes:
     red" (ungrounded-many-failures must never be selected).
 Flip LOCATION_LIFECYCLE_CRON_ENABLED=true remains the pre-launch checklist
 item it always was — but now it enables ONLY the grounded lifecycle.
+
+## ADVERSARIAL-LANE FINDINGS LANDED (2026-08-08: F9965/F9966/F9967)
+
+F9967 (is_category_item lane consistency) — MEASUREMENT FIRST settled the
+intent question: 1,416 of 4,643 item-bearing restaurants were rollup-only
+on the mirror, BUT 1,410 of them gain a real dish row once the 705 fix's
+full rebuild runs (the projection writer's "category items exist for the
+childless case" premise was COMPENSATION for the food_mention drop — the
+two fixes compose and the childless case shrinks to 6 residual
+restaurants). Principled shape therefore: rollups are never dish rows in
+EVERY lane. Extended the exclusion to the restaurant CARD's
+top_dishes/total_dish_count lateral and the executor's dish_count +
+top-3-dish hydrate; matching lanes (restaurant-lane EXISTS predicates)
+deliberately keep rollups as match carriers. Photo-picker inherits the
+profile's list. Mutation guard extended to the restaurant-card SQL.
+
+F9966 (rebuildAfterMerge forgettability) — control INVERTED: the merge
+service owns the transaction; callers cannot pass one. Pre-merge work that
+must be atomic (the grounding lane's location re-point) rides a `prepare`
+hook that runs inside the service's transaction and overlays
+canonicalUpdate. The post-commit projection rebuild runs in the service,
+always — the forgettable path is deleted, not documented. rebuildAfterMerge
+is gone; both grounding sites converted.
+
+F9965 (money-guard hygiene) — the unset-threshold branch was asserting a
+state prod cannot reach (threshold is a boot-validated positive int, F365):
+branch deleted, guard reads config with the same non-null contract as every
+lifecycle read. `force`'s deliberately-wider-than-retryTerminal semantics
+are now PINNED by spec (force bypasses both the grounded short-circuit and
+the money guard — the moved-arm path needs exactly that; retryTerminal
+stays narrow, proven by a grounded fixture still short-circuiting).
+enrich-restaurants CLI splits --force (identity refresh) from
+--retry-terminal (guard bypass) — two decisions, two flags. Config comment
+rewritten from the dead archive-arm description to the money guard.
+275 tests green across enrichment + search + collector.

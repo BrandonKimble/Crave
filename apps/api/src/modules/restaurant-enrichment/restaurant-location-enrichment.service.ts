@@ -794,11 +794,13 @@ export class RestaurantLocationEnrichmentService {
     // Only DEFINITIVE failures increment the counter (transient errors retry
     // free), the entity stays ACTIVE and name-searchable, and the ghost
     // recovery sweep bypasses with retryTerminal after a root-cause fix.
+    // Threshold is a boot-validated positive int (F365) — no unset case
+    // exists in a running process, so no unset branch exists here (F9965:
+    // the earlier typeof check asserted a state prod cannot reach).
     const terminalThreshold = this.configService.get<number>(
       'locationLifecycle.noMatchAttemptThreshold',
-    );
+    )!;
     if (
-      typeof terminalThreshold === 'number' &&
       (entity.enrichmentFailureCount ?? 0) >= terminalThreshold &&
       !options.force &&
       !options.retryTerminal
@@ -1667,43 +1669,29 @@ export class RestaurantLocationEnrichmentService {
       mergeAugmentations.updatedFields,
     );
 
-    const updatedCanonical = await this.prisma.$transaction(
-      async (tx) => {
-        const location = await tx.restaurantLocation.update({
-          where: { locationId: canonicalLocation.locationId },
-          data: {
-            ...locationUpsert.update,
-            restaurantId: canonical.entityId,
-            isPrimary: true,
-            updatedAt: new Date(),
-          } as Prisma.RestaurantLocationUncheckedUpdateInput,
-        });
-
-        const canonicalWithLocation =
-          await this.restaurantEntityMergeService.mergeDuplicateRestaurant({
-            canonical,
-            duplicate: entity,
-            tx,
-            canonicalUpdate: {
-              ...mergedUpdate,
-              primaryLocation: { connect: { locationId: location.locationId } },
-            },
+    // The merge service owns the transaction and the post-commit rebuild
+    // (F9966); the location re-point rides its `prepare` hook so it stays
+    // atomic with the merge.
+    const updatedCanonical =
+      await this.restaurantEntityMergeService.mergeDuplicateRestaurant({
+        canonical,
+        duplicate: entity,
+        canonicalUpdate: mergedUpdate,
+        prepare: async (tx) => {
+          const location = await tx.restaurantLocation.update({
+            where: { locationId: canonicalLocation.locationId },
+            data: {
+              ...locationUpsert.update,
+              restaurantId: canonical.entityId,
+              isPrimary: true,
+              updatedAt: new Date(),
+            } as Prisma.RestaurantLocationUncheckedUpdateInput,
           });
-
-        return canonicalWithLocation;
-      },
-      {
-        timeout: this.transactionTimeoutMs,
-        maxWait: this.transactionMaxWaitMs,
-      },
-    );
-
-    // Post-commit half of the joined-transaction merge (second P2028):
-    // the projections rebuild only after the transaction above has
-    // committed its re-keys.
-    await this.restaurantEntityMergeService.rebuildAfterMerge(
-      updatedCanonical.entityId,
-    );
+          return {
+            primaryLocation: { connect: { locationId: location.locationId } },
+          };
+        },
+      });
 
     // §12.6: a merge moved evidence — mark the rescorer dirty (the old
     // market-key bookkeeping around this is dead; §13 presence is geometric).
@@ -1846,39 +1834,26 @@ export class RestaurantLocationEnrichmentService {
       mergeAugmentations.updatedFields,
     );
 
-    const updatedCanonical = await this.prisma.$transaction(
-      async (tx) => {
-        const location = await this.upsertPrimaryLocation({
-          tx,
-          restaurantId: canonical.entityId,
-          placeDetails,
-          locationUpsert,
-          targetLocation,
-        });
-
-        const mergedCanonical =
-          await this.restaurantEntityMergeService.mergeDuplicateRestaurant({
-            canonical,
-            duplicate: entity,
+    // The merge service owns the transaction and the post-commit rebuild
+    // (F9966); the primary-location upsert rides its `prepare` hook.
+    const updatedCanonical =
+      await this.restaurantEntityMergeService.mergeDuplicateRestaurant({
+        canonical,
+        duplicate: entity,
+        canonicalUpdate: mergedUpdate,
+        prepare: async (tx) => {
+          const location = await this.upsertPrimaryLocation({
             tx,
-            canonicalUpdate: {
-              ...mergedUpdate,
-              primaryLocation: { connect: { locationId: location.locationId } },
-            },
+            restaurantId: canonical.entityId,
+            placeDetails,
+            locationUpsert,
+            targetLocation,
           });
-
-        return mergedCanonical;
-      },
-      {
-        timeout: this.transactionTimeoutMs,
-        maxWait: this.transactionMaxWaitMs,
-      },
-    );
-
-    // Post-commit half of the joined-transaction merge (second P2028).
-    await this.restaurantEntityMergeService.rebuildAfterMerge(
-      updatedCanonical.entityId,
-    );
+          return {
+            primaryLocation: { connect: { locationId: location.locationId } },
+          };
+        },
+      });
 
     await this.rescoreCoordinator.markDirty('location-enrichment');
 

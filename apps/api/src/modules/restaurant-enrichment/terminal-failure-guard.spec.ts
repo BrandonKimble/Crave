@@ -108,14 +108,37 @@ describe('the terminal-failure money guard', () => {
     expect(result.reason).toContain('guard leaked a vendor call');
   });
 
-  it('an unset threshold disables the guard rather than inventing one', async () => {
+  // F9965: `force` is deliberately WIDER than `retryTerminal` — it bypasses
+  // BOTH the already-grounded short-circuit and the money guard, because a
+  // moved-place identity refresh must re-buy details for an entity that is
+  // grounded AND may be past the threshold. This pins that width.
+  it('force bypasses the money guard too (the janitor moved-arm path)', async () => {
     const service = makeService(terminalEntity);
-    // Rewire config to return nothing.
-    (service as never as { configService: { get: () => undefined } })[
-      'configService'
-    ] = { get: () => undefined };
-    const result = await service.enrichRestaurantById('e-terminal');
+    const result = await service.enrichRestaurantById('e-terminal', {
+      force: true,
+    });
     expect(result.status).toBe('error');
     expect(result.reason).toContain('guard leaked a vendor call');
+  });
+
+  it('force also bypasses the already-grounded short-circuit, retryTerminal does NOT', async () => {
+    const grounded = {
+      ...terminalEntity,
+      primaryLocation: { googlePlaceId: 'place-1' },
+    };
+    const viaRetryTerminal = await makeService(grounded).enrichRestaurantById(
+      'e-terminal',
+      { retryTerminal: true },
+    );
+    // retryTerminal is the narrow bypass: a grounded entity still short-circuits.
+    expect(viaRetryTerminal.status).toBe('skipped');
+    expect(viaRetryTerminal.reason).toContain('already has place-backed');
+
+    const viaForce = await makeService(grounded).enrichRestaurantById(
+      'e-terminal',
+      { force: true },
+    );
+    expect(viaForce.status).toBe('error');
+    expect(viaForce.reason).toContain('guard leaked a vendor call');
   });
 });
