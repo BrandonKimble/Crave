@@ -11,7 +11,7 @@ import {
   type PlacesInViewSliceResponse,
 } from '@crave-search/shared';
 
-import { nextRetryDelayMs } from '../../../../services/retry/network-retry-ladder';
+import { resolveRetryDelayMs } from '../../../../services/retry/network-retry-ladder';
 import {
   getViewportSubjectState,
   setViewportSubjectState,
@@ -442,7 +442,9 @@ export const createViewportSubjectStoreController = ({
         logSubjectStore('slice-fetch-failed', {
           message: error instanceof Error ? error.message : 'unknown',
         });
-        const delay = nextRetryDelayMs(sliceRetryAttempt);
+        // Error-aware ladder (429 clause): a rate-limited slice fetch waits at
+        // least the longest rung, honoring the server's Retry-After.
+        const delay = resolveRetryDelayMs(sliceRetryAttempt, error);
         if (delay == null) {
           // Ladder exhausted: stop paying radio for an outage. Any camera
           // move or a reconnect re-enters ensureSliceFetch with a fresh

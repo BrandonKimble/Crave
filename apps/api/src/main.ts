@@ -16,7 +16,11 @@ dotenvConfig({ path: join(__dirname, '..', '.env') });
 // fact ("whose money and whose users"); resolve it once, here, before
 // anything else — this file cannot use ConfigService because Sentry must
 // init before the Nest module graph exists.
-import { resolveAppEnv, isProdEnv, isDeployedEnv } from './shared/config/app-env';
+import {
+  resolveAppEnv,
+  isProdEnv,
+  isDeployedEnv,
+} from './shared/config/app-env';
 const appEnv = resolveAppEnv();
 
 const sentryDsn = process.env.SENTRY_DSN;

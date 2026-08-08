@@ -113,11 +113,9 @@ export class NotificationDispatcherService {
       if (!message) {
         // PERMANENT: buildMessage is a pure function of the row (F644) — a
         // retry produces the same null.
-        await this.markFailed(
-          notification.notificationId,
-          'invalid_payload',
-          { permanent: true },
-        );
+        await this.markFailed(notification.notificationId, 'invalid_payload', {
+          permanent: true,
+        });
         continue;
       }
       sendable.push({ notification, message });
@@ -307,7 +305,7 @@ export class NotificationDispatcherService {
     expectedCount: number,
   ): Array<{ status?: string; message?: string }> {
     if (!this.isRecord(payload)) {
-      return new Array(expectedCount).fill({});
+      return Array.from({ length: expectedCount }, () => ({}));
     }
 
     const dataRaw = payload['data'];
@@ -334,14 +332,17 @@ export class NotificationDispatcherService {
         status: this.getStringField(dataRaw, 'status'),
         message: this.getStringField(dataRaw, 'message'),
       };
-      return new Array(expectedCount).fill(single);
+      return Array.from({ length: expectedCount }, () => ({ ...single }));
     }
     const errorsRaw = this.asArray(payload['errors']);
     if (errorsRaw.length > 0 && this.isRecord(errorsRaw[0])) {
       const message = this.getStringField(errorsRaw[0], 'message');
-      return new Array(expectedCount).fill({ status: 'error', message });
+      return Array.from({ length: expectedCount }, () => ({
+        status: 'error',
+        message,
+      }));
     }
-    return new Array(expectedCount).fill({});
+    return Array.from({ length: expectedCount }, () => ({}));
   }
 
   /** An ARRAY is not a record — the F642 defect in one line. */
