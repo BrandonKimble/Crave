@@ -1638,3 +1638,26 @@ contains ZERO type judgments — the judge reads raw types as evidence,
 full stop. Lifecycle of this idea across one audit: 64-key cuisine map as
 VETO (234 ghosts) -> complete-category HINT (fed one log line) -> nothing.
 Each step was proven, not assumed. 28 tests green.
+
+## GHOST CAMPAIGN CLOSED (2026-08-08) — final numbers
+
+  Start:  1,626 ghosts of 6,922 active (23.5%) — suggestible, unusable.
+  End:      783 ghosts of 6,571 active (11.9%).
+  ~615 restaurants RECOVERED with correct pins/addresses (plus priceRange
+  riding free per owner ruling); 228 tombstoned on Google's own
+  CLOSED_PERMANENTLY verdict (195 + 33 found by the sweep; zero were
+  user-anchored); the rest of the delta is collision merges (ghost twins
+  folding into their grounded canonicals). Final pass: 110 recovered /
+  789 no_match / ZERO errors — the P2028 deadlock class is dead in
+  production shape. The residual 783 are honestly-coded no_matches: food
+  trucks, caterers, pop-ups, one-off vendors Google cannot ground. They
+  stay active (their evidence is real; autocomplete still finds them by
+  name) and are exactly the class the janitor's threshold arm exists to
+  age out.
+
+JANITOR COMPATIBILITY (pre-flip check, read-only): the retry arm keys on
+enrichment_failure_count vs a threshold, capped by retryLimit per weekly
+run — compatible with the sweep (transient failures no longer increment
+the count; definitive ones do, so the residual no_matches will age toward
+the threshold arm rather than being re-bought weekly). Flip is
+owner-gated; recommendation stands: ON.
