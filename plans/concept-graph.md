@@ -498,3 +498,49 @@ real traffic shows unmet sin-X asks in the demand ledger (needs the launch
 it cannot precede). writeLabels N+1: accepted, dated — offline path, ≤200
 rows/batch, upsert-per-row is the atomic is_default election; revisit only
 if sweep wall-time matters.
+
+## 11. THE REDERIVATION AUDIT (2026-08-08, three end-to-end lanes) — verdict + punchlist
+
+**VERDICT: the search CORE is at ideal shape** — every industry alternative
+(ES/Algolia, embedding-first, per-query LLM, BM25-as-primitive, flat index,
+LTR, analyzer synonyms) ADOPTED-already or REFUTED with code-cited evidence;
+the two honest divergences are deliberate (no distance term in ranking;
+zh blocked on segmentation). **The knowledge layer's PLUMBING is not** —
+it versions outputs but never records runs.
+
+LIVE BUGS (fix pre-launch):
+- C1 restaurant axis still tier-ordered on sectioned-without-pooled — FIXED 23912fa9e.
+- C2 delete-dictionary/edit lane truncated before ranking (SymSpell unreachable at K=5).
+- C3 includeSimilar/risingActive dropped in request translation; DIETARY WALL dropped
+  on the autocomplete-selected path (false claim). Fix = destructuring passthrough.
+- H2 dietary walls fail OPEN on cold cache — preload at boot or fail the search.
+- KL-A satisfies pass starves at oldest-200-empty-residual; metrics cannot show red.
+- KL-D rung-2 containment: judge uses canonicalFold, query uses lower() — silent
+  hole for accented/NFD pairs; fix by materializing containment on the folded key.
+- H5 similar[id] ??1 defaults unmeasured relevance to exact-match value.
+- H3 prefix similarity hardcoded 0.94 > floor 0.82 — auto-links; G2 patch is the tell.
+- M9 indexOf -1 makes an unlisted EntityType HIGHEST placement priority.
+
+STRUCTURAL (the real answer to "better shape we missed"):
+1. PASS-RUN LEDGER (subject, pass, prompt_version, outcome, ran_at) written
+   unconditionally — closes satisfies starvation, demand-loop re-judging,
+   judge unversioned verdicts, and makes the satisfies "diff not re-run"
+   claim true. THE one mechanism the layer lacks.
+2. entity_labels + entity_alias = ONE entity_surface table with a role column
+   (display|recall|both) — the standing reconciler is the proof of the wrong
+   split; deletes reconcileLabelSurfaces.
+3. Materialize name-containment edges on the folded key (fixes KL-D, deletes
+   the un-indexable LIKE + maxAnchors cap, opens rung 2 to non-English).
+4. Retire core_entities.aliases[]; make en a real locale ('und' carries two
+   meanings today and detonates when en needs its own sweep).
+5. One resolveFoodWidening() — sibling/cousin/satisfies reads happen 3x/request
+   with divergent cousin gating; also memoize (industry-audit's only real miss).
+6. Preview strings: render from dataSql, delete the second source of truth.
+7. Tokenized surface store (surface_token) — subsumes containment, gives zh
+   its segmentation home, makes rung 2 language-neutral. The long-term shape.
+
+DEFERRED with reasons: score-sorted early termination (blocked by the
+window-count gate; the scaling lever at 10x corpus); wire DemandVocabulary
+into the nightly rail when launch traffic exists; sweep-scale fixes
+(whole-vocab Set, correlated-count ORDER BY, writeLabels N+1) before any
+100k-concept corpus. Vestige/stale-comment sweep listed in audit output.
