@@ -135,6 +135,13 @@ account reached 7 routes not 1; the poison-precedence was pinned by nothing (now
 16 tests). A plans-vs-reality audit lane (owner-proxy) is out; tom tom owes the
 cost/account-deletion corroboration dump for the two stale sessions.
 
+## Durable lesson of the round (03's self-diagnosis, verbatim-worthy)
+
+"I verified the case in front of me and wrote the general sentence." Three
+instances in one territory (the vacuous watchdog, the four-named-calls promise
+spec, the 'every authenticated route refuses' claim). The countermeasure is the
+property-not-list rederivation now landing.
+
 ## Red-team ledger for this deploy
 
 Already adversarially verified (2026-08-07, all passes recorded in audit/DESIGNS.md
