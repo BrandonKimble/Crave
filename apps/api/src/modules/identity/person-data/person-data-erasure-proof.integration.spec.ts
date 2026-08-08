@@ -121,20 +121,31 @@ const PERSON_LINK: Record<
 };
 
 /**
- * Rules whose FIXTURE cannot be built in this corpus, and why.
+ * Rules whose FIXTURE cannot be built, and why.
  *
- * These are NOT exemptions from erasure — the eraser still runs against them
- * in production and the coverage ledger still watches for real rows. They are
- * an honest statement that this particular proof cannot construct a row here,
- * pinned so the set cannot grow without someone noticing.
- */
-/**
- * Rules whose FIXTURE cannot be built here. EMPTY, and it should stay that
- * way: every entry that ever sat in this map turned out to be a seeder
+ * These would NOT be exemptions from erasure — the eraser still runs against
+ * every rule in production, and the coverage ledger still reports which ones
+ * live data exercises. They would be an honest statement that this proof
+ * cannot construct a row, pinned so the set cannot grow without someone
+ * noticing.
+ *
+ * It is EMPTY, and it should stay that way: every entry that ever sat in this map turned out to be a seeder
  * limitation wearing an excuse, never a fact about erasure. Eleven were
- * dissolved by letting the fixture own its people; the last five by teaching
- * it that some tables key by the signals PSEUDONYM and that `users` is the
- * subject rather than a row to insert.
+ * dissolved by letting the fixture own its people; five more by teaching it
+ * that some tables key by the signals PSEUDONYM and that `users` is the
+ * subject rather than a row to insert; the last six (F9981) by minting FK
+ * parents instead of borrowing them.
+ *
+ * F9981 IS WHY THE BORROW HAD TO GO. The seeder used to satisfy a foreign key
+ * with `SELECT <ref> FROM <parent> LIMIT 1` — whatever row the corpus happened
+ * to hold. On a populated database that always found something and every rule
+ * was green; on CI's freshly migrated one it found nothing, six rules reported
+ * themselves unseedable, and the suite went red against code it had already
+ * proven correct. A verdict that changes with the database is not a verdict
+ * about the code. The fixture now MINTS the parent (recursively, satisfying
+ * the parent's own parents, honouring SEED_SHAPE at every level) inside the
+ * same rolled-back transaction, so what the corpus contains no longer enters
+ * the answer.
  */
 const UNSEEDABLE: Record<string, string> = {};
 
@@ -149,8 +160,19 @@ const UNSEEDABLE: Record<string, string> = {};
  * This lives in the FIXTURE, never in PERSON_DATA_RULES: it is knowledge about
  * how to build a valid row, not about what happens to a person's data. Putting
  * it in the declaration would let a fixture concern start steering erasure.
+ *
+ * A value is either a SQL literal or a function handed `mint` — the same
+ * recursive row-maker the foreign-key path uses. Anything a shape needs from
+ * another table is therefore MADE here, never looked up: a `SELECT ... LIMIT 1`
+ * would put the corpus back into the verdict (F9981).
+ *
+ * SEED_SHAPE applies to PARENT tables too, not only the table under test: a
+ * minted parent has to be a row its own CHECKs allow.
  */
-const SEED_SHAPE: Record<string, Record<string, string>> = {
+type SeedMint = (table: string, column: string) => Promise<string>;
+type SeedValue = string | ((mint: SeedMint) => Promise<string>);
+
+const SEED_SHAPE: Record<string, Record<string, SeedValue>> = {
   // kind='lifetime' is the one shape needing neither granted_days nor
   // expires_at, so it is the cheapest valid grant to construct.
   access_grants: {
@@ -174,7 +196,16 @@ const SEED_SHAPE: Record<string, Record<string, string>> = {
   // schema does not.
   user_list_items: {
     connection_id: 'NULL',
-    restaurant_id: `(SELECT entity_id FROM core_entities WHERE type = 'restaurant' LIMIT 1)`,
+    restaurant_id: (mint) => mint('core_entities', 'entity_id'),
+  },
+  // A minted entity is a RESTAURANT: user_list_items points its restaurant
+  // column at core_entities, and the generic filler would take the first enum
+  // label for `type`, which is not one. Stated honestly — no CHECK enforces
+  // this today, so removing it does not turn the suite red; it is here because
+  // a fixture that plants a "restaurant" which is not one is the kind of quiet
+  // wrongness this file exists to refuse.
+  core_entities: {
+    type: `'restaurant'`,
   },
 };
 
@@ -227,6 +258,7 @@ describe('erasure proof — each rule provably acts on a row it owns', () => {
       name: string;
       type: string;
       udt: string;
+      maxLength: number | null;
       refTable: string | null;
       refColumn: string | null;
     }>
@@ -236,11 +268,13 @@ describe('erasure proof — each rule provably acts on a row it owns', () => {
         column_name: string;
         data_type: string;
         udt_name: string;
+        max_length: number | null;
         ref_table: string | null;
         ref_column: string | null;
       }>
     >(
       `SELECT c.column_name, c.data_type, c.udt_name,
+              c.character_maximum_length AS max_length,
               ccu.table_name  AS ref_table,
               ccu.column_name AS ref_column
        FROM information_schema.columns c
@@ -272,10 +306,85 @@ describe('erasure proof — each rule provably acts on a row it owns', () => {
       name: r.column_name,
       type: r.data_type,
       udt: r.udt_name,
+      maxLength: r.max_length,
       refTable: r.ref_table,
       refColumn: r.ref_column,
     }));
   };
+
+  type Column = {
+    name: string;
+    type: string;
+    udt: string;
+    maxLength: number | null;
+    refTable: string | null;
+    refColumn: string | null;
+  };
+  type People = { userId: string; counterpartyId: string };
+
+  /**
+   * A PARENT ROW, MADE RATHER THAN FOUND (F9981).
+   *
+   * The foreign-key path used to borrow: `SELECT <ref> FROM <parent> LIMIT 1`.
+   * That reads the corpus into the verdict — on a populated database every
+   * rule was seedable, on a fresh one six were not, and the same code got two
+   * different answers. So the parent is now INSERTED here, by exactly the
+   * machinery that builds the row under test: the catalog names its NOT NULL
+   * columns, SEED_SHAPE supplies whatever its CHECKs demand, and its own
+   * foreign keys recurse through this same function. Everything lands in the
+   * transaction that always rolls back.
+   *
+   * `chain` is the ancestry of the row being built. A table that reappears in
+   * it is a REQUIRED cycle (a NOT NULL self-reference, or a mutual pair) —
+   * unsatisfiable by any insert order, so it stops here and surfaces as the
+   * fixture failure it is rather than recursing until the stack dies.
+   */
+  const mintRow = async (
+    tx: PrismaClient,
+    table: string,
+    column: string,
+    people: People,
+    chain: string[],
+  ): Promise<string> => {
+    if (chain.includes(table)) {
+      throw new Error(
+        `unsatisfiable NOT NULL foreign-key cycle: ${[...chain, table].join(' -> ')}`,
+      );
+    }
+    const nextChain = [...chain, table];
+    const mint: SeedMint = async (parentTable, parentColumn) =>
+      `'${await mintRow(tx, parentTable, parentColumn, people, nextChain)}'`;
+    const shape = new Map<string, SeedValue>(
+      Object.entries(SEED_SHAPE[table] ?? {}),
+    );
+    const cols: string[] = [];
+    const vals: string[] = [];
+    for (const col of await requiredColumns(tx, table)) {
+      const forced = shape.get(col.name);
+      cols.push(col.name);
+      vals.push(
+        forced === undefined
+          ? await valueFor(tx, col, people, nextChain)
+          : await resolveSeedValue(forced, mint),
+      );
+    }
+    for (const [name, value] of shape) {
+      if (cols.includes(name)) continue;
+      cols.push(name);
+      vals.push(await resolveSeedValue(value, mint));
+    }
+    const [row] = await tx.$queryRawUnsafe<Array<{ v: string }>>(
+      `INSERT INTO "${table}" (${cols.map((c) => `"${c}"`).join(', ')})
+       VALUES (${vals.join(', ')})
+       RETURNING "${column}"::text AS v`,
+    );
+    return row.v;
+  };
+
+  const resolveSeedValue = async (
+    value: SeedValue,
+    mint: SeedMint,
+  ): Promise<string> => (typeof value === 'string' ? value : value(mint));
 
   /**
    * A value Postgres will accept. Order matters: a foreign key must point at a
@@ -285,27 +394,17 @@ describe('erasure proof — each rule provably acts on a row it owns', () => {
    */
   const valueFor = async (
     tx: PrismaClient,
-    col: {
-      name: string;
-      type: string;
-      udt: string;
-      refTable: string | null;
-      refColumn: string | null;
-    },
-    index: number,
-    people: { userId: string; counterpartyId: string },
-  ): Promise<string | null> => {
+    col: Column,
+    people: People,
+    chain: string[],
+  ): Promise<string> => {
     if (col.refTable && col.refColumn) {
       // A second users column is the OTHER party, never the subject again:
       // reusing the subject makes a self-follow or a self-block, which the
-      // schema correctly rejects.
+      // schema correctly rejects. `users` is also the one parent that is never
+      // minted here — the fixture already owns its people.
       if (col.refTable === 'users') return `'${people.counterpartyId}'`;
-      const [row] = await tx.$queryRawUnsafe<Array<{ v: string }>>(
-        `SELECT "${col.refColumn}"::text AS v FROM "${col.refTable}" LIMIT 1`,
-      );
-      // No parent row to point at — the corpus cannot express this rule.
-      // Returning null makes that a REPORTED skip, never a silent pass.
-      return row ? `'${row.v}'` : null;
+      return `'${await mintRow(tx, col.refTable, col.refColumn, people, chain)}'`;
     }
     if (col.type === 'USER-DEFINED') {
       const [row] = await tx.$queryRawUnsafe<Array<{ label: string }>>(
@@ -321,7 +420,11 @@ describe('erasure proof — each rule provably acts on a row it owns', () => {
       return `'proof'::"${col.udt}"`;
     }
     if (col.type === 'uuid') {
-      return `'00000000-0000-4000-8000-${String(index).padStart(12, '0')}'`;
+      // FRESH, not a padded counter. Once parents are minted rather than
+      // borrowed, one seed can insert several rows — and a counter that
+      // restarts per row handed two of them the same uuid, which a primary key
+      // rejects. The database already owns a generator for this.
+      return 'gen_random_uuid()';
     }
     if (col.type.includes('timestamp') || col.type === 'date') return 'now()';
     if (
@@ -335,7 +438,13 @@ describe('erasure proof — each rule provably acts on a row it owns', () => {
     if (col.type === 'boolean') return 'false';
     if (col.udt === 'jsonb' || col.udt === 'json') return `'{}'::jsonb`;
     if (col.type === 'ARRAY') return `'{}'`;
-    return `'proof'`;
+    // NARROW TEXT IS REAL. Minting parents reaches columns the rules' own
+    // tables never had — `core_entities.country` is char(2) — and a fixed
+    // 'proof' filler is a 22001 that reads like an unseedable rule. The
+    // catalog knows the width; honour it.
+    return col.maxLength !== null && col.maxLength < 'proof'.length
+      ? `'${'p'.repeat(col.maxLength)}'`
+      : `'proof'`;
   };
 
   const ACTING = PERSON_DATA_RULES.filter((r) => ruleWhere(r) !== null);
@@ -414,7 +523,7 @@ describe('erasure proof — each rule provably acts on a row it owns', () => {
             // rule then correctly refused to select the seed. The proof was
             // testing a row that was never in scope — a fixture bug that reads
             // exactly like an erasure bug.
-            const forced = new Map<string, string>(
+            const forced = new Map<string, SeedValue>(
               Object.entries(SEED_SHAPE[rule.table] ?? {}),
             );
             if (rule.rowPredicate) {
@@ -425,37 +534,48 @@ describe('erasure proof — each rule provably acts on a row it owns', () => {
               }
             }
 
-            let unseedable: string | null = null;
-            for (const [i, col] of required.entries()) {
-              if (cols.includes(col.name)) continue;
-              const value =
-                forced.get(col.name) ??
-                (await valueFor(client, col, i + 1, {
-                  userId,
-                  counterpartyId,
-                }));
-              if (value === null) {
-                unseedable = `${col.name} -> ${col.refTable ?? col.udt}`;
-                break;
+            // BUILDING THE ROW IS PART OF THE SEED, so its failures are
+            // reported exactly like an insert failure below — a foreign-key
+            // cycle the fixture cannot satisfy is a fixture fact, not an
+            // erasure fact. It used to be a distinct "no parent row to point
+            // at" verdict; there is no such thing now that parents are minted.
+            const people = { userId, counterpartyId };
+            const mint: SeedMint = async (parentTable, parentColumn) =>
+              `'${await mintRow(client, parentTable, parentColumn, people, [rule.table])}'`;
+            try {
+              for (const col of required) {
+                if (cols.includes(col.name)) continue;
+                const value = forced.get(col.name);
+                cols.push(col.name);
+                vals.push(
+                  value === undefined
+                    ? await valueFor(client, col, people, [rule.table])
+                    : await resolveSeedValue(value, mint),
+                );
               }
-              cols.push(col.name);
-              vals.push(value);
-            }
-            if (unseedable) {
-              throw Object.assign(new Error('rollback'), {
-                [ROLLBACK]: { before: 0, after: 0, unseedable },
-              });
-            }
 
-            // Forced values for NULLABLE columns: `required` only covers NOT
-            // NULL columns, so a CHECK that demands a nullable column be set
-            // (user_list_items needs exactly ONE target, and both target columns
-            // are nullable) is only satisfiable here.
-            for (const [name, value] of forced) {
-              if (!cols.includes(name)) {
+              // Forced values for NULLABLE columns: `required` only covers NOT
+              // NULL columns, so a CHECK that demands a nullable column be set
+              // (user_list_items needs exactly ONE target, and both target
+              // columns are nullable) is only satisfiable here.
+              for (const [name, value] of forced) {
+                if (cols.includes(name)) continue;
                 cols.push(name);
-                vals.push(value);
+                vals.push(await resolveSeedValue(value, mint));
               }
+            } catch (error) {
+              throw Object.assign(new Error('rollback'), {
+                [ROLLBACK]: {
+                  before: 0,
+                  after: 0,
+                  unseedable: (error instanceof Error
+                    ? error.message
+                    : String(error)
+                  )
+                    .replace(/\s+/g, ' ')
+                    .slice(0, 220),
+                },
+              });
             }
 
             // AN INSERT FAILURE IS A DIFFERENT VERDICT FROM AN ERASURE FAILURE.

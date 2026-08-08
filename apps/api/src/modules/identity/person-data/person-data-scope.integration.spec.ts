@@ -22,12 +22,26 @@ import { PERSON_DATA_RULES } from './person-data-class';
  * pure data check would have reported "no mismatches" and proved nothing. Any
  * column this cannot verify from data MUST be declared below, by a human, with
  * a reason. Unverifiable is not clean.
+ *
+ * WHY THE DECLARATION IS NOW REQUIRED OF EVERY COLUMN (F9981). The declaration
+ * used to be demanded only where the corpus happened to be silent — so the same
+ * rules passed unremarked on a populated database and failed as undeclared on
+ * CI's fresh one. Thirteen columns were "verified" purely because someone's
+ * laptop had rows. That makes the verdict a property of the database rather
+ * than of the code, which is the same disease one level up: what a check
+ * concludes must not depend on where it runs.
+ *
+ * So the shape is inverted. EVERY column that scopes by itself must be
+ * declared here with a human reason — that part is environment-independent and
+ * is the real claim. The DATA then serves as a CONTRADICTION check on top: if
+ * the corpus does hold non-null values and NONE of them is a user id, the
+ * declaration is wrong and this fails. An empty table simply contradicts
+ * nothing; it can no longer flip the verdict.
  */
 
 /**
- * Columns asserted to hold user ids directly, where the data cannot say so
- * (empty table, or every value null). Each needs a human reason — that is the
- * point: the check converts silence into a decision.
+ * Columns asserted to hold user ids directly. Each needs a human reason — that
+ * is the point: the check converts silence into a decision.
  */
 const DIRECT_PERSON_KEY: Record<string, string> = {
   'photo_events.user_id':
@@ -55,6 +69,10 @@ const DIRECT_PERSON_KEY: Record<string, string> = {
     'The inviter. Severed rather than deleted: the invitation survives for the OTHER collaborators, minus who made it.',
   'user_taste_profile.subject_text':
     'Secondary column; scoped by the declared personScopeSql alongside actor_id.',
+  'signal_actors.user_id':
+    'The mapping row itself: actor_id is the pseudonym, user_id is the person it stands for. Deliberately NOT a foreign key — severing it is what anonymizes the signals, and a constraint would fight that.',
+  'polls.created_by_user_id':
+    'The poll author, written from the authenticated request user. Null for seeded/system polls.',
 };
 
 describe('person-data scope — a rule can actually reach the person', () => {
@@ -67,7 +85,31 @@ describe('person-data scope — a rule can actually reach the person', () => {
 
   it('every scoping rule either declares a scope, or provably holds user ids', async () => {
     const problems: string[] = [];
-    let verifiedFromData = 0;
+    let provenBySchema = 0;
+
+    /**
+     * THE STRONGEST EVIDENCE IS THE SCHEMA, and it is the same everywhere.
+     * A column with a foreign key to users(user_id) cannot hold anything but a
+     * user id — the database refuses. That is a better answer than either a
+     * human note or a sample of whatever rows a corpus happens to carry, and it
+     * is why eleven of the thirteen columns CI flagged as undeclared need no
+     * declaration at all: they were always provable, just never asked.
+     */
+    const usersForeignKeys = new Set(
+      (
+        await prisma.$queryRawUnsafe<Array<{ key: string }>>(
+          `SELECT tc.table_name || '.' || kcu.column_name AS key
+             FROM information_schema.table_constraints tc
+             JOIN information_schema.key_column_usage kcu
+               ON kcu.constraint_name = tc.constraint_name
+             JOIN information_schema.constraint_column_usage ccu
+               ON ccu.constraint_name = tc.constraint_name
+            WHERE tc.constraint_type = 'FOREIGN KEY'
+              AND ccu.table_name = 'users'
+              AND ccu.column_name = 'user_id'`,
+        )
+      ).map((r) => r.key),
+    );
 
     for (const rule of PERSON_DATA_RULES) {
       if (!SCOPING.has(rule.disposition)) continue;
@@ -98,6 +140,24 @@ describe('person-data scope — a rule can actually reach the person', () => {
       }
 
       const key = `${rule.table}.${rule.column}`;
+      // THE CLAIM, made the same way on every database: this column holds user
+      // ids because the schema says so, or because a human said so. Neither
+      // answer moves when the corpus does.
+      if (usersForeignKeys.has(key)) {
+        provenBySchema += 1;
+      } else if (!DIRECT_PERSON_KEY[key]) {
+        problems.push(
+          `${key}: nothing says this column holds user ids. Either add ` +
+            `personScopeSql (if it is not a user id, like ` +
+            `user_taste_profile.actor_id), give it a foreign key to ` +
+            `users(user_id), or record why it is a direct person key in ` +
+            `DIRECT_PERSON_KEY.`,
+        );
+        continue;
+      }
+
+      // THE DATA CONTRADICTS, IT NO LONGER DECIDES. Rows can prove the claim
+      // WRONG; their absence proves nothing and is therefore not an outcome.
       const [row] = await prisma.$queryRawUnsafe<
         Array<{ nonnull: number; matching: number }>
       >(
@@ -108,18 +168,7 @@ describe('person-data scope — a rule can actually reach the person', () => {
          FROM "${rule.table}"`,
       );
 
-      if (row.nonnull === 0) {
-        // The data cannot answer. A human must.
-        if (!DIRECT_PERSON_KEY[key]) {
-          problems.push(
-            `${key}: no rows to verify against and no declaration. Either add ` +
-              `personScopeSql (if the column is not a user id, like ` +
-              `user_taste_profile.actor_id) or record why it is a direct ` +
-              `person key in DIRECT_PERSON_KEY.`,
-          );
-        }
-        continue;
-      }
+      if (row.nonnull === 0) continue;
 
       if (row.matching === 0) {
         problems.push(
@@ -129,13 +178,14 @@ describe('person-data scope — a rule can actually reach the person', () => {
         );
         continue;
       }
-      verifiedFromData += 1;
     }
 
     expect(problems).toEqual([]);
-    // The check must be doing work — if nothing was verifiable from data, the
-    // whole thing has degenerated into reading the allowlist back to itself.
-    expect(verifiedFromData).toBeGreaterThan(0);
+    // The check must be doing work — if nothing was provable from the schema,
+    // the whole thing has degenerated into reading the allowlist back to
+    // itself. Counted from the CATALOG, so this guard means the same on an
+    // empty database as on a full one.
+    expect(provenBySchema).toBeGreaterThan(0);
   });
 
   it('the taste profile is reachable — the rule that was broken', async () => {

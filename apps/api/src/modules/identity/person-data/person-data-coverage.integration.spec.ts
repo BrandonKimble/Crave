@@ -18,46 +18,27 @@ import { ruleWhere, subjectRows, declaredTables } from './person-data-scope';
  *     is indistinguishable from a person who simply had no rows.
  *
  * So the question this asks is not "did erasure work for user X" — that
- * question is answerable vacuously. It is: **for each rule, does a person
- * exist in this corpus for whom the rule's predicate selects rows?** A rule
- * that selects nothing for ANYBODY is either dead or broken, and both need a
- * human to say which.
+ * question is answerable vacuously. It is: **for each rule, does the compiled
+ * predicate really run against the live schema, and which rules does the
+ * corpus in front of us actually exercise?** The first is the verdict; the
+ * second is the census the reader gets to see.
  *
- * That catches the taste-profile class WITHOUT anyone knowing about
- * pseudonyms: the predicate simply never matches, so the rule is unproven and
- * the ledger says so.
+ * UNPROVEN IS NOT CLEAN — AND "PROVEN" MOVED (F9981). This ledger used to
+ * ASSERT that every rule is exercised by real rows unless a human had excused
+ * it by name. That assertion is a statement about the database, not about the
+ * code: the same rules were exercised on a laptop with a corpus, dark on CI's
+ * freshly migrated database, and the excuse list ("no collaborators in the dev
+ * corpus", "672 lists, all editorial") was a snapshot of one machine that went
+ * stale the moment anyone else ran it. A verdict must not change with the
+ * environment that computes it.
  *
- * UNPROVEN IS NOT CLEAN. A rule with no live data must be declared below with
- * a reason. Silence is converted into a decision — the same doctrine as the
- * scope allowlist and the subject-text scanner.
+ * The proof it was standing in for now lives where it belongs: the
+ * seed-and-erase proof MINTS a row for every acting rule and shows the rule
+ * acts on it, on any database, with nothing pinned. So what remains here is
+ * the part that is genuinely about the code — every rule's predicate is REAL
+ * SQL that the live schema accepts and executes — plus a corpus CENSUS that is
+ * reported for the reader rather than asserted against.
  */
-
-/**
- * Rules the corpus cannot exercise, each with why. These are the ones a human
- * has vouched for; everything else must prove itself against real rows.
- */
-const UNEXERCISED: Record<string, string> = {
-  // Every entry below is proven CORRECT by person-data-erasure-proof
-  // (seed a row the person owns, erase, assert it is gone). What this ledger
-  // adds is a different question: does REAL data exercise it? On a corpus with
-  // users these will light up; a rule that stays dark in PRODUCTION is either
-  // dead code or a feature nobody uses, and that is worth knowing separately
-  // from whether the predicate is right.
-  'user_list_collaborators.user_id': 'No collaborators in the dev corpus.',
-  'user_list_collaborators.invited_by_user_id': 'No invites in the dev corpus.',
-  'poll_creation_attempts.user_id': 'No user-created polls in the dev corpus.',
-  'collection_on_demand_unsegmented_residue.user_id':
-    'Rows exist but user_id is null on all of them (pre-dates the column).',
-  'notification_devices.user_id': 'No push registrations in the dev corpus.',
-  'poll_topics.created_by_user_id':
-    '18k topics, all seeded — created_by is null on every one.',
-  'curated_lists.owner_user_id':
-    '672 lists, all global editorial — owner is null on every one.',
-  'user_taste_profile.actor_id':
-    'Table is empty in dev. THE rule that was broken; correctness is proven by the seed-and-erase proof, which is why that proof had to exist.',
-  'user_taste_profile.subject_text': 'Same empty table.',
-  'user_blocks.blocker_user_id': 'No blocks in the dev corpus.',
-};
 
 describe('person-data coverage — every rule can be shown to act', () => {
   const prisma = new PrismaClient();
@@ -67,21 +48,27 @@ describe('person-data coverage — every rule can be shown to act', () => {
   });
 
   /**
-   * The ledger. Reported in full (not just failures) so the reader can see
-   * what the corpus actually covers rather than trusting a green tick.
+   * EVERY RULE'S PREDICATE RUNS. The assertion is that the compiled scope is
+   * SQL the live schema accepts — a renamed column, a dropped table, a join
+   * the compiler builds wrong all fail here, on any database. The count of
+   * rules the CORPUS exercises is reported alongside, because it is worth
+   * knowing (a rule dark in production is either dead code or a feature nobody
+   * uses) but it is an observation about the data, so it is never the verdict.
    */
-  it('reports, per rule, whether any person in the corpus exercises it', async () => {
+  it('every rule compiles to a predicate the database will execute', async () => {
     const acting = PERSON_DATA_RULES.filter((r) => ruleWhere(r) !== null);
     expect(acting.length).toBeGreaterThan(10);
 
-    const unexercised: string[] = [];
+    const dark: string[] = [];
+    let executed = 0;
     let exercised = 0;
 
     for (const rule of acting) {
       const key = `${rule.table}.${rule.column}`;
       const where = ruleWhere(rule)!;
       // "Does ANY user select rows here?" — asked as one query rather than
-      // per-user, so the corpus answers as a whole.
+      // per-user, so the corpus answers as a whole. The query RUNNING is the
+      // claim; what it returns is the census.
       const [row] = await prisma.$queryRawUnsafe<Array<{ n: number }>>(
         `SELECT count(*)::int AS n FROM (
            SELECT 1 FROM users u
@@ -92,17 +79,17 @@ describe('person-data coverage — every rule can be shown to act', () => {
            LIMIT 1
          ) probe`,
       );
+      executed += 1;
       if (row.n > 0) exercised += 1;
-      else if (!UNEXERCISED[key]) unexercised.push(key);
+      else dark.push(key);
     }
 
-    // The ledger must be doing real work — if nothing is exercised, this has
-    // degenerated into reading the allowlist back to itself.
-    expect(exercised).toBeGreaterThan(0);
-    expect({ unexercised, exercised }).toEqual({
-      unexercised: [],
-      exercised,
-    });
+    // The census is the point of the ledger; printing it keeps the reader
+    // informed without letting the corpus decide whether the suite passes.
+    console.log(
+      `[person-data coverage] ${exercised}/${acting.length} rules exercised by this corpus; dark: ${dark.join(', ') || 'none'}`,
+    );
+    expect({ executed }).toEqual({ executed: acting.length });
   });
 
   /**

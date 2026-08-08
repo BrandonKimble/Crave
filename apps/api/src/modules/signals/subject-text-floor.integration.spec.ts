@@ -87,35 +87,56 @@ describe('subject-text k-floor', () => {
    * equivalence "proof".
    */
   it('queryDemand returns no term below the floor', async () => {
-    const rare = await prisma.$queryRawUnsafe<Array<{ subject_text: string }>>(
-      `SELECT subject_text
-       FROM signal_demand_daily
-       WHERE subject_text IS NOT NULL
-       GROUP BY subject_text
-       HAVING count(DISTINCT actor_id) < $1`,
-      SUBJECT_TEXT_K_FLOOR,
-    );
-    if (rare.length === 0) {
-      throw new Error(
-        'VACUOUS: the corpus contains no below-floor term, so this test ' +
-          'cannot show RED. Seed one rather than letting it pass.',
+    // THE WITNESS IS MINTED, NOT HOPED FOR (F9981). This used to throw
+    // VACUOUS when the corpus held no below-floor term — which made the
+    // verdict a property of the database: green on a laptop with signals,
+    // red on CI's freshly migrated one, against identical code. Whether the
+    // reader honours the floor is a fact about the reader, so the case now
+    // supplies the term it needs and deletes it again. Terms the corpus
+    // happens to carry are still swept alongside it.
+    const seeded = `f9981-below-${Date.now()}`;
+    await prisma.$executeRaw`
+      INSERT INTO signal_demand_daily
+        (row_id, day, place_id, actor_id, kind, subject_type, subject_text,
+         signal_count, last_occurred_at)
+      VALUES (gen_random_uuid(), CURRENT_DATE, NULL,
+              '00000000-0000-4000-8000-000000099810'::uuid,
+              'search', 'query', ${seeded}, 1, now())
+    `;
+    try {
+      const rare = await prisma.$queryRawUnsafe<
+        Array<{ subject_text: string }>
+      >(
+        `SELECT subject_text
+         FROM signal_demand_daily
+         WHERE subject_text IS NOT NULL
+         GROUP BY subject_text
+         HAVING count(DISTINCT actor_id) < $1`,
+        SUBJECT_TEXT_K_FLOOR,
       );
-    }
+      // The seed is below the floor by construction, so the sweep below always
+      // has at least one term to be wrong about.
+      expect(rare.map((r) => r.subject_text)).toContain(seeded);
 
-    const rareSet = new Set(rare.map((r) => r.subject_text));
-    const prefixes = [...new Set(rare.map((r) => r.subject_text[0]))];
-    const leaked: string[] = [];
-    for (const prefix of prefixes) {
-      const rows = await reader.queryDemand({
-        prefix,
-        windowDays: 365,
-        limit: 500,
-      });
-      leaked.push(
-        ...rows.map((r) => r.queryKey).filter((key) => rareSet.has(key)),
-      );
+      const rareSet = new Set(rare.map((r) => r.subject_text));
+      const prefixes = [...new Set(rare.map((r) => r.subject_text[0]))];
+      const leaked: string[] = [];
+      for (const prefix of prefixes) {
+        const rows = await reader.queryDemand({
+          prefix,
+          windowDays: 365,
+          limit: 500,
+        });
+        leaked.push(
+          ...rows.map((r) => r.queryKey).filter((key) => rareSet.has(key)),
+        );
+      }
+      expect(leaked).toEqual([]);
+    } finally {
+      await prisma.$executeRaw`
+        DELETE FROM signal_demand_daily WHERE subject_text = ${seeded}
+      `;
     }
-    expect(leaked).toEqual([]);
   });
 
   /**
