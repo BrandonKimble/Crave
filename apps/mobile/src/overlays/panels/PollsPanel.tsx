@@ -52,6 +52,11 @@ import { useSearchNavSwitchCommitAttribution } from '../../screens/Search/runtim
 import { logPerfScenarioSearchRequestLifecycle } from '../../perf/perf-scenario-attribution';
 import { MonogramAvatar } from '../../components/MonogramAvatar';
 import { resolveSceneLoadingMaterial } from '../../navigation/runtime/scene-foundation-spec';
+import {
+  isPollsToggleSeamSkeletonArmed,
+  reportPollsToggleSeamSlicePainted,
+  resolvePollsToggleSeamAwaitingMaterial,
+} from './runtime/polls-toggle-seam';
 
 // OA2/G-SKEL (R8): the loading material comes from the scene's foundation
 // row through the ONE resolver — never a call-site rowType literal.
@@ -647,16 +652,35 @@ export const usePollsPanelListSceneParts = (): {
   const hasVisiblePolls = polls.length > 0;
   const isExpandedSurface = resolvedSnap === 'middle' || resolvedSnap === 'expanded';
 
+  const pollsLengthRef = React.useRef(polls.length);
+  pollsLengthRef.current = polls.length;
   const renderItem = React.useCallback(
-    ({ item }: { item: unknown }) => <PollCard poll={item as Poll} onPress={handleOpenPoll} />,
+    ({ item }: { item: unknown }) => {
+      const card = <PollCard poll={item as Poll} onPress={handleOpenPoll} />;
+      if (!__DEV__) {
+        return card;
+      }
+      // OA9 [PERF] probe report edge: a REAL poll row's committed layout. The
+      // skeleton/empty faces never reach this wrapper, and the reporter refuses a
+      // zero count — it cannot go green off a skeleton paint. No-op (early return
+      // inside) when no press is pending; dev-only wrapper.
+      return (
+        <View
+          collapsable={false}
+          onLayout={() => reportPollsToggleSeamSlicePainted(pollsLengthRef.current)}
+        >
+          {card}
+        </View>
+      );
+    },
     [handleOpenPoll]
   );
   const keyExtractor = React.useCallback((item: unknown) => (item as Poll).pollId, []);
 
   // Leg 4 content choreography (useContentToggle): between a strip press-up and the
-  // new slice's arrival the OLD CARDS ARE OUT — the list is empty AND the empty
-  // component is suppressed below (bare white under the header strip; never a
-  // skeleton, never a "create the first poll" message mid-toggle).
+  // new slice's arrival the OLD CARDS ARE OUT — the list is empty and the awaiting
+  // window paints the OA9 variant-(b) face below the live header strip (or bare
+  // white when disarmed); never a "create the first poll" message mid-toggle.
   const listData: readonly Poll[] =
     hasVisiblePolls && !isFeedSliceAwaiting && !shouldShowCollapsedSpinner
       ? polls
@@ -695,10 +719,25 @@ export const usePollsPanelListSceneParts = (): {
 
   const ListEmptyComponent = React.useMemo(() => {
     if (isFeedSliceAwaiting) {
-      // The content-toggle gap: NOTHING renders — the gap is bare white under the
-      // strip by design (charter Part 3; Spotify/Reddit never show a skeleton
-      // between toggle slices). The new cards snap in on the seam's ready edge.
-      return null;
+      // OA9 toggle-seam variant (b): the strip is live header chrome (declared
+      // strip: 'header' — mounted by the persistent header host, independent of
+      // this body), and the results region paints the refetch face instead of the
+      // old bare-white gap. A/B lever for the on-device verdict: disarm via
+      // `globalThis.__CRAVE_POLLS_TOGGLE_SEAM_SKELETON = false` (dev) to restore
+      // the legacy bare-white face (return null; new cards snap in on the seam's
+      // ready edge either way).
+      const awaitingMaterial = resolvePollsToggleSeamAwaitingMaterial(
+        isPollsToggleSeamSkeletonArmed()
+      );
+      if (awaitingMaterial == null) {
+        return null;
+      }
+      return (
+        <SceneLoadingSurface
+          rowType={awaitingMaterial.rowType}
+          withFilterStripHoles={awaitingMaterial.withStripHoles}
+        />
+      );
     }
     if (shouldShowCollapsedSpinner) {
       // Expanded surface: paint the structure-matched skeleton (poll cards ≈ restaurant rows)

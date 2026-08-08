@@ -33,6 +33,7 @@ const ROW_TYPES: CutoutSkeletonRowType[] = [
   'restaurant',
   'tile',
   'history',
+  'rows',
   'photoStrip',
 ];
 const ROW_COUNT_BY_TYPE: Record<CutoutSkeletonRowType, number> = {
@@ -41,6 +42,7 @@ const ROW_COUNT_BY_TYPE: Record<CutoutSkeletonRowType, number> = {
   restaurant: 4,
   tile: 2,
   history: 7,
+  rows: 7,
   photoStrip: 5,
 };
 

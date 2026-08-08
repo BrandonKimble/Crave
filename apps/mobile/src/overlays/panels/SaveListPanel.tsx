@@ -23,6 +23,11 @@ import type { AppRouteSaveSheetState } from '../../navigation/runtime/app-route-
 import type { AppOverlaySaveListTarget } from '../../navigation/runtime/app-overlay-route-types';
 import { useDeferredSceneDataLane } from './useDeferredSceneDataLane';
 import { SceneLoadingSurface } from '../../components/skeletons';
+import { resolveSceneLoadingMaterial } from '../../navigation/runtime/scene-foundation-spec';
+
+// Non-null by construction: 'saveList' has a foundation row. OA10: the skeleton
+// material is DECLARED on the foundation spec ('rows'), never hardcoded here.
+const SAVE_LIST_LOADING_MATERIAL = resolveSceneLoadingMaterial('saveList')!;
 
 const ACTIVE_TAB_COLOR = themeColors.primary;
 const ROW_GAP = 12;
@@ -489,12 +494,10 @@ export const SaveListMountedSceneBody = React.memo((_props: MountedSceneBodyProp
         // Row skeleton; inherits the 20px horizontal inset from the body
         // transport's contentContainer, so no extra insetX (see the tile-grid
         // double-pad gotcha that used to live here).
-        // TODO(owner): SaveList skeleton contradiction — this call site ships
-        // rowType="history" while the scene's foundation row declares 'tile'
-        // (scene-foundation-spec.ts saveList.skeleton). The owner is ruling
-        // which is right (OA8 open question); until then today's behavior is
-        // kept deliberately. Allowlisted in scripts/check-tracksheet-invariants.
-        <SceneLoadingSurface rowType="history" insetX={0} />
+        // OA10 interim ruling (2026-08-08): the material comes from the scene's
+        // foundation row ('rows' — matches today's row body); the old hardcoded
+        // "history" literal and its TODO(owner) contradiction are resolved.
+        <SceneLoadingSurface {...SAVE_LIST_LOADING_MATERIAL} insetX={0} />
       ) : regularRows.length ? (
         <View style={styles.rowList}>
           {regularRows.map((item) => (

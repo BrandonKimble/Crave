@@ -42,6 +42,7 @@ export type CutoutSkeletonRowType =
   | 'history'
   | 'photoStrip'
   | 'restaurant'
+  | 'rows'
   | 'tile';
 
 /** Clamp a fractional width to the available content width, never below 0. */
@@ -374,6 +375,12 @@ const ROW_BUILDERS: Record<CutoutSkeletonRowType, { build: RowBuilder; stride: n
   photoStrip: { build: buildPhotoStripHoles, stride: PHOTO_STRIP_ROW_STRIDE },
   tile: { build: buildTileRowHoles, stride: TILE_ROW_STRIDE },
   history: { build: buildHistoryHoles, stride: HISTORY_ROW_HEIGHT },
+  // OA10 vocabulary: 'rows' is the honest name for generic list-ROW skeleton
+  // material (the rows|tiles pair). It aliases the history geometry today —
+  // 'history' stays because a TRUE history surface exists (RecentHistoryView) —
+  // but non-history row surfaces (saveList, and Lists in row view-mode) declare
+  // 'rows', never 'history'.
+  rows: { build: buildHistoryHoles, stride: HISTORY_ROW_HEIGHT },
 };
 
 // ─── filter-strip pills (owner design 2026-07-07: the INITIAL/reveal skeleton carries a

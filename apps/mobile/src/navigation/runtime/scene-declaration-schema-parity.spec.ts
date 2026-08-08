@@ -117,7 +117,8 @@ const LEGACY_FOUNDATION_SPECS: Record<string, SceneFoundationSpec> = {
     worldJoin: false,
   },
   saveList: {
-    skeleton: { rowType: 'tile' },
+    // OA10 interim ruling (2026-08-08): rows — matches the sheet's shipped row body.
+    skeleton: { rowType: 'rows' },
     strip: 'none',
     grabHandle: 'visible',
     snapLock: 'none',

@@ -390,7 +390,10 @@ export const SCENE_DECLARATIONS: Record<OverlayKey, SceneDeclaration> = {
       a11yName: 'Save to list',
     },
     foundation: {
-      skeleton: { rowType: 'tile' },
+      // OA10 vocabulary: 'rows' — the SaveList sheet's interim skeleton matches
+      // today's row content (the TODO(owner) is answered; end state is the
+      // view-mode preference on both surfaces).
+      skeleton: { rowType: 'rows' },
       strip: 'none',
       grabHandle: 'visible',
       snapLock: 'none',
@@ -862,15 +865,32 @@ export const sceneHidesGrabHandle = (sceneKey: OverlayKey): boolean =>
  * strip region never blanks). A 'header' strip is chrome — always live above any
  * skeleton — and 'none' has nothing to represent. Nobody re-decides this at a call
  * site.
+ *
+ * THE TOGGLE-SEAM VARIANTS (OA9, 2026-08-08 — the search-results pattern promoted to
+ * data): a loading face has TWO variants, selected by the `seam` argument:
+ *   (a) 'cold'    — first paint / reveal: no live content exists, so an 'in-list'
+ *                   strip's region is part of the face (pill holes stand in for it).
+ *   (b) 'refetch' — an in-place toggle/re-query on a LIVE surface: the real strip
+ *                   stays mounted and interactive; the face covers only the results
+ *                   region below it, so holes are never minted regardless of basis.
+ * Variant selection is this one function of (declared strip basis × seam phase) —
+ * no call site re-decides it, and the material (rowType) is identical across both:
+ * the variants differ in LAYOUT, never in content (the OA9 placeholder policy).
  */
+export type SceneLoadingSeam = 'cold' | 'refetch';
+
 export const resolveSceneLoadingMaterial = (
-  sceneKey: OverlayKey
+  sceneKey: OverlayKey,
+  seam: SceneLoadingSeam = 'cold'
 ): { rowType: SceneLoadingRowType; withStripHoles: boolean } | null => {
   const spec = getSceneFoundationSpec(sceneKey);
   if (spec == null) {
     return null;
   }
-  return { rowType: spec.skeleton.rowType, withStripHoles: spec.strip === 'in-list' };
+  return {
+    rowType: spec.skeleton.rowType,
+    withStripHoles: seam === 'cold' && spec.strip === 'in-list',
+  };
 };
 
 /**

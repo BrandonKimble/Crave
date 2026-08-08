@@ -23,6 +23,7 @@ import {
   type PollFeedPlaceOption,
 } from './polls-feed-controls-store';
 import { shouldRefetchFeedForSettledBounds } from './polls-feed-refetch-edge';
+import { markPollsToggleSeamPress } from './polls-toggle-seam';
 import { subscribeToReconnect } from '../../../store/systemStatusStore';
 import {
   getViewportSubjectState,
@@ -471,6 +472,9 @@ export const usePollsFeedRuntimeController = ({
     },
   });
   const scheduleFeedQueryCommit = React.useCallback(() => {
+    // OA9 probe anchor: this callback runs in the press handler's own stack (the
+    // control-store write notifies synchronously), so it IS the press edge.
+    markPollsToggleSeamPress();
     feedContentToggleSeam.scheduleCommit(
       async () => {
         const gate = visibilityGateRef.current;

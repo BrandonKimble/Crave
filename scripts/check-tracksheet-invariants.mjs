@@ -99,7 +99,6 @@ const ROWTYPE_ALLOWED = (f) => {
     r === 'apps/mobile/src/tracksheet/track-entry-skeleton.ts' ||
     r.startsWith('apps/mobile/src/screens/Search/') ||
     r.startsWith('apps/mobile/src/perf/lifecycle-harness/') ||
-    r === 'apps/mobile/src/overlays/panels/SaveListPanel.tsx' ||
     isSpecOrFixture(f)
   );
 };
