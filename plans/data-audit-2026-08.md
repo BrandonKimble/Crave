@@ -1408,3 +1408,10 @@ appears in any browse or search result. A ghost. ~9,500 events of real
 community testimony are invisible behind these ghosts. This RAISES the
 stakes on deferred item #6 (task #1): it is not just un-spent enrichment,
 it is 23.5% of the restaurant inventory being suggest-able but not usable.
+
+HOP 5 events -> the score a user sees: the doubled-evidence question from the
+phase-1 red team is CLOSED AS BENIGN. Dish scores read the rebuilt mentions
+table, and zero (connection, document, kind) groups carry more than one row —
+a dish that is both named and used as a category still earns credit ONCE per
+comment. Praise likewise dedupes per (restaurant, mention_key). No dish
+outranks another because of the two-row evidence design.
