@@ -124,6 +124,17 @@ count on prod+staging.
    cards, delete→restore flow.
 6. Session-specific items — appended from reports.
 
+## Coordination round 3 (2026-08-08): adversarial results routed
+
+The two coordination red-team lanes returned 10 findings; every one routed to its
+owning session WITH the ideal-shape fix (no guards, per the owner's standing
+directive) and recorded F9955-F9968 in audit/FINDINGS.md. Highlights: the RC
+TRANSFER path had two HIGH money defects (a transfer to an unsynced account
+permanently revokes the payer; the subscription row never re-keys); a deleted
+account reached 7 routes not 1; the poison-precedence was pinned by nothing (now
+16 tests). A plans-vs-reality audit lane (owner-proxy) is out; tom tom owes the
+cost/account-deletion corroboration dump for the two stale sessions.
+
 ## Red-team ledger for this deploy
 
 Already adversarially verified (2026-08-07, all passes recorded in audit/DESIGNS.md
