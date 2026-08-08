@@ -23,6 +23,7 @@ function candidate(
     name,
     coverageOfView,
     placeArea,
+    providerLevelCode: 'Municipality',
     // Feed fixtures are about membership, not the anchor; centred by
     // default so the header arm behaves as each case's coverage implies.
     containsViewCenter: true,

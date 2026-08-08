@@ -42,6 +42,7 @@ export class ViewportVerdictService {
     const candidates: FeedPlaceCandidate[] = placesInView.map((entry) => ({
       placeId: entry.place.placeId,
       name: entry.place.name,
+      providerLevelCode: entry.place.providerLevelCode,
       coverageOfView: entry.coverageOfView,
       placeArea: entry.placeArea,
       containsViewCenter: entry.containsViewCenter,

@@ -84,10 +84,60 @@ const EPSILON = 1e-9;
  */
 export const HEADER_ATTENTION_FRACTION = 0.2;
 
+/**
+ * THE ONE FINEST-PLACE ORDERING (round-3 unification, 2026-08-08). Four
+ * authorities used to answer "which place is finer" and their tie behaviour
+ * disagreed. The law is now stated once:
+ *
+ *   finest = smallest measured ground AREA;
+ *   on an EXACT area tie (coextensive shapes — 55 measured, consolidated
+ *   city-counties like Philadelphia and the DC trio), the finer VENDOR
+ *   LEVEL wins — because coextensive acts belong to both rows and the one
+ *   that holds the aggregate must be the row the PRODUCT keys (all 672
+ *   curated lists key Municipalities; the Philadelphia id-tiebreak incident
+ *   sent downtown demand to a county row no surface reads);
+ *   then placeId, strictly for determinism.
+ *
+ * This does NOT contradict the header's no-level-codes derivation: the NYC
+ * inversion (Manhattan-the-county inside NYC-the-municipality) is about
+ *  NESTED places with DIFFERENT areas, where area alone decides. Level only
+ * ever fires between byte-identical shapes, where "which is geometrically
+ * finer" has no answer and "which does the product speak" does.
+ * levelSpecificitySql (signals/ground-containment) mirrors this table in
+ * SQL; the two must move together.
+ */
+export const LEVEL_SPECIFICITY: ReadonlyArray<string> = [
+  'Neighbourhood',
+  'MunicipalitySubdivision',
+  'Municipality',
+  'CountrySecondarySubdivision',
+  'CountrySubdivision',
+  'Country',
+];
+
+export function levelSpecificityRank(providerLevelCode: string): number {
+  const rank = LEVEL_SPECIFICITY.indexOf(providerLevelCode);
+  return rank === -1 ? LEVEL_SPECIFICITY.length : rank;
+}
+
+/** area ASC → level specificity ASC → placeId ASC. See LEVEL_SPECIFICITY. */
+export function finestPlaceFirst(
+  a: Pick<SubjectCandidate, 'placeArea' | 'providerLevelCode' | 'placeId'>,
+  b: Pick<SubjectCandidate, 'placeArea' | 'providerLevelCode' | 'placeId'>
+): number {
+  return (
+    a.placeArea - b.placeArea ||
+    levelSpecificityRank(a.providerLevelCode) - levelSpecificityRank(b.providerLevelCode) ||
+    a.placeId.localeCompare(b.placeId)
+  );
+}
+
 /** What the header judgment needs to know about a candidate place. */
 export interface SubjectCandidate {
   placeId: string;
   name: string;
+  /** Tie-break input ONLY (see finestPlaceFirst) — never branched on. */
+  providerLevelCode: string;
   // NO bbox (dropped 2026-07-26): the judgment ranks ONLY on ground-derived
   // numbers. Carrying a bbox here was dead payload that invited a second,
   // weaker source of truth.
@@ -200,6 +250,7 @@ export function subjectCandidatesInView(view: GeoBbox, places: PlaceLike[]): Sub
     candidates.push({
       placeId: place.placeId,
       name: place.name,
+      providerLevelCode: place.providerLevelCode,
       coverageOfView: coverage.coverageOfView,
       placeArea: coverage.placeArea,
       containsViewCenter: coverage.containsViewCenter,
@@ -397,10 +448,13 @@ export function resolveHeaderPlace(
   if (centered.length === 0) {
     return { kind: 'this-area', reason: 'nothing-under-center' };
   }
-  // Finest first — smallest ground area; ties close on name for determinism.
+  // Finest first — the ONE ordering (finestPlaceFirst): area, then level
+  // specificity on exact coextensive ties (this is what makes DC read
+  // "Washington" — the Municipality beats two same-shaped District rows),
+  // then id.
   const chosen = centered
     .filter((candidate) => candidate.coverageOfView + EPSILON >= HEADER_ATTENTION_FRACTION)
-    .sort((a, b) => a.placeArea - b.placeArea || a.name.localeCompare(b.name))[0];
+    .sort(finestPlaceFirst)[0];
   if (!chosen) {
     return { kind: 'this-area', reason: 'under-threshold' };
   }

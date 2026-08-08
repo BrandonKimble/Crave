@@ -190,7 +190,11 @@ function createHarness(options: {
       options.placesInView.map((entry) => {
         const half = Math.sqrt(entry.placeArea) / 2;
         return {
-          place: { placeId: entry.placeId, name: entry.name },
+          place: {
+            placeId: entry.placeId,
+            name: entry.name,
+            providerLevelCode: 'Municipality',
+          },
           bbox: {
             minLat: 0.5 - half,
             minLng: 0.5 - half,

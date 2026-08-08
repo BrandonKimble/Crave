@@ -1,4 +1,5 @@
 import { Prisma } from '@prisma/client';
+import { LEVEL_SPECIFICITY } from '@crave-search/shared';
 
 /**
  * §2.5(c)/§2.6 ground containment predicates for signal-geo attribution
@@ -215,13 +216,14 @@ export function levelSpecificitySql(placesAlias: string): Prisma.Sql {
     throw new Error(`Unsafe SQL alias: ${JSON.stringify(placesAlias)}`);
   }
   const alias = Prisma.raw(placesAlias);
+  // DERIVED from the shared LEVEL_SPECIFICITY table (round-3 unification):
+  // the header's TS tie-break (finestPlaceFirst) and this SQL are one law
+  // with one source — the ladder cannot drift between runtimes.
+  const arms = LEVEL_SPECIFICITY.map(
+    (level, rank) => `WHEN '${level}' THEN ${rank}`,
+  ).join('\n    ');
   return Prisma.sql`CASE ${alias}.provider_level_code
-    WHEN 'Neighbourhood' THEN 0
-    WHEN 'MunicipalitySubdivision' THEN 1
-    WHEN 'Municipality' THEN 2
-    WHEN 'CountrySecondarySubdivision' THEN 3
-    WHEN 'CountrySubdivision' THEN 4
-    WHEN 'Country' THEN 5
-    ELSE 6
+    ${Prisma.raw(arms)}
+    ELSE ${LEVEL_SPECIFICITY.length}
   END`;
 }

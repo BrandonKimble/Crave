@@ -57,6 +57,7 @@ function candidate(
     name,
     coverageOfView: coverageOfViewShare,
     placeArea: bboxArea(bbox),
+    providerLevelCode: 'Municipality',
     // Hand-built candidates default to centred — the tests that exercise
     // the anchor override this explicitly.
     containsViewCenter: true,
@@ -354,6 +355,32 @@ describe('resolveHeaderPlace — the center-anchored law (2026-08-07)', () => {
       kind: 'this-area',
       reason: 'nothing-under-center',
     });
+  });
+
+  it('COEXTENSIVE TIE: equal-area shapes resolve by level specificity — DC reads "Washington", not the district rows', () => {
+    // The measured DC trio: three byte-identical 177km2 grounds. Area ties
+    // exactly; the finer VENDOR level (Municipality) must win because it is
+    // the row the product keys — the same Philadelphia demand-mass law
+    // (levelSpecificitySql), now ONE ordering across both runtimes.
+    const view: GeoBbox = { minLat: 0, minLng: 0, maxLat: 1, maxLng: 1 };
+    const shape = { minLat: 0.2, minLng: 0.2, maxLat: 0.8, maxLng: 0.8 };
+    const washington = candidate('Washington', shape, 0.36, {
+      providerLevelCode: 'Municipality',
+    });
+    const districtCounty = candidate('District of Columbia', shape, 0.36, {
+      providerLevelCode: 'CountrySecondarySubdivision',
+    });
+    const districtState = candidate('District of Columbia B', shape, 0.36, {
+      providerLevelCode: 'CountrySubdivision',
+    });
+    const result = resolveHeaderPlace(view, [
+      districtState,
+      districtCounty,
+      washington,
+    ]);
+    expect(result.kind).toBe('place');
+    if (result.kind !== 'place') throw new Error('unreachable');
+    expect(result.place.name).toBe('Washington');
   });
 
   it('boundary: coverage of exactly HEADER_ATTENTION_FRACTION names the header (closed threshold, EPSILON-stable)', () => {

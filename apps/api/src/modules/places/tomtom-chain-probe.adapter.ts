@@ -488,7 +488,7 @@ export class TomtomChainProbeAdapter implements TomtomChainProbe {
             g.geometry,
             ST_SetSRID(ST_MakePoint(${anchor.lng}, ${anchor.lat}), 4326)
           )
-        ORDER BY p.provider_level_code, ST_Area(g.geometry) ASC
+        ORDER BY p.provider_level_code, ST_Area(g.geometry) ASC, p.place_id ASC
       `;
       return new Map(rows.map((row) => [row.levelCode, row.providerPlaceId]));
     } catch (error) {
