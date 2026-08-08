@@ -59,6 +59,7 @@ export function buildRestaurantPlaceChooserPrompt(
     '9. A plausible name match alone does not override a major location mismatch.',
     '10. Popup, collaboration, truck, stand, residency, weekend, or other temporary wording may still refer to the underlying restaurant or brand, but temporary wording does not by itself justify selecting an out-of-market candidate.',
     '11. Prefer restaurant-ish candidates. Non-restaurant candidates may still be evidence against weaker restaurant matches.',
+    "11b. A candidate's business category never disqualifies it by itself. Judge type-ambiguous candidates (grocery store, convenience store, market, butcher shop, food store) by HOW THE SOURCE TEXT TALKS ABOUT THE PLACE: if people describe ordering or eating prepared food there (a dish, a counter, a deli order, breakfast tacos), a store-typed candidate is a fully valid selection — many real food spots are typed as stores (a vegan cheese shop with a deli, a bodega with a grill, a supermarket with a taqueria). If the source text only describes buying packaged goods to take home, prefer other candidates.",
     '12. Prefer a candidate supported by both Google sources when that agrees with the rest of the evidence.',
     '',
     'Notes:',

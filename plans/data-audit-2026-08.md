@@ -1494,3 +1494,40 @@ FIX SHAPE (round-2 design, not yet implemented):
      janitor retry arm ON with a budget.
   d. Places spend rides the owner-approved envelope; measured recovery rate
      from (b)'s first 100 decides whether the rest runs.
+
+## GHOSTS: BUILT, EXECUTED, RED-TEAMED (2026-08-08)
+
+Shipped (one commit): the type gate is a hint, never a veto — the chooser's
+verdict stands and an off-category selection is logged, not rejected; the
+"restaurantish" hint now reads Google's COMPLETE food-and-drink category
+(164 types, source-pinned) instead of the 64-key cuisine map; the failure
+reason is honest ("chooser declined all candidate sets"); chooser rule 11b
+judges store-typed candidates by the source text's mode of consumption; the
+worker rethrows on transient errors so the queue's attempts:3 finally runs;
+scripts/reground-ghosts.ts is the recovery + tombstone runner, deriving each
+ghost's locale+bias via THE one dispatch-context builder and feeding the
+chooser the ghost's highest-upvote mention snippet.
+
+EXECUTED: 195 permanently-closed ghosts archived (Google's own verdict; 0
+were user-anchored; events retained). First-100 tranche: 47 RECOVERED /
+53 no_match / 0 errors — Otoko, Garbo's, Easy Tiger, la Barbecue, Louie
+Mueller (Taylor), Güero's, Perla's, Din Tai Fung, KazuNori all grounded
+with correct addresses.
+
+RED TEAM: audited all 47 — store-typed admissions are exactly the intended
+class (Schaller & Weber, MT Supermarket, Rebel Cheese Factory). ONE wrong
+branch found: Wegmans grounded to Harrison NY while the community text said
+"Wegman's Astor Place" — root cause: the sweep wasn't feeding source text,
+so the chooser only had the market default. Fixed structurally (snippet
+into every sweep call) and specifically (force re-ground with the snippet
+→ 770 Broadway, Astor Place). A transient ".has" crash poisoned the first
+tranche run and 3 stragglers; not reproducible on any replay path, classed
+transient/retryable by the taxonomy, cleared on rerun.
+
+PLACES SPEND REVIEW (owner ask): the big levers are already pulled — dollar
+gate before rate gate, SKU classification from field masks, lean refresh
+mask for re-polls, archived-never-enriched, spend metered per caller. One
+gap noted: enrichment autocomplete->details flows don't use session tokens
+(polls does), so autocomplete + details bill separately instead of as a
+session. Worth a look, not urgent: grounding volume is one-shot per
+restaurant, not per-user-keystroke.

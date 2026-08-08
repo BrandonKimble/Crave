@@ -49,7 +49,11 @@ export interface EnrichmentFailureVerdict {
  * Every one of them is Google or our own row answering the question.
  */
 const DEFINITIVE_REASON_CODES: ReadonlyMap<string, string> = new Map([
+  // Legacy string kept so historical rows still classify; the live service
+  // emits the honest form below since 2026-08-07 (the chooser's verdict, not
+  // a type filter's).
   ['no prediction matched preferred place types', 'no_acceptable_candidate'],
+  ['chooser declined all candidate sets', 'no_acceptable_candidate'],
   ['place details missing', 'place_details_missing'],
   ['place permanently closed', 'place_permanently_closed'],
   ['moved place details missing', 'moved_place_details_missing'],

@@ -44,6 +44,7 @@ import { RestaurantCuisineExtractionQueueService } from './restaurant-cuisine-ex
 import { RestaurantSecondaryLocationExpansionQueueService } from './restaurant-secondary-location-expansion-queue.service';
 import { OpsAlertsService } from '../external-integrations/shared/ops-alerts.service';
 import {
+  GOOGLE_FOOD_AND_DRINK_PLACE_TYPES,
   GOOGLE_BOOLEAN_ATTRIBUTE_VOCAB,
   GOOGLE_PLACE_TYPE_ATTRIBUTE_CANONICAL_NAMES,
   GOOGLE_PLACE_TYPE_ATTRIBUTE_MAP,
@@ -866,7 +867,13 @@ export class RestaurantLocationEnrichmentService {
                 adjudicationTrail: selection.adjudicationTrail,
               },
         );
-        const reason = 'no prediction matched preferred place types';
+        // Reason string is now honest: the CHOOSER declined every candidate
+        // set (initial + locale retry + fallback). The old label blamed a
+        // "preferred place types" filter that, by 2026-08-07, was only one
+        // of several ways to arrive here — it sent the whole ghost
+        // investigation down a type-list rabbit hole before the trails
+        // showed the judge's own verdicts.
+        const reason = 'chooser declined all candidate sets';
         await this.recordNoMatchCandidates(entity, reason, noMatchMetadata);
         return {
           entityId: entity.entityId,
@@ -2429,9 +2436,17 @@ export class RestaurantLocationEnrichmentService {
   }
 
   private isRestaurantishPlaceTypes(types?: string[]): boolean {
+    // HINT, never a veto (ghost attribution 2026-08-07): membership in
+    // Google's complete food-and-drink category ranks candidates for the
+    // chooser; the chooser decides. The old form checked the 64-key cuisine
+    // map and then VETOED the chooser's selection — 234 ghosts carry
+    // `selected_candidate_failed_restaurant_type_gate` trails where the
+    // judge had picked the right place.
     return (
       Array.isArray(types) &&
-      types.some((type) => PREFERRED_PLACE_TYPES.has(type.toLowerCase()))
+      types.some((type) =>
+        GOOGLE_FOOD_AND_DRINK_PLACE_TYPES.has(type.toLowerCase()),
+      )
     );
   }
 
@@ -2752,6 +2767,13 @@ export class RestaurantLocationEnrichmentService {
       };
     }
 
+    // THE TYPE GATE IS NO LONGER A VETO (ghost attribution 2026-08-07).
+    // The chooser saw the candidate's types, the source text, and the
+    // market, and selected anyway — overruling that verdict with a type
+    // list is what manufactured 234 ghosts (Rebel Cheese: judge selected
+    // "Rebel Cheese Factory, Austin" three times; the gate rejected it
+    // three times). Gate-2 forensics proved no type list can decide
+    // food-service-ness. The fact is still recorded for audit.
     if (!this.isRestaurantishPlaceTypes(selected.entry.candidate.types)) {
       const candidate = selected.entry.candidate;
       const candidateName =
@@ -2761,13 +2783,9 @@ export class RestaurantLocationEnrichmentService {
         candidateName,
         source: selected.matchSource,
         sameBusiness: true,
-        reason: 'selected_candidate_failed_restaurant_type_gate',
+        reason: 'selected_candidate_outside_food_type_category (accepted)',
         ...params.extras,
       });
-      return {
-        adjudicationTrail: params.adjudicationTrail,
-        strategy: params.strategy,
-      };
     }
 
     return {

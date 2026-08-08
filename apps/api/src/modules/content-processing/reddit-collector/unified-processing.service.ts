@@ -3406,7 +3406,11 @@ export class UnifiedProcessingService implements OnModuleInit {
     }
   }
 
-  private async resolveRestaurantEnrichmentDispatchContext(
+  // PUBLIC since 2026-08-07: the ghost re-grounding sweep
+  // (scripts/reground-ghosts.ts) derives each ghost's locale+bias through
+  // THIS builder rather than a script-local copy — one derivation, one
+  // radius law, one bias shape.
+  async resolveRestaurantEnrichmentDispatchContext(
     subreddit?: string | null,
   ): Promise<RestaurantEnrichmentDispatchContext> {
     // §13 enrichment bias from PLACE geometry (markets extermination leg 3):
