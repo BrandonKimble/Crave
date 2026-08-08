@@ -19,6 +19,12 @@
 > still exist: `navigation/RootNavigator.tsx`, `overlays/AppOverlayRouteHost.tsx`, and
 > `overlays/useRestaurantRouteProducer.ts`. Read §"Current Reality" and the per-slice Progress
 > logs as archaeology of the April cutover, not as a description of the tree.
+>
+> **CORRECTION (coordinator plans-audit) 2026-08-08:** `overlays/useRestaurantRouteProducer.ts`
+> is now gone too — the file does not exist and has zero references in `apps/mobile/src`.
+> Only two of the referenced files survive: `navigation/RootNavigator.tsx` and
+> `overlays/AppOverlayRouteHost.tsx`. Every later mention of the producer in this file
+> (§"Current Reality", the slice logs) describes a deleted module.
 
 Last updated: 2026-04-07
 Status: CLOSED (superseded — see banner)

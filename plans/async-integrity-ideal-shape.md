@@ -97,6 +97,15 @@ CRITICAL — active data loss/corruption:
   a second poller; the hourly stale sweep ignores leases and can kill a
   live ingest (then the unconditional write resurrects it, and
   compaction can delete the run under the evidence).
+  > CORRECTION (coordinator plans-audit) 2026-08-08 — C3's class is PARTLY
+  > RE-OPENED, not closed. Most terminal writes in
+  > `apps/api/src/modules/external-integrations/llm/gemini-batch.service.ts`
+  > are now guarded `updateMany`s, but TWO bare `llmBatchJob.update()` status
+  > writes are live today: `:557` (inside `pollOne`, stamping
+  > `status:'failed'` unconditionally — the exact C3 shape) and `:248`
+  > (`submit()` stamping `status:'pending'`). Fix assigned to fork 2. Note
+  > the doc's original "pollOne's TWO" is now one; the second live bare write
+  > is in `submit()`.
 - C4 Run-scoped event uniqueness + non-content mention keys = structural
   double-counting (observed: 23,358 duplicate-lineage events, 2-4x
   score inflation; ALSO load-bearing: the active-run filter currently

@@ -12,6 +12,15 @@ Status: mostly delivered
 > 2026-07-22 markets extermination). Any market-membership behavior
 > described below is historical only; there is no live replacement
 > concept — restaurant identity is market-agnostic today.
+>
+> **CORRECTION (coordinator plans-audit) 2026-08-08:** stronger than "market-agnostic" —
+> the code states the positive rule. `restaurant-location-enrichment.service.ts:1774`
+> reads "§13: identity is GLOBAL — name conflict is judged globally, never through a
+> market-presence lane", and the name-conflict lookup matches on name across all
+> restaurants with no scope predicate. So the goals below that promise per-market
+> behavior (secondary expansion "scoped to the active market", "name + seed market"
+> fallback, "profile and search show only active-market locations") are not merely
+> unimplemented — they are contradicted by the live rule.
 Scope:
 
 - `/Users/brandonkimble/crave-search/apps/api/src/modules/restaurant-enrichment/**`

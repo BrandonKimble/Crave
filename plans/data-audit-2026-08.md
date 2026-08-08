@@ -1599,6 +1599,14 @@ a diner orders by name) passes all three. KEEP. No prompt or code change.
 
 ## SWEEP COMPLETE + TWO CENSUS FIXES LANDED (2026-08-08)
 
+> CORRECTION (coordinator plans-audit) 2026-08-08 — SUPERSEDED. The
+> "~700 recovered / 926 remain" figures below are a mid-campaign snapshot.
+> The authoritative final numbers are in "GHOST CAMPAIGN CLOSED
+> (2026-08-08) — final numbers" further down this file (line ~1642):
+> 1,626 ghosts of 6,922 active (23.5%) at start -> 783 of 6,571 (11.9%)
+> at close, ~615 recovered + 228 tombstoned + the rest collision merges.
+> Read that block, not this one.
+
 GHOSTS: campaign total ~700 recovered of the original 1,626 (926 remain,
 6,620 active). The remainder is dominated by honest no_matches — food
 trucks, caterers, pop-ups, and closures Google cannot ground — plus the

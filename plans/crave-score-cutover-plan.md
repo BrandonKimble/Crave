@@ -22,7 +22,15 @@ Execution-ready target plan. This supersedes `plans/contextual-score-cutover-pla
 > other two supersession banners already cover the display-band/curve
 > changes correctly.
 > `display_score = 10·global_percentile`, stored at 2 decimals, 1dp on cards / 2dp in the
-> score-info sheet, delta in rating points (no `/10`). `confidenceLabel` (the `'early'|'solid'|
+> score-info sheet, delta in rating points (no `/10`). **CORRECTION (coordinator
+> plans-audit) 2026-08-08: this correction banner is itself out of date.** Live is
+> `crave-score-v4` ("v3 math over per-source-calibrated masses",
+> `apps/api/src/modules/content-processing/public-crave-score/public-crave-score.service.ts:72-73`)
+> with display curve `crave-score-display-v6`, and the display map is NOT
+> `10·global_percentile`: `bellK: 3.0` (:81) selects the truncated-normal inverse-CDF
+> reshape in `displayFromPercentile` (:457-470) — the linear map survives only as the
+> `bellK == null` branch. Ranking is unchanged (monotonic); the displayed distribution
+> is a bell, not uniform. `confidenceLabel` (the `'early'|'solid'|
 > 'strong'` field in `ScoreInfoSummary` below) is also DELETED everywhere. Read this plan for its
 > non-scoring product framing (rank-vs-score separation, coverage contract, fixture invariants) only.
 

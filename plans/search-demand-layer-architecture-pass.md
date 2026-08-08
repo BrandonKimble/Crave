@@ -16,6 +16,18 @@
 > `apps/api/src/modules/signals/`). Additionally, every `marketKey` /
 > `collectableMarketKey` / `marketScopeKey` reference below is dead: the market system
 > was exterminated 2026-07-22 and scope is now place containment (`Signal.placeId`).
+>
+> **CORRECTION (coordinator plans-audit) 2026-08-08 — the SUBSTRATE this whole document
+> reasons over is gone, not just its market keys.** `user_search_logs` / `SearchLog` /
+> `SearchLogSource` have ZERO hits in `apps/api/src` and in `apps/api/prisma/schema.prisma`
+> — every "add `eventKind` to `SearchLog`", "raw events stay in `user_search_logs`" and
+> similar instruction below targets a table that does not exist. Relatedly,
+> `SearchQuerySuggestionService` does NOT read `user_search_logs` and contains no SQL at
+> all (zero `queryRaw`/`Prisma.sql` in
+> `apps/api/src/modules/search/search-query-suggestion.service.ts`); it reads the signals
+> ledger through `SignalDemandReadService`. And
+> `AUTOCOMPLETE_QUERY_SUGGESTION_MIN_GLOBAL_COUNT` has zero hits repo-wide. Read the file
+> as history only.
 
 ## Summary
 

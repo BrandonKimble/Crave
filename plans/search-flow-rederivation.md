@@ -203,6 +203,19 @@ The minimal primitive set (most of it exists):
 
 ### What is wrong / fragile (deviations)
 
+> **CORRECTION (coordinator plans-audit) 2026-08-08 — parts of this deviation list and of
+> the R7 gap list below ask for work that has SHIPPED, and one address moved.** The
+> sheet-motion authority is no longer only `TrackSheetRouteHost.tsx:504-524`: the ready
+> edge is `markSearchSurfaceSheetReadyForVisibleSnap` →
+> `navigation/runtime/app-route-sheet-host-authority-controller.ts:1707`, and **D2(a)'s
+> motion-PENDING side IS wired** — `markRedrawSheetMotionPending` is called from the same
+> controller at :1696 (and from `tracksheet/use-track-motion-controller.ts:66`), landing in
+> `search-surface-runtime.ts:1031` with spec coverage. **D1 is closed** as well: the
+> skeleton is per-scene data through one resolver (`trackSkeletonMaterialForScene`) in
+> `tracksheet/use-track-leg-resolver.tsx:328-357`, which explicitly records "never a
+> hardcoded rowType" — so gap-list item 1 (G-SKEL) is done. Re-verify D3–D6 before
+> scheduling them; only D1/D2a were re-checked here.
+
 - **D1 — skeleton material is not per-scene data.**
   TrackSheetRouteHost.tsx:735 hardcodes `rowType="restaurant"` and renders no
   strip-in-skeleton pills. Violates OA2/G-SKEL. Fix: resolve from

@@ -17,6 +17,17 @@
 
 ## Status
 
+> **CORRECTION (coordinator plans-audit) 2026-08-08 — tombstone date-stamp.** Everything
+> in this "Status" block and in the runtime prose that follows (`core_markets` as the
+> canonical runtime contract, `MarketType.locality`, `source_boundary_*` market fields,
+> `marketResolutionStatus`, market-geometry viewport coverage) describes a system
+> EXTERMINATED 2026-07-22, per the banner at the top of this file. In particular
+> "viewport coverage uses stored `core_markets.geometry`" is inverted today: coverage is
+> strictly VIEWPORT-BOUNDED — `apps/api/src/modules/search/search-coverage.service.ts:279`
+> filters every candidate to the submitted lng/lat bounds and records that the previous
+> behavior (dropping the bounds filter when a `marketKey` was present) "made coverage
+> city-wide and polluted the on-screen ranked set". No market geometry participates.
+
 Implemented in the current workspace. Treat this file as historical design
 context plus validation criteria, not as a description of the active runtime.
 The active code path now uses provider-neutral `geo_boundary_features`,

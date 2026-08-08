@@ -226,6 +226,14 @@ extraction-scope.service.ts` exists and exports `documentsOwnedByRun`,
   repo-wide), and the `CREATE VIEW active_entity_support` beside it is in no
   migration. Both read as proposals in context, but the table lists the
   function as if it were a peer of the three real ones — it is not.
+  > CORRECTION (coordinator plans-audit) 2026-08-08: F1232 is itself wrong —
+  > it searched for this doc's spelling. The capability SHIPPED under a
+  > different name: `entityIdsWithActiveSupport()` at
+  > `apps/api/src/modules/content-processing/reddit-collector/extraction-scope.service.ts:140`,
+  > with the shared predicate `activeSupportExistsSql()` at :480. So the
+  > §3.2 table's fourth row IS a peer of the other three; only the name in
+  > the table is stale. (The `CREATE VIEW active_entity_support` half stands
+  > — the predicate is inlined SQL, not a view.)
 - **F1233 — "`gemini-gateway-lockdown.spec.ts` has held the Gemini boundary
   for weeks" is wrong by an order of magnitude.** That file was first added
   **2026-07-29** (`git log --diff-filter=A`); this doc is dated 2026-08-01.

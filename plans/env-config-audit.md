@@ -67,6 +67,19 @@ UNIFIED_PROCESSING_DRY_RUN, COLLECTION_LLM_MODE (read in code, set per env).
 
 ## (b) Tunables — **FOLD-IN EXECUTED 2026-07-11** (95 .env lines deleted)
 
+> **CORRECTION (coordinator plans-audit) 2026-08-08 — three stale addresses in this
+> section (and the POLL row in the table above).** (1) There are NO `POLL_*` env reads
+> left anywhere in `apps/api/src` (`process.env.POLL_` = zero hits); the poll windows
+> are plain constants in `apps/api/src/modules/polls/poll-timing.ts` — so both the
+> table row and the "live subset" bullet below describe env vars that no longer exist.
+> (2) The "Misc" bullet still routes the live POLL subset through
+> `poll-scheduler.service.ts`, the very file F727 proved absent one row above in this
+> same document. (3) `llm.queryTimeout` is no longer in `configuration.ts` — the key is
+> gone and the per-caller timeouts now live in
+> `apps/api/src/modules/external-integrations/llm/gemini-caller-profiles.ts:52,60`,
+> which documents it as "the FORMER `llm.queryTimeout` config key". The Sentry bullet
+> is still accurate; its code is `apps/api/src/main.ts:38` (APP_ENV-aware 1.0/0.1).
+
 Doctrine applied: never-changed tunables became code constants with rationale
 comments; process.env reads removed except where a genuine env axis exists
 (quota-shaped caps). Drift reconciliations (where .env ≠ code fallback) are

@@ -12,6 +12,15 @@
 > NOT yet deleted (the rung-5 delete pass + grep-invariants remain open): the
 > `useBottomSheetShared*` family (11 files) still lives in `apps/mobile/src/overlays/`, reachable
 > via the `crave://tracksheet-host?on=0` rollback path.
+>
+> **CORRECTION (coordinator plans-audit) 2026-08-08:** two facts in this banner are wrong.
+> (1) Leg visibility is NOT a display flip — the code explicitly FORBIDS one:
+> `TrackSheetPage.tsx:1406-1413` documents legs as OPACITY-DETACHED "not display:none (perf,
+> measured)", because flipping `display` forces a full Yoga relayout of the leg subtree
+> (~100ms on real scenes) while opacity is paint-only; hidden legs keep layout, take no
+> touches, emit no scroll events, and alpha is owned by the engine's `TrackLegSlot` inside
+> the switch transaction. (2) The `useBottomSheetShared*` family is **9** files in
+> `apps/mobile/src/overlays/`, not 11.
 
 # THE PAGE — a from-scratch composition system (v2, post-red-team)
 

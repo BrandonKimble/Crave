@@ -12,6 +12,17 @@
 > CollectionSchedulerService that used to plan here was exterminated").
 > The live owner of collection pacing today is `CollectorPacerService`
 > (`collector-pacer.service.ts`). Read everything below as historical.
+>
+> **CORRECTION (coordinator plans-audit) 2026-08-08 — two refinements to the banner
+> above.** (1) The sort-plan/hot-spike state this doc says "moves into
+> `collection_schedules`" now lives on `SourceCollectionLane.state` (a Json column
+> documented as "chronological {lastProcessedAt}, keyword {lastTopRelevanceRunAt}",
+> `apps/api/prisma/schema.prisma:575-608` — cadence, lateness, due/last-ran, and the
+> output+cost baselines are on that same model). (2) The **per-cycle Reddit budget**
+> this plan is built around was not merely reimplemented — it was explicitly ABOLISHED:
+> `collector-pacer.service.ts:5-12` states "No cycle budget, no per-kind cost table
+> (KIND_COST is dead — §16: no chosen numbers): capacity comes from the governor",
+> with lane selection by normalized lateness and pool reserve/reconcile per dispatch.
 
 **BUILD STATUS: COMPLETE 2026-07-08** (529ef13d table → 4c5591eb loop+steps 2-4 →
 5039c2fb / 577f6d81 step 5). All map-era planning deleted; hot-spike whitelist and

@@ -7,6 +7,21 @@
 > Stale references to `collection_entity_priority_metrics` are rejected historical
 > notes. The live cutover deletes that owner and uses keyword collection priority
 > plus `user_search_demand_daily`, scoring traces, and attempt history instead.
+>
+> **CORRECTION (coordinator plans-audit) 2026-08-08 — what actually shipped, against
+> three load-bearing shapes below.** (1) The attempt ledger is keyed
+> `(engineName, normalizedTerm)` ONLY — `KeywordAttemptHistory`,
+> `apps/api/prisma/schema.prisma:1995-2018`. There is **no coverage key** in it and
+> **no cooldown column**: the schema states eligibility DERIVES from a measured
+> harvest snapshot (`lastHarvestAt` / `lastResultCount` / `corpusDocsAtHarvest`,
+> "corpus delta × measured share ≥ 1 doc"), with "no cooldown timers" — so the whole
+> `cooldownUntil` / per-`coverageKey` cooldown table below is unimplemented by design.
+> (2) The **per-cycle term budget** with quotas/underfill-reallocation is likewise
+> gone: `keyword-slice-selection.service.ts:4-12` keeps only two floors (unmet,
+> explore) with refresh+demand competing for the remainder by within-family
+> percentile normalization, and records "the old SLICE_QUOTAS +
+> SLICE_BACKFILL_WEIGHT machinery is dead". (3) The **hot-spike escape hatch** was
+> never built.
 
 ## Implementation Handoff (for a new agent/session)
 

@@ -844,6 +844,12 @@ write-ingress ABSENT primitives and two Google-Places hand-lists.
 - **PREFERRED_PLACE_TYPES** (a 64-entry third hand-copy of the Google-type
   namespace) replaced with `Object.keys(map) ∪ {'restaurant'}` — proven equal,
   drift now impossible.
+  > CORRECTION (coordinator plans-audit) 2026-08-08: outlived by three days.
+  > Commit `990ab0306` ("the type set dies entirely — zero type judgments
+  > remain") deleted the whole preferred/restaurantish type set from the
+  > grounding lane; `PREFERRED_PLACE_TYPES` and `isRestaurantishPlaceTypes`
+  > have zero hits in `apps/api/src` today. The judge reads raw Google types
+  > as evidence instead. Nothing derives the set anymore — there is no set.
 
 **Still open (recorded, each with its primitive):** fold-version reconciler
 (derived-key ownership; drift currently 0 so not urgent); analyzer's two script

@@ -29,6 +29,19 @@ vs `apps/mobile/android/app/src/main/java/com/crave/SearchMapRenderControllerMod
 | **iOS-only (never ported)**                                             | **5 of 11 (45%)** — `setCandidateCatalog` `commitEnterStart` `beginInteractionFadeOut` `resetNativeApplyAttribution` `flushNativeApplyAttribution` |
 | **Java-only (dead names from an older era)**                            | **2** — `configureLabelObservation` `configureNativeLayerGroups`                                                                                   |
 
+> **CORRECTION (coordinator plans-audit) 2026-08-08 — the extern census is wrong, so the
+> 45% rests on a bad denominator.** The map-controller externs do NOT live in
+> `UIFrameSamplerBridge.m` and that is not "the single `RCT_EXTERN` file": there are SIX
+> extern files under `apps/mobile/ios/cravesearch/` (`CraveBottomSheetHostViewBridge.m`,
+> `ProfilePresentationTransactionExecutorBridge.m`, `SearchChromeNativeHitTargetSurfaceBridge.m`,
+> `SearchMapRenderControllerBridge.m`, `SearchRouteSheetNavExclusionMaskViewBridge.m`,
+> `UIFrameSamplerBridge.m`). The map contract is in `SearchMapRenderControllerBridge.m:5-32`
+> and exports **10** methods, not 11 — `beginInteractionFadeOut` is not among them (the Swift
+> calls it "the old beginInteractionFadeOut", `SearchMapRenderController.swift:3313`). So the
+> iOS-only set is 4 of 10 (40%), not 5 of 11 (45%). The divergence argument survives; the
+> headline number does not. Also below: the rnmapbox patch touches **7** Android Kotlin
+> files, not 8.
+
 Name-sharing is the _ceiling_ of agreement, not evidence of it: the six shared names
 sit on top of a body that has been rewritten underneath them (see 1b). The two
 Java-only names are the tell that the mirror is anchored to a **superseded iOS
