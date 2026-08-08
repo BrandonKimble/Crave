@@ -5,6 +5,7 @@ import { LLMModule } from '../external-integrations/llm/llm.module';
 import { EntityLexiconBuilderService } from './entity-lexicon-builder.service';
 import { EntityTextSearchService } from './entity-text-search.service';
 import { EntityEmbeddingReconcilerService } from './entity-embedding-reconciler.service';
+import { NameContainmentEdgeBuilderService } from './name-containment-edge-builder.service';
 import { EntitySiblingEdgeBuilderService } from './entity-sibling-edge-builder.service';
 
 @Module({
@@ -13,12 +14,14 @@ import { EntitySiblingEdgeBuilderService } from './entity-sibling-edge-builder.s
     EntityTextSearchService,
     EntityEmbeddingReconcilerService,
     EntitySiblingEdgeBuilderService,
+    NameContainmentEdgeBuilderService,
     EntityLexiconBuilderService,
   ],
   exports: [
     EntityTextSearchService,
     EntityEmbeddingReconcilerService,
     EntitySiblingEdgeBuilderService,
+    NameContainmentEdgeBuilderService,
   ],
 })
 export class EntityTextSearchModule {}

@@ -2916,3 +2916,18 @@ model KnowledgePassRun {
   @@index([pass, ranAt], map: "idx_knowledge_pass_runs_ran_at")
   @@map("knowledge_pass_runs")
 }
+
+/// RUNG 2, MATERIALIZED (KL-D): head-final name containment on the FOLDED
+/// key — the ONE definition read by both query-time admission and the
+/// satisfies judge's exclusion. Nightly full-replace by
+/// NameContainmentEdgeBuilderService; read-time status re-check follows the
+/// sibling-edge idiom.
+model DerivedNameContainmentEdge {
+  baseId    String  @map("base_id") @db.Uuid
+  variantId String  @map("variant_id") @db.Uuid
+  headFinal Boolean @map("head_final")
+
+  @@id([baseId, variantId])
+  @@index([variantId], map: "idx_name_containment_variant")
+  @@map("derived_name_containment_edges")
+}

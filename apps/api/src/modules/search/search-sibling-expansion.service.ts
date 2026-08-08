@@ -224,37 +224,28 @@ export class SearchSiblingExpansionService {
     baseFoodIds: string[],
     options: { maxAnchors?: number } = {},
   ): Promise<{ isVariantOf: string[]; mentionsIt: string[] }> {
-    // Anchor cap mirrors the dense-sibling cut: this scan is O(foods x
-    // anchors) with no index assist (a word-boundary LIKE cannot use the
-    // trigram GIN), so an uncapped multi-food query would scale linearly
-    // with the catalogue. Cheap today (~9ms at 7.8k foods); the cap is
-    // what keeps it cheap at 10x.
-    const ids = Array.from(new Set(baseFoodIds.filter(Boolean))).slice(
-      0,
-      Math.max(1, options.maxAnchors ?? 3),
-    );
+    // KL-D: reads the MATERIALIZED rung-2 table — ONE folded-key definition
+    // shared with the satisfies judge (the lower(name) live scan diverged
+    // from the judge's identity_key comparison: folds-equal/lowers-unequal
+    // pairs fell into a hole where neither side produced the relation). The
+    // un-indexable word-boundary LIKE and its maxAnchors cap are deleted;
+    // this is an indexed lookup now. Read-time status re-check follows the
+    // sibling-edge idiom.
+    void options;
+    const ids = Array.from(new Set(baseFoodIds.filter(Boolean)));
     if (!ids.length) return { isVariantOf: [], mentionsIt: [] };
     try {
-      // HEAD-FINAL RULE (2026-07-27): English compound nouns are head-final,
-      // so the position of the query term decides what the variant IS.
-      // "chicago deep dish PIZZA" ends with the term -> it IS a pizza (tier 0,
-      // beside verified category members). "PIZZA sauce / dough / roll" only
-      // MENTIONS it -> a different head noun, so it is related-not-the-thing
-      // (tier 1, ranked after). No stoplist: grammar decides, not a word list.
       const rows = await this.prisma.$queryRaw<
         { foodId: string; headFinal: boolean }[]
       >(
         Prisma.sql`
-          SELECT DISTINCT v.entity_id AS "foodId",
-                 (lower(v.name) LIKE ('%' || ' ' || lower(b.name))) AS "headFinal"
-          FROM core_entities v
-          JOIN core_entities b
-            ON b.entity_id = ANY(${ids}::uuid[])
-           AND length(b.name) >= 4
-           AND v.entity_id <> b.entity_id
-           AND (' ' || lower(v.name) || ' ') LIKE ('%' || ' ' || lower(b.name) || ' ' || '%')
-          WHERE v.type = 'food'::entity_type
-            AND v.status = 'active'::entity_status
+          SELECT e.variant_id AS "foodId", bool_or(e.head_final) AS "headFinal"
+          FROM derived_name_containment_edges e
+          JOIN core_entities v ON v.entity_id = e.variant_id
+           AND v.status = 'active'::entity_status
+           AND v.type = 'food'::entity_type
+          WHERE e.base_id = ANY(${ids}::uuid[])
+          GROUP BY e.variant_id
         `,
       );
       const exclude = new Set(ids);

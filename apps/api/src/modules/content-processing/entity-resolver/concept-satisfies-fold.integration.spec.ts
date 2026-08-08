@@ -32,6 +32,16 @@ import {
   SatisfiesRunSummary,
 } from './concept-satisfies.service';
 import { canonicalFold } from './entity-identity';
+import { NameContainmentEdgeBuilderService } from '../../entity-text-search/name-containment-edge-builder.service';
+
+function stubLogger() {
+  return {
+    setContext: jest.fn().mockReturnThis(),
+    info: jest.fn(),
+    warn: jest.fn(),
+    error: jest.fn(),
+  };
+}
 
 const ANCHOR_ID = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaa9343';
 const CANDIDATE_ID = 'cccccccc-cccc-4ccc-8ccc-cccccccc9343';
@@ -115,6 +125,15 @@ beforeAll(async () => {
       forwardRank: 1,
     },
   });
+  // KL-D: rung 2 now reads the MATERIALIZED containment table (one folded
+  // definition for judge + query). The fold law this spec proves lives in
+  // the BUILDER, so the spec exercises it the same way production does:
+  // rebuild after fixtures. A builder mutated to lower() would emit no edge
+  // for the accented pair and this spec reds exactly as before.
+  await new NameContainmentEdgeBuilderService(
+    prisma as never,
+    stubLogger() as never,
+  ).rebuildAll();
 });
 
 afterAll(async () => {
