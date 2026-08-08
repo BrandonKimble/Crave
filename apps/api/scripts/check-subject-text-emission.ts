@@ -98,10 +98,6 @@ const ALLOWED: Record<string, { class: Classification; why: string }> = {
       class: 'declaration',
       why: 'Seeds one signal WITH subject_text to prove the erasure ORDER destroys it before sever makes it unreachable. Writes the column; never emits it.',
     },
-  'src/modules/identity/person-data/person-data-coverage.integration.spec.ts': {
-    class: 'declaration',
-    why: 'The coverage ledger; names subject_text only in its allowlist of reasons.',
-  },
   'src/modules/identity/person-data/person-data-scope.integration.spec.ts': {
     class: 'declaration',
     why: "Proves each rule's SCOPE can reach the person; names subject_text only as a secondary column in its allowlist of reasons.",
