@@ -149,7 +149,13 @@ declare -a CONTENT_CHECKS=(
   "native_overlay_root_subscribe::routeOverlayRootAuthority\\.(subscribe|subscribeSelector)::Native overlay root uses getSnapshot/registerTarget, not subscriptions."
   "native_overlay_display_subscribe::routeOverlayDisplayAuthority\\.(subscribe|subscribeSelector)::Native overlay display uses getSnapshot/registerSharedValues, not subscriptions."
   "native_overlay_sheet_policy_subscribe::routeOverlaySheetPolicyAuthority\\.(subscribe|subscribeSelector)::Sheet policy uses getSnapshot/registerTarget, not subscriptions."
-  "native_overlay_navigation_subscribe::routeOverlayNavigationAuthority\\.(subscribe|subscribeSelector)::Navigation uses getSnapshot/registerTarget, not subscriptions."
+  # F9950 (2026-08-07) GATE ROT: dbfce5bb9/F5403 renamed the navigation authority's
+  # `registerTarget` to `subscribeTarget` (notify-on-change, deliberately NOT push-on-
+  # register like the six sibling authorities). The unanchored `subscribe` alternative
+  # then matched every legal `.subscribeTarget(` call site — the gate banned the live
+  # target contract itself. `\b` restores the original intent: the banned things are the
+  # deleted broadcast APIs `.subscribe(` / `.subscribeSelector(`, not target registration.
+  "native_overlay_navigation_subscribe::routeOverlayNavigationAuthority\\.(subscribe|subscribeSelector)\\b::Navigation uses getSnapshot/subscribeTarget, not broadcast subscriptions."
   "route_sheet_host_navigation_subscribe::routeSheetHostNavigationAuthority\\.(subscribe|subscribeSelector)::Sheet-host navigation uses getSnapshot/registerTarget, not subscriptions."
   "route_sheet_host_sheet_policy_subscribe::routeSheetHostSheetPolicyAuthority\\.(subscribe|subscribeSelector)::Sheet-host sheet policy uses getSnapshot/registerTarget, not subscriptions."
   "native_overlay_identity_listeners::identityListeners::Native overlay identity listener set was deleted."
@@ -1017,11 +1023,18 @@ else
 fi
 
 restaurant_route_types_contract_file="$TARGET_PATH/navigation/runtime/app-overlay-route-types.ts"
+# F9950 (2026-08-07) GATE ROT: two legitimate rederivations changed the spelling of this
+# law without weakening it. a45b4a900/F5801 deleted `requiresOwnerSceneKey` from the route
+# metadata (23 hits, all declarations/literals, ZERO readers — `role: 'child'` +
+# `productSceneKey: null` already carried the fact). 6bf694e82/F5800 narrowed the restaurant
+# params to {restaurantId, source?} after showing the five ownership params had no writer.
+# The surviving, enforceable law: restaurant is a child route with no product scene of its
+# own, riding the SHARED physical sheet, and its only source is 'search'.
 if [[ -e "$restaurant_route_types_contract_file" ]] && {
-  ! rg -q -U --pcre2 "restaurant\\?: \\{[\\s\\S]{0,260}source\\?: 'search';[\\s\\S]{0,260}parentSceneKey\\?: AppOverlayTopLevelProductRouteKey \\| null;[\\s\\S]{0,260}ownerSceneKey\\?: AppOverlayTopLevelProductRouteKey \\| null;[\\s\\S]{0,260}openerRouteKey\\?: OverlayKey \\| null;[\\s\\S]{0,260}routeInstanceId\\?: string \\| null;[\\s\\S]{0,260}sessionToken\\?: number \\| null;" "$restaurant_route_types_contract_file" ||
-  ! rg -q -U --pcre2 "restaurant: \\{[\\s\\S]{0,260}role: 'child'[\\s\\S]{0,260}requiresOwnerSceneKey: true[\\s\\S]{0,260}sheetPolicy: 'sharedPhysicalSheet'" "$restaurant_route_types_contract_file"
+  ! rg -q -U --pcre2 "restaurant\\?: \\{\\s*restaurantId: string \\| null;\\s*source\\?: 'search';\\s*\\}" "$restaurant_route_types_contract_file" ||
+  ! rg -q -U --pcre2 "restaurant: \\{\\s*role: 'child',\\s*productSceneKey: null,[\\s\\S]{0,150}?sheetPolicy: 'sharedPhysicalSheet'" "$restaurant_route_types_contract_file"
 }; then
-  echo "[app-route-runtime-delete-gate] FAIL restaurant_parent_scoped_route_contract_gate: Restaurant routes must stay parent-scoped shared-sheet children with explicit owner, opener, route instance, and session params." >&2
+  echo "[app-route-runtime-delete-gate] FAIL restaurant_parent_scoped_route_contract_gate: Restaurant routes must stay owner-scoped shared-sheet children (role child, no product scene) whose only source is 'search'." >&2
   GATE_FAILURES=$((GATE_FAILURES + 1))
 else
   echo "[app-route-runtime-delete-gate] PASS restaurant_parent_scoped_route_contract_gate"
@@ -1061,12 +1074,17 @@ fi
 
 app_route_static_scene_descriptor_file="$TARGET_PATH/navigation/runtime/app-route-static-scene-descriptor-controller.ts"
 app_route_overlay_command_controller_file="$TARGET_PATH/navigation/runtime/app-route-overlay-command-controller.ts"
+# F9950 (2026-08-07) GATE ROT, same two rederivations as the restaurant gate above:
+# a45b4a900/F5801 deleted the readerless `requiresOwnerSceneKey` flag, and 6bf694e82/F5424
+# collapsed parentSceneKey/ownerSceneKey — one fact that could never differ — onto
+# ownerSceneKey. The law is unchanged: saveList is a shared-sheet child whose params name
+# the owning scene and a route instance, and it is never a paramless route.
 if [[ -e "$app_overlay_route_types_file" ]] && {
-  ! rg -q -U --pcre2 "saveList: \\{[\\s\\S]{0,260}role: 'child'[\\s\\S]{0,260}requiresOwnerSceneKey: true[\\s\\S]{0,260}sheetPolicy: 'sharedPhysicalSheet'" "$app_overlay_route_types_file" ||
+  ! rg -q -U --pcre2 "saveList: \\{\\s*role: 'child',\\s*productSceneKey: null,[\\s\\S]{0,150}?sheetPolicy: 'sharedPhysicalSheet'" "$app_overlay_route_types_file" ||
   rg -q --fixed-strings "saveList?: undefined" "$app_overlay_route_types_file" ||
-  ! rg -q -U --pcre2 "saveList\\?: \\{[\\s\\S]{0,260}parentSceneKey: AppOverlayTopLevelProductRouteKey;[\\s\\S]{0,260}ownerSceneKey: AppOverlayTopLevelProductRouteKey;[\\s\\S]{0,260}routeInstanceId: string;" "$app_overlay_route_types_file"
+  ! rg -q -U --pcre2 "saveList\\?: \\{[\\s\\S]{0,150}?ownerSceneKey: AppOverlayTopLevelProductRouteKey;[\\s\\S]{0,100}?routeInstanceId: string;" "$app_overlay_route_types_file"
 }; then
-  echo "[app-route-runtime-delete-gate] FAIL save_list_scoped_route_contract_gate: saveList must stay an owner-scoped route child with explicit parent/owner/route instance params." >&2
+  echo "[app-route-runtime-delete-gate] FAIL save_list_scoped_route_contract_gate: saveList must stay an owner-scoped shared-sheet route child with explicit owner + route instance params." >&2
   GATE_FAILURES=$((GATE_FAILURES + 1))
 else
   echo "[app-route-runtime-delete-gate] PASS save_list_scoped_route_contract_gate"
