@@ -80,7 +80,6 @@ type UsePollsFeedRuntimeControllerArgs = {
   /** Time filter: all_time (no filter) | this_week (§6). */
   feedTime: PollFeedTime;
   setPolls: React.Dispatch<React.SetStateAction<Poll[]>>;
-  setHeaderPlaceName: React.Dispatch<React.SetStateAction<string | null>>;
   setPromise: React.Dispatch<React.SetStateAction<PollFeedPromise | null>>;
   setLoading: React.Dispatch<React.SetStateAction<boolean>>;
   setPollFeedLoadFailed: React.Dispatch<React.SetStateAction<boolean>>;
@@ -119,7 +118,6 @@ export const usePollsFeedRuntimeController = ({
   feedType,
   feedTime,
   setPolls,
-  setHeaderPlaceName,
   setPromise,
   setLoading,
   setPollFeedLoadFailed,
@@ -198,7 +196,6 @@ export const usePollsFeedRuntimeController = ({
   const publishFeedSlice = React.useCallback(
     (params: {
       polls: Poll[];
-      headerPlaceName: string | null;
       promise: PollFeedPromise | null;
       nextCursor: string | null;
       placeOptions: PollFeedPlaceOption[];
@@ -208,7 +205,6 @@ export const usePollsFeedRuntimeController = ({
       nextCursorRef.current = params.nextCursor;
       hasEverAppliedSliceRef.current = true;
       setPolls(params.polls);
-      setHeaderPlaceName(params.headerPlaceName);
       setPromise(params.promise);
       setPollFeedLoadFailed(false);
       // Wave-2 §3 "Live · N": the body owns the count; chrome reads it from the
@@ -223,7 +219,7 @@ export const usePollsFeedRuntimeController = ({
       // jump, never persistent control state.
       controls.setPlaceOptions(params.placeOptions);
     },
-    [setHeaderPlaceName, setPollFeedLoadFailed, setPolls, setPromise, syncPollSubscriptions]
+    [setPollFeedLoadFailed, setPolls, setPromise, syncPollSubscriptions]
   );
 
   const buildFeedQueryPayload = React.useCallback(
@@ -326,7 +322,6 @@ export const usePollsFeedRuntimeController = ({
         noteCatalogWatermark(response.catalogWatermark ?? null);
         publishFeedSlice({
           polls: response.polls,
-          headerPlaceName: response.header.placeName,
           promise: response.promise,
           nextCursor: response.nextCursor,
           placeOptions: response.placeOptions,
@@ -413,7 +408,6 @@ export const usePollsFeedRuntimeController = ({
         noteCatalogWatermark(response.catalogWatermark ?? null);
         publishFeedSlice({
           polls: appended,
-          headerPlaceName: response.header.placeName,
           // The promise is a FIRST-PAGE cold-start state; an append never creates one.
           promise: null,
           nextCursor: response.nextCursor,

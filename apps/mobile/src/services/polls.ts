@@ -118,16 +118,16 @@ export interface Poll {
   topic?: PollTopic | null;
 }
 
-/** §6 cold-start promise: typed state from the server; the COPY is mobile's. */
+/** §6 cold-start promise: typed state from the server; the COPY — and the
+ *  PLACE NAME — are mobile's (one naming authority, 2026-08-08). */
 export type PollFeedPromise = {
   kind: 'weekly_drop_pending';
-  placeName: string;
 };
 
 /**
- * §22 item-5 feed contract (POST /polls/query): viewport-scoped feed with keyset
- * cursor pagination. The header carries the §2 subjecthood verdict — null renders
- * the first-class "Polls in this area".
+ * §22 item-5 feed contract (POST /polls/query): viewport-scoped feed with
+ * keyset cursor pagination. NO header name on the wire (one naming
+ * authority, 2026-08-08): the client subject store IS the title authority.
  */
 /** One §6 place-slicer option: a membership place carrying feed content,
  *  ranked server-side by contribution (LIVE+CLOSED poll count). */
@@ -138,7 +138,6 @@ export type PollFeedPlaceOptionRow = {
 };
 
 export type PollQueryResponse = {
-  header: { placeName: string | null };
   /** Catalog revision for the request's slice-margin region (header ideal
    *  2026-08-01) — reported to the subject store, which revalidates its
    *  slice on CHANGE. */
@@ -204,13 +203,9 @@ const normalizePollFeedPromise = (value: unknown): PollFeedPromise | null => {
   if (
     value &&
     typeof value === 'object' &&
-    (value as { kind?: unknown }).kind === 'weekly_drop_pending' &&
-    typeof (value as { placeName?: unknown }).placeName === 'string'
+    (value as { kind?: unknown }).kind === 'weekly_drop_pending'
   ) {
-    return {
-      kind: 'weekly_drop_pending',
-      placeName: (value as { placeName: string }).placeName,
-    };
+    return { kind: 'weekly_drop_pending' };
   }
   return null;
 };
@@ -245,7 +240,7 @@ const normalizePlaceOptions = (value: unknown): PollFeedPlaceOptionRow[] => {
 
 /**
  * F837 (2026-08-03): the bare-array FALLBACK is DELETED. `POST /polls/query` always returns
- * the place-native ENVELOPE (`buildFeedResponse` in polls.service.ts — header / promise /
+ * the place-native ENVELOPE (`buildFeedResponse` in polls.service.ts — promise /
  * nextCursor / placeOptions / polls; the pre-cut legacy `marketName + bare polls array`
  * envelope was deleted with the mobile cut, per that method's own docstring). The fallback
  * therefore never ran, and it made a reader believe two wire formats exist. A payload that
@@ -256,14 +251,7 @@ const normalizePollQueryResponse = (payload: unknown): PollQueryResponse => {
   if (payload && typeof payload === 'object') {
     const anyPayload = payload as Record<string, unknown>;
     if (Array.isArray(anyPayload.polls)) {
-      const header = anyPayload.header as { placeName?: unknown } | undefined;
       return {
-        header: {
-          placeName:
-            header && typeof header.placeName === 'string' && header.placeName.trim()
-              ? header.placeName.trim()
-              : null,
-        },
         catalogWatermark:
           typeof anyPayload.catalogWatermark === 'string' ? anyPayload.catalogWatermark : null,
         promise: normalizePollFeedPromise(anyPayload.promise),

@@ -310,7 +310,9 @@ describe('PollsService.queryPolls — the §6 places-in-view feed', () => {
     });
 
     const response = await service.queryPolls({ bounds: VIEW_BOUNDS });
-    expect(response.header).toEqual({ placeName: 'Round Rock' });
+    // ONE NAMING AUTHORITY (2026-08-08): the response carries NO header
+    // name — the client subject store is the title authority.
+    expect(response).not.toHaveProperty('header');
     // The legacy market envelope is DEAD (wave-6 item 8): no marketName mirror.
     expect(response).not.toHaveProperty('marketName');
 
@@ -378,24 +380,23 @@ describe('PollsService.queryPolls — the §6 places-in-view feed', () => {
     expect(page3.nextCursor).toBeNull();
   });
 
-  it('cold-start promise state: zero polls on a SEEDED town → typed weekly-drop promise with the place name', async () => {
+  it('cold-start promise state: first page, zero polls → bare typed weekly-drop promise (the client names it)', async () => {
     const { service } = createHarness({
       pollTable: [],
       placesInView: [TOWN_IN_VIEW],
     });
     const response = await service.queryPolls({ bounds: VIEW_BOUNDS });
     expect(response.polls).toEqual([]);
-    expect(response.promise).toEqual({
-      kind: 'weekly_drop_pending',
-      placeName: 'Round Rock',
-    });
+    expect(response.promise).toEqual({ kind: 'weekly_drop_pending' });
   });
 
-  it('unnamed ground stays honest: no place, no promise, header null', async () => {
+  it('unnamed ground gets the promise too now: the client renders its own this-area copy', async () => {
+    // Old law: a server this-area verdict suppressed the promise — on the
+    // one screen the promise exists for, whenever server and client
+    // disagreed. The gate is purely first-page-and-empty now.
     const { service } = createHarness({ pollTable: [], placesInView: [] });
     const response = await service.queryPolls({ bounds: VIEW_BOUNDS });
-    expect(response.header).toEqual({ placeName: null });
-    expect(response.promise).toBeNull();
+    expect(response.promise).toEqual({ kind: 'weekly_drop_pending' });
   });
 
   it('placeOptions: membership places ranked by pollCount desc / name asc; zero-poll places ABSENT', async () => {
@@ -506,7 +507,7 @@ describe('PollsService.queryPolls — the §6 places-in-view feed', () => {
     const response = await service.queryPolls({});
     expect(response.polls).toEqual([]);
     expect(response.nextCursor).toBeNull();
-    expect(response.header).toEqual({ placeName: null });
+    expect(response).not.toHaveProperty('header');
     expect(placesCatalog.placesInView).not.toHaveBeenCalled();
   });
 });

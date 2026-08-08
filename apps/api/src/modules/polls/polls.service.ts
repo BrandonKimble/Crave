@@ -211,7 +211,6 @@ export class PollsService {
     const view = this.resolveFeedView(query);
     if (!view) {
       return this.buildFeedResponse({
-        headerPlaceName: null,
         polls: [],
         nextCursor: null,
         promiseEligible: false,
@@ -257,12 +256,13 @@ export class PollsService {
     ]);
 
     return this.buildFeedResponse({
-      headerPlaceName: verdict.headerPlace?.name ?? null,
       catalogWatermark,
       polls,
       nextCursor: page.nextCursor,
-      // §6 cold-start promise: first page, zero polls, but the viewport DOES
-      // resolve to a place (a seeded town) — the copy is mobile's.
+      // §6 cold-start promise: first page, zero polls. The NAME is the
+      // client's (one naming authority) — the old headerPlaceName gate
+      // suppressed the promise whenever the SERVER resolved this-area even
+      // though the client had named a town.
       promiseEligible: cursor === null && polls.length === 0,
       placeOptions,
     });
@@ -639,26 +639,29 @@ export class PollsService {
   }
 
   /**
-   * Feed response envelope: header (§2 verdict; null renders "Polls in this
-   * area"), typed cold-start promise (§6), polls, nextCursor.
+   * Feed response envelope: typed cold-start promise (§6), polls, nextCursor.
+   *
+   * ONE NAMING AUTHORITY (round-3 red team, 2026-08-08): the server no
+   * longer publishes a header place name. The client subject store runs the
+   * SAME shared law against its slice and is the title authority; the
+   * server name existed only as an initial-paint fallback, and the two
+   * authorities drifted — the promise banner could name a place the title
+   * disagreed with, and a server this-area verdict suppressed the promise
+   * on the one screen it exists for. The promise is now a bare typed state;
+   * the client interpolates whatever name IT resolved.
    */
   private buildFeedResponse(params: {
-    headerPlaceName: string | null;
     polls: unknown[];
     nextCursor: string | null;
     promiseEligible: boolean;
     placeOptions: Array<{ placeId: string; name: string; pollCount: number }>;
     catalogWatermark?: string | null;
   }) {
-    const { headerPlaceName, polls, nextCursor, placeOptions } = params;
-    const promise =
-      params.promiseEligible && headerPlaceName
-        ? // Typed state only — "Polls drop Sundays — this town's first
-          // unlocks as people search and vote." is MOBILE copy (§6).
-          { kind: 'weekly_drop_pending' as const, placeName: headerPlaceName }
-        : null;
+    const { polls, nextCursor, placeOptions } = params;
+    const promise = params.promiseEligible
+      ? { kind: 'weekly_drop_pending' as const }
+      : null;
     return {
-      header: { placeName: headerPlaceName },
       // Header ideal 2026-08-01: the catalog revision for the request's
       // slice-margin region — the client subject store revalidates its
       // slice when this DIFFERS from the slice's own watermark (change,

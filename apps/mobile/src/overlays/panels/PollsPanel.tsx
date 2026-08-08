@@ -17,7 +17,6 @@ import {
 import type {
   Poll,
   PollCreator,
-  PollFeedPromise,
   PollFeedSort,
   PollFeedTime,
   PollFeedType,
@@ -256,7 +255,12 @@ const formatPossessivePlace = (value: string): string =>
  * ONE card, matching the feed's card surface language, shown only when the
  * server's typed promise state arrives on an empty seeded town.
  */
-const PollFeedPromiseCard = ({ promise }: { promise: PollFeedPromise }) => (
+const PollFeedPromiseCard = ({
+  placeName,
+}: {
+  /** The CLIENT verdict's name (one naming authority) — null = this-area. */
+  placeName: string | null;
+}) => (
   <View style={styles.promiseCard}>
     <View style={styles.promiseCardHeader}>
       <Sparkles size={16} color={ACCENT} strokeWidth={2.2} />
@@ -265,7 +269,7 @@ const PollFeedPromiseCard = ({ promise }: { promise: PollFeedPromise }) => (
       </Text>
     </View>
     <Text variant="body" style={styles.promiseCardBody}>
-      {`${formatPossessivePlace(promise.placeName)} first poll unlocks as people search and vote.`}
+      {`${formatPossessivePlace(placeName ?? 'This area')} first poll unlocks as people search and vote.`}
     </Text>
   </View>
 );
@@ -716,7 +720,7 @@ export const usePollsPanelListSceneParts = (): {
     if (promise && polls.length === 0) {
       // §6 cold-start promise: an empty SEEDED town gets the weekly-drop promise
       // card (ratified copy) instead of a dead-end empty state.
-      return <PollFeedPromiseCard promise={promise} />;
+      return <PollFeedPromiseCard placeName={headerPlaceName} />;
     }
     const emptyMessage = headerPlaceName
       ? `Create the first poll in ${headerPlaceName} and start surfacing local favorites.`

@@ -54,7 +54,6 @@ export const usePollsPanelFeedRuntime = ({
   const serviceIssue = useSystemStatusStore((state) => state.serviceIssue);
   const isSystemUnavailable = isOffline || Boolean(serviceIssue);
   const [polls, setPolls] = React.useState<Poll[]>([]);
-  const [headerPlaceName, setHeaderPlaceName] = React.useState<string | null>(null);
   const [promise, setPromise] = React.useState<PollFeedPromise | null>(null);
   const [pollFeedLoadFailed, setPollFeedLoadFailed] = React.useState(false);
   const [loading, setLoading] = React.useState(false);
@@ -77,15 +76,14 @@ export const usePollsPanelFeedRuntime = ({
   // §6 place slicing died with Job 4 (place selection flies the camera; no
   // placeFilterId is ever sent) — the loaded pages ARE the feed; no
   // render-time client filter exists.
-  // HEADER SUBJECT-STORE (ratified 2026-07-21): the client subject store is the
-  // TITLE AUTHORITY — the same §2 law run on-device against the sliding catalog
-  // slice, committed via settle+dwell hysteresis. The feed response's
-  // header.placeName survives ONLY as the initial-paint fallback until the
-  // store's first commit (verdict null); after that the store wins, so the
-  // title tracks the live viewport instead of the last-fetched feed bounds.
+  // HEADER SUBJECT-STORE — now the ONLY naming authority (2026-08-08): the
+  // same shared law run on-device against the sliding catalog slice,
+  // committed via settle+dwell hysteresis. The server no longer publishes a
+  // header name at all; before the store's first commit the title renders
+  // its resolving placeholder (isResolvingPlace), never a stale server
+  // string that a later commit would contradict.
   const verdict = useViewportSubjectVerdict();
-  const effectivePlaceName =
-    verdict != null ? (verdict.kind === 'place' ? verdict.placeName : null) : headerPlaceName;
+  const effectivePlaceName = verdict != null && verdict.kind === 'place' ? verdict.placeName : null;
   const headerVisualModel = React.useMemo(
     () =>
       buildPollsHeaderVisualModel({
@@ -102,7 +100,6 @@ export const usePollsPanelFeedRuntime = ({
     feedType,
     feedTime,
     setPolls,
-    setHeaderPlaceName,
     setPromise,
     setLoading,
     setPollFeedLoadFailed,

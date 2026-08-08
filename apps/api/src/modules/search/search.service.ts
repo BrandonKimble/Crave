@@ -55,7 +55,7 @@ import { SignalDemandReadService } from '../signals/signal-demand-read.service';
 import { PlacesCatalogService } from '../places/places-catalog.service';
 import { PlacesPromotionService } from '../places/places-promotion.service';
 import { PlacesReconcilerService } from '../places/places-reconciler.service';
-import { resolveHeaderPlace, type GeoBbox } from '@crave-search/shared';
+import { type GeoBbox } from '@crave-search/shared';
 import { RestaurantStatusService } from './restaurant-status.service';
 import type { RestaurantStatusPreviewDto } from './dto/restaurant-status-preview.dto';
 import { isProdEnv, resolveAppEnv } from '../../shared/config/app-env';
@@ -375,10 +375,12 @@ export class SearchService {
     // ENGINE-COVERAGE re-key (leg 2): coverage = engine territory ground
     // coverage of the viewport (§5 derived-union territory through the §2.6
     // ground law). Raw share + engines present; no market election exists.
-    const [engineViewportCoverage, displayPlaceName] = await Promise.all([
-      this.engineCoverage.resolveViewportCoverage(request.bounds ?? null),
-      this.resolveDisplayPlaceName(view),
-    ]);
+    // ONE NAMING AUTHORITY (round-3, 2026-08-08): displayPlaceName is gone
+    // from the response — the client's subject store names the viewport
+    // with the same shared law, and the on-demand notice already preferred
+    // it. resolveDisplayPlaceName died with its only consumer.
+    const engineViewportCoverage =
+      await this.engineCoverage.resolveViewportCoverage(request.bounds ?? null);
 
     const phaseTimings: Record<string, number> = {};
 
@@ -829,7 +831,6 @@ export class SearchService {
         // §2 header law (master plan §22 cut 3): the VALUE comes from the
         // Place Catalog (resolveDisplayPlaceName); the FIELD name is the
         // frozen wire contract until the mobile-side cut.
-        displayPlaceName,
         // ENGINE-COVERAGE (leg 2): raw territory-ground share of the
         // viewport + the engines present. Consumers judge per their own
         // law (§16 — no threshold baked here); nothing market-shaped.
@@ -2575,54 +2576,6 @@ export class SearchService {
       minLng: southWest.lng,
       maxLng: northEast.lng,
     };
-  }
-
-  /**
-   * §2 header naming (master plan §22 cut 3): the search header's display
-   * name comes from the Place Catalog — every place intersecting the view,
-   * judged by the read-time header law (resolveHeaderPlace — finest centred
-   * place clearing the header fraction). "this area" verdicts (nothing under
-   * the centre, or nothing clearing the fraction) surface as null;
-   * the client renders its own fallback for null. Never throws — a naming
-   * failure must not affect the search response (reads never wait on
-   * naming, §2).
-   */
-  private async resolveDisplayPlaceName(
-    view: GeoBbox | null,
-  ): Promise<string | null> {
-    if (!view) {
-      return null;
-    }
-    try {
-      const placesInView = await this.placesCatalog.placesInView(view);
-      const resolution = resolveHeaderPlace(
-        view,
-        placesInView.map((entry) => ({
-          placeId: entry.place.placeId,
-          name: entry.place.name,
-          coverageOfView: entry.coverageOfView,
-          placeArea: entry.placeArea,
-          containsViewCenter: entry.containsViewCenter,
-        })),
-      );
-      if (resolution.kind === 'place') {
-        // Docket #1: the header-answer earned-moment hook is DELETED —
-        // polygons arrive at birth; nothing is left for attention to earn.
-        return resolution.place.name;
-      }
-      return null;
-    } catch (error) {
-      // WARN, not debug (round-2 red team): null is also the honest
-      // this-area answer, so a swallowed failure at debug level was
-      // invisible. The degrade itself is right — a naming failure must not
-      // fail the search — but it must be loud enough to notice.
-      this.logger.warn('Header place name unresolved — degrading to null', {
-        error: {
-          message: error instanceof Error ? error.message : String(error),
-        },
-      });
-      return null;
-    }
   }
 
   /**
