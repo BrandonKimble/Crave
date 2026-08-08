@@ -52,16 +52,6 @@ import {
   type RestaurantAttributeVocabEntry,
 } from './google-place-type-attributes';
 
-// DERIVED, not hand-maintained. The recognized food-place types ARE exactly
-// the keys of the type->attribute map (every Google type we know how to name)
-// plus the generic 'restaurant'. This was a 64-entry literal Set — a THIRD
-// hand-copy of the Google-type namespace that had to be kept in sync with the
-// map by hand and would drift silently (census finding). Proven byte-equal to
-// the former literal; deriving it makes the drift impossible.
-const PREFERRED_PLACE_TYPES = new Set<string>([
-  ...Object.keys(GOOGLE_PLACE_TYPE_ATTRIBUTE_MAP),
-  'restaurant',
-]);
 const GOOGLE_DAY_NAMES = [
   'sunday',
   'monday',
@@ -231,7 +221,6 @@ type GeminiChooserCandidate = {
   autocompleteRank?: number;
   searchTextRank?: number;
   sourceLabels: CandidateSelectionSource[];
-  restaurantish: boolean;
 };
 
 @Injectable()
@@ -2418,8 +2407,13 @@ export class RestaurantLocationEnrichmentService {
     } while (pageToken);
   }
 
+  /** Branch-expansion narrowing only: when an already-grounded brand's
+   *  primaryType is a food-and-drink type, restrict the branch search to it
+   *  (a chain's branches share their primaryType). ONE hint set everywhere —
+   *  Google's complete category — since the ghost cleanup killed the 64-key
+   *  cuisine-map-as-classifier and the PREFERRED_PLACE_TYPES const with it. */
   private resolveIncludedType(primaryType?: string | null): string | null {
-    if (primaryType && PREFERRED_PLACE_TYPES.has(primaryType)) {
+    if (primaryType && GOOGLE_FOOD_AND_DRINK_PLACE_TYPES.has(primaryType)) {
       return primaryType;
     }
     return null;
@@ -2711,14 +2705,6 @@ export class RestaurantLocationEnrichmentService {
       typeof radiusMeters === 'number' &&
       Number.isFinite(radiusMeters) &&
       radiusMeters > 0
-    );
-  }
-
-  private filterViableRankedCandidates(
-    ranked: RankedCandidate[],
-  ): RankedCandidate[] {
-    return ranked.filter((entry) =>
-      this.isRestaurantishPlaceTypes(entry.candidate.types),
     );
   }
 
@@ -3253,9 +3239,6 @@ export class RestaurantLocationEnrichmentService {
             rank,
           );
         }
-        existing.restaurantish =
-          existing.restaurantish ||
-          this.isRestaurantishPlaceTypes(entry.candidate.types);
         return;
       }
 
@@ -3266,7 +3249,6 @@ export class RestaurantLocationEnrichmentService {
         autocompleteRank: source === 'autocomplete' ? rank : undefined,
         searchTextRank: source === 'find_place' ? rank : undefined,
         sourceLabels: [source],
-        restaurantish: this.isRestaurantishPlaceTypes(entry.candidate.types),
       });
     };
 
@@ -3274,15 +3256,6 @@ export class RestaurantLocationEnrichmentService {
       .slice(0, autocompleteCandidateLimit)
       .forEach((entry, index) => addCandidate(entry, 'autocomplete', index));
     params.searchTextRanked
-      .slice(0, searchTextCandidateLimit)
-      .forEach((entry, index) => addCandidate(entry, 'find_place', index));
-
-    params.autocompleteRanked
-      .filter((entry) => this.isRestaurantishPlaceTypes(entry.candidate.types))
-      .slice(0, autocompleteCandidateLimit)
-      .forEach((entry, index) => addCandidate(entry, 'autocomplete', index));
-    params.searchTextRanked
-      .filter((entry) => this.isRestaurantishPlaceTypes(entry.candidate.types))
       .slice(0, searchTextCandidateLimit)
       .forEach((entry, index) => addCandidate(entry, 'find_place', index));
 
@@ -3848,7 +3821,9 @@ export class RestaurantLocationEnrichmentService {
       country: storageCountry,
       city: context.city,
       region: context.region,
-      preferredTypes: Array.from(PREFERRED_PLACE_TYPES),
+      // The hint set the audit log judges against — Google's own complete
+      // food-and-drink category, not the old 64-key cuisine map.
+      foodTypeCategorySize: GOOGLE_FOOD_AND_DRINK_PLACE_TYPES.size,
       attemptedAt: new Date().toISOString(),
       count: ranked.length,
       candidates,

@@ -1531,3 +1531,37 @@ gap noted: enrichment autocomplete->details flows don't use session tokens
 (polls does), so autocomplete + details bill separately instead of as a
 session. Worth a look, not urgent: grounding volume is one-shot per
 restaurant, not per-user-keystroke.
+
+## GHOST MACHINERY RED TEAM (2026-08-08) — my own shipped code had the census disease
+
+Owner asked whether rule 11b duplicated rule 11, whether the type machinery
+still earns its keep, and for a leftover-code sweep. Findings, all executed:
+
+1. THE UNREAD FLAG. `restaurantish` was computed on every chooser candidate
+   and NEVER sent to the chooser (the judge receives raw `types`, which is
+   strictly richer). Computed-projected-consumed-by-nobody — the exact
+   pattern the round-2 census named, inside code shipped yesterday. Deleted.
+2. DEAD FILTER. `filterViableRankedCandidates` had ZERO callers after the
+   veto removal. Deleted. Two candidate-list `.filter(restaurantish)` re-add
+   passes were no-ops (the unfiltered adds precede them; addCandidate
+   dedupes by placeId). Deleted.
+3. ONE HINT SET. `PREFERRED_PLACE_TYPES` (the 64-key cuisine-map derivation)
+   had one remaining reader, resolveIncludedType — now reads the complete
+   Google food-and-drink category like everything else, and the const is
+   GONE. Failure metadata stops advertising `preferredTypes`.
+4. WHAT TYPES STILL DO (owner question answered): nothing filters on types
+   anymore. Three surviving roles, all passive: raw `types` ride each
+   candidate into the chooser as evidence; `includedType` narrows a
+   grounded brand's BRANCH search to its own primaryType; the audit log
+   marks off-category acceptances. A place with NO food type still grounds
+   — Rebel Cheese Factory (manufacturer) and Bola Pizza (wholesaler) are
+   live proof from the recovered set.
+5. CHOOSER PROMPT RESHAPED from scratch, not additively: 12 rules -> 6
+   named principles (IDENTITY, GEOGRAPHY, STOP-OR-CONTINUE, BRAND CLUSTERS,
+   WHAT-THE-PLACE-IS, TIES). Rules 4/5/6 were one concept stated thrice;
+   8/9/10 were geography discipline scattered; owner's 11b merged into the
+   category rule as the deciding principle rather than an appendix. The
+   Wegmans lesson is now explicit: "when the text names a specific branch
+   or neighborhood, pick that branch."
+106 llm+enrichment tests green. Sweep resumed after session teardown:
+460 grounded so far, remainder running.
