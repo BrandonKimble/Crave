@@ -473,9 +473,32 @@ describe('erasure proof — each rule provably acts on a row it owns', () => {
                 // key. What the seed still has to do is give the column a
                 // VALUE to destroy, so "it was nulled" is a real observation
                 // rather than a column that happened to be null already.
+                //
+                // TYPED, NOT ASSUMED. Every `users` column this reached was
+                // text until `deleted_identity` (D148) arrived as jsonb, and a
+                // text literal into jsonb is a 42804 the proof reported as
+                // "unseedable" — a fixture gap that reads exactly like an
+                // erasure gap. The catalog already knows the type; ask it.
+                // And `deleted_identity` carries a CHECK (a stash may only
+                // exist on a deleted row), so the row is marked deleted in the
+                // same statement — the seed has to be a row the domain allows.
+                const seeded = await client.$queryRawUnsafe<
+                  Array<{ udt_name: string }>
+                >(
+                  `SELECT udt_name FROM information_schema.columns
+                    WHERE table_schema='public' AND table_name='users'
+                      AND column_name=$1`,
+                  rule.column,
+                );
+                const literal =
+                  seeded[0]?.udt_name === 'jsonb'
+                    ? `'{"seeded":"erasure-proof-value"}'::jsonb`
+                    : `'erasure-proof-value'`;
                 await client.$executeRawUnsafe(
-                  `UPDATE users SET "${rule.column}" = $1 WHERE user_id = $2::uuid`,
-                  'erasure-proof-value',
+                  `UPDATE users
+                      SET "${rule.column}" = ${literal},
+                          deleted_at = coalesce(deleted_at, now())
+                    WHERE user_id = $1::uuid`,
                   userId,
                 );
               } else {

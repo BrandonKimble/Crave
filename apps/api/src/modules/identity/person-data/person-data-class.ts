@@ -194,6 +194,25 @@ export const PERSON_DATA_RULES: readonly PersonDataRule[] = [
     disposition: 'null_column',
     classifiedBy: 'table-key',
   },
+  // THE DELETION STASH (D148, owner-approved 2026-08-07).
+  //
+  // It holds the person's real handle, display name and avatar URL — the most
+  // identifying thing on the row — and it exists for exactly one purpose: to
+  // make the 30-day window a real undo. Past the deadline there is nothing to
+  // undo, so it must go, and it goes as a DECLARED, EXECUTED rule rather than
+  // as another `erased_by_hand` entry coupled to a grep of the purge. (The
+  // purge ALSO writes `deletedIdentity: DbNull` in its anonymize statement;
+  // the two agree, and a null is idempotent, so neither can be the only one
+  // that runs.) `users.user_id` is `personKey`, so `classifiedBy: 'table-key'`
+  // scopes the UPDATE to this person's own row.
+  {
+    table: 'users',
+    column: 'deleted_identity',
+    disposition: 'null_column',
+    classifiedBy: 'table-key',
+    basis:
+      'The identity stashed at deletion time so restore can put it back. Nothing to restore past the deadline, so it is destroyed with the rest of the person.',
+  },
   // MONEY, DECLARED WHERE THE MECHANISM CAN SEE IT (owner ruling 2026-08-07).
   // This was kept by an INLINE COMMENT in the purge — "stripeCustomerId
   // retained: financial records must stay auditable" — which is a real ruling

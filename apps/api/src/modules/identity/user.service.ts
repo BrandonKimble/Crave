@@ -147,9 +147,23 @@ export class UserService {
     // Backfill profile fields for accounts that predate a now-resolvable Clerk
     // claim (e.g. created before the JWT template exposed name/avatar). Only fills
     // gaps — never overwrites a value the user customized via updateMe.
+    //
+    // NEVER ON A DELETED ACCOUNT (D148). This runs on EVERY authenticated
+    // request, and after `deleteAccount` the name columns are deliberately
+    // NULL — which is exactly the "gap" this backfill fills. Without this
+    // guard the first authed request after a deletion would resurrect the
+    // person's real display name and avatar straight from the Clerk claims,
+    // silently undoing the anonymity the deletion just established. The
+    // originals are not lost: they are in `deletedIdentity`, and `restoreAccount`
+    // is the only thing allowed to put them back.
     const backfill: Prisma.UserUpdateInput = {};
-    if (displayName && !user.displayName) backfill.displayName = displayName;
-    if (avatarUrl && !user.avatarUrl) backfill.avatarUrl = avatarUrl;
+    const isDeleted = user.deletedAt !== null;
+    if (displayName && !user.displayName && !isDeleted) {
+      backfill.displayName = displayName;
+    }
+    if (avatarUrl && !user.avatarUrl && !isDeleted) {
+      backfill.avatarUrl = avatarUrl;
+    }
     if (Object.keys(backfill).length > 0) {
       user = await this.prisma.user.update({
         where: { userId: user.userId },

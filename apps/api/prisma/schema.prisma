@@ -1349,6 +1349,13 @@ model User {
   /// gone" are different facts, and conflating them is how a restore window
   /// silently becomes a retention violation.
   purgeDueAt                   DateTime?                 @map("purge_due_at") @db.Timestamptz(3)
+  /// D148 — the identity stashed AT DELETION TIME, so a grace-deleted account is
+  /// anonymous from the first moment rather than from the purge 30 days later.
+  /// `deleteAccount` moves {username, displayName, avatarUrl} in here and nulls
+  /// the visible columns; `restoreAccount` moves them back and nulls this; the
+  /// purge nulls it for good. A DB CHECK (`users_deleted_identity_requires_deleted_at`,
+  /// raw SQL — Prisma cannot model a CHECK) refuses a stash on a live row.
+  deletedIdentity              Json?                     @map("deleted_identity")
   /// M1/D4 — the PROFILE half of locale negotiation. Canonical BCP 47 (R5-5).
   /// NULL means "negotiate from Accept-Language per request", which is the
   /// default for everyone; this column is only ever an EXPLICIT user choice.

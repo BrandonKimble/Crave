@@ -12,8 +12,10 @@
  * from that one, neither citing the other, the two already disagreeing about
  * `--` inside template literals. Two hand-rolled solutions to one problem is
  * the pattern this exercise polices; keeping the guard tooling exempt from it
- * was never defensible. The re-export stays so the two CI scanners
- * (`check-author-identity.ts`, `check-subject-text-emission.ts`) keep their
- * one entry point and cannot go back to matching prose.
+ * was never defensible. The re-export stays so the CI scanners
+ * (`check-subject-text-emission.ts`) keep their one entry point and cannot go
+ * back to matching prose. (`check-author-identity.ts` was the other one; D148
+ * deleted it — its grep matched exactly its own exemption list, so the loop
+ * body never ran.)
  */
 export { codeMatches, stripComments } from '../src/shared/testing/code-only';

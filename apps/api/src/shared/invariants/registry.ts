@@ -428,46 +428,41 @@ export const INVARIANTS: readonly Invariant[] = [
 
   // ── THE LEDGER ───────────────────────────────────────────────────────
   {
-    id: 'identity.author-identity-has-one-home',
+    // D148 REPLACED THE MECHANISM, SO THE ENTRY MOVED WITH IT.
+    //
+    // The law used to be "every reader remembers to call publicAuthorIdentity",
+    // enforced by scripts/check-author-identity.ts — a text scan that F9481
+    // proved VACUOUS: its grep for `username: true` matched exactly the eight
+    // files it exempted, so the loop body never executed once. It could not
+    // have caught anything, and it was the only proof that deleted people stay
+    // nameless.
+    //
+    // The law is now DATA, not diligence: deletion itself nulls the identity
+    // columns, so a reader that forgets the resolver renders a BLANK, not a
+    // name. That is a property of the database after one statement, and it is
+    // proven against a real one.
+    id: 'identity.a-deleted-person-has-no-name-in-the-database',
     statement:
-      'Any read that exposes another person\'s name goes through publicAuthorIdentity, so a deleted account renders as "Deleted user" rather than as whatever a component does with a null.',
+      'From the moment deletion is requested, users.username/display_name/avatar_url are NULL and the originals live only in users.deleted_identity — so no read anywhere can expose a departed person’s name, whatever it does with the row.',
     incident:
-      "Deletion nulls username and displayName. Five surfaces each invented their own fallback — '?', 'user', a seeded pseudo-name, a bare null, a blank byline — and NONE said \"deleted\". Nothing failed; the thread just rendered a nameless comment.",
-    level: 'lint',
+      "Deletion left the real name in the visible columns for the whole 30-day window and relied on every reader calling publicAuthorIdentity. Five surfaces each invented their own fallback — '?', 'user', a seeded pseudo-name, a bare null, a blank byline — and the scanner meant to catch the sixth was itself vacuous (F9481: its grep matched only its own exemptions).",
+    level: 'behaviour',
     mechanism:
-      'scripts/check-author-identity.ts — every user-shaped select is either AUTHOR_SELECT-based (which carries deletedAt) and CALLS publicAuthorIdentity, or is classified with a reason. The call, not the identifier: until F2050 this sentence claimed the mapping while the check tested for the bare name, which an unused import satisfied. Text scanning proves at-least-one call, never per-path coverage — the actual enforcement is typing the DTO slot as PublicAuthorIdentity (see ConversationPeerDto), which makes a raw row fail to compile.',
+      'account-deletion.service.ts deleteAccount — ONE atomic UPDATE stashes {username, displayName, avatarUrl} into deleted_identity and nulls the three columns; restoreAccount swaps them back; the purge nulls the stash. syncFromClerkClaims skips its profile backfill while deletedAt is set, or the next authenticated request would resurrect the name from the Clerk claims.',
     check: {
-      command: 'npx ts-node -T scripts/check-author-identity.ts',
-      reads: 'every select in src/ that exposes a username',
+      command:
+        'npx jest --runInBand --testPathIgnorePatterns=/dist/ --testRegex ".*\\.integration\\.spec\\.ts$" --testPathPattern deleted-identity --silent',
+      reads: 'a real user in a real database, deleted and restored for real',
     },
     mutations: [
       {
-        file: 'src/modules/identity/probe-author.service.ts',
-        content:
-          'export const sel = { userId: true, username: true, displayName: true, deletedAt: true };\n',
-      },
-      {
-        // F2050: the mutation above was too weak — it never exercised the way
-        // the invariant ACTUALLY failed in production. messaging.service.ts
-        // imported `publicAuthorIdentity`, never called it, and shipped the raw
-        // user row; the scanner tested for the bare identifier, which the
-        // import satisfied, and reported OK. This mutation reproduces that
-        // exact shape, so a scanner an import can satisfy fails here.
-        file: 'src/modules/identity/probe-author.service.ts',
-        content:
-          "import { publicAuthorIdentity } from './public-author-identity';\n" +
-          'export const sel = { userId: true, username: true, displayName: true, deletedAt: true };\n' +
-          'export function shipRaw(row: unknown) { return row; }\n',
-      },
-      {
-        // F2051: and the guard must not be satisfied by PROSE. The file that
-        // ships a raw row is exactly the file whose comment explains how
-        // carefully it doesn't — so the comment shape gets its own proof.
-        file: 'src/modules/identity/probe-author.service.ts',
-        content:
-          '// maps every row through publicAuthorIdentity(row) before it leaves.\n' +
-          'export const sel = { userId: true, username: true, displayName: true, deletedAt: true };\n' +
-          'export function shipRaw(row: unknown) { return row; }\n',
+        // Revert the stash-and-null: the request marks the account deleted and
+        // leaves the name sitting in the visible columns, which is precisely
+        // the pre-D148 world.
+        file: 'src/modules/identity/account-deletion.service.ts',
+        find: '        deletedIdentity: {\n          username: user.username,\n          displayName: user.displayName,\n          avatarUrl: user.avatarUrl,\n        },\n        username: null,\n        displayName: null,\n        avatarUrl: null,\n      },\n    });',
+        replace:
+          '      }, // MUTATED: the identity is left visible for the whole grace window.\n    });',
       },
     ],
   },

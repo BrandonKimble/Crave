@@ -2579,8 +2579,11 @@ basis+horizon for keepers. `person-data-scope.ts` is THE COMPILER — `subjectRo
 every person-bearing column; three consumers (eraser, exporter, retention sweep) ask it rather
 than re-derive. Eraser runs inside purgeAccount (called only by the deletion-purge @Cron after
 the 30-day window); users-row identity is anonymized by HAND then assertShellIsAnonymous verifies.
-⚠️ Totality rests on TWO incomplete guards: the census (over-broad regex, misses free-text PII
-— F9310) and check-author-identity (anchored on `username:true` — F9312). ⚠️ **The known
+⚠️ Totality rests on the census, which is still incomplete (over-broad regex, misses free-text
+PII — F9310). check-author-identity is GONE (D148, 2026-08-07): F9481 proved it vacuous (its
+grep matched exactly its own exemption list), and the law it claimed is now DATA — deleteAccount
+nulls username/display_name/avatar_url at the REQUEST and stashes them in users.deleted_identity
+for restore, proven by deleted-identity.integration.spec.ts. ⚠️ **The known
 over-deletion (F7500/D118) is STILL LIVE**: deleteScopeContradictions() is spec-only; the live
 erase() (F9313) and retention @Cron (F9314) run OR-scoped DELETEs that kill third-party rows.
 OWNER-escalated (see DESIGNS D141, memory gdpr-overdeletion-still-live).

@@ -1,7 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { createHmac } from 'crypto';
 import { ConfigService } from '@nestjs/config';
-import { BadRequestException } from '@nestjs/common';
+import { BadRequestException, ConflictException } from '@nestjs/common';
 import { Prisma, type User } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { LoggerService } from '../../shared';
@@ -58,6 +58,39 @@ import { reservedUsernameHash } from './reserved-username-hash';
  * through by accident is not a decision anybody made.
  */
 export const GRACE_PERIOD_DAYS = 30;
+
+/** The three columns the deletion stash carries — the whole visible identity. */
+type DeletedIdentityStash = {
+  username: string | null;
+  displayName: string | null;
+  avatarUrl: string | null;
+};
+
+/**
+ * Read the stash back, defensively.
+ *
+ * JSONB is an open shape by construction, so this cannot assume it holds what
+ * this file wrote — a row stashed by an older build, or hand-edited, must not
+ * make the ONE route a panicking person reaches throw a type error. An
+ * unreadable or absent stash restores the account with the columns left null:
+ * the person gets their account and their content back and can set a name
+ * again, which is strictly better than refusing the restore.
+ */
+function readDeletedIdentity(
+  value: Prisma.JsonValue | null,
+): DeletedIdentityStash {
+  const str = (v: unknown): string | null =>
+    typeof v === 'string' && v.length > 0 ? v : null;
+  if (value === null || typeof value !== 'object' || Array.isArray(value)) {
+    return { username: null, displayName: null, avatarUrl: null };
+  }
+  const record = value as Record<string, Prisma.JsonValue | undefined>;
+  return {
+    username: str(record.username),
+    displayName: str(record.displayName),
+    avatarUrl: str(record.avatarUrl),
+  };
+}
 
 @Injectable()
 export class AccountDeletionService {
@@ -163,13 +196,41 @@ export class AccountDeletionService {
     // denied by the guard (a deleted account is refused everywhere), so
     // revoking now bought nothing and cost the recovery it was meant to allow.
 
-    // 4. Mark. `deletedAt` hides the account everywhere; `purgeDueAt` is the
-    //    deadline the purge cron reads. Both are cleared together on restore.
+    // 4. Mark, AND GO ANONYMOUS IMMEDIATELY (D148, owner-approved 2026-08-07).
+    //
+    //    `deletedAt` hides the account everywhere; `purgeDueAt` is the deadline
+    //    the purge cron reads. Both are cleared together on restore.
+    //
+    //    THE IDENTITY MOVES IN THE SAME STATEMENT. It used to sit in the
+    //    visible columns for the whole 30-day window, and every reader that
+    //    forgot `publicAuthorIdentity` rendered the departed person's real name
+    //    — a leak that a text scanner could only ever spot-check. Nulling the
+    //    columns at the REQUEST makes forgetting the resolver COSMETIC (a blank
+    //    byline) instead of a disclosure, which is the whole point: the data is
+    //    gone from the place a careless read looks.
+    //
+    //    NULL IS UNIQUE-SAFE. `username` is a nullable citext, so any number of
+    //    nulled shells coexist; no tombstone value is needed and none is
+    //    invented. The originals are not lost — they are stashed in
+    //    `deletedIdentity` and swapped back by `restoreAccount`, which is what
+    //    keeps the grace window a real undo rather than a partial one.
+    //
+    //    ONE STATEMENT, deliberately: stash-and-null must be atomic, or a crash
+    //    between two writes leaves either a visible name on a deleted account
+    //    or an identity nobody can restore.
     await this.prisma.user.update({
       where: { userId: user.userId },
       data: {
         deletedAt: new Date(),
         purgeDueAt: new Date(Date.now() + GRACE_PERIOD_DAYS * 86_400_000),
+        deletedIdentity: {
+          username: user.username,
+          displayName: user.displayName,
+          avatarUrl: user.avatarUrl,
+        },
+        username: null,
+        displayName: null,
+        avatarUrl: null,
       },
     });
 
@@ -200,10 +261,42 @@ export class AccountDeletionService {
       // double-tap must not 500.
       return { restored: true };
     }
-    await this.prisma.user.update({
-      where: { userId: user.userId },
-      data: { deletedAt: null, purgeDueAt: null },
-    });
+    // THE IDENTITY COMES BACK WITH THE ACCOUNT (D148). `deleteAccount` nulled
+    // the visible columns and stashed the originals; restoring the tombstone
+    // without restoring the name would hand the person back a blank profile,
+    // which is not an undo.
+    const stash = readDeletedIdentity(user.deletedIdentity);
+    try {
+      await this.prisma.user.update({
+        where: { userId: user.userId },
+        data: {
+          deletedAt: null,
+          purgeDueAt: null,
+          deletedIdentity: Prisma.DbNull,
+          ...stash,
+        },
+      });
+    } catch (error) {
+      // BELT, NOT BRACES. `username_history` already blocks squatting — a
+      // handle held by a deleted account cannot be claimed by anyone else
+      // while the window is open — so this collision is not supposed to be
+      // reachable. It is caught anyway because the alternative to a clean 409
+      // is a 500 on the one route a person reaches while panicking about
+      // having deleted their account, and "your handle is taken" is at least
+      // an answer they can act on.
+      if (
+        error instanceof Prisma.PrismaClientKnownRequestError &&
+        error.code === 'P2002'
+      ) {
+        this.logger.error('Restore blocked: the stashed handle is taken', {
+          userId: user.userId,
+        });
+        throw new ConflictException(
+          'That username is no longer available, so the account cannot be restored under it. Contact support.',
+        );
+      }
+      throw error;
+    }
     this.logger.info('Account restored within grace window', {
       userId: user.userId,
     });
@@ -354,9 +447,19 @@ export class AccountDeletionService {
         email: `deleted:${createHmac('sha256', this.evasionSalt())
           .update((user.email ?? user.userId).trim().toLowerCase())
           .digest('hex')}@anonymized.invalid`,
+        // These three are ALREADY null on every account that went through
+        // `deleteAccount` (D148 nulls them at the request), so this is now an
+        // idempotent restatement rather than the moment anonymity begins. It
+        // stays because the purge must be correct for any row it is handed,
+        // including one whose deletion predates the stash.
         username: null,
         displayName: null,
         avatarUrl: null,
+        // AND THE STASH DIES WITH THE WINDOW. It exists only to make restore
+        // possible; past the deadline there is nothing to restore, so keeping
+        // the real name in JSONB would be retaining exactly the identity this
+        // method exists to destroy.
+        deletedIdentity: Prisma.DbNull,
         authProviderUserId: null,
         revenueCatAppUserId: null,
         onboardingResponses: Prisma.DbNull,

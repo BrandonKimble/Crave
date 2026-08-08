@@ -30,6 +30,23 @@
  * that from a magic display string would make the LABEL load-bearing, and
  * then translating or editing the copy would silently re-enable a broken
  * profile link.
+ *
+ * ─── WHAT D148 CHANGED (2026-08-07): THIS IS PRESENTATION NOW ────────────
+ *
+ * This file used to be the LEAK BOUNDARY. Deletion left the real name in
+ * `users.username`/`display_name` for the whole 30-day grace window, so a read
+ * that forgot this function shipped a departed person's actual name — and the
+ * scanner meant to enforce "everybody calls it" turned out to be vacuous
+ * (F9481: its grep matched exactly its own exemption list).
+ *
+ * `deleteAccount` now nulls those columns in the same statement that marks the
+ * account deleted, stashing the originals in `users.deleted_identity` for
+ * restore. So the name is not in the row for anyone to leak, and forgetting
+ * this resolver is COSMETIC: the byline renders BLANK instead of the polite
+ * "Deleted user", and the client keeps whatever affordances `isDeleted` would
+ * have suppressed. Worth fixing when you see it, but it is a rough edge, not a
+ * disclosure — which is why the enforcement is the data (proven by
+ * deleted-identity.integration.spec.ts) rather than a text scan over readers.
  */
 
 /** The shape any caller must select to build an author identity. */
