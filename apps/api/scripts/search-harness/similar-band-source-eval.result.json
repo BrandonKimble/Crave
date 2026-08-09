@@ -1,0 +1,3011 @@
+{
+  "generatedAt": "2026-08-09T21:39:48.914Z",
+  "cut": {
+    "minCosine": 0.75,
+    "forwardK": 25,
+    "mutualR": 20,
+    "maxAnchors": 3
+  },
+  "topN": 10,
+  "anchors": [
+    "al pastor tacos",
+    "taco",
+    "pizza pie",
+    "ramen",
+    "roast duck",
+    "bun bo hue",
+    "banh xeo",
+    "banh mi",
+    "pho",
+    "pozole",
+    "tres leches cake",
+    "ceviche",
+    "tortilla espanola",
+    "chirashi bowl",
+    "gyro",
+    "monte cristo",
+    "fried chicken sandwich",
+    "dry aged burger",
+    "basque style cheesecake",
+    "cheesesteak"
+  ],
+  "freshlyJudgedPairs": 66,
+  "llmCalls": 18,
+  "metrics": {
+    "A": {
+      "served": 156,
+      "acceptable": 154,
+      "unlabeled": 0,
+      "precision": 0.987,
+      "coverageAnchors": 17,
+      "coverageRate": 0.85,
+      "yield": 7.7,
+      "band1Promotions": 72,
+      "perAnchor": [
+        {
+          "anchor": "al pastor tacos",
+          "served": 10,
+          "acceptable": 10
+        },
+        {
+          "anchor": "taco",
+          "served": 10,
+          "acceptable": 10
+        },
+        {
+          "anchor": "pizza pie",
+          "served": 10,
+          "acceptable": 9
+        },
+        {
+          "anchor": "ramen",
+          "served": 10,
+          "acceptable": 10
+        },
+        {
+          "anchor": "roast duck",
+          "served": 10,
+          "acceptable": 10
+        },
+        {
+          "anchor": "bun bo hue",
+          "served": 1,
+          "acceptable": 1
+        },
+        {
+          "anchor": "banh xeo",
+          "served": 10,
+          "acceptable": 10
+        },
+        {
+          "anchor": "banh mi",
+          "served": 10,
+          "acceptable": 10
+        },
+        {
+          "anchor": "pho",
+          "served": 8,
+          "acceptable": 8
+        },
+        {
+          "anchor": "pozole",
+          "served": 10,
+          "acceptable": 10
+        },
+        {
+          "anchor": "tres leches cake",
+          "served": 10,
+          "acceptable": 10
+        },
+        {
+          "anchor": "ceviche",
+          "served": 10,
+          "acceptable": 10
+        },
+        {
+          "anchor": "tortilla espanola",
+          "served": 6,
+          "acceptable": 5
+        },
+        {
+          "anchor": "chirashi bowl",
+          "served": 2,
+          "acceptable": 2
+        },
+        {
+          "anchor": "gyro",
+          "served": 2,
+          "acceptable": 2
+        },
+        {
+          "anchor": "monte cristo",
+          "served": 4,
+          "acceptable": 4
+        },
+        {
+          "anchor": "fried chicken sandwich",
+          "served": 4,
+          "acceptable": 4
+        },
+        {
+          "anchor": "dry aged burger",
+          "served": 10,
+          "acceptable": 10
+        },
+        {
+          "anchor": "basque style cheesecake",
+          "served": 9,
+          "acceptable": 9
+        },
+        {
+          "anchor": "cheesesteak",
+          "served": 10,
+          "acceptable": 10
+        }
+      ]
+    },
+    "B": {
+      "served": 174,
+      "acceptable": 174,
+      "unlabeled": 0,
+      "precision": 1,
+      "coverageAnchors": 18,
+      "coverageRate": 0.9,
+      "yield": 8.7,
+      "band1Promotions": 52,
+      "perAnchor": [
+        {
+          "anchor": "al pastor tacos",
+          "served": 10,
+          "acceptable": 10
+        },
+        {
+          "anchor": "taco",
+          "served": 2,
+          "acceptable": 2
+        },
+        {
+          "anchor": "pizza pie",
+          "served": 10,
+          "acceptable": 10
+        },
+        {
+          "anchor": "ramen",
+          "served": 1,
+          "acceptable": 1
+        },
+        {
+          "anchor": "roast duck",
+          "served": 10,
+          "acceptable": 10
+        },
+        {
+          "anchor": "bun bo hue",
+          "served": 9,
+          "acceptable": 9
+        },
+        {
+          "anchor": "banh xeo",
+          "served": 10,
+          "acceptable": 10
+        },
+        {
+          "anchor": "banh mi",
+          "served": 8,
+          "acceptable": 8
+        },
+        {
+          "anchor": "pho",
+          "served": 10,
+          "acceptable": 10
+        },
+        {
+          "anchor": "pozole",
+          "served": 10,
+          "acceptable": 10
+        },
+        {
+          "anchor": "tres leches cake",
+          "served": 10,
+          "acceptable": 10
+        },
+        {
+          "anchor": "ceviche",
+          "served": 10,
+          "acceptable": 10
+        },
+        {
+          "anchor": "tortilla espanola",
+          "served": 10,
+          "acceptable": 10
+        },
+        {
+          "anchor": "chirashi bowl",
+          "served": 10,
+          "acceptable": 10
+        },
+        {
+          "anchor": "gyro",
+          "served": 4,
+          "acceptable": 4
+        },
+        {
+          "anchor": "monte cristo",
+          "served": 10,
+          "acceptable": 10
+        },
+        {
+          "anchor": "fried chicken sandwich",
+          "served": 10,
+          "acceptable": 10
+        },
+        {
+          "anchor": "dry aged burger",
+          "served": 10,
+          "acceptable": 10
+        },
+        {
+          "anchor": "basque style cheesecake",
+          "served": 10,
+          "acceptable": 10
+        },
+        {
+          "anchor": "cheesesteak",
+          "served": 10,
+          "acceptable": 10
+        }
+      ]
+    },
+    "C": {
+      "served": 196,
+      "acceptable": 194,
+      "unlabeled": 0,
+      "precision": 0.99,
+      "coverageAnchors": 20,
+      "coverageRate": 1,
+      "yield": 9.7,
+      "band1Promotions": 87,
+      "perAnchor": [
+        {
+          "anchor": "al pastor tacos",
+          "served": 10,
+          "acceptable": 10
+        },
+        {
+          "anchor": "taco",
+          "served": 10,
+          "acceptable": 10
+        },
+        {
+          "anchor": "pizza pie",
+          "served": 10,
+          "acceptable": 9
+        },
+        {
+          "anchor": "ramen",
+          "served": 10,
+          "acceptable": 10
+        },
+        {
+          "anchor": "roast duck",
+          "served": 10,
+          "acceptable": 10
+        },
+        {
+          "anchor": "bun bo hue",
+          "served": 10,
+          "acceptable": 10
+        },
+        {
+          "anchor": "banh xeo",
+          "served": 10,
+          "acceptable": 10
+        },
+        {
+          "anchor": "banh mi",
+          "served": 10,
+          "acceptable": 10
+        },
+        {
+          "anchor": "pho",
+          "served": 10,
+          "acceptable": 10
+        },
+        {
+          "anchor": "pozole",
+          "served": 10,
+          "acceptable": 10
+        },
+        {
+          "anchor": "tres leches cake",
+          "served": 10,
+          "acceptable": 10
+        },
+        {
+          "anchor": "ceviche",
+          "served": 10,
+          "acceptable": 10
+        },
+        {
+          "anchor": "tortilla espanola",
+          "served": 10,
+          "acceptable": 9
+        },
+        {
+          "anchor": "chirashi bowl",
+          "served": 10,
+          "acceptable": 10
+        },
+        {
+          "anchor": "gyro",
+          "served": 6,
+          "acceptable": 6
+        },
+        {
+          "anchor": "monte cristo",
+          "served": 10,
+          "acceptable": 10
+        },
+        {
+          "anchor": "fried chicken sandwich",
+          "served": 10,
+          "acceptable": 10
+        },
+        {
+          "anchor": "dry aged burger",
+          "served": 10,
+          "acceptable": 10
+        },
+        {
+          "anchor": "basque style cheesecake",
+          "served": 10,
+          "acceptable": 10
+        },
+        {
+          "anchor": "cheesesteak",
+          "served": 10,
+          "acceptable": 10
+        }
+      ]
+    }
+  },
+  "perAnchorSets": [
+    {
+      "anchor": "al pastor tacos",
+      "denseRaw": 15,
+      "storedRejects": 2,
+      "rejectsInRawRing": ["taqueria"],
+      "sets": {
+        "A": [
+          {
+            "name": "al pastor",
+            "label": "satisfies"
+          },
+          {
+            "name": "al pastor burrito",
+            "label": "cousin"
+          },
+          {
+            "name": "carnitas tacos",
+            "label": "cousin"
+          },
+          {
+            "name": "pork taco",
+            "label": "cousin"
+          },
+          {
+            "name": "fish al pastor",
+            "label": "cousin"
+          },
+          {
+            "name": "al carbon tacos",
+            "label": "cousin"
+          },
+          {
+            "name": "asada tacos",
+            "label": "cousin"
+          },
+          {
+            "name": "suadero taco",
+            "label": "cousin"
+          },
+          {
+            "name": "carnitas",
+            "label": "cousin"
+          },
+          {
+            "name": "mini trompito al pastor",
+            "label": "satisfies"
+          }
+        ],
+        "B": [
+          {
+            "name": "mini trompito al pastor",
+            "label": "satisfies"
+          },
+          {
+            "name": "adobada",
+            "label": "satisfies"
+          },
+          {
+            "name": "al pastor burrito",
+            "label": "cousin"
+          },
+          {
+            "name": "carnitas tacos",
+            "label": "cousin"
+          },
+          {
+            "name": "pork taco",
+            "label": "cousin"
+          },
+          {
+            "name": "fish al pastor",
+            "label": "cousin"
+          },
+          {
+            "name": "al carbon tacos",
+            "label": "cousin"
+          },
+          {
+            "name": "asada tacos",
+            "label": "cousin"
+          },
+          {
+            "name": "birria tacos",
+            "label": "cousin"
+          },
+          {
+            "name": "barbacoa taco",
+            "label": "cousin"
+          }
+        ],
+        "C": [
+          {
+            "name": "al pastor",
+            "label": "satisfies"
+          },
+          {
+            "name": "mini trompito al pastor",
+            "label": "satisfies"
+          },
+          {
+            "name": "al pastor burrito",
+            "label": "cousin"
+          },
+          {
+            "name": "adobada",
+            "label": "satisfies"
+          },
+          {
+            "name": "carnitas tacos",
+            "label": "cousin"
+          },
+          {
+            "name": "pork taco",
+            "label": "cousin"
+          },
+          {
+            "name": "fish al pastor",
+            "label": "cousin"
+          },
+          {
+            "name": "al carbon tacos",
+            "label": "cousin"
+          },
+          {
+            "name": "asada tacos",
+            "label": "cousin"
+          },
+          {
+            "name": "suadero taco",
+            "label": "cousin"
+          }
+        ]
+      }
+    },
+    {
+      "anchor": "taco",
+      "denseRaw": 25,
+      "storedRejects": 1,
+      "rejectsInRawRing": ["taqueria"],
+      "sets": {
+        "A": [
+          {
+            "name": "good taco",
+            "label": "satisfies"
+          },
+          {
+            "name": "taco taquero",
+            "label": "satisfies"
+          },
+          {
+            "name": "quesadilla taco",
+            "label": "cousin"
+          },
+          {
+            "name": "corn tacos",
+            "label": "satisfies"
+          },
+          {
+            "name": "tacos placeros",
+            "label": "satisfies"
+          },
+          {
+            "name": "vegan taco",
+            "label": "cousin"
+          },
+          {
+            "name": "casero taco",
+            "label": "satisfies"
+          },
+          {
+            "name": "taco plate",
+            "label": "cousin"
+          },
+          {
+            "name": "bbq tacos",
+            "label": "satisfies"
+          },
+          {
+            "name": "fajita taco",
+            "label": "satisfies"
+          }
+        ],
+        "B": [
+          {
+            "name": "corn tacos",
+            "label": "satisfies"
+          },
+          {
+            "name": "bbq tacos",
+            "label": "satisfies"
+          }
+        ],
+        "C": [
+          {
+            "name": "good taco",
+            "label": "satisfies"
+          },
+          {
+            "name": "corn tacos",
+            "label": "satisfies"
+          },
+          {
+            "name": "taco taquero",
+            "label": "satisfies"
+          },
+          {
+            "name": "bbq tacos",
+            "label": "satisfies"
+          },
+          {
+            "name": "quesadilla taco",
+            "label": "cousin"
+          },
+          {
+            "name": "tacos placeros",
+            "label": "satisfies"
+          },
+          {
+            "name": "vegan taco",
+            "label": "cousin"
+          },
+          {
+            "name": "casero taco",
+            "label": "satisfies"
+          },
+          {
+            "name": "taco plate",
+            "label": "cousin"
+          },
+          {
+            "name": "fajita taco",
+            "label": "satisfies"
+          }
+        ]
+      }
+    },
+    {
+      "anchor": "pizza pie",
+      "denseRaw": 25,
+      "storedRejects": 1,
+      "rejectsInRawRing": [],
+      "sets": {
+        "A": [
+          {
+            "name": "pizza",
+            "label": "satisfies"
+          },
+          {
+            "name": "pie",
+            "label": "reject"
+          },
+          {
+            "name": "pizza slice",
+            "label": "satisfies"
+          },
+          {
+            "name": "marinara pie",
+            "label": "satisfies"
+          },
+          {
+            "name": "pitzas",
+            "label": "satisfies"
+          },
+          {
+            "name": "ny style pizza",
+            "label": "satisfies"
+          },
+          {
+            "name": "ny style slice",
+            "label": "satisfies"
+          },
+          {
+            "name": "classic pizza",
+            "label": "satisfies"
+          },
+          {
+            "name": "round pie",
+            "label": "satisfies"
+          },
+          {
+            "name": "dessert pizza",
+            "label": "cousin"
+          }
+        ],
+        "B": [
+          {
+            "name": "marinara pie",
+            "label": "satisfies"
+          },
+          {
+            "name": "pitzas",
+            "label": "satisfies"
+          },
+          {
+            "name": "ny style pizza",
+            "label": "satisfies"
+          },
+          {
+            "name": "ny style slice",
+            "label": "satisfies"
+          },
+          {
+            "name": "classic pizza",
+            "label": "satisfies"
+          },
+          {
+            "name": "round pie",
+            "label": "satisfies"
+          },
+          {
+            "name": "pepperoni pizza",
+            "label": "satisfies"
+          },
+          {
+            "name": "square pie",
+            "label": "satisfies"
+          },
+          {
+            "name": "pan pizza",
+            "label": "satisfies"
+          },
+          {
+            "name": "cheese pizza",
+            "label": "satisfies"
+          }
+        ],
+        "C": [
+          {
+            "name": "pizza",
+            "label": "satisfies"
+          },
+          {
+            "name": "marinara pie",
+            "label": "satisfies"
+          },
+          {
+            "name": "pie",
+            "label": "reject"
+          },
+          {
+            "name": "pitzas",
+            "label": "satisfies"
+          },
+          {
+            "name": "pizza slice",
+            "label": "satisfies"
+          },
+          {
+            "name": "ny style pizza",
+            "label": "satisfies"
+          },
+          {
+            "name": "ny style slice",
+            "label": "satisfies"
+          },
+          {
+            "name": "classic pizza",
+            "label": "satisfies"
+          },
+          {
+            "name": "round pie",
+            "label": "satisfies"
+          },
+          {
+            "name": "pepperoni pizza",
+            "label": "satisfies"
+          }
+        ]
+      }
+    },
+    {
+      "anchor": "ramen",
+      "denseRaw": 25,
+      "storedRejects": 0,
+      "rejectsInRawRing": [],
+      "sets": {
+        "A": [
+          {
+            "name": "rice noodle ramen",
+            "label": "satisfies"
+          },
+          {
+            "name": "vegan ramen",
+            "label": "satisfies"
+          },
+          {
+            "name": "miso ramen",
+            "label": "satisfies"
+          },
+          {
+            "name": "spicy ramen",
+            "label": "satisfies"
+          },
+          {
+            "name": "shoyu ramen",
+            "label": "satisfies"
+          },
+          {
+            "name": "tonkatsu ramen",
+            "label": "satisfies"
+          },
+          {
+            "name": "miso hot ramen",
+            "label": "satisfies"
+          },
+          {
+            "name": "yuzu ramen",
+            "label": "satisfies"
+          },
+          {
+            "name": "shio ramen",
+            "label": "satisfies"
+          },
+          {
+            "name": "fish broth ramen",
+            "label": "satisfies"
+          }
+        ],
+        "B": [
+          {
+            "name": "soba noodles",
+            "label": "cousin"
+          }
+        ],
+        "C": [
+          {
+            "name": "rice noodle ramen",
+            "label": "satisfies"
+          },
+          {
+            "name": "soba noodles",
+            "label": "cousin"
+          },
+          {
+            "name": "vegan ramen",
+            "label": "satisfies"
+          },
+          {
+            "name": "miso ramen",
+            "label": "satisfies"
+          },
+          {
+            "name": "spicy ramen",
+            "label": "satisfies"
+          },
+          {
+            "name": "shoyu ramen",
+            "label": "satisfies"
+          },
+          {
+            "name": "tonkatsu ramen",
+            "label": "satisfies"
+          },
+          {
+            "name": "miso hot ramen",
+            "label": "satisfies"
+          },
+          {
+            "name": "yuzu ramen",
+            "label": "satisfies"
+          },
+          {
+            "name": "shio ramen",
+            "label": "satisfies"
+          }
+        ]
+      }
+    },
+    {
+      "anchor": "roast duck",
+      "denseRaw": 25,
+      "storedRejects": 2,
+      "rejectsInRawRing": ["roast meat"],
+      "sets": {
+        "A": [
+          {
+            "name": "crispy duck",
+            "label": "satisfies"
+          },
+          {
+            "name": "roasted duck breast",
+            "label": "satisfies"
+          },
+          {
+            "name": "peking duck",
+            "label": "satisfies"
+          },
+          {
+            "name": "whole duck",
+            "label": "satisfies"
+          },
+          {
+            "name": "tamarind roast duck",
+            "label": "satisfies"
+          },
+          {
+            "name": "duck confit",
+            "label": "cousin"
+          },
+          {
+            "name": "smoked duck",
+            "label": "cousin"
+          },
+          {
+            "name": "duck fried rice",
+            "label": "cousin"
+          },
+          {
+            "name": "duck curry",
+            "label": "cousin"
+          },
+          {
+            "name": "duck noodles",
+            "label": "cousin"
+          }
+        ],
+        "B": [
+          {
+            "name": "crispy duck",
+            "label": "satisfies"
+          },
+          {
+            "name": "roasted duck breast",
+            "label": "satisfies"
+          },
+          {
+            "name": "peking duck",
+            "label": "satisfies"
+          },
+          {
+            "name": "whole duck",
+            "label": "satisfies"
+          },
+          {
+            "name": "country style duck",
+            "label": "satisfies"
+          },
+          {
+            "name": "duck confit",
+            "label": "cousin"
+          },
+          {
+            "name": "smoked duck",
+            "label": "cousin"
+          },
+          {
+            "name": "duck fried rice",
+            "label": "cousin"
+          },
+          {
+            "name": "duck curry",
+            "label": "cousin"
+          },
+          {
+            "name": "duck noodles",
+            "label": "cousin"
+          }
+        ],
+        "C": [
+          {
+            "name": "crispy duck",
+            "label": "satisfies"
+          },
+          {
+            "name": "roasted duck breast",
+            "label": "satisfies"
+          },
+          {
+            "name": "peking duck",
+            "label": "satisfies"
+          },
+          {
+            "name": "whole duck",
+            "label": "satisfies"
+          },
+          {
+            "name": "tamarind roast duck",
+            "label": "satisfies"
+          },
+          {
+            "name": "country style duck",
+            "label": "satisfies"
+          },
+          {
+            "name": "duck confit",
+            "label": "cousin"
+          },
+          {
+            "name": "smoked duck",
+            "label": "cousin"
+          },
+          {
+            "name": "duck fried rice",
+            "label": "cousin"
+          },
+          {
+            "name": "duck curry",
+            "label": "cousin"
+          }
+        ]
+      }
+    },
+    {
+      "anchor": "bun bo hue",
+      "denseRaw": 3,
+      "storedRejects": 13,
+      "rejectsInRawRing": ["sotbap", "kala bhuna"],
+      "sets": {
+        "A": [
+          {
+            "name": "pho",
+            "label": "cousin"
+          }
+        ],
+        "B": [
+          {
+            "name": "bun cha",
+            "label": "cousin"
+          },
+          {
+            "name": "hu tieu ap chao",
+            "label": "cousin"
+          },
+          {
+            "name": "banh mi op la",
+            "label": "cousin"
+          },
+          {
+            "name": "vietnamese beef stew",
+            "label": "cousin"
+          },
+          {
+            "name": "ca kho to",
+            "label": "cousin"
+          },
+          {
+            "name": "oxtail bun",
+            "label": "cousin"
+          },
+          {
+            "name": "banh cuon",
+            "label": "cousin"
+          },
+          {
+            "name": "kanomjeen numya phu",
+            "label": "cousin"
+          },
+          {
+            "name": "vermicelli bowl",
+            "label": "cousin"
+          }
+        ],
+        "C": [
+          {
+            "name": "pho",
+            "label": "cousin"
+          },
+          {
+            "name": "bun cha",
+            "label": "cousin"
+          },
+          {
+            "name": "hu tieu ap chao",
+            "label": "cousin"
+          },
+          {
+            "name": "banh mi op la",
+            "label": "cousin"
+          },
+          {
+            "name": "vietnamese beef stew",
+            "label": "cousin"
+          },
+          {
+            "name": "ca kho to",
+            "label": "cousin"
+          },
+          {
+            "name": "oxtail bun",
+            "label": "cousin"
+          },
+          {
+            "name": "banh cuon",
+            "label": "cousin"
+          },
+          {
+            "name": "kanomjeen numya phu",
+            "label": "cousin"
+          },
+          {
+            "name": "vermicelli bowl",
+            "label": "cousin"
+          }
+        ]
+      }
+    },
+    {
+      "anchor": "banh xeo",
+      "denseRaw": 14,
+      "storedRejects": 7,
+      "rejectsInRawRing": ["spring roll", "viet pastries", "vietnamese"],
+      "sets": {
+        "A": [
+          {
+            "name": "banh cuon",
+            "label": "cousin"
+          },
+          {
+            "name": "pork rice rolls",
+            "label": "cousin"
+          },
+          {
+            "name": "kanom buang",
+            "label": "cousin"
+          },
+          {
+            "name": "veggie crepe",
+            "label": "cousin"
+          },
+          {
+            "name": "vegan crepe",
+            "label": "cousin"
+          },
+          {
+            "name": "pandan crepe",
+            "label": "cousin"
+          },
+          {
+            "name": "crispy crepe",
+            "label": "satisfies"
+          },
+          {
+            "name": "seafood pancake",
+            "label": "cousin"
+          },
+          {
+            "name": "scallion pancakes",
+            "label": "cousin"
+          },
+          {
+            "name": "socca crepe",
+            "label": "cousin"
+          }
+        ],
+        "B": [
+          {
+            "name": "banh cuon",
+            "label": "cousin"
+          },
+          {
+            "name": "pork rice rolls",
+            "label": "cousin"
+          },
+          {
+            "name": "kanom buang",
+            "label": "cousin"
+          },
+          {
+            "name": "veggie crepe",
+            "label": "cousin"
+          },
+          {
+            "name": "pandan crepe",
+            "label": "cousin"
+          },
+          {
+            "name": "seafood pancake",
+            "label": "cousin"
+          },
+          {
+            "name": "scallion pancakes",
+            "label": "cousin"
+          },
+          {
+            "name": "rice noodle wrap",
+            "label": "cousin"
+          },
+          {
+            "name": "socca crepe",
+            "label": "cousin"
+          },
+          {
+            "name": "egg pancake",
+            "label": "cousin"
+          }
+        ],
+        "C": [
+          {
+            "name": "banh cuon",
+            "label": "cousin"
+          },
+          {
+            "name": "pork rice rolls",
+            "label": "cousin"
+          },
+          {
+            "name": "kanom buang",
+            "label": "cousin"
+          },
+          {
+            "name": "veggie crepe",
+            "label": "cousin"
+          },
+          {
+            "name": "vegan crepe",
+            "label": "cousin"
+          },
+          {
+            "name": "pandan crepe",
+            "label": "cousin"
+          },
+          {
+            "name": "seafood pancake",
+            "label": "cousin"
+          },
+          {
+            "name": "crispy crepe",
+            "label": "satisfies"
+          },
+          {
+            "name": "scallion pancakes",
+            "label": "cousin"
+          },
+          {
+            "name": "rice noodle wrap",
+            "label": "cousin"
+          }
+        ]
+      }
+    },
+    {
+      "anchor": "banh mi",
+      "denseRaw": 20,
+      "storedRejects": 3,
+      "rejectsInRawRing": [],
+      "sets": {
+        "A": [
+          {
+            "name": "viet sandwich",
+            "label": "satisfies"
+          },
+          {
+            "name": "chicken banh mi",
+            "label": "satisfies"
+          },
+          {
+            "name": "tofu banh mi",
+            "label": "satisfies"
+          },
+          {
+            "name": "banh mi french dip",
+            "label": "cousin"
+          },
+          {
+            "name": "grilled pork or chicken banh mi",
+            "label": "satisfies"
+          },
+          {
+            "name": "pork banh mi",
+            "label": "satisfies"
+          },
+          {
+            "name": "char siu banh mi",
+            "label": "satisfies"
+          },
+          {
+            "name": "brisket banh mi",
+            "label": "satisfies"
+          },
+          {
+            "name": "fried shrimp banh mi",
+            "label": "satisfies"
+          },
+          {
+            "name": "bahn mi pizza",
+            "label": "cousin"
+          }
+        ],
+        "B": [
+          {
+            "name": "viet sandwich",
+            "label": "satisfies"
+          },
+          {
+            "name": "baguette sandwich",
+            "label": "satisfies"
+          },
+          {
+            "name": "bahn mi pizza",
+            "label": "cousin"
+          },
+          {
+            "name": "bun cha",
+            "label": "cousin"
+          },
+          {
+            "name": "banh cuon",
+            "label": "cousin"
+          },
+          {
+            "name": "roast pork sandwich",
+            "label": "cousin"
+          },
+          {
+            "name": "cuban sandwich",
+            "label": "cousin"
+          },
+          {
+            "name": "veggie sandwich",
+            "label": "cousin"
+          }
+        ],
+        "C": [
+          {
+            "name": "viet sandwich",
+            "label": "satisfies"
+          },
+          {
+            "name": "chicken banh mi",
+            "label": "satisfies"
+          },
+          {
+            "name": "baguette sandwich",
+            "label": "satisfies"
+          },
+          {
+            "name": "tofu banh mi",
+            "label": "satisfies"
+          },
+          {
+            "name": "bahn mi pizza",
+            "label": "cousin"
+          },
+          {
+            "name": "banh mi french dip",
+            "label": "cousin"
+          },
+          {
+            "name": "bun cha",
+            "label": "cousin"
+          },
+          {
+            "name": "grilled pork or chicken banh mi",
+            "label": "satisfies"
+          },
+          {
+            "name": "banh cuon",
+            "label": "cousin"
+          },
+          {
+            "name": "pork banh mi",
+            "label": "satisfies"
+          }
+        ]
+      }
+    },
+    {
+      "anchor": "pho",
+      "denseRaw": 11,
+      "storedRejects": 4,
+      "rejectsInRawRing": ["pho broth", "vietnamese"],
+      "sets": {
+        "A": [
+          {
+            "name": "vegan pho",
+            "label": "satisfies"
+          },
+          {
+            "name": "wagyu pho",
+            "label": "satisfies"
+          },
+          {
+            "name": "chicken pho",
+            "label": "satisfies"
+          },
+          {
+            "name": "shrimp pho",
+            "label": "satisfies"
+          },
+          {
+            "name": "pho sandwich",
+            "label": "cousin"
+          },
+          {
+            "name": "raw steak pho",
+            "label": "satisfies"
+          },
+          {
+            "name": "bun bo hue",
+            "label": "cousin"
+          },
+          {
+            "name": "hu tieu ap chao",
+            "label": "cousin"
+          }
+        ],
+        "B": [
+          {
+            "name": "beef noodle soup",
+            "label": "satisfies"
+          },
+          {
+            "name": "pho sandwich",
+            "label": "cousin"
+          },
+          {
+            "name": "pho wagyu dumpling",
+            "label": "cousin"
+          },
+          {
+            "name": "bun bo hue",
+            "label": "cousin"
+          },
+          {
+            "name": "bun cha",
+            "label": "cousin"
+          },
+          {
+            "name": "hu tieu ap chao",
+            "label": "cousin"
+          },
+          {
+            "name": "vietnamese beef stew",
+            "label": "cousin"
+          },
+          {
+            "name": "rice noodle fish soup",
+            "label": "cousin"
+          },
+          {
+            "name": "banh mi french dip",
+            "label": "cousin"
+          },
+          {
+            "name": "ca kho to",
+            "label": "cousin"
+          }
+        ],
+        "C": [
+          {
+            "name": "vegan pho",
+            "label": "satisfies"
+          },
+          {
+            "name": "beef noodle soup",
+            "label": "satisfies"
+          },
+          {
+            "name": "wagyu pho",
+            "label": "satisfies"
+          },
+          {
+            "name": "pho sandwich",
+            "label": "cousin"
+          },
+          {
+            "name": "chicken pho",
+            "label": "satisfies"
+          },
+          {
+            "name": "pho wagyu dumpling",
+            "label": "cousin"
+          },
+          {
+            "name": "shrimp pho",
+            "label": "satisfies"
+          },
+          {
+            "name": "bun bo hue",
+            "label": "cousin"
+          },
+          {
+            "name": "bun cha",
+            "label": "cousin"
+          },
+          {
+            "name": "raw steak pho",
+            "label": "satisfies"
+          }
+        ]
+      }
+    },
+    {
+      "anchor": "pozole",
+      "denseRaw": 14,
+      "storedRejects": 6,
+      "rejectsInRawRing": ["mole poblano"],
+      "sets": {
+        "A": [
+          {
+            "name": "green pozole",
+            "label": "satisfies"
+          },
+          {
+            "name": "pozole verde",
+            "label": "satisfies"
+          },
+          {
+            "name": "pozole ramen",
+            "label": "cousin"
+          },
+          {
+            "name": "corn chowder",
+            "label": "cousin"
+          },
+          {
+            "name": "caldo de pollo",
+            "label": "cousin"
+          },
+          {
+            "name": "caldo tlalpeno",
+            "label": "cousin"
+          },
+          {
+            "name": "chicken tortilla soup",
+            "label": "cousin"
+          },
+          {
+            "name": "caldo de res",
+            "label": "cousin"
+          },
+          {
+            "name": "chile colorado",
+            "label": "cousin"
+          },
+          {
+            "name": "chicken caldo",
+            "label": "cousin"
+          }
+        ],
+        "B": [
+          {
+            "name": "corn chowder",
+            "label": "cousin"
+          },
+          {
+            "name": "caldo de pollo",
+            "label": "cousin"
+          },
+          {
+            "name": "caldo tlalpeno",
+            "label": "cousin"
+          },
+          {
+            "name": "chicken tortilla soup",
+            "label": "cousin"
+          },
+          {
+            "name": "caldo de res",
+            "label": "cousin"
+          },
+          {
+            "name": "green chili stew",
+            "label": "cousin"
+          },
+          {
+            "name": "chile colorado",
+            "label": "cousin"
+          },
+          {
+            "name": "chicken caldo",
+            "label": "cousin"
+          },
+          {
+            "name": "oxtail soup",
+            "label": "cousin"
+          },
+          {
+            "name": "hambone soup",
+            "label": "cousin"
+          }
+        ],
+        "C": [
+          {
+            "name": "green pozole",
+            "label": "satisfies"
+          },
+          {
+            "name": "corn chowder",
+            "label": "cousin"
+          },
+          {
+            "name": "pozole verde",
+            "label": "satisfies"
+          },
+          {
+            "name": "caldo de pollo",
+            "label": "cousin"
+          },
+          {
+            "name": "pozole ramen",
+            "label": "cousin"
+          },
+          {
+            "name": "caldo tlalpeno",
+            "label": "cousin"
+          },
+          {
+            "name": "chicken tortilla soup",
+            "label": "cousin"
+          },
+          {
+            "name": "caldo de res",
+            "label": "cousin"
+          },
+          {
+            "name": "green chili stew",
+            "label": "cousin"
+          },
+          {
+            "name": "chile colorado",
+            "label": "cousin"
+          }
+        ]
+      }
+    },
+    {
+      "anchor": "tres leches cake",
+      "denseRaw": 15,
+      "storedRejects": 1,
+      "rejectsInRawRing": ["sheet cake"],
+      "sets": {
+        "A": [
+          {
+            "name": "tres leches",
+            "label": "satisfies"
+          },
+          {
+            "name": "tres leches cheesecake",
+            "label": "satisfies"
+          },
+          {
+            "name": "quatro leches",
+            "label": "satisfies"
+          },
+          {
+            "name": "tres leches doughnut",
+            "label": "satisfies"
+          },
+          {
+            "name": "star crunch topped tres leches cheesecake",
+            "label": "satisfies"
+          },
+          {
+            "name": "pan dulce",
+            "label": "cousin"
+          },
+          {
+            "name": "italian cream cake",
+            "label": "cousin"
+          },
+          {
+            "name": "mexican banana cream pie",
+            "label": "cousin"
+          },
+          {
+            "name": "sponge cake",
+            "label": "cousin"
+          },
+          {
+            "name": "gansito cake",
+            "label": "cousin"
+          }
+        ],
+        "B": [
+          {
+            "name": "tres leches cheesecake",
+            "label": "satisfies"
+          },
+          {
+            "name": "quatro leches",
+            "label": "satisfies"
+          },
+          {
+            "name": "tres leches doughnut",
+            "label": "satisfies"
+          },
+          {
+            "name": "star crunch topped tres leches cheesecake",
+            "label": "satisfies"
+          },
+          {
+            "name": "pan dulce",
+            "label": "cousin"
+          },
+          {
+            "name": "italian cream cake",
+            "label": "cousin"
+          },
+          {
+            "name": "mexican banana cream pie",
+            "label": "cousin"
+          },
+          {
+            "name": "sponge cake",
+            "label": "cousin"
+          },
+          {
+            "name": "vanilla cake",
+            "label": "cousin"
+          },
+          {
+            "name": "gansito cake",
+            "label": "cousin"
+          }
+        ],
+        "C": [
+          {
+            "name": "tres leches",
+            "label": "satisfies"
+          },
+          {
+            "name": "tres leches cheesecake",
+            "label": "satisfies"
+          },
+          {
+            "name": "quatro leches",
+            "label": "satisfies"
+          },
+          {
+            "name": "tres leches doughnut",
+            "label": "satisfies"
+          },
+          {
+            "name": "star crunch topped tres leches cheesecake",
+            "label": "satisfies"
+          },
+          {
+            "name": "pan dulce",
+            "label": "cousin"
+          },
+          {
+            "name": "italian cream cake",
+            "label": "cousin"
+          },
+          {
+            "name": "mexican banana cream pie",
+            "label": "cousin"
+          },
+          {
+            "name": "sponge cake",
+            "label": "cousin"
+          },
+          {
+            "name": "vanilla cake",
+            "label": "cousin"
+          }
+        ]
+      }
+    },
+    {
+      "anchor": "ceviche",
+      "denseRaw": 15,
+      "storedRejects": 2,
+      "rejectsInRawRing": [],
+      "sets": {
+        "A": [
+          {
+            "name": "ceviche de pescado",
+            "label": "satisfies"
+          },
+          {
+            "name": "especial ceviche",
+            "label": "satisfies"
+          },
+          {
+            "name": "ceviche tostada",
+            "label": "cousin"
+          },
+          {
+            "name": "albacore ceviche",
+            "label": "satisfies"
+          },
+          {
+            "name": "trout ceviche",
+            "label": "satisfies"
+          },
+          {
+            "name": "ceviche sampler",
+            "label": "satisfies"
+          },
+          {
+            "name": "ceviche reina",
+            "label": "satisfies"
+          },
+          {
+            "name": "lychee ceviche",
+            "label": "cousin"
+          },
+          {
+            "name": "tuna tiradito",
+            "label": "cousin"
+          },
+          {
+            "name": "shrimp crudo",
+            "label": "cousin"
+          }
+        ],
+        "B": [
+          {
+            "name": "tuna tiradito",
+            "label": "cousin"
+          },
+          {
+            "name": "shrimp crudo",
+            "label": "cousin"
+          },
+          {
+            "name": "tuna crudo",
+            "label": "cousin"
+          },
+          {
+            "name": "scallop crudo",
+            "label": "cousin"
+          },
+          {
+            "name": "hamachi crudo",
+            "label": "cousin"
+          },
+          {
+            "name": "tuna tartar",
+            "label": "cousin"
+          },
+          {
+            "name": "hamachi carpaccio",
+            "label": "cousin"
+          },
+          {
+            "name": "tuna poke",
+            "label": "cousin"
+          },
+          {
+            "name": "sashimi prepared fish",
+            "label": "cousin"
+          },
+          {
+            "name": "red prawn crudo",
+            "label": "cousin"
+          }
+        ],
+        "C": [
+          {
+            "name": "ceviche de pescado",
+            "label": "satisfies"
+          },
+          {
+            "name": "tuna tiradito",
+            "label": "cousin"
+          },
+          {
+            "name": "especial ceviche",
+            "label": "satisfies"
+          },
+          {
+            "name": "shrimp crudo",
+            "label": "cousin"
+          },
+          {
+            "name": "ceviche tostada",
+            "label": "cousin"
+          },
+          {
+            "name": "tuna crudo",
+            "label": "cousin"
+          },
+          {
+            "name": "albacore ceviche",
+            "label": "satisfies"
+          },
+          {
+            "name": "scallop crudo",
+            "label": "cousin"
+          },
+          {
+            "name": "trout ceviche",
+            "label": "satisfies"
+          },
+          {
+            "name": "hamachi crudo",
+            "label": "cousin"
+          }
+        ]
+      }
+    },
+    {
+      "anchor": "tortilla espanola",
+      "denseRaw": 13,
+      "storedRejects": 8,
+      "rejectsInRawRing": [
+        "corn tortilla",
+        "flour tortilla",
+        "sourdough tortilla",
+        "handmade tortilla",
+        "butter tortillas",
+        "blue corn tortilla"
+      ],
+      "sets": {
+        "A": [
+          {
+            "name": "tortilla",
+            "label": "cousin"
+          },
+          {
+            "name": "omelet",
+            "label": "cousin"
+          },
+          {
+            "name": "tostada",
+            "label": "reject"
+          },
+          {
+            "name": "breakfast torta",
+            "label": "cousin"
+          },
+          {
+            "name": "patatas bravas",
+            "label": "cousin"
+          },
+          {
+            "name": "quesadilla especial",
+            "label": "cousin"
+          }
+        ],
+        "B": [
+          {
+            "name": "baked potato omelette",
+            "label": "satisfies"
+          },
+          {
+            "name": "chilaquiles",
+            "label": "cousin"
+          },
+          {
+            "name": "quesadilla taco",
+            "label": "cousin"
+          },
+          {
+            "name": "egg pancake",
+            "label": "cousin"
+          },
+          {
+            "name": "breakfast torta",
+            "label": "cousin"
+          },
+          {
+            "name": "potato egg and cheese empanada",
+            "label": "cousin"
+          },
+          {
+            "name": "huevos rancheros",
+            "label": "cousin"
+          },
+          {
+            "name": "patatas bravas",
+            "label": "cousin"
+          },
+          {
+            "name": "veggie omelet",
+            "label": "cousin"
+          },
+          {
+            "name": "corn empanada",
+            "label": "cousin"
+          }
+        ],
+        "C": [
+          {
+            "name": "tortilla",
+            "label": "cousin"
+          },
+          {
+            "name": "baked potato omelette",
+            "label": "satisfies"
+          },
+          {
+            "name": "omelet",
+            "label": "cousin"
+          },
+          {
+            "name": "chilaquiles",
+            "label": "cousin"
+          },
+          {
+            "name": "tostada",
+            "label": "reject"
+          },
+          {
+            "name": "quesadilla taco",
+            "label": "cousin"
+          },
+          {
+            "name": "breakfast torta",
+            "label": "cousin"
+          },
+          {
+            "name": "egg pancake",
+            "label": "cousin"
+          },
+          {
+            "name": "patatas bravas",
+            "label": "cousin"
+          },
+          {
+            "name": "quesadilla especial",
+            "label": "cousin"
+          }
+        ]
+      }
+    },
+    {
+      "anchor": "chirashi bowl",
+      "denseRaw": 2,
+      "storedRejects": 5,
+      "rejectsInRawRing": [],
+      "sets": {
+        "A": [
+          {
+            "name": "sashimi bowl",
+            "label": "satisfies"
+          },
+          {
+            "name": "poke bowl",
+            "label": "cousin"
+          }
+        ],
+        "B": [
+          {
+            "name": "sashimi bowl",
+            "label": "satisfies"
+          },
+          {
+            "name": "uni bowl",
+            "label": "satisfies"
+          },
+          {
+            "name": "poke bowl",
+            "label": "cousin"
+          },
+          {
+            "name": "salmon rice bowl",
+            "label": "cousin"
+          },
+          {
+            "name": "tuna poke bowl",
+            "label": "cousin"
+          },
+          {
+            "name": "sashimi plate",
+            "label": "cousin"
+          },
+          {
+            "name": "spicy tuna crispy rice",
+            "label": "cousin"
+          },
+          {
+            "name": "tuna poke",
+            "label": "cousin"
+          },
+          {
+            "name": "maki",
+            "label": "cousin"
+          },
+          {
+            "name": "sushi boat",
+            "label": "cousin"
+          }
+        ],
+        "C": [
+          {
+            "name": "sashimi bowl",
+            "label": "satisfies"
+          },
+          {
+            "name": "poke bowl",
+            "label": "cousin"
+          },
+          {
+            "name": "uni bowl",
+            "label": "satisfies"
+          },
+          {
+            "name": "salmon rice bowl",
+            "label": "cousin"
+          },
+          {
+            "name": "tuna poke bowl",
+            "label": "cousin"
+          },
+          {
+            "name": "sashimi plate",
+            "label": "cousin"
+          },
+          {
+            "name": "spicy tuna crispy rice",
+            "label": "cousin"
+          },
+          {
+            "name": "tuna poke",
+            "label": "cousin"
+          },
+          {
+            "name": "maki",
+            "label": "cousin"
+          },
+          {
+            "name": "sushi boat",
+            "label": "cousin"
+          }
+        ]
+      }
+    },
+    {
+      "anchor": "gyro",
+      "denseRaw": 2,
+      "storedRejects": 10,
+      "rejectsInRawRing": [],
+      "sets": {
+        "A": [
+          {
+            "name": "gyro plate",
+            "label": "satisfies"
+          },
+          {
+            "name": "gyro zurrito",
+            "label": "cousin"
+          }
+        ],
+        "B": [
+          {
+            "name": "yoghurt kebab",
+            "label": "satisfies"
+          },
+          {
+            "name": "not a taco",
+            "label": "cousin"
+          },
+          {
+            "name": "crazy roll",
+            "label": "cousin"
+          },
+          {
+            "name": "roti",
+            "label": "cousin"
+          }
+        ],
+        "C": [
+          {
+            "name": "gyro plate",
+            "label": "satisfies"
+          },
+          {
+            "name": "yoghurt kebab",
+            "label": "satisfies"
+          },
+          {
+            "name": "gyro zurrito",
+            "label": "cousin"
+          },
+          {
+            "name": "not a taco",
+            "label": "cousin"
+          },
+          {
+            "name": "crazy roll",
+            "label": "cousin"
+          },
+          {
+            "name": "roti",
+            "label": "cousin"
+          }
+        ]
+      }
+    },
+    {
+      "anchor": "monte cristo",
+      "denseRaw": 4,
+      "storedRejects": 2,
+      "rejectsInRawRing": [],
+      "sets": {
+        "A": [
+          {
+            "name": "croque monsieur",
+            "label": "satisfies"
+          },
+          {
+            "name": "chile relleno monte cristo",
+            "label": "satisfies"
+          },
+          {
+            "name": "croque madame",
+            "label": "satisfies"
+          },
+          {
+            "name": "club sandwich",
+            "label": "cousin"
+          }
+        ],
+        "B": [
+          {
+            "name": "croque monsieur",
+            "label": "satisfies"
+          },
+          {
+            "name": "croque madame",
+            "label": "satisfies"
+          },
+          {
+            "name": "ham sandwich",
+            "label": "satisfies"
+          },
+          {
+            "name": "ham and cheese sandwich",
+            "label": "satisfies"
+          },
+          {
+            "name": "grilled ham and cheese",
+            "label": "satisfies"
+          },
+          {
+            "name": "loaded grilled cheese",
+            "label": "satisfies"
+          },
+          {
+            "name": "ham and cheese",
+            "label": "satisfies"
+          },
+          {
+            "name": "club sandwich",
+            "label": "cousin"
+          },
+          {
+            "name": "prosciutto sandwich",
+            "label": "cousin"
+          },
+          {
+            "name": "cuban sandwich",
+            "label": "cousin"
+          }
+        ],
+        "C": [
+          {
+            "name": "croque monsieur",
+            "label": "satisfies"
+          },
+          {
+            "name": "chile relleno monte cristo",
+            "label": "satisfies"
+          },
+          {
+            "name": "croque madame",
+            "label": "satisfies"
+          },
+          {
+            "name": "ham sandwich",
+            "label": "satisfies"
+          },
+          {
+            "name": "club sandwich",
+            "label": "cousin"
+          },
+          {
+            "name": "ham and cheese sandwich",
+            "label": "satisfies"
+          },
+          {
+            "name": "grilled ham and cheese",
+            "label": "satisfies"
+          },
+          {
+            "name": "loaded grilled cheese",
+            "label": "satisfies"
+          },
+          {
+            "name": "ham and cheese",
+            "label": "satisfies"
+          },
+          {
+            "name": "prosciutto sandwich",
+            "label": "cousin"
+          }
+        ]
+      }
+    },
+    {
+      "anchor": "fried chicken sandwich",
+      "denseRaw": 5,
+      "storedRejects": 3,
+      "rejectsInRawRing": ["og burger"],
+      "sets": {
+        "A": [
+          {
+            "name": "southern chicken sandwich",
+            "label": "satisfies"
+          },
+          {
+            "name": "hot honey fried chicken sandwich",
+            "label": "satisfies"
+          },
+          {
+            "name": "b.i.g. chicken sandwich",
+            "label": "satisfies"
+          },
+          {
+            "name": "comeback chicken sandwich",
+            "label": "satisfies"
+          }
+        ],
+        "B": [
+          {
+            "name": "southern chicken sandwich",
+            "label": "satisfies"
+          },
+          {
+            "name": "b.i.g. chicken sandwich",
+            "label": "satisfies"
+          },
+          {
+            "name": "chicken cutlet sandwich",
+            "label": "satisfies"
+          },
+          {
+            "name": "spicy chicken sandwich",
+            "label": "satisfies"
+          },
+          {
+            "name": "pickle chicken sandwich",
+            "label": "satisfies"
+          },
+          {
+            "name": "comeback chicken sandwich",
+            "label": "satisfies"
+          },
+          {
+            "name": "chicken burger",
+            "label": "satisfies"
+          },
+          {
+            "name": "nashville hot chicken sandwich",
+            "label": "satisfies"
+          },
+          {
+            "name": "mala chicken sandwich",
+            "label": "satisfies"
+          },
+          {
+            "name": "cajun chicken sandwich",
+            "label": "satisfies"
+          }
+        ],
+        "C": [
+          {
+            "name": "southern chicken sandwich",
+            "label": "satisfies"
+          },
+          {
+            "name": "hot honey fried chicken sandwich",
+            "label": "satisfies"
+          },
+          {
+            "name": "b.i.g. chicken sandwich",
+            "label": "satisfies"
+          },
+          {
+            "name": "chicken cutlet sandwich",
+            "label": "satisfies"
+          },
+          {
+            "name": "comeback chicken sandwich",
+            "label": "satisfies"
+          },
+          {
+            "name": "spicy chicken sandwich",
+            "label": "satisfies"
+          },
+          {
+            "name": "pickle chicken sandwich",
+            "label": "satisfies"
+          },
+          {
+            "name": "chicken burger",
+            "label": "satisfies"
+          },
+          {
+            "name": "nashville hot chicken sandwich",
+            "label": "satisfies"
+          },
+          {
+            "name": "mala chicken sandwich",
+            "label": "satisfies"
+          }
+        ]
+      }
+    },
+    {
+      "anchor": "dry aged burger",
+      "denseRaw": 14,
+      "storedRejects": 2,
+      "rejectsInRawRing": ["aged beef"],
+      "sets": {
+        "A": [
+          {
+            "name": "dry-aged steak",
+            "label": "cousin"
+          },
+          {
+            "name": "wagyu burger",
+            "label": "cousin"
+          },
+          {
+            "name": "beef burger",
+            "label": "cousin"
+          },
+          {
+            "name": "dry aged ribeye",
+            "label": "cousin"
+          },
+          {
+            "name": "steak burger",
+            "label": "cousin"
+          },
+          {
+            "name": "dry aged bone-in ribeye steak",
+            "label": "cousin"
+          },
+          {
+            "name": "dry aged tomahawk",
+            "label": "cousin"
+          },
+          {
+            "name": "butcher burger",
+            "label": "cousin"
+          },
+          {
+            "name": "smash burger",
+            "label": "cousin"
+          },
+          {
+            "name": "picanha burger",
+            "label": "cousin"
+          }
+        ],
+        "B": [
+          {
+            "name": "dry-aged steak",
+            "label": "cousin"
+          },
+          {
+            "name": "wagyu burger",
+            "label": "cousin"
+          },
+          {
+            "name": "beef burger",
+            "label": "cousin"
+          },
+          {
+            "name": "dry aged ribeye",
+            "label": "cousin"
+          },
+          {
+            "name": "steak burger",
+            "label": "cousin"
+          },
+          {
+            "name": "dry aged bone-in ribeye steak",
+            "label": "cousin"
+          },
+          {
+            "name": "dry aged tomahawk",
+            "label": "cousin"
+          },
+          {
+            "name": "butcher burger",
+            "label": "cousin"
+          },
+          {
+            "name": "smash burger",
+            "label": "cousin"
+          },
+          {
+            "name": "lamb burger",
+            "label": "cousin"
+          }
+        ],
+        "C": [
+          {
+            "name": "dry-aged steak",
+            "label": "cousin"
+          },
+          {
+            "name": "wagyu burger",
+            "label": "cousin"
+          },
+          {
+            "name": "beef burger",
+            "label": "cousin"
+          },
+          {
+            "name": "dry aged ribeye",
+            "label": "cousin"
+          },
+          {
+            "name": "steak burger",
+            "label": "cousin"
+          },
+          {
+            "name": "dry aged bone-in ribeye steak",
+            "label": "cousin"
+          },
+          {
+            "name": "dry aged tomahawk",
+            "label": "cousin"
+          },
+          {
+            "name": "butcher burger",
+            "label": "cousin"
+          },
+          {
+            "name": "smash burger",
+            "label": "cousin"
+          },
+          {
+            "name": "picanha burger",
+            "label": "cousin"
+          }
+        ]
+      }
+    },
+    {
+      "anchor": "basque style cheesecake",
+      "denseRaw": 9,
+      "storedRejects": 1,
+      "rejectsInRawRing": [],
+      "sets": {
+        "A": [
+          {
+            "name": "ube basque cheesecake",
+            "label": "satisfies"
+          },
+          {
+            "name": "japanese cheesecake",
+            "label": "cousin"
+          },
+          {
+            "name": "cheesecake",
+            "label": "cousin"
+          },
+          {
+            "name": "mascarpone cheesecake",
+            "label": "cousin"
+          },
+          {
+            "name": "flambeed cheesecake",
+            "label": "cousin"
+          },
+          {
+            "name": "ny cheesecake",
+            "label": "cousin"
+          },
+          {
+            "name": "flaming cheesecake",
+            "label": "cousin"
+          },
+          {
+            "name": "black forest cheesecake",
+            "label": "cousin"
+          },
+          {
+            "name": "asian cheesecake",
+            "label": "cousin"
+          }
+        ],
+        "B": [
+          {
+            "name": "ube basque cheesecake",
+            "label": "satisfies"
+          },
+          {
+            "name": "japanese cheesecake",
+            "label": "cousin"
+          },
+          {
+            "name": "mascarpone cheesecake",
+            "label": "cousin"
+          },
+          {
+            "name": "flambeed cheesecake",
+            "label": "cousin"
+          },
+          {
+            "name": "ny cheesecake",
+            "label": "cousin"
+          },
+          {
+            "name": "flaming cheesecake",
+            "label": "cousin"
+          },
+          {
+            "name": "black forest cheesecake",
+            "label": "cousin"
+          },
+          {
+            "name": "asian cheesecake",
+            "label": "cousin"
+          },
+          {
+            "name": "tres leches cheesecake",
+            "label": "cousin"
+          },
+          {
+            "name": "pandan cheesecake",
+            "label": "cousin"
+          }
+        ],
+        "C": [
+          {
+            "name": "ube basque cheesecake",
+            "label": "satisfies"
+          },
+          {
+            "name": "japanese cheesecake",
+            "label": "cousin"
+          },
+          {
+            "name": "cheesecake",
+            "label": "cousin"
+          },
+          {
+            "name": "mascarpone cheesecake",
+            "label": "cousin"
+          },
+          {
+            "name": "flambeed cheesecake",
+            "label": "cousin"
+          },
+          {
+            "name": "ny cheesecake",
+            "label": "cousin"
+          },
+          {
+            "name": "flaming cheesecake",
+            "label": "cousin"
+          },
+          {
+            "name": "black forest cheesecake",
+            "label": "cousin"
+          },
+          {
+            "name": "asian cheesecake",
+            "label": "cousin"
+          },
+          {
+            "name": "tres leches cheesecake",
+            "label": "cousin"
+          }
+        ]
+      }
+    },
+    {
+      "anchor": "cheesesteak",
+      "denseRaw": 16,
+      "storedRejects": 3,
+      "rejectsInRawRing": [],
+      "sets": {
+        "A": [
+          {
+            "name": "philly sandwich",
+            "label": "satisfies"
+          },
+          {
+            "name": "texas ribeye philly cheesesteak",
+            "label": "satisfies"
+          },
+          {
+            "name": "veggie cheesesteak",
+            "label": "cousin"
+          },
+          {
+            "name": "cheesesteak stromboli",
+            "label": "cousin"
+          },
+          {
+            "name": "pastrami philly",
+            "label": "cousin"
+          },
+          {
+            "name": "steak sandwich",
+            "label": "satisfies"
+          },
+          {
+            "name": "spicy chicken cheesesteak",
+            "label": "cousin"
+          },
+          {
+            "name": "italian beef sandwich",
+            "label": "cousin"
+          },
+          {
+            "name": "philly omelette",
+            "label": "cousin"
+          },
+          {
+            "name": "thai cheesesteak",
+            "label": "cousin"
+          }
+        ],
+        "B": [
+          {
+            "name": "philly sandwich",
+            "label": "satisfies"
+          },
+          {
+            "name": "steak sandwich",
+            "label": "satisfies"
+          },
+          {
+            "name": "bbq philly sando",
+            "label": "satisfies"
+          },
+          {
+            "name": "oxtail philly",
+            "label": "satisfies"
+          },
+          {
+            "name": "italian beef sandwich",
+            "label": "cousin"
+          },
+          {
+            "name": "philly omelette",
+            "label": "cousin"
+          },
+          {
+            "name": "steak burger",
+            "label": "cousin"
+          },
+          {
+            "name": "steak quesadilla",
+            "label": "cousin"
+          },
+          {
+            "name": "italian deli sandwiches",
+            "label": "cousin"
+          },
+          {
+            "name": "french dip sandwich",
+            "label": "cousin"
+          }
+        ],
+        "C": [
+          {
+            "name": "philly sandwich",
+            "label": "satisfies"
+          },
+          {
+            "name": "texas ribeye philly cheesesteak",
+            "label": "satisfies"
+          },
+          {
+            "name": "steak sandwich",
+            "label": "satisfies"
+          },
+          {
+            "name": "veggie cheesesteak",
+            "label": "cousin"
+          },
+          {
+            "name": "bbq philly sando",
+            "label": "satisfies"
+          },
+          {
+            "name": "cheesesteak stromboli",
+            "label": "cousin"
+          },
+          {
+            "name": "oxtail philly",
+            "label": "satisfies"
+          },
+          {
+            "name": "pastrami philly",
+            "label": "cousin"
+          },
+          {
+            "name": "italian beef sandwich",
+            "label": "cousin"
+          },
+          {
+            "name": "philly omelette",
+            "label": "cousin"
+          }
+        ]
+      }
+    }
+  ],
+  "verdictCache": {
+    "576d4cc6-cb37-4d2f-a9e0-3400fca73463|c21329d9-7e44-414d-a10a-4fee36b48b71": "cousin",
+    "576d4cc6-cb37-4d2f-a9e0-3400fca73463|d1495b38-c957-401e-a1d5-fcb0582beb16": "cousin",
+    "576d4cc6-cb37-4d2f-a9e0-3400fca73463|f5f5f725-b15d-483d-bfe1-b9c22b072a2c": "cousin",
+    "576d4cc6-cb37-4d2f-a9e0-3400fca73463|01c8cbfe-ca8c-4266-90ab-4aecb228e128": "cousin",
+    "576d4cc6-cb37-4d2f-a9e0-3400fca73463|aacdf11f-2b87-46c4-b878-c5cadb0ddecd": "cousin",
+    "576d4cc6-cb37-4d2f-a9e0-3400fca73463|cab8ae6c-9992-4895-8252-f40d722a5775": "cousin",
+    "576d4cc6-cb37-4d2f-a9e0-3400fca73463|e7db4500-145b-4974-8e91-c6b995928a6c": "cousin",
+    "576d4cc6-cb37-4d2f-a9e0-3400fca73463|52f936de-619f-42fd-92c3-563d56556b1e": "satisfies",
+    "576d4cc6-cb37-4d2f-a9e0-3400fca73463|6058aebc-1126-46cf-9400-6839b76f4e36": "satisfies",
+    "576d4cc6-cb37-4d2f-a9e0-3400fca73463|2bf8e2a8-2837-4824-8c14-345690793f73": "cousin",
+    "576d4cc6-cb37-4d2f-a9e0-3400fca73463|2c6c4255-53c2-4bad-8251-fdb08bd4fc6a": "cousin",
+    "18f5fa4d-51d0-4a50-a998-966bd12f76b9|b46fbde2-080e-4899-a0d3-4fb2c5fe9db7": "satisfies",
+    "18f5fa4d-51d0-4a50-a998-966bd12f76b9|f2a05677-3052-4557-af54-ffef8cd8090c": "satisfies",
+    "6b829aa2-4a1f-45b1-b304-eb3ace7ba11b|252e9a26-01e0-4e7b-9d8b-6696973421f6": "satisfies",
+    "6b829aa2-4a1f-45b1-b304-eb3ace7ba11b|b33eb888-0acd-432b-bebd-e14d0699ec13": "satisfies",
+    "6b829aa2-4a1f-45b1-b304-eb3ace7ba11b|ac64519a-2803-40ae-81c8-460cbcdfc92e": "satisfies",
+    "6b829aa2-4a1f-45b1-b304-eb3ace7ba11b|d49dc9b1-7d5a-42c8-b741-e1a6d0f0c12f": "satisfies",
+    "6b829aa2-4a1f-45b1-b304-eb3ace7ba11b|e6b42426-07af-4bda-bdd1-08e524ba699e": "satisfies",
+    "6b829aa2-4a1f-45b1-b304-eb3ace7ba11b|135e03ef-510a-47b0-abb2-0a0fd5cfd64a": "satisfies",
+    "6b829aa2-4a1f-45b1-b304-eb3ace7ba11b|eb437b0d-00ac-4efb-9eda-26f0322991c4": "cousin",
+    "6b829aa2-4a1f-45b1-b304-eb3ace7ba11b|6a85e81d-229d-4be8-8b66-9ff196e54985": "satisfies",
+    "6b829aa2-4a1f-45b1-b304-eb3ace7ba11b|1489fdb7-4ea0-4b6a-b786-fc62ef0df5d9": "satisfies",
+    "6b829aa2-4a1f-45b1-b304-eb3ace7ba11b|503e8090-d13d-49f7-820f-69d0fcf10a52": "satisfies",
+    "6b829aa2-4a1f-45b1-b304-eb3ace7ba11b|f5697130-e6c9-4709-a5ff-4b545deb615b": "satisfies",
+    "eb4a3bcc-0694-47aa-a700-d0c3e547a5d4|0932bc87-61ae-4e2f-8270-d7b1ed005db2": "cousin",
+    "4b8b3c96-4562-4a53-9b62-98c7b6d8f826|565972fc-ceb4-4b46-b499-0ba223a3b33c": "satisfies",
+    "4b8b3c96-4562-4a53-9b62-98c7b6d8f826|ed933078-c82d-4653-a676-1d8b0a342403": "satisfies",
+    "4b8b3c96-4562-4a53-9b62-98c7b6d8f826|302385f0-e64e-4b5d-b9fc-14cf19c78f48": "satisfies",
+    "4b8b3c96-4562-4a53-9b62-98c7b6d8f826|2e93bf36-8357-44b3-9015-b8ad8abda53f": "satisfies",
+    "4b8b3c96-4562-4a53-9b62-98c7b6d8f826|9a0e31cb-05e2-4d9e-b13f-55adfc8101d4": "cousin",
+    "4b8b3c96-4562-4a53-9b62-98c7b6d8f826|479998fd-040e-4ddd-8990-0e642115fd89": "cousin",
+    "4b8b3c96-4562-4a53-9b62-98c7b6d8f826|85a05a8e-3773-42d5-98b0-7d9aa13513ea": "cousin",
+    "4b8b3c96-4562-4a53-9b62-98c7b6d8f826|00d52e54-9cc6-46f9-bcb1-3c500699e537": "cousin",
+    "4b8b3c96-4562-4a53-9b62-98c7b6d8f826|cf0dbc85-a531-470e-9586-84c404ae0e2b": "cousin",
+    "4b8b3c96-4562-4a53-9b62-98c7b6d8f826|be684e78-4287-4315-b393-f067e1c6fcd8": "satisfies",
+    "494d6cb2-bf85-4200-9503-19a5ad6c0379|fe7f0cae-ea39-4b2c-8aa4-b88adf3eea50": "cousin",
+    "494d6cb2-bf85-4200-9503-19a5ad6c0379|9ac78179-4e83-4d10-8a80-22ed2ed03296": "cousin",
+    "494d6cb2-bf85-4200-9503-19a5ad6c0379|302aefcf-8721-4eaa-ab9a-811b4fc1b73a": "cousin",
+    "494d6cb2-bf85-4200-9503-19a5ad6c0379|e1079527-899c-4b34-886a-d7702ea9327f": "cousin",
+    "494d6cb2-bf85-4200-9503-19a5ad6c0379|706fba13-166c-4237-9a39-096ed8fc488a": "cousin",
+    "494d6cb2-bf85-4200-9503-19a5ad6c0379|63ff953c-1551-41e9-b46d-b6228db487b8": "cousin",
+    "494d6cb2-bf85-4200-9503-19a5ad6c0379|6bcac9f5-0c59-4765-acaa-c68220465f41": "cousin",
+    "494d6cb2-bf85-4200-9503-19a5ad6c0379|ca707e38-830d-44d2-8fcb-52413976784e": "cousin",
+    "494d6cb2-bf85-4200-9503-19a5ad6c0379|6e666716-a419-45b8-93fd-c0a2274af7cb": "cousin",
+    "1823cd02-5e4f-4207-afa7-475aa101968b|6bcac9f5-0c59-4765-acaa-c68220465f41": "cousin",
+    "1823cd02-5e4f-4207-afa7-475aa101968b|987c3052-2840-4fee-98bc-94bff7f428c3": "cousin",
+    "1823cd02-5e4f-4207-afa7-475aa101968b|f2838d23-074b-4563-b6a3-b28c24dad0d2": "cousin",
+    "1823cd02-5e4f-4207-afa7-475aa101968b|4d022b23-c7e2-4f21-83cb-a9890267f30d": "cousin",
+    "1823cd02-5e4f-4207-afa7-475aa101968b|86f84dc1-44db-4194-b9c8-95a2987ae6b7": "cousin",
+    "1823cd02-5e4f-4207-afa7-475aa101968b|6422d912-4ff9-4104-8c1f-903e48c03d9f": "cousin",
+    "1823cd02-5e4f-4207-afa7-475aa101968b|7005e1c2-ed6d-4066-979c-122e0d6a8645": "cousin",
+    "1823cd02-5e4f-4207-afa7-475aa101968b|267b92c7-2ffe-4140-9048-dcb777bb30f3": "cousin",
+    "1823cd02-5e4f-4207-afa7-475aa101968b|81639118-f216-4944-b4d3-01d32d8bc69e": "cousin",
+    "1823cd02-5e4f-4207-afa7-475aa101968b|04275beb-3101-4c95-8a21-c4e9e7fc5b0f": "cousin",
+    "78d11036-478c-41bb-a78d-4a7320dde99c|9cd8f4aa-bb68-4bee-937f-45fee496d147": "satisfies",
+    "78d11036-478c-41bb-a78d-4a7320dde99c|a8806174-fb75-4447-9cf9-43cfb60ec3fc": "cousin",
+    "78d11036-478c-41bb-a78d-4a7320dde99c|35133d33-3cb8-434f-a585-aa8873b31939": "satisfies",
+    "78d11036-478c-41bb-a78d-4a7320dde99c|fe7f0cae-ea39-4b2c-8aa4-b88adf3eea50": "cousin",
+    "78d11036-478c-41bb-a78d-4a7320dde99c|6bcac9f5-0c59-4765-acaa-c68220465f41": "cousin",
+    "78d11036-478c-41bb-a78d-4a7320dde99c|2d294605-184a-4d76-a235-ad969bf01777": "cousin",
+    "78d11036-478c-41bb-a78d-4a7320dde99c|ca648de0-8889-4b9f-beb5-b15485d25ce0": "cousin",
+    "78d11036-478c-41bb-a78d-4a7320dde99c|92e85a13-08df-4d34-9885-a3739e7a9b09": "cousin",
+    "08f45e9c-abf7-4db2-bbc9-d772538ca720|8e90de27-c810-438b-a660-c90d860bc639": "cousin",
+    "08f45e9c-abf7-4db2-bbc9-d772538ca720|494d6cb2-bf85-4200-9503-19a5ad6c0379": "cousin",
+    "08f45e9c-abf7-4db2-bbc9-d772538ca720|9ac78179-4e83-4d10-8a80-22ed2ed03296": "cousin",
+    "08f45e9c-abf7-4db2-bbc9-d772538ca720|339c1fb2-99c2-428f-93d1-5fb526cb0545": "satisfies",
+    "08f45e9c-abf7-4db2-bbc9-d772538ca720|2727f378-ad00-4986-a2c1-61abd7fa51e2": "cousin",
+    "08f45e9c-abf7-4db2-bbc9-d772538ca720|fe7f0cae-ea39-4b2c-8aa4-b88adf3eea50": "cousin",
+    "08f45e9c-abf7-4db2-bbc9-d772538ca720|e1079527-899c-4b34-886a-d7702ea9327f": "cousin",
+    "08f45e9c-abf7-4db2-bbc9-d772538ca720|cf5ba2ba-1c7d-4898-8f2a-3d1866328b0d": "cousin",
+    "08f45e9c-abf7-4db2-bbc9-d772538ca720|a6e2f205-d034-4e5b-b073-84bcd5b07551": "cousin",
+    "08f45e9c-abf7-4db2-bbc9-d772538ca720|706fba13-166c-4237-9a39-096ed8fc488a": "cousin",
+    "a0c3d6c9-f2fa-439e-9747-4dca5d4be572|e850884b-cf76-42a7-8d8b-beee591c253b": "cousin",
+    "a0c3d6c9-f2fa-439e-9747-4dca5d4be572|83fec08f-3501-42a8-8b66-cfba6304ed63": "cousin",
+    "a0c3d6c9-f2fa-439e-9747-4dca5d4be572|d01fc896-afb2-48e5-abad-690acc194bb2": "cousin",
+    "a0c3d6c9-f2fa-439e-9747-4dca5d4be572|50eed67a-0047-4ab9-8c58-0822141c75c6": "cousin",
+    "a0c3d6c9-f2fa-439e-9747-4dca5d4be572|ca4b755e-db1b-4cc7-9fe4-fb2b269f7c7f": "cousin",
+    "a0c3d6c9-f2fa-439e-9747-4dca5d4be572|c2541565-99e1-4e91-868b-2720638117ac": "cousin",
+    "a0c3d6c9-f2fa-439e-9747-4dca5d4be572|ae11fc11-2d2d-4587-a433-848352d37d12": "cousin",
+    "a0c3d6c9-f2fa-439e-9747-4dca5d4be572|27f919fa-1d6f-4d0e-8f35-6b37b5886b81": "cousin",
+    "a0c3d6c9-f2fa-439e-9747-4dca5d4be572|5203f056-7526-4d79-bd57-790db30ebf39": "cousin",
+    "a0c3d6c9-f2fa-439e-9747-4dca5d4be572|1b47c554-e25d-43a2-8a53-2bdd79cd5e18": "cousin",
+    "3b6d210c-aa1d-4dd1-8a28-bda591cc8a7c|77a07ebc-341c-4714-b082-d65a589c6dd2": "satisfies",
+    "3b6d210c-aa1d-4dd1-8a28-bda591cc8a7c|acdace56-965c-4556-bb2f-746f45342876": "satisfies",
+    "3b6d210c-aa1d-4dd1-8a28-bda591cc8a7c|94459bec-5995-425a-bc05-16444640d7bf": "satisfies",
+    "3b6d210c-aa1d-4dd1-8a28-bda591cc8a7c|85464c38-4faf-4ef7-93bb-433fe518d060": "satisfies",
+    "3b6d210c-aa1d-4dd1-8a28-bda591cc8a7c|4390f15d-ab94-4786-a0e4-35621480a88f": "cousin",
+    "3b6d210c-aa1d-4dd1-8a28-bda591cc8a7c|18d65e30-6819-4bf3-a754-4697d836482b": "cousin",
+    "3b6d210c-aa1d-4dd1-8a28-bda591cc8a7c|405172e8-ab9b-433f-a4a0-7af6e5bc16e1": "cousin",
+    "3b6d210c-aa1d-4dd1-8a28-bda591cc8a7c|ba75873a-63c5-4050-98f3-9bc244c8d140": "cousin",
+    "3b6d210c-aa1d-4dd1-8a28-bda591cc8a7c|37badb4d-a66a-48ef-ad96-778d2608783e": "cousin",
+    "3b6d210c-aa1d-4dd1-8a28-bda591cc8a7c|b695abd6-2e34-4873-8c2e-7d0a9289a445": "cousin",
+    "d3f4befd-6398-4491-beee-7b4b7e438fdd|abf61342-f947-41ea-bff9-84af99b4a9cd": "cousin",
+    "d3f4befd-6398-4491-beee-7b4b7e438fdd|be32b4a9-39db-4bf5-a94e-7ae4ad7fc35a": "cousin",
+    "d3f4befd-6398-4491-beee-7b4b7e438fdd|0755efde-07ff-4d42-98c5-fb2c5ad876ae": "cousin",
+    "d3f4befd-6398-4491-beee-7b4b7e438fdd|e7559714-bd8e-4470-b338-acc9b3ba33ff": "cousin",
+    "d3f4befd-6398-4491-beee-7b4b7e438fdd|77a4d74d-418a-42af-b729-60adc8c29bb8": "cousin",
+    "d3f4befd-6398-4491-beee-7b4b7e438fdd|2e558cbd-3ec6-4de0-9073-3448237be199": "cousin",
+    "d3f4befd-6398-4491-beee-7b4b7e438fdd|e4ef0967-2d6d-4258-bfd7-649b7b8e4a03": "cousin",
+    "d3f4befd-6398-4491-beee-7b4b7e438fdd|c7482e94-4883-435e-b5e9-4c0824c45173": "cousin",
+    "d3f4befd-6398-4491-beee-7b4b7e438fdd|8ac754b6-fea5-42d8-8a64-ac4e3ab74ea0": "cousin",
+    "d3f4befd-6398-4491-beee-7b4b7e438fdd|e432851d-b832-47d6-9535-60c6791d8da7": "cousin",
+    "68d4669e-9c27-41f5-8eb1-ed6781992e4d|5d3db4b2-617e-4648-993c-b2f6426beef8": "cousin",
+    "68d4669e-9c27-41f5-8eb1-ed6781992e4d|9f0580da-c8ed-44a9-874a-bb010dee10db": "cousin",
+    "68d4669e-9c27-41f5-8eb1-ed6781992e4d|77704ddc-d9c2-4197-853a-6b10e14d89dd": "cousin",
+    "68d4669e-9c27-41f5-8eb1-ed6781992e4d|712ba9a0-2e2f-421a-bf95-2ddded8739cb": "satisfies",
+    "68d4669e-9c27-41f5-8eb1-ed6781992e4d|5c15ce8f-0bac-496a-b733-cf7fd6d1c0a9": "cousin",
+    "68d4669e-9c27-41f5-8eb1-ed6781992e4d|a8de6165-4f4f-408e-b4cf-a37f05fa5571": "cousin",
+    "68d4669e-9c27-41f5-8eb1-ed6781992e4d|04275beb-3101-4c95-8a21-c4e9e7fc5b0f": "cousin",
+    "68d4669e-9c27-41f5-8eb1-ed6781992e4d|bb6a5f44-7c8b-449c-98f8-e1e7ce5c781d": "cousin",
+    "68d4669e-9c27-41f5-8eb1-ed6781992e4d|42d1dd3b-bdc5-4e81-ac83-fccffa12709c": "cousin",
+    "68d4669e-9c27-41f5-8eb1-ed6781992e4d|c17d3b0b-93c2-426f-9316-df804c2183c1": "cousin",
+    "68d4669e-9c27-41f5-8eb1-ed6781992e4d|6029e945-f669-4b93-a41f-0f5e5aa040b7": "cousin",
+    "716f667e-5f58-4e4d-a51a-93d803d15b0f|ad74c7da-afb3-446e-84b3-a255363531ad": "satisfies",
+    "716f667e-5f58-4e4d-a51a-93d803d15b0f|0c1ec997-23c5-4392-bf8c-7ec6bdfe1a3a": "cousin",
+    "716f667e-5f58-4e4d-a51a-93d803d15b0f|98725940-4cbf-441d-ad78-2972b6cc97c6": "satisfies",
+    "716f667e-5f58-4e4d-a51a-93d803d15b0f|e6a419e0-3cd3-4865-99fe-31fd2e3337b0": "cousin",
+    "716f667e-5f58-4e4d-a51a-93d803d15b0f|e3df6472-788e-4289-921e-97351e242e61": "cousin",
+    "716f667e-5f58-4e4d-a51a-93d803d15b0f|969abbb6-512a-4eb2-9dde-b669f1141946": "cousin",
+    "716f667e-5f58-4e4d-a51a-93d803d15b0f|9e7150fd-33c5-403c-83ae-07bec66949c5": "cousin",
+    "716f667e-5f58-4e4d-a51a-93d803d15b0f|c7482e94-4883-435e-b5e9-4c0824c45173": "cousin",
+    "716f667e-5f58-4e4d-a51a-93d803d15b0f|4e7c41df-e888-4d6f-b7c6-6ea54593d055": "cousin",
+    "716f667e-5f58-4e4d-a51a-93d803d15b0f|b178c4cc-2695-4675-ac5a-30bcda56db6e": "cousin",
+    "3e28ee01-74a4-4670-81cd-836a1dc0fcd6|594f8a54-8cb3-43cf-ab5d-0f9c57932e5d": "satisfies",
+    "3e28ee01-74a4-4670-81cd-836a1dc0fcd6|a3bcbaca-b89a-4db2-8a4f-63b7aa2c3ff2": "cousin",
+    "3e28ee01-74a4-4670-81cd-836a1dc0fcd6|7dde4a1b-dea3-4e5e-b5b6-ca921a459035": "cousin",
+    "3e28ee01-74a4-4670-81cd-836a1dc0fcd6|b8fbbcdf-f2b9-4e9b-a63f-8121096bb6ff": "cousin",
+    "1036c6c3-71dc-4ec1-b399-350e440e66f6|68d32c61-a828-4328-9af6-15ff011a8597": "satisfies",
+    "1036c6c3-71dc-4ec1-b399-350e440e66f6|8a478462-85af-402a-8e9e-cd2f50199b1e": "satisfies",
+    "1036c6c3-71dc-4ec1-b399-350e440e66f6|0c886d07-3734-41b2-bff2-94f0bfa3f758": "cousin",
+    "1036c6c3-71dc-4ec1-b399-350e440e66f6|dce294de-3c07-416c-9308-4be1c48e09df": "satisfies",
+    "1036c6c3-71dc-4ec1-b399-350e440e66f6|6998efa1-be47-4bdd-974a-2b12d3101af4": "satisfies",
+    "1036c6c3-71dc-4ec1-b399-350e440e66f6|35076c85-3169-4655-aa9e-5aa19e938c0d": "satisfies",
+    "1036c6c3-71dc-4ec1-b399-350e440e66f6|898136a1-6e57-4fb7-a478-6b826adc920e": "satisfies",
+    "1036c6c3-71dc-4ec1-b399-350e440e66f6|8be92f06-936a-4e9c-89a2-b51ab9319944": "satisfies",
+    "1036c6c3-71dc-4ec1-b399-350e440e66f6|b1323777-0e8a-4e50-958d-6bbf764041d3": "cousin",
+    "1036c6c3-71dc-4ec1-b399-350e440e66f6|ca648de0-8889-4b9f-beb5-b15485d25ce0": "cousin",
+    "08d15e62-e58d-48af-9bf9-547ff5ba3d1a|8507710e-f42e-42b5-a8ac-93d82bed0e96": "satisfies",
+    "08d15e62-e58d-48af-9bf9-547ff5ba3d1a|53890e8f-4bbe-4379-b24c-45f924689ce8": "satisfies",
+    "08d15e62-e58d-48af-9bf9-547ff5ba3d1a|5f973f5f-93b8-4470-b544-df870be50267": "satisfies",
+    "08d15e62-e58d-48af-9bf9-547ff5ba3d1a|d36fcee5-a773-4a31-a501-025495b9b8dc": "satisfies",
+    "08d15e62-e58d-48af-9bf9-547ff5ba3d1a|5ff21d60-9466-4090-8814-3c7568ef4f96": "satisfies",
+    "08d15e62-e58d-48af-9bf9-547ff5ba3d1a|dfaaf8a9-20fc-4bb3-ac75-88af5220d9a1": "satisfies",
+    "08d15e62-e58d-48af-9bf9-547ff5ba3d1a|8dbe5049-c6c9-4493-b9e4-7d27070d8b00": "satisfies",
+    "08d15e62-e58d-48af-9bf9-547ff5ba3d1a|aefae2e9-0882-4947-b62e-c96e721218ab": "satisfies",
+    "08d15e62-e58d-48af-9bf9-547ff5ba3d1a|5cdddef9-5423-4599-9f0f-0905da532929": "satisfies",
+    "08d15e62-e58d-48af-9bf9-547ff5ba3d1a|8f13bd42-c284-4cb7-a8ce-1ecd27ec1610": "satisfies",
+    "1ed311c8-5e77-44d0-bbec-225d564e3a37|5955ed85-3b96-460b-95c2-304551bccfd6": "cousin",
+    "1ed311c8-5e77-44d0-bbec-225d564e3a37|8baee34a-5773-417b-9641-4f230920a56d": "cousin",
+    "1ed311c8-5e77-44d0-bbec-225d564e3a37|9b56bf59-d36a-4b36-8be4-9c30d95ac8d7": "cousin",
+    "1ed311c8-5e77-44d0-bbec-225d564e3a37|fc624390-d615-4b67-a82e-f237a890063b": "cousin",
+    "1ed311c8-5e77-44d0-bbec-225d564e3a37|972edf22-b6b8-4895-9e7f-e12c3ba4c8a0": "cousin",
+    "1ed311c8-5e77-44d0-bbec-225d564e3a37|08f9706b-19db-4597-9d6f-8830101ed665": "cousin",
+    "1ed311c8-5e77-44d0-bbec-225d564e3a37|c43878b5-f8c3-4b2c-b7a6-aecee8fc0b02": "cousin",
+    "1ed311c8-5e77-44d0-bbec-225d564e3a37|630e4892-bacc-4dbd-a27d-23031ba02ea2": "cousin",
+    "1ed311c8-5e77-44d0-bbec-225d564e3a37|9fb4b341-3832-4ac4-936d-0ed2a71ed36a": "cousin",
+    "1ed311c8-5e77-44d0-bbec-225d564e3a37|f54ba6ae-d42b-4a86-98f6-7de8243e6da0": "cousin",
+    "1ed311c8-5e77-44d0-bbec-225d564e3a37|d690e3e3-be82-401d-a545-5d2c6bc4eed2": "cousin",
+    "844c9ee4-1ad0-4f74-a2bc-1a14e48793c0|8bbed616-498e-472c-8efe-cf0966b6a655": "satisfies",
+    "844c9ee4-1ad0-4f74-a2bc-1a14e48793c0|e5a041ef-2ce8-4874-b5b8-22f2922bead5": "cousin",
+    "844c9ee4-1ad0-4f74-a2bc-1a14e48793c0|18ba143e-3a8d-40d4-867e-9eaf3be8db64": "cousin",
+    "844c9ee4-1ad0-4f74-a2bc-1a14e48793c0|1ad27bd6-db05-47af-9ce9-3afb83002224": "cousin",
+    "844c9ee4-1ad0-4f74-a2bc-1a14e48793c0|13b3aa59-e29f-4a68-a99c-476448cd665e": "cousin",
+    "844c9ee4-1ad0-4f74-a2bc-1a14e48793c0|ea44c363-a2e3-43bc-80b6-6a60526cfd6a": "cousin",
+    "844c9ee4-1ad0-4f74-a2bc-1a14e48793c0|ee48bfcb-8a01-4703-b222-7d846cbc8742": "cousin",
+    "844c9ee4-1ad0-4f74-a2bc-1a14e48793c0|72158423-e9fe-43b6-91e7-368880a856c1": "cousin",
+    "844c9ee4-1ad0-4f74-a2bc-1a14e48793c0|77a07ebc-341c-4714-b082-d65a589c6dd2": "cousin",
+    "844c9ee4-1ad0-4f74-a2bc-1a14e48793c0|a569f792-85c1-4ac7-93c0-d07562efec96": "cousin",
+    "3b790de4-db72-4e8b-857f-224bfbd2b6d0|8d6ab488-46b3-4318-9940-ff9413766ac3": "satisfies",
+    "3b790de4-db72-4e8b-857f-224bfbd2b6d0|b5c5054b-1f7f-4d09-8e22-36df2edda75a": "satisfies",
+    "3b790de4-db72-4e8b-857f-224bfbd2b6d0|52a7d2f2-d7c1-4c8c-bb79-dc887283d1cd": "cousin",
+    "3b790de4-db72-4e8b-857f-224bfbd2b6d0|50ae6b2c-d7ac-41bd-aec1-53e28f9430bc": "cousin",
+    "3b790de4-db72-4e8b-857f-224bfbd2b6d0|f5a0df29-6eed-4751-b670-68a716cbb8d8": "satisfies",
+    "3b790de4-db72-4e8b-857f-224bfbd2b6d0|9e6d5d66-d7b8-4a98-90fe-e04775dfc6b6": "satisfies",
+    "3b790de4-db72-4e8b-857f-224bfbd2b6d0|972edf22-b6b8-4895-9e7f-e12c3ba4c8a0": "cousin",
+    "3b790de4-db72-4e8b-857f-224bfbd2b6d0|d57f888e-a7b5-4922-a14f-fe27bcc82501": "cousin",
+    "3b790de4-db72-4e8b-857f-224bfbd2b6d0|8949b100-b24f-425f-b284-ca3577adfbea": "cousin",
+    "3b790de4-db72-4e8b-857f-224bfbd2b6d0|25b0a495-b0b8-49ae-ac74-8c611e783894": "cousin",
+    "576d4cc6-cb37-4d2f-a9e0-3400fca73463|4b580f11-9161-4ac9-b187-8c1bdc60078b": "satisfies",
+    "576d4cc6-cb37-4d2f-a9e0-3400fca73463|ebd7ff8b-1c0a-46d6-8441-2014acff9847": "cousin",
+    "18f5fa4d-51d0-4a50-a998-966bd12f76b9|d8491fe6-cf82-4b2b-ada4-105ffaa7a673": "satisfies",
+    "18f5fa4d-51d0-4a50-a998-966bd12f76b9|65a580c1-7127-4e0b-9cee-a4c15563feb9": "satisfies",
+    "18f5fa4d-51d0-4a50-a998-966bd12f76b9|a8de6165-4f4f-408e-b4cf-a37f05fa5571": "cousin",
+    "18f5fa4d-51d0-4a50-a998-966bd12f76b9|a3bb2d75-b524-40c8-b29d-1e700079bb36": "satisfies",
+    "18f5fa4d-51d0-4a50-a998-966bd12f76b9|d5deecd4-a9b8-4875-8dba-495bb50f8306": "cousin",
+    "18f5fa4d-51d0-4a50-a998-966bd12f76b9|115cf9e7-a36a-4349-86dd-349041493a51": "satisfies",
+    "18f5fa4d-51d0-4a50-a998-966bd12f76b9|8868ce20-b343-4da0-9e13-cb74074f3f90": "cousin",
+    "18f5fa4d-51d0-4a50-a998-966bd12f76b9|3e7bd53c-fbc8-44e7-9015-376ceb3b73dc": "satisfies",
+    "6b829aa2-4a1f-45b1-b304-eb3ace7ba11b|b3a4c3e8-307f-4694-89b2-9160fcaa0436": "satisfies",
+    "6b829aa2-4a1f-45b1-b304-eb3ace7ba11b|bc563494-a8cb-4993-b9df-2469f5a2a2c7": "reject",
+    "6b829aa2-4a1f-45b1-b304-eb3ace7ba11b|271e13d5-0860-4c32-87a8-64127b7d8090": "satisfies",
+    "eb4a3bcc-0694-47aa-a700-d0c3e547a5d4|35f792c3-6722-4eaa-9ae5-36be172c46b7": "satisfies",
+    "eb4a3bcc-0694-47aa-a700-d0c3e547a5d4|a4df6709-dfc9-4f05-9208-08e11d5d6710": "satisfies",
+    "eb4a3bcc-0694-47aa-a700-d0c3e547a5d4|301bdb98-8d85-4c30-8111-ea852bdbc65d": "satisfies",
+    "eb4a3bcc-0694-47aa-a700-d0c3e547a5d4|bf88ca3b-55ac-4ca1-9617-91f5f9e0a83d": "satisfies",
+    "eb4a3bcc-0694-47aa-a700-d0c3e547a5d4|1cac56b0-c34d-4b05-ab4a-ab1e4e19ab01": "satisfies",
+    "eb4a3bcc-0694-47aa-a700-d0c3e547a5d4|fdd22d7a-4d35-42e6-92f6-cd27a0acb130": "satisfies",
+    "eb4a3bcc-0694-47aa-a700-d0c3e547a5d4|f584db51-4771-4713-9ce1-57a0aa5dbc83": "satisfies",
+    "eb4a3bcc-0694-47aa-a700-d0c3e547a5d4|dcf2e93c-a3fe-4967-9cb5-fbf96852b45b": "satisfies",
+    "eb4a3bcc-0694-47aa-a700-d0c3e547a5d4|6fc1d1cb-67d0-4fce-942c-bc3fa3294255": "satisfies",
+    "eb4a3bcc-0694-47aa-a700-d0c3e547a5d4|d83adad5-8acf-491a-858d-19cce6d98fba": "satisfies",
+    "4b8b3c96-4562-4a53-9b62-98c7b6d8f826|eba34a1b-3ddc-4403-b238-f8447fa09438": "satisfies",
+    "494d6cb2-bf85-4200-9503-19a5ad6c0379|08f45e9c-abf7-4db2-bbc9-d772538ca720": "cousin",
+    "1823cd02-5e4f-4207-afa7-475aa101968b|a26c9a88-a7f0-40f6-b89d-7dd60d3e5dd4": "cousin",
+    "1823cd02-5e4f-4207-afa7-475aa101968b|71db2fcb-5877-45a4-942c-e282aabf30e8": "satisfies",
+    "78d11036-478c-41bb-a78d-4a7320dde99c|a77b9bbc-34e1-461a-a81f-9a44b79a5428": "satisfies",
+    "78d11036-478c-41bb-a78d-4a7320dde99c|7f67e071-2198-47d0-b1cf-732e293c8077": "satisfies",
+    "78d11036-478c-41bb-a78d-4a7320dde99c|a6e2f205-d034-4e5b-b073-84bcd5b07551": "cousin",
+    "78d11036-478c-41bb-a78d-4a7320dde99c|9b0db303-464c-4c13-b17f-5a613d9375e2": "satisfies",
+    "78d11036-478c-41bb-a78d-4a7320dde99c|fd648c5f-2bc8-4b12-bd9a-973d112a23df": "satisfies",
+    "78d11036-478c-41bb-a78d-4a7320dde99c|1e9bdf84-01f2-494a-8dfc-340c9fc6f165": "satisfies",
+    "78d11036-478c-41bb-a78d-4a7320dde99c|1b338e69-48bd-415c-9beb-b38e3f51cd88": "satisfies",
+    "78d11036-478c-41bb-a78d-4a7320dde99c|7c1b1f65-a8a5-4f6a-89a6-4d6bdddd59dc": "satisfies",
+    "08f45e9c-abf7-4db2-bbc9-d772538ca720|f5aae2e9-8396-410a-93dc-3fa81e0c1ba4": "satisfies",
+    "08f45e9c-abf7-4db2-bbc9-d772538ca720|e1945abb-18d1-4df0-9d2c-96a952988e1b": "satisfies",
+    "08f45e9c-abf7-4db2-bbc9-d772538ca720|6a11b3e3-4150-433d-9a03-30c8908d1976": "satisfies",
+    "08f45e9c-abf7-4db2-bbc9-d772538ca720|b6ade2b1-3c5e-4550-a345-2022f51e0252": "satisfies",
+    "08f45e9c-abf7-4db2-bbc9-d772538ca720|8127c418-78ae-4504-859a-b4ff142ea9a0": "satisfies",
+    "a0c3d6c9-f2fa-439e-9747-4dca5d4be572|6367b910-646f-4b58-8674-c76449b4f521": "satisfies",
+    "a0c3d6c9-f2fa-439e-9747-4dca5d4be572|9b59228c-6ae6-4f96-a34e-a41d303e0d17": "satisfies",
+    "a0c3d6c9-f2fa-439e-9747-4dca5d4be572|94288e43-e409-411e-8610-21ddfa093dca": "cousin",
+    "3b6d210c-aa1d-4dd1-8a28-bda591cc8a7c|3d2e1ceb-6943-46a0-b2a7-32a2817f3996": "satisfies",
+    "d3f4befd-6398-4491-beee-7b4b7e438fdd|96427456-b0bd-4264-9c24-59a07819d05f": "satisfies",
+    "d3f4befd-6398-4491-beee-7b4b7e438fdd|12b5e49c-787c-4681-8435-324f230a5441": "satisfies",
+    "d3f4befd-6398-4491-beee-7b4b7e438fdd|78469772-d3af-4c4b-8d3c-de6f0c6f3ef7": "cousin",
+    "d3f4befd-6398-4491-beee-7b4b7e438fdd|941abae2-0c5f-4fd7-83f9-e8fdb6cf7667": "satisfies",
+    "d3f4befd-6398-4491-beee-7b4b7e438fdd|c990ce08-8364-48a0-8f39-cde1b6aabd70": "satisfies",
+    "d3f4befd-6398-4491-beee-7b4b7e438fdd|dbee982e-ed00-4e62-9a25-5fbc49428f95": "satisfies",
+    "d3f4befd-6398-4491-beee-7b4b7e438fdd|49f45e64-74de-4157-8fa7-3d818dc71f75": "satisfies",
+    "d3f4befd-6398-4491-beee-7b4b7e438fdd|61f8724e-ed2a-4add-a64a-0335f4688bad": "cousin",
+    "68d4669e-9c27-41f5-8eb1-ed6781992e4d|dc6686ae-d3fa-414f-aa2c-17fbb575bc36": "cousin",
+    "68d4669e-9c27-41f5-8eb1-ed6781992e4d|dced0cf8-a1ec-4de4-9fb0-0c36590777ed": "cousin",
+    "68d4669e-9c27-41f5-8eb1-ed6781992e4d|f082090f-8a4d-443c-86e2-37755185c509": "reject",
+    "3e28ee01-74a4-4670-81cd-836a1dc0fcd6|4c42c96c-7663-472a-a235-c966f3e532de": "satisfies",
+    "3e28ee01-74a4-4670-81cd-836a1dc0fcd6|90803361-8b1b-4eb8-885e-8a092d3d158f": "cousin",
+    "1036c6c3-71dc-4ec1-b399-350e440e66f6|7a577e4d-84c0-46cb-9305-5e3b5809536f": "satisfies",
+    "08d15e62-e58d-48af-9bf9-547ff5ba3d1a|3fbfa4b2-8db3-45e7-964e-e3b33dd19ca1": "satisfies",
+    "844c9ee4-1ad0-4f74-a2bc-1a14e48793c0|cb8ebc02-b7c8-4abf-8fd9-511f04be34b1": "cousin",
+    "3b790de4-db72-4e8b-857f-224bfbd2b6d0|427b99d2-7c90-4f85-8a71-80a094c48c87": "satisfies",
+    "3b790de4-db72-4e8b-857f-224bfbd2b6d0|8aebf68f-f4e5-4ab3-9ee7-533849926cd8": "cousin",
+    "3b790de4-db72-4e8b-857f-224bfbd2b6d0|451a84a8-4482-4f2e-8bbd-095fda1c9191": "cousin",
+    "3b790de4-db72-4e8b-857f-224bfbd2b6d0|fdb4d814-b8a8-4873-9879-eccee65af45c": "cousin",
+    "3b790de4-db72-4e8b-857f-224bfbd2b6d0|7eb340e6-b87f-45c6-88e9-68b81374cf36": "cousin",
+    "3b790de4-db72-4e8b-857f-224bfbd2b6d0|d2ab9289-82b8-4956-a882-7295f50e7299": "cousin"
+  }
+}
