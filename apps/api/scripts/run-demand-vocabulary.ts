@@ -6,7 +6,8 @@
  * Reads the `on_demand_ask` signals ledger — every search term the app could
  * not ground — and asks the existing identity judge whether each is simply a
  * word we lack for a concept we already hold. On a confident match the term is
- * banked as a locale-tagged alias (`query_banking`) and stops being demand.
+ * banked as an alias tagged with the ask's own language (`query_banking`) and
+ * stops being demand.
  * On anything else it stays demand, which is where collection reads it.
  *
  * NO CRON, deliberately: crons are off here and a pass that spends money
@@ -14,7 +15,11 @@
  *
  * Run:
  *   npx ts-node -T scripts/run-demand-vocabulary.ts --limit 50            # dry run
- *   npx ts-node -T scripts/run-demand-vocabulary.ts --limit 50 --locale es --apply
+ *   npx ts-node -T scripts/run-demand-vocabulary.ts --limit 50 --apply
+ *
+ * There is no --locale flag: each term is banked in the language its ASK was
+ * made in (signals.detected_locale), which the ledger already records. An
+ * operator cannot know what language other people typed in.
  */
 import 'dotenv/config';
 import { NestFactory } from '@nestjs/core';
@@ -26,8 +31,6 @@ async function main(): Promise<void> {
   const argv = process.argv.slice(2);
   const limitIndex = argv.indexOf('--limit');
   const limit = limitIndex >= 0 ? Number(argv[limitIndex + 1]) : 50;
-  const localeIndex = argv.indexOf('--locale');
-  const locale = localeIndex >= 0 ? argv[localeIndex + 1] : 'und';
   const apply = argv.includes('--apply');
 
   const app = await NestFactory.createApplicationContext(AppModule, {
@@ -40,7 +43,7 @@ async function main(): Promise<void> {
     if (!apply) {
       out('DRY RUN — judging but banking nothing. Add --apply.');
     }
-    out(JSON.stringify(await service.run({ limit, locale, dryRun: !apply })));
+    out(JSON.stringify(await service.run({ limit, dryRun: !apply })));
   } finally {
     await app.close();
   }

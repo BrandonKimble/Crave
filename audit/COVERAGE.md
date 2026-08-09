@@ -4543,7 +4543,7 @@ CLEAN-PASS-1 api-core + api-search (2026-08-07, ATTEMPT 2, F8400): FRESH-EYES RE
 | apps/api/scripts/prompt-ab.ts | api-scripts | IDEAL-VERIFIED | 1 | 71a4d850b5cf | Read-only; LlmService one-gateway; FLAKY reported honestly. |
 | apps/api/scripts/prompt-corpus-ab.ts | api-scripts | IDEAL-VERIFIED | 1 | ea66773720d1 | Read-only; --community quote-stripped (operator-supplied, benign); errors tallied. |
 | apps/api/scripts/run-concept-satisfies.ts | api-scripts | IDEAL-VERIFIED | 1 | 6f6747c45019 | Dry-run default; --apply gates writes; idempotent (rejects stored). |
-| apps/api/scripts/run-demand-vocabulary.ts | api-scripts | IDEAL-VERIFIED | 1 | fea2abe9a061 | Dry-run default; --apply gates banking; crons stopped. |
+| apps/api/scripts/run-demand-vocabulary.ts | api-scripts | UNREVIEWED    | 1 | fea2abe9a061 | Dry-run default; --apply gates banking; crons stopped. (reverted from IDEAL-VERIFIED: file changed since review, was fea2abe9a061) |
 | apps/api/scripts/scanner-source.ts | api-scripts | UNREVIEWED    | 1 | 855f007a5cc4 | Pure re-export of code-only stripper. (reverted from IDEAL-VERIFIED: file changed since review, was 855f007a5cc4) |
 | apps/api/scripts/west-village-probe.ts | api-scripts | UNREVIEWED    | 1 | dcf827b4b21c | Probe; writes only via the noteViewport seam under test; verdict can show negative. (reverted from IDEAL-VERIFIED: file changed since review, was dcf827b4b21c) |
 | apps/api/scripts/check-subject-text-emission.ts | api-scripts | UNREVIEWED    | 1 | a7c6cd6f6edd | Exemplary gate: closed allowlist, missing-tooling=FAIL, codeMatches-not-prose, exits non-zero. (reverted from IDEAL-VERIFIED: file changed since review, was a7c6cd6f6edd) |

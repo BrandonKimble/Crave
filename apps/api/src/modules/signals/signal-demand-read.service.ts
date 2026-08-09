@@ -117,6 +117,14 @@ export interface TerritoryEntityTrendRow {
 
 export interface TerritoryUnmetAskRow {
   term: string;
+  /**
+   * The language the ASK was made in (`signals.detected_locale`), or null
+   * when it was honestly undecidable. Collection needs it because
+   * genericness is a claim about a language: 'top' is a filler word in
+   * English and a real word in Vietnamese, so the keyword lane cannot strip
+   * a term's tokens without knowing which language it was typed in.
+   */
+  detectedLocale: string | null;
   entityType: string;
   entityId: string | null;
   reason: string;
@@ -920,6 +928,7 @@ export class SignalDemandReadService {
         result_food_count: number | null;
         last_seen_at: Date;
         ask_count: bigint;
+        detected_locale: string | null;
       }[]
     >`
       WITH asks AS (
@@ -933,6 +942,7 @@ export class SignalDemandReadService {
           COALESCE(s.meta->>'askSearchRequestId', s.signal_id::text) AS ask_key,
           (s.meta->>'resultRestaurantCount')::int AS result_restaurant_count,
           (s.meta->>'resultFoodCount')::int AS result_food_count,
+          s.detected_locale,
           s.occurred_at
         FROM signals s
         ${redirectJoinSql('s')}
@@ -949,6 +959,20 @@ export class SignalDemandReadService {
           -- P2 red-team F5 (2026-07-30): no separate prefilter — the law's
           -- own PK probes short-circuit on the cached geometry bbox.
           AND (${freshSignalAttributionSql('p')})
+      ),
+      -- THE TERM'S LANGUAGE, aggregated rather than grouped: locale is an
+      -- ATTRIBUTE of a demand, not a dimension of it — splitting the rows by
+      -- it would halve the distinctUserCount that drives collection priority.
+      -- Most recent decided answer wins, and silence never erases one: a bare
+      -- one-worder whose language is undecidable must not blank what an
+      -- earlier full sentence settled.
+      term_locale AS (
+        SELECT term,
+               (array_agg(detected_locale ORDER BY occurred_at DESC))[1]
+                 AS detected_locale
+          FROM asks
+         WHERE detected_locale IS NOT NULL
+         GROUP BY term
       ),
       per_request AS (
         -- One ask per (request, term, ...): the two ask sites of a single
@@ -972,7 +996,7 @@ export class SignalDemandReadService {
         GROUP BY 1, 2, 3, 4, 5
       )
       SELECT
-        term,
+        pa.term AS term,
         entity_type,
         entity_id,
         reason,
@@ -981,14 +1005,17 @@ export class SignalDemandReadService {
         MIN(result_restaurant_count)::int AS result_restaurant_count,
         MIN(result_food_count)::int AS result_food_count,
         MAX(last_seen_at) AS last_seen_at,
-        SUM(ask_count)::bigint AS ask_count
-      FROM per_actor
-      GROUP BY term, entity_type, entity_id, reason
+        SUM(ask_count)::bigint AS ask_count,
+        MAX(tl.detected_locale) AS detected_locale
+      FROM per_actor pa
+      LEFT JOIN term_locale tl ON tl.term = pa.term
+      GROUP BY pa.term, entity_type, entity_id, reason
       ORDER BY demand_score DESC, last_seen_at DESC
       LIMIT ${Math.max(1, params.limit)}
     `;
     return rows.map((row) => ({
       term: row.term,
+      detectedLocale: row.detected_locale?.trim() || null,
       entityType: row.entity_type,
       entityId: row.entity_id,
       reason: row.reason,

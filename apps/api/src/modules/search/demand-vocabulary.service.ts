@@ -6,6 +6,7 @@ import { LLMService } from '../external-integrations/llm/llm.service';
 import { EntityTextSearchService } from '../entity-text-search/entity-text-search.service';
 import { addSurfaces } from '../content-processing/entity-resolver/entity-surface.service';
 import { canonicalFold } from '../content-processing/entity-resolver/entity-identity';
+import { localeLookupChain } from '../../shared/locale';
 
 /**
  * DEMAND → VOCABULARY (concept-graph plan, build step 6).
@@ -18,8 +19,12 @@ import { canonicalFold } from '../content-processing/entity-resolver/entity-iden
  *
  * This sweep reads that ledger, asks the EXISTING identity judge "is this term
  * the same entity as one of these candidates?", and banks a locale-tagged
- * alias on a confident match. The term stops being demand and becomes
- * vocabulary; the next user who types it gets an instant lexical hit.
+ * alias on a confident match — tagged with the language the ASK WAS MADE IN
+ * (`signals.detected_locale`), per term. A run-wide `--locale` flag used to
+ * decide that for every term at once, which made the tag an operator's guess
+ * about other people's words; the ledger already knows. The term stops being
+ * demand and becomes vocabulary; the next user who types it gets an instant
+ * lexical hit.
  *
  * WHY A SWEEP AND NOT A LIVE CALL. The obvious design — verify during the
  * search — was tested and rejected: it puts an LLM call in the hot path for a
@@ -70,11 +75,10 @@ export class DemandVocabularyService {
   }
 
   async run(
-    options: { limit?: number; dryRun?: boolean; locale?: string } = {},
+    options: { limit?: number; dryRun?: boolean } = {},
   ): Promise<DemandVocabularySummary> {
     const limit = options.limit ?? 100;
     const dryRun = options.dryRun ?? false;
-    const locale = options.locale ?? 'und';
     const summary: DemandVocabularySummary = {
       termsConsidered: 0,
       judged: 0,
@@ -88,9 +92,20 @@ export class DemandVocabularyService {
     // how demand strength is measured — but the LLM call is deduped, exactly
     // as the residue splitter already does.)
     const terms = await this.prisma.$queryRawUnsafe<
-      Array<{ term: string; asks: bigint }>
+      Array<{ term: string; asks: bigint; detected_locale: string | null }>
     >(
-      `SELECT s.subject_text AS term, count(*)::bigint AS asks
+      `SELECT s.subject_text AS term, count(*)::bigint AS asks,
+              -- THE LANGUAGE THE ASK WAS MADE IN, carried on the signal since
+              -- the ask lane started stamping it. The MOST RECENT non-null
+              -- answer wins: locale is an ATTRIBUTE of a demand, not a
+              -- dimension of it (one word asked by a Spanish phone and an
+              -- English one is ONE demand), and silence never erases a
+              -- decided answer — a bare one-worder whose language is honestly
+              -- undecidable must not blank what an earlier full sentence
+              -- settled.
+              (array_agg(s.detected_locale ORDER BY s.occurred_at DESC)
+                 FILTER (WHERE s.detected_locale IS NOT NULL))[1]
+                AS detected_locale
          FROM signals s
          -- K-ANONYMITY (signals/subject-text-floor). This lane emits a
          -- person's typed words ACROSS people and then OUTBOUND to an LLM,
@@ -119,21 +134,46 @@ export class DemandVocabularyService {
       limit,
     );
 
-    // Known surfaces, folded by the SAME function that wrote form_folded.
+    // Known surfaces, folded by the SAME function that wrote form_folded,
+    // and KEYED BY LOCALE.
+    //
+    // "Do we already know this word?" is a question about a LANGUAGE, and
+    // asking it across all locales at once answered it wrong in the only
+    // direction that matters: a Spanish 'camarones' was declared already
+    // known because SOME entity holds that form — in Spanish — while an
+    // English ask for a word we hold only in Vietnamese was silently
+    // suppressed as known and never learned. The chain is the same closed
+    // set ingestion grounds through, so a term counts as known when one of
+    // ITS OWN locale's rows holds the fold.
     const knownRows = await this.prisma.$queryRawUnsafe<
-      Array<{ form_folded: string }>
+      Array<{ locale: string; form_folded: string }>
     >(
       // Recall predicate: a display-only surface is a refused recall
       // claim, so it does not make a demand term 'already known'.
-      `SELECT DISTINCT form_folded FROM entity_surface
+      `SELECT DISTINCT LOWER(locale) AS locale, form_folded FROM entity_surface
         WHERE status = 'active' AND role <> 'display'`,
     );
-    const known = new Set(knownRows.map((row) => row.form_folded));
+    const knownByLocale = new Map<string, Set<string>>();
+    for (const row of knownRows) {
+      const bucket = knownByLocale.get(row.locale);
+      if (bucket) {
+        bucket.add(row.form_folded);
+      } else {
+        knownByLocale.set(row.locale, new Set([row.form_folded]));
+      }
+    }
+    const isKnownIn = (termLocale: string | null, fold: string): boolean =>
+      localeLookupChain(termLocale).some((tag) =>
+        knownByLocale.get(tag)?.has(fold),
+      );
 
     for (const row of terms) {
       const term = row.term.trim();
+      // The locale the ASKER's words were in — never a run-wide flag. A
+      // sweep cannot declare what language other people typed in.
+      const termLocale = row.detected_locale?.trim() || null;
       // THE FOLD LAW: compare folded-to-folded, never lower()-to-folded.
-      if (known.has(canonicalFold(term))) {
+      if (isKnownIn(termLocale, canonicalFold(term))) {
         continue;
       }
       summary.termsConsidered += 1;
@@ -147,7 +187,14 @@ export class DemandVocabularyService {
           'restaurant_attribute',
         ] as EntityType[],
         CANDIDATE_POOL,
-        { denseMode: 'always' },
+        {
+          denseMode: 'always',
+          // The ask's own language opens the localized-surface lane, so a
+          // Spanish term can be recalled against the Spanish words we hold.
+          // Without it the judge only ever sees an English shortlist for a
+          // foreign ask — the exact case this sweep exists for.
+          requestLocale: termLocale,
+        },
       );
       if (!candidates.length) {
         // Nothing to be the same AS. This is real demand — leave it.
@@ -196,7 +243,17 @@ export class DemandVocabularyService {
           addSurfaces(
             tx,
             matched.entityId,
-            [{ form: term, locale, source: 'query_banking' as const }],
+            [
+              {
+                form: term,
+                // Tagged with the language the ASK was made in. `undefined`
+                // (an undecidable one-worder) banks 'und' — the universal
+                // slice every language's chain ends in, which is the honest
+                // answer when nobody can say what language a word was in.
+                locale: termLocale ?? undefined,
+                source: 'query_banking' as const,
+              },
+            ],
             { touchLastUpdated: true },
           ),
         );
@@ -208,6 +265,7 @@ export class DemandVocabularyService {
       summary.learned += 1;
       this.logger.info('Demand term learned as vocabulary', {
         term,
+        locale: termLocale ?? 'und',
         entity: matched.name,
         asks: Number(row.asks),
         dryRun,

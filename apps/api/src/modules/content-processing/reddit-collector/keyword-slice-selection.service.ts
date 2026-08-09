@@ -207,6 +207,18 @@ export interface KeywordSelectionSource {
 export interface KeywordTermCandidate {
   term: string;
   normalizedTerm: string;
+  /**
+   * The language this term was ASKED in, when the ledger decided one
+   * (`signals.detected_locale`, unmet slice only). GENERICNESS IS A CLAIM
+   * ABOUT A LANGUAGE: 'top' is a filler word in English and a real word in
+   * Vietnamese, so stripping a term's tokens without knowing its language
+   * either mangles a foreign ask or lets an English filler through.
+   *
+   * null = undecidable, or a slice whose terms are OUR canonical entity
+   * names (demand/explore/refresh), which are English by construction — the
+   * stripper's own default.
+   */
+  locale?: string | null;
   slice: KeywordSlice;
   score: number;
   entityType?: EntityType;
@@ -523,7 +535,7 @@ export class KeywordSliceSelectionService {
     const result: KeywordTermCandidate[] = [];
 
     for (const candidate of candidates) {
-      const stripped = stripGenericTokens(candidate.term);
+      const stripped = stripGenericTokens(candidate.term, candidate.locale);
       const term = stripped.text;
       if (!term.length || stripped.isGenericOnly) {
         stats.dropped.invalid += 1;
@@ -1027,6 +1039,9 @@ export class KeywordSliceSelectionService {
     return rows.map((request) => ({
       term: request.term,
       normalizedTerm: '',
+      // The asker's language, carried from the ledger (step 3 left this
+      // English pending the column that now holds it).
+      locale: request.detectedLocale,
       slice: 'unmet',
       score: this.calculateUnmetScore({
         distinctUsers: request.distinctUserCount,

@@ -42,6 +42,10 @@ export interface KeywordSearchSortPlan {
 export interface KeywordSearchTerm {
   term: string;
   normalizedTerm?: string;
+  /** The language the term was asked in — see KeywordTermCandidate.locale.
+   *  Genericness is a claim about a language, so the dispatch-side stripper
+   *  needs the same tag the selection side used. */
+  locale?: string | null;
   slice?: string;
   score?: number;
   entityType?: EntityType;
@@ -1065,7 +1069,7 @@ export class KeywordSearchOrchestratorService {
     }> = [];
 
     for (const input of terms) {
-      const stripped = stripGenericTokens(input.term);
+      const stripped = stripGenericTokens(input.term, input.locale);
       const term = stripped.text;
       const normalizedTerm = normalizeKeywordTerm(term);
       if (!normalizedTerm || stripped.isGenericOnly) {

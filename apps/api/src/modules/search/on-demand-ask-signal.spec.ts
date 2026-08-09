@@ -326,6 +326,9 @@ describe('territoryUnmetAsks read (the §11 unmet family input)', () => {
               result_food_count: 0,
               last_seen_at: new Date('2026-07-18T00:00:00Z'),
               ask_count: BigInt(3),
+              // The ask's own language, carried to collection: the keyword
+              // lane cannot decide what is a generic filler word without it.
+              detected_locale: 'es-MX',
             },
           ]);
         },
@@ -351,6 +354,13 @@ describe('territoryUnmetAsks read (the §11 unmet family input)', () => {
     expect(sql).toContain('ST_Covers(pg.geometry,');
     expect(sql).not.toContain('collection_on_demand_ask_events');
     expect(sql).not.toContain('collectable_market_key');
+    // The language rides along as an ATTRIBUTE — aggregated per term, never
+    // a GROUP BY key: splitting rows by locale would halve the
+    // distinctUserCount that drives collection priority.
+    expect(sql).toContain('s.detected_locale');
+    expect(sql).not.toContain(
+      'GROUP BY pa.term, entity_type, entity_id, reason, detected_locale',
+    );
 
     expect(rows).toEqual([
       {
@@ -364,6 +374,7 @@ describe('territoryUnmetAsks read (the §11 unmet family input)', () => {
         resultFoodCount: 0,
         lastSeenAt: new Date('2026-07-18T00:00:00Z'),
         askCount: 3,
+        detectedLocale: 'es-MX',
       },
     ]);
   });

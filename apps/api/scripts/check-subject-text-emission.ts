@@ -53,6 +53,10 @@ const ALLOWED: Record<string, { class: Classification; why: string }> = {
     class: 'declaration',
     why: 'Proves the floor holds against the real database and the real reader.',
   },
+  'src/modules/search/demand-vocabulary-term-locale.integration.spec.ts': {
+    class: 'declaration',
+    why: "Seeds its OWN synthetic asks (three scratch actor uuids it deletes again) and drives the real sweep over them, to prove the known-set gate is scoped to the term's locale chain. It writes subject_text and reads only what the SERVICE returns — the service's own floored classification is the one that governs the emission; this file adds no read of anyone's real words.",
+  },
   'src/modules/identity/person-data/person-data-class.ts': {
     class: 'declaration',
     why: "Declares the column's DELETION disposition (null_column). A different policy about the same column; deletion and exposure change for different reasons and are deliberately not fused.",
