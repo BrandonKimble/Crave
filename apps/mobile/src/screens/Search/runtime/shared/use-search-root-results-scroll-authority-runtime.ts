@@ -1,21 +1,17 @@
 import React from 'react';
 
 import type { SearchRootResultsScrollAuthorityRuntime } from './search-root-control-ports-runtime-contract';
-import type { SearchRootOverlayFoundationRuntime } from './search-root-overlay-foundation-runtime-contract';
 import type { SearchRootStateFoundationLane } from './search-root-foundation-runtime';
 import { registerPerfScenarioCommands } from '../../../../perf/perf-scenario-command-registry';
 
 type UseSearchRootResultsScrollAuthorityRuntimeArgs = {
   stateFoundationLane: SearchRootStateFoundationLane;
-  rootOverlayFoundationRuntime: SearchRootOverlayFoundationRuntime;
 };
 
 export const useSearchRootResultsScrollAuthorityRuntime = ({
   stateFoundationLane,
-  rootOverlayFoundationRuntime,
 }: UseSearchRootResultsScrollAuthorityRuntimeArgs): SearchRootResultsScrollAuthorityRuntime => {
   const { rootPrimitivesRuntime } = stateFoundationLane;
-  const { appRouteSharedSheetRuntimeOwner } = rootOverlayFoundationRuntime;
 
   const resultsScrollPort = React.useMemo(
     () => ({
@@ -39,16 +35,18 @@ export const useSearchRootResultsScrollAuthorityRuntime = ({
         }
 
         listRef.clearLayoutCacheOnUpdate?.();
-        appRouteSharedSheetRuntimeOwner.sheetScrollOffset.value = 0;
+        // ONE-WRITER LAW (residue-kill-plan item 12 #10, fixed 2026-08-08): the
+        // track is the ONLY writer of the published sheetScrollOffset
+        // (TrackSheetPage mirrors tau every UI frame). The direct
+        // `sheetScrollOffset.value = 0` that used to sit here raced the track's
+        // next mirror frame — a one-frame lie at best. The scrollToOffset below
+        // moves the real list; the mirror follows tau on its own.
         requestAnimationFrame(() => {
           listRef.scrollToOffset?.({ offset: 0, animated: false });
         });
       },
     }),
-    [
-      rootPrimitivesRuntime.searchState.resultsScrollRef,
-      appRouteSharedSheetRuntimeOwner.sheetScrollOffset,
-    ]
+    [rootPrimitivesRuntime.searchState.resultsScrollRef]
   );
 
   React.useEffect(

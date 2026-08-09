@@ -10,6 +10,7 @@ import { pushPhotoEvent } from '../../components/photos/photo-events-buffer';
 import { photosService, type PhotoStripItemDto } from '../../services/photos';
 import { fetchRestaurantMentions, type RestaurantMentionCard } from '../../services/polls';
 import { userListsService } from '../../services/user-lists';
+import { VIEWER_STATE_CACHE_POLICY } from '../../services/query-cache-policy';
 import { FONT_SIZES, LINE_HEIGHTS } from '../../constants/typography';
 import { colors as themeColors } from '../../constants/theme';
 import { OVERLAY_HORIZONTAL_PADDING } from '../overlaySheetStyles';
@@ -93,7 +94,6 @@ export const RestaurantPhotosView: React.FC<{
     queryKey: ['restaurantGallery', restaurantId],
     queryFn: () => photosService.getRestaurantGallery(restaurantId),
     enabled: Boolean(restaurantId),
-    staleTime: 60_000,
   });
 
   const gallery = galleryQuery.data ?? null;
@@ -201,7 +201,6 @@ export const RestaurantMentionsView: React.FC<{
         tags: tagList.length ? tagList : undefined,
       }),
     enabled: Boolean(restaurantId),
-    staleTime: 30_000,
     placeholderData: (previous) => previous,
   });
 
@@ -306,7 +305,10 @@ export const RestaurantSavedNote: React.FC<{ restaurantId: string }> = ({ restau
     queryKey: ['entityMemberships', restaurantId],
     queryFn: () => userListsService.entityMemberships(restaurantId),
     enabled: Boolean(restaurantId),
-    staleTime: 30_000,
+    // VIEWER-STATE class — also unifies this key with use-favorite-heart's read
+    // of the SAME ['entityMemberships', id] key, which wore a different ad-hoc
+    // staleTime before the policy module existed.
+    ...VIEWER_STATE_CACHE_POLICY,
   });
   const noted = (membershipsQuery.data ?? []).filter(
     (membership) => membership.note != null && membership.note.trim().length > 0
@@ -337,7 +339,6 @@ export const RestaurantOverviewMentions: React.FC<{
     queryKey: ['restaurantMentions', restaurantId, 'top', '', [] as string[]],
     queryFn: () => fetchRestaurantMentions(restaurantId, { sort: 'top' }),
     enabled: Boolean(restaurantId),
-    staleTime: 30_000,
   });
   const data = mentionsQuery.data ?? null;
   if (!data || (data.tags.length === 0 && data.cards.length === 0)) {

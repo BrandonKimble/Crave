@@ -467,7 +467,6 @@ export const UserProfilePanelBody = React.memo(({ entry }: MountedSceneBodyProps
     queryKey: profileKeys.profile(userId),
     enabled: userId != null,
     subscribed: userProfileLive,
-    staleTime: 60_000,
     queryFn: async () => {
       const [profile, edge] = await Promise.all([
         usersService.getPublicProfile(userId as string),

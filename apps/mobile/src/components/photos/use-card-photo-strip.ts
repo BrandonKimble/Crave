@@ -6,7 +6,7 @@ import { photosService, type CardStripDto, type PhotoStripRef } from '../../serv
 // but the wire stays one POST /photos/strips per visible screen: a
 // dataloader window (one tick) coalesces every row's ask from the same
 // render pass into a single batch call, and react-query caches per entity
-// (60s staleTime) so scrolling back through cards refetches nothing.
+// (ENTITY-class staleTime, the app default) so scrolling back through cards refetches nothing.
 
 const BATCH_WINDOW_MS = 16; // one frame — the panel's rows all mount together
 const MAX_REFS_PER_CALL = 60; // server-side ArrayMaxSize on the refs DTO
@@ -61,7 +61,6 @@ export const useCardPhotoStrip = (ref: PhotoStripRef | null) => {
   return useQuery({
     queryKey: ['photoStrip', ref ? stripKeyOf(ref) : null],
     enabled: ref != null,
-    staleTime: 60_000,
     retry: 1,
     queryFn: () => loadStrip(ref as PhotoStripRef),
   });

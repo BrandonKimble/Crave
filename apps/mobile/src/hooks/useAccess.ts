@@ -2,6 +2,7 @@ import { useCallback, useMemo } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '@clerk/clerk-expo';
 import { usersService, type AccessSummary } from '../services/users';
+import { VIEWER_STATE_CACHE_POLICY } from '../services/query-cache-policy';
 
 /** User-scoped: an account switch must never serve the previous user's
  *  access state (PurchasesProvider also clears the whole cache on switch —
@@ -55,6 +56,10 @@ export function useAccess(): AccessState {
     queryKey,
     queryFn: fetchAccessSummary,
     enabled: !!userId,
+    // VIEWER-STATE class, with its pre-policy 60s stale window kept (the
+    // rederivation plan's "keep current" for correctness-sensitive reads —
+    // the expiry override below is the real freshness backstop).
+    ...VIEWER_STATE_CACHE_POLICY,
     staleTime: 60_000,
   });
 
@@ -75,6 +80,9 @@ export function useAccess(): AccessState {
   // because of it). A hook whose identity churns every render is a dependency array that never
   // settles; memoize the return and the closure, and the churn stops at the source.
   const refresh = useCallback(
+    // staleTime 0 here is a DELIBERATE deviation from the cache policy:
+    // refresh() means "re-prove access NOW" (post-purchase polling), so the
+    // cached window must not satisfy it.
     () => queryClient.fetchQuery({ queryKey, queryFn: fetchAccessSummary, staleTime: 0 }),
     // `queryKey` is a fresh tuple per render; its CONTENT (the userId) is the identity.
     // eslint-disable-next-line react-hooks/exhaustive-deps

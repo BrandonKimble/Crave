@@ -155,7 +155,6 @@ const ShareModalContent = ({ config }: { config: ShareModalConfig }) => {
   const targetsQuery = useQuery({
     queryKey: ['shareTargets'],
     queryFn: () => messagingService.shareTargets(),
-    staleTime: 60_000,
   });
   const targets = targetsQuery.data?.targets ?? [];
 

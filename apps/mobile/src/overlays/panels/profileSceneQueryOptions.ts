@@ -1,11 +1,13 @@
 import { usersService } from '../../services/users';
+import { ENTITY_CACHE_POLICY } from '../../services/query-cache-policy';
 
 // The signed-in user's own profile read (getMe). Shared across the profile tab identity chrome,
 // the settings subscription line, and the poll surfaces that need the viewer's identity — one
 // query key so all consumers hit one cache entry.
 
-const USER_PROFILE_STALE_MS = 1000 * 60;
-const USER_PROFILE_GC_MS = 1000 * 60 * 10;
+// Cache class: ENTITY (services/query-cache-policy.ts). The pre-policy local
+// constants (60s stale / 10min gc — once the app's ONLY gcTime override) are
+// superseded by the policy module.
 
 /**
  * USER-SCOPED (F9805). The key used to be a bare `['user-profile']`, while its
@@ -29,6 +31,5 @@ const profileQueryKey = (userId: string | null | undefined) =>
 export const createProfileQueryOptions = (userId: string | null | undefined) => ({
   queryKey: profileQueryKey(userId),
   queryFn: () => usersService.getMe(),
-  staleTime: USER_PROFILE_STALE_MS,
-  gcTime: USER_PROFILE_GC_MS,
+  ...ENTITY_CACHE_POLICY,
 });

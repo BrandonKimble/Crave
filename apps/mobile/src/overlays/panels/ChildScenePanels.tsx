@@ -22,6 +22,7 @@ import { useManageSubscriptionAction } from './runtime/use-manage-subscription-a
 import { useAuth } from '@clerk/clerk-expo';
 import { createProfileQueryOptions } from './profileSceneQueryOptions';
 import { usersService, type FollowListUser } from '../../services/users';
+import { VIEWER_STATE_CACHE_POLICY } from '../../services/query-cache-policy';
 import { UserProfilePanelBody } from './UserProfilePanel';
 import { FollowListPanelBody } from './FollowListPanel';
 import { NotificationsPanelBody } from './NotificationsPanel';
@@ -203,7 +204,7 @@ const BlockedUsersSection = () => {
     queryKey: ['my-blocks'],
     queryFn: () => usersService.listMyBlocks(),
     subscribed: blocksLive,
-    staleTime: 30 * 1000,
+    ...VIEWER_STATE_CACHE_POLICY,
   });
   const handleUnblock = React.useCallback(
     (user: FollowListUser) => {

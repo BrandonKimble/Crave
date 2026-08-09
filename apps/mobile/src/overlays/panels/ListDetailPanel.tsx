@@ -997,7 +997,6 @@ export const ListDetailPanelBody = React.memo(({ entry }: MountedSceneBodyProps)
   const metaQuery = useQuery({
     queryKey: listDetailMetaQueryKey({ isCurated, listIdParam, shareSlug }),
     enabled: hasIdentity && !isVirtualAll,
-    staleTime: 60_000,
     retry: (failureCount, error) => !isPrivateGoneError(error) && failureCount < 2,
     queryFn: async (): Promise<UserListDetail> => {
       // Curated source (home Job 2): the SAME meta shape, fetched from the
@@ -1176,7 +1175,6 @@ export const ListDetailPanelBody = React.memo(({ entry }: MountedSceneBodyProps)
       targetUserId,
     ],
     enabled: resolvedListId != null && !worldServesResults,
-    staleTime: 60_000,
     // A slice flip (sort / open-now) keeps the PAGE mounted: previous data rides as
     // placeholder while the content-toggle phase hides the stale rows — the full-page
     // gate below fires only on the true first load (no placeholder yet).
@@ -1289,7 +1287,6 @@ export const ListDetailPanelBody = React.memo(({ entry }: MountedSceneBodyProps)
               slice.cityPlaceId,
               targetUserId,
             ],
-            staleTime: 60_000,
             queryFn: async (): Promise<SearchResponse> =>
               userListsService.getListResults(resolvedListId, {
                 shareSlug,
@@ -1326,7 +1323,6 @@ export const ListDetailPanelBody = React.memo(({ entry }: MountedSceneBodyProps)
   const collaboratorsQuery = useQuery({
     queryKey: ['listCollaborators', resolvedListId],
     enabled: canReadCollaborators,
-    staleTime: 60_000,
     retry: 1,
     queryFn: async (): Promise<UserListCollaborators> =>
       userListsService.getCollaborators(resolvedListId as string, { shareSlug }),
@@ -1334,6 +1330,9 @@ export const ListDetailPanelBody = React.memo(({ entry }: MountedSceneBodyProps)
   const meQuery = useQuery({
     queryKey: ['me'],
     enabled: canReadCollaborators,
+    // DELIBERATE deviation from the ENTITY default (services/query-cache-policy.ts):
+    // the viewer's own identity for collaborator gating is long-stable; 5min
+    // stale predates the policy and is kept on purpose.
     staleTime: 300_000,
     queryFn: () => usersService.getMe(),
   });
@@ -1533,6 +1532,9 @@ export const ListDetailPanelBody = React.memo(({ entry }: MountedSceneBodyProps)
   const listCitiesQuery = useQuery({
     queryKey: ['listDetailCities', resolvedListId, targetUserId],
     enabled: isVirtualAll && resolvedListId != null,
+    // DELIBERATE deviation from the ENTITY default (services/query-cache-policy.ts):
+    // the city slice of a list changes only when the list itself changes; 5min
+    // stale predates the policy and is kept on purpose.
     staleTime: 300_000,
     queryFn: () =>
       userListsService.listCities(resolvedListId as string, {

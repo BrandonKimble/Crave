@@ -104,7 +104,6 @@ const RestaurantPickInline = ({
   const suggestionsQuery = useQuery({
     queryKey: ['postPhotosRestaurantPick', trimmed],
     enabled: trimmed.length >= 2,
-    staleTime: 30_000,
     queryFn: ({ signal }) =>
       autocompleteService.fetchEntities(trimmed, { entityType: 'restaurant', signal }),
   });
@@ -176,7 +175,6 @@ const DishAssignList = ({
 
   const dishesQuery = useQuery({
     queryKey: ['restaurantDishes', restaurantId],
-    staleTime: 60_000,
     queryFn: (): Promise<FoodResult[]> => searchService.restaurantDishes(restaurantId),
   });
 

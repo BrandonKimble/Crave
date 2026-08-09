@@ -198,25 +198,21 @@ export const ProfileSectionsBody = React.memo(
     const pollsQuery = useQuery({
       queryKey: ['userProfilePolls', userId],
       enabled: enabled && activeSection === 'polls',
-      staleTime: 60_000,
       queryFn: () => fetchUserCreatedPolls(userId),
     });
     const commentsQuery = useQuery({
       queryKey: ['userProfileComments', userId],
       enabled: enabled && activeSection === 'comments',
-      staleTime: 60_000,
       queryFn: () => fetchUserComments(userId),
     });
     const listsQuery = useQuery({
       queryKey: profileKeys.lists(userId),
       enabled: enabled && activeSection === 'lists',
-      staleTime: 60_000,
       queryFn: () => userListsService.listPublic({ userId }),
     });
     const photosQuery = useQuery({
       queryKey: ['userProfileFoodLog', userId],
       enabled: enabled && activeSection === 'photos',
-      staleTime: 60_000,
       queryFn: () => photosService.getUserFoodLog(userId),
     });
 

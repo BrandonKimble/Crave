@@ -3,6 +3,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { userListsService, type UserListEntityMembership } from '../services/user-lists';
 import { refreshSavedMembership, useSavedMembershipStore } from '../store/saved-membership-store';
 import { userListKeys } from './use-user-lists';
+import { VIEWER_STATE_CACHE_POLICY } from '../services/query-cache-policy';
 
 /**
  * The HEART VERB (Favorites-as-kind, Spotify Liked-Songs model): a one-tap
@@ -76,7 +77,7 @@ export const useFavoriteHeart = ({
     queryKey: ['entityMemberships', entityId],
     queryFn: () => userListsService.entityMemberships(entityId as string),
     enabled: enabled && !!entityId,
-    staleTime: 1000 * 20,
+    ...VIEWER_STATE_CACHE_POLICY,
   });
   const isFavorite = isEntityFavorited(membershipsQuery.data);
   const [isPending, setIsPending] = React.useState(false);

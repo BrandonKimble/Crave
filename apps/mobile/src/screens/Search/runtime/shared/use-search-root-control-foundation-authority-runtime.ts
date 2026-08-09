@@ -58,7 +58,6 @@ export const useSearchRootControlFoundationAuthorityRuntime = ({
   const mutationCancelAuthorityRuntime = useSearchRootMutationCancelAuthorityRuntime();
   const resultsScrollAuthorityRuntime = useSearchRootResultsScrollAuthorityRuntime({
     stateFoundationLane,
-    rootOverlayFoundationRuntime,
   });
   const profileBridgeAuthorityRuntime = useSearchRootProfileBridgeAuthorityRuntime();
   const recentActivityAuthorityRuntime = useSearchRootRecentActivityAuthorityRuntime({

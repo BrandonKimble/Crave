@@ -60,6 +60,7 @@ import { LifecycleHarnessCoordinator } from './src/perf/lifecycle-harness/Lifecy
 import { LifecycleHarnessBridge } from './src/perf/lifecycle-harness/LifecycleHarnessBridge';
 import { CutoutSkeletonDevPreview } from './src/components/skeletons/CutoutSkeletonDevPreview';
 import { useSystemStatusStore } from './src/store/systemStatusStore';
+import { QUERY_CLIENT_DEFAULT_QUERY_OPTIONS } from './src/services/query-cache-policy';
 import { OVERLAY_CORNER_RADIUS } from './src/overlays/overlaySheetStyles';
 import { colors } from './src/constants/theme';
 
@@ -69,6 +70,12 @@ import { colors } from './src/constants/theme';
 // system banner + persisting skeletons own that story). Mutations that legitimately
 // handle their own failure UX opt out via `meta: { suppressFailureModal: true }`.
 const queryClient = new QueryClient({
+  // THE CACHE POLICY (services/query-cache-policy.ts, stated once): default =
+  // ENTITY (60s stale / 24h retention); VIEWER-STATE / LIVE opt down at their
+  // own sites.
+  defaultOptions: {
+    queries: QUERY_CLIENT_DEFAULT_QUERY_OPTIONS,
+  },
   mutationCache: new MutationCache({
     onError: (error, _variables, _context, mutation) => {
       if (mutation.meta?.suppressFailureModal === true) {

@@ -5,7 +5,7 @@
  * GATE: the R8 old-system delete stays deleted, and the track's one-authority
  * laws hold (transition-endstate-contract PART 4 — "the grep-invariant suite").
  *
- * Four checks, each RED-proven by temporary reintroduction (ledger in the R8
+ * Five checks, each RED-proven by temporary reintroduction (ledger in the R8
  * report):
  *
  *  1. NO IMPORT OF A DELETED OLD-HOST MODULE. R8 (2026-08-08) deleted the old
@@ -152,6 +152,25 @@ for (const file of files) {
     });
   }
 
+  // 5 — ONE WRITER for the published sheet SVs (residue-kill-plan item 12 #10).
+  //     TrackSheetPage's mirror reactions are the only legitimate writer of
+  //     sheetTranslateY/sheetScrollOffset; any `.value =` assignment to either
+  //     outside src/tracksheet is a rogue second writer racing the track's
+  //     next mirror frame.
+  if (
+    !rel(file).replace(/\\/g, '/').startsWith('apps/mobile/src/tracksheet/') &&
+    !isSpecOrFixture(file)
+  ) {
+    const rogueSheetSvWrite = /\b(?:sheetScrollOffset|sheetTranslateY)\.value\s*=[^=]/;
+    lines.forEach((line, i) => {
+      if (rogueSheetSvWrite.test(line)) {
+        failures.push(
+          `${rel(file)}:${i + 1} rogue write to a published sheet SharedValue (one-writer law: the track mirrors these)`
+        );
+      }
+    });
+  }
+
   // 4 — instant sheet motion.
   lines.forEach((line, i) => {
     if (
@@ -168,4 +187,4 @@ if (failures.length > 0) {
   for (const failure of failures) console.error(`  ${failure}`);
   process.exit(1);
 }
-console.log(`[tracksheet-invariants] OK — ${files.length} files scanned, 4 invariants hold.`);
+console.log(`[tracksheet-invariants] OK — ${files.length} files scanned, 5 invariants hold.`);

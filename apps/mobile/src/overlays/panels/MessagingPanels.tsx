@@ -18,6 +18,7 @@ import {
   type SharePackagePreview,
 } from '../../services/messaging';
 import { usersService } from '../../services/users';
+import { LIVE_CACHE_POLICY } from '../../services/query-cache-policy';
 import { resolveExpandedTop } from '../sheetUtils';
 import { resolveComposerBodyBasePaddingBottom } from '../overlay-sheet-chin-geometry';
 import { getSearchStartupGeometrySeed } from '../../screens/Search/runtime/shared/search-startup-geometry';
@@ -119,6 +120,9 @@ export const MessagesInboxPanelBody = React.memo((_props: MountedSceneBodyProps)
   // observer and the interval gates the timer. Per-visit freshness survives the
   // mount-once world: staleTime 0 ⇒ RQ refetches on RESUBSCRIBE (the become-visible
   // edge), the retained-tree equivalent of the old refetchOnMount 'always'.
+  // That 0 is now the named LIVE class (services/query-cache-policy.ts) —
+  // explicit here because the app-wide default is ENTITY (60s), which would
+  // silently break the resubscribe contract.
   const live = useShellLiveness();
   const inboxQuery = useQuery({
     queryKey: INBOX_QUERY_KEY,
@@ -126,6 +130,7 @@ export const MessagesInboxPanelBody = React.memo((_props: MountedSceneBodyProps)
     refetchInterval: live ? 15_000 : false,
     refetchOnMount: 'always',
     subscribed: live,
+    ...LIVE_CACHE_POLICY,
   });
   const requestsQuery = useQuery({
     queryKey: REQUESTS_QUERY_KEY,
@@ -133,6 +138,7 @@ export const MessagesInboxPanelBody = React.memo((_props: MountedSceneBodyProps)
     refetchInterval: live ? 15_000 : false,
     refetchOnMount: 'always',
     subscribed: live,
+    ...LIVE_CACHE_POLICY,
   });
 
   const openConversation = React.useCallback(
@@ -309,6 +315,7 @@ export const DmSessionPanelBody = React.memo(({ entry }: MountedSceneBodyProps) 
     queryFn: () => messagingService.getConversation(conversationId as string),
     refetchInterval: dmLive ? 15_000 : false,
     subscribed: dmLive,
+    ...LIVE_CACHE_POLICY,
   });
   // §3.1 cadence: 5s while the session is open. Crude-real: full-window refetch on the same
   // cache key (launch-scale threads); M3's useConversationSync swaps in `after` deltas.
@@ -319,6 +326,7 @@ export const DmSessionPanelBody = React.memo(({ entry }: MountedSceneBodyProps) 
     refetchInterval: dmLive ? 5_000 : false,
     refetchOnMount: 'always',
     subscribed: dmLive,
+    ...LIVE_CACHE_POLICY,
   });
 
   const conversation = conversationQuery.data ?? null;

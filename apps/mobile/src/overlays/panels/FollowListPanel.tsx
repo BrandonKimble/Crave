@@ -52,7 +52,6 @@ export const FollowListPanelBody = React.memo(({ entry }: MountedSceneBodyProps)
     queryKey: ['followList', mode, ownerUserId],
     enabled: ownerUserId != null,
     subscribed: followListLive,
-    staleTime: 60_000,
     queryFn: () =>
       mode === 'following'
         ? usersService.listFollowing(ownerUserId as string)

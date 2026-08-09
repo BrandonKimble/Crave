@@ -1,4 +1,5 @@
 import { useQuery } from '@tanstack/react-query';
+import { VIEWER_STATE_CACHE_POLICY } from '../services/query-cache-policy';
 import {
   userListsService,
   type UserListSummary,
@@ -22,7 +23,7 @@ export const createUserListsQueryOptions = ({
 }) => ({
   queryKey: userListKeys.list(listType, visibility),
   queryFn: () => userListsService.list({ listType, visibility }),
-  staleTime: 1000 * 20,
+  ...VIEWER_STATE_CACHE_POLICY,
 });
 
 export const useUserLists = (params: {
