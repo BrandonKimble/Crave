@@ -821,6 +821,13 @@ model SourceDocument {
   url                    String?                   @db.VarChar(2048)
   sourceCreatedAt        DateTime                  @map("source_created_at") @db.Timestamptz(3)
   collectedAt            DateTime                  @default(now()) @map("collected_at") @db.Timestamptz(3)
+  /// The language of THIS document's words, stamped at persist time from the
+  /// community it was collected out of (CollectionCommunity.language). It
+  /// rides on the document rather than being re-derived downstream because
+  /// the community row can be re-languaged later and that must not silently
+  /// re-interpret words already banked. This is the value the extraction
+  /// banking sites tag surface forms with.
+  language               String                    @default("en") @db.VarChar(35)
   scoreSnapshot          Int?                      @map("score_snapshot")
   rawPayload             Json?                     @map("raw_payload")
   /// §24 Task 2: chronological|keyword|archive lane tag, stamped from the
@@ -1891,6 +1898,14 @@ model CollectionCommunity {
   collectionCommunityId String    @id @default(dbgenerated("gen_random_uuid()")) @map("collection_community_id") @db.Uuid
   communityName         String    @unique(map: "collection_communities_community_name_key") @map("community_name") @db.Citext
   locationName          String?   @map("location_name") @db.Citext
+  /// THE LANGUAGE THIS SOURCE SPEAKS — BCP 47, and CONFIGURATION rather than
+  /// inference: we choose which communities to collect from, so r/austinfood
+  /// is English by the same act that onboarded Austin. This is what lets the
+  /// extraction banking sites tag a surface form at all; without it every
+  /// form is 'und' and a Vietnamese word is indistinguishable from an English
+  /// one. Defaults 'en' because every community that exists today IS English
+  /// (austinfood, foodnyc) — a fact about this corpus, not a guess.
+  language              String    @default("en") @db.VarChar(35)
   lastProcessed         DateTime? @map("last_processed") @db.Timestamptz(6)
   isActive              Boolean   @default(true) @map("is_active")
   updatedAt             DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)

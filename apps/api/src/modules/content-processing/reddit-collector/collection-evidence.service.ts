@@ -36,6 +36,15 @@ export interface ExtractionTraceContext {
 type CollectionRunStatus = 'running' | 'completed' | 'failed';
 
 /**
+ * The language a document is assumed to be in when no community row names one.
+ * Deliberately the SAME literal the two columns default to
+ * (20260809190000_the_source_declares_its_language) — one fallback, stated
+ * once, so the DB and the writer can never disagree about what an
+ * un-languaged source means.
+ */
+const DEFAULT_SOURCE_LANGUAGE = 'en';
+
+/**
  * §24 Task 2: map the extraction pipeline's collectionType
  * ('chronological'|'keyword'|'archive'|'poll-thread', see
  * ExtractionPipelineBaseParams.pipeline) to the document lane tag —
@@ -89,8 +98,14 @@ export class CollectionEvidenceService implements OnModuleInit {
       return new Map();
     }
 
+    // THE LANGUAGE RIDES ON THE DOCUMENT, resolved once per batch from the
+    // community it is being collected out of. Stamped here rather than
+    // re-derived downstream: a community can be re-languaged later, and that
+    // must not retroactively re-interpret words already banked.
+    const language = await this.resolveCommunityLanguage(community);
+
     await this.prismaService.sourceDocument.createMany({
-      data: documents,
+      data: documents.map((document) => ({ ...document, language })),
       skipDuplicates: true,
     });
 
@@ -826,6 +841,36 @@ export class CollectionEvidenceService implements OnModuleInit {
         completedAt,
       },
     });
+  }
+
+  /**
+   * The language of the community these documents came out of.
+   *
+   * The community row is the ONLY authority here — nothing sniffs the text.
+   * A source's language is something we CONFIGURE when we decide to collect
+   * from it, not something we infer per document, and keeping it that way is
+   * what makes the resulting surface tag a fact rather than a guess.
+   *
+   * An unknown or absent community falls back to the column's own default
+   * ('en') rather than inventing a tag: the two paths that can reach here
+   * without a community row are the poll-thread lane and legacy pre-migration
+   * callers, both of which are English by construction today. If that ever
+   * stops being true, the fix is a community row with a language on it, not a
+   * detector bolted on here.
+   */
+  private async resolveCommunityLanguage(
+    community: string | null,
+  ): Promise<string> {
+    if (!community) {
+      return DEFAULT_SOURCE_LANGUAGE;
+    }
+
+    const row = await this.prismaService.collectionCommunity.findUnique({
+      where: { communityName: community },
+      select: { language: true },
+    });
+
+    return row?.language?.trim() || DEFAULT_SOURCE_LANGUAGE;
   }
 
   private flattenSourceDocuments(
