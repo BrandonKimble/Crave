@@ -33,6 +33,7 @@ module.exports = {
     '^react-native$': '<rootDir>/src/tracksheet/__render__/mocks/react-native-mock.ts',
     '^react-native-reanimated$': '<rootDir>/src/tracksheet/__render__/mocks/reanimated-mock.ts',
     '^@shopify/flash-list$': '<rootDir>/src/tracksheet/__render__/mocks/flash-list-mock.tsx',
+    '^react-native-svg$': '<rootDir>/src/tracksheet/__render__/mocks/svg-mock.ts',
     '^@sentry/react-native$': '<rootDir>/jest.sentry-stub.js',
     // App-runtime seams (module boundaries, never host logic):
     '.*overlays/panels/.*': '<rootDir>/src/tracksheet/__render__/mocks/panels-mock.tsx',
