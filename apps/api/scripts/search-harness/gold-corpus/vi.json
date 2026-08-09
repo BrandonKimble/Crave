@@ -1,0 +1,1732 @@
+{
+  "readBy": "../run-launch-gate.ts (assertion semantics are documented below and in that file's header)",
+  "locale": "vi-VN",
+  "version": 1,
+  "authoredAt": "2026-08-09",
+  "authoredAgainst": "dev mirror crave_search (localhost:5432) — EVERY Vietnamese surface was verified against entity_alias (locale=vi, status=active) / core_entities on 2026-08-09, after the vi vocabulary sweep landed 14,375 active vi alias rows + 8,751 vi labels. Every name in expected.concepts / mustNotResolve was verified to exist as an ACTIVE core_entities row.",
+  "purpose": "The Vietnamese half of D3's shared artifact: the MARKET-LAUNCH GATE for vi, run by the same falsifiability engine as es. 150 queries, stratified 40/30/20/20/20/20.",
+  "authoringLaw": "CORPUS-GROUNDED, NOT INVENTED. Every expectation was read out of the database first: which entity a Vietnamese surface is banked on decides what the entry demands. Where a vi-named row exists (phở→pho, cơm tấm→com tam), grounding the Vietnamese word to its OWN row is the correct answer and no translation bridge is demanded — the es corpus scored real successes as red before it learned this (see its AUTHORING CORRECTION notes).",
+  "assertionSemantics": {
+    "expected.concepts": "English CANONICAL entity names (core_entities.name) that must appear in the grounded parse. Grounded set = every entityId in structuredRequest.entities, resolved back to its canonical name.",
+    "expected.mustNotResolve": "Canonical names that must NEVER appear in the grounded set. A hit here is an INVERSION or a wrong-sense grounding — the hard failures.",
+    "park": "true = 'unresolved/park' is a CORRECT outcome for this query. Used for typos, for homographs where silence beats a confident wrong answer, and for negation frames whose head may legitimately be consumed.",
+    "strataRules": {
+      "single_noun": "PASS iff every expected concept is grounded (or, when park=true, the query cleanly parked with nothing outside expected grounded).",
+      "compound": "Constraint preservation measured on the PARSE: PASS iff EVERY expected concept is present.",
+      "negation": "v2 LITERAL IGNORE: the mentioned word grounds POSITIVELY; the assertion is head preservation + NON-INVERSION (no unasked vegetarian/vegan flip). No exclusion is ever recorded — exclusions do not exist in the product.",
+      "attribute": "PASS iff the expected attribute-type entity (food_attribute / restaurant_attribute) is grounded. Grounding the right word to a FOOD entity of the same name is scored as a type miss.",
+      "homograph": "SAFE-BEHAVIOR assertion, inverted from the others: PASS iff the grounded set is a SUBSET of expected.concepts (empty set = clean park = PASS).",
+      "code_switched": "PASS iff the ENGLISH span's concept is grounded. Vietnamese carrier words are not asserted."
+    }
+  },
+  "viSpecificHazards": [
+    "TONE-MARK FOLD: canonicalFold strips Vietnamese diacritics, so bò/bơ/bo, mì/mỹ/my, chay/cháy, cá/ca all collapse to one folded key. Vietnamese is the language where the fold that HELPS de-diacritized typing (sn-02, sn-04, sn-25, cp-03) is the same mechanism that MERGES distinct words (hg-01, hg-06, hg-15/16, hg-20). Both halves are measured here on purpose.",
+    "COMPOUND-FIRST VOCABULARY: Vietnamese dish names are multi-token and the longer span is almost always the right concept (phở bò tái > phở bò > phở; bún thịt nướng > thịt nướng). The compound stratum is largely a longest-span-wins test.",
+    "DIETARY BOUNDARY: chay (vegetarian) vs thuần chay (vegan) share a token and must never substitute for each other — at-02/at-03.",
+    "QUESTION PARTICLE: 'có ... không' is a yes/no frame, and its 'không' is NOT a negation cue (cs-07, cs-16)."
+  ],
+  "knownRedSeeds": [
+    "hg-01 (bò)",
+    "hg-06 (mỹ)",
+    "hg-15/hg-16 (cơm chay / cơm cháy)",
+    "hg-13 (bún vs bun)"
+  ],
+  "entries": [
+    {
+      "id": "sn-01",
+      "query": "phở",
+      "stratum": "single_noun",
+      "expected": {
+        "concepts": ["pho"],
+        "mustNotResolve": []
+      },
+      "park": false,
+      "notes": "SOURCE-FAITHFUL: the Vietnamese surface is banked as a vi alias on this exact entity (verified in entity_alias locale=vi, status=active). Grounding a Vietnamese word to its own corpus row is the CORRECT answer — the es corpus learned this the hard way (see its AUTHORING CORRECTION notes); no translation bridge is demanded where a vi-named row exists. 'phở'→pho (food). Note 'Pho' also exists as a RESTAURANT name — type-aware admission matters.",
+      "allowCompositional": true
+    },
+    {
+      "id": "sn-02",
+      "query": "pho",
+      "stratum": "single_noun",
+      "expected": {
+        "concepts": ["pho"],
+        "mustNotResolve": []
+      },
+      "park": false,
+      "notes": "DE-DIACRITIZED TYPING — the single most common way a Vietnamese speaker types on a US keyboard. form_folded is 'pho' either way, so the fold (N1) is what makes the two spellings one query.",
+      "allowCompositional": true
+    },
+    {
+      "id": "sn-03",
+      "query": "bánh mì",
+      "stratum": "single_noun",
+      "expected": {
+        "concepts": ["banh mi"],
+        "mustNotResolve": []
+      },
+      "park": false,
+      "notes": "SOURCE-FAITHFUL: the Vietnamese surface is banked as a vi alias on this exact entity (verified in entity_alias locale=vi, status=active). Grounding a Vietnamese word to its own corpus row is the CORRECT answer — the es corpus learned this the hard way (see its AUTHORING CORRECTION notes); no translation bridge is demanded where a vi-named row exists. 'bánh mì' is banked on FOUR entities (banh mi, bread, bun, viet sandwich) — the source-faithful dish row is the one asserted.",
+      "allowCompositional": true
+    },
+    {
+      "id": "sn-04",
+      "query": "banh mi",
+      "stratum": "single_noun",
+      "expected": {
+        "concepts": ["banh mi"],
+        "mustNotResolve": []
+      },
+      "park": false,
+      "notes": "DE-DIACRITIZED twin of sn-03.",
+      "allowCompositional": true
+    },
+    {
+      "id": "sn-05",
+      "query": "bún chả",
+      "stratum": "single_noun",
+      "expected": {
+        "concepts": ["bun cha"],
+        "mustNotResolve": []
+      },
+      "park": false,
+      "notes": "SOURCE-FAITHFUL: the Vietnamese surface is banked as a vi alias on this exact entity (verified in entity_alias locale=vi, status=active). Grounding a Vietnamese word to its own corpus row is the CORRECT answer — the es corpus learned this the hard way (see its AUTHORING CORRECTION notes); no translation bridge is demanded where a vi-named row exists. 'bún chả'→bun cha.",
+      "allowCompositional": true
+    },
+    {
+      "id": "sn-06",
+      "query": "bánh xèo",
+      "stratum": "single_noun",
+      "expected": {
+        "concepts": ["banh xeo"],
+        "mustNotResolve": []
+      },
+      "park": false,
+      "notes": "SOURCE-FAITHFUL: the Vietnamese surface is banked as a vi alias on this exact entity (verified in entity_alias locale=vi, status=active). Grounding a Vietnamese word to its own corpus row is the CORRECT answer — the es corpus learned this the hard way (see its AUTHORING CORRECTION notes); no translation bridge is demanded where a vi-named row exists. 'bánh xèo'→banh xeo.",
+      "allowCompositional": true
+    },
+    {
+      "id": "sn-07",
+      "query": "cơm tấm",
+      "stratum": "single_noun",
+      "expected": {
+        "concepts": ["com tam"],
+        "mustNotResolve": []
+      },
+      "park": false,
+      "notes": "SOURCE-FAITHFUL: the Vietnamese surface is banked as a vi alias on this exact entity (verified in entity_alias locale=vi, status=active). Grounding a Vietnamese word to its own corpus row is the CORRECT answer — the es corpus learned this the hard way (see its AUTHORING CORRECTION notes); no translation bridge is demanded where a vi-named row exists. banked on both 'com tam' and 'broken rice'; the source-faithful row is asserted.",
+      "allowCompositional": true
+    },
+    {
+      "id": "sn-08",
+      "query": "bánh cuốn",
+      "stratum": "single_noun",
+      "expected": {
+        "concepts": ["banh cuon"],
+        "mustNotResolve": []
+      },
+      "park": false,
+      "notes": "SOURCE-FAITHFUL: the Vietnamese surface is banked as a vi alias on this exact entity (verified in entity_alias locale=vi, status=active). Grounding a Vietnamese word to its own corpus row is the CORRECT answer — the es corpus learned this the hard way (see its AUTHORING CORRECTION notes); no translation bridge is demanded where a vi-named row exists.",
+      "allowCompositional": true
+    },
+    {
+      "id": "sn-09",
+      "query": "chả giò",
+      "stratum": "single_noun",
+      "expected": {
+        "concepts": ["egg roll"],
+        "mustNotResolve": []
+      },
+      "park": false,
+      "notes": "TRANSLATION BRIDGE via a banked vi alias: 'chả giò' is banked on the English row 'egg roll' — no 'cha gio' row exists.",
+      "allowCompositional": true
+    },
+    {
+      "id": "sn-10",
+      "query": "bún bò huế",
+      "stratum": "single_noun",
+      "expected": {
+        "concepts": ["bun bo hue"],
+        "mustNotResolve": []
+      },
+      "park": false,
+      "notes": "NAME-ARM match: no vi ALIAS row exists, but 'bun bo hue' IS an English-corpus food NAME, so the folded query hits the name arm. The Vietnamese dish name naturalized into the English catalogue.",
+      "allowCompositional": true
+    },
+    {
+      "id": "sn-11",
+      "query": "gà",
+      "stratum": "single_noun",
+      "expected": {
+        "concepts": ["chicken"],
+        "mustNotResolve": []
+      },
+      "park": false,
+      "notes": "Banked vi alias 'gà'→chicken (food + ingredient).",
+      "allowCompositional": true
+    },
+    {
+      "id": "sn-12",
+      "query": "tôm",
+      "stratum": "single_noun",
+      "expected": {
+        "concepts": ["prawns"],
+        "mustNotResolve": []
+      },
+      "park": false,
+      "notes": "Banked 'tôm'→prawns (food) / prawn (ingredient). NOT 'shrimp' — the corpus banked the prawn twin; asserting 'shrimp' here would demand a bridge the vocabulary did not make.",
+      "allowCompositional": true
+    },
+    {
+      "id": "sn-13",
+      "query": "cá",
+      "stratum": "single_noun",
+      "expected": {
+        "concepts": ["fish"],
+        "mustNotResolve": []
+      },
+      "park": false,
+      "notes": "Banked 'cá'→fish.",
+      "allowCompositional": true
+    },
+    {
+      "id": "sn-14",
+      "query": "cua",
+      "stratum": "single_noun",
+      "expected": {
+        "concepts": ["crab"],
+        "mustNotResolve": []
+      },
+      "park": false,
+      "notes": "Banked 'cua'→crab.",
+      "allowCompositional": true
+    },
+    {
+      "id": "sn-15",
+      "query": "mực",
+      "stratum": "single_noun",
+      "expected": {
+        "concepts": ["squid"],
+        "mustNotResolve": []
+      },
+      "park": false,
+      "notes": "Banked 'mực'→squid.",
+      "allowCompositional": true
+    },
+    {
+      "id": "sn-16",
+      "query": "vịt",
+      "stratum": "single_noun",
+      "expected": {
+        "concepts": ["duck"],
+        "mustNotResolve": []
+      },
+      "park": false,
+      "notes": "Banked 'vịt'→duck.",
+      "allowCompositional": true
+    },
+    {
+      "id": "sn-17",
+      "query": "cơm",
+      "stratum": "single_noun",
+      "expected": {
+        "concepts": ["rice"],
+        "mustNotResolve": []
+      },
+      "park": false,
+      "notes": "Banked 'cơm'→rice.",
+      "allowCompositional": true
+    },
+    {
+      "id": "sn-18",
+      "query": "bún",
+      "stratum": "single_noun",
+      "expected": {
+        "concepts": ["rice noodle"],
+        "mustNotResolve": []
+      },
+      "park": false,
+      "notes": "Banked 'bún'→rice noodle (food) / rice vermicelli + vermicelli (ingredient). The English homograph 'bun' (bread) is the danger — see hg-13.",
+      "allowCompositional": true
+    },
+    {
+      "id": "sn-19",
+      "query": "rau",
+      "stratum": "single_noun",
+      "expected": {
+        "concepts": ["vegetable"],
+        "mustNotResolve": []
+      },
+      "park": false,
+      "notes": "Banked 'rau'→vegetable / veggie / veggies.",
+      "allowCompositional": true
+    },
+    {
+      "id": "sn-20",
+      "query": "trứng",
+      "stratum": "single_noun",
+      "expected": {
+        "concepts": ["egg"],
+        "mustNotResolve": []
+      },
+      "park": false,
+      "notes": "Banked 'trứng'→egg.",
+      "allowCompositional": true
+    },
+    {
+      "id": "sn-21",
+      "query": "xoài",
+      "stratum": "single_noun",
+      "expected": {
+        "concepts": ["mango"],
+        "mustNotResolve": []
+      },
+      "park": false,
+      "notes": "Banked 'xoài'→mango.",
+      "allowCompositional": true
+    },
+    {
+      "id": "sn-22",
+      "query": "dưa hấu",
+      "stratum": "single_noun",
+      "expected": {
+        "concepts": ["watermelon"],
+        "mustNotResolve": []
+      },
+      "park": false,
+      "notes": "Banked 2-gram 'dưa hấu'→watermelon; must beat the 1-gram 'dưa' (coconut/melon senses).",
+      "allowCompositional": true
+    },
+    {
+      "id": "sn-23",
+      "query": "kem",
+      "stratum": "single_noun",
+      "expected": {
+        "concepts": ["ice cream"],
+        "mustNotResolve": []
+      },
+      "park": false,
+      "notes": "Banked 'kem'→ice cream — a single Vietnamese token bridging to a MULTI-WORD English concept.",
+      "allowCompositional": true
+    },
+    {
+      "id": "sn-24",
+      "query": "cà phê",
+      "stratum": "single_noun",
+      "expected": {
+        "concepts": ["coffee"],
+        "mustNotResolve": []
+      },
+      "park": false,
+      "notes": "Banked 'cà phê'→coffee.",
+      "allowCompositional": true
+    },
+    {
+      "id": "sn-25",
+      "query": "ca phe",
+      "stratum": "single_noun",
+      "expected": {
+        "concepts": ["coffee"],
+        "mustNotResolve": []
+      },
+      "park": false,
+      "notes": "DE-DIACRITIZED twin of sn-24.",
+      "allowCompositional": true
+    },
+    {
+      "id": "sn-26",
+      "query": "trà",
+      "stratum": "single_noun",
+      "expected": {
+        "concepts": ["tea"],
+        "mustNotResolve": []
+      },
+      "park": false,
+      "notes": "Banked 'trà'→tea.",
+      "allowCompositional": true
+    },
+    {
+      "id": "sn-27",
+      "query": "bia",
+      "stratum": "single_noun",
+      "expected": {
+        "concepts": ["beer"],
+        "mustNotResolve": []
+      },
+      "park": false,
+      "notes": "Banked 'bia'→beer.",
+      "allowCompositional": true
+    },
+    {
+      "id": "sn-28",
+      "query": "lẩu",
+      "stratum": "single_noun",
+      "expected": {
+        "concepts": ["hot pot"],
+        "mustNotResolve": []
+      },
+      "park": false,
+      "notes": "Banked 'lẩu'→hot pot AND hotpot (an unmerged English twin — either grounding is right; 'hot pot' is asserted).",
+      "allowCompositional": true
+    },
+    {
+      "id": "sn-29",
+      "query": "xôi",
+      "stratum": "single_noun",
+      "expected": {
+        "concepts": ["sticky rice"],
+        "mustNotResolve": []
+      },
+      "park": false,
+      "notes": "Banked 'xôi'→sticky rice.",
+      "allowCompositional": true
+    },
+    {
+      "id": "sn-30",
+      "query": "tôm hùm",
+      "stratum": "single_noun",
+      "expected": {
+        "concepts": ["lobster"],
+        "mustNotResolve": []
+      },
+      "park": false,
+      "notes": "Banked 2-gram 'tôm hùm'→lobster; must beat 'tôm'→prawns (the 2-gram over the 1-gram, sn-12's word as the head).",
+      "allowCompositional": true
+    },
+    {
+      "id": "sn-31",
+      "query": "hải sản",
+      "stratum": "single_noun",
+      "expected": {
+        "concepts": ["seafood"],
+        "mustNotResolve": []
+      },
+      "park": false,
+      "notes": "Banked 'hải sản'→seafood (food + ingredient + restaurant_attribute).",
+      "allowCompositional": true
+    },
+    {
+      "id": "sn-32",
+      "query": "thịt heo",
+      "stratum": "single_noun",
+      "expected": {
+        "concepts": ["pork"],
+        "mustNotResolve": []
+      },
+      "park": false,
+      "notes": "Banked 'thịt heo'→pork.",
+      "allowCompositional": true
+    },
+    {
+      "id": "sn-33",
+      "query": "thịt bò",
+      "stratum": "single_noun",
+      "expected": {
+        "concepts": ["beef"],
+        "mustNotResolve": []
+      },
+      "park": false,
+      "notes": "Banked 'thịt bò'→beef. Contrast hg-01: bare 'bò' is NOT banked on beef.",
+      "allowCompositional": true
+    },
+    {
+      "id": "sn-34",
+      "query": "gà nướng",
+      "stratum": "single_noun",
+      "expected": {
+        "concepts": ["grilled chicken"],
+        "mustNotResolve": []
+      },
+      "park": false,
+      "notes": "Banked 2-gram 'gà nướng'→grilled chicken; must beat 'gà'→chicken alone.",
+      "allowCompositional": true
+    },
+    {
+      "id": "sn-35",
+      "query": "bò kho",
+      "stratum": "single_noun",
+      "expected": {
+        "concepts": ["vietnamese beef stew"],
+        "mustNotResolve": []
+      },
+      "park": false,
+      "notes": "Banked 'bò kho'→vietnamese beef stew. Also the sharpest 2-gram-over-1-gram case in the set: 'bò'→avocado/butter and 'kho'→braised would BOTH be wrong decompositions.",
+      "allowCompositional": true
+    },
+    {
+      "id": "sn-36",
+      "query": "cá kho tộ",
+      "stratum": "single_noun",
+      "expected": {
+        "concepts": ["ca kho to"],
+        "mustNotResolve": []
+      },
+      "park": false,
+      "notes": "SOURCE-FAITHFUL: the Vietnamese surface is banked as a vi alias on this exact entity (verified in entity_alias locale=vi, status=active). Grounding a Vietnamese word to its own corpus row is the CORRECT answer — the es corpus learned this the hard way (see its AUTHORING CORRECTION notes); no translation bridge is demanded where a vi-named row exists. 3-gram, source-faithful row.",
+      "allowCompositional": true
+    },
+    {
+      "id": "sn-37",
+      "query": "bánh bao",
+      "stratum": "single_noun",
+      "expected": {
+        "concepts": ["steamed bun"],
+        "mustNotResolve": []
+      },
+      "park": false,
+      "notes": "Banked 'bánh bao'→steamed bun / bun / dumpling.",
+      "allowCompositional": true
+    },
+    {
+      "id": "sn-38",
+      "query": "thịt nướng",
+      "stratum": "single_noun",
+      "expected": {
+        "concepts": ["grilled meat"],
+        "mustNotResolve": []
+      },
+      "park": false,
+      "notes": "Banked 'thịt nướng'→grilled meat.",
+      "allowCompositional": true
+    },
+    {
+      "id": "sn-39",
+      "query": "bahn mi",
+      "stratum": "single_noun",
+      "expected": {
+        "concepts": ["banh mi"],
+        "mustNotResolve": []
+      },
+      "park": true,
+      "notes": "TYPO (transposition) — the most common real-world misspelling of 'banh mi' in US English. Goes through the EDIT lane, not the gazetteer. park=true encodes the honest assertion for a typo: reach the right dish OR stay silent; a confident WRONG dish fails.",
+      "allowCompositional": true
+    },
+    {
+      "id": "sn-40",
+      "query": "banh my",
+      "stratum": "single_noun",
+      "expected": {
+        "concepts": ["banh mi"],
+        "mustNotResolve": []
+      },
+      "park": true,
+      "notes": "TYPO (vowel substitution, and 'my' is itself a corpus surface — see hg-06). Same edit-lane assertion as sn-39.",
+      "allowCompositional": true
+    },
+    {
+      "id": "cp-01",
+      "query": "phở bò",
+      "stratum": "compound",
+      "expected": {
+        "concepts": ["beef pho"],
+        "mustNotResolve": []
+      },
+      "park": false,
+      "notes": "Banked 'phở bò'→beef pho (and beef rib pho). The 2-gram must win: decomposing to [pho]+[bò→avocado] is the failure shape."
+    },
+    {
+      "id": "cp-02",
+      "query": "phở gà",
+      "stratum": "compound",
+      "expected": {
+        "concepts": ["chicken pho"],
+        "mustNotResolve": []
+      },
+      "park": false,
+      "notes": "Banked 'phở gà'→chicken pho."
+    },
+    {
+      "id": "cp-03",
+      "query": "pho bo",
+      "stratum": "compound",
+      "expected": {
+        "concepts": ["beef pho"],
+        "mustNotResolve": []
+      },
+      "park": false,
+      "notes": "DE-DIACRITIZED twin of cp-01 — the everyday US-keyboard spelling."
+    },
+    {
+      "id": "cp-04",
+      "query": "cơm gà",
+      "stratum": "compound",
+      "expected": {
+        "concepts": ["chicken and rice"],
+        "mustNotResolve": []
+      },
+      "park": false,
+      "notes": "Banked 'cơm gà'→chicken and rice — a Vietnamese 2-gram bridging to an English 3-token concept."
+    },
+    {
+      "id": "cp-05",
+      "query": "cơm chiên",
+      "stratum": "compound",
+      "expected": {
+        "concepts": ["fried rice"],
+        "mustNotResolve": []
+      },
+      "park": false,
+      "notes": "Banked 'cơm chiên'→fried rice."
+    },
+    {
+      "id": "cp-06",
+      "query": "mì xào",
+      "stratum": "compound",
+      "expected": {
+        "concepts": ["chow mein"],
+        "mustNotResolve": []
+      },
+      "park": false,
+      "notes": "Banked 'mì xào'→chow mein."
+    },
+    {
+      "id": "cp-07",
+      "query": "gà rán",
+      "stratum": "compound",
+      "expected": {
+        "concepts": ["fried chicken"],
+        "mustNotResolve": []
+      },
+      "park": false,
+      "notes": "Banked 'gà rán'→fried chicken."
+    },
+    {
+      "id": "cp-08",
+      "query": "cá chiên",
+      "stratum": "compound",
+      "expected": {
+        "concepts": ["fried fish"],
+        "mustNotResolve": []
+      },
+      "park": false,
+      "notes": "Banked 'cá chiên'→fried fish."
+    },
+    {
+      "id": "cp-09",
+      "query": "tôm nướng",
+      "stratum": "compound",
+      "expected": {
+        "concepts": ["grilled shrimp"],
+        "mustNotResolve": []
+      },
+      "park": false,
+      "notes": "Banked 'tôm nướng'→grilled shrimp. Note the corpus bridges tôm→prawns bare (sn-12) but →shrimp inside this compound; both are its own banked evidence."
+    },
+    {
+      "id": "cp-10",
+      "query": "bún thịt nướng",
+      "stratum": "compound",
+      "expected": {
+        "concepts": ["pork vermicelli"],
+        "mustNotResolve": []
+      },
+      "park": false,
+      "notes": "Banked 3-gram 'bún thịt nướng'→pork vermicelli; must beat 'thịt nướng'→grilled meat (sn-38) and 'bún'→rice noodle."
+    },
+    {
+      "id": "cp-11",
+      "query": "cơm sườn",
+      "stratum": "compound",
+      "expected": {
+        "concepts": ["pork chop plate"],
+        "mustNotResolve": []
+      },
+      "park": false,
+      "notes": "Banked 'cơm sườn'→pork chop plate."
+    },
+    {
+      "id": "cp-12",
+      "query": "bò lúc lắc",
+      "stratum": "compound",
+      "expected": {
+        "concepts": ["shaken beef"],
+        "mustNotResolve": []
+      },
+      "park": false,
+      "notes": "Banked 3-gram 'bò lúc lắc'→shaken beef."
+    },
+    {
+      "id": "cp-13",
+      "query": "gỏi cuốn tôm",
+      "stratum": "compound",
+      "expected": {
+        "concepts": ["shrimp rolls"],
+        "mustNotResolve": []
+      },
+      "park": false,
+      "notes": "Banked 3-gram 'gỏi cuốn tôm'→shrimp rolls. Bare 'gỏi cuốn' is NOT banked (see hg-12) — the longer form is the one with evidence."
+    },
+    {
+      "id": "cp-14",
+      "query": "phở bò tái",
+      "stratum": "compound",
+      "expected": {
+        "concepts": ["raw steak pho"],
+        "mustNotResolve": []
+      },
+      "park": false,
+      "notes": "Banked 3-gram 'phở bò tái'→raw steak pho; must beat the 2-gram 'phở bò'→beef pho."
+    },
+    {
+      "id": "cp-15",
+      "query": "kem dừa",
+      "stratum": "compound",
+      "expected": {
+        "concepts": ["coconut ice cream"],
+        "mustNotResolve": []
+      },
+      "park": false,
+      "notes": "Banked 'kem dừa'→coconut ice cream; must beat 'kem'→ice cream (sn-23)."
+    },
+    {
+      "id": "cp-16",
+      "query": "trà sữa",
+      "stratum": "compound",
+      "expected": {
+        "concepts": ["milk tea"],
+        "mustNotResolve": []
+      },
+      "park": false,
+      "notes": "Banked 'trà sữa'→milk tea AND boba tea (an unmerged twin, both banked on the same surface). 'milk tea' is asserted; grounding boba tea as well is not a failure."
+    },
+    {
+      "id": "cp-17",
+      "query": "cà phê sữa đá",
+      "stratum": "compound",
+      "expected": {
+        "concepts": ["iced viet coffee"],
+        "mustNotResolve": []
+      },
+      "park": false,
+      "notes": "Banked 4-gram 'cà phê sữa đá'→iced viet coffee — the longest banked dish surface in the set; must beat 'cà phê'→coffee."
+    },
+    {
+      "id": "cp-18",
+      "query": "bánh mì chay",
+      "stratum": "compound",
+      "expected": {
+        "concepts": ["veggie sandwich"],
+        "mustNotResolve": []
+      },
+      "park": false,
+      "notes": "AUTHORING NOTE: 'bánh mì chay' is banked as ONE concept → veggie sandwich. Asserting [banh mi]+[vegetarian] would demand a decomposition the vocabulary explicitly overrode."
+    },
+    {
+      "id": "cp-19",
+      "query": "nhà hàng Ý",
+      "stratum": "compound",
+      "expected": {
+        "concepts": ["italian"],
+        "mustNotResolve": []
+      },
+      "park": false,
+      "notes": "'Ý' (Italy) is banked → italian (restaurant_attribute); 'nhà hàng' (restaurant) is a carrier with no expected grounding."
+    },
+    {
+      "id": "cp-20",
+      "query": "đồ ăn Việt Nam",
+      "stratum": "compound",
+      "expected": {
+        "concepts": ["vietnamese"],
+        "mustNotResolve": []
+      },
+      "park": false,
+      "notes": "Banked 3-gram 'đồ ăn Việt Nam'→vietnamese (restaurant_attribute)."
+    },
+    {
+      "id": "cp-21",
+      "query": "ẩm thực Thái",
+      "stratum": "compound",
+      "expected": {
+        "concepts": ["thai"],
+        "mustNotResolve": []
+      },
+      "park": false,
+      "notes": "Banked 'ẩm thực Thái'→thai."
+    },
+    {
+      "id": "cp-22",
+      "query": "BBQ Hàn Quốc",
+      "stratum": "compound",
+      "expected": {
+        "concepts": ["korean bbq"],
+        "mustNotResolve": []
+      },
+      "park": false,
+      "notes": "Banked 'BBQ Hàn Quốc'→korean bbq as ONE concept — must beat [bbq]+[korean]."
+    },
+    {
+      "id": "cp-23",
+      "query": "ẩm thực Hy Lạp",
+      "stratum": "compound",
+      "expected": {
+        "concepts": ["greek"],
+        "mustNotResolve": []
+      },
+      "park": false,
+      "notes": "Banked 'ẩm thực Hy Lạp'→greek. Bare 'Hy Lạp' is NOT banked — the carrier is load-bearing here."
+    },
+    {
+      "id": "cp-24",
+      "query": "ẩm thực Địa Trung Hải",
+      "stratum": "compound",
+      "expected": {
+        "concepts": ["mediterranean"],
+        "mustNotResolve": []
+      },
+      "park": false,
+      "notes": "Banked 'ẩm thực Địa Trung Hải'→mediterranean — a 5-token Vietnamese phrase for one English word."
+    },
+    {
+      "id": "cp-25",
+      "query": "đồ ăn Trung Quốc",
+      "stratum": "compound",
+      "expected": {
+        "concepts": ["chinese food"],
+        "mustNotResolve": []
+      },
+      "park": false,
+      "notes": "Banked 'đồ ăn Trung Quốc'→chinese food."
+    },
+    {
+      "id": "cp-26",
+      "query": "phở cay",
+      "stratum": "compound",
+      "expected": {
+        "concepts": ["pho", "spicy"],
+        "mustNotResolve": []
+      },
+      "park": false,
+      "notes": "Dish + food_attribute, both banked ('cay'→spicy). The two-concept parse IS the right answer — no 'spicy pho' row exists."
+    },
+    {
+      "id": "cp-27",
+      "query": "lẩu hải sản",
+      "stratum": "compound",
+      "expected": {
+        "concepts": ["hot pot", "seafood"],
+        "mustNotResolve": []
+      },
+      "park": false,
+      "notes": "Two banked nouns, no banked compound — the two-concept parse is correct."
+    },
+    {
+      "id": "cp-28",
+      "query": "nhà hàng Việt Nam lãng mạn",
+      "stratum": "compound",
+      "expected": {
+        "concepts": ["vietnamese", "romantic"],
+        "mustNotResolve": []
+      },
+      "park": false,
+      "notes": "Cuisine + ambience attribute, both banked; 'nhà hàng' is a carrier."
+    },
+    {
+      "id": "cp-29",
+      "query": "đồ ăn nhanh giá rẻ",
+      "stratum": "compound",
+      "expected": {
+        "concepts": ["fast food", "affordable"],
+        "mustNotResolve": []
+      },
+      "park": false,
+      "notes": "Two banked restaurant_attributes in one phrase."
+    },
+    {
+      "id": "cp-30",
+      "query": "cơm gà nướng",
+      "stratum": "compound",
+      "expected": {
+        "concepts": ["rice", "grilled chicken"],
+        "mustNotResolve": []
+      },
+      "park": false,
+      "notes": "OVERLAPPING banked spans: 'cơm gà'→chicken and rice and 'gà nướng'→grilled chicken share the token 'gà', so only ONE of them can be placed. | AUTHORING CORRECTION (gate run 1): the first draft demanded 'chicken and rice' AND 'grilled chicken' — two covers that cannot coexist. The parse chose [cơm]→rice + [gà nướng]→grilled chicken, which is a coherent, complete cover of the query and is the correct answer; the entry now asserts that cover."
+    },
+    {
+      "id": "ng-01",
+      "query": "phở không thịt",
+      "stratum": "negation",
+      "expected": {
+        "concepts": ["pho"],
+        "mustNotResolve": ["vegetarian", "vegan"]
+      },
+      "park": false,
+      "notes": "NEGATION v2 (LITERAL IGNORE): 'không X' is not a supported exclusion — the mentioned word may ground POSITIVELY like any other ingredient. The assertion is head preservation + NON-INVERSION: the parse must never flip into the semantic opposite (a vegetarian/vegan constraint the user did not ask for). INVERSION BAIT: 'no meat' is semantically vegetarian and a bi-encoder will say so. It must not."
+    },
+    {
+      "id": "ng-02",
+      "query": "bún không thịt bò",
+      "stratum": "negation",
+      "expected": {
+        "concepts": ["rice noodle"],
+        "mustNotResolve": ["vegetarian", "vegan"]
+      },
+      "park": false,
+      "notes": "NEGATION v2 (LITERAL IGNORE): 'không X' is not a supported exclusion — the mentioned word may ground POSITIVELY like any other ingredient. The assertion is head preservation + NON-INVERSION: the parse must never flip into the semantic opposite (a vegetarian/vegan constraint the user did not ask for). Same bait over a rice-noodle head."
+    },
+    {
+      "id": "ng-03",
+      "query": "phở không hành",
+      "stratum": "negation",
+      "expected": {
+        "concepts": ["pho"],
+        "mustNotResolve": []
+      },
+      "park": false,
+      "notes": "NEGATION v2 (LITERAL IGNORE): 'không X' is not a supported exclusion — the mentioned word may ground POSITIVELY like any other ingredient. The assertion is head preservation + NON-INVERSION: the parse must never flip into the semantic opposite (a vegetarian/vegan constraint the user did not ask for). 'hành'→onions is a banked ingredient — a groundable span behind the cue."
+    },
+    {
+      "id": "ng-04",
+      "query": "bánh mì không pate",
+      "stratum": "negation",
+      "expected": {
+        "concepts": ["banh mi"],
+        "mustNotResolve": []
+      },
+      "park": false,
+      "notes": "NEGATION v2 (LITERAL IGNORE): 'không X' is not a supported exclusion — the mentioned word may ground POSITIVELY like any other ingredient. The assertion is head preservation + NON-INVERSION: the parse must never flip into the semantic opposite (a vegetarian/vegan constraint the user did not ask for). 'pate' is an English-corpus ingredient row; grounding it positively is allowed under v2."
+    },
+    {
+      "id": "ng-05",
+      "query": "pizza không phô mai",
+      "stratum": "negation",
+      "expected": {
+        "concepts": ["pizza"],
+        "mustNotResolve": []
+      },
+      "park": false,
+      "notes": "NEGATION v2 (LITERAL IGNORE): 'không X' is not a supported exclusion — the mentioned word may ground POSITIVELY like any other ingredient. The assertion is head preservation + NON-INVERSION: the parse must never flip into the semantic opposite (a vegetarian/vegan constraint the user did not ask for). 'không phô mai' is itself a SEEDED 2-gram alias → cheeseless (food_attribute). The cue must not negate the phrase it is part of — the vi twin of the es 'sin gluten' trap."
+    },
+    {
+      "id": "ng-06",
+      "query": "cà phê không đường",
+      "stratum": "negation",
+      "expected": {
+        "concepts": ["coffee"],
+        "mustNotResolve": []
+      },
+      "park": false,
+      "notes": "NEGATION v2 (LITERAL IGNORE): 'không X' is not a supported exclusion — the mentioned word may ground POSITIVELY like any other ingredient. The assertion is head preservation + NON-INVERSION: the parse must never flip into the semantic opposite (a vegetarian/vegan constraint the user did not ask for). 'không đường' is a seeded 2-gram → sugar free. Positive grounding of the whole phrase is the CORRECT outcome."
+    },
+    {
+      "id": "ng-07",
+      "query": "phở không cay",
+      "stratum": "negation",
+      "expected": {
+        "concepts": ["pho"],
+        "mustNotResolve": []
+      },
+      "park": false,
+      "notes": "NEGATION v2 (LITERAL IGNORE): 'không X' is not a supported exclusion — the mentioned word may ground POSITIVELY like any other ingredient. The assertion is head preservation + NON-INVERSION: the parse must never flip into the semantic opposite (a vegetarian/vegan constraint the user did not ask for). 'không cay' is a seeded 2-gram → mild. mustNotResolve is deliberately EMPTY: under literal-ignore, grounding 'cay'→spicy is also acceptable; only an unasked dietary flip is forbidden."
+    },
+    {
+      "id": "ng-08",
+      "query": "cơm không rau",
+      "stratum": "negation",
+      "expected": {
+        "concepts": ["rice"],
+        "mustNotResolve": []
+      },
+      "park": false,
+      "notes": "NEGATION v2 (LITERAL IGNORE): 'không X' is not a supported exclusion — the mentioned word may ground POSITIVELY like any other ingredient. The assertion is head preservation + NON-INVERSION: the parse must never flip into the semantic opposite (a vegetarian/vegan constraint the user did not ask for). Negated span is a banked food ('rau'→vegetable)."
+    },
+    {
+      "id": "ng-09",
+      "query": "gà không da",
+      "stratum": "negation",
+      "expected": {
+        "concepts": ["chicken"],
+        "mustNotResolve": []
+      },
+      "park": false,
+      "notes": "NEGATION v2 (LITERAL IGNORE): 'không X' is not a supported exclusion — the mentioned word may ground POSITIVELY like any other ingredient. The assertion is head preservation + NON-INVERSION: the parse must never flip into the semantic opposite (a vegetarian/vegan constraint the user did not ask for). 'skin' exists as an English ingredient row — a bridge target behind the cue."
+    },
+    {
+      "id": "ng-10",
+      "query": "lẩu không cay",
+      "stratum": "negation",
+      "expected": {
+        "concepts": ["hot pot"],
+        "mustNotResolve": []
+      },
+      "park": false,
+      "notes": "NEGATION v2 (LITERAL IGNORE): 'không X' is not a supported exclusion — the mentioned word may ground POSITIVELY like any other ingredient. The assertion is head preservation + NON-INVERSION: the parse must never flip into the semantic opposite (a vegetarian/vegan constraint the user did not ask for). Second 'không cay' shape, different head."
+    },
+    {
+      "id": "ng-11",
+      "query": "bánh xèo không tôm",
+      "stratum": "negation",
+      "expected": {
+        "concepts": ["banh xeo"],
+        "mustNotResolve": []
+      },
+      "park": false,
+      "notes": "NEGATION v2 (LITERAL IGNORE): 'không X' is not a supported exclusion — the mentioned word may ground POSITIVELY like any other ingredient. The assertion is head preservation + NON-INVERSION: the parse must never flip into the semantic opposite (a vegetarian/vegan constraint the user did not ask for). Source-faithful head + banked negated ingredient."
+    },
+    {
+      "id": "ng-12",
+      "query": "cơm tấm không mỡ",
+      "stratum": "negation",
+      "expected": {
+        "concepts": ["com tam"],
+        "mustNotResolve": []
+      },
+      "park": false,
+      "notes": "NEGATION v2 (LITERAL IGNORE): 'không X' is not a supported exclusion — the mentioned word may ground POSITIVELY like any other ingredient. The assertion is head preservation + NON-INVERSION: the parse must never flip into the semantic opposite (a vegetarian/vegan constraint the user did not ask for). Source-faithful head; 'mỡ' (fat) is unknown residue."
+    },
+    {
+      "id": "ng-13",
+      "query": "phở không rau",
+      "stratum": "negation",
+      "expected": {
+        "concepts": ["pho"],
+        "mustNotResolve": []
+      },
+      "park": false,
+      "notes": "NEGATION v2 (LITERAL IGNORE): 'không X' is not a supported exclusion — the mentioned word may ground POSITIVELY like any other ingredient. The assertion is head preservation + NON-INVERSION: the parse must never flip into the semantic opposite (a vegetarian/vegan constraint the user did not ask for). The commonest real Vietnamese order-modification phrase in the set."
+    },
+    {
+      "id": "ng-14",
+      "query": "bún chả không nước mắm",
+      "stratum": "negation",
+      "expected": {
+        "concepts": ["bun cha"],
+        "mustNotResolve": []
+      },
+      "park": false,
+      "notes": "NEGATION v2 (LITERAL IGNORE): 'không X' is not a supported exclusion — the mentioned word may ground POSITIVELY like any other ingredient. The assertion is head preservation + NON-INVERSION: the parse must never flip into the semantic opposite (a vegetarian/vegan constraint the user did not ask for). Negated span is a banked 2-gram ('nước mắm'→fish sauce) — a multi-token groundable span behind the cue."
+    },
+    {
+      "id": "ng-15",
+      "query": "sushi không cá sống",
+      "stratum": "negation",
+      "expected": {
+        "concepts": ["sushi"],
+        "mustNotResolve": []
+      },
+      "park": false,
+      "notes": "NEGATION v2 (LITERAL IGNORE): 'không X' is not a supported exclusion — the mentioned word may ground POSITIVELY like any other ingredient. The assertion is head preservation + NON-INVERSION: the parse must never flip into the semantic opposite (a vegetarian/vegan constraint the user did not ask for). English head under a Vietnamese negation frame."
+    },
+    {
+      "id": "ng-16",
+      "query": "trà sữa không đường",
+      "stratum": "negation",
+      "expected": {
+        "concepts": [],
+        "mustNotResolve": []
+      },
+      "park": true,
+      "notes": "NEGATION v2 (LITERAL IGNORE): 'không X' is not a supported exclusion — the mentioned word may ground POSITIVELY like any other ingredient. The assertion is head preservation + NON-INVERSION: the parse must never flip into the semantic opposite (a vegetarian/vegan constraint the user did not ask for). park=true: the head 'trà sữa' may legitimately be consumed by the seeded 'không đường'→sugar free placement. Non-inversion is the hard part."
+    },
+    {
+      "id": "ng-17",
+      "query": "đồ ăn không thịt",
+      "stratum": "negation",
+      "expected": {
+        "concepts": [],
+        "mustNotResolve": ["vegetarian", "vegan"]
+      },
+      "park": true,
+      "notes": "NEGATION v2 (LITERAL IGNORE): 'không X' is not a supported exclusion — the mentioned word may ground POSITIVELY like any other ingredient. The assertion is head preservation + NON-INVERSION: the parse must never flip into the semantic opposite (a vegetarian/vegan constraint the user did not ask for). THE CLASSIC INVERSION BAIT with a carrier head — nothing to preserve, everything to get wrong. park=true, so the ONLY way to fail is to invert."
+    },
+    {
+      "id": "ng-18",
+      "query": "pizza không thịt",
+      "stratum": "negation",
+      "expected": {
+        "concepts": ["pizza"],
+        "mustNotResolve": ["vegetarian", "vegan"]
+      },
+      "park": false,
+      "notes": "NEGATION v2 (LITERAL IGNORE): 'không X' is not a supported exclusion — the mentioned word may ground POSITIVELY like any other ingredient. The assertion is head preservation + NON-INVERSION: the parse must never flip into the semantic opposite (a vegetarian/vegan constraint the user did not ask for). Inversion bait over a locale-invariant head."
+    },
+    {
+      "id": "ng-19",
+      "query": "cơm không mặn",
+      "stratum": "negation",
+      "expected": {
+        "concepts": ["rice"],
+        "mustNotResolve": []
+      },
+      "park": false,
+      "notes": "NEGATION v2 (LITERAL IGNORE): 'không X' is not a supported exclusion — the mentioned word may ground POSITIVELY like any other ingredient. The assertion is head preservation + NON-INVERSION: the parse must never flip into the semantic opposite (a vegetarian/vegan constraint the user did not ask for). Negating a taste attribute rather than an ingredient."
+    },
+    {
+      "id": "ng-20",
+      "query": "kem không sữa",
+      "stratum": "negation",
+      "expected": {
+        "concepts": ["ice cream"],
+        "mustNotResolve": []
+      },
+      "park": false,
+      "notes": "NEGATION v2 (LITERAL IGNORE): 'không X' is not a supported exclusion — the mentioned word may ground POSITIVELY like any other ingredient. The assertion is head preservation + NON-INVERSION: the parse must never flip into the semantic opposite (a vegetarian/vegan constraint the user did not ask for). 'không sữa' is a seeded 2-gram → dairy free; positive grounding is correct and is NOT an inversion (the user did ask for dairy-free)."
+    },
+    {
+      "id": "at-01",
+      "query": "cay",
+      "stratum": "attribute",
+      "expected": {
+        "concepts": ["spicy"],
+        "mustNotResolve": []
+      },
+      "park": false,
+      "notes": "Banked 'cay'→spicy (food_attribute)."
+    },
+    {
+      "id": "at-02",
+      "query": "chay",
+      "stratum": "attribute",
+      "expected": {
+        "concepts": ["vegetarian"],
+        "mustNotResolve": ["vegan"]
+      },
+      "park": false,
+      "notes": "DIETARY BOUNDARY (half 1): 'chay' is banked → vegetarian ONLY. Substituting vegan would tell a Buddhist-vegetarian diner that a dish with fish sauce is fine — the two are never interchangeable."
+    },
+    {
+      "id": "at-03",
+      "query": "thuần chay",
+      "stratum": "attribute",
+      "expected": {
+        "concepts": ["vegan"],
+        "mustNotResolve": ["vegetarian"]
+      },
+      "park": false,
+      "notes": "DIETARY BOUNDARY (half 2): 'thuần chay' is banked → vegan. It CONTAINS the token 'chay', so a 1-gram fallback would silently downgrade a vegan search to vegetarian — that substitution is the failure this pair exists to catch."
+    },
+    {
+      "id": "at-04",
+      "query": "không gluten",
+      "stratum": "attribute",
+      "expected": {
+        "concepts": ["gluten free"],
+        "mustNotResolve": []
+      },
+      "park": false,
+      "notes": "Seeded 2-gram; also the cue/alias collision in isolation — 'không' must not negate the phrase it is part of."
+    },
+    {
+      "id": "at-05",
+      "query": "halal",
+      "stratum": "attribute",
+      "expected": {
+        "concepts": ["halal"],
+        "mustNotResolve": []
+      },
+      "park": false,
+      "notes": "Locale-invariant spine word — the control for this stratum."
+    },
+    {
+      "id": "at-06",
+      "query": "ít cay",
+      "stratum": "attribute",
+      "expected": {
+        "concepts": ["mild"],
+        "mustNotResolve": []
+      },
+      "park": false,
+      "notes": "Banked 'ít cay'→mild. A DEGREE phrase, not a negation: it must not become spicy, and it must not become a cue."
+    },
+    {
+      "id": "at-07",
+      "query": "chiên giòn",
+      "stratum": "attribute",
+      "expected": {
+        "concepts": ["crispy"],
+        "mustNotResolve": []
+      },
+      "park": false,
+      "notes": "Banked 'chiên giòn'→crispy (preparation attribute)."
+    },
+    {
+      "id": "at-08",
+      "query": "hun khói",
+      "stratum": "attribute",
+      "expected": {
+        "concepts": ["smoked"],
+        "mustNotResolve": []
+      },
+      "park": false,
+      "notes": "Banked 'hun khói'→smoked."
+    },
+    {
+      "id": "at-09",
+      "query": "hấp",
+      "stratum": "attribute",
+      "expected": {
+        "concepts": ["steamed"],
+        "mustNotResolve": []
+      },
+      "park": false,
+      "notes": "Banked 'hấp'→steamed — a single-token attribute with a very short folded form ('hap')."
+    },
+    {
+      "id": "at-10",
+      "query": "lãng mạn",
+      "stratum": "attribute",
+      "expected": {
+        "concepts": ["romantic"],
+        "mustNotResolve": []
+      },
+      "park": false,
+      "notes": "Banked 'lãng mạn'→romantic (restaurant_attribute)."
+    },
+    {
+      "id": "at-11",
+      "query": "yên tĩnh",
+      "stratum": "attribute",
+      "expected": {
+        "concepts": ["quiet"],
+        "mustNotResolve": []
+      },
+      "park": false,
+      "notes": "Banked 'yên tĩnh'→quiet."
+    },
+    {
+      "id": "at-12",
+      "query": "sân thượng",
+      "stratum": "attribute",
+      "expected": {
+        "concepts": ["rooftop"],
+        "mustNotResolve": []
+      },
+      "park": false,
+      "notes": "Banked 'sân thượng'→rooftop."
+    },
+    {
+      "id": "at-13",
+      "query": "chỗ ngồi ngoài trời",
+      "stratum": "attribute",
+      "expected": {
+        "concepts": ["outdoor seating"],
+        "mustNotResolve": []
+      },
+      "park": false,
+      "notes": "Banked 4-token phrase → outdoor seating."
+    },
+    {
+      "id": "at-14",
+      "query": "giao hàng",
+      "stratum": "attribute",
+      "expected": {
+        "concepts": ["delivery"],
+        "mustNotResolve": []
+      },
+      "park": false,
+      "notes": "Banked 'giao hàng'→delivery."
+    },
+    {
+      "id": "at-15",
+      "query": "ăn đêm",
+      "stratum": "attribute",
+      "expected": {
+        "concepts": ["late night"],
+        "mustNotResolve": []
+      },
+      "park": false,
+      "notes": "Banked 'ăn đêm'→late night — idiomatic, not a word-for-word rendering."
+    },
+    {
+      "id": "at-16",
+      "query": "cho phép mang chó",
+      "stratum": "attribute",
+      "expected": {
+        "concepts": ["allows dogs"],
+        "mustNotResolve": []
+      },
+      "park": false,
+      "notes": "Banked 4-token phrase → allows dogs. The es corpus's lexical-gap case in Vietnamese: the English concept is 'allows dogs', not 'pet friendly'."
+    },
+    {
+      "id": "at-17",
+      "query": "chỗ cho nhóm đông",
+      "stratum": "attribute",
+      "expected": {
+        "concepts": ["good for groups"],
+        "mustNotResolve": []
+      },
+      "park": false,
+      "notes": "Banked 4-token phrase → good for groups."
+    },
+    {
+      "id": "at-18",
+      "query": "có wifi",
+      "stratum": "attribute",
+      "expected": {
+        "concepts": ["wifi"],
+        "mustNotResolve": []
+      },
+      "park": false,
+      "notes": "Banked 'có wifi'→wifi; 'có' (has) is a carrier that must not block the match."
+    },
+    {
+      "id": "at-19",
+      "query": "bãi đậu xe",
+      "stratum": "attribute",
+      "expected": {
+        "concepts": ["parking"],
+        "mustNotResolve": []
+      },
+      "park": false,
+      "notes": "Banked 3-token phrase → parking."
+    },
+    {
+      "id": "at-20",
+      "query": "chỉ nhận tiền mặt",
+      "stratum": "attribute",
+      "expected": {
+        "concepts": ["cash only"],
+        "mustNotResolve": []
+      },
+      "park": false,
+      "notes": "Banked 4-token phrase → cash only."
+    },
+    {
+      "id": "hg-01",
+      "query": "bò",
+      "stratum": "homograph",
+      "expected": {
+        "concepts": ["beef"],
+        "mustNotResolve": []
+      },
+      "park": true,
+      "notes": "THE SHARPEST VIETNAMESE HOMOGRAPH: tone marks are meaning. 'bò' = beef, 'bơ' = butter/avocado — and BOTH fold to 'bo', where the corpus banks 'bo'→avocado + butter and NOTHING on beef. A confident avocado answer to a beef query is the vi twin of the es 'tuna' case. SAFE = beef, or clean park."
+    },
+    {
+      "id": "hg-02",
+      "query": "bơ",
+      "stratum": "homograph",
+      "expected": {
+        "concepts": ["butter", "avocado"],
+        "mustNotResolve": []
+      },
+      "park": true,
+      "notes": "CONTROL for hg-01: this is the spelling the banked alias actually means. Either sense is correct."
+    },
+    {
+      "id": "hg-03",
+      "query": "chè",
+      "stratum": "homograph",
+      "expected": {
+        "concepts": ["tea"],
+        "mustNotResolve": []
+      },
+      "park": true,
+      "notes": "'chè' = a sweet dessert soup; 'chè' also = the tea plant, and the corpus banks 'chè'→tea (ingredient). Tea is defensible; a dessert-shaped wrong answer is not. Park is safe."
+    },
+    {
+      "id": "hg-04",
+      "query": "giá",
+      "stratum": "homograph",
+      "expected": {
+        "concepts": ["bean sprout", "sprout", "sprouts"],
+        "mustNotResolve": []
+      },
+      "park": true,
+      "notes": "'giá' = bean sprouts AND 'price'. Banked on the sprout senses. A price-shaped or restaurant-shaped capture would be the failure."
+    },
+    {
+      "id": "hg-05",
+      "query": "mì",
+      "stratum": "homograph",
+      "expected": {
+        "concepts": ["noodle", "noodles", "rice noodle"],
+        "mustNotResolve": []
+      },
+      "park": true,
+      "notes": "'mì' = wheat noodles; banked on noodle/noodles. Also one fold away from 'mỹ' (America) — see hg-06."
+    },
+    {
+      "id": "hg-06",
+      "query": "mỹ",
+      "stratum": "homograph",
+      "expected": {
+        "concepts": ["american"],
+        "mustNotResolve": ["mian"]
+      },
+      "park": true,
+      "notes": "TONE-FOLD COLLISION: 'Mỹ' = America/American, but folded it is 'my', which the corpus banks on the Chinese noodle 'mian'. A user asking for American food must not be handed a noodle dish. SAFE = american, or park."
+    },
+    {
+      "id": "hg-07",
+      "query": "phô mai",
+      "stratum": "homograph",
+      "expected": {
+        "concepts": ["cheese", "queso"],
+        "mustNotResolve": ["pho"]
+      },
+      "park": true,
+      "notes": "'phô mai' (cheese) vs 'phở' (the soup) — one diacritic apart in speech, and 'pho mai' shares its first token with the folded 'pho'. Banked on cheese/queso; a pho grounding would be the failure."
+    },
+    {
+      "id": "hg-08",
+      "query": "cá",
+      "stratum": "homograph",
+      "expected": {
+        "concepts": ["fish"],
+        "mustNotResolve": []
+      },
+      "park": true,
+      "notes": "'cá' = fish; 'ca' = to sing / a shift / a cup. Banked on fish. Control-ish, but the 2-letter folded form is exactly where short-string fuzzy floors misfire."
+    },
+    {
+      "id": "hg-09",
+      "query": "canh",
+      "stratum": "homograph",
+      "expected": {
+        "concepts": ["soup"],
+        "mustNotResolve": []
+      },
+      "park": true,
+      "notes": "'canh' = a clear soup, and is NOT banked as a vi alias (verified). Also one fold from 'cánh' (wing) and 'cạnh' (edge). SAFE = soup via dense, or park."
+    },
+    {
+      "id": "hg-10",
+      "query": "chả",
+      "stratum": "homograph",
+      "expected": {
+        "concepts": [],
+        "mustNotResolve": []
+      },
+      "park": true,
+      "notes": "'chả' = a grilled pork patty, unbanked as a bare surface (verified) — and it is a substring of dozens of banked compounds (chả giò, bún chả, chả cá). SAFE = clean park; any confident dish is a fragment mis-grounding."
+    },
+    {
+      "id": "hg-11",
+      "query": "nem",
+      "stratum": "homograph",
+      "expected": {
+        "concepts": ["spring roll"],
+        "mustNotResolve": []
+      },
+      "park": true,
+      "notes": "'nem' is unbanked bare; only 'nem cuốn'→spring roll exists. Reaching spring roll is defensible; anything else is not."
+    },
+    {
+      "id": "hg-12",
+      "query": "gỏi",
+      "stratum": "homograph",
+      "expected": {
+        "concepts": ["salad"],
+        "mustNotResolve": []
+      },
+      "park": true,
+      "notes": "'gỏi' = a Vietnamese salad; unbanked bare (only 'gỏi cuốn tôm' is banked — cp-13). SAFE = salad, or park."
+    },
+    {
+      "id": "hg-13",
+      "query": "bún",
+      "stratum": "homograph",
+      "expected": {
+        "concepts": ["rice noodle", "vermicelli", "rice vermicelli", "bun"],
+        "mustNotResolve": []
+      },
+      "park": true,
+      "notes": "CROSS-LANGUAGE HOMOGRAPH: Vietnamese 'bún' = rice vermicelli; English 'bun' = bread. The corpus holds BOTH and they fold identically. | AUTHORING CORRECTION (gate run 1): the first draft forbade 'bun'. That contradicts the ratified es ruling (hg-07/hg-08, tuna/pie): an exact English NAME match is correct for ANY locale in an English-corpus market — the locale guard governs tagged ALIAS rows, not source-faithful names. The parse returned rice noodle AND bun; the Vietnamese sense is present, so this is breadth, not a mis-grounding."
+    },
+    {
+      "id": "hg-14",
+      "query": "thơm",
+      "stratum": "homograph",
+      "expected": {
+        "concepts": ["pineapple", "fragrant"],
+        "mustNotResolve": []
+      },
+      "park": true,
+      "notes": "TRUE IN-LANGUAGE HOMOGRAPH: 'thơm' = pineapple (southern) AND fragrant (the adjective) — the corpus banks the SAME surface on both, a food and a food_attribute. Either is correct; the entry exists because a market must not have to pick."
+    },
+    {
+      "id": "hg-15",
+      "query": "cơm cháy",
+      "stratum": "homograph",
+      "expected": {
+        "concepts": ["crispy rice", "scorched rice", "rice"],
+        "mustNotResolve": []
+      },
+      "park": true,
+      "notes": "DIACRITIC TRAP: 'cơm chay' (vegetarian rice) and 'cơm cháy' (scorched rice crust) both fold to 'com chay', and only the SCORCHED sense is banked. This entry asserts the banked sense; hg-16 asserts the other spelling, and the pair makes the collision measurable instead of arguable. | AUTHORING CORRECTION (gate run 1): 'rice' added to the allowed set — the parse also linked the sub-span 'cơm'→rice, which is a true sub-grounding of the query, not a wrong sense."
+    },
+    {
+      "id": "hg-16",
+      "query": "cơm chay",
+      "stratum": "homograph",
+      "expected": {
+        "concepts": ["rice", "vegetarian"],
+        "mustNotResolve": ["crispy rice", "scorched rice"]
+      },
+      "park": true,
+      "notes": "The other half of hg-15: a vegetarian-rice query whose folded form is banked on scorched rice. SAFE = rice and/or vegetarian, or park; being handed a rice crust is a wrong-sense grounding a diner would notice immediately."
+    },
+    {
+      "id": "hg-17",
+      "query": "ớt",
+      "stratum": "homograph",
+      "expected": {
+        "concepts": [
+          "chile",
+          "chili",
+          "chili pepper",
+          "hot pepper",
+          "hot peppers"
+        ],
+        "mustNotResolve": []
+      },
+      "park": true,
+      "notes": "'ớt' is banked on five unmerged English chili twins — any of them is right. Folded it is 'ot', a 2-letter string: the fuzzy-floor case."
+    },
+    {
+      "id": "hg-18",
+      "query": "chanh",
+      "stratum": "homograph",
+      "expected": {
+        "concepts": ["lemon", "lime"],
+        "mustNotResolve": []
+      },
+      "park": true,
+      "notes": "'chanh' covers BOTH lemon and lime in Vietnamese; the corpus banks both. Either is correct — the entry documents that no single English row is the right answer."
+    },
+    {
+      "id": "hg-19",
+      "query": "ngô",
+      "stratum": "homograph",
+      "expected": {
+        "concepts": ["corn"],
+        "mustNotResolve": []
+      },
+      "park": true,
+      "notes": "'ngô' = corn (northern) and also a common surname/'Chinese' in older usage. Banked on corn."
+    },
+    {
+      "id": "hg-20",
+      "query": "ga",
+      "stratum": "homograph",
+      "expected": {
+        "concepts": ["chicken"],
+        "mustNotResolve": []
+      },
+      "park": true,
+      "notes": "DE-DIACRITIZED COLLISION: typed bare, 'ga' is 'gà' (chicken), 'ga' (train station / gas), and the folded head of 'có ga'→sparkling. SAFE = chicken, or park."
+    },
+    {
+      "id": "cs-01",
+      "query": "tôi muốn ăn sushi",
+      "stratum": "code_switched",
+      "expected": {
+        "concepts": ["sushi"],
+        "mustNotResolve": []
+      },
+      "park": false,
+      "notes": "Vietnamese carrier (\"I want to eat\") + English dish. The English span must ground as if English."
+    },
+    {
+      "id": "cs-02",
+      "query": "cho tôi pizza",
+      "stratum": "code_switched",
+      "expected": {
+        "concepts": ["pizza"],
+        "mustNotResolve": []
+      },
+      "park": false,
+      "notes": "Imperative carrier + loanword dish."
+    },
+    {
+      "id": "cs-03",
+      "query": "quán ramen gần đây",
+      "stratum": "code_switched",
+      "expected": {
+        "concepts": ["ramen"],
+        "mustNotResolve": []
+      },
+      "park": false,
+      "notes": "Carrier + proximity directive (\"gần đây\" = nearby), deliberately unasserted as a concept."
+    },
+    {
+      "id": "cs-04",
+      "query": "tôi thích burger",
+      "stratum": "code_switched",
+      "expected": {
+        "concepts": ["burger"],
+        "mustNotResolve": []
+      },
+      "park": false,
+      "notes": "Carrier + English dish that also exists as a restaurant_attribute — cross-type placement."
+    },
+    {
+      "id": "cs-05",
+      "query": "muốn ăn BBQ",
+      "stratum": "code_switched",
+      "expected": {
+        "concepts": ["bbq"],
+        "mustNotResolve": []
+      },
+      "park": false,
+      "notes": "Spine word identical in both languages."
+    },
+    {
+      "id": "cs-06",
+      "query": "tìm quán korean bbq",
+      "stratum": "code_switched",
+      "expected": {
+        "concepts": ["korean bbq"],
+        "mustNotResolve": []
+      },
+      "park": false,
+      "notes": "English 2-gram concept that must beat its own parts ('korean' + 'bbq'), under a Vietnamese carrier."
+    },
+    {
+      "id": "cs-07",
+      "query": "có dim sum không",
+      "stratum": "code_switched",
+      "expected": {
+        "concepts": ["dim sum"],
+        "mustNotResolve": []
+      },
+      "park": false,
+      "notes": "Vietnamese yes/no frame ('có ... không') WRAPPING an English concept — the trailing 'không' is a question particle here, NOT a negation cue. If it reads as negation the parse inverts on a purely grammatical word."
+    },
+    {
+      "id": "cs-08",
+      "query": "tôi muốn ice cream",
+      "stratum": "code_switched",
+      "expected": {
+        "concepts": ["ice cream"],
+        "mustNotResolve": []
+      },
+      "park": false,
+      "notes": "English form of sn-23 — isolates whether the sn-23 result is a bridge or a grounding gap."
+    },
+    {
+      "id": "cs-09",
+      "query": "quán coffee yên tĩnh",
+      "stratum": "code_switched",
+      "expected": {
+        "concepts": ["coffee", "quiet"],
+        "mustNotResolve": []
+      },
+      "park": false,
+      "notes": "English noun + banked Vietnamese attribute in one query."
+    },
+    {
+      "id": "cs-10",
+      "query": "nhà hàng seafood",
+      "stratum": "code_switched",
+      "expected": {
+        "concepts": ["seafood"],
+        "mustNotResolve": []
+      },
+      "park": false,
+      "notes": "English form of sn-31."
+    },
+    {
+      "id": "cs-11",
+      "query": "ăn brunch ở đâu",
+      "stratum": "code_switched",
+      "expected": {
+        "concepts": ["brunch"],
+        "mustNotResolve": []
+      },
+      "park": false,
+      "notes": "Loanword under a Vietnamese question frame (\"where to eat\")."
+    },
+    {
+      "id": "cs-12",
+      "query": "tôi muốn pasta",
+      "stratum": "code_switched",
+      "expected": {
+        "concepts": ["pasta"],
+        "mustNotResolve": []
+      },
+      "park": false,
+      "notes": "English dish; note 'mì Ý' is the banked Vietnamese form → pasta, so both routes exist."
+    },
+    {
+      "id": "cs-13",
+      "query": "quán sushi giá rẻ",
+      "stratum": "code_switched",
+      "expected": {
+        "concepts": ["sushi", "affordable"],
+        "mustNotResolve": []
+      },
+      "park": false,
+      "notes": "English dish + banked price attribute 'giá rẻ'→affordable."
+    },
+    {
+      "id": "cs-14",
+      "query": "muốn ăn steak",
+      "stratum": "code_switched",
+      "expected": {
+        "concepts": ["steak"],
+        "mustNotResolve": []
+      },
+      "park": false,
+      "notes": "Plain English noun under a Vietnamese verb."
+    },
+    {
+      "id": "cs-15",
+      "query": "tìm salad",
+      "stratum": "code_switched",
+      "expected": {
+        "concepts": ["salad"],
+        "mustNotResolve": []
+      },
+      "park": false,
+      "notes": "Shortest possible code-switch: one carrier verb + one English noun."
+    },
+    {
+      "id": "cs-16",
+      "query": "có rooftop không",
+      "stratum": "code_switched",
+      "expected": {
+        "concepts": ["rooftop"],
+        "mustNotResolve": []
+      },
+      "park": false,
+      "notes": "English form of at-12, inside the same 'có ... không' frame as cs-07 — the second reading of the question particle."
+    },
+    {
+      "id": "cs-17",
+      "query": "quán có wifi",
+      "stratum": "code_switched",
+      "expected": {
+        "concepts": ["wifi"],
+        "mustNotResolve": []
+      },
+      "park": false,
+      "notes": "English form of at-18."
+    },
+    {
+      "id": "cs-18",
+      "query": "tôi muốn thử hot pot",
+      "stratum": "code_switched",
+      "expected": {
+        "concepts": ["hot pot"],
+        "mustNotResolve": []
+      },
+      "park": false,
+      "notes": "English form of sn-28."
+    },
+    {
+      "id": "cs-19",
+      "query": "muốn ăn sandwich",
+      "stratum": "code_switched",
+      "expected": {
+        "concepts": ["sandwich"],
+        "mustNotResolve": []
+      },
+      "park": false,
+      "notes": "English noun whose Vietnamese sibling ('bánh mì'→viet sandwich) is a DIFFERENT dish — the two must not collapse."
+    },
+    {
+      "id": "cs-20",
+      "query": "quán pho ngon",
+      "stratum": "code_switched",
+      "expected": {
+        "concepts": ["pho"],
+        "mustNotResolve": []
+      },
+      "park": false,
+      "notes": "De-diacritized dish inside a Vietnamese frame ('ngon' = tasty, a quality word with no entity). 'Pho' also exists as a RESTAURANT name — type-aware admission matters."
+    }
+  ]
+}

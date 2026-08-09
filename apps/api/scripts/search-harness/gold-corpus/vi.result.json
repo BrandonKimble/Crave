@@ -1,0 +1,6198 @@
+{
+  "ranAt": "2026-08-09T07:20:15.618Z",
+  "lang": "vi",
+  "corpusVersion": 1,
+  "scoreboard": {
+    "overall": 95.33333333333333,
+    "top1SingleConcept": 94,
+    "negationNonInversion": 100,
+    "constraintPreservation": 96.66666666666667,
+    "homographMisGroundings": [
+      "bò→avocado[gazetteer-exact]",
+      "mỹ→mian[gazetteer-exact]",
+      "canh→viet sandwich[linked]",
+      "nem→little gem lettuce[linked]",
+      "cơm chay→scorched rice[gazetteer-exact]"
+    ],
+    "homographMisGroundingsExact": [
+      "bò→avocado[gazetteer-exact]",
+      "mỹ→mian[gazetteer-exact]",
+      "cơm chay→scorched rice[gazetteer-exact]"
+    ]
+  },
+  "results": [
+    {
+      "id": "sn-01",
+      "query": "phở",
+      "stratum": "single_noun",
+      "locale": "vi-VN",
+      "pass": true,
+      "preservation": 1,
+      "reasons": [],
+      "grounded": [
+        {
+          "entityId": "08f45e9c-abf7-4db2-bbc9-d772538ca720",
+          "bucket": "food",
+          "type": "food",
+          "span": "phở",
+          "name": "pho",
+          "tier": "gazetteer-exact",
+          "foldedName": "pho"
+        }
+      ],
+      "unresolved": [],
+      "analysis": {
+        "script": "latin",
+        "requestLocale": "vi-VN",
+        "detectedLocale": {
+          "tag": "vi-VN",
+          "confidence": 0.5,
+          "source": "request-prior"
+        },
+        "denseTierUsed": false
+      },
+      "misGroundings": [],
+      "notes": "SOURCE-FAITHFUL: the Vietnamese surface is banked as a vi alias on this exact entity (verified in entity_alias locale=vi, status=active). Grounding a Vietnamese word to its own corpus row is the CORRECT answer — the es corpus learned this the hard way (see its AUTHORING CORRECTION notes); no translation bridge is demanded where a vi-named row exists. 'phở'→pho (food). Note 'Pho' also exists as a RESTAURANT name — type-aware admission matters."
+    },
+    {
+      "id": "sn-02",
+      "query": "pho",
+      "stratum": "single_noun",
+      "locale": "vi-VN",
+      "pass": true,
+      "preservation": 1,
+      "reasons": [],
+      "grounded": [
+        {
+          "entityId": "08f45e9c-abf7-4db2-bbc9-d772538ca720",
+          "bucket": "food",
+          "type": "food",
+          "span": "pho",
+          "name": "pho",
+          "tier": "gazetteer-exact",
+          "foldedName": "pho"
+        }
+      ],
+      "unresolved": [],
+      "analysis": {
+        "script": "latin",
+        "requestLocale": "vi-VN",
+        "detectedLocale": {
+          "tag": "vi-VN",
+          "confidence": 0.5,
+          "source": "request-prior"
+        },
+        "denseTierUsed": false
+      },
+      "misGroundings": [],
+      "notes": "DE-DIACRITIZED TYPING — the single most common way a Vietnamese speaker types on a US keyboard. form_folded is 'pho' either way, so the fold (N1) is what makes the two spellings one query."
+    },
+    {
+      "id": "sn-03",
+      "query": "bánh mì",
+      "stratum": "single_noun",
+      "locale": "vi-VN",
+      "pass": true,
+      "preservation": 1,
+      "reasons": [],
+      "grounded": [
+        {
+          "entityId": "33c909c3-0de7-4cd6-aaea-ca05e968f0a0",
+          "bucket": "restaurants",
+          "type": "restaurant",
+          "span": "bánh",
+          "name": "Bánh",
+          "tier": "linked",
+          "foldedName": "banh"
+        },
+        {
+          "entityId": "78d11036-478c-41bb-a78d-4a7320dde99c",
+          "bucket": "food",
+          "type": "food",
+          "span": "bánh mì",
+          "name": "banh mi",
+          "tier": "gazetteer-exact",
+          "foldedName": "banh mi"
+        },
+        {
+          "entityId": "9cd8f4aa-bb68-4bee-937f-45fee496d147",
+          "bucket": "food",
+          "type": "food",
+          "span": "bánh mì",
+          "name": "viet sandwich",
+          "tier": "gazetteer-exact",
+          "foldedName": "viet sandwich"
+        }
+      ],
+      "unresolved": [],
+      "analysis": {
+        "script": "latin",
+        "requestLocale": "vi-VN",
+        "detectedLocale": {
+          "tag": "it",
+          "confidence": 1,
+          "source": "detector"
+        },
+        "denseTierUsed": false
+      },
+      "misGroundings": [],
+      "notes": "SOURCE-FAITHFUL: the Vietnamese surface is banked as a vi alias on this exact entity (verified in entity_alias locale=vi, status=active). Grounding a Vietnamese word to its own corpus row is the CORRECT answer — the es corpus learned this the hard way (see its AUTHORING CORRECTION notes); no translation bridge is demanded where a vi-named row exists. 'bánh mì' is banked on FOUR entities (banh mi, bread, bun, viet sandwich) — the source-faithful dish row is the one asserted."
+    },
+    {
+      "id": "sn-04",
+      "query": "banh mi",
+      "stratum": "single_noun",
+      "locale": "vi-VN",
+      "pass": true,
+      "preservation": 1,
+      "reasons": [],
+      "grounded": [
+        {
+          "entityId": "33c909c3-0de7-4cd6-aaea-ca05e968f0a0",
+          "bucket": "restaurants",
+          "type": "restaurant",
+          "span": "banh",
+          "name": "Bánh",
+          "tier": "linked",
+          "foldedName": "banh"
+        },
+        {
+          "entityId": "78d11036-478c-41bb-a78d-4a7320dde99c",
+          "bucket": "food",
+          "type": "food",
+          "span": "banh mi",
+          "name": "banh mi",
+          "tier": "gazetteer-exact",
+          "foldedName": "banh mi"
+        },
+        {
+          "entityId": "9cd8f4aa-bb68-4bee-937f-45fee496d147",
+          "bucket": "food",
+          "type": "food",
+          "span": "banh mi",
+          "name": "viet sandwich",
+          "tier": "gazetteer-exact",
+          "foldedName": "viet sandwich"
+        }
+      ],
+      "unresolved": [],
+      "analysis": {
+        "script": "latin",
+        "requestLocale": "vi-VN",
+        "detectedLocale": {
+          "tag": "vi-VN",
+          "confidence": 0.5,
+          "source": "request-prior"
+        },
+        "denseTierUsed": false
+      },
+      "misGroundings": [],
+      "notes": "DE-DIACRITIZED twin of sn-03."
+    },
+    {
+      "id": "sn-05",
+      "query": "bún chả",
+      "stratum": "single_noun",
+      "locale": "vi-VN",
+      "pass": true,
+      "preservation": 1,
+      "reasons": [],
+      "grounded": [
+        {
+          "entityId": "fe7f0cae-ea39-4b2c-8aa4-b88adf3eea50",
+          "bucket": "food",
+          "type": "food",
+          "span": "bún chả",
+          "name": "bun cha",
+          "tier": "gazetteer-exact",
+          "foldedName": "bun cha"
+        },
+        {
+          "entityId": "2b683f4e-1101-42de-921d-d6a0fa80495d",
+          "bucket": "ingredients",
+          "type": "ingredient",
+          "span": "bún",
+          "name": "bun",
+          "tier": "linked",
+          "foldedName": "bun"
+        }
+      ],
+      "unresolved": [],
+      "analysis": {
+        "script": "latin",
+        "requestLocale": "vi-VN",
+        "detectedLocale": {
+          "tag": "vi-VN",
+          "confidence": 0.5,
+          "source": "request-prior"
+        },
+        "denseTierUsed": false
+      },
+      "misGroundings": [],
+      "notes": "SOURCE-FAITHFUL: the Vietnamese surface is banked as a vi alias on this exact entity (verified in entity_alias locale=vi, status=active). Grounding a Vietnamese word to its own corpus row is the CORRECT answer — the es corpus learned this the hard way (see its AUTHORING CORRECTION notes); no translation bridge is demanded where a vi-named row exists. 'bún chả'→bun cha."
+    },
+    {
+      "id": "sn-06",
+      "query": "bánh xèo",
+      "stratum": "single_noun",
+      "locale": "vi-VN",
+      "pass": true,
+      "preservation": 1,
+      "reasons": [],
+      "grounded": [
+        {
+          "entityId": "33c909c3-0de7-4cd6-aaea-ca05e968f0a0",
+          "bucket": "restaurants",
+          "type": "restaurant",
+          "span": "bánh",
+          "name": "Bánh",
+          "tier": "linked",
+          "foldedName": "banh"
+        },
+        {
+          "entityId": "1823cd02-5e4f-4207-afa7-475aa101968b",
+          "bucket": "food",
+          "type": "food",
+          "span": "bánh xèo",
+          "name": "banh xeo",
+          "tier": "gazetteer-exact",
+          "foldedName": "banh xeo"
+        }
+      ],
+      "unresolved": [],
+      "analysis": {
+        "script": "latin",
+        "requestLocale": "vi-VN",
+        "detectedLocale": {
+          "tag": "vi-VN",
+          "confidence": 0.5,
+          "source": "request-prior"
+        },
+        "denseTierUsed": false
+      },
+      "misGroundings": [],
+      "notes": "SOURCE-FAITHFUL: the Vietnamese surface is banked as a vi alias on this exact entity (verified in entity_alias locale=vi, status=active). Grounding a Vietnamese word to its own corpus row is the CORRECT answer — the es corpus learned this the hard way (see its AUTHORING CORRECTION notes); no translation bridge is demanded where a vi-named row exists. 'bánh xèo'→banh xeo."
+    },
+    {
+      "id": "sn-07",
+      "query": "cơm tấm",
+      "stratum": "single_noun",
+      "locale": "vi-VN",
+      "pass": true,
+      "preservation": 1,
+      "reasons": [],
+      "grounded": [
+        {
+          "entityId": "bad1e222-175c-4473-8620-b95d021bab77",
+          "bucket": "food",
+          "type": "food",
+          "span": "cơm tấm",
+          "name": "com tam",
+          "tier": "gazetteer-exact",
+          "foldedName": "com tam"
+        },
+        {
+          "entityId": "c0cdfe0a-e330-4bb8-b501-0c69066503ef",
+          "bucket": "food",
+          "type": "food",
+          "span": "cơm tấm",
+          "name": "broken rice",
+          "tier": "gazetteer-exact",
+          "foldedName": "broken rice"
+        }
+      ],
+      "unresolved": [],
+      "analysis": {
+        "script": "latin",
+        "requestLocale": "vi-VN",
+        "detectedLocale": {
+          "tag": "vi-VN",
+          "confidence": 0.5,
+          "source": "request-prior"
+        },
+        "denseTierUsed": false
+      },
+      "misGroundings": [],
+      "notes": "SOURCE-FAITHFUL: the Vietnamese surface is banked as a vi alias on this exact entity (verified in entity_alias locale=vi, status=active). Grounding a Vietnamese word to its own corpus row is the CORRECT answer — the es corpus learned this the hard way (see its AUTHORING CORRECTION notes); no translation bridge is demanded where a vi-named row exists. banked on both 'com tam' and 'broken rice'; the source-faithful row is asserted."
+    },
+    {
+      "id": "sn-08",
+      "query": "bánh cuốn",
+      "stratum": "single_noun",
+      "locale": "vi-VN",
+      "pass": true,
+      "preservation": 1,
+      "reasons": [],
+      "grounded": [
+        {
+          "entityId": "33c909c3-0de7-4cd6-aaea-ca05e968f0a0",
+          "bucket": "restaurants",
+          "type": "restaurant",
+          "span": "bánh",
+          "name": "Bánh",
+          "tier": "linked",
+          "foldedName": "banh"
+        },
+        {
+          "entityId": "6bcac9f5-0c59-4765-acaa-c68220465f41",
+          "bucket": "food",
+          "type": "food",
+          "span": "bánh cuốn",
+          "name": "banh cuon",
+          "tier": "gazetteer-exact",
+          "foldedName": "banh cuon"
+        },
+        {
+          "entityId": "987c3052-2840-4fee-98bc-94bff7f428c3",
+          "bucket": "food",
+          "type": "food",
+          "span": "bánh cuốn",
+          "name": "pork rice rolls",
+          "tier": "gazetteer-exact",
+          "foldedName": "pork rice rolls"
+        }
+      ],
+      "unresolved": [],
+      "analysis": {
+        "script": "latin",
+        "requestLocale": "vi-VN",
+        "detectedLocale": {
+          "tag": "vi-VN",
+          "confidence": 0.5,
+          "source": "request-prior"
+        },
+        "denseTierUsed": false
+      },
+      "misGroundings": [],
+      "notes": "SOURCE-FAITHFUL: the Vietnamese surface is banked as a vi alias on this exact entity (verified in entity_alias locale=vi, status=active). Grounding a Vietnamese word to its own corpus row is the CORRECT answer — the es corpus learned this the hard way (see its AUTHORING CORRECTION notes); no translation bridge is demanded where a vi-named row exists."
+    },
+    {
+      "id": "sn-09",
+      "query": "chả giò",
+      "stratum": "single_noun",
+      "locale": "vi-VN",
+      "pass": true,
+      "preservation": 1,
+      "reasons": [],
+      "grounded": [
+        {
+          "entityId": "cda2daf1-f436-45b0-991b-574e8290d0ae",
+          "bucket": "food",
+          "type": "food",
+          "span": "chả giò",
+          "name": "egg roll",
+          "tier": "gazetteer-exact",
+          "foldedName": "egg roll"
+        }
+      ],
+      "unresolved": [],
+      "analysis": {
+        "script": "latin",
+        "requestLocale": "vi-VN",
+        "detectedLocale": {
+          "tag": "it",
+          "confidence": 1,
+          "source": "detector"
+        },
+        "denseTierUsed": false
+      },
+      "misGroundings": [],
+      "notes": "TRANSLATION BRIDGE via a banked vi alias: 'chả giò' is banked on the English row 'egg roll' — no 'cha gio' row exists."
+    },
+    {
+      "id": "sn-10",
+      "query": "bún bò huế",
+      "stratum": "single_noun",
+      "locale": "vi-VN",
+      "pass": true,
+      "preservation": 1,
+      "reasons": [],
+      "grounded": [
+        {
+          "entityId": "494d6cb2-bf85-4200-9503-19a5ad6c0379",
+          "bucket": "food",
+          "type": "food",
+          "span": "bún bò huế",
+          "name": "bun bo hue",
+          "tier": "gazetteer-exact",
+          "foldedName": "bun bo hue"
+        },
+        {
+          "entityId": "2b683f4e-1101-42de-921d-d6a0fa80495d",
+          "bucket": "ingredients",
+          "type": "ingredient",
+          "span": "bún",
+          "name": "bun",
+          "tier": "linked",
+          "foldedName": "bun"
+        }
+      ],
+      "unresolved": [],
+      "analysis": {
+        "script": "latin",
+        "requestLocale": "vi-VN",
+        "detectedLocale": {
+          "tag": "it",
+          "confidence": 1,
+          "source": "detector"
+        },
+        "denseTierUsed": false
+      },
+      "misGroundings": [],
+      "notes": "NAME-ARM match: no vi ALIAS row exists, but 'bun bo hue' IS an English-corpus food NAME, so the folded query hits the name arm. The Vietnamese dish name naturalized into the English catalogue."
+    },
+    {
+      "id": "sn-11",
+      "query": "gà",
+      "stratum": "single_noun",
+      "locale": "vi-VN",
+      "pass": true,
+      "preservation": 1,
+      "reasons": [],
+      "grounded": [
+        {
+          "entityId": "12bcdfbd-7736-4d47-82e7-b7cf30b5fa93",
+          "bucket": "food",
+          "type": "food",
+          "span": "gà",
+          "name": "chicken",
+          "tier": "gazetteer-exact",
+          "foldedName": "chicken"
+        }
+      ],
+      "unresolved": [],
+      "analysis": {
+        "script": "latin",
+        "requestLocale": "vi-VN",
+        "detectedLocale": {
+          "tag": "vi-VN",
+          "confidence": 0.5,
+          "source": "request-prior"
+        },
+        "denseTierUsed": false
+      },
+      "misGroundings": [],
+      "notes": "Banked vi alias 'gà'→chicken (food + ingredient)."
+    },
+    {
+      "id": "sn-12",
+      "query": "tôm",
+      "stratum": "single_noun",
+      "locale": "vi-VN",
+      "pass": true,
+      "preservation": 1,
+      "reasons": [],
+      "grounded": [
+        {
+          "entityId": "b5c058ab-7ab6-4ccb-912a-cc6b366b5ade",
+          "bucket": "food",
+          "type": "food",
+          "span": "tôm",
+          "name": "prawns",
+          "tier": "gazetteer-exact",
+          "foldedName": "prawns"
+        }
+      ],
+      "unresolved": [],
+      "analysis": {
+        "script": "latin",
+        "requestLocale": "vi-VN",
+        "detectedLocale": {
+          "tag": "vi-VN",
+          "confidence": 0.5,
+          "source": "request-prior"
+        },
+        "denseTierUsed": false
+      },
+      "misGroundings": [],
+      "notes": "Banked 'tôm'→prawns (food) / prawn (ingredient). NOT 'shrimp' — the corpus banked the prawn twin; asserting 'shrimp' here would demand a bridge the vocabulary did not make."
+    },
+    {
+      "id": "sn-13",
+      "query": "cá",
+      "stratum": "single_noun",
+      "locale": "vi-VN",
+      "pass": true,
+      "preservation": 1,
+      "reasons": [],
+      "grounded": [
+        {
+          "entityId": "bcb888b0-d59a-4c2f-956a-ab7374c4cfa5",
+          "bucket": "food",
+          "type": "food",
+          "span": "cá",
+          "name": "fish",
+          "tier": "gazetteer-exact",
+          "foldedName": "fish"
+        }
+      ],
+      "unresolved": [],
+      "analysis": {
+        "script": "latin",
+        "requestLocale": "vi-VN",
+        "detectedLocale": {
+          "tag": "vi-VN",
+          "confidence": 0.5,
+          "source": "request-prior"
+        },
+        "denseTierUsed": false
+      },
+      "misGroundings": [],
+      "notes": "Banked 'cá'→fish."
+    },
+    {
+      "id": "sn-14",
+      "query": "cua",
+      "stratum": "single_noun",
+      "locale": "vi-VN",
+      "pass": true,
+      "preservation": 1,
+      "reasons": [],
+      "grounded": [
+        {
+          "entityId": "7f5d3f9f-49fc-4c36-b4ab-a797e48495a8",
+          "bucket": "food",
+          "type": "food",
+          "span": "cua",
+          "name": "crab",
+          "tier": "gazetteer-exact",
+          "foldedName": "crab"
+        }
+      ],
+      "unresolved": [],
+      "analysis": {
+        "script": "latin",
+        "requestLocale": "vi-VN",
+        "detectedLocale": {
+          "tag": "es",
+          "confidence": 1,
+          "source": "detector"
+        },
+        "denseTierUsed": false
+      },
+      "misGroundings": [],
+      "notes": "Banked 'cua'→crab."
+    },
+    {
+      "id": "sn-15",
+      "query": "mực",
+      "stratum": "single_noun",
+      "locale": "vi-VN",
+      "pass": true,
+      "preservation": 1,
+      "reasons": [],
+      "grounded": [
+        {
+          "entityId": "f32c3a91-ef99-4ea1-9fca-aed14e137b1b",
+          "bucket": "food",
+          "type": "food",
+          "span": "mực",
+          "name": "squid",
+          "tier": "gazetteer-exact",
+          "foldedName": "squid"
+        }
+      ],
+      "unresolved": [],
+      "analysis": {
+        "script": "latin",
+        "requestLocale": "vi-VN",
+        "detectedLocale": {
+          "tag": "vi-VN",
+          "confidence": 0.5,
+          "source": "request-prior"
+        },
+        "denseTierUsed": false
+      },
+      "misGroundings": [],
+      "notes": "Banked 'mực'→squid."
+    },
+    {
+      "id": "sn-16",
+      "query": "vịt",
+      "stratum": "single_noun",
+      "locale": "vi-VN",
+      "pass": true,
+      "preservation": 1,
+      "reasons": [],
+      "grounded": [
+        {
+          "entityId": "ca0a692c-5b18-4acc-a3c7-ac7f9d081e0d",
+          "bucket": "food",
+          "type": "food",
+          "span": "vịt",
+          "name": "duck",
+          "tier": "gazetteer-exact",
+          "foldedName": "duck"
+        }
+      ],
+      "unresolved": [],
+      "analysis": {
+        "script": "latin",
+        "requestLocale": "vi-VN",
+        "detectedLocale": {
+          "tag": "vi-VN",
+          "confidence": 0.5,
+          "source": "request-prior"
+        },
+        "denseTierUsed": false
+      },
+      "misGroundings": [],
+      "notes": "Banked 'vịt'→duck."
+    },
+    {
+      "id": "sn-17",
+      "query": "cơm",
+      "stratum": "single_noun",
+      "locale": "vi-VN",
+      "pass": true,
+      "preservation": 1,
+      "reasons": [],
+      "grounded": [
+        {
+          "entityId": "77490d5e-e33e-4f6e-b1b8-d370755faf1f",
+          "bucket": "food",
+          "type": "food",
+          "span": "cơm",
+          "name": "rice",
+          "tier": "gazetteer-exact",
+          "foldedName": "rice"
+        }
+      ],
+      "unresolved": [],
+      "analysis": {
+        "script": "latin",
+        "requestLocale": "vi-VN",
+        "detectedLocale": {
+          "tag": "vi-VN",
+          "confidence": 0.5,
+          "source": "request-prior"
+        },
+        "denseTierUsed": false
+      },
+      "misGroundings": [],
+      "notes": "Banked 'cơm'→rice."
+    },
+    {
+      "id": "sn-18",
+      "query": "bún",
+      "stratum": "single_noun",
+      "locale": "vi-VN",
+      "pass": true,
+      "preservation": 1,
+      "reasons": [],
+      "grounded": [
+        {
+          "entityId": "38dd8008-11fd-4771-8203-7434a8040bd4",
+          "bucket": "food",
+          "type": "food",
+          "span": "bún",
+          "name": "bun",
+          "tier": "gazetteer-exact",
+          "foldedName": "bun"
+        },
+        {
+          "entityId": "f2623f78-29ff-49ac-ad64-d786687ff4bd",
+          "bucket": "food",
+          "type": "food",
+          "span": "bún",
+          "name": "rice noodle",
+          "tier": "gazetteer-exact",
+          "foldedName": "rice noodle"
+        }
+      ],
+      "unresolved": [],
+      "analysis": {
+        "script": "latin",
+        "requestLocale": "vi-VN",
+        "detectedLocale": {
+          "tag": "vi-VN",
+          "confidence": 0.5,
+          "source": "request-prior"
+        },
+        "denseTierUsed": false
+      },
+      "misGroundings": [],
+      "notes": "Banked 'bún'→rice noodle (food) / rice vermicelli + vermicelli (ingredient). The English homograph 'bun' (bread) is the danger — see hg-13."
+    },
+    {
+      "id": "sn-19",
+      "query": "rau",
+      "stratum": "single_noun",
+      "locale": "vi-VN",
+      "pass": true,
+      "preservation": 1,
+      "reasons": [],
+      "grounded": [
+        {
+          "entityId": "9b12c271-a4eb-418c-9fe3-4c2cce425801",
+          "bucket": "food",
+          "type": "food",
+          "span": "rau",
+          "name": "veggies",
+          "tier": "gazetteer-exact",
+          "foldedName": "veggies"
+        },
+        {
+          "entityId": "a562dee6-7105-4d17-8b6c-7dd15a4ea018",
+          "bucket": "food",
+          "type": "food",
+          "span": "rau",
+          "name": "vegetable",
+          "tier": "gazetteer-exact",
+          "foldedName": "vegetable"
+        }
+      ],
+      "unresolved": [],
+      "analysis": {
+        "script": "latin",
+        "requestLocale": "vi-VN",
+        "detectedLocale": {
+          "tag": "vi-VN",
+          "confidence": 0.5,
+          "source": "request-prior"
+        },
+        "denseTierUsed": false
+      },
+      "misGroundings": [],
+      "notes": "Banked 'rau'→vegetable / veggie / veggies."
+    },
+    {
+      "id": "sn-20",
+      "query": "trứng",
+      "stratum": "single_noun",
+      "locale": "vi-VN",
+      "pass": true,
+      "preservation": 1,
+      "reasons": [],
+      "grounded": [
+        {
+          "entityId": "ce4c9ce8-8a7f-4789-b9e4-242beac3eb17",
+          "bucket": "food",
+          "type": "food",
+          "span": "trứng",
+          "name": "egg",
+          "tier": "gazetteer-exact",
+          "foldedName": "egg"
+        }
+      ],
+      "unresolved": [],
+      "analysis": {
+        "script": "latin",
+        "requestLocale": "vi-VN",
+        "detectedLocale": {
+          "tag": "vi-VN",
+          "confidence": 0.5,
+          "source": "request-prior"
+        },
+        "denseTierUsed": false
+      },
+      "misGroundings": [],
+      "notes": "Banked 'trứng'→egg."
+    },
+    {
+      "id": "sn-21",
+      "query": "xoài",
+      "stratum": "single_noun",
+      "locale": "vi-VN",
+      "pass": true,
+      "preservation": 1,
+      "reasons": [],
+      "grounded": [
+        {
+          "entityId": "ef9a55b7-fd0a-4554-a3c4-dfc6ffbb09b1",
+          "bucket": "food",
+          "type": "food",
+          "span": "xoài",
+          "name": "mango",
+          "tier": "gazetteer-exact",
+          "foldedName": "mango"
+        }
+      ],
+      "unresolved": [],
+      "analysis": {
+        "script": "latin",
+        "requestLocale": "vi-VN",
+        "detectedLocale": {
+          "tag": "vi-VN",
+          "confidence": 0.5,
+          "source": "request-prior"
+        },
+        "denseTierUsed": false
+      },
+      "misGroundings": [],
+      "notes": "Banked 'xoài'→mango."
+    },
+    {
+      "id": "sn-22",
+      "query": "dưa hấu",
+      "stratum": "single_noun",
+      "locale": "vi-VN",
+      "pass": true,
+      "preservation": 1,
+      "reasons": [],
+      "grounded": [
+        {
+          "entityId": "7f5a885a-1c56-4a76-9af1-694e55aa1c4d",
+          "bucket": "food",
+          "type": "food",
+          "span": "dưa hấu",
+          "name": "watermelon",
+          "tier": "gazetteer-exact",
+          "foldedName": "watermelon"
+        }
+      ],
+      "unresolved": [],
+      "analysis": {
+        "script": "latin",
+        "requestLocale": "vi-VN",
+        "detectedLocale": {
+          "tag": "vi-VN",
+          "confidence": 0.5,
+          "source": "request-prior"
+        },
+        "denseTierUsed": false
+      },
+      "misGroundings": [],
+      "notes": "Banked 2-gram 'dưa hấu'→watermelon; must beat the 1-gram 'dưa' (coconut/melon senses)."
+    },
+    {
+      "id": "sn-23",
+      "query": "kem",
+      "stratum": "single_noun",
+      "locale": "vi-VN",
+      "pass": true,
+      "preservation": 1,
+      "reasons": [],
+      "grounded": [
+        {
+          "entityId": "dd390a0b-4199-4e1b-b1df-2fea78f11cc7",
+          "bucket": "food",
+          "type": "food",
+          "span": "kem",
+          "name": "ice cream",
+          "tier": "gazetteer-exact",
+          "foldedName": "ice cream"
+        }
+      ],
+      "unresolved": [],
+      "analysis": {
+        "script": "latin",
+        "requestLocale": "vi-VN",
+        "detectedLocale": {
+          "tag": "vi-VN",
+          "confidence": 0.5,
+          "source": "request-prior"
+        },
+        "denseTierUsed": false
+      },
+      "misGroundings": [],
+      "notes": "Banked 'kem'→ice cream — a single Vietnamese token bridging to a MULTI-WORD English concept."
+    },
+    {
+      "id": "sn-24",
+      "query": "cà phê",
+      "stratum": "single_noun",
+      "locale": "vi-VN",
+      "pass": true,
+      "preservation": 1,
+      "reasons": [],
+      "grounded": [
+        {
+          "entityId": "926935db-c5d9-45f8-8618-05fb6a9fd3e9",
+          "bucket": "food",
+          "type": "food",
+          "span": "cà phê",
+          "name": "coffee",
+          "tier": "gazetteer-exact",
+          "foldedName": "coffee"
+        }
+      ],
+      "unresolved": [],
+      "analysis": {
+        "script": "latin",
+        "requestLocale": "vi-VN",
+        "detectedLocale": {
+          "tag": "pt",
+          "confidence": 1,
+          "source": "detector"
+        },
+        "denseTierUsed": false
+      },
+      "misGroundings": [],
+      "notes": "Banked 'cà phê'→coffee."
+    },
+    {
+      "id": "sn-25",
+      "query": "ca phe",
+      "stratum": "single_noun",
+      "locale": "vi-VN",
+      "pass": true,
+      "preservation": 1,
+      "reasons": [],
+      "grounded": [
+        {
+          "entityId": "926935db-c5d9-45f8-8618-05fb6a9fd3e9",
+          "bucket": "food",
+          "type": "food",
+          "span": "ca phe",
+          "name": "coffee",
+          "tier": "gazetteer-exact",
+          "foldedName": "coffee"
+        }
+      ],
+      "unresolved": [],
+      "analysis": {
+        "script": "latin",
+        "requestLocale": "vi-VN",
+        "detectedLocale": {
+          "tag": "vi-VN",
+          "confidence": 0.5,
+          "source": "request-prior"
+        },
+        "denseTierUsed": false
+      },
+      "misGroundings": [],
+      "notes": "DE-DIACRITIZED twin of sn-24."
+    },
+    {
+      "id": "sn-26",
+      "query": "trà",
+      "stratum": "single_noun",
+      "locale": "vi-VN",
+      "pass": true,
+      "preservation": 1,
+      "reasons": [],
+      "grounded": [
+        {
+          "entityId": "84a94314-e3ed-47ec-a129-fa20ae5e6d9d",
+          "bucket": "food",
+          "type": "food",
+          "span": "trà",
+          "name": "tea",
+          "tier": "gazetteer-exact",
+          "foldedName": "tea"
+        }
+      ],
+      "unresolved": [],
+      "analysis": {
+        "script": "latin",
+        "requestLocale": "vi-VN",
+        "detectedLocale": {
+          "tag": "it",
+          "confidence": 1,
+          "source": "detector"
+        },
+        "denseTierUsed": false
+      },
+      "misGroundings": [],
+      "notes": "Banked 'trà'→tea."
+    },
+    {
+      "id": "sn-27",
+      "query": "bia",
+      "stratum": "single_noun",
+      "locale": "vi-VN",
+      "pass": true,
+      "preservation": 1,
+      "reasons": [],
+      "grounded": [
+        {
+          "entityId": "50e4a58c-229d-42d8-9979-623ebc04074b",
+          "bucket": "food",
+          "type": "food",
+          "span": "bia",
+          "name": "beer",
+          "tier": "gazetteer-exact",
+          "foldedName": "beer"
+        }
+      ],
+      "unresolved": [],
+      "analysis": {
+        "script": "latin",
+        "requestLocale": "vi-VN",
+        "detectedLocale": {
+          "tag": "vi-VN",
+          "confidence": 0.5,
+          "source": "request-prior"
+        },
+        "denseTierUsed": false
+      },
+      "misGroundings": [],
+      "notes": "Banked 'bia'→beer."
+    },
+    {
+      "id": "sn-28",
+      "query": "lẩu",
+      "stratum": "single_noun",
+      "locale": "vi-VN",
+      "pass": true,
+      "preservation": 1,
+      "reasons": [],
+      "grounded": [
+        {
+          "entityId": "7d662533-e35f-47d0-8645-4bce3e9837b7",
+          "bucket": "food",
+          "type": "food",
+          "span": "lẩu",
+          "name": "hotpot",
+          "tier": "gazetteer-exact",
+          "foldedName": "hotpot"
+        },
+        {
+          "entityId": "dc27d7c4-5b49-429d-9d11-ab65827fb6d9",
+          "bucket": "food",
+          "type": "food",
+          "span": "lẩu",
+          "name": "hot pot",
+          "tier": "gazetteer-exact",
+          "foldedName": "hot pot"
+        }
+      ],
+      "unresolved": [],
+      "analysis": {
+        "script": "latin",
+        "requestLocale": "vi-VN",
+        "detectedLocale": {
+          "tag": "vi-VN",
+          "confidence": 0.5,
+          "source": "request-prior"
+        },
+        "denseTierUsed": false
+      },
+      "misGroundings": [],
+      "notes": "Banked 'lẩu'→hot pot AND hotpot (an unmerged English twin — either grounding is right; 'hot pot' is asserted)."
+    },
+    {
+      "id": "sn-29",
+      "query": "xôi",
+      "stratum": "single_noun",
+      "locale": "vi-VN",
+      "pass": true,
+      "preservation": 1,
+      "reasons": [],
+      "grounded": [
+        {
+          "entityId": "147de588-cd72-4f9b-a8df-872e776a91e3",
+          "bucket": "food",
+          "type": "food",
+          "span": "xôi",
+          "name": "sticky rice",
+          "tier": "gazetteer-exact",
+          "foldedName": "sticky rice"
+        }
+      ],
+      "unresolved": [],
+      "analysis": {
+        "script": "latin",
+        "requestLocale": "vi-VN",
+        "detectedLocale": {
+          "tag": "vi-VN",
+          "confidence": 0.5,
+          "source": "request-prior"
+        },
+        "denseTierUsed": false
+      },
+      "misGroundings": [],
+      "notes": "Banked 'xôi'→sticky rice."
+    },
+    {
+      "id": "sn-30",
+      "query": "tôm hùm",
+      "stratum": "single_noun",
+      "locale": "vi-VN",
+      "pass": true,
+      "preservation": 1,
+      "reasons": [],
+      "grounded": [
+        {
+          "entityId": "9824acb9-4b92-42fb-b84b-5c3cc5a54103",
+          "bucket": "food",
+          "type": "food",
+          "span": "tôm hùm",
+          "name": "lobster",
+          "tier": "gazetteer-exact",
+          "foldedName": "lobster"
+        }
+      ],
+      "unresolved": [],
+      "analysis": {
+        "script": "latin",
+        "requestLocale": "vi-VN",
+        "detectedLocale": {
+          "tag": "vi-VN",
+          "confidence": 0.5,
+          "source": "request-prior"
+        },
+        "denseTierUsed": false
+      },
+      "misGroundings": [],
+      "notes": "Banked 2-gram 'tôm hùm'→lobster; must beat 'tôm'→prawns (the 2-gram over the 1-gram, sn-12's word as the head)."
+    },
+    {
+      "id": "sn-31",
+      "query": "hải sản",
+      "stratum": "single_noun",
+      "locale": "vi-VN",
+      "pass": true,
+      "preservation": 1,
+      "reasons": [],
+      "grounded": [
+        {
+          "entityId": "f43fa2e2-d94d-4ebe-8136-698ff755d869",
+          "bucket": "food",
+          "type": "food",
+          "span": "hải sản",
+          "name": "seafood",
+          "tier": "gazetteer-exact",
+          "foldedName": "seafood"
+        }
+      ],
+      "unresolved": [],
+      "analysis": {
+        "script": "latin",
+        "requestLocale": "vi-VN",
+        "detectedLocale": {
+          "tag": "vi-VN",
+          "confidence": 0.5,
+          "source": "request-prior"
+        },
+        "denseTierUsed": false
+      },
+      "misGroundings": [],
+      "notes": "Banked 'hải sản'→seafood (food + ingredient + restaurant_attribute)."
+    },
+    {
+      "id": "sn-32",
+      "query": "thịt heo",
+      "stratum": "single_noun",
+      "locale": "vi-VN",
+      "pass": true,
+      "preservation": 1,
+      "reasons": [],
+      "grounded": [
+        {
+          "entityId": "e4abca51-a876-41b9-a3c7-4a718eba8f90",
+          "bucket": "food",
+          "type": "food",
+          "span": "thịt heo",
+          "name": "pork",
+          "tier": "gazetteer-exact",
+          "foldedName": "pork"
+        }
+      ],
+      "unresolved": [],
+      "analysis": {
+        "script": "latin",
+        "requestLocale": "vi-VN",
+        "detectedLocale": {
+          "tag": "vi-VN",
+          "confidence": 0.5,
+          "source": "request-prior"
+        },
+        "denseTierUsed": false
+      },
+      "misGroundings": [],
+      "notes": "Banked 'thịt heo'→pork."
+    },
+    {
+      "id": "sn-33",
+      "query": "thịt bò",
+      "stratum": "single_noun",
+      "locale": "vi-VN",
+      "pass": true,
+      "preservation": 1,
+      "reasons": [],
+      "grounded": [
+        {
+          "entityId": "ab87265a-7d1a-4334-b851-93e41c0faeff",
+          "bucket": "food",
+          "type": "food",
+          "span": "thịt bò",
+          "name": "beef",
+          "tier": "gazetteer-exact",
+          "foldedName": "beef"
+        }
+      ],
+      "unresolved": [],
+      "analysis": {
+        "script": "latin",
+        "requestLocale": "vi-VN",
+        "detectedLocale": {
+          "tag": "it",
+          "confidence": 1,
+          "source": "detector"
+        },
+        "denseTierUsed": false
+      },
+      "misGroundings": [],
+      "notes": "Banked 'thịt bò'→beef. Contrast hg-01: bare 'bò' is NOT banked on beef."
+    },
+    {
+      "id": "sn-34",
+      "query": "gà nướng",
+      "stratum": "single_noun",
+      "locale": "vi-VN",
+      "pass": true,
+      "preservation": 1,
+      "reasons": [],
+      "grounded": [
+        {
+          "entityId": "d091b65c-ea76-4807-8c5b-d7270dd0fc6f",
+          "bucket": "food",
+          "type": "food",
+          "span": "gà nướng",
+          "name": "grilled chicken",
+          "tier": "gazetteer-exact",
+          "foldedName": "grilled chicken"
+        },
+        {
+          "entityId": "5e7775c8-82bc-410a-bce3-7b5d05e49249",
+          "bucket": "foodAttributes",
+          "type": "food_attribute",
+          "span": "nướng",
+          "name": "grilled",
+          "tier": "linked",
+          "foldedName": "grilled"
+        },
+        {
+          "entityId": "c9957bd2-edf1-4839-90eb-72442ba7354a",
+          "bucket": "ingredients",
+          "type": "ingredient",
+          "span": "gà",
+          "name": "chicken",
+          "tier": "linked",
+          "foldedName": "chicken"
+        }
+      ],
+      "unresolved": [],
+      "analysis": {
+        "script": "latin",
+        "requestLocale": "vi-VN",
+        "detectedLocale": {
+          "tag": "vi-VN",
+          "confidence": 0.5,
+          "source": "request-prior"
+        },
+        "denseTierUsed": false
+      },
+      "misGroundings": [],
+      "notes": "Banked 2-gram 'gà nướng'→grilled chicken; must beat 'gà'→chicken alone."
+    },
+    {
+      "id": "sn-35",
+      "query": "bò kho",
+      "stratum": "single_noun",
+      "locale": "vi-VN",
+      "pass": true,
+      "preservation": 1,
+      "reasons": [],
+      "grounded": [
+        {
+          "entityId": "e1079527-899c-4b34-886a-d7702ea9327f",
+          "bucket": "food",
+          "type": "food",
+          "span": "bò kho",
+          "name": "vietnamese beef stew",
+          "tier": "gazetteer-exact",
+          "foldedName": "vietnamese beef stew"
+        }
+      ],
+      "unresolved": [],
+      "analysis": {
+        "script": "latin",
+        "requestLocale": "vi-VN",
+        "detectedLocale": {
+          "tag": "it",
+          "confidence": 1,
+          "source": "detector"
+        },
+        "denseTierUsed": false
+      },
+      "misGroundings": [],
+      "notes": "Banked 'bò kho'→vietnamese beef stew. Also the sharpest 2-gram-over-1-gram case in the set: 'bò'→avocado/butter and 'kho'→braised would BOTH be wrong decompositions."
+    },
+    {
+      "id": "sn-36",
+      "query": "cá kho tộ",
+      "stratum": "single_noun",
+      "locale": "vi-VN",
+      "pass": true,
+      "preservation": 1,
+      "reasons": [],
+      "grounded": [
+        {
+          "entityId": "706fba13-166c-4237-9a39-096ed8fc488a",
+          "bucket": "food",
+          "type": "food",
+          "span": "cá kho tộ",
+          "name": "ca kho to",
+          "tier": "gazetteer-exact",
+          "foldedName": "ca kho to"
+        }
+      ],
+      "unresolved": [],
+      "analysis": {
+        "script": "latin",
+        "requestLocale": "vi-VN",
+        "detectedLocale": {
+          "tag": "vi-VN",
+          "confidence": 0.5,
+          "source": "request-prior"
+        },
+        "denseTierUsed": false
+      },
+      "misGroundings": [],
+      "notes": "SOURCE-FAITHFUL: the Vietnamese surface is banked as a vi alias on this exact entity (verified in entity_alias locale=vi, status=active). Grounding a Vietnamese word to its own corpus row is the CORRECT answer — the es corpus learned this the hard way (see its AUTHORING CORRECTION notes); no translation bridge is demanded where a vi-named row exists. 3-gram, source-faithful row."
+    },
+    {
+      "id": "sn-37",
+      "query": "bánh bao",
+      "stratum": "single_noun",
+      "locale": "vi-VN",
+      "pass": true,
+      "preservation": 1,
+      "reasons": [],
+      "grounded": [
+        {
+          "entityId": "38dd8008-11fd-4771-8203-7434a8040bd4",
+          "bucket": "food",
+          "type": "food",
+          "span": "bánh bao",
+          "name": "bun",
+          "tier": "gazetteer-exact",
+          "foldedName": "bun"
+        },
+        {
+          "entityId": "9e2a9357-08f8-4524-b074-d5b20b290f83",
+          "bucket": "food",
+          "type": "food",
+          "span": "bánh bao",
+          "name": "steamed bun",
+          "tier": "gazetteer-exact",
+          "foldedName": "steamed bun"
+        }
+      ],
+      "unresolved": [],
+      "analysis": {
+        "script": "latin",
+        "requestLocale": "vi-VN",
+        "detectedLocale": {
+          "tag": "vi-VN",
+          "confidence": 0.5,
+          "source": "request-prior"
+        },
+        "denseTierUsed": false
+      },
+      "misGroundings": [],
+      "notes": "Banked 'bánh bao'→steamed bun / bun / dumpling."
+    },
+    {
+      "id": "sn-38",
+      "query": "thịt nướng",
+      "stratum": "single_noun",
+      "locale": "vi-VN",
+      "pass": true,
+      "preservation": 1,
+      "reasons": [],
+      "grounded": [
+        {
+          "entityId": "44ab6d3b-4174-4506-a24b-3b35d2b76c6d",
+          "bucket": "food",
+          "type": "food",
+          "span": "thịt nướng",
+          "name": "grilled meat",
+          "tier": "gazetteer-exact",
+          "foldedName": "grilled meat"
+        },
+        {
+          "entityId": "5e7775c8-82bc-410a-bce3-7b5d05e49249",
+          "bucket": "foodAttributes",
+          "type": "food_attribute",
+          "span": "nướng",
+          "name": "grilled",
+          "tier": "linked",
+          "foldedName": "grilled"
+        },
+        {
+          "entityId": "e498b973-499c-41e1-a3ce-28a597365f2f",
+          "bucket": "ingredients",
+          "type": "ingredient",
+          "span": "thịt",
+          "name": "meat",
+          "tier": "linked",
+          "foldedName": "meat"
+        }
+      ],
+      "unresolved": [],
+      "analysis": {
+        "script": "latin",
+        "requestLocale": "vi-VN",
+        "detectedLocale": {
+          "tag": "vi-VN",
+          "confidence": 0.5,
+          "source": "request-prior"
+        },
+        "denseTierUsed": false
+      },
+      "misGroundings": [],
+      "notes": "Banked 'thịt nướng'→grilled meat."
+    },
+    {
+      "id": "sn-39",
+      "query": "bahn mi",
+      "stratum": "single_noun",
+      "locale": "vi-VN",
+      "pass": true,
+      "preservation": 0,
+      "reasons": ["parked (allowed for this entry)"],
+      "grounded": [
+        {
+          "entityId": "042de43d-2fb6-460d-bbea-b8779b79b52a",
+          "bucket": "food",
+          "type": "food",
+          "span": "mi",
+          "name": "noodles",
+          "tier": "gazetteer-exact",
+          "foldedName": "noodles"
+        },
+        {
+          "entityId": "86cc04ee-4fc8-4a8d-b49e-e3f5b06aac7f",
+          "bucket": "food",
+          "type": "food",
+          "span": "mi",
+          "name": "noodle",
+          "tier": "gazetteer-exact",
+          "foldedName": "noodle"
+        },
+        {
+          "entityId": "a8806174-fb75-4447-9cf9-43cfb60ec3fc",
+          "bucket": "food",
+          "type": "food",
+          "span": "bahn",
+          "name": "bahn mi pizza",
+          "tier": "linked",
+          "foldedName": "bahn mi pizza"
+        }
+      ],
+      "unresolved": [],
+      "analysis": {
+        "script": "latin",
+        "requestLocale": "vi-VN",
+        "detectedLocale": {
+          "tag": "vi-VN",
+          "confidence": 0.5,
+          "source": "request-prior"
+        },
+        "denseTierUsed": true
+      },
+      "misGroundings": [],
+      "notes": "TYPO (transposition) — the most common real-world misspelling of 'banh mi' in US English. Goes through the EDIT lane, not the gazetteer. park=true encodes the honest assertion for a typo: reach the right dish OR stay silent; a confident WRONG dish fails."
+    },
+    {
+      "id": "sn-40",
+      "query": "banh my",
+      "stratum": "single_noun",
+      "locale": "vi-VN",
+      "pass": false,
+      "preservation": 0,
+      "reasons": ["NOT GROUNDED: banh mi"],
+      "grounded": [
+        {
+          "entityId": "33c909c3-0de7-4cd6-aaea-ca05e968f0a0",
+          "bucket": "restaurants",
+          "type": "restaurant",
+          "span": "banh",
+          "name": "Bánh",
+          "tier": "gazetteer-exact",
+          "foldedName": "banh"
+        },
+        {
+          "entityId": "db337785-109a-4c69-af3c-d5acc572eeec",
+          "bucket": "food",
+          "type": "food",
+          "span": "my",
+          "name": "mian",
+          "tier": "gazetteer-exact",
+          "foldedName": "mian"
+        }
+      ],
+      "unresolved": [],
+      "analysis": {
+        "script": "latin",
+        "requestLocale": "vi-VN",
+        "detectedLocale": {
+          "tag": "vi-VN",
+          "confidence": 0.5,
+          "source": "request-prior"
+        },
+        "denseTierUsed": false
+      },
+      "misGroundings": [],
+      "notes": "TYPO (vowel substitution, and 'my' is itself a corpus surface — see hg-06). Same edit-lane assertion as sn-39."
+    },
+    {
+      "id": "cp-01",
+      "query": "phở bò",
+      "stratum": "compound",
+      "locale": "vi-VN",
+      "pass": true,
+      "preservation": 1,
+      "reasons": [],
+      "grounded": [
+        {
+          "entityId": "45ba08a7-ffc1-4394-bae8-99cca1f7db44",
+          "bucket": "food",
+          "type": "food",
+          "span": "phở bò",
+          "name": "beef pho",
+          "tier": "gazetteer-exact",
+          "foldedName": "beef pho"
+        },
+        {
+          "entityId": "8c39422d-5186-47ee-b0f6-25dfae8da72a",
+          "bucket": "food",
+          "type": "food",
+          "span": "phở bò",
+          "name": "beef rib pho",
+          "tier": "gazetteer-exact",
+          "foldedName": "beef rib pho"
+        },
+        {
+          "entityId": "08f45e9c-abf7-4db2-bbc9-d772538ca720",
+          "bucket": "food",
+          "type": "food",
+          "span": "phở",
+          "name": "pho",
+          "tier": "linked",
+          "foldedName": "pho"
+        }
+      ],
+      "unresolved": [],
+      "analysis": {
+        "script": "latin",
+        "requestLocale": "vi-VN",
+        "detectedLocale": {
+          "tag": "it",
+          "confidence": 1,
+          "source": "detector"
+        },
+        "denseTierUsed": false
+      },
+      "misGroundings": [],
+      "notes": "Banked 'phở bò'→beef pho (and beef rib pho). The 2-gram must win: decomposing to [pho]+[bò→avocado] is the failure shape."
+    },
+    {
+      "id": "cp-02",
+      "query": "phở gà",
+      "stratum": "compound",
+      "locale": "vi-VN",
+      "pass": true,
+      "preservation": 1,
+      "reasons": [],
+      "grounded": [
+        {
+          "entityId": "6a11b3e3-4150-433d-9a03-30c8908d1976",
+          "bucket": "food",
+          "type": "food",
+          "span": "phở gà",
+          "name": "chicken pho",
+          "tier": "gazetteer-exact",
+          "foldedName": "chicken pho"
+        },
+        {
+          "entityId": "08f45e9c-abf7-4db2-bbc9-d772538ca720",
+          "bucket": "food",
+          "type": "food",
+          "span": "phở",
+          "name": "pho",
+          "tier": "linked",
+          "foldedName": "pho"
+        },
+        {
+          "entityId": "c9957bd2-edf1-4839-90eb-72442ba7354a",
+          "bucket": "ingredients",
+          "type": "ingredient",
+          "span": "gà",
+          "name": "chicken",
+          "tier": "linked",
+          "foldedName": "chicken"
+        }
+      ],
+      "unresolved": [],
+      "analysis": {
+        "script": "latin",
+        "requestLocale": "vi-VN",
+        "detectedLocale": {
+          "tag": "vi-VN",
+          "confidence": 0.5,
+          "source": "request-prior"
+        },
+        "denseTierUsed": false
+      },
+      "misGroundings": [],
+      "notes": "Banked 'phở gà'→chicken pho."
+    },
+    {
+      "id": "cp-03",
+      "query": "pho bo",
+      "stratum": "compound",
+      "locale": "vi-VN",
+      "pass": true,
+      "preservation": 1,
+      "reasons": [],
+      "grounded": [
+        {
+          "entityId": "45ba08a7-ffc1-4394-bae8-99cca1f7db44",
+          "bucket": "food",
+          "type": "food",
+          "span": "pho bo",
+          "name": "beef pho",
+          "tier": "gazetteer-exact",
+          "foldedName": "beef pho"
+        },
+        {
+          "entityId": "8c39422d-5186-47ee-b0f6-25dfae8da72a",
+          "bucket": "food",
+          "type": "food",
+          "span": "pho bo",
+          "name": "beef rib pho",
+          "tier": "gazetteer-exact",
+          "foldedName": "beef rib pho"
+        },
+        {
+          "entityId": "08f45e9c-abf7-4db2-bbc9-d772538ca720",
+          "bucket": "food",
+          "type": "food",
+          "span": "pho",
+          "name": "pho",
+          "tier": "linked",
+          "foldedName": "pho"
+        }
+      ],
+      "unresolved": [],
+      "analysis": {
+        "script": "latin",
+        "requestLocale": "vi-VN",
+        "detectedLocale": {
+          "tag": "vi-VN",
+          "confidence": 0.5,
+          "source": "request-prior"
+        },
+        "denseTierUsed": false
+      },
+      "misGroundings": [],
+      "notes": "DE-DIACRITIZED twin of cp-01 — the everyday US-keyboard spelling."
+    },
+    {
+      "id": "cp-04",
+      "query": "cơm gà",
+      "stratum": "compound",
+      "locale": "vi-VN",
+      "pass": true,
+      "preservation": 1,
+      "reasons": [],
+      "grounded": [
+        {
+          "entityId": "c5fb004b-984d-478f-99aa-cda7ad2677b1",
+          "bucket": "food",
+          "type": "food",
+          "span": "cơm gà",
+          "name": "chicken and rice",
+          "tier": "gazetteer-exact",
+          "foldedName": "chicken and rice"
+        },
+        {
+          "entityId": "35e1f3b8-f85d-472b-b378-803fd071eea1",
+          "bucket": "ingredients",
+          "type": "ingredient",
+          "span": "cơm",
+          "name": "rice",
+          "tier": "linked",
+          "foldedName": "rice"
+        },
+        {
+          "entityId": "c9957bd2-edf1-4839-90eb-72442ba7354a",
+          "bucket": "ingredients",
+          "type": "ingredient",
+          "span": "gà",
+          "name": "chicken",
+          "tier": "linked",
+          "foldedName": "chicken"
+        }
+      ],
+      "unresolved": [],
+      "analysis": {
+        "script": "latin",
+        "requestLocale": "vi-VN",
+        "detectedLocale": {
+          "tag": "vi-VN",
+          "confidence": 0.5,
+          "source": "request-prior"
+        },
+        "denseTierUsed": false
+      },
+      "misGroundings": [],
+      "notes": "Banked 'cơm gà'→chicken and rice — a Vietnamese 2-gram bridging to an English 3-token concept."
+    },
+    {
+      "id": "cp-05",
+      "query": "cơm chiên",
+      "stratum": "compound",
+      "locale": "vi-VN",
+      "pass": true,
+      "preservation": 1,
+      "reasons": [],
+      "grounded": [
+        {
+          "entityId": "15665f6f-0125-432d-b607-76f3f37248a5",
+          "bucket": "food",
+          "type": "food",
+          "span": "cơm chiên",
+          "name": "fried rice",
+          "tier": "gazetteer-exact",
+          "foldedName": "fried rice"
+        },
+        {
+          "entityId": "08a8caf8-0758-4367-9f2a-c0a8f2ab9da9",
+          "bucket": "foodAttributes",
+          "type": "food_attribute",
+          "span": "chiên",
+          "name": "fried",
+          "tier": "linked",
+          "foldedName": "fried"
+        },
+        {
+          "entityId": "35e1f3b8-f85d-472b-b378-803fd071eea1",
+          "bucket": "ingredients",
+          "type": "ingredient",
+          "span": "cơm",
+          "name": "rice",
+          "tier": "linked",
+          "foldedName": "rice"
+        }
+      ],
+      "unresolved": [],
+      "analysis": {
+        "script": "latin",
+        "requestLocale": "vi-VN",
+        "detectedLocale": {
+          "tag": "pt",
+          "confidence": 1,
+          "source": "detector"
+        },
+        "denseTierUsed": false
+      },
+      "misGroundings": [],
+      "notes": "Banked 'cơm chiên'→fried rice."
+    },
+    {
+      "id": "cp-06",
+      "query": "mì xào",
+      "stratum": "compound",
+      "locale": "vi-VN",
+      "pass": true,
+      "preservation": 1,
+      "reasons": [],
+      "grounded": [
+        {
+          "entityId": "446eda73-141c-401d-b554-9cf72004ede8",
+          "bucket": "food",
+          "type": "food",
+          "span": "mì xào",
+          "name": "chow mein",
+          "tier": "gazetteer-exact",
+          "foldedName": "chow mein"
+        }
+      ],
+      "unresolved": [],
+      "analysis": {
+        "script": "latin",
+        "requestLocale": "vi-VN",
+        "detectedLocale": {
+          "tag": "it",
+          "confidence": 1,
+          "source": "detector"
+        },
+        "denseTierUsed": false
+      },
+      "misGroundings": [],
+      "notes": "Banked 'mì xào'→chow mein."
+    },
+    {
+      "id": "cp-07",
+      "query": "gà rán",
+      "stratum": "compound",
+      "locale": "vi-VN",
+      "pass": true,
+      "preservation": 1,
+      "reasons": [],
+      "grounded": [
+        {
+          "entityId": "07b81166-8c2a-4cbc-a0fa-6712dfa9f17f",
+          "bucket": "food",
+          "type": "food",
+          "span": "gà rán",
+          "name": "fried chicken",
+          "tier": "gazetteer-exact",
+          "foldedName": "fried chicken"
+        },
+        {
+          "entityId": "08a8caf8-0758-4367-9f2a-c0a8f2ab9da9",
+          "bucket": "foodAttributes",
+          "type": "food_attribute",
+          "span": "rán",
+          "name": "fried",
+          "tier": "linked",
+          "foldedName": "fried"
+        },
+        {
+          "entityId": "c9957bd2-edf1-4839-90eb-72442ba7354a",
+          "bucket": "ingredients",
+          "type": "ingredient",
+          "span": "gà",
+          "name": "chicken",
+          "tier": "linked",
+          "foldedName": "chicken"
+        }
+      ],
+      "unresolved": [],
+      "analysis": {
+        "script": "latin",
+        "requestLocale": "vi-VN",
+        "detectedLocale": {
+          "tag": "vi-VN",
+          "confidence": 0.5,
+          "source": "request-prior"
+        },
+        "denseTierUsed": false
+      },
+      "misGroundings": [],
+      "notes": "Banked 'gà rán'→fried chicken."
+    },
+    {
+      "id": "cp-08",
+      "query": "cá chiên",
+      "stratum": "compound",
+      "locale": "vi-VN",
+      "pass": true,
+      "preservation": 1,
+      "reasons": [],
+      "grounded": [
+        {
+          "entityId": "100d5f4c-7f2f-4f67-90a4-1b68ed394533",
+          "bucket": "food",
+          "type": "food",
+          "span": "cá chiên",
+          "name": "fried fish",
+          "tier": "gazetteer-exact",
+          "foldedName": "fried fish"
+        },
+        {
+          "entityId": "08a8caf8-0758-4367-9f2a-c0a8f2ab9da9",
+          "bucket": "foodAttributes",
+          "type": "food_attribute",
+          "span": "chiên",
+          "name": "fried",
+          "tier": "linked",
+          "foldedName": "fried"
+        },
+        {
+          "entityId": "89fcf723-562f-4099-af8f-2c9eec57ab2a",
+          "bucket": "ingredients",
+          "type": "ingredient",
+          "span": "cá",
+          "name": "fish",
+          "tier": "linked",
+          "foldedName": "fish"
+        }
+      ],
+      "unresolved": [],
+      "analysis": {
+        "script": "latin",
+        "requestLocale": "vi-VN",
+        "detectedLocale": {
+          "tag": "pt",
+          "confidence": 1,
+          "source": "detector"
+        },
+        "denseTierUsed": false
+      },
+      "misGroundings": [],
+      "notes": "Banked 'cá chiên'→fried fish."
+    },
+    {
+      "id": "cp-09",
+      "query": "tôm nướng",
+      "stratum": "compound",
+      "locale": "vi-VN",
+      "pass": true,
+      "preservation": 1,
+      "reasons": [],
+      "grounded": [
+        {
+          "entityId": "0e62848a-a79b-4600-8342-0351c4021159",
+          "bucket": "food",
+          "type": "food",
+          "span": "tôm nướng",
+          "name": "grilled shrimp",
+          "tier": "gazetteer-exact",
+          "foldedName": "grilled shrimp"
+        },
+        {
+          "entityId": "5e7775c8-82bc-410a-bce3-7b5d05e49249",
+          "bucket": "foodAttributes",
+          "type": "food_attribute",
+          "span": "nướng",
+          "name": "grilled",
+          "tier": "linked",
+          "foldedName": "grilled"
+        }
+      ],
+      "unresolved": [],
+      "analysis": {
+        "script": "latin",
+        "requestLocale": "vi-VN",
+        "detectedLocale": {
+          "tag": "vi-VN",
+          "confidence": 0.5,
+          "source": "request-prior"
+        },
+        "denseTierUsed": false
+      },
+      "misGroundings": [],
+      "notes": "Banked 'tôm nướng'→grilled shrimp. Note the corpus bridges tôm→prawns bare (sn-12) but →shrimp inside this compound; both are its own banked evidence."
+    },
+    {
+      "id": "cp-10",
+      "query": "bún thịt nướng",
+      "stratum": "compound",
+      "locale": "vi-VN",
+      "pass": true,
+      "preservation": 1,
+      "reasons": [],
+      "grounded": [
+        {
+          "entityId": "eaf556f2-803a-4fcd-a309-c9a92c61416f",
+          "bucket": "food",
+          "type": "food",
+          "span": "bún thịt nướng",
+          "name": "pork vermicelli",
+          "tier": "gazetteer-exact",
+          "foldedName": "pork vermicelli"
+        },
+        {
+          "entityId": "82716a95-3dff-49d3-b1dc-f1cb1d59800a",
+          "bucket": "ingredients",
+          "type": "ingredient",
+          "span": "bún",
+          "name": "vermicelli",
+          "tier": "linked",
+          "foldedName": "vermicelli"
+        }
+      ],
+      "unresolved": [],
+      "analysis": {
+        "script": "latin",
+        "requestLocale": "vi-VN",
+        "detectedLocale": {
+          "tag": "vi-VN",
+          "confidence": 0.5,
+          "source": "request-prior"
+        },
+        "denseTierUsed": false
+      },
+      "misGroundings": [],
+      "notes": "Banked 3-gram 'bún thịt nướng'→pork vermicelli; must beat 'thịt nướng'→grilled meat (sn-38) and 'bún'→rice noodle."
+    },
+    {
+      "id": "cp-11",
+      "query": "cơm sườn",
+      "stratum": "compound",
+      "locale": "vi-VN",
+      "pass": true,
+      "preservation": 1,
+      "reasons": [],
+      "grounded": [
+        {
+          "entityId": "5c1be93a-c6ae-4687-9d31-837291265612",
+          "bucket": "food",
+          "type": "food",
+          "span": "cơm sườn",
+          "name": "pork chop plate",
+          "tier": "gazetteer-exact",
+          "foldedName": "pork chop plate"
+        },
+        {
+          "entityId": "abc0e552-3f69-42a1-b723-4600c2010dc1",
+          "bucket": "food",
+          "type": "food",
+          "span": "sườn",
+          "name": "pork chop",
+          "tier": "linked",
+          "foldedName": "pork chop"
+        }
+      ],
+      "unresolved": [],
+      "analysis": {
+        "script": "latin",
+        "requestLocale": "vi-VN",
+        "detectedLocale": {
+          "tag": "vi-VN",
+          "confidence": 0.5,
+          "source": "request-prior"
+        },
+        "denseTierUsed": false
+      },
+      "misGroundings": [],
+      "notes": "Banked 'cơm sườn'→pork chop plate."
+    },
+    {
+      "id": "cp-12",
+      "query": "bò lúc lắc",
+      "stratum": "compound",
+      "locale": "vi-VN",
+      "pass": true,
+      "preservation": 1,
+      "reasons": [],
+      "grounded": [
+        {
+          "entityId": "6f3bcdc6-fa1d-4afb-b0f9-c83f82484f1d",
+          "bucket": "food",
+          "type": "food",
+          "span": "bò lúc lắc",
+          "name": "shaken beef",
+          "tier": "gazetteer-exact",
+          "foldedName": "shaken beef"
+        }
+      ],
+      "unresolved": [],
+      "analysis": {
+        "script": "latin",
+        "requestLocale": "vi-VN",
+        "detectedLocale": {
+          "tag": "it",
+          "confidence": 1,
+          "source": "detector"
+        },
+        "denseTierUsed": false
+      },
+      "misGroundings": [],
+      "notes": "Banked 3-gram 'bò lúc lắc'→shaken beef."
+    },
+    {
+      "id": "cp-13",
+      "query": "gỏi cuốn tôm",
+      "stratum": "compound",
+      "locale": "vi-VN",
+      "pass": true,
+      "preservation": 1,
+      "reasons": [],
+      "grounded": [
+        {
+          "entityId": "5cc64651-dcbf-4384-b14b-a55fd2f60905",
+          "bucket": "food",
+          "type": "food",
+          "span": "gỏi cuốn tôm",
+          "name": "shrimp rolls",
+          "tier": "gazetteer-exact",
+          "foldedName": "shrimp rolls"
+        }
+      ],
+      "unresolved": [],
+      "analysis": {
+        "script": "latin",
+        "requestLocale": "vi-VN",
+        "detectedLocale": {
+          "tag": "vi-VN",
+          "confidence": 0.5,
+          "source": "request-prior"
+        },
+        "denseTierUsed": false
+      },
+      "misGroundings": [],
+      "notes": "Banked 3-gram 'gỏi cuốn tôm'→shrimp rolls. Bare 'gỏi cuốn' is NOT banked (see hg-12) — the longer form is the one with evidence."
+    },
+    {
+      "id": "cp-14",
+      "query": "phở bò tái",
+      "stratum": "compound",
+      "locale": "vi-VN",
+      "pass": true,
+      "preservation": 1,
+      "reasons": [],
+      "grounded": [
+        {
+          "entityId": "8127c418-78ae-4504-859a-b4ff142ea9a0",
+          "bucket": "food",
+          "type": "food",
+          "span": "phở bò tái",
+          "name": "raw steak pho",
+          "tier": "gazetteer-exact",
+          "foldedName": "raw steak pho"
+        }
+      ],
+      "unresolved": [],
+      "analysis": {
+        "script": "latin",
+        "requestLocale": "vi-VN",
+        "detectedLocale": {
+          "tag": "it",
+          "confidence": 1,
+          "source": "detector"
+        },
+        "denseTierUsed": false
+      },
+      "misGroundings": [],
+      "notes": "Banked 3-gram 'phở bò tái'→raw steak pho; must beat the 2-gram 'phở bò'→beef pho."
+    },
+    {
+      "id": "cp-15",
+      "query": "kem dừa",
+      "stratum": "compound",
+      "locale": "vi-VN",
+      "pass": true,
+      "preservation": 1,
+      "reasons": [],
+      "grounded": [
+        {
+          "entityId": "923b2073-b954-4f94-bfd1-234356025ecf",
+          "bucket": "food",
+          "type": "food",
+          "span": "kem dừa",
+          "name": "coconut ice cream",
+          "tier": "gazetteer-exact",
+          "foldedName": "coconut ice cream"
+        },
+        {
+          "entityId": "c372456e-6684-409f-a1de-4cee34bf1641",
+          "bucket": "ingredients",
+          "type": "ingredient",
+          "span": "kem",
+          "name": "ice cream",
+          "tier": "linked",
+          "foldedName": "ice cream"
+        },
+        {
+          "entityId": "fbb4b842-0970-49e6-82cc-366208d0b81d",
+          "bucket": "ingredients",
+          "type": "ingredient",
+          "span": "dừa",
+          "name": "coconut",
+          "tier": "linked",
+          "foldedName": "coconut"
+        }
+      ],
+      "unresolved": [],
+      "analysis": {
+        "script": "latin",
+        "requestLocale": "vi-VN",
+        "detectedLocale": {
+          "tag": "vi-VN",
+          "confidence": 0.5,
+          "source": "request-prior"
+        },
+        "denseTierUsed": false
+      },
+      "misGroundings": [],
+      "notes": "Banked 'kem dừa'→coconut ice cream; must beat 'kem'→ice cream (sn-23)."
+    },
+    {
+      "id": "cp-16",
+      "query": "trà sữa",
+      "stratum": "compound",
+      "locale": "vi-VN",
+      "pass": true,
+      "preservation": 1,
+      "reasons": [],
+      "grounded": [
+        {
+          "entityId": "33b8477e-27e9-4064-abc7-8b89b3a1fa75",
+          "bucket": "food",
+          "type": "food",
+          "span": "trà sữa",
+          "name": "milk tea",
+          "tier": "gazetteer-exact",
+          "foldedName": "milk tea"
+        },
+        {
+          "entityId": "b646184d-0868-408e-a7e2-e82ae5595546",
+          "bucket": "food",
+          "type": "food",
+          "span": "trà sữa",
+          "name": "boba tea",
+          "tier": "gazetteer-exact",
+          "foldedName": "boba tea"
+        },
+        {
+          "entityId": "68a0f8a7-783c-4afe-8b4b-9060f304acfd",
+          "bucket": "ingredients",
+          "type": "ingredient",
+          "span": "trà",
+          "name": "tea",
+          "tier": "linked",
+          "foldedName": "tea"
+        },
+        {
+          "entityId": "cfbeb4cc-1a49-4e35-8155-440c4c6c5004",
+          "bucket": "ingredients",
+          "type": "ingredient",
+          "span": "sữa",
+          "name": "milk",
+          "tier": "linked",
+          "foldedName": "milk"
+        }
+      ],
+      "unresolved": [],
+      "analysis": {
+        "script": "latin",
+        "requestLocale": "vi-VN",
+        "detectedLocale": {
+          "tag": "it",
+          "confidence": 1,
+          "source": "detector"
+        },
+        "denseTierUsed": false
+      },
+      "misGroundings": [],
+      "notes": "Banked 'trà sữa'→milk tea AND boba tea (an unmerged twin, both banked on the same surface). 'milk tea' is asserted; grounding boba tea as well is not a failure."
+    },
+    {
+      "id": "cp-17",
+      "query": "cà phê sữa đá",
+      "stratum": "compound",
+      "locale": "vi-VN",
+      "pass": true,
+      "preservation": 1,
+      "reasons": [],
+      "grounded": [
+        {
+          "entityId": "4e02fa2c-9f05-4397-badb-bea2eb50164b",
+          "bucket": "food",
+          "type": "food",
+          "span": "cà phê sữa đá",
+          "name": "iced viet coffee",
+          "tier": "gazetteer-exact",
+          "foldedName": "iced viet coffee"
+        },
+        {
+          "entityId": "16d9b342-76f8-43b4-b913-d0b239d38ebd",
+          "bucket": "foodAttributes",
+          "type": "food_attribute",
+          "span": "đá",
+          "name": "iced",
+          "tier": "linked",
+          "foldedName": "iced"
+        },
+        {
+          "entityId": "4b82e20d-a8a1-47f5-a3cd-feaae73841fe",
+          "bucket": "ingredients",
+          "type": "ingredient",
+          "span": "cà phê",
+          "name": "coffee",
+          "tier": "linked",
+          "foldedName": "coffee"
+        }
+      ],
+      "unresolved": [],
+      "analysis": {
+        "script": "latin",
+        "requestLocale": "vi-VN",
+        "detectedLocale": {
+          "tag": "pt",
+          "confidence": 1,
+          "source": "detector"
+        },
+        "denseTierUsed": false
+      },
+      "misGroundings": [],
+      "notes": "Banked 4-gram 'cà phê sữa đá'→iced viet coffee — the longest banked dish surface in the set; must beat 'cà phê'→coffee."
+    },
+    {
+      "id": "cp-18",
+      "query": "bánh mì chay",
+      "stratum": "compound",
+      "locale": "vi-VN",
+      "pass": true,
+      "preservation": 1,
+      "reasons": [],
+      "grounded": [
+        {
+          "entityId": "92e85a13-08df-4d34-9885-a3739e7a9b09",
+          "bucket": "food",
+          "type": "food",
+          "span": "bánh mì chay",
+          "name": "veggie sandwich",
+          "tier": "gazetteer-exact",
+          "foldedName": "veggie sandwich"
+        }
+      ],
+      "unresolved": [],
+      "analysis": {
+        "script": "latin",
+        "requestLocale": "vi-VN",
+        "detectedLocale": {
+          "tag": "it",
+          "confidence": 1,
+          "source": "detector"
+        },
+        "denseTierUsed": false
+      },
+      "misGroundings": [],
+      "notes": "AUTHORING NOTE: 'bánh mì chay' is banked as ONE concept → veggie sandwich. Asserting [banh mi]+[vegetarian] would demand a decomposition the vocabulary explicitly overrode."
+    },
+    {
+      "id": "cp-19",
+      "query": "nhà hàng Ý",
+      "stratum": "compound",
+      "locale": "vi-VN",
+      "pass": true,
+      "preservation": 1,
+      "reasons": [],
+      "grounded": [
+        {
+          "entityId": "ca15d0cc-13d5-4e38-8d2b-95dc4dd28808",
+          "bucket": "foodAttributes",
+          "type": "food_attribute",
+          "span": "hàng",
+          "name": "pungent",
+          "tier": "gazetteer-exact",
+          "foldedName": "pungent"
+        },
+        {
+          "entityId": "9f109755-4025-44ab-8cdc-5b8a9eb7ec73",
+          "bucket": "restaurantAttributes",
+          "type": "restaurant_attribute",
+          "span": "Ý",
+          "name": "italian",
+          "tier": "gazetteer-exact",
+          "foldedName": "italian"
+        }
+      ],
+      "unresolved": ["nhà"],
+      "analysis": {
+        "script": "latin",
+        "requestLocale": "vi-VN",
+        "detectedLocale": {
+          "tag": "vi-VN",
+          "confidence": 0.5,
+          "source": "request-prior"
+        },
+        "denseTierUsed": true
+      },
+      "misGroundings": [],
+      "notes": "'Ý' (Italy) is banked → italian (restaurant_attribute); 'nhà hàng' (restaurant) is a carrier with no expected grounding."
+    },
+    {
+      "id": "cp-20",
+      "query": "đồ ăn Việt Nam",
+      "stratum": "compound",
+      "locale": "vi-VN",
+      "pass": true,
+      "preservation": 1,
+      "reasons": [],
+      "grounded": [
+        {
+          "entityId": "523eec4d-ead5-4ca0-a897-b5de1b259793",
+          "bucket": "restaurantAttributes",
+          "type": "restaurant_attribute",
+          "span": "đồ ăn Việt Nam",
+          "name": "vietnamese",
+          "tier": "gazetteer-exact",
+          "foldedName": "vietnamese"
+        }
+      ],
+      "unresolved": [],
+      "analysis": {
+        "script": "latin",
+        "requestLocale": "vi-VN",
+        "detectedLocale": {
+          "tag": "vi-VN",
+          "confidence": 0.5,
+          "source": "request-prior"
+        },
+        "denseTierUsed": false
+      },
+      "misGroundings": [],
+      "notes": "Banked 3-gram 'đồ ăn Việt Nam'→vietnamese (restaurant_attribute)."
+    },
+    {
+      "id": "cp-21",
+      "query": "ẩm thực Thái",
+      "stratum": "compound",
+      "locale": "vi-VN",
+      "pass": true,
+      "preservation": 1,
+      "reasons": [],
+      "grounded": [
+        {
+          "entityId": "7f76e097-988f-4ae2-aff6-a4fdc177a2e4",
+          "bucket": "restaurantAttributes",
+          "type": "restaurant_attribute",
+          "span": "ẩm thực Thái",
+          "name": "thai",
+          "tier": "gazetteer-exact",
+          "foldedName": "thai"
+        }
+      ],
+      "unresolved": [],
+      "analysis": {
+        "script": "latin",
+        "requestLocale": "vi-VN",
+        "detectedLocale": {
+          "tag": "vi-VN",
+          "confidence": 0.5,
+          "source": "request-prior"
+        },
+        "denseTierUsed": false
+      },
+      "misGroundings": [],
+      "notes": "Banked 'ẩm thực Thái'→thai."
+    },
+    {
+      "id": "cp-22",
+      "query": "BBQ Hàn Quốc",
+      "stratum": "compound",
+      "locale": "vi-VN",
+      "pass": true,
+      "preservation": 1,
+      "reasons": [],
+      "grounded": [
+        {
+          "entityId": "6ee9bfc5-7bb4-468f-8983-a0566c0cd104",
+          "bucket": "restaurantAttributes",
+          "type": "restaurant_attribute",
+          "span": "BBQ Hàn Quốc",
+          "name": "korean bbq",
+          "tier": "gazetteer-exact",
+          "foldedName": "korean bbq"
+        },
+        {
+          "entityId": "980f562b-e754-401f-8913-cae8befc7e66",
+          "bucket": "restaurantAttributes",
+          "type": "restaurant_attribute",
+          "span": "BBQ",
+          "name": "bbq",
+          "tier": "linked",
+          "foldedName": "bbq"
+        }
+      ],
+      "unresolved": [],
+      "analysis": {
+        "script": "latin",
+        "requestLocale": "vi-VN",
+        "detectedLocale": {
+          "tag": "vi-VN",
+          "confidence": 0.5,
+          "source": "request-prior"
+        },
+        "denseTierUsed": false
+      },
+      "misGroundings": [],
+      "notes": "Banked 'BBQ Hàn Quốc'→korean bbq as ONE concept — must beat [bbq]+[korean]."
+    },
+    {
+      "id": "cp-23",
+      "query": "ẩm thực Hy Lạp",
+      "stratum": "compound",
+      "locale": "vi-VN",
+      "pass": true,
+      "preservation": 1,
+      "reasons": [],
+      "grounded": [
+        {
+          "entityId": "ec4144aa-f351-4ccf-b6f9-9837f9afe217",
+          "bucket": "restaurantAttributes",
+          "type": "restaurant_attribute",
+          "span": "ẩm thực Hy Lạp",
+          "name": "greek",
+          "tier": "gazetteer-exact",
+          "foldedName": "greek"
+        }
+      ],
+      "unresolved": [],
+      "analysis": {
+        "script": "latin",
+        "requestLocale": "vi-VN",
+        "detectedLocale": {
+          "tag": "vi-VN",
+          "confidence": 0.5,
+          "source": "request-prior"
+        },
+        "denseTierUsed": false
+      },
+      "misGroundings": [],
+      "notes": "Banked 'ẩm thực Hy Lạp'→greek. Bare 'Hy Lạp' is NOT banked — the carrier is load-bearing here."
+    },
+    {
+      "id": "cp-24",
+      "query": "ẩm thực Địa Trung Hải",
+      "stratum": "compound",
+      "locale": "vi-VN",
+      "pass": false,
+      "preservation": 0,
+      "reasons": ["NOT GROUNDED: mediterranean"],
+      "grounded": [
+        {
+          "entityId": "c4548107-a51f-4c41-bbf6-8dd847a7fb59",
+          "bucket": "food",
+          "type": "food",
+          "span": "Địa",
+          "name": "plate",
+          "tier": "gazetteer-exact",
+          "foldedName": "plate"
+        },
+        {
+          "entityId": "ce4c9ce8-8a7f-4789-b9e4-242beac3eb17",
+          "bucket": "food",
+          "type": "food",
+          "span": "Trung",
+          "name": "egg",
+          "tier": "gazetteer-exact",
+          "foldedName": "egg"
+        },
+        {
+          "entityId": "6d03b9c7-863f-48d0-8802-074094ee43b3",
+          "bucket": "food",
+          "type": "food",
+          "span": "Hải",
+          "name": "tiger cry",
+          "tier": "linked",
+          "foldedName": "tiger cry"
+        },
+        {
+          "entityId": "e22a1a1c-9e8d-4ecf-be4e-04eb6103d3c0",
+          "bucket": "foodAttributes",
+          "type": "food_attribute",
+          "span": "ẩm",
+          "name": "warm",
+          "tier": "gazetteer-exact",
+          "foldedName": "warm"
+        }
+      ],
+      "unresolved": ["thực"],
+      "analysis": {
+        "script": "latin",
+        "requestLocale": "vi-VN",
+        "detectedLocale": {
+          "tag": "vi-VN",
+          "confidence": 0.5,
+          "source": "request-prior"
+        },
+        "denseTierUsed": true
+      },
+      "misGroundings": [],
+      "notes": "Banked 'ẩm thực Địa Trung Hải'→mediterranean — a 5-token Vietnamese phrase for one English word."
+    },
+    {
+      "id": "cp-25",
+      "query": "đồ ăn Trung Quốc",
+      "stratum": "compound",
+      "locale": "vi-VN",
+      "pass": true,
+      "preservation": 1,
+      "reasons": [],
+      "grounded": [
+        {
+          "entityId": "38be14f9-ec49-4768-8874-8dfd16c56810",
+          "bucket": "food",
+          "type": "food",
+          "span": "đồ ăn Trung Quốc",
+          "name": "chinese food",
+          "tier": "gazetteer-exact",
+          "foldedName": "chinese food"
+        }
+      ],
+      "unresolved": [],
+      "analysis": {
+        "script": "latin",
+        "requestLocale": "vi-VN",
+        "detectedLocale": {
+          "tag": "vi-VN",
+          "confidence": 0.5,
+          "source": "request-prior"
+        },
+        "denseTierUsed": false
+      },
+      "misGroundings": [],
+      "notes": "Banked 'đồ ăn Trung Quốc'→chinese food."
+    },
+    {
+      "id": "cp-26",
+      "query": "phở cay",
+      "stratum": "compound",
+      "locale": "vi-VN",
+      "pass": true,
+      "preservation": 1,
+      "reasons": [],
+      "grounded": [
+        {
+          "entityId": "08f45e9c-abf7-4db2-bbc9-d772538ca720",
+          "bucket": "food",
+          "type": "food",
+          "span": "phở",
+          "name": "pho",
+          "tier": "gazetteer-exact",
+          "foldedName": "pho"
+        },
+        {
+          "entityId": "d5912bd2-54c8-41a1-86c5-d3328abeaca4",
+          "bucket": "foodAttributes",
+          "type": "food_attribute",
+          "span": "cay",
+          "name": "spicy",
+          "tier": "gazetteer-exact",
+          "foldedName": "spicy"
+        }
+      ],
+      "unresolved": [],
+      "analysis": {
+        "script": "latin",
+        "requestLocale": "vi-VN",
+        "detectedLocale": {
+          "tag": "vi-VN",
+          "confidence": 0.5,
+          "source": "request-prior"
+        },
+        "denseTierUsed": false
+      },
+      "misGroundings": [],
+      "notes": "Dish + food_attribute, both banked ('cay'→spicy). The two-concept parse IS the right answer — no 'spicy pho' row exists."
+    },
+    {
+      "id": "cp-27",
+      "query": "lẩu hải sản",
+      "stratum": "compound",
+      "locale": "vi-VN",
+      "pass": true,
+      "preservation": 1,
+      "reasons": [],
+      "grounded": [
+        {
+          "entityId": "7d662533-e35f-47d0-8645-4bce3e9837b7",
+          "bucket": "food",
+          "type": "food",
+          "span": "lẩu",
+          "name": "hotpot",
+          "tier": "gazetteer-exact",
+          "foldedName": "hotpot"
+        },
+        {
+          "entityId": "dc27d7c4-5b49-429d-9d11-ab65827fb6d9",
+          "bucket": "food",
+          "type": "food",
+          "span": "lẩu",
+          "name": "hot pot",
+          "tier": "gazetteer-exact",
+          "foldedName": "hot pot"
+        },
+        {
+          "entityId": "f43fa2e2-d94d-4ebe-8136-698ff755d869",
+          "bucket": "food",
+          "type": "food",
+          "span": "hải sản",
+          "name": "seafood",
+          "tier": "gazetteer-exact",
+          "foldedName": "seafood"
+        }
+      ],
+      "unresolved": [],
+      "analysis": {
+        "script": "latin",
+        "requestLocale": "vi-VN",
+        "detectedLocale": {
+          "tag": "vi-VN",
+          "confidence": 0.5,
+          "source": "request-prior"
+        },
+        "denseTierUsed": false
+      },
+      "misGroundings": [],
+      "notes": "Two banked nouns, no banked compound — the two-concept parse is correct."
+    },
+    {
+      "id": "cp-28",
+      "query": "nhà hàng Việt Nam lãng mạn",
+      "stratum": "compound",
+      "locale": "vi-VN",
+      "pass": true,
+      "preservation": 1,
+      "reasons": [],
+      "grounded": [
+        {
+          "entityId": "ca15d0cc-13d5-4e38-8d2b-95dc4dd28808",
+          "bucket": "foodAttributes",
+          "type": "food_attribute",
+          "span": "hàng",
+          "name": "pungent",
+          "tier": "gazetteer-exact",
+          "foldedName": "pungent"
+        },
+        {
+          "entityId": "523eec4d-ead5-4ca0-a897-b5de1b259793",
+          "bucket": "restaurantAttributes",
+          "type": "restaurant_attribute",
+          "span": "Việt Nam",
+          "name": "vietnamese",
+          "tier": "gazetteer-exact",
+          "foldedName": "vietnamese"
+        },
+        {
+          "entityId": "65a80396-ea4d-44d6-876c-b17a258a3326",
+          "bucket": "restaurantAttributes",
+          "type": "restaurant_attribute",
+          "span": "lãng mạn",
+          "name": "romantic",
+          "tier": "gazetteer-exact",
+          "foldedName": "romantic"
+        }
+      ],
+      "unresolved": ["nhà"],
+      "analysis": {
+        "script": "latin",
+        "requestLocale": "vi-VN",
+        "detectedLocale": {
+          "tag": "pt",
+          "confidence": 1,
+          "source": "detector"
+        },
+        "denseTierUsed": true
+      },
+      "misGroundings": [],
+      "notes": "Cuisine + ambience attribute, both banked; 'nhà hàng' is a carrier."
+    },
+    {
+      "id": "cp-29",
+      "query": "đồ ăn nhanh giá rẻ",
+      "stratum": "compound",
+      "locale": "vi-VN",
+      "pass": true,
+      "preservation": 1,
+      "reasons": [],
+      "grounded": [
+        {
+          "entityId": "7b4ffa91-0721-438e-936d-d769a3265e23",
+          "bucket": "restaurantAttributes",
+          "type": "restaurant_attribute",
+          "span": "đồ ăn nhanh",
+          "name": "fast food",
+          "tier": "gazetteer-exact",
+          "foldedName": "fast food"
+        },
+        {
+          "entityId": "b693becc-a4ce-4b31-b35e-c7f3218a816d",
+          "bucket": "restaurantAttributes",
+          "type": "restaurant_attribute",
+          "span": "giá rẻ",
+          "name": "affordable",
+          "tier": "gazetteer-exact",
+          "foldedName": "affordable"
+        }
+      ],
+      "unresolved": [],
+      "analysis": {
+        "script": "latin",
+        "requestLocale": "vi-VN",
+        "detectedLocale": {
+          "tag": "vi-VN",
+          "confidence": 0.5,
+          "source": "request-prior"
+        },
+        "denseTierUsed": false
+      },
+      "misGroundings": [],
+      "notes": "Two banked restaurant_attributes in one phrase."
+    },
+    {
+      "id": "cp-30",
+      "query": "cơm gà nướng",
+      "stratum": "compound",
+      "locale": "vi-VN",
+      "pass": true,
+      "preservation": 1,
+      "reasons": [],
+      "grounded": [
+        {
+          "entityId": "77490d5e-e33e-4f6e-b1b8-d370755faf1f",
+          "bucket": "food",
+          "type": "food",
+          "span": "cơm",
+          "name": "rice",
+          "tier": "gazetteer-exact",
+          "foldedName": "rice"
+        },
+        {
+          "entityId": "d091b65c-ea76-4807-8c5b-d7270dd0fc6f",
+          "bucket": "food",
+          "type": "food",
+          "span": "gà nướng",
+          "name": "grilled chicken",
+          "tier": "gazetteer-exact",
+          "foldedName": "grilled chicken"
+        },
+        {
+          "entityId": "5e7775c8-82bc-410a-bce3-7b5d05e49249",
+          "bucket": "foodAttributes",
+          "type": "food_attribute",
+          "span": "nướng",
+          "name": "grilled",
+          "tier": "linked",
+          "foldedName": "grilled"
+        },
+        {
+          "entityId": "c9957bd2-edf1-4839-90eb-72442ba7354a",
+          "bucket": "ingredients",
+          "type": "ingredient",
+          "span": "gà",
+          "name": "chicken",
+          "tier": "linked",
+          "foldedName": "chicken"
+        }
+      ],
+      "unresolved": [],
+      "analysis": {
+        "script": "latin",
+        "requestLocale": "vi-VN",
+        "detectedLocale": {
+          "tag": "vi-VN",
+          "confidence": 0.5,
+          "source": "request-prior"
+        },
+        "denseTierUsed": false
+      },
+      "misGroundings": [],
+      "notes": "OVERLAPPING banked spans: 'cơm gà'→chicken and rice and 'gà nướng'→grilled chicken share the token 'gà', so only ONE of them can be placed. | AUTHORING CORRECTION (gate run 1): the first draft demanded 'chicken and rice' AND 'grilled chicken' — two covers that cannot coexist. The parse chose [cơm]→rice + [gà nướng]→grilled chicken, which is a coherent, complete cover of the query and is the correct answer; the entry now asserts that cover."
+    },
+    {
+      "id": "ng-01",
+      "query": "phở không thịt",
+      "stratum": "negation",
+      "locale": "vi-VN",
+      "pass": true,
+      "preservation": 1,
+      "reasons": [],
+      "grounded": [
+        {
+          "entityId": "08f45e9c-abf7-4db2-bbc9-d772538ca720",
+          "bucket": "food",
+          "type": "food",
+          "span": "phở",
+          "name": "pho",
+          "tier": "gazetteer-exact",
+          "foldedName": "pho"
+        },
+        {
+          "entityId": "3b38ad58-7750-42c8-9363-0b2742f704b2",
+          "bucket": "food",
+          "type": "food",
+          "span": "thịt",
+          "name": "meat",
+          "tier": "gazetteer-exact",
+          "foldedName": "meat"
+        }
+      ],
+      "unresolved": ["không"],
+      "analysis": {
+        "script": "latin",
+        "requestLocale": "vi-VN",
+        "detectedLocale": {
+          "tag": "fr",
+          "confidence": 1,
+          "source": "detector"
+        },
+        "denseTierUsed": true
+      },
+      "misGroundings": [],
+      "notes": "NEGATION v2 (LITERAL IGNORE): 'không X' is not a supported exclusion — the mentioned word may ground POSITIVELY like any other ingredient. The assertion is head preservation + NON-INVERSION: the parse must never flip into the semantic opposite (a vegetarian/vegan constraint the user did not ask for). INVERSION BAIT: 'no meat' is semantically vegetarian and a bi-encoder will say so. It must not."
+    },
+    {
+      "id": "ng-02",
+      "query": "bún không thịt bò",
+      "stratum": "negation",
+      "locale": "vi-VN",
+      "pass": true,
+      "preservation": 1,
+      "reasons": [],
+      "grounded": [
+        {
+          "entityId": "38dd8008-11fd-4771-8203-7434a8040bd4",
+          "bucket": "food",
+          "type": "food",
+          "span": "bún",
+          "name": "bun",
+          "tier": "gazetteer-exact",
+          "foldedName": "bun"
+        },
+        {
+          "entityId": "f2623f78-29ff-49ac-ad64-d786687ff4bd",
+          "bucket": "food",
+          "type": "food",
+          "span": "bún",
+          "name": "rice noodle",
+          "tier": "gazetteer-exact",
+          "foldedName": "rice noodle"
+        },
+        {
+          "entityId": "ab87265a-7d1a-4334-b851-93e41c0faeff",
+          "bucket": "food",
+          "type": "food",
+          "span": "thịt bò",
+          "name": "beef",
+          "tier": "gazetteer-exact",
+          "foldedName": "beef"
+        }
+      ],
+      "unresolved": ["không"],
+      "analysis": {
+        "script": "latin",
+        "requestLocale": "vi-VN",
+        "detectedLocale": {
+          "tag": "it",
+          "confidence": 1,
+          "source": "detector"
+        },
+        "denseTierUsed": true
+      },
+      "misGroundings": [],
+      "notes": "NEGATION v2 (LITERAL IGNORE): 'không X' is not a supported exclusion — the mentioned word may ground POSITIVELY like any other ingredient. The assertion is head preservation + NON-INVERSION: the parse must never flip into the semantic opposite (a vegetarian/vegan constraint the user did not ask for). Same bait over a rice-noodle head."
+    },
+    {
+      "id": "ng-03",
+      "query": "phở không hành",
+      "stratum": "negation",
+      "locale": "vi-VN",
+      "pass": true,
+      "preservation": 1,
+      "reasons": [],
+      "grounded": [
+        {
+          "entityId": "08f45e9c-abf7-4db2-bbc9-d772538ca720",
+          "bucket": "food",
+          "type": "food",
+          "span": "phở",
+          "name": "pho",
+          "tier": "gazetteer-exact",
+          "foldedName": "pho"
+        },
+        {
+          "entityId": "67529bfb-394a-4bab-817a-f8b4ca7eb2cc",
+          "bucket": "ingredients",
+          "type": "ingredient",
+          "span": "hành",
+          "name": "onions",
+          "tier": "gazetteer-exact",
+          "foldedName": "onions"
+        }
+      ],
+      "unresolved": ["không"],
+      "analysis": {
+        "script": "latin",
+        "requestLocale": "vi-VN",
+        "detectedLocale": {
+          "tag": "fr",
+          "confidence": 1,
+          "source": "detector"
+        },
+        "denseTierUsed": true
+      },
+      "misGroundings": [],
+      "notes": "NEGATION v2 (LITERAL IGNORE): 'không X' is not a supported exclusion — the mentioned word may ground POSITIVELY like any other ingredient. The assertion is head preservation + NON-INVERSION: the parse must never flip into the semantic opposite (a vegetarian/vegan constraint the user did not ask for). 'hành'→onions is a banked ingredient — a groundable span behind the cue."
+    },
+    {
+      "id": "ng-04",
+      "query": "bánh mì không pate",
+      "stratum": "negation",
+      "locale": "vi-VN",
+      "pass": true,
+      "preservation": 1,
+      "reasons": [],
+      "grounded": [
+        {
+          "entityId": "33c909c3-0de7-4cd6-aaea-ca05e968f0a0",
+          "bucket": "restaurants",
+          "type": "restaurant",
+          "span": "bánh",
+          "name": "Bánh",
+          "tier": "linked",
+          "foldedName": "banh"
+        },
+        {
+          "entityId": "78d11036-478c-41bb-a78d-4a7320dde99c",
+          "bucket": "food",
+          "type": "food",
+          "span": "bánh mì",
+          "name": "banh mi",
+          "tier": "gazetteer-exact",
+          "foldedName": "banh mi"
+        },
+        {
+          "entityId": "9cd8f4aa-bb68-4bee-937f-45fee496d147",
+          "bucket": "food",
+          "type": "food",
+          "span": "bánh mì",
+          "name": "viet sandwich",
+          "tier": "gazetteer-exact",
+          "foldedName": "viet sandwich"
+        },
+        {
+          "entityId": "93d01a72-e5bf-46c6-adda-351cb14370a1",
+          "bucket": "ingredients",
+          "type": "ingredient",
+          "span": "pate",
+          "name": "pate",
+          "tier": "gazetteer-exact",
+          "foldedName": "pate"
+        }
+      ],
+      "unresolved": ["không"],
+      "analysis": {
+        "script": "latin",
+        "requestLocale": "vi-VN",
+        "detectedLocale": {
+          "tag": "it",
+          "confidence": 1,
+          "source": "detector"
+        },
+        "denseTierUsed": true
+      },
+      "misGroundings": [],
+      "notes": "NEGATION v2 (LITERAL IGNORE): 'không X' is not a supported exclusion — the mentioned word may ground POSITIVELY like any other ingredient. The assertion is head preservation + NON-INVERSION: the parse must never flip into the semantic opposite (a vegetarian/vegan constraint the user did not ask for). 'pate' is an English-corpus ingredient row; grounding it positively is allowed under v2."
+    },
+    {
+      "id": "ng-05",
+      "query": "pizza không phô mai",
+      "stratum": "negation",
+      "locale": "vi-VN",
+      "pass": true,
+      "preservation": 1,
+      "reasons": [],
+      "grounded": [
+        {
+          "entityId": "6b829aa2-4a1f-45b1-b304-eb3ace7ba11b",
+          "bucket": "food",
+          "type": "food",
+          "span": "pizza",
+          "name": "pizza pie",
+          "tier": "gazetteer-exact",
+          "foldedName": "pizza pie"
+        },
+        {
+          "entityId": "b3a4c3e8-307f-4694-89b2-9160fcaa0436",
+          "bucket": "food",
+          "type": "food",
+          "span": "pizza",
+          "name": "pizza",
+          "tier": "gazetteer-exact",
+          "foldedName": "pizza"
+        },
+        {
+          "entityId": "7b84ccf4-4b92-4795-85d5-6837e1df847e",
+          "bucket": "foodAttributes",
+          "type": "food_attribute",
+          "span": "không phô mai",
+          "name": "cheeseless",
+          "tier": "gazetteer-exact",
+          "foldedName": "cheeseless"
+        }
+      ],
+      "unresolved": [],
+      "analysis": {
+        "script": "latin",
+        "requestLocale": "vi-VN",
+        "detectedLocale": {
+          "tag": "fr",
+          "confidence": 1,
+          "source": "detector"
+        },
+        "denseTierUsed": false
+      },
+      "misGroundings": [],
+      "notes": "NEGATION v2 (LITERAL IGNORE): 'không X' is not a supported exclusion — the mentioned word may ground POSITIVELY like any other ingredient. The assertion is head preservation + NON-INVERSION: the parse must never flip into the semantic opposite (a vegetarian/vegan constraint the user did not ask for). 'không phô mai' is itself a SEEDED 2-gram alias → cheeseless (food_attribute). The cue must not negate the phrase it is part of — the vi twin of the es 'sin gluten' trap."
+    },
+    {
+      "id": "ng-06",
+      "query": "cà phê không đường",
+      "stratum": "negation",
+      "locale": "vi-VN",
+      "pass": true,
+      "preservation": 1,
+      "reasons": [],
+      "grounded": [
+        {
+          "entityId": "926935db-c5d9-45f8-8618-05fb6a9fd3e9",
+          "bucket": "food",
+          "type": "food",
+          "span": "cà phê",
+          "name": "coffee",
+          "tier": "gazetteer-exact",
+          "foldedName": "coffee"
+        },
+        {
+          "entityId": "0232d6b6-257b-49b3-aaa2-2e58cc12b8c8",
+          "bucket": "foodAttributes",
+          "type": "food_attribute",
+          "span": "không đường",
+          "name": "sugar free",
+          "tier": "gazetteer-exact",
+          "foldedName": "sugar free"
+        },
+        {
+          "entityId": "9d44e3fe-ccc6-4394-a930-7f5a0a813262",
+          "bucket": "ingredients",
+          "type": "ingredient",
+          "span": "đường",
+          "name": "sugar",
+          "tier": "linked",
+          "foldedName": "sugar"
+        }
+      ],
+      "unresolved": [],
+      "analysis": {
+        "script": "latin",
+        "requestLocale": "vi-VN",
+        "detectedLocale": {
+          "tag": "pt",
+          "confidence": 1,
+          "source": "detector"
+        },
+        "denseTierUsed": false
+      },
+      "misGroundings": [],
+      "notes": "NEGATION v2 (LITERAL IGNORE): 'không X' is not a supported exclusion — the mentioned word may ground POSITIVELY like any other ingredient. The assertion is head preservation + NON-INVERSION: the parse must never flip into the semantic opposite (a vegetarian/vegan constraint the user did not ask for). 'không đường' is a seeded 2-gram → sugar free. Positive grounding of the whole phrase is the CORRECT outcome."
+    },
+    {
+      "id": "ng-07",
+      "query": "phở không cay",
+      "stratum": "negation",
+      "locale": "vi-VN",
+      "pass": true,
+      "preservation": 1,
+      "reasons": [],
+      "grounded": [
+        {
+          "entityId": "08f45e9c-abf7-4db2-bbc9-d772538ca720",
+          "bucket": "food",
+          "type": "food",
+          "span": "phở",
+          "name": "pho",
+          "tier": "gazetteer-exact",
+          "foldedName": "pho"
+        },
+        {
+          "entityId": "15568764-42ec-4345-ba26-18939ac3b915",
+          "bucket": "foodAttributes",
+          "type": "food_attribute",
+          "span": "không cay",
+          "name": "mild",
+          "tier": "gazetteer-exact",
+          "foldedName": "mild"
+        }
+      ],
+      "unresolved": [],
+      "analysis": {
+        "script": "latin",
+        "requestLocale": "vi-VN",
+        "detectedLocale": {
+          "tag": "fr",
+          "confidence": 1,
+          "source": "detector"
+        },
+        "denseTierUsed": false
+      },
+      "misGroundings": [],
+      "notes": "NEGATION v2 (LITERAL IGNORE): 'không X' is not a supported exclusion — the mentioned word may ground POSITIVELY like any other ingredient. The assertion is head preservation + NON-INVERSION: the parse must never flip into the semantic opposite (a vegetarian/vegan constraint the user did not ask for). 'không cay' is a seeded 2-gram → mild. mustNotResolve is deliberately EMPTY: under literal-ignore, grounding 'cay'→spicy is also acceptable; only an unasked dietary flip is forbidden."
+    },
+    {
+      "id": "ng-08",
+      "query": "cơm không rau",
+      "stratum": "negation",
+      "locale": "vi-VN",
+      "pass": true,
+      "preservation": 1,
+      "reasons": [],
+      "grounded": [
+        {
+          "entityId": "77490d5e-e33e-4f6e-b1b8-d370755faf1f",
+          "bucket": "food",
+          "type": "food",
+          "span": "cơm",
+          "name": "rice",
+          "tier": "gazetteer-exact",
+          "foldedName": "rice"
+        },
+        {
+          "entityId": "9b12c271-a4eb-418c-9fe3-4c2cce425801",
+          "bucket": "food",
+          "type": "food",
+          "span": "rau",
+          "name": "veggies",
+          "tier": "gazetteer-exact",
+          "foldedName": "veggies"
+        },
+        {
+          "entityId": "a562dee6-7105-4d17-8b6c-7dd15a4ea018",
+          "bucket": "food",
+          "type": "food",
+          "span": "rau",
+          "name": "vegetable",
+          "tier": "gazetteer-exact",
+          "foldedName": "vegetable"
+        }
+      ],
+      "unresolved": ["không"],
+      "analysis": {
+        "script": "latin",
+        "requestLocale": "vi-VN",
+        "detectedLocale": {
+          "tag": "fr",
+          "confidence": 1,
+          "source": "detector"
+        },
+        "denseTierUsed": true
+      },
+      "misGroundings": [],
+      "notes": "NEGATION v2 (LITERAL IGNORE): 'không X' is not a supported exclusion — the mentioned word may ground POSITIVELY like any other ingredient. The assertion is head preservation + NON-INVERSION: the parse must never flip into the semantic opposite (a vegetarian/vegan constraint the user did not ask for). Negated span is a banked food ('rau'→vegetable)."
+    },
+    {
+      "id": "ng-09",
+      "query": "gà không da",
+      "stratum": "negation",
+      "locale": "vi-VN",
+      "pass": true,
+      "preservation": 1,
+      "reasons": [],
+      "grounded": [
+        {
+          "entityId": "12bcdfbd-7736-4d47-82e7-b7cf30b5fa93",
+          "bucket": "food",
+          "type": "food",
+          "span": "gà",
+          "name": "chicken",
+          "tier": "gazetteer-exact",
+          "foldedName": "chicken"
+        },
+        {
+          "entityId": "16d9b342-76f8-43b4-b913-d0b239d38ebd",
+          "bucket": "foodAttributes",
+          "type": "food_attribute",
+          "span": "da",
+          "name": "iced",
+          "tier": "gazetteer-exact",
+          "foldedName": "iced"
+        }
+      ],
+      "unresolved": ["không"],
+      "analysis": {
+        "script": "latin",
+        "requestLocale": "vi-VN",
+        "detectedLocale": {
+          "tag": "fr",
+          "confidence": 1,
+          "source": "detector"
+        },
+        "denseTierUsed": true
+      },
+      "misGroundings": [],
+      "notes": "NEGATION v2 (LITERAL IGNORE): 'không X' is not a supported exclusion — the mentioned word may ground POSITIVELY like any other ingredient. The assertion is head preservation + NON-INVERSION: the parse must never flip into the semantic opposite (a vegetarian/vegan constraint the user did not ask for). 'skin' exists as an English ingredient row — a bridge target behind the cue."
+    },
+    {
+      "id": "ng-10",
+      "query": "lẩu không cay",
+      "stratum": "negation",
+      "locale": "vi-VN",
+      "pass": true,
+      "preservation": 1,
+      "reasons": [],
+      "grounded": [
+        {
+          "entityId": "7d662533-e35f-47d0-8645-4bce3e9837b7",
+          "bucket": "food",
+          "type": "food",
+          "span": "lẩu",
+          "name": "hotpot",
+          "tier": "gazetteer-exact",
+          "foldedName": "hotpot"
+        },
+        {
+          "entityId": "dc27d7c4-5b49-429d-9d11-ab65827fb6d9",
+          "bucket": "food",
+          "type": "food",
+          "span": "lẩu",
+          "name": "hot pot",
+          "tier": "gazetteer-exact",
+          "foldedName": "hot pot"
+        },
+        {
+          "entityId": "15568764-42ec-4345-ba26-18939ac3b915",
+          "bucket": "foodAttributes",
+          "type": "food_attribute",
+          "span": "không cay",
+          "name": "mild",
+          "tier": "gazetteer-exact",
+          "foldedName": "mild"
+        }
+      ],
+      "unresolved": [],
+      "analysis": {
+        "script": "latin",
+        "requestLocale": "vi-VN",
+        "detectedLocale": {
+          "tag": "fr",
+          "confidence": 1,
+          "source": "detector"
+        },
+        "denseTierUsed": false
+      },
+      "misGroundings": [],
+      "notes": "NEGATION v2 (LITERAL IGNORE): 'không X' is not a supported exclusion — the mentioned word may ground POSITIVELY like any other ingredient. The assertion is head preservation + NON-INVERSION: the parse must never flip into the semantic opposite (a vegetarian/vegan constraint the user did not ask for). Second 'không cay' shape, different head."
+    },
+    {
+      "id": "ng-11",
+      "query": "bánh xèo không tôm",
+      "stratum": "negation",
+      "locale": "vi-VN",
+      "pass": true,
+      "preservation": 1,
+      "reasons": [],
+      "grounded": [
+        {
+          "entityId": "33c909c3-0de7-4cd6-aaea-ca05e968f0a0",
+          "bucket": "restaurants",
+          "type": "restaurant",
+          "span": "bánh",
+          "name": "Bánh",
+          "tier": "linked",
+          "foldedName": "banh"
+        },
+        {
+          "entityId": "1823cd02-5e4f-4207-afa7-475aa101968b",
+          "bucket": "food",
+          "type": "food",
+          "span": "bánh xèo",
+          "name": "banh xeo",
+          "tier": "gazetteer-exact",
+          "foldedName": "banh xeo"
+        },
+        {
+          "entityId": "b5c058ab-7ab6-4ccb-912a-cc6b366b5ade",
+          "bucket": "food",
+          "type": "food",
+          "span": "tôm",
+          "name": "prawns",
+          "tier": "gazetteer-exact",
+          "foldedName": "prawns"
+        }
+      ],
+      "unresolved": ["không"],
+      "analysis": {
+        "script": "latin",
+        "requestLocale": "vi-VN",
+        "detectedLocale": {
+          "tag": "fr",
+          "confidence": 1,
+          "source": "detector"
+        },
+        "denseTierUsed": true
+      },
+      "misGroundings": [],
+      "notes": "NEGATION v2 (LITERAL IGNORE): 'không X' is not a supported exclusion — the mentioned word may ground POSITIVELY like any other ingredient. The assertion is head preservation + NON-INVERSION: the parse must never flip into the semantic opposite (a vegetarian/vegan constraint the user did not ask for). Source-faithful head + banked negated ingredient."
+    },
+    {
+      "id": "ng-12",
+      "query": "cơm tấm không mỡ",
+      "stratum": "negation",
+      "locale": "vi-VN",
+      "pass": true,
+      "preservation": 1,
+      "reasons": [],
+      "grounded": [
+        {
+          "entityId": "bad1e222-175c-4473-8620-b95d021bab77",
+          "bucket": "food",
+          "type": "food",
+          "span": "cơm tấm",
+          "name": "com tam",
+          "tier": "gazetteer-exact",
+          "foldedName": "com tam"
+        },
+        {
+          "entityId": "c0cdfe0a-e330-4bb8-b501-0c69066503ef",
+          "bucket": "food",
+          "type": "food",
+          "span": "cơm tấm",
+          "name": "broken rice",
+          "tier": "gazetteer-exact",
+          "foldedName": "broken rice"
+        },
+        {
+          "entityId": "d205e258-42b2-4221-8879-88d8a8d42813",
+          "bucket": "ingredients",
+          "type": "ingredient",
+          "span": "mỡ",
+          "name": "fat",
+          "tier": "gazetteer-exact",
+          "foldedName": "fat"
+        }
+      ],
+      "unresolved": ["không"],
+      "analysis": {
+        "script": "latin",
+        "requestLocale": "vi-VN",
+        "detectedLocale": {
+          "tag": "fr",
+          "confidence": 1,
+          "source": "detector"
+        },
+        "denseTierUsed": true
+      },
+      "misGroundings": [],
+      "notes": "NEGATION v2 (LITERAL IGNORE): 'không X' is not a supported exclusion — the mentioned word may ground POSITIVELY like any other ingredient. The assertion is head preservation + NON-INVERSION: the parse must never flip into the semantic opposite (a vegetarian/vegan constraint the user did not ask for). Source-faithful head; 'mỡ' (fat) is unknown residue."
+    },
+    {
+      "id": "ng-13",
+      "query": "phở không rau",
+      "stratum": "negation",
+      "locale": "vi-VN",
+      "pass": true,
+      "preservation": 1,
+      "reasons": [],
+      "grounded": [
+        {
+          "entityId": "08f45e9c-abf7-4db2-bbc9-d772538ca720",
+          "bucket": "food",
+          "type": "food",
+          "span": "phở",
+          "name": "pho",
+          "tier": "gazetteer-exact",
+          "foldedName": "pho"
+        },
+        {
+          "entityId": "9b12c271-a4eb-418c-9fe3-4c2cce425801",
+          "bucket": "food",
+          "type": "food",
+          "span": "rau",
+          "name": "veggies",
+          "tier": "gazetteer-exact",
+          "foldedName": "veggies"
+        },
+        {
+          "entityId": "a562dee6-7105-4d17-8b6c-7dd15a4ea018",
+          "bucket": "food",
+          "type": "food",
+          "span": "rau",
+          "name": "vegetable",
+          "tier": "gazetteer-exact",
+          "foldedName": "vegetable"
+        }
+      ],
+      "unresolved": ["không"],
+      "analysis": {
+        "script": "latin",
+        "requestLocale": "vi-VN",
+        "detectedLocale": {
+          "tag": "fr",
+          "confidence": 1,
+          "source": "detector"
+        },
+        "denseTierUsed": true
+      },
+      "misGroundings": [],
+      "notes": "NEGATION v2 (LITERAL IGNORE): 'không X' is not a supported exclusion — the mentioned word may ground POSITIVELY like any other ingredient. The assertion is head preservation + NON-INVERSION: the parse must never flip into the semantic opposite (a vegetarian/vegan constraint the user did not ask for). The commonest real Vietnamese order-modification phrase in the set."
+    },
+    {
+      "id": "ng-14",
+      "query": "bún chả không nước mắm",
+      "stratum": "negation",
+      "locale": "vi-VN",
+      "pass": true,
+      "preservation": 1,
+      "reasons": [],
+      "grounded": [
+        {
+          "entityId": "fe7f0cae-ea39-4b2c-8aa4-b88adf3eea50",
+          "bucket": "food",
+          "type": "food",
+          "span": "bún chả",
+          "name": "bun cha",
+          "tier": "gazetteer-exact",
+          "foldedName": "bun cha"
+        },
+        {
+          "entityId": "2b683f4e-1101-42de-921d-d6a0fa80495d",
+          "bucket": "ingredients",
+          "type": "ingredient",
+          "span": "bún",
+          "name": "bun",
+          "tier": "linked",
+          "foldedName": "bun"
+        },
+        {
+          "entityId": "8c571c9c-bccb-40a4-b566-136781d209d0",
+          "bucket": "ingredients",
+          "type": "ingredient",
+          "span": "nước mắm",
+          "name": "fish sauce",
+          "tier": "gazetteer-exact",
+          "foldedName": "fish sauce"
+        }
+      ],
+      "unresolved": ["không"],
+      "analysis": {
+        "script": "latin",
+        "requestLocale": "vi-VN",
+        "detectedLocale": {
+          "tag": "fr",
+          "confidence": 1,
+          "source": "detector"
+        },
+        "denseTierUsed": true
+      },
+      "misGroundings": [],
+      "notes": "NEGATION v2 (LITERAL IGNORE): 'không X' is not a supported exclusion — the mentioned word may ground POSITIVELY like any other ingredient. The assertion is head preservation + NON-INVERSION: the parse must never flip into the semantic opposite (a vegetarian/vegan constraint the user did not ask for). Negated span is a banked 2-gram ('nước mắm'→fish sauce) — a multi-token groundable span behind the cue."
+    },
+    {
+      "id": "ng-15",
+      "query": "sushi không cá sống",
+      "stratum": "negation",
+      "locale": "vi-VN",
+      "pass": true,
+      "preservation": 1,
+      "reasons": [],
+      "grounded": [
+        {
+          "entityId": "dfcea5a8-359f-410c-9ca6-85f4196ff8b2",
+          "bucket": "food",
+          "type": "food",
+          "span": "sushi",
+          "name": "sushi",
+          "tier": "gazetteer-exact",
+          "foldedName": "sushi"
+        },
+        {
+          "entityId": "b371c5b1-b47a-4d44-9e78-35dee213111e",
+          "bucket": "foodAttributes",
+          "type": "food_attribute",
+          "span": "sống",
+          "name": "raw",
+          "tier": "linked",
+          "foldedName": "raw"
+        },
+        {
+          "entityId": "70680c65-e6f4-445e-a800-b60ff46c02d4",
+          "bucket": "ingredients",
+          "type": "ingredient",
+          "span": "cá sống",
+          "name": "raw fish",
+          "tier": "gazetteer-exact",
+          "foldedName": "raw fish"
+        },
+        {
+          "entityId": "89fcf723-562f-4099-af8f-2c9eec57ab2a",
+          "bucket": "ingredients",
+          "type": "ingredient",
+          "span": "cá",
+          "name": "fish",
+          "tier": "linked",
+          "foldedName": "fish"
+        }
+      ],
+      "unresolved": ["không"],
+      "analysis": {
+        "script": "latin",
+        "requestLocale": "vi-VN",
+        "detectedLocale": {
+          "tag": "fr",
+          "confidence": 1,
+          "source": "detector"
+        },
+        "denseTierUsed": true
+      },
+      "misGroundings": [],
+      "notes": "NEGATION v2 (LITERAL IGNORE): 'không X' is not a supported exclusion — the mentioned word may ground POSITIVELY like any other ingredient. The assertion is head preservation + NON-INVERSION: the parse must never flip into the semantic opposite (a vegetarian/vegan constraint the user did not ask for). English head under a Vietnamese negation frame."
+    },
+    {
+      "id": "ng-16",
+      "query": "trà sữa không đường",
+      "stratum": "negation",
+      "locale": "vi-VN",
+      "pass": true,
+      "preservation": 1,
+      "reasons": [],
+      "grounded": [
+        {
+          "entityId": "33b8477e-27e9-4064-abc7-8b89b3a1fa75",
+          "bucket": "food",
+          "type": "food",
+          "span": "trà sữa",
+          "name": "milk tea",
+          "tier": "gazetteer-exact",
+          "foldedName": "milk tea"
+        },
+        {
+          "entityId": "b646184d-0868-408e-a7e2-e82ae5595546",
+          "bucket": "food",
+          "type": "food",
+          "span": "trà sữa",
+          "name": "boba tea",
+          "tier": "gazetteer-exact",
+          "foldedName": "boba tea"
+        },
+        {
+          "entityId": "0232d6b6-257b-49b3-aaa2-2e58cc12b8c8",
+          "bucket": "foodAttributes",
+          "type": "food_attribute",
+          "span": "không đường",
+          "name": "sugar free",
+          "tier": "gazetteer-exact",
+          "foldedName": "sugar free"
+        },
+        {
+          "entityId": "68a0f8a7-783c-4afe-8b4b-9060f304acfd",
+          "bucket": "ingredients",
+          "type": "ingredient",
+          "span": "trà",
+          "name": "tea",
+          "tier": "linked",
+          "foldedName": "tea"
+        },
+        {
+          "entityId": "cfbeb4cc-1a49-4e35-8155-440c4c6c5004",
+          "bucket": "ingredients",
+          "type": "ingredient",
+          "span": "sữa",
+          "name": "milk",
+          "tier": "linked",
+          "foldedName": "milk"
+        },
+        {
+          "entityId": "9d44e3fe-ccc6-4394-a930-7f5a0a813262",
+          "bucket": "ingredients",
+          "type": "ingredient",
+          "span": "đường",
+          "name": "sugar",
+          "tier": "linked",
+          "foldedName": "sugar"
+        }
+      ],
+      "unresolved": [],
+      "analysis": {
+        "script": "latin",
+        "requestLocale": "vi-VN",
+        "detectedLocale": {
+          "tag": "it",
+          "confidence": 1,
+          "source": "detector"
+        },
+        "denseTierUsed": false
+      },
+      "misGroundings": [],
+      "notes": "NEGATION v2 (LITERAL IGNORE): 'không X' is not a supported exclusion — the mentioned word may ground POSITIVELY like any other ingredient. The assertion is head preservation + NON-INVERSION: the parse must never flip into the semantic opposite (a vegetarian/vegan constraint the user did not ask for). park=true: the head 'trà sữa' may legitimately be consumed by the seeded 'không đường'→sugar free placement. Non-inversion is the hard part."
+    },
+    {
+      "id": "ng-17",
+      "query": "đồ ăn không thịt",
+      "stratum": "negation",
+      "locale": "vi-VN",
+      "pass": true,
+      "preservation": 1,
+      "reasons": [],
+      "grounded": [
+        {
+          "entityId": "3b38ad58-7750-42c8-9363-0b2742f704b2",
+          "bucket": "food",
+          "type": "food",
+          "span": "thịt",
+          "name": "meat",
+          "tier": "gazetteer-exact",
+          "foldedName": "meat"
+        }
+      ],
+      "unresolved": ["đồ ăn không"],
+      "analysis": {
+        "script": "latin",
+        "requestLocale": "vi-VN",
+        "detectedLocale": {
+          "tag": "fr",
+          "confidence": 1,
+          "source": "detector"
+        },
+        "denseTierUsed": true
+      },
+      "misGroundings": [],
+      "notes": "NEGATION v2 (LITERAL IGNORE): 'không X' is not a supported exclusion — the mentioned word may ground POSITIVELY like any other ingredient. The assertion is head preservation + NON-INVERSION: the parse must never flip into the semantic opposite (a vegetarian/vegan constraint the user did not ask for). THE CLASSIC INVERSION BAIT with a carrier head — nothing to preserve, everything to get wrong. park=true, so the ONLY way to fail is to invert."
+    },
+    {
+      "id": "ng-18",
+      "query": "pizza không thịt",
+      "stratum": "negation",
+      "locale": "vi-VN",
+      "pass": true,
+      "preservation": 1,
+      "reasons": [],
+      "grounded": [
+        {
+          "entityId": "6b829aa2-4a1f-45b1-b304-eb3ace7ba11b",
+          "bucket": "food",
+          "type": "food",
+          "span": "pizza",
+          "name": "pizza pie",
+          "tier": "gazetteer-exact",
+          "foldedName": "pizza pie"
+        },
+        {
+          "entityId": "b3a4c3e8-307f-4694-89b2-9160fcaa0436",
+          "bucket": "food",
+          "type": "food",
+          "span": "pizza",
+          "name": "pizza",
+          "tier": "gazetteer-exact",
+          "foldedName": "pizza"
+        },
+        {
+          "entityId": "3b38ad58-7750-42c8-9363-0b2742f704b2",
+          "bucket": "food",
+          "type": "food",
+          "span": "thịt",
+          "name": "meat",
+          "tier": "gazetteer-exact",
+          "foldedName": "meat"
+        }
+      ],
+      "unresolved": ["không"],
+      "analysis": {
+        "script": "latin",
+        "requestLocale": "vi-VN",
+        "detectedLocale": {
+          "tag": "fr",
+          "confidence": 1,
+          "source": "detector"
+        },
+        "denseTierUsed": true
+      },
+      "misGroundings": [],
+      "notes": "NEGATION v2 (LITERAL IGNORE): 'không X' is not a supported exclusion — the mentioned word may ground POSITIVELY like any other ingredient. The assertion is head preservation + NON-INVERSION: the parse must never flip into the semantic opposite (a vegetarian/vegan constraint the user did not ask for). Inversion bait over a locale-invariant head."
+    },
+    {
+      "id": "ng-19",
+      "query": "cơm không mặn",
+      "stratum": "negation",
+      "locale": "vi-VN",
+      "pass": true,
+      "preservation": 1,
+      "reasons": [],
+      "grounded": [
+        {
+          "entityId": "77490d5e-e33e-4f6e-b1b8-d370755faf1f",
+          "bucket": "food",
+          "type": "food",
+          "span": "cơm",
+          "name": "rice",
+          "tier": "gazetteer-exact",
+          "foldedName": "rice"
+        },
+        {
+          "entityId": "9112c473-ec70-482b-8967-6e4d6a08fc8a",
+          "bucket": "ingredients",
+          "type": "ingredient",
+          "span": "mặn",
+          "name": "plum",
+          "tier": "gazetteer-exact",
+          "foldedName": "plum"
+        }
+      ],
+      "unresolved": ["không"],
+      "analysis": {
+        "script": "latin",
+        "requestLocale": "vi-VN",
+        "detectedLocale": {
+          "tag": "fr",
+          "confidence": 1,
+          "source": "detector"
+        },
+        "denseTierUsed": true
+      },
+      "misGroundings": [],
+      "notes": "NEGATION v2 (LITERAL IGNORE): 'không X' is not a supported exclusion — the mentioned word may ground POSITIVELY like any other ingredient. The assertion is head preservation + NON-INVERSION: the parse must never flip into the semantic opposite (a vegetarian/vegan constraint the user did not ask for). Negating a taste attribute rather than an ingredient."
+    },
+    {
+      "id": "ng-20",
+      "query": "kem không sữa",
+      "stratum": "negation",
+      "locale": "vi-VN",
+      "pass": true,
+      "preservation": 1,
+      "reasons": [],
+      "grounded": [
+        {
+          "entityId": "dd390a0b-4199-4e1b-b1df-2fea78f11cc7",
+          "bucket": "food",
+          "type": "food",
+          "span": "kem",
+          "name": "ice cream",
+          "tier": "gazetteer-exact",
+          "foldedName": "ice cream"
+        },
+        {
+          "entityId": "d27f6643-bcdf-4375-af63-7830079e09a1",
+          "bucket": "foodAttributes",
+          "type": "food_attribute",
+          "span": "không sữa",
+          "name": "dairy free",
+          "tier": "gazetteer-exact",
+          "foldedName": "dairy free"
+        }
+      ],
+      "unresolved": [],
+      "analysis": {
+        "script": "latin",
+        "requestLocale": "vi-VN",
+        "detectedLocale": {
+          "tag": "fr",
+          "confidence": 1,
+          "source": "detector"
+        },
+        "denseTierUsed": false
+      },
+      "misGroundings": [],
+      "notes": "NEGATION v2 (LITERAL IGNORE): 'không X' is not a supported exclusion — the mentioned word may ground POSITIVELY like any other ingredient. The assertion is head preservation + NON-INVERSION: the parse must never flip into the semantic opposite (a vegetarian/vegan constraint the user did not ask for). 'không sữa' is a seeded 2-gram → dairy free; positive grounding is correct and is NOT an inversion (the user did ask for dairy-free)."
+    },
+    {
+      "id": "at-01",
+      "query": "cay",
+      "stratum": "attribute",
+      "locale": "vi-VN",
+      "pass": true,
+      "preservation": 1,
+      "reasons": [],
+      "grounded": [
+        {
+          "entityId": "d5912bd2-54c8-41a1-86c5-d3328abeaca4",
+          "bucket": "foodAttributes",
+          "type": "food_attribute",
+          "span": "cay",
+          "name": "spicy",
+          "tier": "gazetteer-exact",
+          "foldedName": "spicy"
+        }
+      ],
+      "unresolved": [],
+      "analysis": {
+        "script": "latin",
+        "requestLocale": "vi-VN",
+        "detectedLocale": {
+          "tag": "vi-VN",
+          "confidence": 0.5,
+          "source": "request-prior"
+        },
+        "denseTierUsed": false
+      },
+      "misGroundings": [],
+      "notes": "Banked 'cay'→spicy (food_attribute)."
+    },
+    {
+      "id": "at-02",
+      "query": "chay",
+      "stratum": "attribute",
+      "locale": "vi-VN",
+      "pass": true,
+      "preservation": 1,
+      "reasons": [],
+      "grounded": [
+        {
+          "entityId": "6f332d26-e126-462c-a58e-0b8954687be6",
+          "bucket": "foodAttributes",
+          "type": "food_attribute",
+          "span": "chay",
+          "name": "vegetarian",
+          "tier": "gazetteer-exact",
+          "foldedName": "vegetarian"
+        }
+      ],
+      "unresolved": [],
+      "analysis": {
+        "script": "latin",
+        "requestLocale": "vi-VN",
+        "detectedLocale": {
+          "tag": "vi-VN",
+          "confidence": 0.5,
+          "source": "request-prior"
+        },
+        "denseTierUsed": false
+      },
+      "misGroundings": [],
+      "notes": "DIETARY BOUNDARY (half 1): 'chay' is banked → vegetarian ONLY. Substituting vegan would tell a Buddhist-vegetarian diner that a dish with fish sauce is fine — the two are never interchangeable."
+    },
+    {
+      "id": "at-03",
+      "query": "thuần chay",
+      "stratum": "attribute",
+      "locale": "vi-VN",
+      "pass": true,
+      "preservation": 1,
+      "reasons": [],
+      "grounded": [
+        {
+          "entityId": "a1fafbb5-06bc-474d-9c47-65f7a7bd1716",
+          "bucket": "foodAttributes",
+          "type": "food_attribute",
+          "span": "thuần chay",
+          "name": "vegan",
+          "tier": "gazetteer-exact",
+          "foldedName": "vegan"
+        }
+      ],
+      "unresolved": [],
+      "analysis": {
+        "script": "latin",
+        "requestLocale": "vi-VN",
+        "detectedLocale": {
+          "tag": "vi-VN",
+          "confidence": 0.5,
+          "source": "request-prior"
+        },
+        "denseTierUsed": false
+      },
+      "misGroundings": [],
+      "notes": "DIETARY BOUNDARY (half 2): 'thuần chay' is banked → vegan. It CONTAINS the token 'chay', so a 1-gram fallback would silently downgrade a vegan search to vegetarian — that substitution is the failure this pair exists to catch."
+    },
+    {
+      "id": "at-04",
+      "query": "không gluten",
+      "stratum": "attribute",
+      "locale": "vi-VN",
+      "pass": true,
+      "preservation": 1,
+      "reasons": [],
+      "grounded": [
+        {
+          "entityId": "8409f136-de44-464e-852a-3362e113ebc7",
+          "bucket": "foodAttributes",
+          "type": "food_attribute",
+          "span": "không gluten",
+          "name": "gluten free",
+          "tier": "gazetteer-exact",
+          "foldedName": "gluten free"
+        },
+        {
+          "entityId": "51675b4a-c50c-4c9d-afbf-4d911c0a5be6",
+          "bucket": "ingredients",
+          "type": "ingredient",
+          "span": "gluten",
+          "name": "gluten",
+          "tier": "linked",
+          "foldedName": "gluten"
+        }
+      ],
+      "unresolved": [],
+      "analysis": {
+        "script": "latin",
+        "requestLocale": "vi-VN",
+        "detectedLocale": {
+          "tag": "fr",
+          "confidence": 1,
+          "source": "detector"
+        },
+        "denseTierUsed": false
+      },
+      "misGroundings": [],
+      "notes": "Seeded 2-gram; also the cue/alias collision in isolation — 'không' must not negate the phrase it is part of."
+    },
+    {
+      "id": "at-05",
+      "query": "halal",
+      "stratum": "attribute",
+      "locale": "vi-VN",
+      "pass": true,
+      "preservation": 1,
+      "reasons": [],
+      "grounded": [
+        {
+          "entityId": "05708d69-10ff-4482-9818-fa8ec6931225",
+          "bucket": "foodAttributes",
+          "type": "food_attribute",
+          "span": "halal",
+          "name": "halal",
+          "tier": "gazetteer-exact",
+          "foldedName": "halal"
+        }
+      ],
+      "unresolved": [],
+      "analysis": {
+        "script": "latin",
+        "requestLocale": "vi-VN",
+        "detectedLocale": {
+          "tag": "vi-VN",
+          "confidence": 0.5,
+          "source": "request-prior"
+        },
+        "denseTierUsed": false
+      },
+      "misGroundings": [],
+      "notes": "Locale-invariant spine word — the control for this stratum."
+    },
+    {
+      "id": "at-06",
+      "query": "ít cay",
+      "stratum": "attribute",
+      "locale": "vi-VN",
+      "pass": true,
+      "preservation": 1,
+      "reasons": [],
+      "grounded": [
+        {
+          "entityId": "15568764-42ec-4345-ba26-18939ac3b915",
+          "bucket": "foodAttributes",
+          "type": "food_attribute",
+          "span": "ít cay",
+          "name": "mild",
+          "tier": "gazetteer-exact",
+          "foldedName": "mild"
+        }
+      ],
+      "unresolved": [],
+      "analysis": {
+        "script": "latin",
+        "requestLocale": "vi-VN",
+        "detectedLocale": {
+          "tag": "vi-VN",
+          "confidence": 0.5,
+          "source": "request-prior"
+        },
+        "denseTierUsed": false
+      },
+      "misGroundings": [],
+      "notes": "Banked 'ít cay'→mild. A DEGREE phrase, not a negation: it must not become spicy, and it must not become a cue."
+    },
+    {
+      "id": "at-07",
+      "query": "chiên giòn",
+      "stratum": "attribute",
+      "locale": "vi-VN",
+      "pass": true,
+      "preservation": 1,
+      "reasons": [],
+      "grounded": [
+        {
+          "entityId": "c4d6c3c2-838c-4b2f-a72e-9596e390e86b",
+          "bucket": "foodAttributes",
+          "type": "food_attribute",
+          "span": "chiên giòn",
+          "name": "crispy",
+          "tier": "gazetteer-exact",
+          "foldedName": "crispy"
+        }
+      ],
+      "unresolved": [],
+      "analysis": {
+        "script": "latin",
+        "requestLocale": "vi-VN",
+        "detectedLocale": {
+          "tag": "it",
+          "confidence": 1,
+          "source": "detector"
+        },
+        "denseTierUsed": false
+      },
+      "misGroundings": [],
+      "notes": "Banked 'chiên giòn'→crispy (preparation attribute)."
+    },
+    {
+      "id": "at-08",
+      "query": "hun khói",
+      "stratum": "attribute",
+      "locale": "vi-VN",
+      "pass": true,
+      "preservation": 1,
+      "reasons": [],
+      "grounded": [
+        {
+          "entityId": "e7252c66-b456-48f1-99ab-e915597b3cc9",
+          "bucket": "foodAttributes",
+          "type": "food_attribute",
+          "span": "hun khói",
+          "name": "smoked",
+          "tier": "gazetteer-exact",
+          "foldedName": "smoked"
+        }
+      ],
+      "unresolved": [],
+      "analysis": {
+        "script": "latin",
+        "requestLocale": "vi-VN",
+        "detectedLocale": {
+          "tag": "vi-VN",
+          "confidence": 0.5,
+          "source": "request-prior"
+        },
+        "denseTierUsed": false
+      },
+      "misGroundings": [],
+      "notes": "Banked 'hun khói'→smoked."
+    },
+    {
+      "id": "at-09",
+      "query": "hấp",
+      "stratum": "attribute",
+      "locale": "vi-VN",
+      "pass": true,
+      "preservation": 1,
+      "reasons": [],
+      "grounded": [
+        {
+          "entityId": "1dac912a-e7fb-42e1-8d90-3e1629380084",
+          "bucket": "foodAttributes",
+          "type": "food_attribute",
+          "span": "hấp",
+          "name": "steamed",
+          "tier": "gazetteer-exact",
+          "foldedName": "steamed"
+        }
+      ],
+      "unresolved": [],
+      "analysis": {
+        "script": "latin",
+        "requestLocale": "vi-VN",
+        "detectedLocale": {
+          "tag": "vi-VN",
+          "confidence": 0.5,
+          "source": "request-prior"
+        },
+        "denseTierUsed": false
+      },
+      "misGroundings": [],
+      "notes": "Banked 'hấp'→steamed — a single-token attribute with a very short folded form ('hap')."
+    },
+    {
+      "id": "at-10",
+      "query": "lãng mạn",
+      "stratum": "attribute",
+      "locale": "vi-VN",
+      "pass": true,
+      "preservation": 1,
+      "reasons": [],
+      "grounded": [
+        {
+          "entityId": "65a80396-ea4d-44d6-876c-b17a258a3326",
+          "bucket": "restaurantAttributes",
+          "type": "restaurant_attribute",
+          "span": "lãng mạn",
+          "name": "romantic",
+          "tier": "gazetteer-exact",
+          "foldedName": "romantic"
+        }
+      ],
+      "unresolved": [],
+      "analysis": {
+        "script": "latin",
+        "requestLocale": "vi-VN",
+        "detectedLocale": {
+          "tag": "pt",
+          "confidence": 1,
+          "source": "detector"
+        },
+        "denseTierUsed": false
+      },
+      "misGroundings": [],
+      "notes": "Banked 'lãng mạn'→romantic (restaurant_attribute)."
+    },
+    {
+      "id": "at-11",
+      "query": "yên tĩnh",
+      "stratum": "attribute",
+      "locale": "vi-VN",
+      "pass": true,
+      "preservation": 1,
+      "reasons": [],
+      "grounded": [
+        {
+          "entityId": "1b83fa1e-680d-4292-acf5-b8456d27e415",
+          "bucket": "restaurantAttributes",
+          "type": "restaurant_attribute",
+          "span": "yên tĩnh",
+          "name": "quiet",
+          "tier": "gazetteer-exact",
+          "foldedName": "quiet"
+        }
+      ],
+      "unresolved": [],
+      "analysis": {
+        "script": "latin",
+        "requestLocale": "vi-VN",
+        "detectedLocale": {
+          "tag": "vi-VN",
+          "confidence": 0.5,
+          "source": "request-prior"
+        },
+        "denseTierUsed": false
+      },
+      "misGroundings": [],
+      "notes": "Banked 'yên tĩnh'→quiet."
+    },
+    {
+      "id": "at-12",
+      "query": "sân thượng",
+      "stratum": "attribute",
+      "locale": "vi-VN",
+      "pass": true,
+      "preservation": 1,
+      "reasons": [],
+      "grounded": [
+        {
+          "entityId": "1c629813-ffc1-4860-bf00-5ca06dccc4fb",
+          "bucket": "restaurantAttributes",
+          "type": "restaurant_attribute",
+          "span": "sân thượng",
+          "name": "rooftop",
+          "tier": "gazetteer-exact",
+          "foldedName": "rooftop"
+        }
+      ],
+      "unresolved": [],
+      "analysis": {
+        "script": "latin",
+        "requestLocale": "vi-VN",
+        "detectedLocale": {
+          "tag": "vi-VN",
+          "confidence": 0.5,
+          "source": "request-prior"
+        },
+        "denseTierUsed": false
+      },
+      "misGroundings": [],
+      "notes": "Banked 'sân thượng'→rooftop."
+    },
+    {
+      "id": "at-13",
+      "query": "chỗ ngồi ngoài trời",
+      "stratum": "attribute",
+      "locale": "vi-VN",
+      "pass": true,
+      "preservation": 1,
+      "reasons": [],
+      "grounded": [
+        {
+          "entityId": "d25c2905-f8e6-4de7-93f6-4bc6d04a6c07",
+          "bucket": "restaurantAttributes",
+          "type": "restaurant_attribute",
+          "span": "chỗ ngồi ngoài trời",
+          "name": "outdoor seating",
+          "tier": "gazetteer-exact",
+          "foldedName": "outdoor seating"
+        }
+      ],
+      "unresolved": [],
+      "analysis": {
+        "script": "latin",
+        "requestLocale": "vi-VN",
+        "detectedLocale": {
+          "tag": "vi-VN",
+          "confidence": 0.5,
+          "source": "request-prior"
+        },
+        "denseTierUsed": false
+      },
+      "misGroundings": [],
+      "notes": "Banked 4-token phrase → outdoor seating."
+    },
+    {
+      "id": "at-14",
+      "query": "giao hàng",
+      "stratum": "attribute",
+      "locale": "vi-VN",
+      "pass": true,
+      "preservation": 1,
+      "reasons": [],
+      "grounded": [
+        {
+          "entityId": "90677d09-9766-4089-8d62-b63d519271f8",
+          "bucket": "restaurantAttributes",
+          "type": "restaurant_attribute",
+          "span": "giao hàng",
+          "name": "delivery",
+          "tier": "gazetteer-exact",
+          "foldedName": "delivery"
+        }
+      ],
+      "unresolved": [],
+      "analysis": {
+        "script": "latin",
+        "requestLocale": "vi-VN",
+        "detectedLocale": {
+          "tag": "vi-VN",
+          "confidence": 0.5,
+          "source": "request-prior"
+        },
+        "denseTierUsed": false
+      },
+      "misGroundings": [],
+      "notes": "Banked 'giao hàng'→delivery."
+    },
+    {
+      "id": "at-15",
+      "query": "ăn đêm",
+      "stratum": "attribute",
+      "locale": "vi-VN",
+      "pass": true,
+      "preservation": 1,
+      "reasons": [],
+      "grounded": [
+        {
+          "entityId": "fbc17ea5-411d-4d23-a09d-5b44bc4f335d",
+          "bucket": "restaurantAttributes",
+          "type": "restaurant_attribute",
+          "span": "ăn đêm",
+          "name": "late night",
+          "tier": "gazetteer-exact",
+          "foldedName": "late night"
+        }
+      ],
+      "unresolved": [],
+      "analysis": {
+        "script": "latin",
+        "requestLocale": "vi-VN",
+        "detectedLocale": {
+          "tag": "pt",
+          "confidence": 1,
+          "source": "detector"
+        },
+        "denseTierUsed": false
+      },
+      "misGroundings": [],
+      "notes": "Banked 'ăn đêm'→late night — idiomatic, not a word-for-word rendering."
+    },
+    {
+      "id": "at-16",
+      "query": "cho phép mang chó",
+      "stratum": "attribute",
+      "locale": "vi-VN",
+      "pass": true,
+      "preservation": 1,
+      "reasons": [],
+      "grounded": [
+        {
+          "entityId": "59e40b37-34d7-4556-bcca-53ead8a6bd17",
+          "bucket": "restaurantAttributes",
+          "type": "restaurant_attribute",
+          "span": "cho phép mang chó",
+          "name": "allows dogs",
+          "tier": "gazetteer-exact",
+          "foldedName": "allows dogs"
+        }
+      ],
+      "unresolved": [],
+      "analysis": {
+        "script": "latin",
+        "requestLocale": "vi-VN",
+        "detectedLocale": {
+          "tag": "vi-VN",
+          "confidence": 0.5,
+          "source": "request-prior"
+        },
+        "denseTierUsed": false
+      },
+      "misGroundings": [],
+      "notes": "Banked 4-token phrase → allows dogs. The es corpus's lexical-gap case in Vietnamese: the English concept is 'allows dogs', not 'pet friendly'."
+    },
+    {
+      "id": "at-17",
+      "query": "chỗ cho nhóm đông",
+      "stratum": "attribute",
+      "locale": "vi-VN",
+      "pass": true,
+      "preservation": 1,
+      "reasons": [],
+      "grounded": [
+        {
+          "entityId": "458674e3-9093-464d-ae53-92f54bb55ec8",
+          "bucket": "restaurantAttributes",
+          "type": "restaurant_attribute",
+          "span": "chỗ cho nhóm đông",
+          "name": "good for groups",
+          "tier": "gazetteer-exact",
+          "foldedName": "good for groups"
+        }
+      ],
+      "unresolved": [],
+      "analysis": {
+        "script": "latin",
+        "requestLocale": "vi-VN",
+        "detectedLocale": {
+          "tag": "vi-VN",
+          "confidence": 0.5,
+          "source": "request-prior"
+        },
+        "denseTierUsed": false
+      },
+      "misGroundings": [],
+      "notes": "Banked 4-token phrase → good for groups."
+    },
+    {
+      "id": "at-18",
+      "query": "có wifi",
+      "stratum": "attribute",
+      "locale": "vi-VN",
+      "pass": true,
+      "preservation": 1,
+      "reasons": [],
+      "grounded": [
+        {
+          "entityId": "092f9cb2-74c9-49da-92a6-3ffcf05d2245",
+          "bucket": "restaurantAttributes",
+          "type": "restaurant_attribute",
+          "span": "có wifi",
+          "name": "wifi",
+          "tier": "gazetteer-exact",
+          "foldedName": "wifi"
+        }
+      ],
+      "unresolved": [],
+      "analysis": {
+        "script": "latin",
+        "requestLocale": "vi-VN",
+        "detectedLocale": {
+          "tag": "vi-VN",
+          "confidence": 0.5,
+          "source": "request-prior"
+        },
+        "denseTierUsed": false
+      },
+      "misGroundings": [],
+      "notes": "Banked 'có wifi'→wifi; 'có' (has) is a carrier that must not block the match."
+    },
+    {
+      "id": "at-19",
+      "query": "bãi đậu xe",
+      "stratum": "attribute",
+      "locale": "vi-VN",
+      "pass": true,
+      "preservation": 1,
+      "reasons": [],
+      "grounded": [
+        {
+          "entityId": "9466ee50-fefb-4fce-971a-5440e3e529ec",
+          "bucket": "restaurantAttributes",
+          "type": "restaurant_attribute",
+          "span": "bãi đậu xe",
+          "name": "parking",
+          "tier": "gazetteer-exact",
+          "foldedName": "parking"
+        }
+      ],
+      "unresolved": [],
+      "analysis": {
+        "script": "latin",
+        "requestLocale": "vi-VN",
+        "detectedLocale": {
+          "tag": "pt",
+          "confidence": 1,
+          "source": "detector"
+        },
+        "denseTierUsed": false
+      },
+      "misGroundings": [],
+      "notes": "Banked 3-token phrase → parking."
+    },
+    {
+      "id": "at-20",
+      "query": "chỉ nhận tiền mặt",
+      "stratum": "attribute",
+      "locale": "vi-VN",
+      "pass": true,
+      "preservation": 1,
+      "reasons": [],
+      "grounded": [
+        {
+          "entityId": "576599d0-17bd-421c-962a-6dc3c287eb03",
+          "bucket": "restaurantAttributes",
+          "type": "restaurant_attribute",
+          "span": "chỉ nhận tiền mặt",
+          "name": "cash only",
+          "tier": "gazetteer-exact",
+          "foldedName": "cash only"
+        }
+      ],
+      "unresolved": [],
+      "analysis": {
+        "script": "latin",
+        "requestLocale": "vi-VN",
+        "detectedLocale": {
+          "tag": "vi-VN",
+          "confidence": 0.5,
+          "source": "request-prior"
+        },
+        "denseTierUsed": false
+      },
+      "misGroundings": [],
+      "notes": "Banked 4-token phrase → cash only."
+    },
+    {
+      "id": "hg-01",
+      "query": "bò",
+      "stratum": "homograph",
+      "locale": "vi-VN",
+      "pass": false,
+      "preservation": 0,
+      "reasons": [
+        "MIS-GROUNDED (outside allowed set): avocado[gazetteer-exact]"
+      ],
+      "grounded": [
+        {
+          "entityId": "5dbb584c-790e-4078-acb1-d60185968264",
+          "bucket": "food",
+          "type": "food",
+          "span": "bò",
+          "name": "avocado",
+          "tier": "gazetteer-exact",
+          "foldedName": "avocado"
+        }
+      ],
+      "unresolved": [],
+      "analysis": {
+        "script": "latin",
+        "requestLocale": "vi-VN",
+        "detectedLocale": {
+          "tag": "it",
+          "confidence": 1,
+          "source": "detector"
+        },
+        "denseTierUsed": false
+      },
+      "misGroundings": ["avocado[gazetteer-exact]"],
+      "notes": "THE SHARPEST VIETNAMESE HOMOGRAPH: tone marks are meaning. 'bò' = beef, 'bơ' = butter/avocado — and BOTH fold to 'bo', where the corpus banks 'bo'→avocado + butter and NOTHING on beef. A confident avocado answer to a beef query is the vi twin of the es 'tuna' case. SAFE = beef, or clean park."
+    },
+    {
+      "id": "hg-02",
+      "query": "bơ",
+      "stratum": "homograph",
+      "locale": "vi-VN",
+      "pass": true,
+      "preservation": 0.5,
+      "reasons": [],
+      "grounded": [
+        {
+          "entityId": "5dbb584c-790e-4078-acb1-d60185968264",
+          "bucket": "food",
+          "type": "food",
+          "span": "bơ",
+          "name": "avocado",
+          "tier": "gazetteer-exact",
+          "foldedName": "avocado"
+        }
+      ],
+      "unresolved": [],
+      "analysis": {
+        "script": "latin",
+        "requestLocale": "vi-VN",
+        "detectedLocale": {
+          "tag": "vi-VN",
+          "confidence": 0.5,
+          "source": "request-prior"
+        },
+        "denseTierUsed": false
+      },
+      "misGroundings": [],
+      "notes": "CONTROL for hg-01: this is the spelling the banked alias actually means. Either sense is correct."
+    },
+    {
+      "id": "hg-03",
+      "query": "chè",
+      "stratum": "homograph",
+      "locale": "vi-VN",
+      "pass": true,
+      "preservation": 1,
+      "reasons": [],
+      "grounded": [
+        {
+          "entityId": "68a0f8a7-783c-4afe-8b4b-9060f304acfd",
+          "bucket": "ingredients",
+          "type": "ingredient",
+          "span": "chè",
+          "name": "tea",
+          "tier": "gazetteer-exact",
+          "foldedName": "tea"
+        }
+      ],
+      "unresolved": [],
+      "analysis": {
+        "script": "latin",
+        "requestLocale": "vi-VN",
+        "detectedLocale": {
+          "tag": "vi-VN",
+          "confidence": 0.5,
+          "source": "request-prior"
+        },
+        "denseTierUsed": false
+      },
+      "misGroundings": [],
+      "notes": "'chè' = a sweet dessert soup; 'chè' also = the tea plant, and the corpus banks 'chè'→tea (ingredient). Tea is defensible; a dessert-shaped wrong answer is not. Park is safe."
+    },
+    {
+      "id": "hg-04",
+      "query": "giá",
+      "stratum": "homograph",
+      "locale": "vi-VN",
+      "pass": true,
+      "preservation": 1,
+      "reasons": [],
+      "grounded": [
+        {
+          "entityId": "525c28db-3578-4290-b7fa-43177120fdd4",
+          "bucket": "ingredients",
+          "type": "ingredient",
+          "span": "giá",
+          "name": "sprout",
+          "tier": "gazetteer-exact",
+          "foldedName": "sprout"
+        },
+        {
+          "entityId": "b8f957ef-c8a5-4b87-bf11-7d143ec96f15",
+          "bucket": "ingredients",
+          "type": "ingredient",
+          "span": "giá",
+          "name": "bean sprout",
+          "tier": "gazetteer-exact",
+          "foldedName": "bean sprout"
+        },
+        {
+          "entityId": "fc1a826d-e60e-4899-9b61-007752aeea22",
+          "bucket": "ingredients",
+          "type": "ingredient",
+          "span": "giá",
+          "name": "sprouts",
+          "tier": "gazetteer-exact",
+          "foldedName": "sprouts"
+        }
+      ],
+      "unresolved": [],
+      "analysis": {
+        "script": "latin",
+        "requestLocale": "vi-VN",
+        "detectedLocale": {
+          "tag": "vi-VN",
+          "confidence": 0.5,
+          "source": "request-prior"
+        },
+        "denseTierUsed": false
+      },
+      "misGroundings": [],
+      "notes": "'giá' = bean sprouts AND 'price'. Banked on the sprout senses. A price-shaped or restaurant-shaped capture would be the failure."
+    },
+    {
+      "id": "hg-05",
+      "query": "mì",
+      "stratum": "homograph",
+      "locale": "vi-VN",
+      "pass": true,
+      "preservation": 0.6666666666666666,
+      "reasons": [],
+      "grounded": [
+        {
+          "entityId": "042de43d-2fb6-460d-bbea-b8779b79b52a",
+          "bucket": "food",
+          "type": "food",
+          "span": "mì",
+          "name": "noodles",
+          "tier": "gazetteer-exact",
+          "foldedName": "noodles"
+        },
+        {
+          "entityId": "86cc04ee-4fc8-4a8d-b49e-e3f5b06aac7f",
+          "bucket": "food",
+          "type": "food",
+          "span": "mì",
+          "name": "noodle",
+          "tier": "gazetteer-exact",
+          "foldedName": "noodle"
+        }
+      ],
+      "unresolved": [],
+      "analysis": {
+        "script": "latin",
+        "requestLocale": "vi-VN",
+        "detectedLocale": {
+          "tag": "it",
+          "confidence": 1,
+          "source": "detector"
+        },
+        "denseTierUsed": false
+      },
+      "misGroundings": [],
+      "notes": "'mì' = wheat noodles; banked on noodle/noodles. Also one fold away from 'mỹ' (America) — see hg-06."
+    },
+    {
+      "id": "hg-06",
+      "query": "mỹ",
+      "stratum": "homograph",
+      "locale": "vi-VN",
+      "pass": false,
+      "preservation": 0,
+      "reasons": [
+        "FORBIDDEN GROUNDING: mian",
+        "MIS-GROUNDED (outside allowed set): mian[gazetteer-exact]"
+      ],
+      "grounded": [
+        {
+          "entityId": "db337785-109a-4c69-af3c-d5acc572eeec",
+          "bucket": "food",
+          "type": "food",
+          "span": "mỹ",
+          "name": "mian",
+          "tier": "gazetteer-exact",
+          "foldedName": "mian"
+        }
+      ],
+      "unresolved": [],
+      "analysis": {
+        "script": "latin",
+        "requestLocale": "vi-VN",
+        "detectedLocale": {
+          "tag": "en",
+          "confidence": 0.5,
+          "source": "detector"
+        },
+        "denseTierUsed": false
+      },
+      "misGroundings": ["mian[gazetteer-exact]"],
+      "notes": "TONE-FOLD COLLISION: 'Mỹ' = America/American, but folded it is 'my', which the corpus banks on the Chinese noodle 'mian'. A user asking for American food must not be handed a noodle dish. SAFE = american, or park."
+    },
+    {
+      "id": "hg-07",
+      "query": "phô mai",
+      "stratum": "homograph",
+      "locale": "vi-VN",
+      "pass": true,
+      "preservation": 0.5,
+      "reasons": [],
+      "grounded": [
+        {
+          "entityId": "85c4a787-2a89-460e-8443-470da5863061",
+          "bucket": "food",
+          "type": "food",
+          "span": "phô mai",
+          "name": "cheese",
+          "tier": "gazetteer-exact",
+          "foldedName": "cheese"
+        }
+      ],
+      "unresolved": [],
+      "analysis": {
+        "script": "latin",
+        "requestLocale": "vi-VN",
+        "detectedLocale": {
+          "tag": "fr",
+          "confidence": 1,
+          "source": "detector"
+        },
+        "denseTierUsed": false
+      },
+      "misGroundings": [],
+      "notes": "'phô mai' (cheese) vs 'phở' (the soup) — one diacritic apart in speech, and 'pho mai' shares its first token with the folded 'pho'. Banked on cheese/queso; a pho grounding would be the failure."
+    },
+    {
+      "id": "hg-08",
+      "query": "cá",
+      "stratum": "homograph",
+      "locale": "vi-VN",
+      "pass": true,
+      "preservation": 1,
+      "reasons": [],
+      "grounded": [
+        {
+          "entityId": "bcb888b0-d59a-4c2f-956a-ab7374c4cfa5",
+          "bucket": "food",
+          "type": "food",
+          "span": "cá",
+          "name": "fish",
+          "tier": "gazetteer-exact",
+          "foldedName": "fish"
+        }
+      ],
+      "unresolved": [],
+      "analysis": {
+        "script": "latin",
+        "requestLocale": "vi-VN",
+        "detectedLocale": {
+          "tag": "vi-VN",
+          "confidence": 0.5,
+          "source": "request-prior"
+        },
+        "denseTierUsed": false
+      },
+      "misGroundings": [],
+      "notes": "'cá' = fish; 'ca' = to sing / a shift / a cup. Banked on fish. Control-ish, but the 2-letter folded form is exactly where short-string fuzzy floors misfire."
+    },
+    {
+      "id": "hg-09",
+      "query": "canh",
+      "stratum": "homograph",
+      "locale": "vi-VN",
+      "pass": false,
+      "preservation": 0,
+      "reasons": ["MIS-GROUNDED (outside allowed set): viet sandwich[linked]"],
+      "grounded": [
+        {
+          "entityId": "9cd8f4aa-bb68-4bee-937f-45fee496d147",
+          "bucket": "food",
+          "type": "food",
+          "span": "canh",
+          "name": "viet sandwich",
+          "tier": "linked",
+          "foldedName": "viet sandwich"
+        }
+      ],
+      "unresolved": [],
+      "analysis": {
+        "script": "latin",
+        "requestLocale": "vi-VN",
+        "detectedLocale": {
+          "tag": "vi-VN",
+          "confidence": 0.5,
+          "source": "request-prior"
+        },
+        "denseTierUsed": true
+      },
+      "misGroundings": ["viet sandwich[linked]"],
+      "notes": "'canh' = a clear soup, and is NOT banked as a vi alias (verified). Also one fold from 'cánh' (wing) and 'cạnh' (edge). SAFE = soup via dense, or park."
+    },
+    {
+      "id": "hg-10",
+      "query": "chả",
+      "stratum": "homograph",
+      "locale": "vi-VN",
+      "pass": true,
+      "preservation": 1,
+      "reasons": ["clean park (safe)"],
+      "grounded": [],
+      "unresolved": ["chả"],
+      "analysis": {
+        "script": "latin",
+        "requestLocale": "vi-VN",
+        "detectedLocale": {
+          "tag": "vi-VN",
+          "confidence": 0.5,
+          "source": "request-prior"
+        },
+        "denseTierUsed": true
+      },
+      "misGroundings": [],
+      "notes": "'chả' = a grilled pork patty, unbanked as a bare surface (verified) — and it is a substring of dozens of banked compounds (chả giò, bún chả, chả cá). SAFE = clean park; any confident dish is a fragment mis-grounding."
+    },
+    {
+      "id": "hg-11",
+      "query": "nem",
+      "stratum": "homograph",
+      "locale": "vi-VN",
+      "pass": false,
+      "preservation": 0,
+      "reasons": [
+        "MIS-GROUNDED (outside allowed set): little gem lettuce[linked]"
+      ],
+      "grounded": [
+        {
+          "entityId": "0db484d2-b91b-4986-bd90-cf720b4f17c1",
+          "bucket": "ingredients",
+          "type": "ingredient",
+          "span": "nem",
+          "name": "little gem lettuce",
+          "tier": "linked",
+          "foldedName": "little gem lettuce"
+        }
+      ],
+      "unresolved": [],
+      "analysis": {
+        "script": "latin",
+        "requestLocale": "vi-VN",
+        "detectedLocale": {
+          "tag": "vi-VN",
+          "confidence": 0.5,
+          "source": "request-prior"
+        },
+        "denseTierUsed": true
+      },
+      "misGroundings": ["little gem lettuce[linked]"],
+      "notes": "'nem' is unbanked bare; only 'nem cuốn'→spring roll exists. Reaching spring roll is defensible; anything else is not."
+    },
+    {
+      "id": "hg-12",
+      "query": "gỏi",
+      "stratum": "homograph",
+      "locale": "vi-VN",
+      "pass": true,
+      "preservation": 0,
+      "reasons": ["clean park (safe)"],
+      "grounded": [],
+      "unresolved": ["gỏi"],
+      "analysis": {
+        "script": "latin",
+        "requestLocale": "vi-VN",
+        "detectedLocale": {
+          "tag": "vi-VN",
+          "confidence": 0.5,
+          "source": "request-prior"
+        },
+        "denseTierUsed": true
+      },
+      "misGroundings": [],
+      "notes": "'gỏi' = a Vietnamese salad; unbanked bare (only 'gỏi cuốn tôm' is banked — cp-13). SAFE = salad, or park."
+    },
+    {
+      "id": "hg-13",
+      "query": "bún",
+      "stratum": "homograph",
+      "locale": "vi-VN",
+      "pass": true,
+      "preservation": 0.5,
+      "reasons": [],
+      "grounded": [
+        {
+          "entityId": "38dd8008-11fd-4771-8203-7434a8040bd4",
+          "bucket": "food",
+          "type": "food",
+          "span": "bún",
+          "name": "bun",
+          "tier": "gazetteer-exact",
+          "foldedName": "bun"
+        },
+        {
+          "entityId": "f2623f78-29ff-49ac-ad64-d786687ff4bd",
+          "bucket": "food",
+          "type": "food",
+          "span": "bún",
+          "name": "rice noodle",
+          "tier": "gazetteer-exact",
+          "foldedName": "rice noodle"
+        }
+      ],
+      "unresolved": [],
+      "analysis": {
+        "script": "latin",
+        "requestLocale": "vi-VN",
+        "detectedLocale": {
+          "tag": "vi-VN",
+          "confidence": 0.5,
+          "source": "request-prior"
+        },
+        "denseTierUsed": false
+      },
+      "misGroundings": [],
+      "notes": "CROSS-LANGUAGE HOMOGRAPH: Vietnamese 'bún' = rice vermicelli; English 'bun' = bread. The corpus holds BOTH and they fold identically. | AUTHORING CORRECTION (gate run 1): the first draft forbade 'bun'. That contradicts the ratified es ruling (hg-07/hg-08, tuna/pie): an exact English NAME match is correct for ANY locale in an English-corpus market — the locale guard governs tagged ALIAS rows, not source-faithful names. The parse returned rice noodle AND bun; the Vietnamese sense is present, so this is breadth, not a mis-grounding."
+    },
+    {
+      "id": "hg-14",
+      "query": "thơm",
+      "stratum": "homograph",
+      "locale": "vi-VN",
+      "pass": true,
+      "preservation": 0.5,
+      "reasons": [],
+      "grounded": [
+        {
+          "entityId": "7f3e1488-2eae-4fa8-a993-b5be166e2549",
+          "bucket": "foodAttributes",
+          "type": "food_attribute",
+          "span": "thơm",
+          "name": "fragrant",
+          "tier": "gazetteer-exact",
+          "foldedName": "fragrant"
+        }
+      ],
+      "unresolved": [],
+      "analysis": {
+        "script": "latin",
+        "requestLocale": "vi-VN",
+        "detectedLocale": {
+          "tag": "vi-VN",
+          "confidence": 0.5,
+          "source": "request-prior"
+        },
+        "denseTierUsed": false
+      },
+      "misGroundings": [],
+      "notes": "TRUE IN-LANGUAGE HOMOGRAPH: 'thơm' = pineapple (southern) AND fragrant (the adjective) — the corpus banks the SAME surface on both, a food and a food_attribute. Either is correct; the entry exists because a market must not have to pick."
+    },
+    {
+      "id": "hg-15",
+      "query": "cơm cháy",
+      "stratum": "homograph",
+      "locale": "vi-VN",
+      "pass": true,
+      "preservation": 0.6666666666666666,
+      "reasons": [],
+      "grounded": [
+        {
+          "entityId": "484a73f1-51e1-4ada-8b75-8ec9bd031114",
+          "bucket": "food",
+          "type": "food",
+          "span": "cơm cháy",
+          "name": "scorched rice",
+          "tier": "gazetteer-exact",
+          "foldedName": "scorched rice"
+        },
+        {
+          "entityId": "35e1f3b8-f85d-472b-b378-803fd071eea1",
+          "bucket": "ingredients",
+          "type": "ingredient",
+          "span": "cơm",
+          "name": "rice",
+          "tier": "linked",
+          "foldedName": "rice"
+        }
+      ],
+      "unresolved": [],
+      "analysis": {
+        "script": "latin",
+        "requestLocale": "vi-VN",
+        "detectedLocale": {
+          "tag": "es",
+          "confidence": 1,
+          "source": "detector"
+        },
+        "denseTierUsed": false
+      },
+      "misGroundings": [],
+      "notes": "DIACRITIC TRAP: 'cơm chay' (vegetarian rice) and 'cơm cháy' (scorched rice crust) both fold to 'com chay', and only the SCORCHED sense is banked. This entry asserts the banked sense; hg-16 asserts the other spelling, and the pair makes the collision measurable instead of arguable. | AUTHORING CORRECTION (gate run 1): 'rice' added to the allowed set — the parse also linked the sub-span 'cơm'→rice, which is a true sub-grounding of the query, not a wrong sense."
+    },
+    {
+      "id": "hg-16",
+      "query": "cơm chay",
+      "stratum": "homograph",
+      "locale": "vi-VN",
+      "pass": false,
+      "preservation": 0.5,
+      "reasons": [
+        "FORBIDDEN GROUNDING: scorched rice",
+        "MIS-GROUNDED (outside allowed set): scorched rice[gazetteer-exact]"
+      ],
+      "grounded": [
+        {
+          "entityId": "484a73f1-51e1-4ada-8b75-8ec9bd031114",
+          "bucket": "food",
+          "type": "food",
+          "span": "cơm chay",
+          "name": "scorched rice",
+          "tier": "gazetteer-exact",
+          "foldedName": "scorched rice"
+        },
+        {
+          "entityId": "35e1f3b8-f85d-472b-b378-803fd071eea1",
+          "bucket": "ingredients",
+          "type": "ingredient",
+          "span": "cơm",
+          "name": "rice",
+          "tier": "linked",
+          "foldedName": "rice"
+        }
+      ],
+      "unresolved": [],
+      "analysis": {
+        "script": "latin",
+        "requestLocale": "vi-VN",
+        "detectedLocale": {
+          "tag": "vi-VN",
+          "confidence": 0.5,
+          "source": "request-prior"
+        },
+        "denseTierUsed": false
+      },
+      "misGroundings": ["scorched rice[gazetteer-exact]"],
+      "notes": "The other half of hg-15: a vegetarian-rice query whose folded form is banked on scorched rice. SAFE = rice and/or vegetarian, or park; being handed a rice crust is a wrong-sense grounding a diner would notice immediately."
+    },
+    {
+      "id": "hg-17",
+      "query": "ớt",
+      "stratum": "homograph",
+      "locale": "vi-VN",
+      "pass": true,
+      "preservation": 1,
+      "reasons": [],
+      "grounded": [
+        {
+          "entityId": "0cd03ab5-9737-4f69-b7cb-2bc13cd65399",
+          "bucket": "ingredients",
+          "type": "ingredient",
+          "span": "ớt",
+          "name": "chile",
+          "tier": "gazetteer-exact",
+          "foldedName": "chile"
+        },
+        {
+          "entityId": "54ed71cc-b13f-44c0-a8cf-cb7cf9a55cd6",
+          "bucket": "ingredients",
+          "type": "ingredient",
+          "span": "ớt",
+          "name": "chili pepper",
+          "tier": "gazetteer-exact",
+          "foldedName": "chili pepper"
+        },
+        {
+          "entityId": "7c29623e-9792-4ae1-b151-f3b1496b8c66",
+          "bucket": "ingredients",
+          "type": "ingredient",
+          "span": "ớt",
+          "name": "hot pepper",
+          "tier": "gazetteer-exact",
+          "foldedName": "hot pepper"
+        },
+        {
+          "entityId": "91da56c1-67c3-4b13-9cc5-300aaf770920",
+          "bucket": "ingredients",
+          "type": "ingredient",
+          "span": "ớt",
+          "name": "hot peppers",
+          "tier": "gazetteer-exact",
+          "foldedName": "hot peppers"
+        },
+        {
+          "entityId": "bbbdc25b-a6c5-4bd4-b4c3-f1f1b3ad41be",
+          "bucket": "ingredients",
+          "type": "ingredient",
+          "span": "ớt",
+          "name": "chili",
+          "tier": "gazetteer-exact",
+          "foldedName": "chili"
+        }
+      ],
+      "unresolved": [],
+      "analysis": {
+        "script": "latin",
+        "requestLocale": "vi-VN",
+        "detectedLocale": {
+          "tag": "vi-VN",
+          "confidence": 0.5,
+          "source": "request-prior"
+        },
+        "denseTierUsed": false
+      },
+      "misGroundings": [],
+      "notes": "'ớt' is banked on five unmerged English chili twins — any of them is right. Folded it is 'ot', a 2-letter string: the fuzzy-floor case."
+    },
+    {
+      "id": "hg-18",
+      "query": "chanh",
+      "stratum": "homograph",
+      "locale": "vi-VN",
+      "pass": true,
+      "preservation": 1,
+      "reasons": [],
+      "grounded": [
+        {
+          "entityId": "19c7f31a-64bf-42c2-b050-62077fca853e",
+          "bucket": "ingredients",
+          "type": "ingredient",
+          "span": "chanh",
+          "name": "lemon",
+          "tier": "gazetteer-exact",
+          "foldedName": "lemon"
+        },
+        {
+          "entityId": "2ec6c4df-4d1a-448d-bc2e-3598ab2561d5",
+          "bucket": "ingredients",
+          "type": "ingredient",
+          "span": "chanh",
+          "name": "lime",
+          "tier": "gazetteer-exact",
+          "foldedName": "lime"
+        }
+      ],
+      "unresolved": [],
+      "analysis": {
+        "script": "latin",
+        "requestLocale": "vi-VN",
+        "detectedLocale": {
+          "tag": "vi-VN",
+          "confidence": 0.5,
+          "source": "request-prior"
+        },
+        "denseTierUsed": false
+      },
+      "misGroundings": [],
+      "notes": "'chanh' covers BOTH lemon and lime in Vietnamese; the corpus banks both. Either is correct — the entry documents that no single English row is the right answer."
+    },
+    {
+      "id": "hg-19",
+      "query": "ngô",
+      "stratum": "homograph",
+      "locale": "vi-VN",
+      "pass": true,
+      "preservation": 1,
+      "reasons": [],
+      "grounded": [
+        {
+          "entityId": "1d625b7c-0c47-437d-b2f4-a130ca76aae3",
+          "bucket": "food",
+          "type": "food",
+          "span": "ngô",
+          "name": "corn",
+          "tier": "gazetteer-exact",
+          "foldedName": "corn"
+        }
+      ],
+      "unresolved": [],
+      "analysis": {
+        "script": "latin",
+        "requestLocale": "vi-VN",
+        "detectedLocale": {
+          "tag": "vi-VN",
+          "confidence": 0.5,
+          "source": "request-prior"
+        },
+        "denseTierUsed": false
+      },
+      "misGroundings": [],
+      "notes": "'ngô' = corn (northern) and also a common surname/'Chinese' in older usage. Banked on corn."
+    },
+    {
+      "id": "hg-20",
+      "query": "ga",
+      "stratum": "homograph",
+      "locale": "vi-VN",
+      "pass": true,
+      "preservation": 1,
+      "reasons": [],
+      "grounded": [
+        {
+          "entityId": "12bcdfbd-7736-4d47-82e7-b7cf30b5fa93",
+          "bucket": "food",
+          "type": "food",
+          "span": "ga",
+          "name": "chicken",
+          "tier": "gazetteer-exact",
+          "foldedName": "chicken"
+        }
+      ],
+      "unresolved": [],
+      "analysis": {
+        "script": "latin",
+        "requestLocale": "vi-VN",
+        "detectedLocale": {
+          "tag": "vi-VN",
+          "confidence": 0.5,
+          "source": "request-prior"
+        },
+        "denseTierUsed": false
+      },
+      "misGroundings": [],
+      "notes": "DE-DIACRITIZED COLLISION: typed bare, 'ga' is 'gà' (chicken), 'ga' (train station / gas), and the folded head of 'có ga'→sparkling. SAFE = chicken, or park."
+    },
+    {
+      "id": "cs-01",
+      "query": "tôi muốn ăn sushi",
+      "stratum": "code_switched",
+      "locale": "vi-VN",
+      "pass": true,
+      "preservation": 1,
+      "reasons": [],
+      "grounded": [
+        {
+          "entityId": "6317fa6e-62ea-497a-a6e4-52201c2a2fe1",
+          "bucket": "food",
+          "type": "food",
+          "span": "tôi",
+          "name": "garlic",
+          "tier": "gazetteer-exact",
+          "foldedName": "garlic"
+        },
+        {
+          "entityId": "dfcea5a8-359f-410c-9ca6-85f4196ff8b2",
+          "bucket": "food",
+          "type": "food",
+          "span": "sushi",
+          "name": "sushi",
+          "tier": "gazetteer-exact",
+          "foldedName": "sushi"
+        }
+      ],
+      "unresolved": ["muốn ăn"],
+      "analysis": {
+        "script": "latin",
+        "requestLocale": "vi-VN",
+        "detectedLocale": {
+          "tag": "vi-VN",
+          "confidence": 0.5,
+          "source": "request-prior"
+        },
+        "denseTierUsed": true
+      },
+      "misGroundings": [],
+      "notes": "Vietnamese carrier (\"I want to eat\") + English dish. The English span must ground as if English."
+    },
+    {
+      "id": "cs-02",
+      "query": "cho tôi pizza",
+      "stratum": "code_switched",
+      "locale": "vi-VN",
+      "pass": true,
+      "preservation": 1,
+      "reasons": [],
+      "grounded": [
+        {
+          "entityId": "6317fa6e-62ea-497a-a6e4-52201c2a2fe1",
+          "bucket": "food",
+          "type": "food",
+          "span": "tôi",
+          "name": "garlic",
+          "tier": "gazetteer-exact",
+          "foldedName": "garlic"
+        },
+        {
+          "entityId": "6b829aa2-4a1f-45b1-b304-eb3ace7ba11b",
+          "bucket": "food",
+          "type": "food",
+          "span": "pizza",
+          "name": "pizza pie",
+          "tier": "gazetteer-exact",
+          "foldedName": "pizza pie"
+        },
+        {
+          "entityId": "b3a4c3e8-307f-4694-89b2-9160fcaa0436",
+          "bucket": "food",
+          "type": "food",
+          "span": "pizza",
+          "name": "pizza",
+          "tier": "gazetteer-exact",
+          "foldedName": "pizza"
+        }
+      ],
+      "unresolved": ["cho"],
+      "analysis": {
+        "script": "latin",
+        "requestLocale": "vi-VN",
+        "detectedLocale": {
+          "tag": "vi-VN",
+          "confidence": 0.5,
+          "source": "request-prior"
+        },
+        "denseTierUsed": true
+      },
+      "misGroundings": [],
+      "notes": "Imperative carrier + loanword dish."
+    },
+    {
+      "id": "cs-03",
+      "query": "quán ramen gần đây",
+      "stratum": "code_switched",
+      "locale": "vi-VN",
+      "pass": true,
+      "preservation": 1,
+      "reasons": [],
+      "grounded": [
+        {
+          "entityId": "e0a90a3f-a173-4852-b28a-c02c3e0e4b9f",
+          "bucket": "food",
+          "type": "food",
+          "span": "gần",
+          "name": "liver",
+          "tier": "gazetteer-exact",
+          "foldedName": "liver"
+        },
+        {
+          "entityId": "cd6be86b-aae0-4e62-9c8a-df3589a0e832",
+          "bucket": "restaurantAttributes",
+          "type": "restaurant_attribute",
+          "span": "quán ramen",
+          "name": "ramen",
+          "tier": "gazetteer-exact",
+          "foldedName": "ramen"
+        }
+      ],
+      "unresolved": ["đây"],
+      "analysis": {
+        "script": "latin",
+        "requestLocale": "vi-VN",
+        "detectedLocale": {
+          "tag": "es",
+          "confidence": 1,
+          "source": "detector"
+        },
+        "denseTierUsed": true
+      },
+      "misGroundings": [],
+      "notes": "Carrier + proximity directive (\"gần đây\" = nearby), deliberately unasserted as a concept."
+    },
+    {
+      "id": "cs-04",
+      "query": "tôi thích burger",
+      "stratum": "code_switched",
+      "locale": "vi-VN",
+      "pass": true,
+      "preservation": 1,
+      "reasons": [],
+      "grounded": [
+        {
+          "entityId": "6317fa6e-62ea-497a-a6e4-52201c2a2fe1",
+          "bucket": "food",
+          "type": "food",
+          "span": "tôi",
+          "name": "garlic",
+          "tier": "gazetteer-exact",
+          "foldedName": "garlic"
+        },
+        {
+          "entityId": "2a2b6fe3-779b-42ad-9c1a-4cb88fa80815",
+          "bucket": "food",
+          "type": "food",
+          "span": "burger",
+          "name": "burger",
+          "tier": "gazetteer-exact",
+          "foldedName": "burger"
+        },
+        {
+          "entityId": "a34ebfc4-c86b-4f2a-a73d-0b455a43972d",
+          "bucket": "food",
+          "type": "food",
+          "span": "thích",
+          "name": "candy",
+          "tier": "linked",
+          "foldedName": "candy"
+        }
+      ],
+      "unresolved": [],
+      "analysis": {
+        "script": "latin",
+        "requestLocale": "vi-VN",
+        "detectedLocale": {
+          "tag": "vi-VN",
+          "confidence": 0.5,
+          "source": "request-prior"
+        },
+        "denseTierUsed": true
+      },
+      "misGroundings": [],
+      "notes": "Carrier + English dish that also exists as a restaurant_attribute — cross-type placement."
+    },
+    {
+      "id": "cs-05",
+      "query": "muốn ăn BBQ",
+      "stratum": "code_switched",
+      "locale": "vi-VN",
+      "pass": true,
+      "preservation": 1,
+      "reasons": [],
+      "grounded": [
+        {
+          "entityId": "53df955f-ec55-4392-ba46-e1184c52fafc",
+          "bucket": "food",
+          "type": "food",
+          "span": "BBQ",
+          "name": "bbq",
+          "tier": "gazetteer-exact",
+          "foldedName": "bbq"
+        }
+      ],
+      "unresolved": ["muốn ăn"],
+      "analysis": {
+        "script": "latin",
+        "requestLocale": "vi-VN",
+        "detectedLocale": {
+          "tag": "vi-VN",
+          "confidence": 0.5,
+          "source": "request-prior"
+        },
+        "denseTierUsed": true
+      },
+      "misGroundings": [],
+      "notes": "Spine word identical in both languages."
+    },
+    {
+      "id": "cs-06",
+      "query": "tìm quán korean bbq",
+      "stratum": "code_switched",
+      "locale": "vi-VN",
+      "pass": true,
+      "preservation": 1,
+      "reasons": [],
+      "grounded": [
+        {
+          "entityId": "b01592d6-f94a-4b23-afdb-9764d21095ad",
+          "bucket": "restaurants",
+          "type": "restaurant",
+          "span": "quán",
+          "name": "Quan Sushi Grill",
+          "tier": "gazetteer-exact",
+          "foldedName": "quan sushi grill"
+        },
+        {
+          "entityId": "cb2e4fac-a778-4c30-a95a-319e86a61f4f",
+          "bucket": "food",
+          "type": "food",
+          "span": "korean bbq",
+          "name": "korean bbq",
+          "tier": "gazetteer-exact",
+          "foldedName": "korean bbq"
+        },
+        {
+          "entityId": "45d744fc-4c83-4a0d-9e23-616a83d70bc9",
+          "bucket": "restaurantAttributes",
+          "type": "restaurant_attribute",
+          "span": "korean",
+          "name": "korean",
+          "tier": "linked",
+          "foldedName": "korean"
+        },
+        {
+          "entityId": "980f562b-e754-401f-8913-cae8befc7e66",
+          "bucket": "restaurantAttributes",
+          "type": "restaurant_attribute",
+          "span": "bbq",
+          "name": "bbq",
+          "tier": "linked",
+          "foldedName": "bbq"
+        },
+        {
+          "entityId": "9ad14bcb-15ce-4f4f-aee2-097f73bce132",
+          "bucket": "ingredients",
+          "type": "ingredient",
+          "span": "tìm",
+          "name": "heart",
+          "tier": "gazetteer-exact",
+          "foldedName": "heart"
+        }
+      ],
+      "unresolved": [],
+      "analysis": {
+        "script": "latin",
+        "requestLocale": "vi-VN",
+        "detectedLocale": {
+          "tag": "it",
+          "confidence": 1,
+          "source": "detector"
+        },
+        "denseTierUsed": false
+      },
+      "misGroundings": [],
+      "notes": "English 2-gram concept that must beat its own parts ('korean' + 'bbq'), under a Vietnamese carrier."
+    },
+    {
+      "id": "cs-07",
+      "query": "có dim sum không",
+      "stratum": "code_switched",
+      "locale": "vi-VN",
+      "pass": true,
+      "preservation": 1,
+      "reasons": [],
+      "grounded": [
+        {
+          "entityId": "d3a9ad01-1827-4e33-a010-bdc17857b2fd",
+          "bucket": "food",
+          "type": "food",
+          "span": "dim sum",
+          "name": "dim sum",
+          "tier": "gazetteer-exact",
+          "foldedName": "dim sum"
+        }
+      ],
+      "unresolved": ["có", "không"],
+      "analysis": {
+        "script": "latin",
+        "requestLocale": "vi-VN",
+        "detectedLocale": {
+          "tag": "fr",
+          "confidence": 1,
+          "source": "detector"
+        },
+        "denseTierUsed": true
+      },
+      "misGroundings": [],
+      "notes": "Vietnamese yes/no frame ('có ... không') WRAPPING an English concept — the trailing 'không' is a question particle here, NOT a negation cue. If it reads as negation the parse inverts on a purely grammatical word."
+    },
+    {
+      "id": "cs-08",
+      "query": "tôi muốn ice cream",
+      "stratum": "code_switched",
+      "locale": "vi-VN",
+      "pass": true,
+      "preservation": 1,
+      "reasons": [],
+      "grounded": [
+        {
+          "entityId": "6317fa6e-62ea-497a-a6e4-52201c2a2fe1",
+          "bucket": "food",
+          "type": "food",
+          "span": "tôi",
+          "name": "garlic",
+          "tier": "gazetteer-exact",
+          "foldedName": "garlic"
+        },
+        {
+          "entityId": "dd390a0b-4199-4e1b-b1df-2fea78f11cc7",
+          "bucket": "food",
+          "type": "food",
+          "span": "ice cream",
+          "name": "ice cream",
+          "tier": "gazetteer-exact",
+          "foldedName": "ice cream"
+        },
+        {
+          "entityId": "77dd20cb-7574-477a-801f-f5394e3634c8",
+          "bucket": "food",
+          "type": "food",
+          "span": "muốn",
+          "name": "spring roll",
+          "tier": "linked",
+          "foldedName": "spring roll"
+        },
+        {
+          "entityId": "fd5a75b5-7dd4-49f9-9704-e7b272e9bf98",
+          "bucket": "ingredients",
+          "type": "ingredient",
+          "span": "ice",
+          "name": "ice",
+          "tier": "linked",
+          "foldedName": "ice"
+        },
+        {
+          "entityId": "10dc6d53-685a-4c2a-a302-d59ade9c5d1e",
+          "bucket": "ingredients",
+          "type": "ingredient",
+          "span": "cream",
+          "name": "cream",
+          "tier": "linked",
+          "foldedName": "cream"
+        }
+      ],
+      "unresolved": [],
+      "analysis": {
+        "script": "latin",
+        "requestLocale": "vi-VN",
+        "detectedLocale": {
+          "tag": "vi-VN",
+          "confidence": 0.5,
+          "source": "request-prior"
+        },
+        "denseTierUsed": true
+      },
+      "misGroundings": [],
+      "notes": "English form of sn-23 — isolates whether the sn-23 result is a bridge or a grounding gap."
+    },
+    {
+      "id": "cs-09",
+      "query": "quán coffee yên tĩnh",
+      "stratum": "code_switched",
+      "locale": "vi-VN",
+      "pass": true,
+      "preservation": 1,
+      "reasons": [],
+      "grounded": [
+        {
+          "entityId": "b01592d6-f94a-4b23-afdb-9764d21095ad",
+          "bucket": "restaurants",
+          "type": "restaurant",
+          "span": "quán",
+          "name": "Quan Sushi Grill",
+          "tier": "gazetteer-exact",
+          "foldedName": "quan sushi grill"
+        },
+        {
+          "entityId": "926935db-c5d9-45f8-8618-05fb6a9fd3e9",
+          "bucket": "food",
+          "type": "food",
+          "span": "coffee",
+          "name": "coffee",
+          "tier": "gazetteer-exact",
+          "foldedName": "coffee"
+        },
+        {
+          "entityId": "1b83fa1e-680d-4292-acf5-b8456d27e415",
+          "bucket": "restaurantAttributes",
+          "type": "restaurant_attribute",
+          "span": "yên tĩnh",
+          "name": "quiet",
+          "tier": "gazetteer-exact",
+          "foldedName": "quiet"
+        }
+      ],
+      "unresolved": [],
+      "analysis": {
+        "script": "latin",
+        "requestLocale": "vi-VN",
+        "detectedLocale": {
+          "tag": "es",
+          "confidence": 1,
+          "source": "detector"
+        },
+        "denseTierUsed": false
+      },
+      "misGroundings": [],
+      "notes": "English noun + banked Vietnamese attribute in one query."
+    },
+    {
+      "id": "cs-10",
+      "query": "nhà hàng seafood",
+      "stratum": "code_switched",
+      "locale": "vi-VN",
+      "pass": true,
+      "preservation": 1,
+      "reasons": [],
+      "grounded": [
+        {
+          "entityId": "f43fa2e2-d94d-4ebe-8136-698ff755d869",
+          "bucket": "food",
+          "type": "food",
+          "span": "seafood",
+          "name": "seafood",
+          "tier": "gazetteer-exact",
+          "foldedName": "seafood"
+        },
+        {
+          "entityId": "ca15d0cc-13d5-4e38-8d2b-95dc4dd28808",
+          "bucket": "foodAttributes",
+          "type": "food_attribute",
+          "span": "hàng",
+          "name": "pungent",
+          "tier": "gazetteer-exact",
+          "foldedName": "pungent"
+        }
+      ],
+      "unresolved": ["nhà"],
+      "analysis": {
+        "script": "latin",
+        "requestLocale": "vi-VN",
+        "detectedLocale": {
+          "tag": "vi-VN",
+          "confidence": 0.5,
+          "source": "request-prior"
+        },
+        "denseTierUsed": true
+      },
+      "misGroundings": [],
+      "notes": "English form of sn-31."
+    },
+    {
+      "id": "cs-11",
+      "query": "ăn brunch ở đâu",
+      "stratum": "code_switched",
+      "locale": "vi-VN",
+      "pass": true,
+      "preservation": 1,
+      "reasons": [],
+      "grounded": [
+        {
+          "entityId": "daa26f2b-6367-4cd6-916d-1461b72168d4",
+          "bucket": "foodAttributes",
+          "type": "food_attribute",
+          "span": "brunch",
+          "name": "brunch",
+          "tier": "gazetteer-exact",
+          "foldedName": "brunch"
+        },
+        {
+          "entityId": "d2481302-c7db-4dc3-8ffd-7bcc443f2070",
+          "bucket": "restaurantAttributes",
+          "type": "restaurant_attribute",
+          "span": "ăn",
+          "name": "walk-in friendly",
+          "tier": "linked",
+          "foldedName": "walk in friendly"
+        },
+        {
+          "entityId": "44c2a929-142b-425d-b161-96c9654b1d75",
+          "bucket": "ingredients",
+          "type": "ingredient",
+          "span": "đâu",
+          "name": "beans",
+          "tier": "gazetteer-exact",
+          "foldedName": "beans"
+        }
+      ],
+      "unresolved": ["ở"],
+      "analysis": {
+        "script": "latin",
+        "requestLocale": "vi-VN",
+        "detectedLocale": {
+          "tag": "vi-VN",
+          "confidence": 0.5,
+          "source": "request-prior"
+        },
+        "denseTierUsed": true
+      },
+      "misGroundings": [],
+      "notes": "Loanword under a Vietnamese question frame (\"where to eat\")."
+    },
+    {
+      "id": "cs-12",
+      "query": "tôi muốn pasta",
+      "stratum": "code_switched",
+      "locale": "vi-VN",
+      "pass": true,
+      "preservation": 1,
+      "reasons": [],
+      "grounded": [
+        {
+          "entityId": "6317fa6e-62ea-497a-a6e4-52201c2a2fe1",
+          "bucket": "food",
+          "type": "food",
+          "span": "tôi",
+          "name": "garlic",
+          "tier": "gazetteer-exact",
+          "foldedName": "garlic"
+        },
+        {
+          "entityId": "ea223900-5f0e-447f-83a2-74b23ca8b933",
+          "bucket": "food",
+          "type": "food",
+          "span": "pasta",
+          "name": "pasta",
+          "tier": "gazetteer-exact",
+          "foldedName": "pasta"
+        },
+        {
+          "entityId": "77dd20cb-7574-477a-801f-f5394e3634c8",
+          "bucket": "food",
+          "type": "food",
+          "span": "muốn",
+          "name": "spring roll",
+          "tier": "linked",
+          "foldedName": "spring roll"
+        }
+      ],
+      "unresolved": [],
+      "analysis": {
+        "script": "latin",
+        "requestLocale": "vi-VN",
+        "detectedLocale": {
+          "tag": "vi-VN",
+          "confidence": 0.5,
+          "source": "request-prior"
+        },
+        "denseTierUsed": true
+      },
+      "misGroundings": [],
+      "notes": "English dish; note 'mì Ý' is the banked Vietnamese form → pasta, so both routes exist."
+    },
+    {
+      "id": "cs-13",
+      "query": "quán sushi giá rẻ",
+      "stratum": "code_switched",
+      "locale": "vi-VN",
+      "pass": true,
+      "preservation": 1,
+      "reasons": [],
+      "grounded": [
+        {
+          "entityId": "b01592d6-f94a-4b23-afdb-9764d21095ad",
+          "bucket": "restaurants",
+          "type": "restaurant",
+          "span": "quán",
+          "name": "Quan Sushi Grill",
+          "tier": "gazetteer-exact",
+          "foldedName": "quan sushi grill"
+        },
+        {
+          "entityId": "dfcea5a8-359f-410c-9ca6-85f4196ff8b2",
+          "bucket": "food",
+          "type": "food",
+          "span": "sushi",
+          "name": "sushi",
+          "tier": "gazetteer-exact",
+          "foldedName": "sushi"
+        },
+        {
+          "entityId": "b693becc-a4ce-4b31-b35e-c7f3218a816d",
+          "bucket": "restaurantAttributes",
+          "type": "restaurant_attribute",
+          "span": "giá rẻ",
+          "name": "affordable",
+          "tier": "gazetteer-exact",
+          "foldedName": "affordable"
+        }
+      ],
+      "unresolved": [],
+      "analysis": {
+        "script": "latin",
+        "requestLocale": "vi-VN",
+        "detectedLocale": {
+          "tag": "es",
+          "confidence": 1,
+          "source": "detector"
+        },
+        "denseTierUsed": false
+      },
+      "misGroundings": [],
+      "notes": "English dish + banked price attribute 'giá rẻ'→affordable."
+    },
+    {
+      "id": "cs-14",
+      "query": "muốn ăn steak",
+      "stratum": "code_switched",
+      "locale": "vi-VN",
+      "pass": true,
+      "preservation": 1,
+      "reasons": [],
+      "grounded": [
+        {
+          "entityId": "45d6ca0c-10c9-4ff8-9cb6-1322dca4966c",
+          "bucket": "food",
+          "type": "food",
+          "span": "steak",
+          "name": "steak",
+          "tier": "gazetteer-exact",
+          "foldedName": "steak"
+        }
+      ],
+      "unresolved": ["muốn ăn"],
+      "analysis": {
+        "script": "latin",
+        "requestLocale": "vi-VN",
+        "detectedLocale": {
+          "tag": "vi-VN",
+          "confidence": 0.5,
+          "source": "request-prior"
+        },
+        "denseTierUsed": true
+      },
+      "misGroundings": [],
+      "notes": "Plain English noun under a Vietnamese verb."
+    },
+    {
+      "id": "cs-15",
+      "query": "tìm salad",
+      "stratum": "code_switched",
+      "locale": "vi-VN",
+      "pass": true,
+      "preservation": 1,
+      "reasons": [],
+      "grounded": [
+        {
+          "entityId": "8015f56b-c984-49d7-b031-c0037d542454",
+          "bucket": "food",
+          "type": "food",
+          "span": "salad",
+          "name": "salad",
+          "tier": "gazetteer-exact",
+          "foldedName": "salad"
+        },
+        {
+          "entityId": "9ad14bcb-15ce-4f4f-aee2-097f73bce132",
+          "bucket": "ingredients",
+          "type": "ingredient",
+          "span": "tìm",
+          "name": "heart",
+          "tier": "gazetteer-exact",
+          "foldedName": "heart"
+        }
+      ],
+      "unresolved": [],
+      "analysis": {
+        "script": "latin",
+        "requestLocale": "vi-VN",
+        "detectedLocale": {
+          "tag": "it",
+          "confidence": 1,
+          "source": "detector"
+        },
+        "denseTierUsed": false
+      },
+      "misGroundings": [],
+      "notes": "Shortest possible code-switch: one carrier verb + one English noun."
+    },
+    {
+      "id": "cs-16",
+      "query": "có rooftop không",
+      "stratum": "code_switched",
+      "locale": "vi-VN",
+      "pass": true,
+      "preservation": 1,
+      "reasons": [],
+      "grounded": [
+        {
+          "entityId": "1c629813-ffc1-4860-bf00-5ca06dccc4fb",
+          "bucket": "restaurantAttributes",
+          "type": "restaurant_attribute",
+          "span": "rooftop",
+          "name": "rooftop",
+          "tier": "gazetteer-exact",
+          "foldedName": "rooftop"
+        }
+      ],
+      "unresolved": ["có", "không"],
+      "analysis": {
+        "script": "latin",
+        "requestLocale": "vi-VN",
+        "detectedLocale": {
+          "tag": "fr",
+          "confidence": 1,
+          "source": "detector"
+        },
+        "denseTierUsed": true
+      },
+      "misGroundings": [],
+      "notes": "English form of at-12, inside the same 'có ... không' frame as cs-07 — the second reading of the question particle."
+    },
+    {
+      "id": "cs-17",
+      "query": "quán có wifi",
+      "stratum": "code_switched",
+      "locale": "vi-VN",
+      "pass": true,
+      "preservation": 1,
+      "reasons": [],
+      "grounded": [
+        {
+          "entityId": "b01592d6-f94a-4b23-afdb-9764d21095ad",
+          "bucket": "restaurants",
+          "type": "restaurant",
+          "span": "quán",
+          "name": "Quan Sushi Grill",
+          "tier": "gazetteer-exact",
+          "foldedName": "quan sushi grill"
+        },
+        {
+          "entityId": "092f9cb2-74c9-49da-92a6-3ffcf05d2245",
+          "bucket": "restaurantAttributes",
+          "type": "restaurant_attribute",
+          "span": "có wifi",
+          "name": "wifi",
+          "tier": "gazetteer-exact",
+          "foldedName": "wifi"
+        }
+      ],
+      "unresolved": [],
+      "analysis": {
+        "script": "latin",
+        "requestLocale": "vi-VN",
+        "detectedLocale": {
+          "tag": "es",
+          "confidence": 1,
+          "source": "detector"
+        },
+        "denseTierUsed": false
+      },
+      "misGroundings": [],
+      "notes": "English form of at-18."
+    },
+    {
+      "id": "cs-18",
+      "query": "tôi muốn thử hot pot",
+      "stratum": "code_switched",
+      "locale": "vi-VN",
+      "pass": true,
+      "preservation": 1,
+      "reasons": [],
+      "grounded": [
+        {
+          "entityId": "6317fa6e-62ea-497a-a6e4-52201c2a2fe1",
+          "bucket": "food",
+          "type": "food",
+          "span": "tôi",
+          "name": "garlic",
+          "tier": "gazetteer-exact",
+          "foldedName": "garlic"
+        },
+        {
+          "entityId": "dc27d7c4-5b49-429d-9d11-ab65827fb6d9",
+          "bucket": "food",
+          "type": "food",
+          "span": "hot pot",
+          "name": "hot pot",
+          "tier": "gazetteer-exact",
+          "foldedName": "hot pot"
+        }
+      ],
+      "unresolved": ["muốn thử"],
+      "analysis": {
+        "script": "latin",
+        "requestLocale": "vi-VN",
+        "detectedLocale": {
+          "tag": "vi-VN",
+          "confidence": 0.5,
+          "source": "request-prior"
+        },
+        "denseTierUsed": true
+      },
+      "misGroundings": [],
+      "notes": "English form of sn-28."
+    },
+    {
+      "id": "cs-19",
+      "query": "muốn ăn sandwich",
+      "stratum": "code_switched",
+      "locale": "vi-VN",
+      "pass": true,
+      "preservation": 1,
+      "reasons": [],
+      "grounded": [
+        {
+          "entityId": "6bd6eab9-f8f4-4bf8-a662-7ad9e3e6b64a",
+          "bucket": "food",
+          "type": "food",
+          "span": "sandwich",
+          "name": "sandwich",
+          "tier": "gazetteer-exact",
+          "foldedName": "sandwich"
+        },
+        {
+          "entityId": "8f26ae55-e27b-465c-bac5-ade9ee064905",
+          "bucket": "food",
+          "type": "food",
+          "span": "sandwich",
+          "name": "sub sandwich",
+          "tier": "gazetteer-exact",
+          "foldedName": "sub sandwich"
+        }
+      ],
+      "unresolved": ["muốn ăn"],
+      "analysis": {
+        "script": "latin",
+        "requestLocale": "vi-VN",
+        "detectedLocale": {
+          "tag": "vi-VN",
+          "confidence": 0.5,
+          "source": "request-prior"
+        },
+        "denseTierUsed": true
+      },
+      "misGroundings": [],
+      "notes": "English noun whose Vietnamese sibling ('bánh mì'→viet sandwich) is a DIFFERENT dish — the two must not collapse."
+    },
+    {
+      "id": "cs-20",
+      "query": "quán pho ngon",
+      "stratum": "code_switched",
+      "locale": "vi-VN",
+      "pass": true,
+      "preservation": 1,
+      "reasons": [],
+      "grounded": [
+        {
+          "entityId": "b01592d6-f94a-4b23-afdb-9764d21095ad",
+          "bucket": "restaurants",
+          "type": "restaurant",
+          "span": "quán",
+          "name": "Quan Sushi Grill",
+          "tier": "gazetteer-exact",
+          "foldedName": "quan sushi grill"
+        },
+        {
+          "entityId": "08f45e9c-abf7-4db2-bbc9-d772538ca720",
+          "bucket": "food",
+          "type": "food",
+          "span": "pho",
+          "name": "pho",
+          "tier": "gazetteer-exact",
+          "foldedName": "pho"
+        },
+        {
+          "entityId": "69492215-88cb-4a05-8ebe-61ba12c73aaa",
+          "bucket": "ingredients",
+          "type": "ingredient",
+          "span": "ngon",
+          "name": "neon green relish",
+          "tier": "linked",
+          "foldedName": "neon green relish"
+        }
+      ],
+      "unresolved": [],
+      "analysis": {
+        "script": "latin",
+        "requestLocale": "vi-VN",
+        "detectedLocale": {
+          "tag": "es",
+          "confidence": 1,
+          "source": "detector"
+        },
+        "denseTierUsed": true
+      },
+      "misGroundings": [],
+      "notes": "De-diacritized dish inside a Vietnamese frame ('ngon' = tasty, a quality word with no entity). 'Pho' also exists as a RESTAURANT name — type-aware admission matters."
+    }
+  ]
+}
