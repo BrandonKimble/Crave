@@ -6,6 +6,7 @@
 // facts) and assert on what the REAL host/page wiring did with it.
 
 import { resetTrackMotionAuthorityForTest } from '../track-motion-authority';
+import { resetTrackSheetPositionAuthorityForTest } from '../track-sheet-position-authority';
 import {
   TRACK_NATIVE_CONTRACT_VERSION,
   TRACK_NATIVE_REQUIRED_CAPABILITIES,
@@ -281,10 +282,11 @@ const buildWorld = () => {
     routeHostVisualRuntimeAuthority: {},
   };
 
+  // Residue-kill item 12: the owner carries geometry only — the published
+  // position pair died with the bridge (the page publishes its own sheetTopY
+  // through the track position authority).
   world.sharedSheetOwner = {
     snapPoints: { expanded: 100, middle: 400, collapsed: 700 },
-    sheetTranslateY: { value: 0 },
-    sheetScrollOffset: { value: 0 },
   };
 
   return world;
@@ -298,6 +300,9 @@ export const resetHarness = (): HarnessWorld => {
   // The motion authority is a module singleton (one authority per app): a prior
   // test's live episode would make the next test's sheet "already moving".
   resetTrackMotionAuthorityForTest();
+  // Same singleton discipline for the position publication (a prior test's
+  // published sheetTopY would alias into the next test's world).
+  resetTrackSheetPositionAuthorityForTest();
   harness.world = buildWorld();
   return harness.world;
 };

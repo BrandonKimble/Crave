@@ -915,3 +915,30 @@ ownership to ONE owner (the two-phase identical-twins seam from 018542e8e is
 correct-but-not-ideal; the ideal has no seam because it has one owner). All
 skeleton variants (cold strip-replacing, refetch under-strip, per-scene material)
 must be one family resolved through the one material path.
+
+## §2.5 ONE-SKELETON-OWNER RE-DERIVATION CHECKPOINT (2026-08-08, the twins-seam collapse)
+
+Implemented exactly as toggle-primitive-rederivation.md §2.5 specced; the believed ideal
+shape survived contact with one refinement. SceneBodyReadyGate inverted from pending
+PAINTER to pending REPORTER on the track: when SceneBodyPendingReporterContext is
+provided (the leg provides it), the gate renders NOTHING while pending/failed and
+reports the fact; off-track (old host, no reporter) the painter face is byte-identical.
+The leg cell owns the ONE SceneLoadingSurface (TrackLegPendingOverlay in
+use-track-leg-resolver.tsx): mounts in the flip commit (body withheld), persists through
+the release commit (the body mounts UNDER it and fetches — the reporter cannot deadlock
+because nothing waits on the report to mount), unmounts in the reveal commit. Pending
+HEIGHT moved with the paint: styles.legPendingOverlay carries the 320 floor the gate used
+to provide (the leg owns it; dropping it is a render-lane RED, not a silent collapse).
+The REFINEMENT the implementation forced: instance continuity required the mounted lane's
+skeleton commit to be the SAME cell as its live commit (data [entryKey], same cached
+renderer, withheld verdict read live off a ref at invoke time) — the doc's "overlay
+adoption" is realized as cell-identity, not element handoff. The report is a RENDER-PHASE
+write read by the overlay as a LATER SIBLING (same-commit reveal), with a pre-paint
+layout-effect notify for gate-alone re-renders — no stacked or blank frame is paintable.
+Release semantics UNCHANGED: planTrackHandoffRelease's fact pair stands untouched, and
+the three pinning falsifiers (expensive-body, release spec, strip-choreography release
+test) stayed green unmodified. Kill-list executed: the gate-skeleton twin phase, the
+SceneSkeletonWidthHintContext provision in rendererForMountedEntry (double width
+provision — the overlay declares width directly; the context itself stays for
+SceneLoadingSurface's default path), and the retired M-B twins-continuity falsifier
+(replaced by instance-identity falsifiers, mutation re-proven).

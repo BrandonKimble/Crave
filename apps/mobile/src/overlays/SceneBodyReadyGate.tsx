@@ -26,6 +26,62 @@ import { useSceneLoadFailurePolicy, type SceneLoadFailure } from './scene-load-f
 
 export const SceneBodySceneKeyContext = React.createContext<OverlayKey | null>(null);
 
+// ─── THE PENDING REPORTER INVERSION (toggle-primitive rederivation §2.5) ─────────────────────
+//
+// On the track, skeleton ownership has ONE owner: the leg cell's persistent overlay
+// (use-track-leg-resolver.tsx), which spans press/flip -> data-ready as a single mounted
+// SceneLoadingSurface. The gate there must therefore stop being a rival PAINTER and become a
+// REPORTER: when a SceneBodyPendingReporterContext is provided, the gate renders NOTHING while
+// pending/failed and reports the fact upward; the overlay decides the paint. Off the track (no
+// reporter — the old host), the gate keeps its painter face unchanged.
+//
+// The report is written during RENDER (a plain mutation, no setState): the overlay is a LATER
+// SIBLING of the body in the leg cell, so within any commit that renders both, the overlay's
+// read sees this commit's fact — the release commit mounts the body under an overlay that
+// already knows it is pending, and the reveal commit drops the overlay in the SAME commit the
+// content renders. When the gate re-renders ALONE (a panel-local query flip), the layout effect
+// notifies subscribers BEFORE paint, so no frame ever shows content and skeleton stacked. The
+// reporter pattern cannot deadlock: the body always mounts (and fetches) UNDER the overlay —
+// nothing waits on the report to mount; the report only decides when the overlay lifts.
+
+export type SceneBodyPendingReporter = {
+  /** Render-phase write: the gate states this commit's pending/failed fact. */
+  reportRender: (pending: boolean) => void;
+  /** Commit-phase (layout-effect) notify — fires listeners only on a change. */
+  notifyIfChanged: () => void;
+  getPending: () => boolean;
+  subscribe: (listener: () => void) => () => void;
+};
+
+export const createSceneBodyPendingReporter = (): SceneBodyPendingReporter => {
+  let pending = false;
+  let notified = false;
+  const listeners = new Set<() => void>();
+  return {
+    reportRender: (next: boolean) => {
+      pending = next;
+    },
+    notifyIfChanged: () => {
+      if (notified === pending) {
+        return;
+      }
+      notified = pending;
+      [...listeners].forEach((listener) => listener());
+    },
+    getPending: () => pending,
+    subscribe: (listener: () => void) => {
+      listeners.add(listener);
+      return () => {
+        listeners.delete(listener);
+      };
+    },
+  };
+};
+
+export const SceneBodyPendingReporterContext = React.createContext<SceneBodyPendingReporter | null>(
+  null
+);
+
 // Dev-only: bark when the gate can't resolve a foundation skeleton — it then renders nothing
 // while pending, which is exactly the blank-frame disease.
 // F978: this used to be a module-global `let`, so it reported ONCE PER APP LIFETIME ACROSS ALL
@@ -47,6 +103,34 @@ export const SceneBodyReadyGate: React.FC<{
 }> = ({ pending, failure, children }) => {
   const resolvedSceneKey = React.useContext(SceneBodySceneKeyContext);
   useSceneLoadFailurePolicy(resolvedSceneKey, failure);
+  const reporter = React.useContext(SceneBodyPendingReporterContext);
+  const covered = pending || failure?.isError === true;
+  if (reporter != null) {
+    // Render-phase report (see the reporter doc above): later siblings in this
+    // commit — the leg's overlay — read the fresh fact synchronously.
+    reporter.reportRender(covered);
+  }
+  React.useLayoutEffect(() => {
+    // Before paint, so a gate-alone re-render (panel-local query flip) lifts /
+    // raises the overlay in the same frame — never a stacked or blank paint.
+    reporter?.notifyIfChanged();
+  });
+  React.useLayoutEffect(() => {
+    if (reporter == null) {
+      return;
+    }
+    return () => {
+      // A gate that leaves the tree stops holding the overlay up (a body that
+      // unmounts its gate has nothing pending to cover).
+      reporter.reportRender(false);
+      reporter.notifyIfChanged();
+    };
+  }, [reporter]);
+  if (reporter != null) {
+    // REPORTER MODE: the overlay owns pending paint AND pending height; the
+    // gate renders nothing while covered — never a second skeleton instance.
+    return covered ? null : <>{children ?? null}</>;
+  }
   if (!pending && failure?.isError !== true) {
     return <>{children ?? null}</>;
   }

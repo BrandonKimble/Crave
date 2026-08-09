@@ -15,7 +15,7 @@
 
 import React from 'react';
 import { Dimensions, StyleSheet, View } from 'react-native';
-import { useSharedValue } from 'react-native-reanimated';
+import { useSharedValue, type SharedValue } from 'react-native-reanimated';
 
 import type { SheetSceneKey } from '../navigation/runtime/scene-foundation-spec';
 import {
@@ -32,9 +32,13 @@ import { getPersistentHeaderDescriptor } from '../navigation/runtime/app-route-p
 import { useAppRouteSceneRuntime } from '../navigation/runtime/AppRouteSceneRuntimeProvider';
 import { OVERLAY_HORIZONTAL_PADDING } from '../overlays/overlay-chrome-metrics';
 import { SceneBodyFoundationSurface } from '../overlays/SceneBodyFoundationSurface';
-import { SceneBodySceneKeyContext } from '../overlays/SceneBodyReadyGate';
+import {
+  createSceneBodyPendingReporter,
+  SceneBodyPendingReporterContext,
+  SceneBodySceneKeyContext,
+  type SceneBodyPendingReporter,
+} from '../overlays/SceneBodyReadyGate';
 import { SceneLoadingSurface } from '../components/skeletons';
-import { SceneSkeletonWidthHintContext } from '../components/skeletons/scene-skeleton-width-hint';
 import {
   BottomSheetSceneStackBodyDataActivityContext,
   BottomSheetSceneStackBodyIsActiveContext,
@@ -101,6 +105,62 @@ import { planTrackLegBody, resolveTrackLegRowSurfaceKind } from './track-leg-pla
  * geometry so first commits carry holes; onLayout refines. */
 const trackBodyLaneWidth = (edgeToEdge: boolean): number =>
   Dimensions.get('window').width - (edgeToEdge ? 0 : OVERLAY_HORIZONTAL_PADDING * 2);
+
+/** THE PENDING HEIGHT, owned by the LEG (§2.5 height-ownership move): while the
+ * one skeleton overlay is up, the cell must occupy a plausible page — the gate
+ * no longer provides this on the track (it renders nothing in reporter mode).
+ * Same FEEL/UNATTRIBUTED "about a half-screen of rows" figure the gate's
+ * painter face floors its off-track surface with. */
+export const TRACK_LEG_PENDING_MIN_HEIGHT = 320;
+
+// ─── THE ONE SKELETON OWNER (toggle-primitive rederivation §2.5) ─────────────
+//
+// One SceneLoadingSurface instance spans press/flip -> data-ready for a mounted
+// leg. It mounts in the flip commit (the handoff's withheld frame — the body is
+// deliberately absent), PERSISTS through the release commit (the body mounts
+// UNDER it, fetches, and its SceneBodyReadyGate reports pending instead of
+// painting a twin), and unmounts in the reveal commit — the commit the gate
+// reports not-pending, which is the same commit the content renders (render-
+// phase report + later-sibling read; see SceneBodyReadyGate's reporter doc).
+// No remount seam, so the shimmer phase is continuous by construction.
+//
+// It participates in LAYOUT (not absolute): while it is up, the body renders
+// nothing (withheld, or the gate's reporter-mode null), so the overlay is what
+// gives the cell its pending height — TRACK_LEG_PENDING_MIN_HEIGHT plus the
+// skeleton's own row-derived floor. The reveal commit swaps occupancy in one
+// commit: overlay null, content rows real.
+const TrackLegPendingOverlay: React.FC<{
+  reporter: SceneBodyPendingReporter;
+  legScene: OverlayKey;
+  /** The handoff is withholding the body from this commit (flip frame). */
+  bodyWithheld: boolean;
+  zeroScrollOffset: SharedValue<number>;
+}> = ({ reporter, legScene, bodyWithheld, zeroScrollOffset }) => {
+  const reportedPending = React.useSyncExternalStore(reporter.subscribe, reporter.getPending);
+  if (!bodyWithheld && !reportedPending) {
+    return null;
+  }
+  const material = trackSkeletonMaterialForScene(legScene);
+  return (
+    <View pointerEvents="none" testID="track-leg-pending-overlay" style={styles.legPendingOverlay}>
+      <SceneBodyFoundationSurface
+        scrollOffset={zeroScrollOffset}
+        sceneKey={legScene as SheetSceneKey}
+      >
+        <View style={styles.mountedBodyInset}>
+          {/* insetX=0 + declared width: identical geometry to the old handoff
+              skeleton — holes exist on the overlay's FIRST commit (fix 2a). */}
+          <SceneLoadingSurface
+            rowType={material.rowType}
+            withFilterStripHoles={material.withStripHoles}
+            insetX={0}
+            width={trackBodyLaneWidth(false)}
+          />
+        </View>
+      </SceneBodyFoundationSurface>
+    </View>
+  );
+};
 
 // THE COMPONENT MAP. The schema declares `body.kind: 'mounted'` (F872 —
 // scene-foundation-spec.ts); this map binds the key to its React component.
@@ -229,6 +289,27 @@ export const useTrackLegResolver = ({
       { entry: OverlayRouteEntry | null; render: () => React.ReactElement | null }
     >()
   );
+  // §2.5: ONE pending reporter per entry — the channel between the body's
+  // SceneBodyReadyGate (reporter mode) and the leg's one skeleton overlay.
+  // Per ENTRY, like the renderer cache: two stacked entries of one scene are
+  // two bodies with two independent pending facts.
+  const pendingReporterCacheRef = React.useRef(new Map<TrackEntryKey, SceneBodyPendingReporter>());
+  const pendingReporterForEntry = (legEntryKey: TrackEntryKey): SceneBodyPendingReporter => {
+    const cached = pendingReporterCacheRef.current.get(legEntryKey);
+    if (cached != null) {
+      return cached;
+    }
+    const reporter = createSceneBodyPendingReporter();
+    pendingReporterCacheRef.current.set(legEntryKey, reporter);
+    return reporter;
+  };
+  // §2.5: WHICH mounted entries' bodies are withheld THIS commit (the handoff's
+  // skeleton verdict). Written by resolveLegList where resolveTrackPaint
+  // decides, read by the cached render closures at invoke time — the closure
+  // must not capture it (same live-read law as the presented latch). A ref set,
+  // not per-closure state, so a frozen paint (which reuses the same cell list)
+  // renders the body: only paint.body === 'skeleton' withholds.
+  const withheldMountedEntriesRef = React.useRef(new Set<TrackEntryKey>());
   // G-ACTIVITY live read: cached render closures must never capture a
   // presented-flag (stale) nor an all-true (the pre-R2 defect) — they read the
   // current commit's presented entry through the host-owned latch at invoke
@@ -274,7 +355,14 @@ export const useTrackLegResolver = ({
       // presented entry.
       const isPresented = presentedLatch.entryKey === legEntryKey;
       const activity = deriveTrackEntryBodyActivity(legScene, isPresented);
-      if (__DEV__) {
+      // §2.5, live-read at invoke time (never captured): the handoff's verdict
+      // for THIS commit. Withheld = the flip frame — the body stays out of the
+      // tree (the expensive-body law) and the overlay alone gives the cell its
+      // pending face and height. The release commit re-invokes this closure
+      // with the verdict cleared: the body mounts UNDER the still-mounted
+      // overlay (same cell, same element position — one skeleton instance).
+      const bodyWithheld = withheldMountedEntriesRef.current.has(legEntryKey);
+      if (__DEV__ && !bodyWithheld) {
         // G-LIVENESS sample: the activity as DELIVERED, at invoke time.
         livenessSamplesRef.current.set(legEntryKey, {
           entryKey: legEntryKey,
@@ -285,52 +373,59 @@ export const useTrackLegResolver = ({
           seq: renderSeqRef.current,
         });
       }
+      const reporter = pendingReporterForEntry(legEntryKey);
       return (
-        // THE GATE'S SCENE RESOLUTION (skeleton-path audit, 2026-08-08): mounted
-        // bodies gate their pending queries through SceneBodyReadyGate, which
-        // resolves its foundation skeleton ONLY via this context — and the only
-        // other provider is the old host (BottomSheetSceneStackHost), dark behind
-        // the flip. Without it, a pending body on the track rendered NULL (blank
-        // white) instead of its declared material. Per-LEG scene, not the
-        // presented scene: a hidden retained leg must carry its own key.
-        <SceneBodySceneKeyContext.Provider value={legScene}>
-          <BottomSheetSceneStackBodyDataActivityContext.Provider value={activity}>
-            <BottomSheetSceneStackBodyRenderActivityContext.Provider value={activity}>
-              <BottomSheetSceneStackBodyIsActiveContext.Provider value={isPresented}>
-                {/* THE REAL FOUNDATION (rung 4): white plate + FrostCutout store —
-                profile stats / home bands punch through to the kit's frost; the
-                strip law sees its plate. Zero scroll offset: the cell itself
-                rides the track. */}
-                <SceneBodyFoundationSurface
-                  scrollOffset={zeroScrollOffset}
-                  sceneKey={legScene as SheetSceneKey}
-                >
-                  {/* padding INSIDE the surface so the white plate spans the full
-                  cell (padded-outside left frost gutters at the margins). */}
-                  <View
-                    style={
-                      sceneMountedBodyIsEdgeToEdge(legScene) ? undefined : styles.mountedBodyInset
-                    }
-                  >
-                    {/* THE WIDTH HINT (fix 2a): a pending body's gate skeleton
-                        (SceneBodyReadyGate → SceneLoadingSurface) seeds its hole
-                        geometry from this DECLARED lane width, so the commit that
-                        replaces the handoff skeleton paints holes immediately —
-                        the two skeleton phases are pixel-continuous (same
-                        material, same geometry, no measuring blank between). */}
-                    <SceneSkeletonWidthHintContext.Provider
-                      value={trackBodyLaneWidth(sceneMountedBodyIsEdgeToEdge(legScene))}
-                    >
-                      <ChromeProbeBoundary label={`${legScene}.body`}>
-                        <Body entry={legEntry ?? undefined} />
-                      </ChromeProbeBoundary>
-                    </SceneSkeletonWidthHintContext.Provider>
-                  </View>
-                </SceneBodyFoundationSurface>
-              </BottomSheetSceneStackBodyIsActiveContext.Provider>
-            </BottomSheetSceneStackBodyRenderActivityContext.Provider>
-          </BottomSheetSceneStackBodyDataActivityContext.Provider>
-        </SceneBodySceneKeyContext.Provider>
+        <>
+          {bodyWithheld ? null : (
+            // THE GATE'S SCENE RESOLUTION (skeleton-path audit, 2026-08-08): mounted
+            // bodies gate their pending queries through SceneBodyReadyGate. On the
+            // track the gate runs in REPORTER mode (SceneBodyPendingReporterContext):
+            // it renders nothing while pending and reports the fact to the leg's one
+            // overlay — never a second skeleton instance. SceneBodySceneKeyContext
+            // stays provided per-LEG scene (a hidden retained leg must carry its own
+            // key; the gate's failure policy and any off-overlay consumers read it).
+            <SceneBodySceneKeyContext.Provider value={legScene}>
+              <SceneBodyPendingReporterContext.Provider value={reporter}>
+                <BottomSheetSceneStackBodyDataActivityContext.Provider value={activity}>
+                  <BottomSheetSceneStackBodyRenderActivityContext.Provider value={activity}>
+                    <BottomSheetSceneStackBodyIsActiveContext.Provider value={isPresented}>
+                      {/* THE REAL FOUNDATION (rung 4): white plate + FrostCutout store —
+                      profile stats / home bands punch through to the kit's frost; the
+                      strip law sees its plate. Zero scroll offset: the cell itself
+                      rides the track. */}
+                      <SceneBodyFoundationSurface
+                        scrollOffset={zeroScrollOffset}
+                        sceneKey={legScene as SheetSceneKey}
+                      >
+                        {/* padding INSIDE the surface so the white plate spans the full
+                        cell (padded-outside left frost gutters at the margins). */}
+                        <View
+                          style={
+                            sceneMountedBodyIsEdgeToEdge(legScene)
+                              ? undefined
+                              : styles.mountedBodyInset
+                          }
+                        >
+                          <ChromeProbeBoundary label={`${legScene}.body`}>
+                            <Body entry={legEntry ?? undefined} />
+                          </ChromeProbeBoundary>
+                        </View>
+                      </SceneBodyFoundationSurface>
+                    </BottomSheetSceneStackBodyIsActiveContext.Provider>
+                  </BottomSheetSceneStackBodyRenderActivityContext.Provider>
+                </BottomSheetSceneStackBodyDataActivityContext.Provider>
+              </SceneBodyPendingReporterContext.Provider>
+            </SceneBodySceneKeyContext.Provider>
+          )}
+          {/* LATER SIBLING by law: the overlay's render follows the body's, so a
+              render-phase pending report is read in the same commit (§2.5). */}
+          <TrackLegPendingOverlay
+            reporter={reporter}
+            legScene={legScene}
+            bodyWithheld={bodyWithheld}
+            zeroScrollOffset={zeroScrollOffset}
+          />
+        </>
       );
     };
     mountedRendererCacheRef.current.set(legEntryKey, { entry: legEntry, render });
@@ -476,6 +571,8 @@ export const useTrackLegResolver = ({
       legTitleCacheRef.current.delete(evictedKey);
       stripElementCacheRef.current.delete(evictedKey);
       mountedRendererCacheRef.current.delete(evictedKey);
+      pendingReporterCacheRef.current.delete(evictedKey);
+      withheldMountedEntriesRef.current.delete(evictedKey);
       residencyLedgerRef.current.forget(evictedKey);
       lastGoodListRef.current.delete(evictedKey);
       livenessSamplesRef.current.delete(evictedKey);
@@ -661,6 +758,16 @@ export const useTrackLegResolver = ({
       ready: isResolutionReady(resolution),
       hasFrozenBody: frozen != null,
     });
+    if (sceneUsesMountedTrackBody(legScene)) {
+      // §2.5: the withheld set states EXACTLY the skeleton verdict — a frozen
+      // paint reuses the same cell list and must render the body (OA6.1), so
+      // membership is per-commit, per-verdict, never latched.
+      if (paint.body === 'skeleton') {
+        withheldMountedEntriesRef.current.add(legEntryKey);
+      } else {
+        withheldMountedEntriesRef.current.delete(legEntryKey);
+      }
+    }
     if (isHandingOff) {
       // WHICH BODY the handoff frame painted, RECORDED (not asserted) where the
       // choice is made — a frozen body IS the destination's own rows, and the
@@ -675,6 +782,21 @@ export const useTrackLegResolver = ({
       return frozen;
     }
     if (paint.body !== 'live') {
+      if (sceneUsesMountedTrackBody(legScene)) {
+        // §2.5 ONE SKELETON OWNER: the mounted lane's skeleton commit is the
+        // SAME cell as its live commit — data [entryKey], same cached renderer
+        // — with the body withheld (set above) and the leg's persistent
+        // overlay painting the material. The release is then a re-render of
+        // this cell (body mounts under the overlay), never a cell swap: one
+        // SceneLoadingSurface instance from flip to reveal, shimmer phase
+        // continuous. extraData carries the verdict so the recycler re-invokes
+        // the row when it flips (the data array's single item is constant).
+        return {
+          data: [legEntryKey],
+          renderItem: rendererForMountedEntry(legEntryKey, legScene, legEntry),
+          extraData: true,
+        };
+      }
       // THE SKELETON (G-READY cold visit + G-SKEL variant-as-data): a REAL
       // sheet body whose one item renders THE ONE loading material, shaped by
       // the scene's foundation spec — painted in the SAME commit as the
@@ -712,10 +834,13 @@ export const useTrackLegResolver = ({
       };
     } else {
       // data carries the ENTRY key so a same-scene entry switch is a data change
-      // to the one FlashList, never an aliased row.
+      // to the one FlashList, never an aliased row. extraData mirrors the §2.5
+      // withheld verdict (false here) so the skeleton->live flip re-invokes the
+      // row even though the single data item is identity-stable.
       list = {
         data: [legEntryKey],
         renderItem: rendererForMountedEntry(legEntryKey, legScene, legEntry),
+        extraData: false,
       };
     }
     if (paint.freezeLiveBody) {
@@ -1003,6 +1128,11 @@ const styles = StyleSheet.create({
   mountedSurface: { backgroundColor: 'transparent' },
   mountedSurfaceUnpadded: { backgroundColor: 'transparent' },
   mountedBodyInset: { paddingHorizontal: OVERLAY_HORIZONTAL_PADDING },
+  // §2.5: the LEG owns pending height. The overlay participates in layout (the
+  // body under it renders nothing while pending), so this floor is what keeps
+  // the cell a plausible page — dropping it is a RED (silent-collapse
+  // falsifier), not a cosmetic change.
+  legPendingOverlay: { minHeight: TRACK_LEG_PENDING_MIN_HEIGHT },
 });
 
 /** The pure kind (track-leg-plan.ts) → the registered style. */
