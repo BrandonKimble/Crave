@@ -51,3 +51,16 @@ pre-commit:
     coverage-staleness:
       run: node scripts/coverage-staleness.mjs --apply && git add audit/COVERAGE.md
       stage_fixed: true
+
+# THE PHANTOM-TREE FENCE (F9986). Lanes share one working tree, so `tsc` there
+# reads other lanes' UNCOMMITTED edits — a lane can typecheck a state no commit
+# will ever reproduce. On 2026-08-09 that put a non-typechecking commit on main
+# and blocked every staging deploy while every lane's own tsc was green.
+#
+# pre-PUSH, not pre-commit: it costs about a minute (three packages in a fresh
+# checkout), which is right before main is shared and wrong on every commit.
+pre-push:
+  parallel: false
+  jobs:
+    clean-tree-typecheck:
+      run: bash scripts/check-clean-tree-typecheck.sh
