@@ -59,6 +59,7 @@ import { PlacesReconcilerService } from '../places/places-reconciler.service';
 import { type GeoBbox } from '@crave-search/shared';
 import { RestaurantStatusService } from './restaurant-status.service';
 import type { RestaurantStatusPreviewDto } from './dto/restaurant-status-preview.dto';
+import { renderInlinedSql } from './sql-preview';
 import { isProdEnv, resolveAppEnv } from '../../shared/config/app-env';
 import {
   resolveSearchDebugMode,
@@ -84,10 +85,8 @@ type RestaurantDishRow = {
   rising: unknown;
   restaurant_crave_score: unknown;
   restaurant_name: string;
-  restaurant_aliases: string[];
   restaurant_price_level: number | null;
   food_name: string;
-  food_aliases: string[];
 };
 
 const DEFAULT_RESULT_LIMIT = 100;
@@ -292,12 +291,12 @@ export class SearchService {
     // so the preview's pagination is the page's own pagination — same as
     // what actually runs.
     const pagination = this.resolvePagination(request.pagination);
-    const preview = this.queryBuilder.buildDishQuery({
+    const { dataSql } = this.queryBuilder.buildDishQuery({
       plan,
       pagination,
-    }).preview;
+    });
 
-    return { plan, sqlPreview: preview };
+    return { plan, sqlPreview: renderInlinedSql(dataSql) };
   }
 
   buildEmptyResponse(
@@ -1084,10 +1083,8 @@ export class SearchService {
 	        pcs.rising AS rising,
 	        prs.display_score AS restaurant_crave_score,
 	        r.name AS restaurant_name,
-        r.aliases AS restaurant_aliases,
         r.price_level AS restaurant_price_level,
-        f.name AS food_name,
-        f.aliases AS food_aliases
+        f.name AS food_name
       FROM core_restaurant_items c
 	      JOIN core_public_entity_scores pcs
 	        ON pcs.subject_type = 'connection'
@@ -1135,12 +1132,8 @@ export class SearchService {
         connectionId: row.connection_id,
         foodId: row.food_id,
         foodName: row.food_name,
-        foodAliases: Array.isArray(row.food_aliases) ? row.food_aliases : [],
         restaurantId: row.restaurant_id,
         restaurantName: row.restaurant_name,
-        restaurantAliases: Array.isArray(row.restaurant_aliases)
-          ? row.restaurant_aliases
-          : [],
         scoreSubjectType: 'connection',
         scoreSubjectId: row.connection_id,
         craveScore,
@@ -1239,7 +1232,6 @@ export class SearchService {
       select: {
         entityId: true,
         name: true,
-        aliases: true,
         latitude: true,
         longitude: true,
         address: true,
@@ -1430,9 +1422,6 @@ export class SearchService {
       restaurant: {
         restaurantId: restaurant.entityId,
         restaurantName: restaurant.name,
-        restaurantAliases: Array.isArray(restaurant.aliases)
-          ? restaurant.aliases
-          : [],
         scoreSubjectType: 'restaurant',
         scoreSubjectId: restaurant.entityId,
         craveScore: toRequiredPublicScore(

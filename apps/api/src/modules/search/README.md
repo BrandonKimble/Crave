@@ -104,7 +104,7 @@
 }
 ```
 
-`sqlPreview` is returned when the request sets `includeSqlPreview: true` or the `SEARCH_ALWAYS_INCLUDE_SQL_PREVIEW` environment flag is enabled. The preview mirrors the SQL executed by the service (includes `WITH filtered_restaurants` / `filtered_connections` CTEs, ORDER BY, LIMIT/OFFSET).
+`sqlPreview` is returned when the request sets `includeSqlPreview: true` or the `SEARCH_ALWAYS_INCLUDE_SQL_PREVIEW` environment flag is enabled. It is DERIVED from the statement that executes — `renderInlinedSql(dataSql)` (`sql-preview.ts`), the whole query with its parameters inlined as SQL literals for readability. It cannot drift from the query: the builder no longer keeps a hand-written mirror. The inlining is for debug display only; the database still executes the parameterized statement.
 
 Restaurant rows can now include:
 

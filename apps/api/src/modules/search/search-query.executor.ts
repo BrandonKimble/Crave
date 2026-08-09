@@ -17,6 +17,7 @@ import {
   type BuildRestaurantQueryOptions,
 } from './search-query.builder';
 import type { SearchExecutionDirectives } from './search-execution-directives';
+import { renderInlinedSql } from './sql-preview';
 import {
   buildOperatingMetadataFromLocation as buildOperatingMetadataFromLocationUtil,
   computeDistanceMiles as computeDistanceMilesUtil,
@@ -49,7 +50,6 @@ interface RestaurantQueryRow {
   match_tier?: number | null;
   restaurant_id: string;
   restaurant_name: string;
-  restaurant_aliases: string[];
   restaurant_metadata?: Prisma.JsonValue | null;
   price_level?: Prisma.Decimal | number | string | null;
   price_level_updated_at?: Date | null;
@@ -108,11 +108,9 @@ interface DishQueryRow {
   score_subject_type?: string | null;
   score_subject_id?: string | null;
   food_name: string;
-  food_aliases: string[];
   // Restaurant data for map pins
   restaurant_entity_id: string;
   restaurant_name: string;
-  restaurant_aliases: string[];
   restaurant_crave_score?: Prisma.Decimal | number | string | null;
   restaurant_crave_score_exact?: Prisma.Decimal | number | string | null;
   restaurant_rising?: Prisma.Decimal | number | string | null;
@@ -280,7 +278,6 @@ export class SearchQueryExecutor {
       Array<{
         entity_id: string;
         name: string;
-        aliases: string[];
         price_level: number | null;
         price_level_updated_at: Date | null;
         restaurant_crave_score: Prisma.Decimal | number | string | null;
@@ -295,7 +292,6 @@ export class SearchQueryExecutor {
 SELECT
   e.entity_id,
   e.name,
-  e.aliases,
   e.price_level,
   e.price_level_updated_at,
   prs.display_score AS restaurant_crave_score,
@@ -428,7 +424,6 @@ LIMIT 3
     const restaurant: RestaurantResultDto = {
       restaurantId: row.entity_id,
       restaurantName: row.name,
-      restaurantAliases: row.aliases || [],
       rank: 1,
       scoreSubjectType: 'restaurant' as const,
       scoreSubjectId: row.entity_id,
@@ -633,9 +628,11 @@ LIMIT 3
     const sqlPreview = includeSqlPreview
       ? [
           restaurantQuery
-            ? `-- Restaurant Query:\n${restaurantQuery.preview}`
+            ? `-- Restaurant Query:\n${renderInlinedSql(restaurantQuery.dataSql)}`
             : null,
-          dishQuery ? `-- Dish Query:\n${dishQuery.preview}` : null,
+          dishQuery
+            ? `-- Dish Query:\n${renderInlinedSql(dishQuery.dataSql)}`
+            : null,
         ]
           .filter((part): part is string => part !== null)
           .join('\n\n')
@@ -1157,7 +1154,6 @@ LIMIT 3
       return {
         restaurantId: row.restaurant_id,
         restaurantName: row.restaurant_name,
-        restaurantAliases: row.restaurant_aliases || [],
         exactMatch:
           row.match_tier === 0
             ? true
@@ -1244,10 +1240,8 @@ LIMIT 3
             : row.match_tier === 1
               ? false
               : undefined,
-        foodAliases: row.food_aliases || [],
         restaurantId: row.restaurant_entity_id,
         restaurantName: row.restaurant_name,
-        restaurantAliases: row.restaurant_aliases || [],
         restaurantLocationId: row.location_id,
         scoreSubjectType: 'connection',
         scoreSubjectId: row.connection_id,

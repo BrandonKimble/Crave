@@ -34,7 +34,6 @@ export interface BuildRestaurantQueryOptions {
 interface BuildRestaurantQueryResult {
   dataSql: Prisma.Sql;
   countSql: Prisma.Sql;
-  preview: string;
   metadata: {
     boundsApplied: boolean;
     priceFilterApplied: boolean;
@@ -53,7 +52,6 @@ interface BuildDishQueryOptions {
 interface BuildDishQueryResult {
   dataSql: Prisma.Sql;
   countSql: Prisma.Sql;
-  preview: string;
   metadata: {
     boundsApplied: boolean;
     priceFilterApplied: boolean;
@@ -98,12 +96,11 @@ interface ParsedFilters {
   minimumVotes: number | null;
 }
 
-interface ClauseWithPreview {
+interface Clause {
   sql: Prisma.Sql;
-  preview: string;
 }
 
-interface MatchClauseWithPreview extends ClauseWithPreview {
+interface MatchClause extends Clause {
   hasConditions: boolean;
 }
 
@@ -131,10 +128,10 @@ export class SearchQueryBuilder {
     const filters = this.parseFilters(plan, directives);
 
     // Build restaurant conditions (restaurant IDs / restaurant attributes / price)
-    const { sql: restaurantWhereSql, preview: restaurantWherePreview } =
-      this.buildRestaurantConditions(filters, {
-        includeRestaurantAttributes: false,
-      });
+    const { sql: restaurantWhereSql } = this.buildRestaurantConditions(
+      filters,
+      { includeRestaurantAttributes: false },
+    );
 
     // Require at least one item row OR by-name praise event (mirrors the Crave
     // Score v3 inclusion floor: a restaurant is eligible if it has catalogued
@@ -151,17 +148,14 @@ export class SearchQueryBuilder {
       FROM core_restaurant_items c
       WHERE c.restaurant_id = r.entity_id
     ) OR ${Prisma.raw(activeRestaurantEventExistsSql('r.entity_id'))})`;
-    const inventoryExistsPreview = `(EXISTS (SELECT 1 FROM core_restaurant_items c WHERE c.restaurant_id = r.entity_id) OR ${activeRestaurantEventExistsSql('r.entity_id')})`;
 
     const connectionMatch = this.buildConnectionMatchConditions(filters);
     const { sql: connectionMatchSql } = connectionMatch;
-    const {
-      sql: restaurantAttributeMatchSql,
-      preview: restaurantAttributeMatchPreview,
-    } = this.buildRestaurantAttributeMatchConditions(filters);
+    const { sql: restaurantAttributeMatchSql } =
+      this.buildRestaurantAttributeMatchConditions(filters);
     const signalMatch =
       this.buildRestaurantEntitySignalMatchConditions(filters);
-    const { sql: itemOrSignalMatchSql, preview: itemOrSignalMatchPreview } =
+    const { sql: itemOrSignalMatchSql } =
       this.buildRestaurantItemOrSignalMatchConditions(
         connectionMatch,
         signalMatch,
@@ -213,20 +207,12 @@ export class SearchQueryBuilder {
           excludeRestaurantIds,
         )})`
       : Prisma.sql``;
-    const excludeRestaurantsPreview = excludeRestaurantIds.length
-      ? `AND NOT (r.entity_id = ANY(${this.formatUuidArray(
-          excludeRestaurantIds,
-        )}))`
-      : '';
 
     // PHASE 2: restrict eligibility to the pre-selected open page. The candidate query
     // already applied every other condition, so this is a pure id membership narrow.
     const restrictRestaurantsSql = restrictIds
       ? Prisma.sql`AND (${this.buildInClause('r.entity_id', restrictIds)})`
       : Prisma.sql``;
-    const restrictRestaurantsPreview = restrictIds
-      ? `AND (r.entity_id = ANY(${this.formatUuidArray(restrictIds)}))`
-      : '';
 
     // DIETARY WALLS, restaurant projection (owner semantics 2026-08-04):
     // a restaurant passes each wall when the VENUE carries the attribute
@@ -244,15 +230,10 @@ export class SearchQueryBuilder {
       ? Prisma.sql`AND ${Prisma.join(dietaryRestaurantWallConditions, ' AND ')}`
       : Prisma.sql``;
     const combinedRestaurantWhereSql = Prisma.sql`${restaurantWhereSql} AND ${inventoryExistsSql} AND ${restaurantAttributeMatchSql} AND ${itemOrSignalMatchSql} ${dietaryRestaurantWallsSql} ${excludeRestaurantsSql} ${restrictRestaurantsSql}`;
-    const combinedRestaurantWherePreview =
-      `${restaurantWherePreview} AND ${inventoryExistsPreview} AND ${restaurantAttributeMatchPreview} AND ${itemOrSignalMatchPreview} ${excludeRestaurantsPreview} ${restrictRestaurantsPreview}`.trim();
 
     // Build location conditions (bounds)
-    const {
-      sql: locationWhereSql,
-      preview: locationWherePreview,
-      boundsApplied,
-    } = this.buildLocationConditions(filters);
+    const { sql: locationWhereSql, boundsApplied } =
+      this.buildLocationConditions(filters);
 
     // Build minimum votes condition for restaurant totals
     const minimumVotesApplied = filters.minimumVotes !== null;
@@ -260,21 +241,18 @@ export class SearchQueryBuilder {
     // Build CTEs
     const restaurantCte = this.buildFilteredRestaurantsCte(
       combinedRestaurantWhereSql,
-      combinedRestaurantWherePreview,
     );
 
-    const filteredLocationsCte = this.buildFilteredLocationsCte(
-      locationWhereSql,
-      locationWherePreview,
+    const filteredLocationsCte =
+      this.buildFilteredLocationsCte(locationWhereSql);
+
+    const { sql: selectedOrderSql } = this.buildDistanceOrder(
+      searchCenter,
+      'fl',
     );
 
-    const { sql: selectedOrderSql, preview: selectedOrderPreview } =
-      this.buildDistanceOrder(searchCenter, 'fl');
-
-    const selectedLocationsCte = this.buildSelectedLocationsCte(
-      selectedOrderSql,
-      selectedOrderPreview,
-    );
+    const selectedLocationsCte =
+      this.buildSelectedLocationsCte(selectedOrderSql);
 
     const restaurantVoteTotalsCte = this.buildRestaurantVoteTotalsCte();
     const publicRestaurantScoresCte = this.buildPublicRestaurantScoresCte();
@@ -295,9 +273,6 @@ export class SearchQueryBuilder {
     const minimumVotesWhereSql = restaurantSelectConditions.length
       ? Prisma.sql`WHERE ${Prisma.join(restaurantSelectConditions, ' AND ')}`
       : Prisma.sql``;
-    const minimumVotesWherePreview = filters.minimumVotes
-      ? `WHERE COALESCE(rvt.total_upvotes, 0) >= ${filters.minimumVotes}`
-      : '';
 
     // THE GATE (owner ruling 2026-08-01): tier-1 rows admitted only when
     // tier-0 rows cannot fill one page. ONE PASS via a window count — a
@@ -352,7 +327,6 @@ export class SearchQueryBuilder {
     // path here; caught by the rederivation audit, C1). match_tier stays
     // selected as row metadata; admission is the gate WHERE's job.
     const restTierOrder = Prisma.sql``;
-    const restTierOrderPreview = '';
     const restaurantTopDishOrder = this.resolveTopDishOrderSql(
       plan.ranking.foodOrder,
     );
@@ -365,9 +339,6 @@ export class SearchQueryBuilder {
     const rankedRestaurantsOrderSql = restrictIds
       ? Prisma.sql`array_position(${restrictIds}::uuid[], fr.entity_id)`
       : Prisma.sql`${restTierOrder}${restaurantOrder.sql}`;
-    const rankedRestaurantsOrderPreview = restrictIds
-      ? `array_position('{...}'::uuid[], fr.entity_id)`
-      : `${restTierOrderPreview}${restaurantOrder.preview}`;
 
     // Build the ranked restaurants CTE with LATERAL JOIN for top dishes
     const rankedRestaurantsCte = pooledGateActive
@@ -379,7 +350,6 @@ ranked_restaurants AS (
     ${restTierSelect}
     count(*) FILTER (WHERE ${restTierExpr!} = 0) OVER () AS pooled_full_count,
     fr.name AS restaurant_name,
-    fr.aliases AS restaurant_aliases,
     fr.restaurant_metadata,
     fr.price_level,
     fr.price_level_updated_at,
@@ -429,7 +399,6 @@ ranked_restaurants AS (
     fr.entity_id AS restaurant_id,
     ${restTierSelect}
     fr.name AS restaurant_name,
-    fr.aliases AS restaurant_aliases,
     fr.restaurant_metadata,
     fr.price_level,
     fr.price_level_updated_at,
@@ -471,25 +440,6 @@ ranked_restaurants AS (
 	  OFFSET ${pagination.skip}
 	  LIMIT ${pagination.take}
 	)`;
-    const rankedRestaurantsCtePreview = `
-ranked_restaurants AS (
-  SELECT fr.entity_id AS restaurant_id, fr.name AS restaurant_name, fr.aliases AS restaurant_aliases,
-         fr.restaurant_metadata,
-         fr.price_level, fr.price_level_updated_at,
-         prs.display_score AS crave_score, prs.percentile_rank AS crave_score_exact, prs.rising, prs.score_info,
-         'restaurant'::text AS score_subject_type, fr.entity_id AS score_subject_id,
-         COALESCE(rvt.total_upvotes, 0) AS total_upvotes, COALESCE(rvt.total_mentions, 0) AS total_mentions,
-         sl.location_id, sl.google_place_id, sl.latitude, sl.longitude, sl.address, sl.city, sl.region, sl.country, sl.postal_code, sl.phone_number, sl.website_url, sl.hours, sl.utc_offset_minutes, sl.time_zone, sl.is_primary, sl.last_polled_at, sl.created_at AS location_created_at, sl.updated_at AS location_updated_at,
-         la.locations_json, la.location_count
-  FROM filtered_restaurants fr
-  JOIN public_restaurant_scores prs ON prs.subject_id = fr.entity_id
-  JOIN selected_locations sl ON sl.restaurant_id = fr.entity_id
-  LEFT JOIN restaurant_vote_totals rvt ON rvt.restaurant_id = fr.entity_id
-	  LEFT JOIN location_aggregates la ON la.restaurant_id = fr.entity_id
-	  ${minimumVotesWherePreview}
-	  ORDER BY ${rankedRestaurantsOrderPreview}
-	  OFFSET ${pagination.skip} LIMIT ${pagination.take}
-	)`.trim();
 
     // Build WITH clause
     const withClause = Prisma.sql`
@@ -503,16 +453,6 @@ WITH
   ${locationAggregatesCte.sql},
   ${rankedRestaurantsCte}
 `;
-
-    const withPreview = `WITH
-  ${restaurantCte.preview},
-  ${filteredLocationsCte.preview},
-  ${selectedLocationsCte.preview},
-  ${restaurantVoteTotalsCte.preview},
-  ${publicRestaurantScoresCte.preview},
-  ${publicConnectionScoresCte.preview},
-  ${locationAggregatesCte.preview},
-  ${rankedRestaurantsCtePreview}`;
 
     // Final SELECT with LATERAL JOIN for top dishes
     const dataSql = Prisma.sql`
@@ -680,19 +620,9 @@ WITH
 	LEFT JOIN restaurant_vote_totals rvt ON rvt.restaurant_id = fr.entity_id
 	${minimumVotesWhereSql}`;
 
-    const preview = `
-${pooledGateActive ? '-- [POOLED GATE ACTIVE: soft attrs are provenance; window gate; preview shows base shape]\n' : ''}${withPreview}
-SELECT rr.*, COALESCE(td.top_dishes, '[]') AS top_dishes, COALESCE(td.total_dish_count, 0) AS total_dish_count, COALESCE(tm.matched_tags, '[]') AS matched_tags, CASE WHEN ... THEN 'mixed' END AS match_evidence_type, (COALESCE(td.total_dish_count, 0) > 0) AS has_menu_items
-FROM ranked_restaurants rr
-LEFT JOIN LATERAL (...top dishes subquery with LIMIT ${topDishesLimit}...) td ON true
-LEFT JOIN LATERAL (...matched tags subquery with LIMIT 5...) tm ON ${
-      signalMatch.hasConditions ? 'true' : 'false'
-    }`.trim();
-
     return {
       dataSql,
       countSql,
-      preview,
       metadata: {
         boundsApplied,
         priceFilterApplied: filters.priceLevels.length > 0,
@@ -715,15 +645,11 @@ LEFT JOIN LATERAL (...matched tags subquery with LIMIT 5...) tm ON ${
     const filters = this.parseFilters(plan, directives);
 
     // For dish query, we apply restaurant constraints (IDs, restaurant attributes, price) and connection constraints.
-    const { sql: restaurantWhereSql, preview: restaurantWherePreview } =
-      this.buildRestaurantConditions(filters);
+    const { sql: restaurantWhereSql } = this.buildRestaurantConditions(filters);
 
     // Build location conditions (bounds)
-    const {
-      sql: locationWhereSql,
-      preview: locationWherePreview,
-      boundsApplied,
-    } = this.buildLocationConditions(filters);
+    const { sql: locationWhereSql, boundsApplied } =
+      this.buildLocationConditions(filters);
 
     // STEP-3 POOLED GATE (spec §1.4): tier 0 = the row satisfies EVERY soft
     // attribute id ("all words"); tier 1 = partial. Soft ids are OUT of the
@@ -760,11 +686,8 @@ LEFT JOIN LATERAL (...matched tags subquery with LIMIT 5...) tm ON ${
       : Prisma.sql``;
 
     // Build connection conditions (food entity search)
-    const {
-      sql: connectionWhereSql,
-      preview: connectionWherePreview,
-      minimumVotesApplied,
-    } = this.buildConnectionConditions(filters);
+    const { sql: connectionWhereSql, minimumVotesApplied } =
+      this.buildConnectionConditions(filters);
 
     const excludeConnectionsSql = excludeConnectionIds.length
       ? Prisma.sql`AND NOT (${this.buildInClause(
@@ -772,11 +695,6 @@ LEFT JOIN LATERAL (...matched tags subquery with LIMIT 5...) tm ON ${
           excludeConnectionIds,
         )})`
       : Prisma.sql``;
-    const excludeConnectionsPreview = excludeConnectionIds.length
-      ? `AND NOT (c.connection_id = ANY(${this.formatUuidArray(
-          excludeConnectionIds,
-        )}))`
-      : '';
 
     // TIER-2 ring admission: ring rows enter the SCAN (so the window can
     // count them) but never the served page (the gate WHERE excludes
@@ -799,8 +717,6 @@ LEFT JOIN LATERAL (...matched tags subquery with LIMIT 5...) tm ON ${
       ? Prisma.sql`AND ${this.buildOpenNowPredicateSql('sl')}`
       : Prisma.sql``;
     const combinedConnectionWhereSql = Prisma.sql`(${connectionWhereSql} ${ringAdmissionSql}) ${dietaryDishWallsSql} ${dishOpenNowSql} ${excludeConnectionsSql}`;
-    const combinedConnectionWherePreview =
-      `${connectionWherePreview} ${excludeConnectionsPreview}`.trim();
 
     // Build CTEs
     const restaurantCte = Prisma.sql`
@@ -808,7 +724,6 @@ filtered_restaurants AS (
   SELECT
     r.entity_id,
     r.name,
-    r.aliases,
     r.restaurant_attributes,
     r.restaurant_metadata,
     r.price_level,
@@ -817,25 +732,16 @@ filtered_restaurants AS (
   WHERE ${restaurantWhereSql}
 )`;
 
-    const restaurantCtePreview = `
-filtered_restaurants AS (
-  SELECT r.entity_id, r.name, r.aliases, r.restaurant_attributes, r.restaurant_metadata, r.price_level, r.price_level_updated_at
-  FROM core_entities r
-  WHERE ${restaurantWherePreview}
-)`.trim();
+    const filteredLocationsCte =
+      this.buildFilteredLocationsCte(locationWhereSql);
 
-    const filteredLocationsCte = this.buildFilteredLocationsCte(
-      locationWhereSql,
-      locationWherePreview,
+    const { sql: selectedOrderSql } = this.buildDistanceOrder(
+      searchCenter,
+      'fl',
     );
 
-    const { sql: selectedOrderSql, preview: selectedOrderPreview } =
-      this.buildDistanceOrder(searchCenter, 'fl');
-
-    const selectedLocationsCte = this.buildSelectedLocationsCte(
-      selectedOrderSql,
-      selectedOrderPreview,
-    );
+    const selectedLocationsCte =
+      this.buildSelectedLocationsCte(selectedOrderSql);
 
     const restaurantVoteTotalsCte = this.buildRestaurantVoteTotalsCte();
     const publicRestaurantScoresCte = this.buildPublicRestaurantScoresCte();
@@ -860,11 +766,9 @@ filtered_connections AS (
     'connection'::text AS score_subject_type,
     c.connection_id AS score_subject_id,
     f.name AS food_name,
-    f.aliases AS food_aliases,
     -- Restaurant data for map pins
     fr.entity_id AS restaurant_entity_id,
     fr.name AS restaurant_name,
-    fr.aliases AS restaurant_aliases,
     fr.restaurant_attributes AS restaurant_attributes_arr,
     prs.display_score AS restaurant_crave_score,
     prs.percentile_rank AS restaurant_crave_score_exact,
@@ -898,26 +802,6 @@ filtered_connections AS (
   WHERE NOT c.is_category_item AND ${combinedConnectionWhereSql}
 )`;
 
-    const filteredConnectionsCtePreview = `
-filtered_connections AS (
-  SELECT c.connection_id, c.restaurant_id, c.food_id, c.food_attributes, c.is_category_item, c.mention_count, c.total_upvotes, c.last_mentioned_at,
-         pcs.display_score AS connection_crave_score, pcs.percentile_rank AS connection_crave_score_exact, pcs.rising AS connection_rising, pcs.score_info AS connection_score_info,
-         'connection'::text AS score_subject_type, c.connection_id AS score_subject_id,
-         f.name AS food_name, f.aliases AS food_aliases,
-         fr.entity_id AS restaurant_entity_id, fr.name AS restaurant_name, fr.aliases AS restaurant_aliases,
-         prs.display_score AS restaurant_crave_score, prs.percentile_rank AS restaurant_crave_score_exact, prs.rising AS restaurant_rising, prs.score_info AS restaurant_score_info,
-         fr.price_level AS restaurant_price_level, fr.price_level_updated_at AS restaurant_price_level_updated_at,
-         sl.location_id, sl.google_place_id, sl.latitude, sl.longitude, sl.address, sl.city, sl.hours, sl.utc_offset_minutes, sl.time_zone
-  FROM core_restaurant_items c
-  JOIN filtered_restaurants fr ON fr.entity_id = c.restaurant_id
-  JOIN selected_locations sl ON sl.restaurant_id = fr.entity_id
-  LEFT JOIN restaurant_vote_totals rvt ON rvt.restaurant_id = fr.entity_id
-  JOIN public_restaurant_scores prs ON prs.subject_id = fr.entity_id
-  JOIN public_connection_scores pcs ON pcs.subject_id = c.connection_id
-  JOIN core_entities f ON f.entity_id = c.food_id
-  WHERE NOT c.is_category_item AND ${combinedConnectionWherePreview}
-)`.trim();
-
     const order = this.resolveDishOrderSql(plan.ranking.foodOrder);
 
     // SECTIONED RELEVANCY: exact-match rows (tier 0) rank before widened rows
@@ -935,7 +819,6 @@ filtered_connections AS (
         : Prisma.sql`, NULL::int AS match_tier`;
     // OWNER RULING 2026-08-08: tier never orders — admission only.
     const tierOrderSql = Prisma.sql``;
-    const tierOrderPreview = '';
 
     // THE GATE (owner ruling 2026-08-01: page 1 fills with all-word matches;
     // partial admitted only when they cannot fill it). ONE PASS, window
@@ -968,15 +851,6 @@ WITH
   ${publicConnectionScoresCte.sql},
   ${filteredConnectionsCte}
 `;
-
-    const withPreview = `WITH
-  ${restaurantCtePreview},
-  ${filteredLocationsCte.preview},
-  ${selectedLocationsCte.preview},
-  ${restaurantVoteTotalsCte.preview},
-  ${publicRestaurantScoresCte.preview},
-  ${publicConnectionScoresCte.preview},
-  ${filteredConnectionsCtePreview}`;
 
     const dataSql = pooledGate
       ? Prisma.sql`
@@ -1065,18 +939,9 @@ SELECT
   COUNT(DISTINCT fc.restaurant_id)::bigint AS total_restaurants
 FROM filtered_connections fc`;
 
-    const preview = `
-${pooledGate ? '-- [POOLED GATE ACTIVE: soft attrs are provenance; window gate; preview shows base shape]\n' : ''}${withPreview}
-SELECT *
-FROM filtered_connections fc
-ORDER BY ${tierOrderPreview}${order.preview}
-OFFSET ${pagination.skip}
-LIMIT ${pagination.take};`.trim();
-
     return {
       dataSql,
       countSql,
-      preview,
       metadata: {
         boundsApplied,
         priceFilterApplied: filters.priceLevels.length > 0,
@@ -1130,10 +995,7 @@ LIMIT ${pagination.take};`.trim();
   private buildRestaurantConditions(
     filters: ParsedFilters,
     options?: { includeRestaurantAttributes?: boolean },
-  ): {
-    sql: Prisma.Sql;
-    preview: string;
-  } {
+  ): { sql: Prisma.Sql } {
     const includeRestaurantAttributes =
       options?.includeRestaurantAttributes ?? true;
     // ARCHIVED IS NEVER SERVED — as a PREDICATE, not an accident of
@@ -1145,16 +1007,9 @@ LIMIT ${pagination.take};`.trim();
       Prisma.sql`r.type = 'restaurant'`,
       Prisma.sql`r.status <> 'archived'`,
     ];
-    const conditionPreview: string[] = [
-      `r.type = 'restaurant'`,
-      `r.status <> 'archived'`,
-    ];
 
     if (filters.restaurantIds.length) {
       conditions.push(this.buildInClause('r.entity_id', filters.restaurantIds));
-      conditionPreview.push(
-        `r.entity_id = ANY(${this.formatUuidArray(filters.restaurantIds)})`,
-      );
     }
 
     if (includeRestaurantAttributes && filters.restaurantAttributeIds.length) {
@@ -1164,33 +1019,22 @@ LIMIT ${pagination.take};`.trim();
           filters.restaurantAttributeIds,
         ),
       );
-      conditionPreview.push(
-        `r.restaurant_attributes && ${this.formatUuidArray(
-          filters.restaurantAttributeIds,
-        )}`,
-      );
     }
 
     if (filters.priceLevels.length) {
       conditions.push(
         this.buildNumberInClause('r.price_level', filters.priceLevels),
       );
-      conditionPreview.push(
-        `r.price_level = ANY(${this.formatNumberArray(filters.priceLevels)})`,
-      );
     }
 
-    return {
-      sql: this.combineSqlClauses(conditions),
-      preview: this.combinePreviewClauses(conditionPreview),
-    };
+    return { sql: this.combineSqlClauses(conditions) };
   }
 
   private buildRestaurantAttributeMatchConditions(
     filters: ParsedFilters,
-  ): ClauseWithPreview {
+  ): Clause {
     if (!filters.restaurantAttributeIds.length) {
-      return { sql: Prisma.sql`TRUE`, preview: 'TRUE' };
+      return { sql: Prisma.sql`TRUE` };
     }
 
     // Archived attribute ids must not be a working filter (final-final
@@ -1215,21 +1059,14 @@ LIMIT ${pagination.take};`.trim();
     // ARCHIVED (ontology-rejected) attributes. So the array is the claim,
     // and both queries now read it — symmetric by removing the weaker
     // path, not by spreading it.
-    return {
-      sql: Prisma.sql`(${directMatchSql})`,
-      preview: `(r.restaurant_attributes && ${this.formatUuidArray(
-        filters.restaurantAttributeIds,
-      )})`,
-    };
+    return { sql: Prisma.sql`(${directMatchSql})` };
   }
 
   private buildLocationConditions(filters: ParsedFilters): {
     sql: Prisma.Sql;
-    preview: string;
     boundsApplied: boolean;
   } {
     const conditions: Prisma.Sql[] = [];
-    const conditionPreview: string[] = [];
     let boundsApplied = false;
 
     if (filters.polygonPayload && filters.polygonPayload.length >= 3) {
@@ -1262,11 +1099,6 @@ LIMIT ${pagination.take};`.trim();
           4326
         )
       )`);
-      conditionPreview.push(
-        `viewport polygon ST_Covers (${polygon.length} pts) within bbox [${minLng.toFixed(
-          4,
-        )},${minLat.toFixed(4)}]–[${maxLng.toFixed(4)},${maxLat.toFixed(4)}]`,
-      );
       boundsApplied = true;
     } else if (filters.boundsPayload) {
       conditions.push(
@@ -1274,12 +1106,6 @@ LIMIT ${pagination.take};`.trim();
       );
       conditions.push(
         Prisma.sql`rl.longitude BETWEEN ${filters.boundsPayload.southWest.lng} AND ${filters.boundsPayload.northEast.lng}`,
-      );
-      conditionPreview.push(
-        `rl.latitude BETWEEN ${filters.boundsPayload.southWest.lat} AND ${filters.boundsPayload.northEast.lat}`,
-      );
-      conditionPreview.push(
-        `rl.longitude BETWEEN ${filters.boundsPayload.southWest.lng} AND ${filters.boundsPayload.northEast.lng}`,
       );
       boundsApplied = true;
     }
@@ -1289,7 +1115,6 @@ LIMIT ${pagination.take};`.trim();
 
     return {
       sql: this.combineSqlClauses(conditions),
-      preview: this.combinePreviewClauses(conditionPreview),
       boundsApplied,
     };
   }
@@ -1314,11 +1139,9 @@ LIMIT ${pagination.take};`.trim();
     },
   ): {
     conditions: Prisma.Sql[];
-    conditionPreview: string[];
     minimumVotesApplied: boolean;
   } {
     const conditions: Prisma.Sql[] = [];
-    const conditionPreview: string[] = [];
     let minimumVotesApplied = false;
 
     // First-class inbound connection filter (favorites dish lists hydrate exact
@@ -1326,9 +1149,6 @@ LIMIT ${pagination.take};`.trim();
     if (opts.includeConnectionIdFilter && filters.connectionIds.length) {
       conditions.push(
         this.buildInClause('c.connection_id', filters.connectionIds),
-      );
-      conditionPreview.push(
-        `c.connection_id = ANY(${this.formatUuidArray(filters.connectionIds)})`,
       );
     }
 
@@ -1347,13 +1167,6 @@ LIMIT ${pagination.take};`.trim();
         filters.foodTextExpansionIds,
       );
       conditions.push(Prisma.sql`((${attributeClause}) OR (${foodIdClause}))`);
-      conditionPreview.push(
-        `((c.food_attributes && ${this.formatUuidArray(
-          filters.foodAttributeIds,
-        )}) OR (c.food_id = ANY(${this.formatUuidArray(
-          filters.foodTextExpansionIds,
-        )})))`,
-      );
     } else {
       if (filters.foodIds.length) {
         // Category membership is resolved at PLAN time from the canonical
@@ -1373,14 +1186,8 @@ LIMIT ${pagination.take};`.trim();
           conditions.push(
             Prisma.sql`((${foodIdClause}) OR ${containment.sql})`,
           );
-          conditionPreview.push(
-            `((c.food_id = ANY(${this.formatUuidArray(filters.foodIds)})) OR ${containment.preview})`,
-          );
         } else {
           conditions.push(Prisma.sql`(${foodIdClause})`);
-          conditionPreview.push(
-            `(c.food_id = ANY(${this.formatUuidArray(filters.foodIds)}))`,
-          );
         }
       }
 
@@ -1391,11 +1198,6 @@ LIMIT ${pagination.take};`.trim();
             filters.foodAttributeIds,
           ),
         );
-        conditionPreview.push(
-          `c.food_attributes && ${this.formatUuidArray(
-            filters.foodAttributeIds,
-          )}`,
-        );
       }
     }
 
@@ -1404,12 +1206,10 @@ LIMIT ${pagination.take};`.trim();
         filters.ingredientIds,
       );
       conditions.push(clause.sql);
-      conditionPreview.push(clause.preview);
     }
 
     if (filters.minimumVotes !== null) {
       conditions.push(Prisma.sql`c.total_upvotes >= ${filters.minimumVotes}`);
-      conditionPreview.push(`c.total_upvotes >= ${filters.minimumVotes}`);
       if (opts.includeVoteRollupCoverage) {
         // COALESCE is load-bearing with the LEFT JOIN: a restaurant whose
         // direct mentions are all shadowed (or all support-kind) has NO rollup
@@ -1418,50 +1218,42 @@ LIMIT ${pagination.take};`.trim();
         conditions.push(
           Prisma.sql`COALESCE(rvt.total_upvotes, 0) >= ${filters.minimumVotes}`,
         );
-        conditionPreview.push(
-          `COALESCE(rvt.total_upvotes, 0) >= ${filters.minimumVotes}`,
-        );
       }
       minimumVotesApplied = true;
     }
 
-    return { conditions, conditionPreview, minimumVotesApplied };
+    return { conditions, minimumVotesApplied };
   }
 
   private buildConnectionConditions(filters: ParsedFilters): {
     sql: Prisma.Sql;
-    preview: string;
     minimumVotesApplied: boolean;
   } {
-    const { conditions, conditionPreview, minimumVotesApplied } =
+    const { conditions, minimumVotesApplied } =
       this.buildConnectionConditionParts(filters, {
         includeConnectionIdFilter: true,
         includeVoteRollupCoverage: true,
       });
     return {
       sql: this.combineSqlClauses(conditions),
-      preview: this.combinePreviewClauses(conditionPreview),
       minimumVotesApplied,
     };
   }
 
-  private buildConnectionMatchConditions(
-    filters: ParsedFilters,
-  ): MatchClauseWithPreview {
-    const { conditions, conditionPreview } = this.buildConnectionConditionParts(
-      filters,
-      { includeConnectionIdFilter: false, includeVoteRollupCoverage: false },
-    );
+  private buildConnectionMatchConditions(filters: ParsedFilters): MatchClause {
+    const { conditions } = this.buildConnectionConditionParts(filters, {
+      includeConnectionIdFilter: false,
+      includeVoteRollupCoverage: false,
+    });
     return {
       sql: this.combineSqlClauses(conditions),
-      preview: this.combinePreviewClauses(conditionPreview),
       hasConditions: conditions.length > 0,
     };
   }
 
   private buildRestaurantEntitySignalMatchConditions(
     filters: ParsedFilters,
-  ): MatchClauseWithPreview {
+  ): MatchClause {
     // Ingredient constraints are item-level claims by nature; name-level
     // praise signals carry no ingredient data, so a signal-only admission
     // cannot honor them (worst case: a restaurant card whose dish list is
@@ -1470,13 +1262,11 @@ LIMIT ${pagination.take};`.trim();
     if (filters.ingredientIds.length > 0) {
       return {
         sql: this.combineSqlClauses([]),
-        preview: this.combinePreviewClauses([]),
         hasConditions: false,
       };
     }
 
     const conditions: Prisma.Sql[] = [];
-    const conditionPreview: string[] = [];
 
     const shouldOrPrimaryFoodAttributeEvidence =
       filters.foodAttributePrimary &&
@@ -1494,50 +1284,33 @@ LIMIT ${pagination.take};`.trim();
         filters.foodTextExpansionIds,
       );
       conditions.push(Prisma.sql`((${attributeClause}) OR (${foodClause}))`);
-      conditionPreview.push(
-        `((res.entity_id = ANY(${this.formatUuidArray(
-          filters.foodAttributeIds,
-        )})) OR (res.entity_id = ANY(${this.formatUuidArray(
-          filters.foodTextExpansionIds,
-        )})))`,
-      );
     } else {
       if (filters.foodIds.length) {
         conditions.push(this.buildInClause('res.entity_id', filters.foodIds));
-        conditionPreview.push(
-          `res.entity_id = ANY(${this.formatUuidArray(filters.foodIds)})`,
-        );
       }
 
       if (filters.foodAttributeIds.length) {
         conditions.push(
           this.buildInClause('res.entity_id', filters.foodAttributeIds),
         );
-        conditionPreview.push(
-          `res.entity_id = ANY(${this.formatUuidArray(
-            filters.foodAttributeIds,
-          )})`,
-        );
       }
     }
 
     return {
       sql: this.combineSqlClauses(conditions),
-      preview: this.combinePreviewClauses(conditionPreview),
       hasConditions: conditions.length > 0,
     };
   }
 
   private buildRestaurantItemOrSignalMatchConditions(
-    connectionMatch: MatchClauseWithPreview,
-    signalMatch: MatchClauseWithPreview,
-  ): ClauseWithPreview {
+    connectionMatch: MatchClause,
+    signalMatch: MatchClause,
+  ): Clause {
     if (!connectionMatch.hasConditions && !signalMatch.hasConditions) {
-      return { sql: Prisma.sql`TRUE`, preview: 'TRUE' };
+      return { sql: Prisma.sql`TRUE` };
     }
 
     const branches: Prisma.Sql[] = [];
-    const branchPreviews: string[] = [];
 
     if (connectionMatch.hasConditions) {
       branches.push(Prisma.sql`EXISTS (
@@ -1546,9 +1319,6 @@ LIMIT ${pagination.take};`.trim();
         WHERE c.restaurant_id = r.entity_id
           AND ${connectionMatch.sql}
       )`);
-      branchPreviews.push(
-        `EXISTS (SELECT 1 FROM core_restaurant_items c WHERE c.restaurant_id = r.entity_id AND ${connectionMatch.preview})`,
-      );
     }
 
     if (signalMatch.hasConditions) {
@@ -1558,13 +1328,10 @@ LIMIT ${pagination.take};`.trim();
         WHERE res.restaurant_id = r.entity_id
           AND ${signalMatch.sql}
       )`);
-      branchPreviews.push(
-        `EXISTS (SELECT 1 FROM core_restaurant_entity_signals res WHERE res.restaurant_id = r.entity_id AND ${signalMatch.preview})`,
-      );
     }
 
     if (branches.length === 1) {
-      return { sql: branches[0], preview: branchPreviews[0] };
+      return { sql: branches[0] };
     }
     // Step 8: both a connection MATCH and a signal MATCH are present. An
     // `EXISTS(items) OR EXISTS(signals)` across two different tables can force a
@@ -1586,20 +1353,17 @@ LIMIT ${pagination.take};`.trim();
         FROM core_restaurant_entity_signals res
         WHERE ${signalMatch.sql}
       )`,
-      preview: `r.entity_id IN (SELECT c.restaurant_id FROM core_restaurant_items c WHERE ${connectionMatch.preview} UNION SELECT res.restaurant_id FROM core_restaurant_entity_signals res WHERE ${signalMatch.preview})`,
     };
   }
 
-  private buildFilteredRestaurantsCte(
-    whereSql: Prisma.Sql,
-    wherePreview: string,
-  ): { sql: Prisma.Sql; preview: string } {
+  private buildFilteredRestaurantsCte(whereSql: Prisma.Sql): {
+    sql: Prisma.Sql;
+  } {
     const sql = Prisma.sql`
 filtered_restaurants AS (
   SELECT
     r.entity_id,
     r.name,
-    r.aliases,
     r.restaurant_attributes,
     r.restaurant_metadata,
     r.price_level,
@@ -1608,20 +1372,12 @@ filtered_restaurants AS (
   WHERE ${whereSql}
 )`;
 
-    const preview = `
-filtered_restaurants AS (
-  SELECT r.entity_id, r.name, r.aliases, r.restaurant_attributes, r.restaurant_metadata, r.price_level, r.price_level_updated_at
-  FROM core_entities r
-  WHERE ${wherePreview}
-)`.trim();
-
-    return { sql, preview };
+    return { sql };
   }
 
-  private buildFilteredLocationsCte(
-    whereSql: Prisma.Sql,
-    wherePreview: string,
-  ): { sql: Prisma.Sql; preview: string } {
+  private buildFilteredLocationsCte(whereSql: Prisma.Sql): {
+    sql: Prisma.Sql;
+  } {
     const sql = Prisma.sql`
 filtered_locations AS (
   SELECT
@@ -1654,15 +1410,7 @@ filtered_locations AS (
     AND rl.address IS NOT NULL
 )`;
 
-    const preview = `
-filtered_locations AS (
-  SELECT rl.location_id, rl.restaurant_id, rl.google_place_id, rl.latitude, rl.longitude, rl.address, rl.city, rl.region, rl.country, rl.postal_code, rl.phone_number, rl.website_url, rl.hours, rl.utc_offset_minutes, rl.time_zone, rl.in_scoring_territory, rl.is_primary, rl.last_polled_at, rl.created_at, rl.updated_at
-  FROM core_restaurant_locations rl
-  JOIN filtered_restaurants fr ON fr.entity_id = rl.restaurant_id
-  WHERE ${wherePreview} AND rl.latitude IS NOT NULL AND rl.longitude IS NOT NULL AND rl.google_place_id IS NOT NULL AND rl.address IS NOT NULL
-)`.trim();
-
-    return { sql, preview };
+    return { sql };
   }
 
   /**
@@ -1720,13 +1468,12 @@ filtered_locations AS (
   private buildDistanceOrder(
     searchCenter: { lat: number; lng: number } | null | undefined,
     alias: string,
-  ): { sql: Prisma.Sql; preview: string } {
+  ): { sql: Prisma.Sql } {
     // STORED fame-pin verdict (ideal-abstraction round 5, measured): the
     // request-time ST_Covers EXISTS here was 99% of every pooled search's
     // cost (3.45s metro → 27ms). in_scoring_territory is recomputed off
     // the hot path (nightly + after score runs).
     const scoringTerritorySql = Prisma.sql`${Prisma.raw(alias)}.in_scoring_territory DESC`;
-    const scoringTerritoryPreview = `${alias}.in_scoring_territory DESC`;
 
     if (
       !searchCenter ||
@@ -1739,14 +1486,12 @@ filtered_locations AS (
         )}.restaurant_id, ${scoringTerritorySql}, ${Prisma.raw(
           alias,
         )}.updated_at DESC`,
-        preview: `${alias}.restaurant_id, ${scoringTerritoryPreview}, ${alias}.updated_at DESC`,
       };
     }
 
     const distanceSql = Prisma.sql`(POWER(${Prisma.raw(alias)}.latitude - ${
       searchCenter.lat
     }, 2) + POWER(${Prisma.raw(alias)}.longitude - ${searchCenter.lng}, 2))`;
-    const distancePreview = `(POWER(${alias}.latitude - ${searchCenter.lat}, 2) + POWER(${alias}.longitude - ${searchCenter.lng}, 2))`;
 
     return {
       sql: Prisma.sql`${Prisma.raw(
@@ -1754,14 +1499,12 @@ filtered_locations AS (
       )}.restaurant_id, ${scoringTerritorySql}, ${distanceSql} ASC, ${Prisma.raw(
         alias,
       )}.updated_at DESC`,
-      preview: `${alias}.restaurant_id, ${scoringTerritoryPreview}, ${distancePreview} ASC, ${alias}.updated_at DESC`,
     };
   }
 
-  private buildSelectedLocationsCte(
-    orderSql: Prisma.Sql,
-    orderPreview: string,
-  ): { sql: Prisma.Sql; preview: string } {
+  private buildSelectedLocationsCte(orderSql: Prisma.Sql): {
+    sql: Prisma.Sql;
+  } {
     const sql = Prisma.sql`
 selected_locations AS (
   SELECT DISTINCT ON (fl.restaurant_id)
@@ -1770,14 +1513,7 @@ selected_locations AS (
   ORDER BY ${orderSql}
 )`;
 
-    const preview = `
-selected_locations AS (
-  SELECT DISTINCT ON (fl.restaurant_id) fl.*
-  FROM filtered_locations fl
-  ORDER BY ${orderPreview}
-)`.trim();
-
-    return { sql, preview };
+    return { sql };
   }
 
   /**
@@ -1860,7 +1596,7 @@ selected_locations AS (
         )
     )`;
 
-  private buildRestaurantVoteTotalsCte(): { sql: Prisma.Sql; preview: string } {
+  private buildRestaurantVoteTotalsCte(): { sql: Prisma.Sql } {
     const body = `
   SELECT
     c.restaurant_id,
@@ -1874,14 +1610,10 @@ selected_locations AS (
       sql: Prisma.sql`
 restaurant_vote_totals AS (${Prisma.raw(body)}
 )`,
-      preview: `restaurant_vote_totals AS (${body}\n)`,
     };
   }
 
-  private buildPublicRestaurantScoresCte(): {
-    sql: Prisma.Sql;
-    preview: string;
-  } {
+  private buildPublicRestaurantScoresCte(): { sql: Prisma.Sql } {
     const sql = Prisma.sql`
 public_restaurant_scores AS (
   SELECT
@@ -1896,21 +1628,10 @@ public_restaurant_scores AS (
   WHERE subject_type = 'restaurant'
 )`;
 
-    const preview = `
-public_restaurant_scores AS (
-  SELECT subject_id, display_score, percentile_rank, rising,
-         jsonb_build_object('evidenceCopy', 'Based on community evidence.') AS score_info
-  FROM core_public_entity_scores
-  WHERE subject_type = 'restaurant'
-)`.trim();
-
-    return { sql, preview };
+    return { sql };
   }
 
-  private buildPublicConnectionScoresCte(): {
-    sql: Prisma.Sql;
-    preview: string;
-  } {
+  private buildPublicConnectionScoresCte(): { sql: Prisma.Sql } {
     const sql = Prisma.sql`
 public_connection_scores AS (
   SELECT
@@ -1925,23 +1646,12 @@ public_connection_scores AS (
   WHERE subject_type = 'connection'
 )`;
 
-    const preview = `
-public_connection_scores AS (
-  SELECT subject_id, display_score, percentile_rank, rising,
-         jsonb_build_object('evidenceCopy', 'Based on community evidence.') AS score_info
-  FROM core_public_entity_scores
-  WHERE subject_type = 'connection'
-)`.trim();
-
-    return { sql, preview };
+    return { sql };
   }
 
   private buildLocationAggregatesCte(
     searchCenter?: { lat: number; lng: number } | null,
-  ): {
-    sql: Prisma.Sql;
-    preview: string;
-  } {
+  ): { sql: Prisma.Sql } {
     // Locations are a fact about the restaurant, not the viewport or any
     // market (master plan §7): the aggregate is GLOBAL — the map's off-screen
     // sibling machinery depends on it being wider than the viewport — but the
@@ -2001,25 +1711,10 @@ location_aggregates AS (
   GROUP BY ranked_locations.restaurant_id
 )`;
 
-    const preview = `
-location_aggregates AS (
-  SELECT restaurant_id, MAX(total_location_count) AS location_count,
-         json_agg(...) FILTER (WHERE location_rank <= 30) AS locations_json
-  FROM (SELECT rl.*, ROW_NUMBER() OVER (PARTITION BY rl.restaurant_id ORDER BY ${
-    hasCenter ? 'proximity-to-search-center' : 'updated_at DESC'
-  }) AS location_rank, COUNT(*) OVER (PARTITION BY rl.restaurant_id) AS total_location_count
-        FROM core_restaurant_locations rl JOIN filtered_restaurants fr ON fr.entity_id = rl.restaurant_id
-        WHERE lat/lng/place/address NOT NULL) ranked_locations
-  GROUP BY restaurant_id
-)`.trim();
-
-    return { sql, preview };
+    return { sql };
   }
 
-  private resolveDishOrderSql(order?: string): {
-    sql: Prisma.Sql;
-    preview: string;
-  } {
+  private resolveDishOrderSql(order?: string): { sql: Prisma.Sql } {
     const normalized = (order || '').toLowerCase();
     const direction = normalized.includes('asc') ? 'ASC' : 'DESC';
     if (normalized.includes('rising')) {
@@ -2029,7 +1724,6 @@ location_aggregates AS (
         )}, fc.total_upvotes ${Prisma.raw(
           direction,
         )}, fc.mention_count ${Prisma.raw(direction)}, fc.connection_id ASC`,
-        preview: `fc.connection_rising DESC NULLS LAST, fc.connection_crave_score_exact ${direction}, fc.total_upvotes ${direction}, fc.mention_count ${direction}, fc.connection_id ASC`,
       };
     }
     return {
@@ -2040,14 +1734,10 @@ location_aggregates AS (
       sql: Prisma.sql`fc.connection_crave_score_exact ${Prisma.raw(direction)}, fc.total_upvotes ${Prisma.raw(
         direction,
       )}, fc.mention_count ${Prisma.raw(direction)}, fc.connection_id ASC`,
-      preview: `fc.connection_crave_score_exact ${direction}, fc.total_upvotes ${direction}, fc.mention_count ${direction}, fc.connection_id ASC`,
     };
   }
 
-  private resolveRestaurantOrderSql(order?: string): {
-    sql: Prisma.Sql;
-    preview: string;
-  } {
+  private resolveRestaurantOrderSql(order?: string): { sql: Prisma.Sql } {
     const normalized = (order || '').toLowerCase();
     const direction = normalized.includes('asc') ? 'ASC' : 'DESC';
     if (normalized.includes('rising')) {
@@ -2057,7 +1747,6 @@ location_aggregates AS (
       prs.display_score ${Prisma.raw(direction)},
       COALESCE(rvt.total_upvotes, 0) ${Prisma.raw(direction)},
       fr.entity_id ASC`,
-        preview: `prs.rising DESC NULLS LAST, prs.percentile_rank ${direction}, prs.display_score ${direction}, COALESCE(rvt.total_upvotes, 0) ${direction}, fr.entity_id ASC`,
       };
     }
     return {
@@ -2068,14 +1757,10 @@ location_aggregates AS (
       prs.display_score ${Prisma.raw(direction)},
       COALESCE(rvt.total_upvotes, 0) ${Prisma.raw(direction)},
       fr.entity_id ASC`,
-      preview: `prs.percentile_rank ${direction}, prs.display_score ${direction}, COALESCE(rvt.total_upvotes, 0) ${direction}, fr.entity_id ASC`,
     };
   }
 
-  private resolveTopDishOrderSql(order?: string): {
-    sql: Prisma.Sql;
-    preview: string;
-  } {
+  private resolveTopDishOrderSql(order?: string): { sql: Prisma.Sql } {
     const normalized = (order || '').toLowerCase();
     const direction = normalized.includes('asc') ? 'ASC' : 'DESC';
     if (normalized.includes('rising')) {
@@ -2083,19 +1768,14 @@ location_aggregates AS (
         sql: Prisma.sql`sub.rising DESC NULLS LAST, sub.crave_score ${Prisma.raw(
           direction,
         )}`,
-        preview: `sub.rising DESC NULLS LAST, sub.crave_score ${direction}`,
       };
     }
     return {
       sql: Prisma.sql`sub.crave_score ${Prisma.raw(direction)}`,
-      preview: `sub.crave_score ${direction}`,
     };
   }
 
-  private resolveTopDishRankOrderSql(order?: string): {
-    sql: Prisma.Sql;
-    preview: string;
-  } {
+  private resolveTopDishRankOrderSql(order?: string): { sql: Prisma.Sql } {
     const normalized = (order || '').toLowerCase();
     const direction = normalized.includes('asc') ? 'ASC' : 'DESC';
     if (normalized.includes('rising')) {
@@ -2103,14 +1783,12 @@ location_aggregates AS (
         sql: Prisma.sql`pcs.rising DESC NULLS LAST, pcs.display_score ${Prisma.raw(
           direction,
         )}, c.total_upvotes ${Prisma.raw(direction)}, c.connection_id ASC`,
-        preview: `pcs.rising DESC NULLS LAST, pcs.display_score ${direction}, c.total_upvotes ${direction}, c.connection_id ASC`,
       };
     }
     return {
       sql: Prisma.sql`pcs.display_score ${Prisma.raw(
         direction,
       )}, c.total_upvotes ${Prisma.raw(direction)}, c.connection_id ASC`,
-      preview: `pcs.display_score ${direction}, c.total_upvotes ${direction}, c.connection_id ASC`,
     };
   }
 
@@ -2266,17 +1944,11 @@ location_aggregates AS (
    */
   private buildEffectiveIngredientsClause(ingredientIds: string[]): {
     sql: Prisma.Sql;
-    preview: string;
   } {
     const overlap = Prisma.sql`((${this.buildArrayOverlapClause(
       'c.ingredients',
       ingredientIds,
     )}) OR c.food_id IN (SELECT entity_id FROM core_entities WHERE canonical_ingredients && ${this.buildUuidArray(
-      ingredientIds,
-    )}))`;
-    const previewCore = `((c.ingredients && ${this.formatUuidArray(
-      ingredientIds,
-    )}) OR c.food_id IN (SELECT entity_id FROM core_entities WHERE canonical_ingredients && ${this.formatUuidArray(
       ingredientIds,
     )}))`;
     // Include arm, third branch: the dish IS the ingredient by name — a food
@@ -2290,18 +1962,28 @@ location_aggregates AS (
         ', ',
       )})
       WHERE f.type = 'food'
+        -- Fold-symmetric on both sides (identity_key = canonicalFold(name),
+        -- form_folded = canonicalFold(form)); see the same three arms in
+        -- search-sibling-expansion.getSameNamedIngredientIds.
         AND (
-          lower(f.name) = lower(i.name)
-          OR lower(i.name) IN (SELECT lower(a) FROM unnest(f.aliases) a)
-          OR lower(f.name) IN (SELECT lower(a) FROM unnest(i.aliases) a)
+          f.identity_key = i.identity_key
+          OR EXISTS (
+            SELECT 1 FROM entity_surface s
+             WHERE s.entity_id = f.entity_id
+               AND s.status = 'active' AND s.locale = 'und'
+               AND s.role <> 'display'
+               AND s.form_folded = i.identity_key
+          )
+          OR EXISTS (
+            SELECT 1 FROM entity_surface s
+             WHERE s.entity_id = i.entity_id
+               AND s.status = 'active' AND s.locale = 'und'
+               AND s.role <> 'display'
+               AND s.form_folded = f.identity_key
+          )
         )
     )`;
-    return {
-      sql: Prisma.sql`(${overlap} OR ${namedFood})`,
-      preview: `(${previewCore} OR c.food_id IN (SELECT f.entity_id FROM core_entities f JOIN core_entities i ON i.entity_id IN ${this.formatUuidArray(
-        ingredientIds,
-      )} WHERE f.type = 'food' AND same-name-or-alias(f, i)))`,
-    };
+    return { sql: Prisma.sql`(${overlap} OR ${namedFood})` };
   }
 
   private buildArrayOverlapClause(
@@ -2319,20 +2001,12 @@ location_aggregates AS (
     return Prisma.sql`ARRAY[${mapped}]::uuid[]`;
   }
 
-  private formatUuidArray(values: string[]): string {
-    return `ARRAY[${values.map((value) => `'${value}'`).join(', ')}]::uuid[]`;
-  }
-
   private buildSmallintArray(values: number[]): Prisma.Sql {
     const mapped = Prisma.join(
       values.map((value) => Prisma.sql`${value}`),
       ', ',
     );
     return Prisma.sql`ARRAY[${mapped}]::smallint[]`;
-  }
-
-  private formatNumberArray(values: number[]): string {
-    return `ARRAY[${values.join(', ')}]::smallint[]`;
   }
 
   private combineSqlClauses(clauses: Prisma.Sql[]): Prisma.Sql {
@@ -2344,15 +2018,5 @@ location_aggregates AS (
       clauses.map((clause) => Prisma.sql`(${clause})`),
       ' AND ',
     );
-  }
-
-  private combinePreviewClauses(clauses: string[]): string {
-    if (!clauses.length) {
-      return 'TRUE';
-    }
-    if (clauses.length === 1) {
-      return clauses[0];
-    }
-    return clauses.map((clause) => `(${clause})`).join(' AND ');
   }
 }

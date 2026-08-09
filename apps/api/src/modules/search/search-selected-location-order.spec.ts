@@ -1,5 +1,6 @@
 import 'reflect-metadata';
 import { SearchQueryBuilder } from './search-query.builder';
+import { renderInlinedSql } from './sql-preview';
 import type { QueryPlan } from './dto/search-query.dto';
 
 const RESTAURANT_ID = '44444444-4444-4444-4444-444444444444';
@@ -40,25 +41,27 @@ function buildPlan(): QueryPlan {
   };
 }
 
-function selectedLocationsBlock(preview: string): string {
-  const start = preview.indexOf('selected_locations AS (');
+// The rendered statement — placeholders inlined — IS the preview now
+// (concept-graph §11 item 6): these assertions read the SQL that executes.
+function selectedLocationsBlock(rendered: string): string {
+  const start = rendered.indexOf('selected_locations AS (');
   expect(start).toBeGreaterThanOrEqual(0);
   // The CTE closes with a newline + ')' — the ORDER BY itself nests parens.
-  const end = preview.indexOf('\n)', start);
+  const end = rendered.indexOf('\n)', start);
   expect(end).toBeGreaterThan(start);
-  return preview.slice(start, end);
+  return rendered.slice(start, end);
 }
 
 describe('selected_locations fame-pin ordering (scoring territory before distance)', () => {
   const builder = new SearchQueryBuilder();
 
   it('restaurant query: territory preference sorts BEFORE distance-to-center, distance stays the tiebreak', () => {
-    const { preview } = builder.buildRestaurantQuery({
+    const { dataSql } = builder.buildRestaurantQuery({
       plan: buildPlan(),
       pagination: { skip: 0, take: 10 },
       searchCenter: { lat: 30.27, lng: -97.74 },
     });
-    const block = selectedLocationsBlock(preview);
+    const block = selectedLocationsBlock(renderInlinedSql(dataSql));
     const territoryIndex = block.indexOf(TERRITORY_ORDER_SNIPPET);
     const distanceIndex = block.indexOf('POWER(fl.latitude - 30.27');
     const updatedAtIndex = block.indexOf('fl.updated_at DESC');
@@ -72,12 +75,12 @@ describe('selected_locations fame-pin ordering (scoring territory before distanc
   });
 
   it('restaurant query without a search center: territory preference still applies, updated_at anchors', () => {
-    const { preview } = builder.buildRestaurantQuery({
+    const { dataSql } = builder.buildRestaurantQuery({
       plan: buildPlan(),
       pagination: { skip: 0, take: 10 },
       searchCenter: null,
     });
-    const block = selectedLocationsBlock(preview);
+    const block = selectedLocationsBlock(renderInlinedSql(dataSql));
     const territoryIndex = block.indexOf(TERRITORY_ORDER_SNIPPET);
     expect(territoryIndex).toBeGreaterThanOrEqual(0);
     expect(block).not.toContain('POWER(');
@@ -85,7 +88,7 @@ describe('selected_locations fame-pin ordering (scoring territory before distanc
   });
 
   it('dish query: the same territory-before-distance order applies to the dish axis', () => {
-    const { preview } = builder.buildDishQuery({
+    const { dataSql } = builder.buildDishQuery({
       plan: {
         ...buildPlan(),
         connectionFilters: [
@@ -100,7 +103,7 @@ describe('selected_locations fame-pin ordering (scoring territory before distanc
       pagination: { skip: 0, take: 10 },
       searchCenter: { lat: 30.27, lng: -97.74 },
     });
-    const block = selectedLocationsBlock(preview);
+    const block = selectedLocationsBlock(renderInlinedSql(dataSql));
     const territoryIndex = block.indexOf(TERRITORY_ORDER_SNIPPET);
     const distanceIndex = block.indexOf('POWER(fl.latitude - 30.27');
     expect(territoryIndex).toBeGreaterThanOrEqual(0);

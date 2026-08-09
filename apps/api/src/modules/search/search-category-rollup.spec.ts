@@ -1,6 +1,7 @@
 import 'reflect-metadata';
 import { compileQueryPlanFromConstraints } from './search-constraints.compiler';
 import { SearchQueryBuilder } from './search-query.builder';
+import { renderInlinedSql } from './sql-preview';
 import type { SearchConstraints } from './search-constraints';
 
 const FOOD_ID = '33333333-3333-3333-3333-333333333333';
@@ -50,11 +51,13 @@ function constraints(): SearchConstraints {
  */
 describe('restaurant rollup counts one claim once, most specific carrier wins', () => {
   const preview = (): string =>
-    new SearchQueryBuilder().buildRestaurantQuery({
-      plan: compileQueryPlanFromConstraints(constraints()),
-      pagination: { skip: 0, take: 10 },
-      searchCenter: null,
-    }).preview;
+    renderInlinedSql(
+      new SearchQueryBuilder().buildRestaurantQuery({
+        plan: compileQueryPlanFromConstraints(constraints()),
+        pagination: { skip: 0, take: 10 },
+        searchCenter: null,
+      }).dataSql,
+    );
 
   it('reads the mention LEDGER, not the item counters (claims live per document)', () => {
     const sql = preview();
@@ -83,7 +86,17 @@ describe('restaurant rollup counts one claim once, most specific carrier wins', 
   });
 
   it('no longer excludes category items by ROW TYPE (that dropped real claims)', () => {
-    expect(preview()).not.toContain('NOT c.is_category_item');
+    // Scoped to the ROLLUP CTE. The preview is the rendered statement now
+    // (concept-graph §11 item 6), and the top-dishes LATERAL legitimately
+    // carries its own `AND NOT c.is_category_item` (F9967 — rollup rows are
+    // never dish rows). The old hand-written preview simply omitted that
+    // subquery, so a whole-statement assertion passed on a sketch.
+    const sql = preview();
+    const start = sql.indexOf('restaurant_vote_totals AS (');
+    expect(start).toBeGreaterThanOrEqual(0);
+    const end = sql.indexOf('\n)', start);
+    expect(end).toBeGreaterThan(start);
+    expect(sql.slice(start, end)).not.toContain('NOT c.is_category_item');
   });
 
   it('is ANTISYMMETRIC: a synonym cycle must not erase both claims', () => {

@@ -1,6 +1,7 @@
 import 'reflect-metadata';
 import { compileQueryPlanFromConstraints } from './search-constraints.compiler';
 import { SearchQueryBuilder } from './search-query.builder';
+import { renderInlinedSql } from './sql-preview';
 import type { SearchConstraints } from './search-constraints';
 import type { QueryPlan } from './dto/search-query.dto';
 
@@ -49,14 +50,17 @@ function buildConstraints(
   };
 }
 
+// The rendered dish statement (placeholders inlined) IS the preview now
+// (concept-graph §11 item 6) — these assertions read the SQL that executes,
+// so a clause that stops being emitted cannot hide behind a stale mirror.
 function dishPreviewFor(plan: QueryPlan): string {
   const builder = new SearchQueryBuilder();
-  const { preview } = builder.buildDishQuery({
+  const { dataSql } = builder.buildDishQuery({
     plan,
     pagination: { skip: 0, take: 10 },
     searchCenter: null,
   });
-  return preview;
+  return renderInlinedSql(dataSql);
 }
 
 describe('ingredient include lane (compiler → builder)', () => {
@@ -77,7 +81,7 @@ describe('ingredient include lane (compiler → builder)', () => {
     );
     const preview = dishPreviewFor(plan);
     expect(preview).toContain(
-      `(c.ingredients && ARRAY['${INCLUDE_ID}']::uuid[])`,
+      `c.ingredients && ARRAY['${INCLUDE_ID}'::uuid]::uuid[]`,
     );
     expect(preview).toContain('canonical_ingredients');
   });
@@ -87,23 +91,30 @@ describe('ingredient include lane (compiler → builder)', () => {
       buildConstraints({ ingredientIds: [INCLUDE_ID] }),
     );
     const preview = dishPreviewFor(plan);
-    expect(preview).toContain('same-name-or-alias(f, i)');
+    // Asserted against the RENDERED statement, so it tracks the real arm:
+    // fold-symmetric identity (identity_key) plus the entity_surface form
+    // lookups. The old hand-written preview abbreviated this whole branch as
+    // "same-name-or-alias(f, i)" — a string that could not have noticed the
+    // arm being rewritten underneath it.
+    expect(preview).toContain('f.identity_key = i.identity_key');
+    expect(preview).toContain('FROM entity_surface s');
   });
 
   it('twin-ingredient union: food clause ORs containment when directives carry twins', () => {
     const plan = compileQueryPlanFromConstraints(buildConstraints({}));
     const builder = new SearchQueryBuilder();
-    const { preview } = builder.buildDishQuery({
+    const { dataSql } = builder.buildDishQuery({
       plan,
       pagination: { skip: 0, take: 10 },
       searchCenter: null,
       directives: { twinIngredientIds: [INCLUDE_ID] },
     });
+    const preview = renderInlinedSql(dataSql);
     expect(preview).toContain(
-      `(c.food_id = ANY(ARRAY['${FOOD_ID}']::uuid[])) OR`,
+      `(c.food_id = ANY(ARRAY['${FOOD_ID}'::uuid]::uuid[])) OR`,
     );
     expect(preview).toContain(
-      `c.ingredients && ARRAY['${INCLUDE_ID}']::uuid[]`,
+      `c.ingredients && ARRAY['${INCLUDE_ID}'::uuid]::uuid[]`,
     );
   });
 
