@@ -209,6 +209,93 @@ describe('query analyzer (A2 seam)', () => {
     });
   });
 
+  describe('the detector can name every language the server can serve', () => {
+    // The candidate set is DERIVED from SUPPORTED_LOCALES. These are the
+    // audit's exact failing cases, kept verbatim so a re-narrowing of the
+    // candidate list cannot pass.
+    it('does not answer with a language this server cannot serve', () => {
+      // 'phils ice house' read as `fr` before the candidate set was derived
+      // (F4: 15% of plain-English queries went non-English this way).
+      const analysis = analyzeQuery('phils ice house', null);
+      expect(analysis.detectedLocale?.tag).not.toBe('fr');
+      expect(analysis.isNonEnglish).toBe(false);
+    });
+
+    it('pins Han to zh the way kana pins ja and hangul pins ko', () => {
+      expect(analyzeQuery('麻辣牛肉面', null).detectedLocale).toEqual({
+        tag: 'zh',
+        confidence: 1,
+        source: 'script',
+      });
+    });
+
+    it('NEVER echoes a request prior a Han query contradicts', () => {
+      // Measured before the fix: this returned {tag:'es-MX', source:
+      // 'request-prior'} — the system asserting a Chinese noun phrase is
+      // Mexican Spanish, then embedding it with an [es-MX] prefix.
+      const analysis = analyzeQuery('麻辣牛肉面', 'es-MX');
+      expect(analysis.detectedLocale?.tag).toBe('zh');
+      expect(analysis.detectedLocale?.source).toBe('script');
+    });
+
+    it('refuses the prior echo for a non-Latin script it cannot pin', () => {
+      // Every SUPPORTED_LOCALE is Latin-script, so Cyrillic text is not in
+      // the requester's locale whatever the phone says. Null is the honest
+      // answer; 'es-MX' was the previous one.
+      expect(analyzeQuery('привет', 'es-MX').detectedLocale).toBeNull();
+    });
+  });
+
+  describe('the registry-surface oracle is the short-string signal', () => {
+    // A fake index standing in for SurfaceLocaleIndexService: folded form →
+    // the locales the concept graph banks it under. These four rows are real
+    // — they are what the live corpus holds for these words.
+    const oracle = (folded: string): string[] =>
+      ({
+        'bun dau mam tom': ['vi'],
+        'com tam': ['vi'],
+        camarones: ['es'],
+        // A word banked under BOTH launch languages — the ambiguous case.
+        tostada: ['es', 'vi'],
+      })[folded] ?? [];
+
+    it('names vi on the exact query the detector answers null for', () => {
+      expect(analyzeQuery('bún đậu mắm tôm', null).detectedLocale).toBeNull();
+      expect(
+        analyzeQuery('bún đậu mắm tôm', null, { surfaceLocales: oracle })
+          .detectedLocale,
+      ).toEqual({ tag: 'vi', confidence: 1, source: 'surface' });
+    });
+
+    it('overrules a detector answer that is simply wrong', () => {
+      // 'cơm tấm' detects `pt` unaided. The registry holds it as `vi`.
+      expect(
+        analyzeQuery('cơm tấm', null, { surfaceLocales: oracle })
+          .detectedLocale,
+      ).toEqual({ tag: 'vi', confidence: 1, source: 'surface' });
+    });
+
+    it('overrules a request prior — the words beat the phone setting', () => {
+      expect(
+        analyzeQuery('camarones', 'en-US', { surfaceLocales: oracle })
+          .detectedLocale,
+      ).toEqual({ tag: 'es', confidence: 1, source: 'surface' });
+    });
+
+    it('abstains when a word is banked under two languages', () => {
+      // Ambiguity is honest silence, not a coin flip: the prior gets its
+      // normal turn instead of the oracle inventing a winner.
+      const analysis = analyzeQuery('tostada', 'en-US', {
+        surfaceLocales: oracle,
+      });
+      expect(analysis.detectedLocale?.source).not.toBe('surface');
+    });
+
+    it('is inert for callers that pass no oracle', () => {
+      expect(analyzeQuery('camarones', null).detectedLocale).toBeNull();
+    });
+  });
+
   describe('negation cues (R5-3 tier 1)', () => {
     it('finds cues from every installed pack, tagged by locale', () => {
       expect(

@@ -9,6 +9,7 @@ import {
   EntityResolutionResult,
 } from '../content-processing/entity-resolver/entity-resolution.types';
 import { EntityTextSearchService } from '../entity-text-search/entity-text-search.service';
+import { SurfaceLocaleIndexService } from '../entity-text-search/surface-locale-index.service';
 import { LoggerService } from '../../shared';
 import {
   NaturalSearchRequestDto,
@@ -178,6 +179,7 @@ export class SearchQueryInterpretationService {
     private readonly dietaryConstraints: DietaryConstraintRegistry,
     private readonly unsegmentedResidue: UnsegmentedResidueService,
     private readonly signals: SignalsService,
+    private readonly surfaceLocaleIndex: SurfaceLocaleIndexService,
     @Inject(LoggerService) loggerService: LoggerService,
   ) {
     this.logger = loggerService.setContext('SearchQueryInterpretationService');
@@ -238,7 +240,13 @@ export class SearchQueryInterpretationService {
     // tier's gate and its locale prefix — reads THIS object. Detection is
     // never re-run per residue probe (the probe budget is 24; per-probe
     // detection would 24x a cost the plan prices as ~free).
-    const analysis = analyzeQuery(request.query, request.locale ?? null);
+    // THE ORACLE RIDES IN HERE (multilingual spine step 1): the registry's
+    // own locale-tagged vocabulary is the primary language signal for the
+    // short queries the n-gram detector cannot read. Passing the index's
+    // bound oracle is the whole wiring — analyzeQuery stays synchronous.
+    const analysis = analyzeQuery(request.query, request.locale ?? null, {
+      surfaceLocales: this.surfaceLocaleIndex.oracle,
+    });
     const rawGroups = await this.entityTextSearch.scanForKnownEntityGroups(
       request.query,
       GAZETTEER_UNDERSTAND_TYPES,

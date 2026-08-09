@@ -8,6 +8,7 @@ import { EntityTextSearchService } from './entity-text-search.service';
 import { EntityEmbeddingReconcilerService } from './entity-embedding-reconciler.service';
 import { NameContainmentEdgeBuilderService } from './name-containment-edge-builder.service';
 import { EntitySiblingEdgeBuilderService } from './entity-sibling-edge-builder.service';
+import { SurfaceLocaleIndexService } from './surface-locale-index.service';
 
 @Module({
   imports: [SharedModule, PrismaModule, LLMModule, SharedServicesModule],
@@ -17,12 +18,14 @@ import { EntitySiblingEdgeBuilderService } from './entity-sibling-edge-builder.s
     EntitySiblingEdgeBuilderService,
     NameContainmentEdgeBuilderService,
     EntityLexiconBuilderService,
+    SurfaceLocaleIndexService,
   ],
   exports: [
     EntityTextSearchService,
     EntityEmbeddingReconcilerService,
     EntitySiblingEdgeBuilderService,
     NameContainmentEdgeBuilderService,
+    SurfaceLocaleIndexService,
   ],
 })
 export class EntityTextSearchModule {}

@@ -59,6 +59,7 @@ function makeService(coverage: { resolveViewportCoverage: jest.Mock }) {
     dietary as never,
     { recordResidue: jest.fn(() => Promise.resolve()) } as never,
     signals as never,
+    { oracle: () => [] } as never,
     logger as never,
   );
   return { svc, logger, entityTextSearch };
