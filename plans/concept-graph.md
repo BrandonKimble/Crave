@@ -685,3 +685,35 @@ Flow gate 12/12, search gate 98.7, projection-guard specs green. The
 remaining aliases[] readers (embedding doc, und projection writer) are the
 knowledge-layer retirement item (I-2), not autocomplete. Language reruns:
 add vi/zh/ko blocks to autocomplete-flow-gate.ts per rollout.
+
+## 14. IDEAL-END-STATE PUSH (2026-08-09) — everything-remaining session
+
+DONE this session (each commit gate-proven at es 98.7 before landing):
+- H6 one-widening-resolution-per-request (memoized reader) — bb2e4956d.
+- H8 open-now parity spec — CAUGHT 80 tz-null locations hidden from
+  Open-now while displaying "Open now"; tz backfill heals, spec keeps it.
+- Negation-v1 vestige purge (−359 lines: negatedSpan, ExcludedSpan,
+  gate exclusion clause) — e3939057d.
+- CJK segmentation (Han/Kana char sub-tokens, separator-aware ngrams) —
+  zh UNBLOCKED on analysis, ko verified ready — 73e241245. zh/ko still
+  need vocabulary sweeps before joining SUPPORTED_LOCALES.
+- VIETNAMESE LIVE: vi in SUPPORTED_LOCALES; sweep complete (14,375
+  active vi surfaces, 8,751 labels, watermark-bottomed at 27 junk);
+  flow gate 18/18 — a571b457c. vi GOLD CORPUS (150 queries) — 51df8266;
+  first run 95.3 with the tone-mark fold defect as the launch blocker
+  (bò→avocado class; fix in flight).
+- entity_surface MERGE (§11 item 2): entity_labels + entity_alias = one
+  table, role display|recall|both; reconcileLabelSurfaces deleted as
+  unwritable; 16,838 duplicate rows gone — a5fbd91db.
+
+IN FLIGHT: aliases[] retirement w/ resolution-tier gate first (§11 item
+4); previews derived from dataSql (§11 item 6); vi tone-mark tie-break
+(diacritics-as-evidence over fold-collapse). Then: staging→prod deploy,
+multi-agent red team.
+
+FINDINGS FOR OWNER: (a) tôm (shrimp) judged to prawns — one-way door,
+picante-class ruling candidate; (b) each new language re-litigates
+incumbent languages' word claims by fold (vi cost es 17 surfaces, gate
+unmoved — but know it before language 4); (c) en-as-real-locale: 577 en
+rows already exist while display path treats en as implicit — a
+vocabulary-sweep decision, not blocking.
