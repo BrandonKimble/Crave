@@ -2,7 +2,10 @@ import { PrismaClient } from '@prisma/client';
 import { randomUUID } from 'crypto';
 import { addSurfaces } from './entity-surface.service';
 import { identityInsertData } from './entity-identity';
-import { WordClaimAdjudicatorService } from './word-claim-adjudicator.service';
+import {
+  CLAIM_JUDGE_PROMPT_VERSION,
+  WordClaimAdjudicatorService,
+} from './word-claim-adjudicator.service';
 
 /**
  * THE CLAIM UNIT IS THE FORM — proven against a real database.
@@ -229,5 +232,107 @@ describe('the claim unit is the FORM, not the fold', () => {
     ]);
     expect(judge.generateForCaller).not.toHaveBeenCalled();
     expect(summary.judged).toBe(0);
+  });
+
+  /**
+   * A WRONG VERDICT IS CORRECTED BY RE-HEARING, NEVER BY HAND.
+   *
+   * The memory of a lost claim is permanent on purpose, so nothing re-proposes
+   * it nightly. That made a wrong JUDGING RULE uncorrectable except by editing
+   * rows — which is what was done to `chả giò` and `chảy` on 2026-08-09 and is
+   * exactly what does not scale. Every verdict now carries the rule version
+   * that made it, so bumping the rule re-opens the case and the machinery
+   * decides again. Three things must hold together, and the middle one is what
+   * the old code got wrong: a re-heard WIN could not actually land, because an
+   * adjudicated re-bank left the row deprecated.
+   */
+  it('re-opens a verdict made by an OLDER rule, and a re-heard win lands', async () => {
+    const suffix = randomUUID().slice(0, 8);
+    const word = `zzq picante ${suffix}`;
+    const incumbent = await mintFood(`zzq holder ${suffix}`);
+    const loser = await mintFood(`zzq loser ${suffix}`);
+
+    await prisma.$transaction((tx) =>
+      addSurfaces(tx, incumbent, [
+        { form: word, locale: 'es', source: 'vocabulary', role: 'recall' },
+      ]),
+    );
+    // The old rule refused the newcomer and remembered it as wrong.
+    const refusingJudge = {
+      generateForCaller: jest.fn().mockResolvedValue(
+        JSON.stringify({
+          items: [
+            {
+              n: 1,
+              a_owns_word: false,
+              incumbents_own_word: [true],
+              reason: 'the old rule',
+            },
+          ],
+        }),
+      ),
+    };
+    await adjudicatorWith(refusingJudge).adjudicate([
+      { form: word, locale: 'es', entityId: loser, source: 'vocabulary' },
+    ]);
+    expect((await surfacesOf(loser))[0]).toMatchObject({
+      status: 'deprecated',
+    });
+
+    // Stamped with the rule that decided it — the whole point of the column.
+    const stampNow = await prisma.$queryRawUnsafe<
+      Array<{ claim_judge_version: number | null }>
+    >(
+      `SELECT claim_judge_version FROM entity_surface
+        WHERE entity_id = $1::uuid AND form = $2`,
+      loser,
+      word,
+    );
+    expect(stampNow[0].claim_judge_version).toBe(CLAIM_JUDGE_PROMPT_VERSION);
+
+    // Current-rule verdicts are settled: nothing re-offers them.
+    const judgeService = adjudicatorWith(refusingJudge);
+    const settled = await judgeService.staleVerdictClaims('es', {
+      forms: [word],
+    });
+    expect(settled).toEqual([]);
+
+    // Age the verdict — i.e. the rule moved on — and the claim comes due.
+    await prisma.$executeRawUnsafe(
+      `UPDATE entity_surface SET claim_judge_version = claim_judge_version - 1
+        WHERE entity_id = $1::uuid AND form = $2`,
+      loser,
+      word,
+    );
+    const due = await judgeService.staleVerdictClaims('es', { forms: [word] });
+    expect(due.map((c) => c.entityId)).toContain(loser);
+
+    // Re-heard under the new rule, BOTH are upheld — and the win must land,
+    // not be swallowed by the remembered refusal.
+    const upholdingJudge = {
+      generateForCaller: jest.fn().mockResolvedValue(
+        JSON.stringify({
+          items: [
+            {
+              n: 1,
+              a_owns_word: true,
+              incumbents_own_word: [true],
+              reason: 'culinary near-synonyms',
+            },
+          ],
+        }),
+      ),
+    };
+    const summary = await adjudicatorWith(upholdingJudge).adjudicate(due);
+    expect(summary.bothUpheld).toBe(1);
+    expect(summary.cases[0].reason).toBe('culinary near-synonyms');
+    expect((await surfacesOf(loser))[0]).toMatchObject({
+      status: 'active',
+    });
+    // The incumbent kept its word — upholding both takes nothing away.
+    expect((await surfacesOf(incumbent))[0]).toMatchObject({
+      role: 'recall',
+      status: 'active',
+    });
   });
 });

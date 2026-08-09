@@ -98,9 +98,18 @@ export function admitsAtExactTier(
    *  accent-complete note in the rule below. */
   bankedPlainForms: ReadonlySet<string> = new Set(),
 ): boolean {
-  // Nothing accented anywhere in the span ⇒ no evidence ⇒ the folded key
-  // decides, exactly as it always did.
-  if (span.diacritic === span.folded) return true;
+  // A FULLY PLAIN SPAN IS NOT A SPECIAL CASE (2026-08-09). This used to
+  // return true immediately — "nothing accented ⇒ no evidence" — which is
+  // right about ACCENTS and wrong about WORDS: a token the registry banks as
+  // a complete accent-free surface of the request's language is a word the
+  // user spelled, and the loop below already knows that (the accent-complete
+  // arm). The shortcut simply denied it the chance to say so whenever the
+  // WHOLE span happened to be plain, which is the commonest way a one-word
+  // query arrives. Symptom: 'chay' (vegetarian, a banked vi word) also
+  // exact-matched 'chảy' (runny) and a vegetarian-rice search came back
+  // carrying a gooey constraint. Dropping the shortcut costs nothing for
+  // 'pho'/'bo' — those are not banked plain forms, so every token still
+  // 'continue's and the folded key decides exactly as before.
   const spanFolded = span.folded.split(' ');
   const spanTyped = span.diacritic.split(' ');
   return spellings.some((spelling) => {

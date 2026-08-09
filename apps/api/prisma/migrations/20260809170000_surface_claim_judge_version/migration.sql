@@ -1,0 +1,22 @@
+-- A WORD-CLAIM VERDICT IS VERSIONED, SO A WRONG CLASS OF VERDICTS IS RE-HEARABLE.
+--
+-- entity_surface already remembers a LOST claim two ways: status='deprecated'
+-- (a refused newcomer) and role='display' on a row that asked for recall (an
+-- evicted incumbent). Both memories were permanent and anonymous: nothing
+-- recorded WHICH judging rule produced them. When the rule itself was found
+-- wrong (near-synonyms evicted instead of co-upheld; hearings held on the
+-- accent-destroying recall fold), the only available correction was editing
+-- rows by hand — unscalable, unreviewable, and silent.
+--
+-- Stamping the judge's prompt version on the rows a verdict writes makes the
+-- correction MECHANICAL: bump CLAIM_JUDGE_PROMPT_VERSION and every claim
+-- settled under an older rule is due for a fresh hearing, one re-ask per bump,
+-- exactly like the vocabulary sweep's prompt_version watermark.
+--
+-- NULL means "no hearing ever decided this row" — which is also the honest
+-- reading of every row that predates this column, including the ones the
+-- pre-per-form judge decided on a fold. They are all due.
+--
+-- Plain nullable ADD COLUMN with no default: no table rewrite, no index build
+-- (AUTHORING.md §1), so no parallel-worker guard is needed here.
+ALTER TABLE "entity_surface" ADD COLUMN "claim_judge_version" INTEGER;

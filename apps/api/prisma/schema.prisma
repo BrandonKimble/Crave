@@ -211,6 +211,20 @@ model EntitySurface {
   /// Vocabulary-prompt version that wrote this row; the sweep re-offers
   /// rows below the generator's current version (one re-pay per bump).
   promptVersion Int     @default(1) @map("prompt_version")
+  /// THE JUDGE VERSION THAT SETTLED THIS ROW'S WORD CLAIM
+  /// (WordClaimAdjudicatorService.CLAIM_JUDGE_PROMPT_VERSION), or NULL when
+  /// no hearing ever decided it.
+  ///
+  /// A verdict is a JUDGMENT, and a judgment is only as good as the rule that
+  /// produced it — so it is stamped with that rule's version, exactly the way
+  /// `prompt_version` stamps a generated label. Every lost claim in this table
+  /// (status='deprecated', or a role='display' row that asked for recall) is a
+  /// remembered refusal; without this stamp the memory is PERMANENT and the
+  /// only way to correct a class of wrong verdicts is to edit rows by hand,
+  /// which does not scale and leaves no reason on the record. With it, bumping
+  /// the judge's version re-opens every claim decided under the older rule and
+  /// the machinery re-hears them.
+  claimJudgeVersion Int? @map("claim_judge_version")
 
   createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt DateTime @default(now()) @map("updated_at") @db.Timestamptz(6)

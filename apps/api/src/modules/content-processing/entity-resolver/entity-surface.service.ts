@@ -92,6 +92,12 @@ export interface SurfaceInput {
   rank?: number;
   /** Display-side: the vocabulary-prompt version that produced the form. */
   promptVersion?: number;
+  /**
+   * The JUDGE version that settled this row's word claim. Only the
+   * adjudicator sets it (its writes are the only ones that settle anything);
+   * every other writer leaves it NULL, which reads as "never heard".
+   */
+  claimJudgeVersion?: number | null;
 }
 
 export type SurfaceRole = 'display' | 'recall' | 'both';
@@ -274,6 +280,7 @@ export async function addSurfaces(
       isDefault: input.isDefault ?? false,
       rank: input.rank ?? 0,
       promptVersion: input.promptVersion ?? 1,
+      claimJudgeVersion: input.claimJudgeVersion ?? null,
     });
   }
 
@@ -490,6 +497,7 @@ interface SurfaceRow {
   isDefault: boolean;
   rank: number;
   promptVersion: number;
+  claimJudgeVersion: number | null;
 }
 
 /**
@@ -541,27 +549,38 @@ async function insertSurfaceRows(
                AND d.locale = ${r.locale}
                AND d.is_default)`
         : Prisma.sql`false`;
-      return Prisma.sql`(${entityId}::uuid, ${r.form}, ${canonicalFold(r.form)}, ${r.locale}, ${r.role}, ${r.source}, ${r.confidence}, ${r.status}, ${r.description}, ${isDefaultExpr}, ${r.rank}, ${r.promptVersion})`;
+      return Prisma.sql`(${entityId}::uuid, ${r.form}, ${canonicalFold(r.form)}, ${r.locale}, ${r.role}, ${r.source}, ${r.confidence}, ${r.status}, ${r.description}, ${isDefaultExpr}, ${r.rank}, ${r.promptVersion}, ${r.claimJudgeVersion})`;
     }),
   );
   // The one place widening authority is spent. `mayWiden=false` PINS an
   // existing 'display' row at 'display': the incoming recall claim was not
   // earned, so it does not land, and the row goes on being both the label and
   // the memory that its claim lost.
-  const roleExpr = authority.mayWiden
-    ? Prisma.sql`CASE WHEN entity_surface.status = 'deprecated'
+  // A VERDICT IS AUTHORITATIVE IN BOTH DIRECTIONS (2026-08-09, the re-hearing
+  // law). 'deprecated' and 'display' are the memories of a claim that LOST a
+  // hearing — and the adjudicator is the only thing that can put them there,
+  // so it must also be the one thing that can lift them. Before this, an
+  // adjudicated re-bank of a previously-refused form kept the row deprecated
+  // and pinned at 'display': the judge could rule for a word it had once
+  // refused and NOTHING would change in the corpus, which is precisely why
+  // wrong verdicts had to be undone by hand. A re-hearing that the newcomer
+  // WINS now lands the row exactly as the verdict says.
+  const roleExpr = authority.adjudicated
+    ? Prisma.sql`CASE WHEN entity_surface.role = EXCLUDED.role
+                      THEN entity_surface.role ELSE 'both' END`
+    : authority.mayWiden
+      ? Prisma.sql`CASE WHEN entity_surface.status = 'deprecated'
                             AND EXCLUDED.role <> 'recall' THEN 'display'
                       WHEN entity_surface.role = EXCLUDED.role
                       THEN entity_surface.role ELSE 'both' END`
-    : Prisma.sql`CASE WHEN entity_surface.status = 'deprecated'
+      : Prisma.sql`CASE WHEN entity_surface.status = 'deprecated'
                             AND EXCLUDED.role <> 'recall' THEN 'display'
                       WHEN entity_surface.role = EXCLUDED.role
                       THEN entity_surface.role
                       WHEN entity_surface.role = 'display' THEN 'display'
                       ELSE 'both' END`;
   const statusExpr = authority.adjudicated
-    ? Prisma.sql`CASE WHEN EXCLUDED.role = 'recall'
-                      THEN entity_surface.status ELSE EXCLUDED.status END`
+    ? Prisma.sql`EXCLUDED.status`
     : // A DEPRECATED ROW MAY STILL BECOME A LABEL — and only a label.
       // 'deprecated' is the memory that a RECALL claim lost (R5-6b), and since
       // eviction stopped destroying labels (0e439c897) the settled encoding of
@@ -588,7 +607,8 @@ async function insertSurfaceRows(
     >(Prisma.sql`
       INSERT INTO entity_surface
         (entity_id, form, form_folded, locale, role, source, confidence,
-         status, description, is_default, rank, prompt_version)
+         status, description, is_default, rank, prompt_version,
+         claim_judge_version)
       VALUES ${values}
       ON CONFLICT (entity_id, locale, form) DO UPDATE SET
         role = ${roleExpr},
@@ -600,6 +620,11 @@ async function insertSurfaceRows(
                     THEN entity_surface.rank ELSE EXCLUDED.rank END,
         prompt_version = GREATEST(entity_surface.prompt_version,
                                   EXCLUDED.prompt_version),
+        -- The stamp records WHO last settled this claim. Only a verdict
+        -- carries one, so an ordinary re-offer leaves the existing stamp
+        -- alone (COALESCE) rather than erasing the hearing's memory.
+        claim_judge_version = COALESCE(EXCLUDED.claim_judge_version,
+                                       entity_surface.claim_judge_version),
         updated_at = now()
       RETURNING form, role`);
   } catch (error) {

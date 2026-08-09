@@ -53,10 +53,30 @@ import { canonicalFold } from './entity-identity';
  * court, run OFFLINE over the blocked backlog — never in a request path.
  */
 
+/**
+ * THE JUDGE'S RULE HAS A VERSION, AND A BUMP RE-OPENS EVERY VERDICT IT MADE
+ * (2026-08-09). Every row a verdict writes is stamped
+ * `entity_surface.claim_judge_version`, and `staleVerdictClaims` re-offers any
+ * lost claim decided under an older rule. That is the whole reason this number
+ * exists: when the RULE is found wrong, the corpus is corrected by re-hearing,
+ * never by hand-editing rows. Two verdicts were hand-reverted on 2026-08-09
+ * (`chả giò`, `chảy`) because there was no other lever; there is one now.
+ */
+// v3 (2026-08-09): THE RULE, not the formatting. v2 asked one flat question
+// ("does this claimant use this word?") with a fail-closed "unsure → false",
+// which made EVICTION the cheap answer and cost the corpus real food: `tôm`
+// taken off shrimp and given to prawns, `chả giò` taken off spring roll and
+// given to egg roll — pairs a searcher does not distinguish. v3 states the
+// decision rule the outcomes are supposed to encode (evict only what is
+// FACTUALLY WRONG; uphold BOTH for culinary near-synonyms), makes the doubt
+// asymmetric (an unproven newcomer is refused, a doubted incumbent is kept —
+// eviction is the destructive move), names the searcher as the deciding lens,
+// and hands the judge the GRAPH ADJACENCY between the two concepts as
+// evidence, so "near-synonym" is read off derived data instead of vibes.
 // v2 (2026-08-08): every incumbent listed (v1 showed only the first),
 // plus per-claimant context (sample aliases) — v1 mis-voted picante/café
 // on bare name+type pairs, measured on the launch gate.
-export const CLAIM_JUDGE_PROMPT_VERSION = 2;
+export const CLAIM_JUDGE_PROMPT_VERSION = 3;
 
 /** Claims per LLM call. */
 const PER_CALL = 10;
@@ -92,6 +112,8 @@ export interface AdjudicationSummary {
   newcomerRefused: number;
   /** Judge unavailable/failed — left blocked, re-offered next run. */
   unjudged: number;
+  /** Every hearing that reached a verdict, with the judge's stated reason. */
+  cases: JudgedCase[];
 }
 
 interface Claimant {
@@ -104,6 +126,28 @@ interface Claimant {
   /** True when the claim is testimony or the entity's own identity. */
   testimony: boolean;
   aliasId: string | null;
+  /**
+   * How this concept sits next to the CLAIMANT under judgment in the derived
+   * concept graph — the near-synonym question, answered from data the corpus
+   * already derives (`entity_satisfies`, `derived_entity_sibling_edges`)
+   * instead of from the model's feel for two bare names. Null on the target
+   * itself.
+   */
+  adjacency: string | null;
+}
+
+/** One case's outcome, as the judge stated it — kept so a verdict can be
+ *  read back with its reason instead of inferred from row diffs. */
+export interface JudgedCase {
+  form: string;
+  locale: string;
+  entityId: string;
+  targetName: string;
+  outcome: 'bothUpheld' | 'incumbentEvicted' | 'newcomerRefused';
+  /** Incumbents this hearing kept / took the word from, as "name[type]". */
+  upheld: string[];
+  evicted: string[];
+  reason: string;
 }
 
 @Injectable()
@@ -131,6 +175,7 @@ export class WordClaimAdjudicatorService {
       incumbentEvicted: 0,
       newcomerRefused: 0,
       unjudged: 0,
+      cases: [],
     };
 
     // One judgment per (word, target entity).
@@ -159,9 +204,24 @@ export class WordClaimAdjudicatorService {
       for (const p of prepared) {
         summary.considered += 1;
         if (!p.target || p.incumbents.length === 0) {
-          // Nothing contests it anymore — bank directly.
+          // Nothing contests it anymore — bank directly. This is also how a
+          // FALSE CONFLICT is undone: a claim refused when the hearing was
+          // held on the accent-blind fold has no same-word incumbent at all,
+          // so the re-hearing finds no case to answer and the word goes back.
           if (p.target) await this.bank(p.claim, dryRun);
           summary.bothUpheld += 1;
+          if (p.target) {
+            summary.cases.push({
+              form: p.claim.form,
+              locale: p.claim.locale,
+              entityId: p.claim.entityId,
+              targetName: `${p.target.name}[${p.target.type}]`,
+              outcome: 'bothUpheld',
+              upheld: [],
+              evicted: [],
+              reason: 'uncontested — no other concept claims this word',
+            });
+          }
           continue;
         }
         // TESTIMONY MAKES AN INCUMBENT UNEVICTABLE — it does NOT bar a
@@ -174,7 +234,10 @@ export class WordClaimAdjudicatorService {
       }
       if (!judgeable.length) continue;
 
-      let verdicts: Map<number, { target: boolean; others: boolean[] }>;
+      let verdicts: Map<
+        number,
+        { target: boolean; others: boolean[]; reason: string }
+      >;
       try {
         verdicts = await this.judge(judgeable);
       } catch (error) {
@@ -196,9 +259,20 @@ export class WordClaimAdjudicatorService {
           continue;
         }
         summary.judged += 1;
+        const label = (c: Claimant) => `${c.name}[${c.type}]`;
         if (!verdict.target) {
           await this.refuse(p.claim, dryRun);
           summary.newcomerRefused += 1;
+          summary.cases.push({
+            form: p.claim.form,
+            locale: p.claim.locale,
+            entityId: p.claim.entityId,
+            targetName: p.target ? label(p.target) : p.claim.entityId,
+            outcome: 'newcomerRefused',
+            upheld: p.incumbents.map(label),
+            evicted: [],
+            reason: verdict.reason,
+          });
           continue;
         }
         // PER-INCUMBENT verdicts (v2): evict exactly the incumbents the
@@ -215,11 +289,25 @@ export class WordClaimAdjudicatorService {
         } else {
           summary.bothUpheld += 1;
         }
+        const evictedSet = new Set(evictable.map((inc) => inc.entityId));
+        summary.cases.push({
+          form: p.claim.form,
+          locale: p.claim.locale,
+          entityId: p.claim.entityId,
+          targetName: p.target ? label(p.target) : p.claim.entityId,
+          outcome: evictable.length ? 'incumbentEvicted' : 'bothUpheld',
+          upheld: p.incumbents
+            .filter((inc) => !evictedSet.has(inc.entityId))
+            .map(label),
+          evicted: evictable.map(label),
+          reason: verdict.reason,
+        });
       }
     }
 
     this.logger.info('Word-claim adjudication complete', {
       ...summary,
+      cases: summary.cases.length,
       dryRun,
     });
     return summary;
@@ -239,6 +327,7 @@ export class WordClaimAdjudicatorService {
       context: await this.sampleSurfaces(row.entity_id),
       testimony: false,
       aliasId: null,
+      adjacency: null,
     };
   }
 
@@ -309,6 +398,7 @@ export class WordClaimAdjudicatorService {
         context: await this.sampleSurfaces(row.entity_id),
         testimony: row.is_name || TESTIMONY_SOURCES.has(row.source ?? ''),
         aliasId: row.surface_id,
+        adjacency: await this.adjacencyOf(exceptEntityId, row.entity_id),
       });
     }
     return claimants;
@@ -320,27 +410,64 @@ export class WordClaimAdjudicatorService {
       target: Claimant | null;
       incumbents: Claimant[];
     }>,
-  ): Promise<Map<number, { target: boolean; others: boolean[] }>> {
+  ): Promise<
+    Map<number, { target: boolean; others: boolean[]; reason: string }>
+  > {
     const card = (c: Claimant | null, label: string) =>
       `   ${label}: "${c?.name}" [${c?.type}]` +
-      (c?.context.length ? ` — also known as: ${c.context.join(', ')}` : '');
+      (c?.context.length ? ` — also known as: ${c.context.join(', ')}` : '') +
+      (c?.adjacency ? `\n      graph: ${c.adjacency}` : '');
     const prompt = [
       `You judge WORD OWNERSHIP for a food-discovery app's search index.`,
       `For each numbered case: ONE word is claimed by SEVERAL concepts. For`,
-      `EVERY claimant, answer whether a real speaker of the word's language`,
-      `genuinely uses THAT word to name THAT concept.`,
+      `EVERY claimant, answer TRUE or FALSE.`,
       ``,
-      `Rules:`,
-      `- Several claimants may all be right ("picante" names hot sauce in`,
-      `  American English AND means spicy in Spanish). A word naming multiple`,
-      `  concepts is a fact, not a conflict.`,
+      `THE LENS — a searcher, not a dictionary. The word was TYPED INTO A FOOD`,
+      `APP'S SEARCH BOX by a speaker of the stated locale. Ask what that person`,
+      `wants to eat, then answer, per claimant: would being shown THIS concept`,
+      `satisfy them? Everything below serves that one question.`,
+      ``,
+      `THE DECISION RULE — what your answers mean:`,
+      `- TRUE for SEVERAL claimants is the normal, expected outcome whenever`,
+      `  the word really is used for more than one of them. The index carries`,
+      `  multi-claim words natively ("picante" is hot sauce to an American AND`,
+      `  spicy in Spanish); placement sorts it out per query. Nothing is lost`,
+      `  by upholding two true claims.`,
+      `- Answer TRUE for CULINARY NEAR-SYNONYMS — concepts the searcher does`,
+      `  not distinguish and would accept either of: shrimp/prawns, egg`,
+      `  roll/fried spring roll, cilantro/coriander, and the ingredient twin of`,
+      `  a dish (the SAME concept typed as an ingredient and as a food is two`,
+      `  rows, one meaning). Taking the word from one of a near-synonymous pair`,
+      `  hides food the searcher wanted and shows them nothing new.`,
+      `- Answer FALSE ONLY when the pairing is FACTUALLY WRONG: a speaker of`,
+      `  that locale does not use that word for that concept, so a searcher`,
+      `  shown it was sent to the wrong food. Being wrong is the ONLY reason to`,
+      `  answer false. "It is not the BEST word for it" is not a reason.`,
+      `- DOUBT IS NOT SYMMETRIC. An INCUMBENT already holds the word and`,
+      `  answering false TAKES IT AWAY, so if you are unsure about an`,
+      `  incumbent, answer TRUE — do not destroy a pairing on a doubt. The`,
+      `  NEW claimant is asking for something it does not have, so if you are`,
+      `  unsure about it, answer FALSE.`,
+      ``,
+      `EVIDENCE AND EDGE CASES:`,
+      `- "graph:" lines report how the app's own derived concept graph relates`,
+      `  a claimant to the new one: "satisfies" / "cousin" edges and semantic`,
+      `  sibling rank. A satisfies edge or a top sibling rank is real evidence`,
+      `  of the near-synonym case above. A "reject" edge is evidence they are`,
+      `  genuinely different foods. Weigh it; it does not decide alone.`,
       `- Translation counts: if the word IS the claimant's name in the given`,
       `  locale ("café" is Spanish for coffee), that claimant owns it.`,
-      `- A near-synonym or related concept does NOT own the word: "sopa"`,
-      `  names soup, never a branded dish that merely contains soup.`,
+      `- A DIFFERENT dish that merely CONTAINS the concept is not a`,
+      `  near-synonym: "sopa" names soup, never a branded dish with soup in it.`,
+      `- THE CORPUS IS FOOD. When a word has both a food sense and an unrelated`,
+      `  everyday sense in that locale, judge the FOOD sense — that is the one`,
+      `  a person searching a food app means.`,
+      `- A word that is not used to name or describe food or drink in that`,
+      `  locale owns nothing here: answer false for every claimant.`,
       `- A proper noun / brand only owns a word that IS its name.`,
-      `- Dietary and religious terms are never interchangeable.`,
-      `- When genuinely unsure about a claimant, answer false for it.`,
+      `- Dietary and religious terms are never interchangeable, and a doubt`,
+      `  never upholds one for another: vegan is not vegetarian, halal is not`,
+      `  kosher. Someone eats by these words.`,
       ``,
       ...items.map(({ claim, target, incumbents }, index) =>
         [
@@ -351,7 +478,9 @@ export class WordClaimAdjudicatorService {
       ),
       ``,
       `Return ONLY JSON: for each case, a_owns_word plus incumbents_own_word`,
-      `— one boolean PER incumbent, in the order listed.`,
+      `— one boolean PER incumbent, in the order listed — and "reason": one`,
+      `short sentence naming the rule above that decided it. The reason is`,
+      `read by people auditing verdicts, so state the ACTUAL ground.`,
     ].join('\n');
 
     const text = await this.llm.generateForCaller({
@@ -374,8 +503,9 @@ export class WordClaimAdjudicatorService {
                     type: 'array',
                     items: { type: 'boolean' },
                   },
+                  reason: { type: 'string' },
                 },
-                required: ['n', 'a_owns_word', 'incumbents_own_word'],
+                required: ['n', 'a_owns_word', 'incumbents_own_word', 'reason'],
               },
             },
           },
@@ -390,6 +520,7 @@ export class WordClaimAdjudicatorService {
         n?: number;
         a_owns_word?: boolean;
         incumbents_own_word?: boolean[];
+        reason?: string;
       }>;
     };
     return new Map(
@@ -400,9 +531,95 @@ export class WordClaimAdjudicatorService {
           {
             target: item.a_owns_word === true,
             others: item.incumbents_own_word ?? [],
+            reason: (item.reason ?? '').trim(),
           },
         ]),
     );
+  }
+
+  /**
+   * HOW THESE TWO CONCEPTS SIT IN THE GRAPH — the near-synonym question,
+   * answered from derived data.
+   *
+   * `entity_satisfies` is an explicit judgment the corpus already made about
+   * substitutability ('satisfies' / 'cousin' / 'reject'), and
+   * `derived_entity_sibling_edges` carries embedding neighbourhood with a
+   * mutual rank. Shrimp and prawns, for instance, are a satisfies edge AND
+   * each other's rank-1 mutual sibling — which is exactly the evidence that
+   * makes "a searcher would accept either" a fact rather than a hunch. Handing
+   * the judge nothing forced it to decide near-synonymy from two bare names,
+   * and it decided wrong (tôm, chả giò).
+   */
+  private async adjacencyOf(
+    entityId: string,
+    otherId: string,
+  ): Promise<string | null> {
+    const [relations, siblings] = await Promise.all([
+      this.prisma.$queryRaw<Array<{ relation: string }>>`
+        SELECT relation FROM entity_satisfies
+         WHERE (from_entity_id = ${entityId}::uuid AND to_entity_id = ${otherId}::uuid)
+            OR (from_entity_id = ${otherId}::uuid AND to_entity_id = ${entityId}::uuid)`,
+      this.prisma.$queryRaw<Array<{ forward_rank: number }>>`
+        SELECT forward_rank FROM derived_entity_sibling_edges
+         WHERE (anchor_entity_id = ${entityId}::uuid AND sibling_entity_id = ${otherId}::uuid)
+            OR (anchor_entity_id = ${otherId}::uuid AND sibling_entity_id = ${entityId}::uuid)
+         ORDER BY forward_rank ASC LIMIT 1`,
+    ]);
+    const parts: string[] = [];
+    for (const row of relations) parts.push(`${row.relation} edge`);
+    if (siblings[0]) {
+      parts.push(`semantic sibling (rank ${siblings[0].forward_rank})`);
+    }
+    // SILENCE IS NOT EVIDENCE OF DISTANCE. An absent edge can mean "judged
+    // unrelated" or "never derived for this pair", and the two are not the
+    // same claim — so nothing is said when nothing is known.
+    return parts.length ? parts.join(', ') : null;
+  }
+
+  /**
+   * THE CLAIMS DUE A FRESH HEARING — the mechanism that replaces hand-reverts.
+   *
+   * A lost claim is remembered two ways, and both are selected here: a REFUSED
+   * newcomer (status='deprecated') and an EVICTED or refused label claim
+   * (role='display' on an inferred row, which is only ever how a lost recall
+   * claim is encoded). A row is due when the rule that settled it is older
+   * than the current one — including NULL, which is every verdict minted
+   * before verdicts were versioned at all, and which is the honest reading of
+   * them: the pre-2026-08-09 judge decided on the accent-destroying recall
+   * fold, so `chảy` was refused against `chay` — two different Vietnamese
+   * words — and the question it answered was never real.
+   *
+   * Only INFERRED sources are re-offered. Testimony is not a claim anyone
+   * judged, and a display row from a human is a label, not a lost hearing.
+   */
+  async staleVerdictClaims(
+    locale: string,
+    options: { limit?: number; forms?: readonly string[] } = {},
+  ): Promise<ContestedClaim[]> {
+    const limit = options.limit ?? 200;
+    const forms = (options.forms ?? []).map((f) => canonicalFold(f));
+    const rows = await this.prisma.$queryRaw<
+      Array<{ form: string; locale: string; entity_id: string; source: string }>
+    >`
+      SELECT s.form, s.locale, s.entity_id::text, s.source
+        FROM entity_surface s
+        JOIN core_entities e ON e.entity_id = s.entity_id
+       WHERE e.status = 'active'
+         AND s.locale = ${locale}
+         AND s.source IN ('vocabulary', 'sweep', 'knowledge_synthesis',
+                          'seed', 'query_banking', 'synthesis')
+         AND (s.status = 'deprecated' OR s.role = 'display')
+         AND (s.claim_judge_version IS NULL
+              OR s.claim_judge_version < ${CLAIM_JUDGE_PROMPT_VERSION})
+         AND (${forms.length === 0} OR s.form_folded = ANY(${forms}::text[]))
+       ORDER BY s.updated_at ASC
+       LIMIT ${limit}`;
+    return rows.map((row) => ({
+      form: row.form,
+      locale: row.locale,
+      entityId: row.entity_id,
+      source: row.source as SurfaceSource,
+    }));
   }
 
   /** Bank a won claim. The guard re-checks; with the incumbent deprecated it
@@ -413,7 +630,14 @@ export class WordClaimAdjudicatorService {
       addSurfaces(
         tx,
         claim.entityId,
-        [{ form: claim.form, locale: claim.locale, source: claim.source }],
+        [
+          {
+            form: claim.form,
+            locale: claim.locale,
+            source: claim.source,
+            claimJudgeVersion: CLAIM_JUDGE_PROMPT_VERSION,
+          },
+        ],
         // The verdict IS the ownership ruling — a 'both win' is a sanctioned
         // collision, so the guard defers to it (it blocked every coexistence
         // verdict otherwise; 862-claim forever-loop, 2026-08-08).
@@ -433,6 +657,7 @@ export class WordClaimAdjudicatorService {
           locale: claim.locale,
           source: claim.source,
           status: 'deprecated',
+          claimJudgeVersion: CLAIM_JUDGE_PROMPT_VERSION,
         },
       ]),
     );
@@ -467,6 +692,9 @@ export class WordClaimAdjudicatorService {
       UPDATE entity_surface
          SET role   = CASE WHEN role = 'both' THEN 'display' ELSE role END,
              status = CASE WHEN role = 'both' THEN status ELSE 'deprecated' END,
+             -- The loser's row records WHICH rule took its word, so a later
+             -- bump re-opens this eviction the same way it re-opens a refusal.
+             claim_judge_version = ${CLAIM_JUDGE_PROMPT_VERSION},
              updated_at = now()
        WHERE surface_id = ANY(${ids}::uuid[])`;
   }

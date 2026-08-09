@@ -1,10 +1,10 @@
 {
-  "ranAt": "2026-08-09T09:11:44.333Z",
+  "ranAt": "2026-08-09T19:03:47.811Z",
   "lang": "vi",
   "corpusVersion": 1,
   "scoreboard": {
-    "overall": 98.77300613496932,
-    "top1SingleConcept": 98.11320754716981,
+    "overall": 98.78048780487805,
+    "top1SingleConcept": 98.13084112149532,
     "negationNonInversion": 100,
     "constraintPreservation": 100,
     "homographMisGroundings": ["nem→little gem lettuce[linked]"],
@@ -375,6 +375,15 @@
       "reasons": [],
       "grounded": [
         {
+          "entityId": "77dd20cb-7574-477a-801f-f5394e3634c8",
+          "bucket": "food",
+          "type": "food",
+          "span": "chả giò",
+          "name": "spring roll",
+          "tier": "gazetteer-exact",
+          "foldedName": "spring roll"
+        },
+        {
           "entityId": "cda2daf1-f436-45b0-991b-574e8290d0ae",
           "bucket": "food",
           "type": "food",
@@ -396,7 +405,7 @@
         "denseTierUsed": false
       },
       "misGroundings": [],
-      "notes": "TRANSLATION BRIDGE via a banked vi alias: 'chả giò' is banked on the English row 'egg roll' — no 'cha gio' row exists."
+      "notes": "NEAR-SYNONYM FAMILY (word-claim judge v3, 2026-08-09). 'chả giò' is the Vietnamese name for the fried roll English menus print as both 'egg roll' and 'spring roll'. The v2 judge gave the word to egg roll and evicted spring roll — a verdict an agent then reverted BY HAND, which is what proved the rule needed fixing rather than the row. v3 upholds both claims on the merits; both must be reachable."
     },
     {
       "id": "sn-10",
@@ -504,7 +513,7 @@
         "denseTierUsed": false
       },
       "misGroundings": [],
-      "notes": "Banked 'tôm'→prawns (food) / prawn (ingredient). NOT 'shrimp' — the corpus banked the prawn twin; asserting 'shrimp' here would demand a bridge the vocabulary did not make."
+      "notes": "NEAR-SYNONYM FAMILY, not a single winner (word-claim judge v3, 2026-08-09). 'tôm' is the Vietnamese word for BOTH shrimp and prawns; a diner typing it wants the family. The v2 judge evicted shrimp's claim in favour of prawns and this entry was authored to that eviction ('NOT shrimp'), which is the defect, not the spec: the corpus's own graph records shrimp[food] --satisfies--> prawns[food] and each as the other's rank-1 mutual sibling. v3 upholds both, so the user-visible assertion is the FAMILY — a tôm search must reach shrimp AND prawns."
     },
     {
       "id": "sn-13",
@@ -1956,15 +1965,6 @@
           "foldedName": "grilled shrimp"
         },
         {
-          "entityId": "7eeb7cb1-5653-46e7-a24b-af91cd5e85cd",
-          "bucket": "food",
-          "type": "food",
-          "span": "tôm",
-          "name": "shrimp",
-          "tier": "linked",
-          "foldedName": "shrimp"
-        },
-        {
           "entityId": "5e7775c8-82bc-410a-bce3-7b5d05e49249",
           "bucket": "foodAttributes",
           "type": "food_attribute",
@@ -1972,6 +1972,15 @@
           "name": "grilled",
           "tier": "linked",
           "foldedName": "grilled"
+        },
+        {
+          "entityId": "c04eaa3a-b107-4efb-932c-bd5358175bfc",
+          "bucket": "ingredients",
+          "type": "ingredient",
+          "span": "tôm",
+          "name": "shrimp",
+          "tier": "linked",
+          "foldedName": "shrimp"
         }
       ],
       "unresolved": [],
@@ -1997,6 +2006,15 @@
       "preservation": 1,
       "reasons": [],
       "grounded": [
+        {
+          "entityId": "6e666716-a419-45b8-93fd-c0a2274af7cb",
+          "bucket": "food",
+          "type": "food",
+          "span": "bún thịt nướng",
+          "name": "vermicelli bowl",
+          "tier": "gazetteer-exact",
+          "foldedName": "vermicelli bowl"
+        },
         {
           "entityId": "eaf556f2-803a-4fcd-a309-c9a92c61416f",
           "bucket": "food",
@@ -2124,9 +2142,9 @@
           "foldedName": "shrimp rolls"
         },
         {
-          "entityId": "7eeb7cb1-5653-46e7-a24b-af91cd5e85cd",
-          "bucket": "food",
-          "type": "food",
+          "entityId": "c04eaa3a-b107-4efb-932c-bd5358175bfc",
+          "bucket": "ingredients",
+          "type": "ingredient",
           "span": "tôm",
           "name": "shrimp",
           "tier": "linked",
@@ -4602,7 +4620,7 @@
         "denseTierUsed": false
       },
       "misGroundings": [],
-      "notes": "'chè' = a sweet dessert soup; 'chè' also = the tea plant, and the corpus banks 'chè'→tea (ingredient). Tea is defensible; a dessert-shaped wrong answer is not. Park is safe."
+      "notes": "'chè' = a sweet dessert soup; 'chè' also = the tea plant, and the corpus banks 'chè'→tea (ingredient). MEASURED 2026-08-09: the dessert is UNREACHABLE for two independent reasons, and neither is the judge's. (1) No dessert-soup concept exists in this corpus, so there is no entity for 'chè' to claim — no hearing was ever held and none is due (nothing was evicted; tea's row was never contested). (2) Even if one existed, an EXACT/alias link TERMINATES the span: the dense admission tier is reached only when sparse produced no link or a weak fuzzy one, so a confident exact grounding suppresses dense for that span. Park stays safe; fixing this is a CORPUS question (mint the concept), not a judging one."
     },
     {
       "id": "hg-04",
@@ -6495,6 +6513,15 @@
       "reasons": [],
       "grounded": [
         {
+          "entityId": "6e666716-a419-45b8-93fd-c0a2274af7cb",
+          "bucket": "food",
+          "type": "food",
+          "span": "bun thịt nướng",
+          "name": "vermicelli bowl",
+          "tier": "gazetteer-exact",
+          "foldedName": "vermicelli bowl"
+        },
+        {
           "entityId": "eaf556f2-803a-4fcd-a309-c9a92c61416f",
           "bucket": "food",
           "type": "food",
@@ -6559,6 +6586,39 @@
       },
       "misGroundings": [],
       "notes": "PARTIAL ACCENTING — the input mode a corpus authored only in the clean regimes cannot see. Telex/VNI half-applied, iOS autocorrect mixes, one word typed lazily: this is NORMAL Vietnamese input, not a typo. The accent-evidence rule reads evidence PER TOKEN for exactly this reason — an accented token must agree with the surface, a plain one asks nothing. Authored against the DB: THE COUNTERWEIGHT. Every entry above says a plain token asks nothing — this one says the evidence that IS present is still enforced. 'chay' is banked vi as a word of its own (vegetarian), so it is a complete spelling, not a skipped accent, and must not match the scorched-rice surface 'cơm cháy'. Duplicates hg-16's assertion deliberately: it is the boundary the partial-accent rule is most likely to erode."
+    },
+    {
+      "id": "hg-22",
+      "query": "chảy",
+      "stratum": "homograph",
+      "locale": "vi-VN",
+      "pass": true,
+      "preservation": 1,
+      "reasons": [],
+      "grounded": [
+        {
+          "entityId": "878cabee-ce41-4018-8036-360ad02958f7",
+          "bucket": "foodAttributes",
+          "type": "food_attribute",
+          "span": "chảy",
+          "name": "gooey",
+          "tier": "gazetteer-exact",
+          "foldedName": "gooey"
+        }
+      ],
+      "unresolved": [],
+      "analysis": {
+        "script": "latin",
+        "requestLocale": "vi-VN",
+        "detectedLocale": {
+          "tag": "vi-VN",
+          "confidence": 0.5,
+          "source": "request-prior"
+        },
+        "denseTierUsed": false
+      },
+      "misGroundings": [],
+      "notes": "TONE MARKS ARE PHONEMIC, AND THE CLAIM UNIT IS THE FORM. 'chảy' (runny/melted — what a searcher means by gooey cheese) and 'chay' (vegetarian) are DIFFERENT WORDS that share one de-diacritized recall fold. The pre-per-form judge heard them as one case and refused gooey's claim, leaving 'chảy' completely unresolved — a real word typed with its real accents returning nothing. That verdict was hand-reverted; it is now re-heard mechanically (the judge version stamps every verdict, and a bump re-opens it). This entry is the standing proof: accented 'chảy' reaches gooey, and never the dietary word."
     }
   ]
 }
