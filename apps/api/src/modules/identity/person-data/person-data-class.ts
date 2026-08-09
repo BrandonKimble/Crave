@@ -783,6 +783,7 @@ export const COLUMN_COVERAGE: readonly ColumnCoverageEntry[] = [
       ],
       ['demand_scoring_runs', 'Scoring run metadata.'],
       ['derived_entity_sibling_edges', 'Derived from the entity graph.'],
+      ['derived_name_containment_edges', 'Derived from the entity graph.'],
       ['derived_entity_word_deletes', 'Derived from the entity graph.'],
       ['derived_food_category_edges', 'Derived from the entity graph.'],
       ['derived_location_open_intervals', 'Derived restaurant hours.'],
@@ -791,6 +792,10 @@ export const COLUMN_COVERAGE: readonly ColumnCoverageEntry[] = [
       ['entity_labels', 'Vocabulary.'],
       ['entity_redirects', 'Vocabulary.'],
       ['entity_satisfies', 'Vocabulary.'],
+      [
+        'knowledge_pass_runs',
+        'Vocabulary-maintenance watermarks keyed by an entity, never a person.',
+      ],
       [
         'estimator_state',
         'Decayed moments keyed by an estimator subject (a term or lane), never a person.',

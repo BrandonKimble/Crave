@@ -218,6 +218,8 @@ const EXEMPT: Record<string, string> = {
     'derived from the event ledger — rebuilt by ingest',
   'core_restaurant_item_mentions.connection_id':
     'derived from the event ledger — rebuilt by ingest',
+  'knowledge_pass_runs.subject_id':
+    'vocabulary-maintenance watermark keyed by an entity — a dangling subject just re-queues the pass',
   'derived_entity_sibling_edges.anchor_entity_id':
     'derived projection — rebuilt by ingest',
   'derived_entity_sibling_edges.sibling_entity_id':
