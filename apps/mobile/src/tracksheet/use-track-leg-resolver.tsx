@@ -756,6 +756,9 @@ export const useTrackLegResolver = ({
     const paint = resolveTrackPaint({
       isHandingOff,
       ready: isResolutionReady(resolution),
+      // F-3: the honest freeze input — a ready zero-row list (OA12 awaiting
+      // face, declared empty state) paints live but is never frozen.
+      hasRealRows: resolutionHasRealRows(resolution),
       hasFrozenBody: frozen != null,
     });
     if (sceneUsesMountedTrackBody(legScene)) {

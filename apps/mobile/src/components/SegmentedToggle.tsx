@@ -390,6 +390,27 @@ export function SegmentedToggle<T extends string>({
                     pointerEvents="none"
                   />
                 ) : null}
+                {/* THE TWIN'S WIDTH SOURCE (red-team F-1, 2026-08-09): each twin
+                    cell renders the SAME invisible measuring label inside the
+                    SAME `styles.option` box the real row uses — so the cell's
+                    intrinsic width equals the real segment's BY CONSTRUCTION
+                    (same content, same style object — never copied constants).
+                    An empty cell has intrinsic width 0 and the frame-1 pill
+                    would be a 0-wide box: the twin's whole charter violated.
+                    The pill absolute-fills the CELL (not the padded option box)
+                    because Yoga insets absolute children by parent padding —
+                    the animated pill spans the full measured segment width,
+                    padding included, and the twin must match it. */}
+                <View style={styles.option}>
+                  <Text
+                    numberOfLines={1}
+                    variant="caption"
+                    weight="semibold"
+                    style={[styles.label, styles.labelMeasure]}
+                  >
+                    {option.label}
+                  </Text>
+                </View>
               </View>
             ))}
           </View>
@@ -450,6 +471,9 @@ const styles = StyleSheet.create({
     right: 0,
     flexDirection: 'row',
   },
+  // The twin cell mirrors the real segment's flex parameters; its WIDTH comes
+  // from the `styles.option` + measuring-label child it renders (the same
+  // content the real row measures), never from a copied constant.
   layoutFirstPillCell: {
     flexGrow: 0,
     flexShrink: 1,

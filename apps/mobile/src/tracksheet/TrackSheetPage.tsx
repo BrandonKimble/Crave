@@ -589,16 +589,22 @@ export function TrackSheetPage({
   // this page animates with, zero copies) plus a point-in-time getter for the
   // presented entry's list scroll. Every rider (search chrome transition,
   // scrim, dismiss plane, origin capture, profile snapshots) reads THESE.
+  // Publish OVERWRITES on a dep change (F-5, 2026-08-09): the old shape ran the
+  // cleanup's clear() before each republish, so any dep change left riders one
+  // commit of null publication and forced a double recompute. clear() belongs
+  // to the TRUE unmount only — the separate []-dep effect below.
   React.useLayoutEffect(() => {
-    const authority = getTrackSheetPositionAuthority();
-    authority.publish({
+    getTrackSheetPositionAuthority().publish({
       sheetTopY,
       getPresentedListScroll: () => Math.max(0, tau.value - trackH),
     });
-    return () => {
-      authority.clear();
-    };
   }, [sheetTopY, tau, trackH]);
+  React.useLayoutEffect(
+    () => () => {
+      getTrackSheetPositionAuthority().clear();
+    },
+    []
+  );
 
   // ── THE SETTLE OBSERVER: NATIVE FACT, NOT JS INFERENCE ──
   // ~30 lines of τ-sampling lived here (an animated reaction that called it

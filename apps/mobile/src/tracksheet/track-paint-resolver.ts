@@ -44,6 +44,20 @@ export type TrackPaintFacts = {
   isHandingOff: boolean;
   /** A concrete body resolution exists this commit (isResolutionReady). */
   ready: boolean;
+  /**
+   * The resolution carries REAL ROWS (resolutionHasRealRows): a mounted body,
+   * or a list with rowCount > 0. Red-team F-3 (2026-08-09): a ready ZERO-ROW
+   * list is the scene SPEAKING (the OA12 awaiting face mid-toggle, a declared
+   * empty state) and still paints LIVE — but it must never be RECORDED as the
+   * entry's frozen last-good body, or switching away mid-awaiting and back
+   * paints a frozen empty face as if it were content. Mounted lanes are
+   * unaffected by construction: resolutionHasRealRows is true for every
+   * mounted resolution (the component's internal loading is the scene's own
+   * declared state — the host does not reach in), so they keep freezing
+   * exactly as before. Only zero-row LIST lanes lose the freeze — and their
+   * handoff frames then fall to the skeleton, the honest face under OA8.
+   */
+  hasRealRows: boolean;
   /** A frozen last-good body exists for this entry (lastGoodListRef). */
   hasFrozenBody: boolean;
 };
@@ -67,7 +81,10 @@ export const resolveTrackPaint = (facts: TrackPaintFacts): TrackPaintDecision =>
     return { body: facts.hasFrozenBody ? 'frozen' : 'skeleton', freezeLiveBody: false };
   }
   if (facts.ready) {
-    return { body: 'live', freezeLiveBody: true };
+    // Live always paints (an empty face is the scene speaking), but only a
+    // body with REAL ROWS is worth freezing: recording an awaiting/empty
+    // publication would replay a frozen empty face on the next switch-back.
+    return { body: 'live', freezeLiveBody: facts.hasRealRows };
   }
   // No resolution this commit: frozen when affordable, skeleton when not.
   return { body: facts.hasFrozenBody ? 'frozen' : 'skeleton', freezeLiveBody: false };

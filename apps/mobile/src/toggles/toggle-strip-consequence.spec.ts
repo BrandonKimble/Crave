@@ -480,6 +480,98 @@ describe('toggle-strip-consequence seam', () => {
       expect(store.get()).toBe('closed'); // no revert on teardown
     });
 
+    // ── F-2 (red-team 2026-08-09): recapture suppression is keyed by INTENT, not
+    // by the engine's failed→finalized same-stack echo ordering. These specs drive
+    // the seam through a STUBBED engine so lifecycle ordering can be split —
+    // exactly the variance a boolean flag cannot survive.
+    // Mutation RED: revert `recaptureBlockedForIntentId` to the old boolean flag
+    // and both fail (the flag suppresses the WRONG intent's recapture / recaptures
+    // on the failed intent's late finalize).
+    describe('intent-keyed recapture suppression (split lifecycle stacks)', () => {
+      type LifecycleEmit = (event: {
+        type: 'started' | 'settled' | 'finalized' | 'cancelled' | 'failed';
+        intentId: string;
+        kind: Kind;
+        awaitedVisualSync?: boolean;
+        reason?: string;
+      }) => void;
+
+      const createSeamWithStubbedEngine = (captureControlBaseline: () => () => void) => {
+        let emit: LifecycleEmit = () => undefined;
+        jest.resetModules();
+        jest.doMock('./toggle-interaction-engine', () => ({
+          createToggleInteractionEngine: (args: {
+            onLifecycle?: LifecycleEmit;
+          }): Record<string, unknown> => {
+            emit = (event) => args.onLifecycle?.(event);
+            return {
+              begin: jest.fn(),
+              cancel: jest.fn(),
+              notifyIntentComplete: jest.fn(),
+              notifyVisualFloor: jest.fn(),
+              getState: () => ({ kind: null, pendingPresentationIntentId: null }),
+              subscribe: () => () => undefined,
+              dispose: jest.fn(),
+            };
+          },
+        }));
+        // eslint-disable-next-line @typescript-eslint/no-var-requires
+        const seamModule = require('./toggle-strip-consequence') as {
+          createToggleStripConsequenceSeam: typeof createToggleStripConsequenceSeam;
+        };
+        const seam = seamModule.createToggleStripConsequenceSeam<Kind>({
+          consequence: 'content',
+          surfaceName: 'split-stack',
+          captureControlBaseline,
+        });
+        jest.dontMock('./toggle-interaction-engine');
+        return { seam, emit: (event: Parameters<LifecycleEmit>[0]) => emit(event) };
+      };
+
+      it("a failed intent followed by a DIFFERENT intent's success recaptures — even when the failed intent's finalize echo never arrived", () => {
+        const store = createFakeControlStore();
+        const { seam, emit } = createSeamWithStubbedEngine(store.captureControlBaseline);
+        // Intent 1: optimistic flip, then FAILED — and the finalized echo is
+        // DROPPED (the split stack the boolean flag assumed could not happen).
+        store.set('results');
+        seam.scheduleCommit(() => undefined, { kind: 'feed_query' });
+        emit({ type: 'failed', intentId: 'i-1', kind: 'feed_query', reason: 'down' });
+        expect(store.get()).toBe('live'); // reverted to the creation baseline
+        // Intent 2: a LATER interaction succeeds — its recapture must fire.
+        store.set('results');
+        seam.scheduleCommit(() => undefined, { kind: 'feed_query' });
+        emit({ type: 'finalized', intentId: 'i-2', kind: 'feed_query', awaitedVisualSync: false });
+        // Prove the baseline rolled forward: a third failure restores 'results',
+        // never the stale 'live' a suppressed recapture would leave armed.
+        store.set('closed-weekly');
+        seam.scheduleCommit(() => undefined, { kind: 'feed_query' });
+        emit({ type: 'failed', intentId: 'i-3', kind: 'feed_query', reason: 'down' });
+        expect(store.get()).toBe('results');
+        seam.dispose();
+      });
+
+      it("the FAILED intent's own late finalize still never recaptures, however delayed or interleaved", () => {
+        const store = createFakeControlStore();
+        const { seam, emit } = createSeamWithStubbedEngine(store.captureControlBaseline);
+        store.set('results');
+        seam.scheduleCommit(() => undefined, { kind: 'feed_query' });
+        emit({ type: 'failed', intentId: 'i-1', kind: 'feed_query', reason: 'down' });
+        expect(store.get()).toBe('live');
+        // An async (setState-like) restore may not have applied yet when the
+        // failed intent's finalize lands: simulate the store still holding a
+        // transient value at that moment.
+        store.set('transient-unsettled');
+        emit({ type: 'finalized', intentId: 'i-1', kind: 'feed_query', awaitedVisualSync: false });
+        // No recapture happened: a later failure restores the last SETTLED
+        // baseline ('live'), never the transient.
+        store.set('closed-weekly');
+        seam.scheduleCommit(() => undefined, { kind: 'feed_query' });
+        emit({ type: 'failed', intentId: 'i-2', kind: 'feed_query', reason: 'down' });
+        expect(store.get()).toBe('live');
+        seam.dispose();
+      });
+    });
+
     it("a world seam's content phase is inert: always 'settled'", () => {
       const floorSignal = createFakeFloorSignal(true);
       const seam = createToggleStripConsequenceSeam<Kind>({

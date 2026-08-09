@@ -14,27 +14,53 @@
 //      history axis; the totality test reds if a branch returns undefined.
 //   M5 freeze-instruction drift: freezeLiveBody hardcoded false — reds the
 //      freeze-instruction test.
+//   M6 (red-team F-3, 2026-08-09) hasRealRows input dropped (freezeLiveBody
+//      back to `true` whenever ready) — reds the zero-row test AND the
+//      totality invariant: a ready ZERO-ROW list (OA12 awaiting face / empty
+//      state) would be recorded as the frozen last-good body, replaying a
+//      frozen empty face after a switch-away mid-toggle.
 
 import { resolveTrackPaint, type TrackPaintFacts } from './track-paint-resolver';
 
 const facts = (partial: Partial<TrackPaintFacts>): TrackPaintFacts => ({
   isHandingOff: false,
   ready: false,
+  // Real rows accompany readiness in the common case; the zero-row tests
+  // override this to false explicitly.
+  hasRealRows: false,
   hasFrozenBody: false,
   ...partial,
 });
 
 describe('resolveTrackPaint — live when resident', () => {
-  it('a ready entry paints its live body and records it as the frozen world', () => {
-    expect(resolveTrackPaint(facts({ ready: true }))).toEqual({
+  it('a ready entry with real rows paints its live body and records it as the frozen world', () => {
+    expect(resolveTrackPaint(facts({ ready: true, hasRealRows: true }))).toEqual({
       body: 'live',
       freezeLiveBody: true,
     });
     // Even when a frozen body exists — live content always wins outside a handoff.
-    expect(resolveTrackPaint(facts({ ready: true, hasFrozenBody: true }))).toEqual({
+    expect(
+      resolveTrackPaint(facts({ ready: true, hasRealRows: true, hasFrozenBody: true }))
+    ).toEqual({
       body: 'live',
       freezeLiveBody: true,
     });
+  });
+
+  it('F-3: a ready ZERO-ROW list (OA12 awaiting face / empty state) paints LIVE — the scene is speaking — but is NEVER recorded as the frozen body', () => {
+    expect(resolveTrackPaint(facts({ ready: true, hasRealRows: false }))).toEqual({
+      body: 'live',
+      freezeLiveBody: false,
+    });
+    // With an older frozen body on file the verdict is the same: paint the
+    // live empty face, keep the previous last-GOOD body as the frozen one.
+    expect(
+      resolveTrackPaint(facts({ ready: true, hasRealRows: false, hasFrozenBody: true }))
+    ).toEqual({ body: 'live', freezeLiveBody: false });
+  });
+
+  it('F-3 no over-correction: a NON-empty list still freezes', () => {
+    expect(resolveTrackPaint(facts({ ready: true, hasRealRows: true })).freezeLiveBody).toBe(true);
   });
 });
 
@@ -70,14 +96,17 @@ describe('resolveTrackPaint — skeleton when not (NO ban on revisit skeletons, 
 });
 
 describe('resolveTrackPaint — totality (every commit paints; wait is unrepresentable)', () => {
-  it('all 8 fact combinations return a named body', () => {
+  it('all 16 fact combinations return a named body', () => {
     for (const isHandingOff of [false, true]) {
       for (const ready of [false, true]) {
-        for (const hasFrozenBody of [false, true]) {
-          const decision = resolveTrackPaint({ isHandingOff, ready, hasFrozenBody });
-          expect(['live', 'frozen', 'skeleton']).toContain(decision.body);
-          // The freeze instruction accompanies exactly the live body.
-          expect(decision.freezeLiveBody).toBe(decision.body === 'live');
+        for (const hasRealRows of [false, true]) {
+          for (const hasFrozenBody of [false, true]) {
+            const decision = resolveTrackPaint({ isHandingOff, ready, hasRealRows, hasFrozenBody });
+            expect(['live', 'frozen', 'skeleton']).toContain(decision.body);
+            // The freeze instruction accompanies exactly a live body WITH real
+            // rows — an empty face is painted, never recorded (F-3).
+            expect(decision.freezeLiveBody).toBe(decision.body === 'live' && hasRealRows);
+          }
         }
       }
     }
@@ -86,9 +115,11 @@ describe('resolveTrackPaint — totality (every commit paints; wait is unreprese
   it('the frozen verdict is never issued without an affordable frozen body', () => {
     for (const isHandingOff of [false, true]) {
       for (const ready of [false, true]) {
-        expect(resolveTrackPaint({ isHandingOff, ready, hasFrozenBody: false }).body).not.toBe(
-          'frozen'
-        );
+        for (const hasRealRows of [false, true]) {
+          expect(
+            resolveTrackPaint({ isHandingOff, ready, hasRealRows, hasFrozenBody: false }).body
+          ).not.toBe('frozen');
+        }
       }
     }
   });

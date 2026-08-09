@@ -138,11 +138,16 @@ export const createToggleStripConsequenceSeam = <TKind extends string>(
   const captureControlBaseline =
     declaration.consequence === 'content' ? declaration.captureControlBaseline : undefined;
   let restoreControlBaseline: (() => void) | null = captureControlBaseline?.() ?? null;
-  // A 'failed' engine edge finalizes in the SAME stack ('failed' → 'finalized' echo,
-  // failInteraction → finalizeInteraction). The echo must not re-capture: an async
-  // (React setState) restore has not applied yet, so the capture would snapshot the
-  // FAILED optimistic values as "settled" (G1).
-  let suppressFinalizedEchoRecapture = false;
+  // An intent that FAILED must never roll the baseline forward from its own
+  // 'finalized' event: an async (React setState) restore has not applied yet, so
+  // the capture would snapshot the FAILED optimistic values as "settled" (G1).
+  // Keyed by intentId (red-team F-2, 2026-08-09) — NOT a boolean: the boolean
+  // encoded the engine's private failed→finalized same-stack echo ordering, and
+  // any split (a dropped echo, a reordered emission) would make it suppress a
+  // LATER intent's success recapture instead. The intent key makes the rule the
+  // actual invariant: "the intent that failed never recaptures; any other
+  // intent's success always does" — no ordering or stack assumption.
+  let recaptureBlockedForIntentId: string | null = null;
   // dispose() settles through the same path as an explicit cancel but must NOT
   // restore — teardown is not a failure (the next present refetches).
   let disposing = false;
@@ -157,7 +162,8 @@ export const createToggleStripConsequenceSeam = <TKind extends string>(
 
   const settleContent = (
     outcome: 'finalized' | 'failed' | 'cancelled',
-    kind: TKind | string
+    kind: TKind | string,
+    intentId: string | null
   ): void => {
     if (isWorld) {
       return;
@@ -191,12 +197,14 @@ export const createToggleStripConsequenceSeam = <TKind extends string>(
         });
         restoreControlBaseline();
       }
-      // The engine's failed→finalized echo lands in this same stack; it must not
+      // This intent's 'finalized' (however and whenever it arrives) must not
       // roll the baseline forward off unsettled values.
-      suppressFinalizedEchoRecapture = true;
+      recaptureBlockedForIntentId = intentId;
     } else if (outcome === 'finalized') {
-      if (suppressFinalizedEchoRecapture) {
-        suppressFinalizedEchoRecapture = false;
+      if (intentId != null && intentId === recaptureBlockedForIntentId) {
+        // The failed intent's own finalize: the restore may still be an
+        // unapplied async setState — recapturing would snapshot failed values.
+        recaptureBlockedForIntentId = null;
       } else {
         // THE SUCCESS EDGE is the one place the store is settled by construction
         // (an async consequence has rendered its committed control values by the
@@ -220,7 +228,11 @@ export const createToggleStripConsequenceSeam = <TKind extends string>(
   // to the declaration's own listener (compose, never replace).
   const handleLifecycle = (event: ToggleLifecycleEvent<TKind>): void => {
     if (event.type === 'finalized' || event.type === 'failed' || event.type === 'cancelled') {
-      settleContent(event.type === 'finalized' ? 'finalized' : event.type, event.kind);
+      settleContent(
+        event.type === 'finalized' ? 'finalized' : event.type,
+        event.kind,
+        event.intentId
+      );
     }
     declaration.onLifecycle?.(event);
   };
@@ -274,7 +286,7 @@ export const createToggleStripConsequenceSeam = <TKind extends string>(
       // a disposed seam must never leave a surface stuck rendering the awaiting gap.
       // `disposing` keeps the cancel-edge restore OUT of teardown (not a failure).
       disposing = true;
-      settleContent('cancelled', engine.getState().kind ?? 'disposed');
+      settleContent('cancelled', engine.getState().kind ?? 'disposed', null);
       engine.dispose();
     },
   };
