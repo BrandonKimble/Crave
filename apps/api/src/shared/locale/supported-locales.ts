@@ -13,7 +13,7 @@
  * DATA change (a locale file + ~60 spine words + sweep rows), not a code
  * change; this array is the one place that fact is declared.
  */
-export const SUPPORTED_LOCALES = ['en', 'es'] as const;
+export const SUPPORTED_LOCALES = ['en', 'es', 'vi'] as const;
 
 export type SupportedLocale = (typeof SUPPORTED_LOCALES)[number];
 

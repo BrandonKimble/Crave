@@ -127,12 +127,8 @@ export class SearchOrchestrationService {
           terms: group.terms,
         }),
       );
-      // F5 (wave-3 red team): the negation constraint and the dense-tier
-      // fact were produced and read by NOTHING — the launch gate's
-      // non-inversion and parse-preservation thresholds grade THESE fields.
-      if (interpretation.excludedSpans?.length) {
-        response.metadata.excludedSpans = interpretation.excludedSpans;
-      }
+      // F5 (wave-3 red team): the dense-tier fact was produced and read by
+      // NOTHING — the launch gate's thresholds grade THIS field.
       if (interpretation.queryAnalysis) {
         response.metadata.queryAnalysis = interpretation.queryAnalysis;
       }

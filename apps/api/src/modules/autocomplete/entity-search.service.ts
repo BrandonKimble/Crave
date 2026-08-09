@@ -74,10 +74,9 @@ export class EntitySearchService {
       limit,
       {
         denseMode,
-        // THE LOCALIZED-SURFACE LANE. Without this a Spanish speaker typing
-        // "cam…" matches nothing: the sparse lane reads the und-only
-        // aliases[] projection, so every localized surface is invisible here.
-        // Also feeds the dense lane the R5-7 locale prefix, so a fragment
+        // THE LOCALIZED-SURFACE LANE (and, since AC-P1a, the locale the
+        // sparse registry arms chain on — omitting it would recall und/en
+        // only). Also feeds the dense lane the R5-7 locale prefix, so a fragment
         // that does reach dense embeds as `[es] pan` rather than bare "pan".
         requestLocale: locale ?? null,
         denseLocale: locale ?? null,

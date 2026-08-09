@@ -58,31 +58,6 @@ import { EngineCoverageService } from './engine-coverage.service';
 import { SignalsService } from '../signals/signals.service';
 import { ON_DEMAND_VIEWPORT_MIN_WIDTH_MILES } from './on-demand-tuning.constants';
 
-/**
- * R5-3 TIER 1 — the NEGATION RECORD. The plan's launch gate demands 100%
- * non-inversion and had NO MECHANISM: "ramen sin cerdo" silently returned
- * VEGAN ramen. A cue that immediately precedes a groundable span now FAILS
- * CLOSED — the span is not linked, not sent to dense, and never inverted;
- * it is recorded here as an EXCLUDED constraint. The executor may ignore
- * this today (excluding results is a separate, later change); the PARSE
- * records it and the response diagnostics surface it, which is exactly
- * what the gate measures ("≥90% constraint preservation measured on the
- * PARSE").
- */
-export interface ExcludedSpan {
-  /** Raw text of the negated span. */
-  text: string;
-  start: number;
-  end: number;
-  /** The cue that negated it, and the pack that owns the cue. */
-  cue: string;
-  cueLocale: string;
-  /** Entities the span named, when it was a grounded span (empty when the
-   *  negated span was unknown residue — "sin cerdo" against an English
-   *  corpus grounds nothing, and that is still a recorded constraint). */
-  entityIds: string[];
-}
-
 interface InterpretationResult {
   structuredRequest: SearchQueryRequestDto;
   analysis: LLMSearchQueryAnalysis;
@@ -94,8 +69,6 @@ interface InterpretationResult {
   onDemandQueued?: boolean;
   onDemandEtaMs?: number;
   phaseTimings?: Record<string, number>;
-  /** R5-3: negated spans, recorded not inverted. */
-  excludedSpans?: ExcludedSpan[];
   /** What the analyzer decided, for diagnostics (detected vs requested
    *  locale are recorded SEPARATELY and never collapsed — A10/R5-5). */
   queryAnalysis?: {
@@ -221,7 +194,6 @@ export class SearchQueryInterpretationService {
     // prompt work + the retroactive junk sweep, not a non-exhaustive
     // stop-list here. TODO(post-cleanup): enable the pinned generic-query
     // cases in search-generic-queries.spec.ts once the graph is clean.
-    // NEGATION GATE, TIER 1 (R5-3) — applied BEFORE anything can act on a
     // NEGATION V2 (owner ruling 2026-08-08, plan §12b): LITERAL IGNORE.
     // "tacos no cilantro" grounds cilantro as a positive mention — exactly
     // as if the user listed an ingredient. The old cue-span machinery
@@ -630,8 +602,6 @@ export class SearchQueryInterpretationService {
         ? [{ type: 'food' as EntityType, terms: unresolvedResidues }]
         : [],
       phaseTimings,
-      // NEGATION V2: excludedSpans is DEAD (never populated) — kept off the
-      // wire entirely; the field remains on the type for client compat only.
       queryAnalysis: {
         script: analysis.script,
         requestLocale: analysis.requestLocale,

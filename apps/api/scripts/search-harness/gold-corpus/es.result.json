@@ -1,5 +1,5 @@
 {
-  "ranAt": "2026-08-09T01:06:33.444Z",
+  "ranAt": "2026-08-09T05:58:06.593Z",
   "lang": "es",
   "corpusVersion": 1,
   "scoreboard": {
@@ -30,7 +30,6 @@
           "foldedName": "birria"
         }
       ],
-      "excluded": [],
       "unresolved": [],
       "analysis": {
         "script": "latin",
@@ -64,7 +63,6 @@
           "foldedName": "pan dulce"
         }
       ],
-      "excluded": [],
       "unresolved": [],
       "analysis": {
         "script": "latin",
@@ -98,7 +96,6 @@
           "foldedName": "carnitas"
         }
       ],
-      "excluded": [],
       "unresolved": [],
       "analysis": {
         "script": "latin",
@@ -132,7 +129,6 @@
           "foldedName": "barbacoa"
         }
       ],
-      "excluded": [],
       "unresolved": [],
       "analysis": {
         "script": "latin",
@@ -166,7 +162,6 @@
           "foldedName": "chilaquiles"
         }
       ],
-      "excluded": [],
       "unresolved": [],
       "analysis": {
         "script": "latin",
@@ -200,7 +195,6 @@
           "foldedName": "guacamole"
         }
       ],
-      "excluded": [],
       "unresolved": [],
       "analysis": {
         "script": "latin",
@@ -234,7 +228,6 @@
           "foldedName": "churros"
         }
       ],
-      "excluded": [],
       "unresolved": [],
       "analysis": {
         "script": "latin",
@@ -268,7 +261,6 @@
           "foldedName": "horchata"
         }
       ],
-      "excluded": [],
       "unresolved": [],
       "analysis": {
         "script": "latin",
@@ -302,7 +294,6 @@
           "foldedName": "elote"
         }
       ],
-      "excluded": [],
       "unresolved": [],
       "analysis": {
         "script": "latin",
@@ -336,7 +327,6 @@
           "foldedName": "pozole"
         }
       ],
-      "excluded": [],
       "unresolved": [],
       "analysis": {
         "script": "latin",
@@ -370,7 +360,6 @@
           "foldedName": "menudo"
         }
       ],
-      "excluded": [],
       "unresolved": [],
       "analysis": {
         "script": "latin",
@@ -404,7 +393,6 @@
           "foldedName": "torta"
         }
       ],
-      "excluded": [],
       "unresolved": [],
       "analysis": {
         "script": "latin",
@@ -438,7 +426,6 @@
           "foldedName": "quesadilla"
         }
       ],
-      "excluded": [],
       "unresolved": [],
       "analysis": {
         "script": "latin",
@@ -472,7 +459,6 @@
           "foldedName": "burrito"
         }
       ],
-      "excluded": [],
       "unresolved": [],
       "analysis": {
         "script": "latin",
@@ -506,7 +492,6 @@
           "foldedName": "empanada"
         }
       ],
-      "excluded": [],
       "unresolved": [],
       "analysis": {
         "script": "latin",
@@ -540,7 +525,6 @@
           "foldedName": "ceviche"
         }
       ],
-      "excluded": [],
       "unresolved": [],
       "analysis": {
         "script": "latin",
@@ -574,7 +558,6 @@
           "foldedName": "paella"
         }
       ],
-      "excluded": [],
       "unresolved": [],
       "analysis": {
         "script": "latin",
@@ -608,7 +591,6 @@
           "foldedName": "arepa"
         }
       ],
-      "excluded": [],
       "unresolved": [],
       "analysis": {
         "script": "latin",
@@ -642,7 +624,6 @@
           "foldedName": "aguachile"
         }
       ],
-      "excluded": [],
       "unresolved": [],
       "analysis": {
         "script": "latin",
@@ -676,7 +657,6 @@
           "foldedName": "cochinita pibil"
         }
       ],
-      "excluded": [],
       "unresolved": [],
       "analysis": {
         "script": "latin",
@@ -710,7 +690,6 @@
           "foldedName": "octopus"
         }
       ],
-      "excluded": [],
       "unresolved": [],
       "analysis": {
         "script": "latin",
@@ -744,7 +723,6 @@
           "foldedName": "shrimp"
         }
       ],
-      "excluded": [],
       "unresolved": [],
       "analysis": {
         "script": "latin",
@@ -778,7 +756,6 @@
           "foldedName": "avocado"
         }
       ],
-      "excluded": [],
       "unresolved": [],
       "analysis": {
         "script": "latin",
@@ -812,7 +789,6 @@
           "foldedName": "fish"
         }
       ],
-      "excluded": [],
       "unresolved": [],
       "analysis": {
         "script": "latin",
@@ -846,7 +822,6 @@
           "foldedName": "rice"
         }
       ],
-      "excluded": [],
       "unresolved": [],
       "analysis": {
         "script": "latin",
@@ -880,7 +855,6 @@
           "foldedName": "beans"
         }
       ],
-      "excluded": [],
       "unresolved": [],
       "analysis": {
         "script": "latin",
@@ -914,7 +888,6 @@
           "foldedName": "lobster"
         }
       ],
-      "excluded": [],
       "unresolved": [],
       "analysis": {
         "script": "latin",
@@ -948,7 +921,6 @@
           "foldedName": "crab"
         }
       ],
-      "excluded": [],
       "unresolved": [],
       "analysis": {
         "script": "latin",
@@ -982,7 +954,6 @@
           "foldedName": "ice cream"
         }
       ],
-      "excluded": [],
       "unresolved": [],
       "analysis": {
         "script": "latin",
@@ -1016,7 +987,6 @@
           "foldedName": "strawberry"
         }
       ],
-      "excluded": [],
       "unresolved": [],
       "analysis": {
         "script": "latin",
@@ -1050,7 +1020,6 @@
           "foldedName": "watermelon"
         }
       ],
-      "excluded": [],
       "unresolved": [],
       "analysis": {
         "script": "latin",
@@ -1084,7 +1053,6 @@
           "foldedName": "steak"
         }
       ],
-      "excluded": [],
       "unresolved": [],
       "analysis": {
         "script": "latin",
@@ -1118,7 +1086,6 @@
           "foldedName": "cake"
         }
       ],
-      "excluded": [],
       "unresolved": [],
       "analysis": {
         "script": "latin",
@@ -1152,7 +1119,6 @@
           "foldedName": "salad"
         }
       ],
-      "excluded": [],
       "unresolved": [],
       "analysis": {
         "script": "latin",
@@ -1204,7 +1170,6 @@
           "foldedName": "noodle"
         }
       ],
-      "excluded": [],
       "unresolved": [],
       "analysis": {
         "script": "latin",
@@ -1238,7 +1203,6 @@
           "foldedName": "seafood"
         }
       ],
-      "excluded": [],
       "unresolved": [],
       "analysis": {
         "script": "latin",
@@ -1272,7 +1236,6 @@
           "foldedName": "dessert"
         }
       ],
-      "excluded": [],
       "unresolved": [],
       "analysis": {
         "script": "latin",
@@ -1306,7 +1269,6 @@
           "foldedName": "coffee"
         }
       ],
-      "excluded": [],
       "unresolved": [],
       "analysis": {
         "script": "latin",
@@ -1340,7 +1302,6 @@
           "foldedName": "chicken"
         }
       ],
-      "excluded": [],
       "unresolved": [],
       "analysis": {
         "script": "latin",
@@ -1374,7 +1335,6 @@
           "foldedName": "shrimp"
         }
       ],
-      "excluded": [],
       "unresolved": [],
       "analysis": {
         "script": "latin",
@@ -1435,7 +1395,6 @@
           "foldedName": "affordable"
         }
       ],
-      "excluded": [],
       "unresolved": [],
       "analysis": {
         "script": "latin",
@@ -1469,15 +1428,6 @@
           "foldedName": "gluten free pizza"
         },
         {
-          "entityId": "14f90924-0338-480f-a9a7-ea01d64d1242",
-          "bucket": "food",
-          "type": "food",
-          "span": "cerca",
-          "name": "cereal croissant",
-          "tier": "linked",
-          "foldedName": "cereal croissant"
-        },
-        {
           "entityId": "8409f136-de44-464e-852a-3362e113ebc7",
           "bucket": "foodAttributes",
           "type": "food_attribute",
@@ -1496,8 +1446,7 @@
           "foldedName": "pizza"
         }
       ],
-      "excluded": [],
-      "unresolved": [],
+      "unresolved": ["cerca"],
       "analysis": {
         "script": "latin",
         "requestLocale": "es-US",
@@ -1539,7 +1488,6 @@
           "foldedName": "affordable"
         }
       ],
-      "excluded": [],
       "unresolved": [],
       "analysis": {
         "script": "latin",
@@ -1582,7 +1530,6 @@
           "foldedName": "romantic"
         }
       ],
-      "excluded": [],
       "unresolved": ["restaurante"],
       "analysis": {
         "script": "latin",
@@ -1634,7 +1581,6 @@
           "foldedName": "vegan"
         }
       ],
-      "excluded": [],
       "unresolved": [],
       "analysis": {
         "script": "latin",
@@ -1677,7 +1623,6 @@
           "foldedName": "japanese"
         }
       ],
-      "excluded": [],
       "unresolved": [],
       "analysis": {
         "script": "latin",
@@ -1720,7 +1665,6 @@
           "foldedName": "korean"
         }
       ],
-      "excluded": [],
       "unresolved": [],
       "analysis": {
         "script": "latin",
@@ -1763,7 +1707,6 @@
           "foldedName": "pizza"
         }
       ],
-      "excluded": [],
       "unresolved": [],
       "analysis": {
         "script": "latin",
@@ -1788,15 +1731,6 @@
       "reasons": [],
       "grounded": [
         {
-          "entityId": "ca15d0cc-13d5-4e38-8d2b-95dc4dd28808",
-          "bucket": "foodAttributes",
-          "type": "food_attribute",
-          "span": "picante",
-          "name": "pungent",
-          "tier": "gazetteer-exact",
-          "foldedName": "pungent"
-        },
-        {
           "entityId": "d5912bd2-54c8-41a1-86c5-d3328abeaca4",
           "bucket": "foodAttributes",
           "type": "food_attribute",
@@ -1815,7 +1749,6 @@
           "foldedName": "thai"
         }
       ],
-      "excluded": [],
       "unresolved": [],
       "analysis": {
         "script": "latin",
@@ -1867,7 +1800,6 @@
           "foldedName": "mexican"
         }
       ],
-      "excluded": [],
       "unresolved": [],
       "analysis": {
         "script": "latin",
@@ -1910,7 +1842,6 @@
           "foldedName": "peruvian"
         }
       ],
-      "excluded": [],
       "unresolved": [],
       "analysis": {
         "script": "latin",
@@ -1962,7 +1893,6 @@
           "foldedName": "chicken"
         }
       ],
-      "excluded": [],
       "unresolved": [],
       "analysis": {
         "script": "latin",
@@ -2005,7 +1935,6 @@
           "foldedName": "kosher"
         }
       ],
-      "excluded": [],
       "unresolved": [],
       "analysis": {
         "script": "latin",
@@ -2057,7 +1986,6 @@
           "foldedName": "takeout"
         }
       ],
-      "excluded": [],
       "unresolved": [],
       "analysis": {
         "script": "latin",
@@ -2109,7 +2037,6 @@
           "foldedName": "birria"
         }
       ],
-      "excluded": [],
       "unresolved": [],
       "analysis": {
         "script": "latin",
@@ -2161,7 +2088,6 @@
           "foldedName": "strawberry"
         }
       ],
-      "excluded": [],
       "unresolved": [],
       "analysis": {
         "script": "latin",
@@ -2213,7 +2139,6 @@
           "foldedName": "chicken"
         }
       ],
-      "excluded": [],
       "unresolved": [],
       "analysis": {
         "script": "latin",
@@ -2265,7 +2190,6 @@
           "foldedName": "chicken"
         }
       ],
-      "excluded": [],
       "unresolved": [],
       "analysis": {
         "script": "latin",
@@ -2317,7 +2241,6 @@
           "foldedName": "neapolitan"
         }
       ],
-      "excluded": [],
       "unresolved": [],
       "analysis": {
         "script": "latin",
@@ -2360,7 +2283,6 @@
           "foldedName": "quiet"
         }
       ],
-      "excluded": [],
       "unresolved": ["restaurante"],
       "analysis": {
         "script": "latin",
@@ -2403,7 +2325,6 @@
           "foldedName": "indian"
         }
       ],
-      "excluded": [],
       "unresolved": [],
       "analysis": {
         "script": "latin",
@@ -2446,7 +2367,6 @@
           "foldedName": "romantic"
         }
       ],
-      "excluded": [],
       "unresolved": [],
       "analysis": {
         "script": "latin",
@@ -2507,7 +2427,6 @@
           "foldedName": "outdoor seating"
         }
       ],
-      "excluded": [],
       "unresolved": [],
       "analysis": {
         "script": "latin",
@@ -2550,7 +2469,6 @@
           "foldedName": "affordable"
         }
       ],
-      "excluded": [],
       "unresolved": [],
       "analysis": {
         "script": "latin",
@@ -2602,7 +2520,6 @@
           "foldedName": "fish"
         }
       ],
-      "excluded": [],
       "unresolved": [],
       "analysis": {
         "script": "latin",
@@ -2654,7 +2571,6 @@
           "foldedName": "shrimp"
         }
       ],
-      "excluded": [],
       "unresolved": [],
       "analysis": {
         "script": "latin",
@@ -2697,7 +2613,6 @@
           "foldedName": "vegan"
         }
       ],
-      "excluded": [],
       "unresolved": [],
       "analysis": {
         "script": "latin",
@@ -2729,10 +2644,18 @@
           "name": "mediterranean",
           "tier": "gazetteer-exact",
           "foldedName": "mediterranean"
+        },
+        {
+          "entityId": "a64e6af5-6ad6-43bc-97ad-812deb525781",
+          "bucket": "restaurantAttributes",
+          "type": "restaurant_attribute",
+          "span": "cocina",
+          "name": "open kitchen",
+          "tier": "linked",
+          "foldedName": "open kitchen"
         }
       ],
-      "excluded": [],
-      "unresolved": ["cocina"],
+      "unresolved": [],
       "analysis": {
         "script": "latin",
         "requestLocale": "es-US",
@@ -2792,7 +2715,6 @@
           "foldedName": "outdoor seating"
         }
       ],
-      "excluded": [],
       "unresolved": [],
       "analysis": {
         "script": "latin",
@@ -2844,7 +2766,6 @@
           "foldedName": "takeout"
         }
       ],
-      "excluded": [],
       "unresolved": [],
       "analysis": {
         "script": "latin",
@@ -2887,7 +2808,6 @@
           "foldedName": "pork"
         }
       ],
-      "excluded": [],
       "unresolved": [],
       "analysis": {
         "script": "latin",
@@ -2930,7 +2850,6 @@
           "foldedName": "cheeseless"
         }
       ],
-      "excluded": [],
       "unresolved": [],
       "analysis": {
         "script": "latin",
@@ -2973,7 +2892,6 @@
           "foldedName": "cheeseless"
         }
       ],
-      "excluded": [],
       "unresolved": [],
       "analysis": {
         "script": "latin",
@@ -3016,7 +2934,6 @@
           "foldedName": "rice"
         }
       ],
-      "excluded": [],
       "unresolved": [],
       "analysis": {
         "script": "latin",
@@ -3059,7 +2976,6 @@
           "foldedName": "chicken"
         }
       ],
-      "excluded": [],
       "unresolved": [],
       "analysis": {
         "script": "latin",
@@ -3102,7 +3018,6 @@
           "foldedName": "meat"
         }
       ],
-      "excluded": [],
       "unresolved": [],
       "analysis": {
         "script": "latin",
@@ -3145,7 +3060,6 @@
           "foldedName": "avocado"
         }
       ],
-      "excluded": [],
       "unresolved": [],
       "analysis": {
         "script": "latin",
@@ -3188,7 +3102,6 @@
           "foldedName": "onion"
         }
       ],
-      "excluded": [],
       "unresolved": [],
       "analysis": {
         "script": "latin",
@@ -3231,7 +3144,6 @@
           "foldedName": "beans"
         }
       ],
-      "excluded": [],
       "unresolved": [],
       "analysis": {
         "script": "latin",
@@ -3283,7 +3195,6 @@
           "foldedName": "crema"
         }
       ],
-      "excluded": [],
       "unresolved": [],
       "analysis": {
         "script": "latin",
@@ -3326,7 +3237,6 @@
           "foldedName": "skin"
         }
       ],
-      "excluded": [],
       "unresolved": [],
       "analysis": {
         "script": "latin",
@@ -3369,7 +3279,6 @@
           "foldedName": "onion"
         }
       ],
-      "excluded": [],
       "unresolved": [],
       "analysis": {
         "script": "latin",
@@ -3412,7 +3321,6 @@
           "foldedName": "meat"
         }
       ],
-      "excluded": [],
       "unresolved": [],
       "analysis": {
         "script": "latin",
@@ -3455,7 +3363,6 @@
           "foldedName": "egg"
         }
       ],
-      "excluded": [],
       "unresolved": [],
       "analysis": {
         "script": "latin",
@@ -3498,7 +3405,6 @@
           "foldedName": "vegetarian"
         }
       ],
-      "excluded": [],
       "unresolved": [],
       "analysis": {
         "script": "latin",
@@ -3631,7 +3537,6 @@
           "foldedName": "expensive"
         }
       ],
-      "excluded": [],
       "unresolved": [],
       "analysis": {
         "script": "latin",
@@ -3674,7 +3579,6 @@
           "foldedName": "lunch"
         }
       ],
-      "excluded": [],
       "unresolved": [],
       "analysis": {
         "script": "latin",
@@ -3726,7 +3630,6 @@
           "foldedName": "sugar"
         }
       ],
-      "excluded": [],
       "unresolved": [],
       "analysis": {
         "script": "latin",
@@ -3769,7 +3672,6 @@
           "foldedName": "milk"
         }
       ],
-      "excluded": [],
       "unresolved": [],
       "analysis": {
         "script": "latin",
@@ -3812,7 +3714,6 @@
           "foldedName": "cilantro"
         }
       ],
-      "excluded": [],
       "unresolved": [],
       "analysis": {
         "script": "latin",
@@ -3846,7 +3747,6 @@
           "foldedName": "takeout"
         }
       ],
-      "excluded": [],
       "unresolved": [],
       "analysis": {
         "script": "latin",
@@ -3880,7 +3780,6 @@
           "foldedName": "outdoor seating"
         }
       ],
-      "excluded": [],
       "unresolved": [],
       "analysis": {
         "script": "latin",
@@ -3914,7 +3813,6 @@
           "foldedName": "romantic"
         }
       ],
-      "excluded": [],
       "unresolved": [],
       "analysis": {
         "script": "latin",
@@ -3948,7 +3846,6 @@
           "foldedName": "allows dogs"
         }
       ],
-      "excluded": [],
       "unresolved": [],
       "analysis": {
         "script": "latin",
@@ -3982,7 +3879,6 @@
           "foldedName": "quiet"
         }
       ],
-      "excluded": [],
       "unresolved": [],
       "analysis": {
         "script": "latin",
@@ -4016,7 +3912,6 @@
           "foldedName": "good for groups"
         }
       ],
-      "excluded": [],
       "unresolved": [],
       "analysis": {
         "script": "latin",
@@ -4059,7 +3954,6 @@
           "foldedName": "gluten"
         }
       ],
-      "excluded": [],
       "unresolved": [],
       "analysis": {
         "script": "latin",
@@ -4093,7 +3987,6 @@
           "foldedName": "vegan"
         }
       ],
-      "excluded": [],
       "unresolved": [],
       "analysis": {
         "script": "latin",
@@ -4127,7 +4020,6 @@
           "foldedName": "vegetarian"
         }
       ],
-      "excluded": [],
       "unresolved": [],
       "analysis": {
         "script": "latin",
@@ -4161,7 +4053,6 @@
           "foldedName": "halal"
         }
       ],
-      "excluded": [],
       "unresolved": [],
       "analysis": {
         "script": "latin",
@@ -4195,7 +4086,6 @@
           "foldedName": "kosher"
         }
       ],
-      "excluded": [],
       "unresolved": [],
       "analysis": {
         "script": "latin",
@@ -4229,7 +4119,6 @@
           "foldedName": "mexican"
         }
       ],
-      "excluded": [],
       "unresolved": [],
       "analysis": {
         "script": "latin",
@@ -4263,7 +4152,6 @@
           "foldedName": "japanese"
         }
       ],
-      "excluded": [],
       "unresolved": [],
       "analysis": {
         "script": "latin",
@@ -4297,7 +4185,6 @@
           "foldedName": "italian"
         }
       ],
-      "excluded": [],
       "unresolved": [],
       "analysis": {
         "script": "latin",
@@ -4331,7 +4218,6 @@
           "foldedName": "thai"
         }
       ],
-      "excluded": [],
       "unresolved": [],
       "analysis": {
         "script": "latin",
@@ -4365,7 +4251,6 @@
           "foldedName": "korean"
         }
       ],
-      "excluded": [],
       "unresolved": [],
       "analysis": {
         "script": "latin",
@@ -4399,7 +4284,6 @@
           "foldedName": "delivery"
         }
       ],
-      "excluded": [],
       "unresolved": [],
       "analysis": {
         "script": "latin",
@@ -4433,7 +4317,6 @@
           "foldedName": "rooftop"
         }
       ],
-      "excluded": [],
       "unresolved": ["en la"],
       "analysis": {
         "script": "latin",
@@ -4467,7 +4350,6 @@
           "foldedName": "late night"
         }
       ],
-      "excluded": [],
       "unresolved": [],
       "analysis": {
         "script": "latin",
@@ -4519,7 +4401,6 @@
           "foldedName": "bar"
         }
       ],
-      "excluded": [],
       "unresolved": [],
       "analysis": {
         "script": "latin",
@@ -4553,7 +4434,6 @@
           "foldedName": "bread"
         }
       ],
-      "excluded": [],
       "unresolved": [],
       "analysis": {
         "script": "latin",
@@ -4590,7 +4470,6 @@
           "foldedName": "tako"
         }
       ],
-      "excluded": [],
       "unresolved": [],
       "analysis": {
         "script": "cyrillic",
@@ -4624,7 +4503,6 @@
           "foldedName": "soup"
         }
       ],
-      "excluded": [],
       "unresolved": [],
       "analysis": {
         "script": "latin",
@@ -4667,7 +4545,6 @@
           "foldedName": "crema"
         }
       ],
-      "excluded": [],
       "unresolved": [],
       "analysis": {
         "script": "latin",
@@ -4701,7 +4578,6 @@
           "foldedName": "chile"
         }
       ],
-      "excluded": [],
       "unresolved": [],
       "analysis": {
         "script": "latin",
@@ -4735,7 +4611,6 @@
           "foldedName": "salsa"
         }
       ],
-      "excluded": [],
       "unresolved": [],
       "analysis": {
         "script": "latin",
@@ -4769,7 +4644,6 @@
           "foldedName": "tuna"
         }
       ],
-      "excluded": [],
       "unresolved": [],
       "analysis": {
         "script": "latin",
@@ -4803,7 +4677,6 @@
           "foldedName": "pie"
         }
       ],
-      "excluded": [],
       "unresolved": [],
       "analysis": {
         "script": "latin",
@@ -4837,7 +4710,6 @@
           "foldedName": "wine"
         }
       ],
-      "excluded": [],
       "unresolved": [],
       "analysis": {
         "script": "latin",
@@ -4871,7 +4743,6 @@
           "foldedName": "cabbage"
         }
       ],
-      "excluded": [],
       "unresolved": [],
       "analysis": {
         "script": "latin",
@@ -4905,7 +4776,6 @@
           "foldedName": "honey"
         }
       ],
-      "excluded": [],
       "unresolved": [],
       "analysis": {
         "script": "latin",
@@ -4939,7 +4809,6 @@
           "foldedName": "pear"
         }
       ],
-      "excluded": [],
       "unresolved": [],
       "analysis": {
         "script": "latin",
@@ -4973,7 +4842,6 @@
           "foldedName": "lime"
         }
       ],
-      "excluded": [],
       "unresolved": [],
       "analysis": {
         "script": "latin",
@@ -5007,7 +4875,6 @@
           "foldedName": "mango"
         }
       ],
-      "excluded": [],
       "unresolved": [],
       "analysis": {
         "script": "latin",
@@ -5041,7 +4908,6 @@
           "foldedName": "taco"
         }
       ],
-      "excluded": [],
       "unresolved": [],
       "analysis": {
         "script": "latin",
@@ -5075,7 +4941,6 @@
           "foldedName": "salt"
         }
       ],
-      "excluded": [],
       "unresolved": [],
       "analysis": {
         "script": "latin",
@@ -5109,7 +4974,6 @@
           "foldedName": "poultry"
         }
       ],
-      "excluded": [],
       "unresolved": [],
       "analysis": {
         "script": "latin",
@@ -5152,7 +5016,6 @@
           "foldedName": "caldo"
         }
       ],
-      "excluded": [],
       "unresolved": [],
       "analysis": {
         "script": "latin",
@@ -5195,7 +5058,6 @@
           "foldedName": "dough"
         }
       ],
-      "excluded": [],
       "unresolved": [],
       "analysis": {
         "script": "latin",
@@ -5219,7 +5081,6 @@
       "preservation": 0,
       "reasons": ["clean park (safe)"],
       "grounded": [],
-      "excluded": [],
       "unresolved": ["tinto"],
       "analysis": {
         "script": "latin",
@@ -5269,19 +5130,9 @@
           "name": "breakfast",
           "tier": "linked",
           "foldedName": "breakfast"
-        },
-        {
-          "entityId": "1b83fa1e-680d-4292-acf5-b8456d27e415",
-          "bucket": "restaurantAttributes",
-          "type": "restaurant_attribute",
-          "span": "quiero",
-          "name": "quiet",
-          "tier": "linked",
-          "foldedName": "quiet"
         }
       ],
-      "excluded": [],
-      "unresolved": [],
+      "unresolved": ["quiero"],
       "analysis": {
         "script": "latin",
         "requestLocale": "es-US",
@@ -5314,7 +5165,6 @@
           "foldedName": "brunch"
         }
       ],
-      "excluded": [],
       "unresolved": ["en downtown"],
       "analysis": {
         "script": "latin",
@@ -5346,28 +5196,9 @@
           "name": "ramen",
           "tier": "gazetteer-exact",
           "foldedName": "ramen"
-        },
-        {
-          "entityId": "f0766829-a147-4736-a277-041e5cd9ddf5",
-          "bucket": "food",
-          "type": "food",
-          "span": "busco",
-          "name": "besos",
-          "tier": "linked",
-          "foldedName": "besos"
-        },
-        {
-          "entityId": "14f90924-0338-480f-a9a7-ea01d64d1242",
-          "bucket": "food",
-          "type": "food",
-          "span": "cerca",
-          "name": "cereal croissant",
-          "tier": "linked",
-          "foldedName": "cereal croissant"
         }
       ],
-      "excluded": [],
-      "unresolved": [],
+      "unresolved": ["busco", "cerca"],
       "analysis": {
         "script": "latin",
         "requestLocale": "es-US",
@@ -5407,19 +5238,9 @@
           "name": "affordable",
           "tier": "gazetteer-exact",
           "foldedName": "affordable"
-        },
-        {
-          "entityId": "1b83fa1e-680d-4292-acf5-b8456d27e415",
-          "bucket": "restaurantAttributes",
-          "type": "restaurant_attribute",
-          "span": "quiero",
-          "name": "quiet",
-          "tier": "linked",
-          "foldedName": "quiet"
         }
       ],
-      "excluded": [],
-      "unresolved": [],
+      "unresolved": ["quiero"],
       "analysis": {
         "script": "latin",
         "requestLocale": "es-US",
@@ -5452,7 +5273,6 @@
           "foldedName": "pho"
         }
       ],
-      "excluded": [],
       "unresolved": ["el mejor", "de la ciudad"],
       "analysis": {
         "script": "latin",
@@ -5486,7 +5306,6 @@
           "foldedName": "dim sum"
         }
       ],
-      "excluded": [],
       "unresolved": ["dónde hay"],
       "analysis": {
         "script": "latin",
@@ -5529,7 +5348,6 @@
           "foldedName": "cheese"
         }
       ],
-      "excluded": [],
       "unresolved": ["with"],
       "analysis": {
         "script": "latin",
@@ -5563,7 +5381,6 @@
           "foldedName": "bbq"
         }
       ],
-      "excluded": [],
       "unresolved": ["quiero comer"],
       "analysis": {
         "script": "latin",
@@ -5597,7 +5414,6 @@
           "foldedName": "rooftop"
         }
       ],
-      "excluded": [],
       "unresolved": ["restaurantes con"],
       "analysis": {
         "script": "latin",
@@ -5658,7 +5474,6 @@
           "foldedName": "cream"
         }
       ],
-      "excluded": [],
       "unresolved": [],
       "analysis": {
         "script": "latin",
@@ -5710,7 +5525,6 @@
           "foldedName": "wine"
         }
       ],
-      "excluded": [],
       "unresolved": ["hay algún"],
       "analysis": {
         "script": "latin",
@@ -5744,7 +5558,6 @@
           "foldedName": "bagel"
         }
       ],
-      "excluded": [],
       "unresolved": ["quiero un"],
       "analysis": {
         "script": "latin",
@@ -5796,7 +5609,6 @@
           "foldedName": "takeout"
         }
       ],
-      "excluded": [],
       "unresolved": [],
       "analysis": {
         "script": "latin",
@@ -5830,15 +5642,6 @@
           "foldedName": "thai curry"
         },
         {
-          "entityId": "f0766829-a147-4736-a277-041e5cd9ddf5",
-          "bucket": "food",
-          "type": "food",
-          "span": "busco",
-          "name": "besos",
-          "tier": "linked",
-          "foldedName": "besos"
-        },
-        {
           "entityId": "7f76e097-988f-4ae2-aff6-a4fdc177a2e4",
           "bucket": "restaurantAttributes",
           "type": "restaurant_attribute",
@@ -5857,8 +5660,7 @@
           "foldedName": "curry"
         }
       ],
-      "excluded": [],
-      "unresolved": [],
+      "unresolved": ["busco"],
       "analysis": {
         "script": "latin",
         "requestLocale": "es-US",
@@ -5889,19 +5691,9 @@
           "name": "pancakes",
           "tier": "gazetteer-exact",
           "foldedName": "pancakes"
-        },
-        {
-          "entityId": "1b83fa1e-680d-4292-acf5-b8456d27e415",
-          "bucket": "restaurantAttributes",
-          "type": "restaurant_attribute",
-          "span": "quiero",
-          "name": "quiet",
-          "tier": "linked",
-          "foldedName": "quiet"
         }
       ],
-      "excluded": [],
-      "unresolved": [],
+      "unresolved": ["quiero"],
       "analysis": {
         "script": "latin",
         "requestLocale": "es-US",
@@ -5934,7 +5726,6 @@
           "foldedName": "steak"
         }
       ],
-      "excluded": [],
       "unresolved": ["dónde comer"],
       "analysis": {
         "script": "latin",
@@ -5968,7 +5759,6 @@
           "foldedName": "salad"
         }
       ],
-      "excluded": [],
       "unresolved": ["un buen"],
       "analysis": {
         "script": "latin",
@@ -6020,7 +5810,6 @@
           "foldedName": "bbq"
         }
       ],
-      "excluded": [],
       "unresolved": ["quiero probar"],
       "analysis": {
         "script": "latin",
@@ -6054,7 +5843,6 @@
           "foldedName": "seafood"
         }
       ],
-      "excluded": [],
       "unresolved": ["algo de"],
       "analysis": {
         "script": "latin",
@@ -6088,7 +5876,6 @@
           "foldedName": "sandwich"
         }
       ],
-      "excluded": [],
       "unresolved": ["quiero un"],
       "analysis": {
         "script": "latin",

@@ -4506,7 +4506,7 @@ CLEAN-PASS-1 api-core + api-search (2026-08-07, ATTEMPT 2, F8400): FRESH-EYES RE
 | apps/api/src/shared/locale/request-locale.decorator.ts | locale-i18n | IDEAL-VERIFIED | 1 | 129bfab1bb61 | argued ideal. |
 | apps/api/src/shared/locale/request-locale.interceptor.ts | locale-i18n | IDEAL-VERIFIED | 1 | 8d0269d35eac | Fastify Vary merge (unions Accept-Language) — prior red-team F3 fix verified. |
 | apps/api/src/shared/locale/request-locale.ts | locale-i18n | IDEAL-VERIFIED | 1 | 7f4d5ffc0f8b | argued ideal. |
-| apps/api/src/shared/locale/supported-locales.ts | locale-i18n | PARTIAL | 1 | c47730ac7846 | SUPPORTED_LOCALES/DEFAULT duplicated across apps, no cross-app bind (F9370). |
+| apps/api/src/shared/locale/supported-locales.ts | locale-i18n | UNREVIEWED| 1 | c47730ac7846 | SUPPORTED_LOCALES/DEFAULT duplicated across apps, no cross-app bind (F9370). (reverted from PARTIAL: file changed since review, was c47730ac7846) |
 | apps/api/src/shared/testing/prisma-doubles.ts | locale-i18n | IDEAL-VERIFIED | 1 | 0058bb61a9ae | argued ideal. |
 | apps/api/src/shared/invariants/registry.ts | locale-i18n | UNREVIEWED    | 1 | 694d98fddfd3 | argued ideal. (reverted from IDEAL-VERIFIED: file changed since review, was 694d98fddfd3) |
 | apps/mobile/src/i18n/current-locale.ts | locale-i18n | IDEAL-VERIFIED | 1 | bb68770422ab | single shared locale cell read by renderer + axios. |
@@ -4549,10 +4549,10 @@ CLEAN-PASS-1 api-core + api-search (2026-08-07, ATTEMPT 2, F8400): FRESH-EYES RE
 | apps/api/scripts/check-subject-text-emission.ts | api-scripts | UNREVIEWED    | 1 | a7c6cd6f6edd | Exemplary gate: closed allowlist, missing-tooling=FAIL, codeMatches-not-prose, exits non-zero. (reverted from IDEAL-VERIFIED: file changed since review, was a7c6cd6f6edd) |
 | apps/api/scripts/invariants.ts | api-scripts | IDEAL-VERIFIED | 1 | 3e9abc40ee8d | Harness applies mutations, requires FAIL, hard-fails on missing anchor, restores always. |
 | apps/api/scripts/search-harness/_shared.ts | api-scripts | IDEAL-VERIFIED | 1 | 5f8b1dff68d7 | requireNonProdDatabase dual guard refuses deployed/non-local for writers. |
-| apps/api/scripts/search-harness/run-launch-gate.ts | api-scripts | IDEAL-VERIFIED | 1 | 1d359761fa86 | GATE can show RED: tri-state, N/A on empty denominator prevents false-green; recorded run 3 REDs. |
+| apps/api/scripts/search-harness/run-launch-gate.ts | api-scripts | UNREVIEWED    | 1 | 1d359761fa86 | GATE can show RED: tri-state, N/A on empty denominator prevents false-green; recorded run 3 REDs. (reverted from IDEAL-VERIFIED: file changed since review, was 1d359761fa86) |
 | apps/api/scripts/search-harness/run-parity-check.ts | api-scripts | IDEAL-VERIFIED | 1 | 586939704f55 | Read-only; pairs from real data; failures listed. |
 | apps/api/scripts/search-harness/decomposed-tier-probe.ts | api-scripts | IDEAL-VERIFIED | 1 | 534f78f2919e | Probe sets exitCode=1 on failing checks; can show RED. |
-| apps/api/scripts/search-harness/multilingual-understand-probe.ts | api-scripts | IDEAL-VERIFIED | 1 | 89c78e5829a4 | Read-only; dense tier gated behind PROBE_DENSE=1; misses reported. |
+| apps/api/scripts/search-harness/multilingual-understand-probe.ts | api-scripts | UNREVIEWED    | 1 | 89c78e5829a4 | Read-only; dense tier gated behind PROBE_DENSE=1; misses reported. (reverted from IDEAL-VERIFIED: file changed since review, was 89c78e5829a4) |
 | apps/api/src/modules/content-processing/reddit-collector/test-limit.ts | api-scripts | IDEAL-VERIFIED | 1 | 0db59ec9a52d | Refuses in prod (returns null) — prevents silent truncation; clamps to cap. |
 | apps/mobile/src/screens/Search/runtime/shared/search-mounted-results-debug-flag.ts | api-scripts | IDEAL-VERIFIED | 1 | c0968dd8f9a6 | Named flag DEFAULT OFF; __DEV__ conjunction so it can't ship logging to release. |
 | apps/api/scripts/check-locale-parity.ts | api-scripts | IDEAL-VERIFIED | 1 | 336912260481 | F9370 cross-app locale-parity invariant check; reads mobile source textually; fail-closed (exit 1). |

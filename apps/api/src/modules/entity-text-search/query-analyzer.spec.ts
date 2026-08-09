@@ -1,9 +1,4 @@
-import {
-  analyzeQuery,
-  denseQueryInput,
-  detectScript,
-  negatedSpan,
-} from './query-analyzer';
+import { analyzeQuery, denseQueryInput, detectScript } from './query-analyzer';
 import { canonicalFold } from '../content-processing/entity-resolver/entity-identity';
 
 describe('query analyzer (A2 seam)', () => {
@@ -209,14 +204,6 @@ describe('query analyzer (A2 seam)', () => {
       expect(
         analyzeQuery('pizza senza glutine', null).negationCues[0].locale,
       ).toBe('it');
-    });
-
-    it('negates only the span IMMEDIATELY after the cue', () => {
-      const analysis = analyzeQuery('tacos without cheese', null);
-      const tacos = { start: 0, end: 5 };
-      const cheese = { start: 14, end: 20 };
-      expect(negatedSpan(analysis, tacos)).toBeNull();
-      expect(negatedSpan(analysis, cheese)?.cue).toBe('without');
     });
   });
 

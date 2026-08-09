@@ -91,7 +91,6 @@ interface GoldEntry {
   locale?: string;
   expected: {
     concepts: string[];
-    excluded: string[];
     mustNotResolve: string[];
   };
   park: boolean;
@@ -165,7 +164,6 @@ interface EntryResult {
   preservation: number;
   reasons: string[];
   grounded: Grounded[];
-  excluded: Array<{ text: string; folded: string; cue: string }>;
   unresolved: string[];
   analysis: unknown;
   /** Homograph stratum only: names grounded outside the allowed set. */
@@ -234,7 +232,6 @@ async function main(): Promise<void> {
           `THREW: ${error instanceof Error ? error.message : String(error)}`,
         ],
         grounded: [],
-        excluded: [],
         unresolved: [],
         analysis: null,
         misGroundings: [],
@@ -298,12 +295,6 @@ async function main(): Promise<void> {
         .filter((g) => ATTRIBUTE_TYPES.has(g.type))
         .map((g) => norm(g.name)),
     );
-    const excluded = (interpreted.excludedSpans ?? []).map((e) => ({
-      text: e.text,
-      folded: norm(e.text),
-      cue: `${e.cue}/${e.cueLocale}`,
-    }));
-    const excludedFolded = new Set(excluded.map((e) => e.folded));
     const unresolved = interpreted.unresolved.flatMap((u) => u.terms);
 
     // ── Score ───────────────────────────────────────────────────────────
@@ -343,27 +334,17 @@ async function main(): Promise<void> {
         reasons.push('clean park (safe)');
       }
     } else if (entry.stratum === 'negation') {
-      // HARD CLAUSE. Two independent halves, both required:
-      //   (a) every expected negated span is RECORDED as an excludedSpan
-      //   (b) nothing on mustNotResolve is grounded (non-inversion)
-      const missingExclusions = entry.expected.excluded
-        .map(norm)
-        .filter((x) => !excludedFolded.has(x));
-      if (missingExclusions.length) {
-        reasons.push(
-          `CONSTRAINT NOT RECORDED: ${missingExclusions.join(', ')}`,
-        );
-      }
+      // HARD CLAUSE (negation v2 = literal ignore): the mentioned word
+      // grounds POSITIVELY (head preservation) and nothing on
+      // mustNotResolve is grounded (non-inversion). No exclusion is ever
+      // recorded — exclusions do not exist in the product.
       const headOk = entry.park || preservation === 1;
       if (!headOk) {
         reasons.push(
           `head not grounded: missing ${want.filter((w) => !groundedNames.has(w)).join(', ')}`,
         );
       }
-      pass =
-        forbidden.length === 0 &&
-        missingExclusions.length === 0 &&
-        (headOk || entry.park);
+      pass = forbidden.length === 0 && (headOk || entry.park);
     } else if (entry.stratum === 'attribute') {
       // Grounding the right WORD to a food entity of the same name is a
       // TYPE MISS, reported distinctly — "vegan" exists as food AND
@@ -431,7 +412,6 @@ async function main(): Promise<void> {
       preservation,
       reasons,
       grounded,
-      excluded,
       unresolved,
       analysis: interpreted.queryAnalysis,
       misGroundings,
@@ -590,11 +570,6 @@ async function main(): Promise<void> {
           : '(nothing)'
       }`,
     );
-    if (f.excluded.length) {
-      out(
-        `  excluded  : ${f.excluded.map((e) => `${e.text}[${e.cue}]`).join(', ')}`,
-      );
-    }
     if (f.unresolved.length) out(`  unresolved: ${f.unresolved.join(', ')}`);
     out(`  analysis  : ${JSON.stringify(f.analysis)}`);
     out(`  gold note : ${f.notes}`);
@@ -668,7 +643,6 @@ async function gradeSpotCheck(
     id: r.id,
     query: r.query,
     concepts: r.grounded.map((g) => `${g.name} (${g.type})`),
-    excluded: r.excluded.map((e) => e.text),
     unresolved: r.unresolved,
   }));
 

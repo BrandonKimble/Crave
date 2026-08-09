@@ -127,11 +127,7 @@ async function main(): Promise<void> {
       )
       .join(' ');
     out(
-      `${c.query.padEnd(22)} grounded=[${listed}] excluded=[${(
-        result.excludedSpans ?? []
-      )
-        .map((e) => `${e.text}(cue ${e.cue}/${e.cueLocale})`)
-        .join(', ')}] analysis=${JSON.stringify(result.queryAnalysis)}`,
+      `${c.query.padEnd(22)} grounded=[${listed}] analysis=${JSON.stringify(result.queryAnalysis)}`,
     );
   }
 

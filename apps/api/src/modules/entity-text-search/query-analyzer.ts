@@ -499,23 +499,3 @@ export function negationCueTexts(analysis: {
 }): ReadonlySet<string> {
   return new Set(analysis.negationCues.map((cue) => cue.cue));
 }
-
-/** R5-3 (legacy; no production caller since negation v2 — kept for the
- *  analyzer spec surface): a cue that IMMEDIATELY precedes a span negates
- *  it. Adjacency is
- *  token-level (the cue is the token just before the span's first token) —
- *  a cue anywhere in the query is NOT a licence to drop every span
- *  ("tacos without cheese, with salsa"). */
-export function negatedSpan(
-  analysis: QueryAnalysis,
-  span: { start: number; end: number },
-): NegationCue | null {
-  const firstTokenIndex = analysis.tokens.findIndex(
-    (t) => t.start >= span.start && t.end <= span.end,
-  );
-  if (firstTokenIndex <= 0) return null;
-  return (
-    analysis.negationCues.find((cue) => cue.index === firstTokenIndex - 1) ??
-    null
-  );
-}

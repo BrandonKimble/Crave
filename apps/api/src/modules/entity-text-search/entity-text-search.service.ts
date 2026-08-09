@@ -222,12 +222,10 @@ export class EntityTextSearchService {
    * recall core, and therefore the only way autocomplete can match a foreign
    * word at all.
    *
-   * The sparse lane reads `core_entities.aliases[]`, which by law holds only
-   * UNTAGGED ('und') forms — that is what stops a Spanish surface grounding an
-   * English request. Correct, but it left every localized surface invisible to
-   * autocomplete: a Spanish speaker typing "cam…" got nothing, on the first
-   * interactive surface in the product. The gazetteer had already been given a
-   * locale-chained arm; this is the same arm for the recall core.
+   * Since AC-P1a the sparse lane itself reads the locale-chained
+   * entity_alias registry, so tagged surfaces reach it too — this lane
+   * remains the EXACT/PREFIX/localized-label specialist (label rendering,
+   * canonicalFold identity, per-locale ranking) layered over that recall.
    *
    * OPT-IN: it runs only when a caller passes a request locale. Ingestion and
    * poll seeding pass none and are unaffected — no behaviour changes for a
