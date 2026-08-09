@@ -107,8 +107,8 @@ const FLOWS: FlowEntry[] = [
     id: 'es-04',
     locale: 'es',
     query: 'camarnes',
-    mustInclude: [{ name: 'camarones enchilados' }],
-    note: 'es typo recovers the camarones vocabulary (registry-fed lexicon + trigram arm) — asserting the concept FAMILY, not one privileged row: real camarones dishes legitimately outrank the bare shrimp concept, exactly like vgean',
+    mustInclude: [{ name: 'shrimp' }],
+    note: 'es typo reaches shrimp: registry-fed lexicon + editScore ranking as a first-class merge signal (Damerau 1 beats the carnes trigram trap at distance 2)',
   },
   {
     id: 'es-05',

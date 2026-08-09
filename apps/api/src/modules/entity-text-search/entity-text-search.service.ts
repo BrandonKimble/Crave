@@ -379,7 +379,10 @@ export class EntityTextSearchService {
     if (!normalizedTerm || entityTypes.length === 0) return [];
 
     const pool = Math.max(limit, options.poolSize ?? 50);
-    const sparseOpts = { engineId: options.engineId };
+    const sparseOpts = {
+      engineId: options.engineId,
+      requestLocale: options.requestLocale ?? null,
+    };
     const denseOpts = { engineId: options.engineId };
 
     const denseMode = options.denseMode ?? 'always';
@@ -472,6 +475,7 @@ export class EntityTextSearchService {
     limit: number,
     options: {
       engineId?: string | null;
+      requestLocale?: string | null;
     } = {},
   ): Promise<TextSearchMatch[]> {
     const normalizedTerm = this.normalizeTerm(term);
@@ -489,7 +493,10 @@ export class EntityTextSearchService {
       [normalizedTerm],
       entityTypes,
       safeLimit,
-      { engineId: options.engineId },
+      {
+        engineId: options.engineId,
+        requestLocale: options.requestLocale ?? null,
+      },
     );
     return resultsByTerm.get(normalizedTerm) ?? [];
   }
@@ -529,7 +536,10 @@ export class EntityTextSearchService {
         [normalizedTerm],
         attributeTypes,
         Math.min(safeLimit * 4, this.maxLimit),
-        { engineId: options.engineId },
+        {
+          engineId: options.engineId,
+          requestLocale: options.requestLocale ?? null,
+        },
       ),
       options.requestLocale
         ? this.searchLocalizedSurfaces(
@@ -562,6 +572,7 @@ export class EntityTextSearchService {
     perTermLimit: number,
     options: {
       engineId?: string | null;
+      requestLocale?: string | null;
     } = {},
   ): Promise<Map<string, TextSearchMatch[]>> {
     const normalizedTerms = terms
@@ -590,6 +601,7 @@ export class EntityTextSearchService {
     const missingTerms: string[] = [];
     uniqueTerms.forEach((term) => {
       const cached = this.getCachedTermResults({
+        requestLocale: options.requestLocale ?? null,
         term,
         entityTypes,
         engineId,
@@ -633,6 +645,7 @@ export class EntityTextSearchService {
       if (longTerms.length > 0) {
         const [rows, lexiconRowsByTerm] = await Promise.all([
           this.fetchFtsTrgmRowsForTerms({
+            requestLocale: options.requestLocale ?? null,
             terms: longTerms,
             entityTypes,
             perTermLimit: safePerTermLimit,
@@ -668,18 +681,21 @@ export class EntityTextSearchService {
           // ('vgean' could never reach vegan). One merged set, one order,
           // one cut: same keys as the SQL ORDER BY (exact, prefix, best
           // similarity, score) so the merge cannot invert the lane law.
+          // editScore is a first-class signal here (C2 follow-up): without
+          // it, edit-lane rows ranked at similarity 0 and always sank below
+          // trigram noise — 'camarnes' surfaced carnes-substring meats while
+          // the distance-1 camarones rows sat past the cut.
+          const strength = (row: (typeof bucket)[number]) =>
+            Math.max(
+              Number(row.nameSimilarity ?? 0),
+              Number(row.aliasSimilarity ?? 0),
+              Number(row.editScore ?? 0),
+            );
           bucket.sort(
             (a, b) =>
               (b.exactHit ?? 0) - (a.exactHit ?? 0) ||
               b.prefixHit - a.prefixHit ||
-              Math.max(
-                Number(b.nameSimilarity ?? 0),
-                Number(b.aliasSimilarity ?? 0),
-              ) -
-                Math.max(
-                  Number(a.nameSimilarity ?? 0),
-                  Number(a.aliasSimilarity ?? 0),
-                ) ||
+              strength(b) - strength(a) ||
               Number(b.publicCraveScore ?? 0) - Number(a.publicCraveScore ?? 0),
           );
           fetchedRowsByTerm.set(term, bucket);
@@ -718,6 +734,7 @@ export class EntityTextSearchService {
 
         resultsByTerm.set(term, matches);
         this.setCachedTermResults({
+          requestLocale: options.requestLocale ?? null,
           term,
           entityTypes,
           engineId,
@@ -826,9 +843,18 @@ export class EntityTextSearchService {
     term: string;
     entityTypes: EntityType[];
     engineId?: string | null;
+    requestLocale?: string | null;
   }): string {
     const entityTypesKey = [...options.entityTypes].sort().join(',');
-    return [options.engineId ?? '', entityTypesKey, options.term].join('::');
+    // Locale is part of RECALL now (the registry arms are chain-filtered),
+    // so it must be part of the key — a locale-less key would serve one
+    // language's candidates to another (the AC-P2a class, term-cache side).
+    return [
+      options.engineId ?? '',
+      entityTypesKey,
+      localeLookupChain(options.requestLocale ?? null).join(','),
+      options.term,
+    ].join('::');
   }
 
   private getCachedTermResults(options: {
@@ -836,6 +862,7 @@ export class EntityTextSearchService {
     entityTypes: EntityType[];
     engineId?: string | null;
     limit: number;
+    requestLocale?: string | null;
   }): TextSearchMatch[] | null {
     const key = this.buildCacheKey(options);
     const entry = this.cache.get(key);
@@ -855,6 +882,7 @@ export class EntityTextSearchService {
     entityTypes: EntityType[];
     engineId?: string | null;
     limit: number;
+    requestLocale?: string | null;
     results: TextSearchMatch[];
   }): void {
     const key = this.buildCacheKey(options);
@@ -1058,14 +1086,21 @@ export class EntityTextSearchService {
     perTermLimit: number;
     engineId: string | null;
     thresholdsByTerm: Map<string, number>;
+    requestLocale?: string | null;
   }): Promise<EntitySearchRow[]> {
+    // AC-P1a (final arm): the recall SQL reads the LOCALE-CHAINED REGISTRY,
+    // never the unlocalized aliases[] projection. No locale => ['und'], the
+    // exact set the array projection carried (superset proven, spec-held),
+    // so default-path behavior is unchanged while tagged locales finally
+    // reach the fuzzy/FTS arms.
+    const chain = localeLookupChain(options.requestLocale ?? null);
     const values = Prisma.join(
       options.terms.map((term, idx) => {
         const prefixPattern = `${term}%`;
+        const folded = canonicalFold(term);
+        const foldedPrefix = `${folded}%`;
         const similarityThreshold = options.thresholdsByTerm.get(term) ?? 0.35;
-        // Step 6: length-banded edit budget (ES-AUTO(3,6) seed; swept later) —
-        // 0 edits for very short terms, 1 for mid, 2 for long.
-        return Prisma.sql`(${term}, ${prefixPattern}, ${similarityThreshold}, ${idx})`;
+        return Prisma.sql`(${term}, ${prefixPattern}, ${folded}, ${foldedPrefix}, ${similarityThreshold}, ${idx})`;
       }),
     );
     const entityTypeArray = Prisma.sql`ARRAY[${Prisma.join(
@@ -1096,7 +1131,7 @@ export class EntityTextSearchService {
         r."generalPraiseUpvotes"
       FROM (
         VALUES ${values}
-      ) AS v(term, prefix_pattern, similarity_threshold, term_index)
+      ) AS v(term, prefix_pattern, folded_term, folded_prefix, similarity_threshold, term_index)
       CROSS JOIN LATERAL (
         SELECT
           scored."entityId",
@@ -1120,12 +1155,11 @@ export class EntityTextSearchService {
             e.name AS "name",
             e.type AS "type",
             CASE
+              -- N1 fold symmetry: identity_key IS canonicalFold(name), so
+              -- 'despana' exact-hits Despaña here the way search does.
               WHEN lower(e.name) = v.term
-                OR EXISTS (
-                  SELECT 1
-                  FROM unnest(e.aliases) AS alias_value
-                  WHERE lower(alias_value) = v.term
-                )
+                OR e.identity_key = v.folded_term
+                OR COALESCE(al.a_exact, 0) = 1
                 THEN 1
               ELSE 0
             END AS "exactHit",
@@ -1141,34 +1175,24 @@ export class EntityTextSearchService {
               )
             END AS "nameSimilarity",
             CASE
-              WHEN EXISTS (
-                SELECT 1
-                FROM unnest(e.aliases) AS alias_value
-                WHERE lower(alias_value) = v.term
-              )
-                THEN 1
-              WHEN EXISTS (
-                SELECT 1
-                FROM unnest(e.aliases) AS alias_value
-                WHERE lower(alias_value) LIKE v.prefix_pattern
-              )
-                THEN 0.94
-              ELSE GREATEST(
-                similarity(crave_aliases_haystack_lower(e.aliases), v.term),
-                word_similarity(v.term, crave_aliases_haystack_lower(e.aliases))
-              )
+              WHEN COALESCE(al.a_exact, 0) = 1 THEN 1
+              WHEN COALESCE(al.a_prefix, 0) = 1
+                -- Honest prefix coverage (H3 law), not a constant.
+                THEN length(v.folded_term)::real / NULLIF(al.a_prefix_len, 0)
+              ELSE COALESCE(al.a_sim, 0)
             END AS "aliasSimilarity",
+            -- FTS ranks the NAME; alias multi-word reachability is carried
+            -- by the registry arms (exact/prefix on the full form + whole-
+            -- word word_similarity per form) — the haystack tsv conflated
+            -- every alias into one document and is retired with the array.
             ts_rank_cd(
-              crave_entity_search_tsv(e.name::text, e.aliases),
+              to_tsvector('simple', lower(e.name)),
               websearch_to_tsquery('simple', v.term)
             ) AS "ftsRank",
             CASE
               WHEN lower(e.name) LIKE v.prefix_pattern
-                OR EXISTS (
-                  SELECT 1
-                  FROM unnest(e.aliases) AS alias_value
-                  WHERE lower(alias_value) LIKE v.prefix_pattern
-                )
+                OR e.identity_key LIKE v.folded_prefix
+                OR COALESCE(al.a_prefix, 0) = 1
                 THEN 1
               ELSE 0
             END AS "prefixHit",
@@ -1178,19 +1202,16 @@ export class EntityTextSearchService {
                 THEN 1
               ELSE 0
             END AS "nameFtsHit",
-            CASE WHEN crave_aliases_haystack_lower(e.aliases) % v.term THEN 1 ELSE 0 END AS "aliasTrgmHit",
+            COALESCE(al.a_trgm, 0) AS "aliasTrgmHit",
             -- Whole-word containment (word_similarity = 1 exactly when the term
             -- appears as a whole word inside the longer string), excluding true
             -- exacts — those keep the 'exact' tier.
             CASE
               WHEN lower(e.name) <> v.term
-                AND NOT EXISTS (
-                  SELECT 1 FROM unnest(e.aliases) AS alias_value
-                  WHERE lower(alias_value) = v.term
-                )
+                AND COALESCE(al.a_exact, 0) = 0
                 AND (
                   word_similarity(v.term, lower(e.name)) = 1
-                  OR word_similarity(v.term, crave_aliases_haystack_lower(e.aliases)) = 1
+                  OR COALESCE(al.a_ws1, 0) = 1
                 )
                 THEN 1
               ELSE 0
@@ -1201,8 +1222,10 @@ export class EntityTextSearchService {
               CASE WHEN word_similarity(v.term, lower(e.name)) = 1
                 THEN length(v.term)::real / NULLIF(length(e.name), 0)
                 ELSE 0 END,
-              CASE WHEN word_similarity(v.term, crave_aliases_haystack_lower(e.aliases)) = 1
-                THEN length(v.term)::real / NULLIF(length(crave_aliases_haystack_lower(e.aliases)), 0)
+              CASE WHEN COALESCE(al.a_ws1, 0) = 1
+                -- Coverage against the SHORTEST containing form — the honest
+                -- per-form number the one-blob haystack could never give.
+                THEN length(v.term)::real / NULLIF(al.a_contain_len, 0)
                 ELSE 0 END
             ) AS "containsCoverage",
             -- Edit-distance admission moved to the DELETE-DICTIONARY lane
@@ -1213,30 +1236,53 @@ export class EntityTextSearchService {
             (SELECT pes.display_score FROM core_public_entity_scores pes WHERE pes.subject_id = e.entity_id AND pes.subject_type = 'restaurant'::crave_score_subject_type) AS "publicCraveScore",
             e.general_praise_upvotes AS "generalPraiseUpvotes"
           FROM core_entities e
+          -- THE REGISTRY LATERAL (AC-P1a): one aggregate over the entity's
+          -- locale-chained alias rows supplies every alias-evidence signal.
+          -- Per-form scoring, per-form locale — the one-blob haystack (which
+          -- diluted similarity across ALL aliases and had no language) dies
+          -- here.
+          LEFT JOIN LATERAL (
+            SELECT
+              max((a.form_folded = v.folded_term)::int) AS a_exact,
+              max((a.form_folded LIKE v.folded_prefix)::int) AS a_prefix,
+              min(length(a.form_folded))
+                FILTER (WHERE a.form_folded LIKE v.folded_prefix) AS a_prefix_len,
+              max(GREATEST(
+                similarity(a.form_folded, v.term),
+                word_similarity(v.term, a.form_folded)
+              )) AS a_sim,
+              max((a.form_folded % v.term)::int) AS a_trgm,
+              max((word_similarity(v.term, a.form_folded) = 1
+                   AND a.form_folded <> v.folded_term)::int) AS a_ws1,
+              min(length(a.form_folded))
+                FILTER (WHERE word_similarity(v.term, a.form_folded) = 1
+                          AND a.form_folded <> v.folded_term) AS a_contain_len
+            FROM entity_alias a
+            WHERE a.entity_id = e.entity_id
+              AND a.status = 'active'
+              AND LOWER(a.locale) = ANY(${chain}::text[])
+          ) al ON true
           WHERE e.type = ANY(${entityTypeArray})
             AND e.status = 'active'::entity_status
             ${territoryFilter}
             AND (
               lower(e.name) LIKE v.prefix_pattern
-              OR EXISTS (
-                SELECT 1
-                FROM unnest(e.aliases) AS alias_value
-                WHERE lower(alias_value) LIKE v.prefix_pattern
-              )
-              OR crave_entity_search_tsv(e.name::text, e.aliases) @@
+              OR e.identity_key LIKE v.folded_prefix
+              OR to_tsvector('simple', lower(e.name)) @@
                 websearch_to_tsquery('simple', v.term)
               OR (
                 lower(e.name) % v.term
                 AND similarity(lower(e.name), v.term) >= v.similarity_threshold
               )
-              OR (
-                crave_aliases_haystack_lower(e.aliases) % v.term
-                AND similarity(crave_aliases_haystack_lower(e.aliases), v.term) >= v.similarity_threshold
-              )
               -- Step 6: word-level fuzzy admission (best matching word, not the
               -- diluted whole string) — recovers typo'd/partial first words.
               OR word_similarity(v.term, lower(e.name)) >= v.similarity_threshold
-              OR word_similarity(v.term, crave_aliases_haystack_lower(e.aliases)) >= v.similarity_threshold
+              -- Registry arms: exact/prefix/trigram/whole-word over the
+              -- entity's own locale-chained forms.
+              OR COALESCE(al.a_exact, 0) = 1
+              OR COALESCE(al.a_prefix, 0) = 1
+              OR (COALESCE(al.a_trgm, 0) = 1 AND al.a_sim >= v.similarity_threshold)
+              OR COALESCE(al.a_sim, 0) >= v.similarity_threshold
             )
         ) scored
         ORDER BY
