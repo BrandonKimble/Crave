@@ -15,6 +15,15 @@ NS_ASSUME_NONNULL_BEGIN
 ///    re-assert dance becomes unnecessary for slots.
 @interface TrackShellSlotView : RCTView
 @property (nonatomic, copy, nullable) NSString *slotRole;
+/// COMMIT-CLOCKED CHROME HEIGHT (strip choreography fix 3, 2026-08-08).
+/// Carried as a Fabric-committed PROP on the chromeContent slot so the band
+/// mask / PATH RULE carve resize in the SAME frame as the chrome pixels —
+/// never on the legacy addUIBlock clock (bindShell remains the fallback
+/// carrier; the engine prefers this value when the slot has declared one).
+/// The setter re-runs the shell writer synchronously (registry ping), so the
+/// re-mask lands inside the mounting transaction that set the prop.
+@property (nonatomic, assign) CGFloat trackChromeHeight;
+@property (nonatomic, assign, readonly) BOOL hasTrackChromeHeight;
 - (void)trackApplyTransform:(CGAffineTransform)transform;
 @end
 

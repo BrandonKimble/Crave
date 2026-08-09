@@ -10,6 +10,7 @@ import { harness } from '../harness';
 export const View = 'View';
 export const Text = 'Text';
 export const Pressable = 'Pressable';
+export const ScrollView = 'ScrollView';
 
 export const StyleSheet = {
   create: <T>(styles: T): T => styles,

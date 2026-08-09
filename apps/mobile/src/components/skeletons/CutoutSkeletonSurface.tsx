@@ -65,6 +65,15 @@ export type CutoutSkeletonSurfaceProps = {
   /** Horizontal/vertical inset for the preset's first row. */
   insetX?: number;
   insetY?: number;
+  /**
+   * DECLARED surface width (strip choreography fix 2a, 2026-08-08): seeds the
+   * measured size so `rowType` holes exist on the FIRST commit instead of waiting
+   * for the onLayout → setState → second-commit round-trip (whose blank white
+   * plate was pixel-identical to the defect the skeleton exists to hide).
+   * onLayout still refines it — measurement is a correction, never the existence
+   * condition of the holes.
+   */
+  width?: number;
 
   // --- Shimmer knobs (default to the shared config so a dropped prop renders the shipped look) ---
   shimmerMode?: CutoutShimmerMode;
@@ -153,9 +162,15 @@ export const CutoutSkeletonSurface: React.FC<CutoutSkeletonSurfaceProps> = ({
   dominoSpread = CUTOUT_SKELETON_CONFIG.dominoSpread,
   dominoSharpness = CUTOUT_SKELETON_CONFIG.dominoSharpness,
   plateColor = CUTOUT_SKELETON_CONFIG.plateColor,
+  width,
   style,
 }) => {
-  const [size, setSize] = React.useState({ width: 0, height: 0 });
+  // Seeded from the DECLARED width (when the host knows it) so commit 1 already
+  // carries holes; height stays 0 until layout (it only drives shimmer geometry).
+  const [size, setSize] = React.useState({
+    width: width != null && width > 0 ? Math.round(width) : 0,
+    height: 0,
+  });
 
   // Quantize the measured size to whole px so sub-pixel layout deltas (which fire repeatedly while
   // the sheet body animates open) don't rebuild the hole list / domino phases and churn the
@@ -346,8 +361,9 @@ export const CutoutSkeletonSurface: React.FC<CutoutSkeletonSurfaceProps> = ({
         </Svg>
       ) : null}
 
-      {/* 2. The sheet plate with the holes punched out. renderWhenEmpty paints a holes-less plate on
-          the first (pre-measure) frame so the scene lands on a solid plate, never a transparent flash. */}
+      {/* 2. The sheet plate with the holes punched out. With a declared `width` (fix 2a) the first
+          commit already carries holes; renderWhenEmpty remains the un-hinted hosts' backstop — a
+          holes-less solid plate on the pre-measure frame, never a transparent flash. */}
       <MaskedHoleOverlay holes={resolvedHoles} backgroundColor={plateColor} renderWhenEmpty />
     </View>
   );

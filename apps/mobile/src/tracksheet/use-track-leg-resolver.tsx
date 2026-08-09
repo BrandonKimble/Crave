@@ -14,7 +14,7 @@
 // and JSX.
 
 import React from 'react';
-import { StyleSheet, View } from 'react-native';
+import { Dimensions, StyleSheet, View } from 'react-native';
 import { useSharedValue } from 'react-native-reanimated';
 
 import type { SheetSceneKey } from '../navigation/runtime/scene-foundation-spec';
@@ -35,6 +35,7 @@ import { OVERLAY_HORIZONTAL_PADDING } from '../overlays/overlay-chrome-metrics';
 import { SceneBodyFoundationSurface } from '../overlays/SceneBodyFoundationSurface';
 import { SceneBodySceneKeyContext } from '../overlays/SceneBodyReadyGate';
 import { SceneLoadingSurface } from '../components/skeletons';
+import { SceneSkeletonWidthHintContext } from '../components/skeletons/scene-skeleton-width-hint';
 import {
   BottomSheetSceneStackBodyDataActivityContext,
   BottomSheetSceneStackBodyIsActiveContext,
@@ -85,11 +86,19 @@ import { auditTrackEntryLiveness, type TrackEntryLivenessSample } from './track-
 import { TrackEntryRetention, TRACK_CHILD_RETENTION_DEPTH } from './track-entry-retention';
 import { deriveTrackEntryBodyActivity } from './track-entry-activity';
 import { planTrackEntryHandoff, TrackEntryResidencyLedger } from './track-entry-handoff';
+import { planTrackHandoffRelease } from './track-handoff-release';
 import { isResolutionReady, resolutionHasRealRows } from './track-entry-readiness';
 import { resolveTrackPaint } from './track-paint-resolver';
 import type { TrackPresentedEntryLatch } from './track-presented-authority';
 import { trackSkeletonMaterialForScene } from './track-entry-skeleton';
 import { planTrackLegBody, resolveTrackLegRowSurfaceKind } from './track-leg-plan';
+
+/** THE DECLARED BODY-LANE WIDTH (fix 2a): the track's body cell spans the window;
+ * non-edge-to-edge bodies (and the track skeleton) sit inside the mountedBodyInset
+ * padding. A construction fact, not a measurement — it seeds skeleton hole
+ * geometry so first commits carry holes; onLayout refines. */
+const trackBodyLaneWidth = (edgeToEdge: boolean): number =>
+  Dimensions.get('window').width - (edgeToEdge ? 0 : OVERLAY_HORIZONTAL_PADDING * 2);
 
 // THE COMPONENT MAP. The schema declares `body.kind: 'mounted'` (F872 —
 // scene-foundation-spec.ts); this map binds the key to its React component.
@@ -323,9 +332,19 @@ export const useTrackLegResolver = ({
                       sceneMountedBodyIsEdgeToEdge(legScene) ? undefined : styles.mountedBodyInset
                     }
                   >
-                    <ChromeProbeBoundary label={`${legScene}.body`}>
-                      <Body entry={legEntry ?? undefined} />
-                    </ChromeProbeBoundary>
+                    {/* THE WIDTH HINT (fix 2a): a pending body's gate skeleton
+                        (SceneBodyReadyGate → SceneLoadingSurface) seeds its hole
+                        geometry from this DECLARED lane width, so the commit that
+                        replaces the handoff skeleton paints holes immediately —
+                        the two skeleton phases are pixel-continuous (same
+                        material, same geometry, no measuring blank between). */}
+                    <SceneSkeletonWidthHintContext.Provider
+                      value={trackBodyLaneWidth(sceneMountedBodyIsEdgeToEdge(legScene))}
+                    >
+                      <ChromeProbeBoundary label={`${legScene}.body`}>
+                        <Body entry={legEntry ?? undefined} />
+                      </ChromeProbeBoundary>
+                    </SceneSkeletonWidthHintContext.Provider>
                   </View>
                 </SceneBodyFoundationSurface>
               </BottomSheetSceneStackBodyIsActiveContext.Provider>
@@ -358,10 +377,14 @@ export const useTrackLegResolver = ({
           {/* insetX=0: the surface already renders inside the mountedBodyInset
               padding — the default inset would double it and the skeleton would
               jump narrower→wider on the content swap (its own doc). */}
+          {/* width is DECLARED (fix 2a): the track cell is window-wide and this
+              surface sits inside the mountedBodyInset padding, so its width is a
+              construction fact — holes exist on the skeleton's FIRST commit. */}
           <SceneLoadingSurface
             rowType={material.rowType}
             withFilterStripHoles={material.withStripHoles}
             insetX={0}
+            width={trackBodyLaneWidth(false)}
           />
         </View>
       </SceneBodyFoundationSurface>
@@ -555,24 +578,89 @@ export const useTrackLegResolver = ({
   }
   /** True while this leg's real body is withheld for the flip frame. */
   const legIsHandingOff = (legEntryKey: TrackEntryKey) => deferredEntryRef.current === legEntryKey;
+  // THE RELEASE FACTS (fix 2b, 2026-08-08). The rAF stays as the mechanism that
+  // guarantees the flip frame reached the screen first; WHETHER the release may
+  // fire is the pure decision (track-handoff-release.ts): flip painted AND the
+  // destination's resolution is ready at attempt time. Readiness is read off a
+  // ref written every render so the rAF callback and later commits judge the
+  // CURRENT fact, never a captured one.
+  const presentedResolutionReadyRef = React.useRef(false);
+  presentedResolutionReadyRef.current = isResolutionReady(
+    resolveLegBodyPlan(presentedEntryKey, scene).resolution
+  );
+  /** Which armed entry's flip frame has already painted (the rAF fired). */
+  const flipPaintedForRef = React.useRef<TrackEntryKey | null>(null);
+  /** Dev observation port for the release-law bark below. */
+  const justReleasedRef = React.useRef<TrackEntryKey | null>(null);
+  if (__DEV__ && justReleasedRef.current != null) {
+    // THE RELEASE-LAW BARK (fix 2b falsifier port): the commit a release lands
+    // in must have a ready destination resolution — a release that beat
+    // readiness (the old bare-rAF schedule, reintroduced) swapped the armed
+    // handoff paint for nothing the destination could stand behind. Judged at
+    // the release COMMIT, one level away from the decision it audits, so a
+    // mutated decision cannot silence it.
+    const releasedEntry = justReleasedRef.current;
+    justReleasedRef.current = null;
+    if (releasedEntry === presentedEntryKey && !presentedResolutionReadyRef.current) {
+      // eslint-disable-next-line no-console
+      console.error(
+        `[HANDOFF] release committed without destination readiness (${releasedEntry}) — ` +
+          `the handoff skeleton was evicted before the destination could paint content.`
+      );
+    }
+  }
+  const attemptHandoffRelease = React.useCallback(
+    (armed: TrackEntryKey) => {
+      if (deferredEntryRef.current !== armed) {
+        return;
+      }
+      const release = planTrackHandoffRelease({
+        flipHasPainted: flipPaintedForRef.current === armed,
+        destinationResolutionReady: presentedResolutionReadyRef.current,
+      });
+      if (!release) {
+        // WITHHELD: the handoff paint (skeleton/frozen) persists — the reveal
+        // law's "no white gap between skeleton and content" as a schedule. A
+        // later commit (the one that restores readiness) re-attempts below.
+        return;
+      }
+      deferredEntryRef.current = null;
+      if (__DEV__) {
+        justReleasedRef.current = armed;
+      }
+      bumpHandoffSeq();
+    },
+    [bumpHandoffSeq]
+  );
   // THE RELEASE, at the paint boundary. rAF (not a bare effect) is the honest
   // schedule: a passive effect can still run inside the frame the commit is
   // being mounted in, and the whole point is that the skeleton frame reaches
   // the screen BEFORE the expensive body renders. Same rAF-is-after-paint
   // reading the [PERF] switch probe already runs on. Guarded per armed key so
-  // an unrelated re-render cannot re-arm or starve the release.
+  // an unrelated re-render cannot re-arm or starve the release. When the rAF
+  // attempt was withheld (readiness lost mid-handoff), every subsequent commit
+  // re-attempts — the commit that restores readiness IS the release commit.
   React.useEffect(() => {
     const armed = deferredEntryRef.current;
-    if (armed == null || handoffScheduledForRef.current === armed) {
+    if (armed == null) {
+      return;
+    }
+    if (handoffScheduledForRef.current === armed) {
+      // Already past the flip's paint boundary for this key: re-attempt on the
+      // current commit's facts (readiness may have just returned).
+      if (flipPaintedForRef.current === armed) {
+        attemptHandoffRelease(armed);
+      }
       return;
     }
     handoffScheduledForRef.current = armed;
+    // A fresh arm invalidates any previous episode's painted flag — the same
+    // entry can re-arm on a later revisit, and a stale flag would let the
+    // re-attempt branch above release BEFORE this episode's paint boundary.
+    flipPaintedForRef.current = null;
     requestAnimationFrame(() => {
-      if (deferredEntryRef.current !== armed) {
-        return;
-      }
-      deferredEntryRef.current = null;
-      bumpHandoffSeq();
+      flipPaintedForRef.current = armed;
+      attemptHandoffRelease(armed);
     });
   });
 

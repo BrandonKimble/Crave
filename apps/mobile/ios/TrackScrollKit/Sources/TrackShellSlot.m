@@ -88,6 +88,24 @@
   }
 }
 
+// NATIVE EDIT (fix 3): the commit-clocked chromeHeight setter. Fabric sets this
+// prop inside the mounting transaction that also flips the chrome pixels; the
+// registry ping re-runs the shell writer (scrollViewDidScroll) synchronously in
+// the same main-thread turn, so the band mask + PATH RULE carve resize in the
+// SAME frame as the pixels — the addUIBlock race is out of the loop.
+- (void)setTrackChromeHeight:(CGFloat)trackChromeHeight
+{
+  if (_hasTrackChromeHeight && fabs(trackChromeHeight - _trackChromeHeight) < 0.01) {
+    return;
+  }
+  _trackChromeHeight = trackChromeHeight;
+  _hasTrackChromeHeight = YES;
+  void (^ping)(void) = [TrackShellRegistry shared].onSlotsChanged;
+  if (ping) {
+    ping();
+  }
+}
+
 - (void)setSlotRole:(NSString *)slotRole
 {
   _slotRole = [slotRole copy];
@@ -112,6 +130,9 @@
 
 RCT_EXPORT_MODULE(TrackShellSlot)
 RCT_EXPORT_VIEW_PROPERTY(slotRole, NSString)
+// NATIVE EDIT (fix 3): the commit-clocked chromeHeight prop (JS name maps onto
+// the trackChromeHeight setter above).
+RCT_REMAP_VIEW_PROPERTY(chromeHeight, trackChromeHeight, CGFloat)
 
 - (UIView *)view
 {

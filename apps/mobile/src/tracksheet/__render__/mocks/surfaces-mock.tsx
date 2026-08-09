@@ -5,6 +5,11 @@
 
 import React from 'react';
 
+// The REAL width-hint context (pure React, not a visual module): the marker
+// records what the host actually provided, so the skeleton-geometry falsifiers
+// assert delivered values, never re-derived ones.
+import { SceneSkeletonWidthHintContext } from '../../../components/skeletons/scene-skeleton-width-hint';
+
 type AnyProps = Record<string, unknown> & { children?: React.ReactNode };
 
 export const SceneBodyFoundationSurface: React.FC<AnyProps> = ({ children, sceneKey }) => (
@@ -13,10 +18,25 @@ export const SceneBodyFoundationSurface: React.FC<AnyProps> = ({ children, scene
 
 export const SearchRouteSheetFrameHost: React.FC<AnyProps> = ({ children }) => <>{children}</>;
 
-/** The skeleton material marker — readiness tests assert its props. */
-export const SceneLoadingSurface: React.FC<AnyProps> = (props) => (
-  <scene-loading-surface {...props} />
+/** FrostCutout is inert outside a foundation surface by its own contract — the
+ * mock is the inert face (pass-through wrapper). */
+export const FrostCutout: React.FC<AnyProps> = ({ children }) => (
+  <frost-cutout>{children}</frost-cutout>
 );
+
+export const useIsInsideSceneFoundationSurface = (): boolean => false;
+
+/** The skeleton material marker — readiness tests assert its props. Mount
+ * continuity is observable via the module-level counter (a marker cannot lie
+ * about instance identity: React only runs the mount effect on a REAL mount). */
+export const sceneLoadingSurfaceMounts = { count: 0 };
+export const SceneLoadingSurface: React.FC<AnyProps> = (props) => {
+  const widthHint = React.useContext(SceneSkeletonWidthHintContext);
+  React.useEffect(() => {
+    sceneLoadingSurfaceMounts.count += 1;
+  }, []);
+  return <scene-loading-surface {...props} widthHint={widthHint} />;
+};
 
 export type SceneLoadingRowType = string;
 

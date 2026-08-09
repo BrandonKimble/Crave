@@ -68,10 +68,12 @@ const CutoutBandMaterial: React.FC<{
       />
       <View
         pointerEvents="none"
+        testID="cutout-band-pane-left"
         style={[paneBaseStyle, { left: geometry.leftPane.left, width: geometry.leftPane.width }]}
       />
       <View
         pointerEvents="none"
+        testID="cutout-band-pane-right"
         style={[paneBaseStyle, { left: geometry.rightPane.left, width: geometry.rightPane.width }]}
       />
     </>

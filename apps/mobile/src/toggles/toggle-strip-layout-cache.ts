@@ -53,6 +53,15 @@ export type ToggleStripLayoutCache = {
    * (clamping degrades to `max(0, scrollX)`).
    */
   contentWidth: number;
+  /**
+   * Measured toggle-row CONTENT width (the cutout row inside the scroller, insets
+   * excluded) — the plate-first seed (strip choreography fix 1, 2026-08-08): a warm
+   * remount paints its white band material on the FIRST commit from this number
+   * instead of waiting a layout round-trip. OPTIONAL because caches written before
+   * the field existed are still valid seeds (they degrade to the declared-geometry
+   * estimate, never to a transparent band).
+   */
+  contentRowWidth?: number;
   /** Derived cutout holes keyed by hole-slot key (strip-local coordinates). */
   holeMap: Record<string, ToggleStripHole>;
   /** Per-control geometry keyed by the control's hole-slot key (pill segments). */
@@ -96,6 +105,7 @@ export const cloneToggleStripLayoutCache = (
     viewportWidth: cache.viewportWidth,
     rowHeight: cache.rowHeight,
     contentWidth: cache.contentWidth,
+    contentRowWidth: cache.contentRowWidth,
     holeMap: Object.fromEntries(
       Object.entries(cache.holeMap).map(([key, hole]) => [key, cloneHole(hole)])
     ),

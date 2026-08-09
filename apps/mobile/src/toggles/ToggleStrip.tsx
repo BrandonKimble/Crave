@@ -453,7 +453,11 @@ export function ToggleStrip({
   const [actionHoleMap, actionHoleRegistry] = useHoleMap(null);
   const [viewportWidth, setViewportWidth] = React.useState(seed?.viewportWidth ?? 0);
   const [rowHeight, setRowHeight] = React.useState(seed?.rowHeight ?? 0);
-  const [contentRowWidth, setContentRowWidth] = React.useState(0);
+  // PLATE-FIRST (strip choreography fix 1, 2026-08-08): seeded from the cache so a
+  // warm remount's band material is exact on commit 1. A COLD mount stays 0 here —
+  // the plate no longer gates on it (declared geometry substitutes below), so the
+  // value is a refinement input, never an existence condition for the white.
+  const [contentRowWidth, setContentRowWidth] = React.useState(seed?.contentRowWidth ?? 0);
 
   // Seed the initial scroll offset from the cache — clamped against the CACHED
   // geometry so a shrunk control row can never restore out of range. Captured once
@@ -498,8 +502,13 @@ export function ToggleStrip({
   );
 
   // ── The engine-owned cache writer (layout + settled scrollX) ──────────────────
-  const latestMeasuredRef = React.useRef({ toggleHoleMap, viewportWidth, rowHeight });
-  latestMeasuredRef.current = { toggleHoleMap, viewportWidth, rowHeight };
+  const latestMeasuredRef = React.useRef({
+    toggleHoleMap,
+    viewportWidth,
+    rowHeight,
+    contentRowWidth,
+  });
+  latestMeasuredRef.current = { toggleHoleMap, viewportWidth, rowHeight, contentRowWidth };
   const writeCache = React.useCallback(() => {
     if (!cacheSeat) {
       return;
@@ -513,6 +522,7 @@ export function ToggleStrip({
       viewportWidth: measured.viewportWidth,
       rowHeight: measured.rowHeight,
       contentWidth,
+      contentRowWidth: measured.contentRowWidth,
       holeMap: measured.toggleHoleMap,
       controlLayouts: controlLayoutsRef.current,
       scrollX: clampToggleStripScrollX({
@@ -527,7 +537,7 @@ export function ToggleStrip({
   }, [cacheSeat]);
   React.useEffect(() => {
     writeCache();
-  }, [writeCache, toggleHoleMap, viewportWidth, rowHeight, controlLayoutsVersion]);
+  }, [writeCache, toggleHoleMap, viewportWidth, rowHeight, contentRowWidth, controlLayoutsVersion]);
 
   // ── The re-present reset, LIVE half (owner decision 2026-07-12) ───────────────
   // `clearToggleStripCacheScrollX(seat)` zeroes the cold-remount seed AND fans out
@@ -592,6 +602,39 @@ export function ToggleStrip({
   // never reveals a hard frost edge — CutoutBandMaterial owns that illusion (masked
   // plate over the content extent + plain flanking panes; cutout-band-geometry.ts).
   const maskHeight = rowHeight > 0 ? rowHeight + STRIP_GAP : 0;
+  // ── PLATE-FIRST GEOMETRY (strip choreography fix 1, 2026-08-08) ───────────────
+  // The white cutout material renders UNCONDITIONALLY on the first commit; every
+  // quantity it needs is knowable at render time, so measurement is a REFINEMENT
+  // (holes sharpening under CutoutFadeCover), never the existence condition of the
+  // white. Substitutions, exact by contract:
+  //   viewport  — the band is full-bleed BY LAW (the narrow-band bark below), so the
+  //               window width IS the viewport until onLayout confirms it;
+  //   height    — the band DECLARES its height (TOGGLE_STRIP_BAND_HEIGHT; the mask
+  //               overshoots by STRIP_GAP and the band clips it, same as measured);
+  //   extent    — seeded contentRowWidth (warm) or the hole extent; with neither the
+  //               flanking panes already tile the whole band solid white (their span
+  //               is ±max(edgeInset, viewport) around [0, extent] — geometry module).
+  // The OLD sequence (frost-gap → white → holes) is unrepresentable: the legal
+  // sequence is white → white-with-holes(-fading-in). Sacred behaviors untouched —
+  // scroll physics, rubber band, flanking illusion, warm restore all ride the same
+  // CutoutBandMaterial with the same inputs once measurement lands.
+  const effectiveViewportWidth = viewportWidth > 0 ? viewportWidth : Dimensions.get('window').width;
+  const effectiveMaskHeight = maskHeight > 0 ? maskHeight : TOGGLE_STRIP_BAND_HEIGHT + STRIP_GAP;
+  const plateRenderable = effectiveViewportWidth > 0 && effectiveMaskHeight > 0;
+  // THE DEV BARK — "transparent band committed". Structurally unreachable on the
+  // fixed path (both effective quantities are declared constants at worst); it
+  // exists so a reintroduced measurement gate (the pre-fix `contentRowWidth > 0 &&
+  // rowHeight > 0 && maskedHoles.length > 0` condition) screams on its first
+  // commit instead of painting pills on frost silently.
+  const hasBarkedTransparentBandRef = React.useRef(false);
+  if (__DEV__ && !plateRenderable && !hasBarkedTransparentBandRef.current) {
+    hasBarkedTransparentBandRef.current = true;
+    console.error(
+      `[STRIP] transparent band committed — '${testID ?? 'ToggleStrip'}' is rendering its ` +
+        `controls with NO white cutout material this commit (pills on frost). The plate ` +
+        `must render from declared geometry on every commit; measurement only refines it.`
+    );
+  }
   const maskedHoles = React.useMemo(
     () =>
       holes.map((hole) => ({
@@ -771,13 +814,16 @@ export function ToggleStrip({
                 }}
               >
                 <View style={styles.toggleRow}>
-                  {contentRowWidth > 0 && rowHeight > 0 && maskedHoles.length > 0 ? (
+                  {/* PLATE-FIRST: unconditional. Holes may be empty on commit 1 (solid
+                      white band); they appear additively and, when declared fadeIn,
+                      under the CutoutFadeCover pattern above. */}
+                  {plateRenderable ? (
                     <CutoutBandMaterial
                       holes={maskedHoles}
-                      contentExtent={maxHoleExtent}
-                      viewportWidth={viewportWidth}
+                      contentExtent={Math.max(maxHoleExtent, contentRowWidth)}
+                      viewportWidth={effectiveViewportWidth}
                       edgeInset={contentInset}
-                      height={maskHeight}
+                      height={effectiveMaskHeight}
                       surfaceColor={surfaceColor}
                       zIndex={1}
                     />

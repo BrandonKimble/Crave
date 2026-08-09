@@ -109,6 +109,18 @@ const TrackShellSlot = React.forwardRef<
   unknown,
   ViewProps & {
     slotRole: 'frost' | 'chrome' | 'tail' | 'chromeContent';
+    /** COMMIT-CLOCKED CHROME HEIGHT (strip choreography fix 3, 2026-08-08).
+     * The band mask + THE PATH RULE carve used to learn a scene's chromeHeight
+     * through bindShell — an RCTUIManager addUIBlock flushed on ITS OWN
+     * main-thread schedule, racing the Fabric mounting transaction that flips
+     * the chrome pixels. On none<->strip switches the loser of that race
+     * painted a strip-shaped carve against the WRONG chrome for a frame or
+     * two (the outgoing-page gap). As a PROP on the chromeContent slot the
+     * height rides the SAME Fabric commit as the chrome pixels; the native
+     * setter re-runs the shell writer synchronously, so mask and pixels change
+     * in one frame by construction. bindShell still carries chromeHeight as
+     * the fallback for binaries/paths without the slot prop. */
+    chromeHeight?: number;
     children?: React.ReactNode;
   }
 >(function TrackShellSlot(props, ref): React.ReactElement {
@@ -1024,7 +1036,13 @@ export function TrackSheetPage({
   const headerForLeg = (leg: TrackSheetLeg | null) => (
     <View style={styles.chromeLane}>
       <View style={{ height: trackH }} pointerEvents="none" />
-      <TrackShellSlot slotRole="chromeContent" ref={chromeContentRef as never}>
+      <TrackShellSlot
+        slotRole="chromeContent"
+        // Fix 3: the height lands inside the same Fabric commit as the chrome
+        // opacity flip / body swap — never on the addUIBlock clock.
+        chromeHeight={legChromeHeight(leg)}
+        ref={chromeContentRef as never}
+      >
         <View style={{ height: legChromeHeight(leg) }}>
           {/* The chrome stack renders INSIDE the list (it is the
               ListHeaderComponent), so without its own id its cost hides inside
@@ -1221,6 +1239,12 @@ export function TrackSheetPage({
     const nativePhysics = NativeModules.TrackScrollPhysics;
     executeEntrySwitch(plan, {
       saveOutgoing: (outgoingKey, offset) => entryScrollMemoryRef.current.save(outgoingKey, offset),
+      // SUPERSEDED FOR THE MASKS (fix 3, 2026-08-08): the band mask / PATH RULE
+      // carve no longer wait for this addUIBlock — they read the chromeContent
+      // slot's commit-clocked chromeHeight prop (same Fabric commit as the
+      // chrome pixels). This re-assert remains the FALLBACK carrier (binaries
+      // without the slot prop; the non-mask consumers of shellChromeHeight —
+      // the touch band + intent gate) and still re-applies position config.
       // RE-ASSERT THE SHELL CONFIG (found by READING the switch path, 2026-08-02).
       // "Nothing re-binds on a switch" was right about POSITION — but bindShell
       // also carries per-scene CONFIG, and chromeHeight is scene-dependent

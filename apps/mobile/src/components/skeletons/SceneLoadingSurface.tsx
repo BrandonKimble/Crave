@@ -4,6 +4,7 @@ import { StyleSheet, View, type ViewStyle } from 'react-native';
 import { CONTENT_HORIZONTAL_PADDING } from '../../screens/Search/constants/search';
 import { FrostCutout } from '../../overlays/SceneBodyFoundationSurface';
 import { CutoutSkeletonSurface } from './CutoutSkeletonSurface';
+import { SceneSkeletonWidthHintContext } from './scene-skeleton-width-hint';
 import {
   buildFilterStripPillHoles,
   FILTER_STRIP_HOLES_BLOCK_HEIGHT,
@@ -57,6 +58,13 @@ export type SceneLoadingSurfaceProps = {
    * The interaction skeleton omits it: the live strip renders above that cover.
    */
   withFilterStripHoles?: boolean;
+  /**
+   * DECLARED surface width (fix 2a): seeds the skeleton's hole derivation so the
+   * FIRST commit carries holes. Defaults to the SceneSkeletonWidthHintContext (the
+   * host's declared body-lane width) when present; with neither, the pre-fix
+   * measure-first path applies unchanged.
+   */
+  width?: number;
   style?: ViewStyle | ViewStyle[];
 };
 
@@ -65,8 +73,11 @@ export const SceneLoadingSurface: React.FC<SceneLoadingSurfaceProps> = ({
   count = rowType === 'tile' ? TILE_ROW_COUNT : DEFAULT_ROW_COUNT,
   insetX = CONTENT_HORIZONTAL_PADDING,
   withFilterStripHoles = false,
+  width,
   style,
 }) => {
+  const widthHint = React.useContext(SceneSkeletonWidthHintContext);
+  const resolvedWidth = width ?? widthHint ?? undefined;
   const rowCount = Math.max(0, Math.floor(count));
   const stripBlockHeight = withFilterStripHoles ? FILTER_STRIP_HOLES_BLOCK_HEIGHT : 0;
   const extraHoles = React.useMemo(
@@ -97,6 +108,7 @@ export const SceneLoadingSurface: React.FC<SceneLoadingSurfaceProps> = ({
           insetX={insetX}
           insetY={stripBlockHeight}
           extraHoles={extraHoles}
+          width={resolvedWidth}
         />
       </FrostCutout>
     </View>

@@ -789,6 +789,19 @@ static void *kTrackClampGuardCtx = &kTrackClampGuardCtx;
     // THE REAL SLOT: registry-first (self-registered, transform-sealed views);
     // the tag-bound views remain as the legacy fallback until the delete pass.
     TrackShellRegistry *registry = [TrackShellRegistry shared];
+    // NATIVE EDIT (strip choreography fix 3, 2026-08-08): the band's chrome
+    // height PREFERS the commit-clocked slot prop (set inside the Fabric
+    // mounting transaction that flips the chrome pixels; its setter re-runs
+    // this writer synchronously) over bindShell's addUIBlock-carried value —
+    // so the mask below and the chrome pixels change in the SAME frame on a
+    // none<->strip switch. bindShell remains the fallback carrier. MASK
+    // OWNERSHIP and THE PATH RULE are untouched: only WHEN the height lands
+    // changes, never who masks.
+    TrackShellSlotView *chromeHeightSlot = [registry viewForRole:@"chromeContent"];
+    const CGFloat effectiveChromeHeight =
+        (chromeHeightSlot != nil && chromeHeightSlot.hasTrackChromeHeight)
+            ? chromeHeightSlot.trackChromeHeight
+            : self.shellChromeHeight;
     TrackShellSlotView *frostSlot = [registry viewForRole:@"frost"];
     UIView *frost = frostSlot;
     if (frost != nil) {
@@ -839,7 +852,7 @@ static void *kTrackClampGuardCtx = &kTrackClampGuardCtx;
         if (node.superview == scrollView) { contentView = node; break; }
       }
       if (contentView != nil) {
-        const CGFloat bandBottom = tau + sheetTop + self.shellChromeHeight;
+        const CGFloat bandBottom = tau + sheetTop + effectiveChromeHeight;
         const CGFloat w = CGRectGetWidth(scrollView.bounds);
         const CGFloat h = CGRectGetHeight(scrollView.bounds);
         [CATransaction begin];
@@ -881,7 +894,7 @@ static void *kTrackClampGuardCtx = &kTrackClampGuardCtx;
       // at layer y (τ + Y). The band bottom is sheetTop + chromeHeight.
       const CGRect b = scrollView.bounds;
       const CGRect next = CGRectMake(0,
-                                     tau + sheetTop + self.shellChromeHeight,
+                                     tau + sheetTop + effectiveChromeHeight,
                                      CGRectGetWidth(b),
                                      CGRectGetHeight(b) * 6.0);
       if (!CGRectEqualToRect(mask.frame, next)) {
