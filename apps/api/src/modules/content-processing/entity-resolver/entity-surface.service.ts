@@ -163,6 +163,8 @@ export function mintWordClaimVerdict(): WordClaimVerdict {
   return { [ADJUDICATED_BRAND]: true } as WordClaimVerdict;
 }
 
+const EMPTY_FOLD_SET: ReadonlySet<string> = new Set<string>();
+
 export interface AddSurfacesOptions {
   /**
    * Forms to DEMOTE to 'deprecated' — the ontology rename's "drop the new
@@ -259,12 +261,26 @@ export async function addSurfaces(
   // with its rightful owner. That degradation is what makes a standing
   // label/alias reconciler both unnecessary and impossible.
   const blockedForms: string[] = [];
-  const inferred = rows.filter(
-    (r) => INFERRED_SURFACE_SOURCES.has(r.source) && claimsRecall(r.role),
+  // EVERY RECALL CLAIM IS PROBED, not only the inferred ones (F-red-team A).
+  // The probe answers ONE question — "does another entity already hold this
+  // word for recall?" — and its answer is used TWICE, differently:
+  //   - an INFERRED claim on a contested word is REFUSED outright (below);
+  //   - ANY claim on a contested word, inferred or observed, may not WIDEN an
+  //     existing role='display' row into a recall claim (insertSurfaceRows).
+  // Observed sources stay testimony for their OWN new row — a real person
+  // really said it — but a row already SITTING at 'display' got there by a
+  // refusal or by being a label, and turning it into a recall key is a fresh
+  // claim on the word. Testimony that a person said a word is not testimony
+  // that a previously-lost claim was wrongly decided.
+  const claimants = rows.filter(
+    // A 'deprecated' write is the adjudicator RECORDING a lost claim
+    // (remembered-wrong, R5-6b) — it is never active and grounds nothing.
+    (r) => claimsRecall(r.role) && r.status !== 'deprecated',
   );
-  if (inferred.length > 0 && !options.adjudicated) {
+  let contested: ReadonlySet<string> = EMPTY_FOLD_SET;
+  if (claimants.length > 0 && !options.adjudicated) {
     const foldedCandidates = Array.from(
-      new Set(inferred.map((r) => canonicalFold(r.form)).filter(Boolean)),
+      new Set(claimants.map((r) => canonicalFold(r.form)).filter(Boolean)),
     );
     if (foldedCandidates.length > 0) {
       const collisions = await tx.$queryRaw<Array<{ folded: string }>>`
@@ -278,7 +294,13 @@ export async function addSurfaces(
           FROM entity_surface ea
          WHERE ea.form_folded = ANY(${foldedCandidates}::text[])
            AND ea.entity_id <> ${entityId}::uuid
-           AND ea.status = 'active'`;
+           AND ea.status = 'active'
+           -- A role='display' row HOLDS NOTHING: its recall claim was refused
+           -- or never made, so it contests no one (the same predicate the
+           -- adjudicator's incumbentsOf carries). Without this, a claim the
+           -- judge already settled would keep blocking the winner forever —
+           -- the degraded loser would go on squatting the word it lost.
+           AND ea.role <> 'display'`;
       // SELF-REDUNDANCY: an inferred surface identical to the entity's OWN
       // name teaches nothing — the name arm already matches it in every
       // locale, so a locale-tagged copy is noise that also asserts the English
@@ -287,21 +309,19 @@ export async function addSurfaces(
       const self = await tx.$queryRaw<Array<{ identity_key: string | null }>>`
         SELECT identity_key FROM core_entities WHERE entity_id = ${entityId}::uuid`;
       const ownFold = self[0]?.identity_key ?? null;
-      const blocked = new Set(collisions.map((c) => c.folded));
+      contested = new Set(collisions.map((c) => c.folded));
+      const refused = new Set(contested);
       if (ownFold) {
-        blocked.add(ownFold);
+        refused.add(ownFold);
       }
-      if (blocked.size > 0) {
+      if (refused.size > 0) {
         for (let i = rows.length - 1; i >= 0; i -= 1) {
           const row = rows[i];
           if (
             INFERRED_SURFACE_SOURCES.has(row.source) &&
             claimsRecall(row.role) &&
-            // A 'deprecated' write is the adjudicator RECORDING a lost claim
-            // (remembered-wrong, R5-6b) — it is never active and grounds
-            // nothing, so the guard must not block the memory.
             row.status !== 'deprecated' &&
-            blocked.has(canonicalFold(row.form))
+            refused.has(canonicalFold(row.form))
           ) {
             blockedForms.push(row.form);
             if (row.role === 'both') {
@@ -315,9 +335,41 @@ export async function addSurfaces(
     }
   }
 
+  // TWO STATEMENTS, ONE LAW. `mayWiden` is not a mode: it is the answer to
+  // "was this write's recall claim EARNED?", and a row can only be in one
+  // group. An adjudicated write carries the verdict; an unadjudicated one
+  // earns it by finding the word uncontested. The split exists because the
+  // authority is PER ROW while `EXCLUDED` can only carry table columns.
   let touched = 0;
-  if (rows.length > 0) {
-    touched += await insertSurfaceRows(tx, entityId, rows, false);
+  const earned: SurfaceRow[] = [];
+  const unearned: SurfaceRow[] = [];
+  for (const row of rows) {
+    const mayWiden =
+      options.adjudicated !== undefined ||
+      (claimsRecall(row.role) && !contested.has(canonicalFold(row.form)));
+    (mayWiden ? earned : unearned).push(row);
+  }
+  for (const [group, mayWiden] of [
+    [earned, true],
+    [unearned, false],
+  ] as const) {
+    if (group.length === 0) continue;
+    const landed = await insertSurfaceRows(tx, entityId, group, false, {
+      mayWiden,
+      adjudicated: options.adjudicated !== undefined,
+    });
+    touched += landed.length;
+    // THE REFUSAL IS OBSERVED, NOT ASSUMED. A row whose write asked for recall
+    // and came back 'display' was refused the widening by the statement above.
+    // Reporting it keeps the guard's blast radius visible on every path (the
+    // same reason `blocked` exists at all) instead of only on the inferred one.
+    const wanted = new Map(group.map((r) => [r.form, r.role]));
+    for (const row of landed) {
+      const asked = wanted.get(row.form);
+      if (asked && claimsRecall(asked) && row.role === 'display') {
+        blockedForms.push(row.form);
+      }
+    }
   }
 
   // Match on the app-written `form_folded`, NOT `lower(form)`: JS
@@ -403,20 +455,30 @@ interface SurfaceRow {
  * simultaneous case, and `forceNonDefault` is its retry: a default already
  * exists, so this row simply is not it.
  *
- * THE CONFLICT CLAUSE MERGES ROLES rather than dropping the write. A recall
- * write landing on an existing display row (or the reverse) means the form
- * is now BOTH — and a write that got this far has already cleared the
- * collision guard, so widening is earned, never assumed. Recall writes
- * never touch status: a re-offer must not resurrect a claim the adjudicator
- * deprecated (the old DO NOTHING preserved this by accident; it is stated
- * here on purpose).
+ * THE CONFLICT CLAUSE MERGES ROLES rather than dropping the write, but ONLY
+ * ONE DIRECTION IS FREE. A display write landing on a recall row means the
+ * form is now read as well as matched — label-ness is not adjudicated, so it
+ * widens. The reverse is a RECALL CLAIM on a word that is already sitting at
+ * 'display', i.e. a word whose claim was refused or never made, and it widens
+ * only when `mayWiden` says the claim was earned — by an adjudicated verdict,
+ * or by the collision probe finding the word uncontested. Before this, ANY
+ * source could widen unconditionally, so an observed `ON CONFLICT` write
+ * silently overturned a verdict the judge had recorded.
+ *
+ * STATUS NEVER CLIMBS OUT OF 'deprecated' EXCEPT BY VERDICT. 'deprecated' is
+ * the memory that a form is WRONG (R5-6b); a re-offer from any writer, at any
+ * role, must not resurrect it — only the adjudicator, which is the thing that
+ * put it there, can. (The old clause preserved status only when the incoming
+ * role was 'recall', so a role='both' re-offer flipped deprecated back to
+ * active and the memory was gone.)
  */
 async function insertSurfaceRows(
   tx: Prisma.TransactionClient,
   entityId: string,
   rows: SurfaceRow[],
   forceNonDefault: boolean,
-): Promise<number> {
+  authority: { mayWiden: boolean; adjudicated: boolean },
+): Promise<Array<{ form: string; role: SurfaceRole }>> {
   const values = Prisma.join(
     rows.map((r) => {
       const wantsDefault =
@@ -434,17 +496,38 @@ async function insertSurfaceRows(
       return Prisma.sql`(${entityId}::uuid, ${r.form}, ${canonicalFold(r.form)}, ${r.locale}, ${r.role}, ${r.source}, ${r.confidence}, ${r.status}, ${r.description}, ${isDefaultExpr}, ${r.rank}, ${r.promptVersion})`;
     }),
   );
+  // The one place widening authority is spent. `mayWiden=false` PINS an
+  // existing 'display' row at 'display': the incoming recall claim was not
+  // earned, so it does not land, and the row goes on being both the label and
+  // the memory that its claim lost.
+  const roleExpr = authority.mayWiden
+    ? Prisma.sql`CASE WHEN entity_surface.role = EXCLUDED.role
+                      THEN entity_surface.role ELSE 'both' END`
+    : Prisma.sql`CASE WHEN entity_surface.role = EXCLUDED.role
+                      THEN entity_surface.role
+                      WHEN entity_surface.role = 'display' THEN 'display'
+                      ELSE 'both' END`;
+  const statusExpr = authority.adjudicated
+    ? Prisma.sql`CASE WHEN EXCLUDED.role = 'recall'
+                      THEN entity_surface.status ELSE EXCLUDED.status END`
+    : Prisma.sql`CASE WHEN entity_surface.status = 'deprecated'
+                      THEN 'deprecated'
+                      WHEN EXCLUDED.role = 'recall'
+                      THEN entity_surface.status ELSE EXCLUDED.status END`;
   try {
-    return await tx.$executeRaw`
+    // Prisma.sql, not a bare tagged template: `roleExpr`/`statusExpr` are SQL
+    // FRAGMENTS chosen by the authority above, and they must arrive as
+    // predicates, never as bind parameters.
+    return await tx.$queryRaw<
+      Array<{ form: string; role: SurfaceRole }>
+    >(Prisma.sql`
       INSERT INTO entity_surface
         (entity_id, form, form_folded, locale, role, source, confidence,
          status, description, is_default, rank, prompt_version)
       VALUES ${values}
       ON CONFLICT (entity_id, locale, form) DO UPDATE SET
-        role = CASE WHEN entity_surface.role = EXCLUDED.role
-                    THEN entity_surface.role ELSE 'both' END,
-        status = CASE WHEN EXCLUDED.role = 'recall'
-                      THEN entity_surface.status ELSE EXCLUDED.status END,
+        role = ${roleExpr},
+        status = ${statusExpr},
         description = CASE WHEN EXCLUDED.role = 'recall'
                            THEN entity_surface.description
                            ELSE EXCLUDED.description END,
@@ -452,14 +535,15 @@ async function insertSurfaceRows(
                     THEN entity_surface.rank ELSE EXCLUDED.rank END,
         prompt_version = GREATEST(entity_surface.prompt_version,
                                   EXCLUDED.prompt_version),
-        updated_at = now()`;
+        updated_at = now()
+      RETURNING form, role`);
   } catch (error) {
     if (
       !forceNonDefault &&
       error instanceof Error &&
       error.message.includes('uq_entity_surface_one_default')
     ) {
-      return insertSurfaceRows(tx, entityId, rows, true);
+      return insertSurfaceRows(tx, entityId, rows, true, authority);
     }
     throw error;
   }
@@ -478,11 +562,13 @@ export async function foldSurfacesFromMerge(
   duplicateId: string,
   options: AddSurfacesOptions = {},
 ): Promise<void> {
-  // The loser's own display name becomes a surface on the winner.
+  // The loser's own display name becomes a surface on the winner. role is
+  // STATED, not defaulted: an entity's name is a recall key (that is what a
+  // merge fold is for), and a column default is not a decision anyone made.
   await tx.$executeRaw`
     INSERT INTO entity_surface
-      (entity_id, form, form_folded, locale, source, confidence, status)
-    SELECT ${canonicalId}::uuid, x.name, x.identity_key, 'und', 'merge_fold', 1, 'active'
+      (entity_id, form, form_folded, locale, role, source, confidence, status)
+    SELECT ${canonicalId}::uuid, x.name, x.identity_key, 'und', 'recall', 'merge_fold', 1, 'active'
     FROM core_entities x
     WHERE x.entity_id = ${duplicateId}::uuid
       AND x.identity_key IS NOT NULL
@@ -492,11 +578,17 @@ export async function foldSurfacesFromMerge(
   // computing one in SQL. Names with no foldable identity (emoji-only)
   // carry NULL and are skipped: an unfoldable surface is not a recall key.
 
-  // The loser's alias rows carry over WITH their locale and provenance.
+  // The loser's surface rows carry over WITH their locale, provenance, ROLE
+  // and status. Role was omitted here once, so the column default 'recall'
+  // laundered every loser row into a recall claim on the winner: a form the
+  // collision guard had REFUSED (role='display') came back as an active
+  // recall surface, and a merge — which decides nothing about word ownership
+  // — silently overturned a verdict. A carried row is the SAME row on a new
+  // owner; it earns nothing by moving.
   await tx.$executeRaw`
     INSERT INTO entity_surface
-      (entity_id, form, form_folded, locale, source, confidence, status)
-    SELECT ${canonicalId}::uuid, a.form, a.form_folded, a.locale, a.source, a.confidence, a.status
+      (entity_id, form, form_folded, locale, role, source, confidence, status)
+    SELECT ${canonicalId}::uuid, a.form, a.form_folded, a.locale, a.role, a.source, a.confidence, a.status
     FROM entity_surface a
     WHERE a.entity_id = ${duplicateId}::uuid
     ON CONFLICT (entity_id, locale, form) DO NOTHING`;

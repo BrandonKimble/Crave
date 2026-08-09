@@ -26,7 +26,9 @@ import { canonicalFold } from './entity-identity';
  * cross-type coexistence blindly banked `helado` onto iced[attr] and beat
  * ice cream (gate 90.7→88.7, reverted in 69e6eeac7). So conflicts between
  * inferences go to a judge, per word, and the verdict is REMEMBERED:
- *   - a losing incumbent is deprecated (evicted, cannot silently return);
+ *   - a losing incumbent loses the WORD, never the label: a role='both' row
+ *     degrades to role='display' (still rendered, no longer grounds), a
+ *     role='recall' row is deprecated. Either way it cannot silently return;
  *   - a losing newcomer is written status='deprecated' (never re-proposed —
  *     the same remembered-wrong shape as R5-6b);
  *   - BOTH may win (`picante` = hot sauce to an American, spicy in Spanish)
@@ -191,7 +193,7 @@ export class WordClaimAdjudicatorService {
           (inc, k) => verdict.others[k] === false && !inc.testimony,
         );
         if (!dryRun && evictable.length) {
-          await this.deprecateIncumbents(evictable);
+          await this.evictIncumbents(evictable);
         }
         await this.bank(p.claim, dryRun);
         if (evictable.length) {
@@ -406,13 +408,36 @@ export class WordClaimAdjudicatorService {
     );
   }
 
-  private async deprecateIncumbents(incumbents: Claimant[]): Promise<void> {
+  /**
+   * EVICTION TAKES THE WORD, NOT THE LABEL.
+   *
+   * A losing incumbent loses its RECALL claim. If that row is also the label
+   * a user reads (role='both' — 13,734 of them are somebody's rendered
+   * `is_default` name), deprecating it would silently revert that user's
+   * localized label to English because every display read requires
+   * status='active'. So eviction DEGRADES a 'both' row to 'display': the
+   * label survives, the recall claim is dead (every recall arm reads
+   * `role <> 'display'`), and the row itself is the memory that it lost —
+   * exactly the encoding `addSurfaces` uses when the guard refuses a claim at
+   * write time. A pure 'recall' row has no display life to keep, so it is
+   * deprecated as before.
+   *
+   * THE DEGRADED ROW CANNOT RE-LITIGATE. It contests nothing (the collision
+   * probe and `incumbentsOf` both skip role='display'), it cannot widen back
+   * to 'both' on any unadjudicated write (insertSurfaceRows pins it), and it
+   * still satisfies the sweep's "this concept is labelled" watermark, so no
+   * nightly pass re-offers it. Only a fresh hearing can give the word back.
+   */
+  private async evictIncumbents(incumbents: Claimant[]): Promise<void> {
     const ids = incumbents
       .map((inc) => inc.aliasId)
       .filter((id): id is string => id !== null);
     if (!ids.length) return;
     await this.prisma.$executeRaw`
-      UPDATE entity_surface SET status = 'deprecated'
+      UPDATE entity_surface
+         SET role   = CASE WHEN role = 'both' THEN 'display' ELSE role END,
+             status = CASE WHEN role = 'both' THEN status ELSE 'deprecated' END,
+             updated_at = now()
        WHERE surface_id = ANY(${ids}::uuid[])`;
   }
 }
