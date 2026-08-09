@@ -93,13 +93,19 @@ describe('useContentToggle awaitingFace (OA12 — the primitive mints the face)'
     });
     expect(out.current?.phase).toBe('settled');
     expect(out.current?.awaitingFace).toBeNull();
-    renderer.unmount();
+    // F9985: unmount INSIDE act. React flushes passive unmount effects on the
+    // scheduler's Immediate, so a bare `renderer.unmount()` lets the hook's
+    // cleanup (which disposes the consequence seam and logs) run AFTER the suite
+    // ends — an escaped handle that force-exits the jest worker on a slow runner.
+    act(() => {
+      renderer.unmount();
+    });
   });
 
   // Falsifier: the in-list case (list detail) never mints strip holes on the face —
   // the real strip is mounted and live above it. RED by mutating the resolver's
   // seam to 'cold'.
-  it('an in-list strip surface gets a hole-free face (the live strip stays)', () => {
+  it('an in-list strip surface gets a hole-free face (the live strip stays)', async () => {
     const { out, renderer } = renderContentToggle('listDetail');
     let release!: () => void;
     const gate = new Promise<void>((resolve) => {
@@ -112,9 +118,13 @@ describe('useContentToggle awaitingFace (OA12 — the primitive mints the face)'
       (out.current?.awaitingFace?.props as { withFilterStripHoles?: boolean } | undefined)
         ?.withFilterStripHoles
     ).toBe(false);
-    act(() => {
+    await act(async () => {
       release();
+      await gate;
     });
-    renderer.unmount();
+    // F9985: see above — unmount inside act so the seam's dispose runs in-test.
+    act(() => {
+      renderer.unmount();
+    });
   });
 });
