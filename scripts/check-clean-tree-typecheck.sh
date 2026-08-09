@@ -96,8 +96,13 @@ done
 # confident errors about `Entity.aliases` and ZERO about the actual defect.
 GENERATED_SCHEMA="$REPO_ROOT/node_modules/.prisma/client/schema.prisma"
 COMMITTED_SCHEMA="$WORKTREE/apps/api/prisma/schema.prisma"
+# Whitespace-insensitive compare: `prisma generate` REFORMATS the schema it
+# records (column re-alignment), so a byte-diff refuses every push after a
+# routine generate — a refusal about formatting is a false positive that
+# teaches people to bypass the gate (first live firing, 2026-08-09). -wB
+# ignores whitespace-only differences; any REAL model change still refuses.
 if [[ -f "$GENERATED_SCHEMA" && -f "$COMMITTED_SCHEMA" ]] \
-   && ! diff -q "$GENERATED_SCHEMA" "$COMMITTED_SCHEMA" >/dev/null 2>&1; then
+   && ! diff -qwB "$GENERATED_SCHEMA" "$COMMITTED_SCHEMA" >/dev/null 2>&1; then
   echo ""
   echo "clean-tree-typecheck: CANNOT VERIFY $COMMIT — regenerate Prisma first."
   echo ""
