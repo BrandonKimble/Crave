@@ -24,16 +24,12 @@ type AnimatedExclusionModeSeed = { value: AppRouteNavSilhouetteSheetExclusionMod
 
 type EmptySearchRouteVisualStateSeed = Omit<
   SearchRouteHostVisualState,
-  | 'sheetTranslateY'
-  | 'sheetScrollOffset'
   | 'sheetMomentum'
   | 'navBarCutoutProgress'
   | 'navBarCutoutHidingProgress'
   | 'navTranslateY'
   | 'navSilhouetteSheetExclusionModeValue'
 > & {
-  sheetTranslateY: AnimatedNumberSeed;
-  sheetScrollOffset: AnimatedNumberSeed;
   sheetMomentum: AnimatedBooleanSeed;
   navBarCutoutProgress: AnimatedNumberSeed;
   navBarCutoutHidingProgress: AnimatedNumberSeed;
@@ -42,8 +38,6 @@ type EmptySearchRouteVisualStateSeed = Omit<
 };
 
 const EMPTY_SEARCH_ROUTE_VISUAL_STATE_SEED = {
-  sheetTranslateY: { value: 0 },
-  sheetScrollOffset: { value: 0 },
   sheetMomentum: { value: false },
   navBarHeight: searchStartupGeometrySeed.bottomNavHeight,
   navBarTopForSnaps: searchStartupGeometrySeed.navBarTopForSnaps,

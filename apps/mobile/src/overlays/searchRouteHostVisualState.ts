@@ -5,8 +5,6 @@ import type { AppRouteNavSilhouetteSheetExclusionModeValue } from '../navigation
 type AnimatedNumberLike = { value: number };
 
 export type SearchRouteHostVisualState = {
-  sheetTranslateY: SharedValue<number>;
-  sheetScrollOffset: SharedValue<number>;
   sheetMomentum: SharedValue<boolean>;
   navBarHeight: number;
   navBarTopForSnaps: number;

@@ -1,6 +1,6 @@
 import React from 'react';
 
-import { useAppRouteSharedSheetRuntimeOwner } from '../navigation/runtime/AppRouteSharedSheetRuntimeProvider';
+import { getTrackSheetPositionAuthority } from '../tracksheet/track-sheet-position-authority';
 import { publishOriginSceneLiveState } from '../navigation/runtime/origin-scene-live-state-registry';
 import type {
   OverlayKey,
@@ -14,8 +14,9 @@ import type {
 // "where was I" at the moment a search/favorites reveal launches. All axes are read at CALL time
 // via getters, never stored — a pull-snapshot the controller reads synchronously and out-of-tree.
 //
-//   • SCROLL (always) — the lane offset is read from the shared sheet scroll SharedValue
-//     (`sheetScrollOffset`, the live scroll of the currently-displayed scene-stack body). The lane
+//   • SCROLL (always) — the lane offset is asked of the track position authority at capture time
+//     (the PRESENTED entry's list scroll, max(0, τ − trackH) NOW — residue-kill item 12; the old
+//     global sheetScrollOffset mirror was only honest for the presented entry anyway). The lane
 //     is keyed by sceneIdentityKey (== overlayKey for the static mounted tabs), matching
 //     sceneScrollStateRegistry's seed key on the restore side so the offset flows back to the
 //     same lane on the cold re-mount.
@@ -40,7 +41,6 @@ export const useOriginSceneScrollPublication = (
     getSceneParams?: () => OverlayRouteParamsMap[OverlayKey] | null;
   }
 ): void => {
-  const { sheetScrollOffset } = useAppRouteSharedSheetRuntimeOwner();
   // Keep the latest getters in refs so the publication effect never re-subscribes on a getter's
   // identity change — the scene re-renders freely while its registry entry stays stable.
   const getSegmentRef = React.useRef(options?.getSegment);
@@ -54,12 +54,17 @@ export const useOriginSceneScrollPublication = (
   React.useEffect(
     () =>
       publishOriginSceneLiveState(sceneKey, {
-        getScrollLanes: () => [{ laneKey: sceneKey, offset: sheetScrollOffset.value }],
+        getScrollLanes: () => [
+          {
+            laneKey: sceneKey,
+            offset: getTrackSheetPositionAuthority().getPresentedListScroll(),
+          },
+        ],
         ...(publishSegment ? { getSegment: () => getSegmentRef.current?.() ?? null } : {}),
         ...(publishSceneParams
           ? { getSceneParams: () => getSceneParamsRef.current?.() ?? null }
           : {}),
       }),
-    [sceneKey, sheetScrollOffset, publishSegment, publishSceneParams]
+    [sceneKey, publishSegment, publishSceneParams]
   );
 };

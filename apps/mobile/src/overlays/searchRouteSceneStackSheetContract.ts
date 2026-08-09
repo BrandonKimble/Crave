@@ -43,8 +43,8 @@ export type SearchRouteSceneStackChromeEntry = {
 };
 
 export type SearchRouteSceneStackPresentationState = {
-  sheetTranslateY: SharedValue<number>;
-  sheetScrollOffset: SharedValue<number>;
+  // Residue-kill item 12: sheetTopY/scroll left this contract — position is the
+  // track's own publication; this state is a presence token + momentum lane only.
   sheetMomentum: SharedValue<boolean>;
 };
 
