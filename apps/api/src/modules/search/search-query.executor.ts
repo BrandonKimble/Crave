@@ -389,7 +389,10 @@ JOIN core_public_entity_scores pcs
 WHERE c.restaurant_id = ${restaurantId}::uuid
   -- Rollup rows are never dish rows (F9967, all lanes).
   AND NOT c.is_category_item
-ORDER BY pcs.display_score DESC, c.connection_id ASC
+-- EXACT SCORE ORDERS, never the rounded display score: this top-3 snippet sits
+-- next to the same restaurant's full dish list and the map pin's top dish, and
+-- a Decimal(4,2) tie let them disagree about which dish is #1.
+ORDER BY pcs.percentile_rank DESC, c.total_upvotes DESC, c.mention_count DESC, c.connection_id ASC
 LIMIT 3
 `);
 
@@ -1154,12 +1157,17 @@ LIMIT 3
       return {
         restaurantId: row.restaurant_id,
         restaurantName: row.restaurant_name,
+        // TIER IS ADMISSION-ONLY, BUT EXACTNESS IS BINARY (F-red-team): tier 0
+        // is the only exact tier. Every OTHER served tier — 1 (partial) and 2
+        // (the judged cousin ring) — is a different craving and must render
+        // "Similar match" and obey the Include-similar toggle. Only a row with
+        // NO tier concept at all (match_tier NULL: no widening, no gate) stays
+        // undefined. A tier-2 row used to fall through to undefined and shipped
+        // unlabeled at position 1.
         exactMatch:
-          row.match_tier === 0
-            ? true
-            : row.match_tier === 1
-              ? false
-              : undefined,
+          row.match_tier === null || row.match_tier === undefined
+            ? undefined
+            : row.match_tier === 0,
         rank: rankStart + index,
         scoreSubjectType: 'restaurant',
         scoreSubjectId: row.restaurant_id,
@@ -1234,12 +1242,12 @@ LIMIT 3
         connectionId: row.connection_id,
         foodId: row.food_id,
         foodName: row.food_name,
+        // See mapRestaurantQueryResults: tier 0 is the ONLY exact tier; the
+        // cousin ring (tier 2) is a different craving and must be labeled.
         exactMatch:
-          row.match_tier === 0
-            ? true
-            : row.match_tier === 1
-              ? false
-              : undefined,
+          row.match_tier === null || row.match_tier === undefined
+            ? undefined
+            : row.match_tier === 0,
         restaurantId: row.restaurant_entity_id,
         restaurantName: row.restaurant_name,
         restaurantLocationId: row.location_id,

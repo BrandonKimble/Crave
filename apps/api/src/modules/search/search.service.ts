@@ -1108,9 +1108,14 @@ export class SearchService {
         -- never a dish row.
         AND NOT c.is_category_item
       ORDER BY
-        pcs.display_score DESC,
-        c.mention_count DESC,
+        -- EXACT SCORE ORDERS (2026-08-08 ruling, completed): percentile_rank
+        -- (Decimal(6,5)) is the key, in the same chain as the dish axis
+        -- (resolveDishOrderSql) and the card's top-N. display_score is that
+        -- key rounded to Decimal(4,2) — ordering by it made this list
+        -- contradict the card/pin about which dish is #1.
+        pcs.percentile_rank DESC,
         c.total_upvotes DESC,
+        c.mention_count DESC,
         -- Determinism key, not a quality signal (F1902): every other
         -- dish/restaurant ORDER BY in this module terminates in an id
         -- anchor (see resolveDishOrderSql / resolveTopDishRankOrderSql in

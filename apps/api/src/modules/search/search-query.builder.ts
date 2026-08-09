@@ -494,6 +494,7 @@ LEFT JOIN LATERAL (
 		      c.total_upvotes,
 	      c.mention_count,
 		      pcs.display_score AS crave_score,
+		      pcs.percentile_rank AS crave_score_exact,
 		      pcs.rising,
 		      pcs.score_info,
 		      ROW_NUMBER() OVER (ORDER BY ${restaurantTopDishRankOrder.sql}) AS rn
@@ -1744,34 +1745,44 @@ location_aggregates AS (
       return {
         sql: Prisma.sql`prs.rising DESC NULLS LAST,
       prs.percentile_rank ${Prisma.raw(direction)},
-      prs.display_score ${Prisma.raw(direction)},
       COALESCE(rvt.total_upvotes, 0) ${Prisma.raw(direction)},
       fr.entity_id ASC`,
       };
     }
     return {
-      // HIGH-PRECISION CRAVE ORDER: percentile_rank (Decimal(6,5)) is the primary key so near-ties that round
-      // to the same display_score (Decimal(4,2)) order deterministically by their true score; display_score is
-      // a harmless secondary, then a stable id. This is what makes the map badge == the results-list position.
+      // HIGH-PRECISION CRAVE ORDER: percentile_rank (Decimal(6,5)) is THE score key, then upvotes, then a
+      // stable id — the SAME chain the pooled wrapper uses (pooledOuterOrderSql), so the two restaurant
+      // paths cannot disagree. display_score is derived from percentile_rank by rounding, so it can never
+      // split a tie the exact key left; it left the ORDER BY with the rest of them.
       sql: Prisma.sql`prs.percentile_rank ${Prisma.raw(direction)},
-      prs.display_score ${Prisma.raw(direction)},
       COALESCE(rvt.total_upvotes, 0) ${Prisma.raw(direction)},
       fr.entity_id ASC`,
     };
   }
 
+  // THE ROUNDED SCORE NEVER ORDERS (2026-08-08 ruling, completed here): the
+  // restaurant card's top-N membership AND its order ride the SAME exact chain
+  // as the dish axis — percentile_rank, then upvotes, mentions, id. While these
+  // two ordered by display_score (Decimal(4,2)) the map pin's top dish and the
+  // card's top dish could disagree on the same screen over a rounding tie.
   private resolveTopDishOrderSql(order?: string): { sql: Prisma.Sql } {
     const normalized = (order || '').toLowerCase();
     const direction = normalized.includes('asc') ? 'ASC' : 'DESC';
     if (normalized.includes('rising')) {
       return {
-        sql: Prisma.sql`sub.rising DESC NULLS LAST, sub.crave_score ${Prisma.raw(
+        sql: Prisma.sql`sub.rising DESC NULLS LAST, sub.crave_score_exact ${Prisma.raw(
           direction,
-        )}`,
+        )}, sub.total_upvotes ${Prisma.raw(
+          direction,
+        )}, sub.mention_count ${Prisma.raw(direction)}`,
       };
     }
     return {
-      sql: Prisma.sql`sub.crave_score ${Prisma.raw(direction)}`,
+      sql: Prisma.sql`sub.crave_score_exact ${Prisma.raw(
+        direction,
+      )}, sub.total_upvotes ${Prisma.raw(
+        direction,
+      )}, sub.mention_count ${Prisma.raw(direction)}`,
     };
   }
 
@@ -1780,15 +1791,19 @@ location_aggregates AS (
     const direction = normalized.includes('asc') ? 'ASC' : 'DESC';
     if (normalized.includes('rising')) {
       return {
-        sql: Prisma.sql`pcs.rising DESC NULLS LAST, pcs.display_score ${Prisma.raw(
+        sql: Prisma.sql`pcs.rising DESC NULLS LAST, pcs.percentile_rank ${Prisma.raw(
           direction,
-        )}, c.total_upvotes ${Prisma.raw(direction)}, c.connection_id ASC`,
+        )}, c.total_upvotes ${Prisma.raw(
+          direction,
+        )}, c.mention_count ${Prisma.raw(direction)}, c.connection_id ASC`,
       };
     }
     return {
-      sql: Prisma.sql`pcs.display_score ${Prisma.raw(
+      sql: Prisma.sql`pcs.percentile_rank ${Prisma.raw(
         direction,
-      )}, c.total_upvotes ${Prisma.raw(direction)}, c.connection_id ASC`,
+      )}, c.total_upvotes ${Prisma.raw(
+        direction,
+      )}, c.mention_count ${Prisma.raw(direction)}, c.connection_id ASC`,
     };
   }
 
