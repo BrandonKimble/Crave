@@ -164,6 +164,17 @@ account reached 7 routes not 1; the poison-precedence was pinned by nothing (now
 16 tests). A plans-vs-reality audit lane (owner-proxy) is out; tom tom owes the
 cost/account-deletion corroboration dump for the two stale sessions.
 
+## Lane commit protocol — two fence lessons (Search, 2026-08-09, first armed commit)
+
+1. The coverage-staleness hook AUTO-STAGES audit/COVERAGE.md (it downgrades
+   review rows for files your commit touches — correct, and it belongs in
+   your commit). Every lane must declare `audit/COVERAGE.md` in LANE_PATHS
+   or the fence refuses you for something the hooks did to you.
+2. LANE_PATHS is COLON-separated. A space-separated declaration reads as
+   malformed and the fence refuses ALL staged files — correctly conservative,
+   but it looks like a false positive. Correct form:
+   `export LANE_PATHS='apps/api/src/modules/foo/**:audit/COVERAGE.md'`
+
 ## Durable lesson of the round (03's self-diagnosis, verbatim-worthy)
 
 "I verified the case in front of me and wrote the general sentence." Three
