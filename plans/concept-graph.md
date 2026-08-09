@@ -611,3 +611,13 @@ Crave Score is only a deep tie-break in suggestions, not a ranking input —
 flag for owner. Fix order: attr-locale → alias-arm to registry → fold
 symmetry → cache key → food-localization ruling → localized fuzzy → dense
 throttle.
+
+### §13 addendum — owner ratifications (2026-08-08)
+
+RATIFIED AS INTENDED BEHAVIOR: (a) with a dietary wall on, a restaurant card
+MAY show non-wall dishes in its preview strip — the wall asks "is this a
+viable venue", the strip shows the venue's best; (b) see-locations mode
+ignores walls (the user named the restaurant). Both now documented as
+deliberate — auditors stop flagging them. AUTOCOMPLETE WORKSTREAM GREENLIT:
+full empirical flow testing → design → complete implementation → behavior
+tests → language-gate reruns when vi/zh/ko land.
