@@ -42,8 +42,9 @@
  * declaration that produced it is gone, because a mechanism kept for a change
  * that already happened is residue.
  *
- * WHAT THE FIXTURES COVER (all 47 verified against the live dev corpus in SQL
- * before being written down — names, surfaces, locales and statuses):
+ * WHAT THE FIXTURES COVER (47 of the 49 verified against the live dev corpus in
+ * SQL before being written down — names, surfaces, locales and statuses; the
+ * other two are seeded, see below):
  *   - exact tier: canonical names, case-insensitive names, number variants,
  *     and two strings that are BOTH an entity name and another entity's
  *     surface (the exact tier must win);
@@ -60,12 +61,28 @@
  *     gazetteer already removed its legacy-array arm to fix. Includes a
  *     `deprecated` es row, which must be inert on both axes.
  *
- * ROLE NOTE. Every recall arm must carry `role <> 'display'`. The und slice of
- * `entity_surface` is 100% `role='recall'` today (21,839 rows, measured
- * 2026-08-09), so no und fixture can exercise the role filter — the filter is
- * still written, because "no display rows exist right now" is a data
- * coincidence and not a law. The locale fixtures below DO cover `role='both'`
- * and `role='display'` rows, via the es slice.
+ * THE TWO FIXTURES THIS GATE SEEDS, AND WHY (2026-08-09). Two predicates the
+ * tier depends on were UNFALSIFIABLE against the corpus as it stands, and an
+ * assertion nothing can break is not coverage:
+ *
+ *   - `role <> 'display'`. The und slice is 100% `role='recall'` today, so no
+ *     und mention could reach a display row: deleting the predicate from the
+ *     SQL left this file 47/47 GREEN. (The docstring used to claim the es
+ *     fixtures covered it. They cannot — this tier is und-only, so an es row
+ *     is refused on LOCALE before role is ever consulted, and the fixture
+ *     passes for the wrong reason.)
+ *   - THE FOLD ITSELF. Every fold-* fixture types the DE-accented spelling, so
+ *     `toLowerCase()` and `canonicalFold()` agree on the probe and the
+ *     mutation is invisible. The fold exists for the mention that CARRIES the
+ *     accent.
+ *
+ * Neither had a corpus row that could show RED, so the gate creates them:
+ * ONE clearly-namespaced scratch food (`zzgate scratch concept`) carrying an
+ * und/active/role='display' surface and an und/active/role='recall' surface
+ * whose folded key differs from its verbatim form. The seed is idempotent and
+ * the rows are LEFT in place — they are inspectable in SQL like every other
+ * fixture here, and `zzgate` collides with nothing a user can type. This is
+ * the one thing this probe writes; everything else is read-only.
  *
  * Run: npx ts-node -T scripts/search-harness/entity-resolution-gate.ts
  */
@@ -101,6 +118,15 @@ interface Fixture {
 }
 
 const UNMATCHED: Outcome = { entity: null, tier: 'unmatched' };
+
+/** The seeded scratch concept (see the header). */
+const SCRATCH_ENTITY_ID = '2222220a-0000-4000-8000-00000000d15b';
+const SCRATCH_NAME = 'zzgate scratch concept';
+/** und + active + role='display' — a label, refused for recall. */
+const SCRATCH_DISPLAY_FORM = 'zzgate refused word';
+/** und + active + role='recall', banked WITHOUT the accent the user types. */
+const SCRATCH_FOLD_FORM = 'zzgate creme brulee';
+const SCRATCH_FOLD_MENTION = 'zzgate crème brûlée';
 
 const FIXTURES: Fixture[] = [
   // ── Tier 1: exact name ──────────────────────────────────────────────────
@@ -376,6 +402,22 @@ const FIXTURES: Fixture[] = [
     note: 'truncation of an ex-06 name/surface collision',
   },
 
+  // ── The two seeded predicates (see header) ──────────────────────────────
+  {
+    id: 'role-01',
+    type: EntityType.food,
+    mention: SCRATCH_DISPLAY_FORM,
+    expect: UNMATCHED,
+    note: "an und + ACTIVE + role=display surface: a label, or a recall claim the guard refused. Grounding it would resurrect exactly the claim that lost — this fixture is RED the moment `role <> 'display'` leaves the SQL",
+  },
+  {
+    id: 'fold-11',
+    type: EntityType.food,
+    mention: SCRATCH_FOLD_MENTION,
+    expect: { entity: SCRATCH_NAME, tier: 'alias' },
+    note: 'the user TYPES the accents, the surface is banked without them — the fold is the only thing that matches them, so lower()-ing the probe REDs this',
+  },
+
   // ── Locale scope: es surfaces must not ground an untagged mention ───────
   {
     id: 'loc-01',
@@ -464,11 +506,41 @@ function render(outcome: Outcome): string {
   return `${outcome.entity ?? '<none>'}[${outcome.tier}]`;
 }
 
+/**
+ * Idempotent seed for the two predicates the corpus cannot exercise. Written
+ * with the app's own fold (the fold law: `form_folded` is app-written, never
+ * a SQL expression), so the row is exactly what `addSurfaces` would have made.
+ */
+async function seedScratchFixtures(prisma: PrismaService): Promise<void> {
+  await prisma.$executeRawUnsafe(
+    `INSERT INTO core_entities (entity_id, name, type, status, identity_key, identity_key_sorted)
+     VALUES ($1::uuid, $2, 'food'::entity_type, 'active'::entity_status, $3, $3)
+     ON CONFLICT (entity_id) DO NOTHING`,
+    SCRATCH_ENTITY_ID,
+    SCRATCH_NAME,
+    canonicalFold(SCRATCH_NAME),
+  );
+  await prisma.$executeRawUnsafe(
+    `INSERT INTO entity_surface
+       (entity_id, form, form_folded, locale, role, source, confidence, status)
+     VALUES ($1::uuid, $2, $3, 'und', 'display', 'sweep', 1, 'active'),
+            ($1::uuid, $4, $5, 'und', 'recall',  'sweep', 1, 'active')
+     ON CONFLICT (entity_id, locale, form) DO UPDATE
+       SET role = EXCLUDED.role, status = EXCLUDED.status`,
+    SCRATCH_ENTITY_ID,
+    SCRATCH_DISPLAY_FORM,
+    canonicalFold(SCRATCH_DISPLAY_FORM),
+    SCRATCH_FOLD_FORM,
+    canonicalFold(SCRATCH_FOLD_FORM),
+  );
+}
+
 async function main(): Promise<void> {
   const app = await bootstrap();
   try {
     const resolver = app.get(EntityResolutionService);
     const prisma = app.get(PrismaService);
+    await seedScratchFixtures(prisma);
 
     const batch = await resolver.resolveBatch(
       FIXTURES.map((fixture) => ({
