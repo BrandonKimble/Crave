@@ -1221,6 +1221,11 @@ export const ListDetailPanelBody = React.memo(({ entry }: MountedSceneBodyProps)
     // rows land (the live in-list strip stays above it) — the face is the
     // primitive's, not this panel's.
     scene: 'listDetail',
+    // React-state store: the restore is four ASYNC setState calls and the capture
+    // source (sliceRef) updates only on render. Honest under the seam's contract
+    // because the seam re-captures ONLY on the finalized SUCCESS edge (the async
+    // consequence has re-rendered by then) — never in the failure's own stack, where
+    // this ref would still hold the failed optimistic values (G1).
     captureControlBaseline: () => {
       const snapshot = sliceRef.current;
       return () => {

@@ -351,6 +351,110 @@ describe('toggle-strip-consequence seam', () => {
       seam.dispose();
     });
 
+    // G1 (red-team 2026-08-08): an ASYNC control store (React setState — the restore
+    // applies on a later flush, the capture source is render-updated). The old seam
+    // re-captured synchronously after the failed restore, snapshotting the FAILED
+    // optimistic values; a second failure then "restored" the first failure's values.
+    // Mutation RED: reinstate the post-failure synchronous recapture and this fails.
+    const createAsyncControlStore = () => {
+      let value = 'live';
+      return {
+        set: (next: string) => {
+          value = next;
+        },
+        get: () => value,
+        captureControlBaseline: jest.fn(() => {
+          const snapshot = value;
+          return () => {
+            // React-setState-like: the restore lands on a later microtask flush —
+            // NOT in the failure edge's own stack.
+            void Promise.resolve().then(() => {
+              value = snapshot;
+            });
+          };
+        }),
+      };
+    };
+
+    it('DOUBLE FAILURE with an async (setState) store restores the ORIGINAL baseline, never the first failure values', async () => {
+      const store = createAsyncControlStore();
+      const seam = createToggleStripConsequenceSeam<Kind>({
+        consequence: 'content',
+        surfaceName: 'list-detail',
+        captureControlBaseline: store.captureControlBaseline,
+      });
+      // Failure 1: optimistic flip to 'results', consequence fails.
+      store.set('results');
+      seam.scheduleCommit(
+        async () => {
+          throw new Error('down');
+        },
+        { kind: 'feed_query' }
+      );
+      jest.advanceTimersByTime(DEFAULT_TOGGLE_SETTLE_MS);
+      await Promise.resolve();
+      await Promise.resolve();
+      await Promise.resolve(); // async restore flush
+      expect(store.get()).toBe('live');
+      // Failure 2: flip to a THIRD value, fail again — must land on 'live', the last
+      // SETTLED truth, never on failure 1's optimistic 'results'.
+      store.set('closed-weekly');
+      seam.scheduleCommit(
+        async () => {
+          throw new Error('down again');
+        },
+        { kind: 'feed_query' }
+      );
+      jest.advanceTimersByTime(DEFAULT_TOGGLE_SETTLE_MS);
+      await Promise.resolve();
+      await Promise.resolve();
+      await Promise.resolve();
+      expect(store.get()).toBe('live');
+      seam.dispose();
+    });
+
+    it('an explicit seam.cancel() mid-awaiting restores the control (old content stays — the control may not lie)', () => {
+      const store = createFakeControlStore();
+      const seam = createToggleStripConsequenceSeam<Kind>({
+        consequence: 'content',
+        surfaceName: 'polls-feed',
+        captureControlBaseline: store.captureControlBaseline,
+      });
+      store.set('results');
+      seam.scheduleCommit(() => new Promise(() => undefined), { kind: 'feed_query' });
+      expect(seam.getContentPhase()).toBe('awaiting');
+      seam.cancel();
+      expect(seam.getContentPhase()).toBe('settled');
+      expect(store.get()).toBe('live'); // reverted — unlike dispose
+      seam.dispose();
+    });
+
+    it('the world class never restores a control on failure (G2 pin: failure coherence is the desired-state architecture, not the seam)', async () => {
+      const { logger } = jest.requireMock('../utils') as { logger: { warn: jest.Mock } };
+      logger.warn.mockClear();
+      const floorSignal = createFakeFloorSignal(true);
+      const seam = createToggleStripConsequenceSeam<Kind>({
+        consequence: 'world',
+        floorSignal,
+        surfaceName: 'results',
+      });
+      seam.scheduleCommit(
+        async () => {
+          throw new Error('resolution failed');
+        },
+        { kind: 'tab_switch' }
+      );
+      jest.advanceTimersByTime(DEFAULT_TOGGLE_SETTLE_MS);
+      await Promise.resolve();
+      await Promise.resolve();
+      const revertWarns = logger.warn.mock.calls.filter((call: unknown[]) =>
+        String(call[0]).includes('[CONTENTTOGGLE] control reverted')
+      );
+      expect(revertWarns).toHaveLength(0);
+      expect(seam.getContentPhase()).toBe('settled');
+      seam.dispose();
+    });
+
     it('success does NOT restore, and dispose (cancelled) does NOT restore — teardown is not a failure', async () => {
       const store = createFakeControlStore();
       const seam = createToggleStripConsequenceSeam<Kind>({

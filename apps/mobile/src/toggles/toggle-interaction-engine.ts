@@ -19,7 +19,9 @@ import { logToggleDebug } from './toggle-debug-flag';
  *       fallback (floor never acks: backgrounded app, dead ramp) commits anyway and
  *       logs LOUDLY — expose, never silently hang.
  *     → commit: run the consequence (sync or async; AbortSignal provided)
- *     → optional visual-sync wait (finalize deferred until notifyIntentComplete)
+ *     → optional visual-sync wait (finalize deferred until notifyIntentComplete;
+ *       bounded stall bark after visualSyncStallWarnMs — a dropped intent-complete is
+ *       exposed LOUDLY, never a silent hang; no force-finalize, see the arg doc)
  *     → finalize (idle republish + 'finalized' lifecycle)
  * with seq-guarded cancellation at every boundary: cancel() aborts the in-flight
  * signal and drops any stale timer/landing; a superseded async landing can never
@@ -81,11 +83,19 @@ type CreateToggleInteractionEngineArgs<TKind extends string> = {
   /** Bounded wait past the quiet window for the floor ack before the LOUD fallback
    *  commit. Sized to the canonical fade (~300ms) + stall margin. */
   visualFloorFallbackMs?: number;
+  /** Bounded deadline on the awaitVisualSync park before the LOUD stall bark (the
+   *  floor gate's expose-never-silently-hang twin). Unlike the floor fallback it does
+   *  NOT force-finalize: search's offline pause is a DESIGNED indefinite wait (the
+   *  reveal cover holds until reconnect auto-retry resumes), and a forced 'finalized'
+   *  would clear that cover over a paused resolution. Recovery belongs to the
+   *  surface's failure/abort path; the bark makes a dead presentation path visible. */
+  visualSyncStallWarnMs?: number;
 };
 
 const TOGGLE_INTENT_PREFIX = 'toggle-intent:';
 export const DEFAULT_TOGGLE_SETTLE_MS = 300;
 export const DEFAULT_VISUAL_FLOOR_FALLBACK_MS = 900;
+export const DEFAULT_VISUAL_SYNC_STALL_WARN_MS = 5000;
 
 export const createIdleToggleInteractionState = <
   TKind extends string,
@@ -100,6 +110,7 @@ export const createToggleInteractionEngine = <TKind extends string>({
   settleMs = DEFAULT_TOGGLE_SETTLE_MS,
   isAtVisualFloor,
   visualFloorFallbackMs = DEFAULT_VISUAL_FLOOR_FALLBACK_MS,
+  visualSyncStallWarnMs = DEFAULT_VISUAL_SYNC_STALL_WARN_MS,
 }: CreateToggleInteractionEngineArgs<TKind> = {}): ToggleInteractionEngine<TKind> => {
   let interactionSeq = 0;
   let activeKind: TKind | null = null;
@@ -113,6 +124,7 @@ export const createToggleInteractionEngine = <TKind extends string>({
   let quietWindowElapsed = false;
   let visualFloorAcked = false;
   let visualFloorFallbackTimeout: ReturnType<typeof setTimeout> | null = null;
+  let visualSyncStallTimeout: ReturnType<typeof setTimeout> | null = null;
   let state: ToggleInteractionState<TKind> = createIdleToggleInteractionState<TKind>();
   const listeners = new Set<() => void>();
 
@@ -143,12 +155,20 @@ export const createToggleInteractionEngine = <TKind extends string>({
     visualFloorAcked = false;
   };
 
+  const clearVisualSyncStallTimeout = (): void => {
+    if (visualSyncStallTimeout != null) {
+      clearTimeout(visualSyncStallTimeout);
+      visualSyncStallTimeout = null;
+    }
+  };
+
   const finalizeInteraction = (seq: number, awaitedVisualSync: boolean): boolean => {
     if (interactionSeq !== seq) {
       return false;
     }
     clearSettleTimeout();
     resetVisualFloorGate();
+    clearVisualSyncStallTimeout();
     const intentId = activeIntentId;
     const kind = activeKind;
     logToggleDebug('finalize', { intentId, kind, awaitedVisualSync });
@@ -183,6 +203,7 @@ export const createToggleInteractionEngine = <TKind extends string>({
     interactionSeq += 1;
     clearSettleTimeout();
     resetVisualFloorGate();
+    clearVisualSyncStallTimeout();
     abortController?.abort();
     abortController = null;
     activeKind = null;
@@ -204,6 +225,25 @@ export const createToggleInteractionEngine = <TKind extends string>({
       return;
     }
     awaitingVisualSync = true;
+    // BOUNDED STALL BARK (expose, never silently hang — the floor gate's twin): a
+    // dropped notifyIntentComplete (dead presentation path) would park the engine
+    // non-idle forever with no signal. Bark LOUDLY at the deadline; do NOT
+    // force-finalize (see visualSyncStallWarnMs — the offline pause is a designed
+    // indefinite wait, and recovery belongs to the surface's failure/abort path).
+    clearVisualSyncStallTimeout();
+    const parkedIntentId = activeIntentId;
+    const parkedKind = activeKind;
+    visualSyncStallTimeout = setTimeout(() => {
+      visualSyncStallTimeout = null;
+      if (interactionSeq !== seq || !awaitingVisualSync) {
+        return;
+      }
+      logger.warn('[TOGGLE] visual_sync_stall', {
+        intentId: parkedIntentId,
+        kind: parkedKind,
+        waitedMs: visualSyncStallWarnMs,
+      });
+    }, visualSyncStallWarnMs);
   };
 
   const commitActiveInteraction = (intentId: string): void => {
@@ -300,6 +340,7 @@ export const createToggleInteractionEngine = <TKind extends string>({
     activeRunner = runner;
     awaitingVisualSync = false;
     resetVisualFloorGate();
+    clearVisualSyncStallTimeout();
     awaitVisualFloorActive = options.awaitVisualFloor === true;
     logToggleDebug('begin', { seq, intentId, kind });
     onLifecycle?.({ type: 'started', intentId, kind });
@@ -342,6 +383,7 @@ export const createToggleInteractionEngine = <TKind extends string>({
       interactionSeq += 1;
       clearSettleTimeout();
       resetVisualFloorGate();
+      clearVisualSyncStallTimeout();
       abortController?.abort();
       abortController = null;
       activeKind = null;

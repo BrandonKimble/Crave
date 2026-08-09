@@ -82,21 +82,32 @@ export type ToggleStripConsequenceDeclaration<TKind extends string> =
        * so if the consequence FAILS the old content returns under a lying control
        * ("Results" over Live cards). A content surface whose consequence can fail
        * declares how to snapshot its control store. The seam captures at CREATION and
-       * re-captures after every settle — i.e. the armed thunk always restores the
-       * last SETTLED control state (capture-at-press would be too late: the press
-       * handler flips the store BEFORE scheduleCommit reaches the seam). The thunk
-       * runs on the engine's 'failed' edge only. 'finalized' rolls the baseline
-       * forward to the committed values; 'cancelled' (= seam dispose, surface
-       * teardown) does NOT restore — the next present refetches against the live
-       * control values. The restore implementation must not re-enter the press edge
-       * (suppress its own control-change listeners). Surfaces whose slices are
-       * synchronous client re-slices (lists) cannot fail and declare nothing.
+       * re-captures ONLY on the 'finalized' SUCCESS edge — i.e. the armed thunk always
+       * restores the last SETTLED control state (capture-at-press would be too late:
+       * the press handler flips the store BEFORE scheduleCommit reaches the seam).
+       * The thunk runs on 'failed' and on an explicit seam.cancel(); in both cases the
+       * SAME thunk stays armed — the baseline is still the last settled truth. This is
+       * what makes the contract honest for ASYNC control stores (React setState): a
+       * post-failure re-capture in the failure's own stack would read the failed
+       * optimistic values, because an async restore has not applied yet (the G1
+       * double-failure bug — second failure "restores" the first failure's values).
+       * Capture therefore happens only where the store is settled by construction:
+       * creation, and the success edge (an async consequence has re-rendered by the
+       * time it resolves). 'cancelled' via seam DISPOSE (surface teardown) does NOT
+       * restore — the next present refetches against the live control values. The
+       * restore implementation must not re-enter the press edge (suppress its own
+       * control-change listeners). Surfaces whose slices are synchronous client
+       * re-slices (lists) cannot fail and declare nothing.
        */
       captureControlBaseline?: () => () => void;
     } & CommonDeclaration<TKind>);
 
 export type ToggleStripConsequenceSeam<TKind extends string> = {
   scheduleCommit: (runner: ToggleRunner, options: { kind: TKind }) => void;
+  /** Abandon the in-flight interaction. Content class: the old content stays, so the
+   *  seam ALSO restores the control to the last settled baseline (when declared) —
+   *  an explicit cancel must not leave a flipped control over unswapped cards. Seam
+   *  dispose does NOT restore (teardown is not a failure). */
   cancel: () => void;
   notifyIntentComplete: (intentId: string) => void;
   getState: () => ToggleInteractionState<TKind>;
@@ -122,10 +133,19 @@ export const createToggleStripConsequenceSeam = <TKind extends string>(
   let burstLastPressAtMs: number | null = null;
   let burstCommitCount = 0;
   // Restore thunk for the last SETTLED control state — captured at creation,
-  // re-captured after every settle, fired on the 'failed' edge only.
+  // re-captured on the 'finalized' SUCCESS edge only (settled truth by construction;
+  // see the declaration doc), fired on 'failed' and on explicit cancel.
   const captureControlBaseline =
     declaration.consequence === 'content' ? declaration.captureControlBaseline : undefined;
   let restoreControlBaseline: (() => void) | null = captureControlBaseline?.() ?? null;
+  // A 'failed' engine edge finalizes in the SAME stack ('failed' → 'finalized' echo,
+  // failInteraction → finalizeInteraction). The echo must not re-capture: an async
+  // (React setState) restore has not applied yet, so the capture would snapshot the
+  // FAILED optimistic values as "settled" (G1).
+  let suppressFinalizedEchoRecapture = false;
+  // dispose() settles through the same path as an explicit cancel but must NOT
+  // restore — teardown is not a failure (the next present refetches).
+  let disposing = false;
 
   const publishContentPhase = (next: ToggleStripContentPhase): void => {
     if (contentPhase === next) {
@@ -159,18 +179,40 @@ export const createToggleStripConsequenceSeam = <TKind extends string>(
     burstExitAtMs = null;
     burstLastPressAtMs = null;
     burstCommitCount = 0;
-    const restore = restoreControlBaseline;
-    restoreControlBaseline = null;
-    if (outcome === 'failed' && restore != null) {
-      // The consequence did not land: snap the optimistic control back to the last
-      // settled snapshot so control and content stay coherent. Cleared BEFORE the
-      // call so the engine's failed→finalized echo is inert.
-      logger.warn('[CONTENTTOGGLE] control reverted on failure', { surface: surfaceName, kind });
-      restore();
+    if (outcome === 'failed') {
+      if (restoreControlBaseline != null) {
+        // The consequence did not land: snap the optimistic control back to the last
+        // settled snapshot so control and content stay coherent. The thunk stays
+        // armed — its snapshot is STILL the last settled truth, and re-capturing here
+        // would read a maybe-not-yet-restored (async setState) store (G1).
+        logger.warn('[CONTENTTOGGLE] control reverted on failure', {
+          surface: surfaceName,
+          kind,
+        });
+        restoreControlBaseline();
+      }
+      // The engine's failed→finalized echo lands in this same stack; it must not
+      // roll the baseline forward off unsettled values.
+      suppressFinalizedEchoRecapture = true;
+    } else if (outcome === 'finalized') {
+      if (suppressFinalizedEchoRecapture) {
+        suppressFinalizedEchoRecapture = false;
+      } else {
+        // THE SUCCESS EDGE is the one place the store is settled by construction
+        // (an async consequence has rendered its committed control values by the
+        // time it resolves): roll the baseline forward to them.
+        restoreControlBaseline = captureControlBaseline?.() ?? null;
+      }
+    } else if (!disposing && restoreControlBaseline != null) {
+      // Explicit seam.cancel() mid-awaiting: the old content stays, so the control
+      // must return to it — same honesty as the failed edge (G5). Dispose skips
+      // this: teardown is not a failure.
+      logger.warn('[CONTENTTOGGLE] control reverted on cancel', {
+        surface: surfaceName,
+        kind,
+      });
+      restoreControlBaseline();
     }
-    // Roll the baseline forward: after a finalized settle this captures the committed
-    // control values; after a failed settle the store is back at the old baseline.
-    restoreControlBaseline = captureControlBaseline?.() ?? null;
     publishContentPhase('settled');
   };
 
@@ -230,6 +272,8 @@ export const createToggleStripConsequenceSeam = <TKind extends string>(
       logger.debug('[ToggleStrip] consequence seam disposed', { surface: surfaceName });
       // Engine dispose is QUIET (no lifecycle events), so settle the phase directly —
       // a disposed seam must never leave a surface stuck rendering the awaiting gap.
+      // `disposing` keeps the cancel-edge restore OUT of teardown (not a failure).
+      disposing = true;
       settleContent('cancelled', engine.getState().kind ?? 'disposed');
       engine.dispose();
     },

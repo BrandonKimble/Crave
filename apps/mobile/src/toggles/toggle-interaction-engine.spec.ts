@@ -7,6 +7,7 @@ jest.mock('../utils', () => ({
 import {
   createToggleInteractionEngine,
   DEFAULT_TOGGLE_SETTLE_MS,
+  DEFAULT_VISUAL_SYNC_STALL_WARN_MS,
   type ToggleLifecycleEvent,
 } from './toggle-interaction-engine';
 
@@ -85,6 +86,56 @@ describe('toggle-interaction-engine', () => {
       kind: 'a',
       awaitedVisualSync: true,
     });
+  });
+
+  // G4 (red-team 2026-08-08): the awaitVisualSync park is BOUNDED-LOUD, never a
+  // silent hang. Mutation RED: remove the stall-timer arm in settleOutcome and the
+  // first expectation fails.
+  it('a parked visual-sync wait BARKS at the stall deadline but does not force-finalize (offline pause stays a designed wait)', () => {
+    const { logger } = jest.requireMock('../utils') as { logger: { warn: jest.Mock } };
+    logger.warn.mockClear();
+    const { engine, events } = collect();
+    let intent = '';
+    engine.begin(
+      ({ intentId }) => {
+        intent = intentId;
+        return { awaitVisualSync: true };
+      },
+      { kind: 'a' }
+    );
+    jest.advanceTimersByTime(DEFAULT_TOGGLE_SETTLE_MS + 10);
+    expect(events.map((e) => e.type)).toEqual(['started', 'settled']);
+    jest.advanceTimersByTime(DEFAULT_VISUAL_SYNC_STALL_WARN_MS + 10);
+    const stallWarns = logger.warn.mock.calls.filter(
+      (call: unknown[]) => call[0] === '[TOGGLE] visual_sync_stall'
+    );
+    expect(stallWarns).toHaveLength(1);
+    expect(stallWarns[0]![1]).toMatchObject({ intentId: intent, kind: 'a' });
+    // No force-finalize: the engine still waits for the real intent-complete edge.
+    expect(events.map((e) => e.type)).toEqual(['started', 'settled']);
+    engine.notifyIntentComplete(intent);
+    expect(events.at(-1)?.type).toBe('finalized');
+  });
+
+  it('an intent-complete BEFORE the stall deadline disarms the bark (no false alarm)', () => {
+    const { logger } = jest.requireMock('../utils') as { logger: { warn: jest.Mock } };
+    logger.warn.mockClear();
+    const { engine } = collect();
+    let intent = '';
+    engine.begin(
+      ({ intentId }) => {
+        intent = intentId;
+        return { awaitVisualSync: true };
+      },
+      { kind: 'a' }
+    );
+    jest.advanceTimersByTime(DEFAULT_TOGGLE_SETTLE_MS + 10);
+    engine.notifyIntentComplete(intent);
+    jest.advanceTimersByTime(DEFAULT_VISUAL_SYNC_STALL_WARN_MS * 2);
+    const stallWarns = logger.warn.mock.calls.filter(
+      (call: unknown[]) => call[0] === '[TOGGLE] visual_sync_stall'
+    );
+    expect(stallWarns).toHaveLength(0);
   });
 
   it('a throwing runner emits failed then finalized', () => {

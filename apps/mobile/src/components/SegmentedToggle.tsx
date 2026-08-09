@@ -1,6 +1,6 @@
 import React from 'react';
 import { type LayoutChangeEvent, type LayoutRectangle, StyleSheet, View } from 'react-native';
-import { Gesture, GestureDetector } from 'react-native-gesture-handler';
+import { GestureDetector } from 'react-native-gesture-handler';
 import Reanimated, {
   Easing,
   interpolate,
@@ -10,6 +10,7 @@ import Reanimated, {
   withTiming,
   type SharedValue,
 } from 'react-native-reanimated';
+import { buildTogglePressGesture } from '../toggles/toggle-press-gesture';
 import {
   ToggleStripSlotKeyContext,
   ToggleStripWarmRestoreContext,
@@ -35,9 +36,11 @@ import {
  * SEGMENT-INDEX units, which has no ceiling. The formula is the intended behavior — longer
  * travel should take longer — so the CLAIM was corrected, not the code.) Decoupled from the search runtime and
  * the frosted-glass hole-punch overlay, so it drops onto any (incl. white) surface.
- * Consumers: polls feed Live/Results, lists Restaurants/Dishes, profile
- * Created/Contributed/Favorites. Every improvement to the toggle mechanism lands
- * HERE, once — pages never hand-roll segment rows.
+ * Consumers: search restaurant⇄dish, polls feed Live/Results, lists
+ * Restaurants/Dishes, SaveList/ListEdit visibility flips. (A "profile
+ * Created/Contributed/Favorites" consumer used to be listed here — it never
+ * existed; stale-doc fix, red-team G7 2026-08-08.) Every improvement to the toggle
+ * mechanism lands HERE, once — pages never hand-roll segment rows.
  *
  * WARM RESTORE is the strip engine's (leg 2): inside a `ToggleStrip`, the pill
  * self-seeds its measured segment geometry from the strip's warm-restore context
@@ -306,16 +309,14 @@ export function SegmentedToggle<T extends string>({
   );
 
   // PRESS-UP, UNBOUNDED (toggle-strip primitive T1/T2): the whole control is ONE target
-  // and the commit fires on finger-UP no matter how long the finger was held —
-  // `maxDuration` is lifted to effectively-infinite (the RNGH default ~500ms silently
-  // discarded a hold-then-release). Movement past the slop still cancels (maxDistance
-  // default), so a drag-away remains an escape hatch.
+  // and the commit fires on finger-UP no matter how long the finger was held. The tap
+  // config lives in the shared press layer (`buildTogglePressGesture` — one press feel,
+  // stated once; FilterChip rides the same builder). No `pressedProgress` here by
+  // ruling: the pill's pressed face is its traveling highlight, launched below.
   const tapGesture = React.useMemo(
     () =>
-      Gesture.Tap()
-        .maxDuration(1e9)
-        .shouldCancelWhenOutside(false)
-        .onEnd((event, success) => {
+      buildTogglePressGesture({
+        onEndWorklet: (event, success) => {
           'worklet';
           if (!success) {
             return;
@@ -358,7 +359,8 @@ export function SegmentedToggle<T extends string>({
             easing: SEGMENT_TRAVEL_EASING,
           });
           runOnJS(commit)(next);
-        }),
+        },
+      }),
     [commit, segmentXs, segmentWidths, selectionProgress, targetProgress]
   );
 
