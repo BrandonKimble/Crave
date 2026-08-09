@@ -28,8 +28,8 @@ export const OVERLAY_TAB_HEADER_HEIGHT =
   OVERLAY_HEADER_PADDING_BOTTOM;
 
 // F1458: the ONE declaration of the results-list FlashList draw-ahead tuning. Was declared
-// byte-identical in SearchMountedSceneBody.tsx and BottomSheetSceneStackListBodySurface.tsx —
-// two sibling modules rendering the same AnimatedFlashList with the same intent, with no
-// measurement note on either copy and no guard against them drifting apart.
+// byte-identical in two R8-deleted sibling renderers (SearchMountedSceneBody /
+// BottomSheetSceneStackListBodySurface); the living list is TrackSheetPage's single
+// FlashList, which owns its own drawDistance (track-list-window.ts).
 export const SEARCH_RESULTS_LIST_DEFAULT_DRAW_DISTANCE = 140;
 export const SEARCH_RESULTS_LIST_DEFAULT_INITIAL_DRAW_BATCH_SIZE = 8;

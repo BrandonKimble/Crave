@@ -36,10 +36,12 @@ export type PollsPanelFeedRuntime = {
   loadMorePolls: () => void;
   /**
    * Leg 4 content choreography: true between a feed-toggle press-up (old cards out)
-   * and the new slice's arrival — the list body renders NOTHING (bare white under
-   * the header strip; no skeleton, no empty-state message).
+   * and the new slice's arrival — the list body paints `feedAwaitingFace` (OA12):
+   * the refetch skeleton under the live header strip; never bare white.
    */
   isFeedSliceAwaiting: boolean;
+  /** The primitive's awaiting face (non-null exactly while isFeedSliceAwaiting). */
+  feedAwaitingFace: React.ReactElement | null;
 };
 
 export const usePollsPanelFeedRuntime = ({
@@ -93,7 +95,7 @@ export const usePollsPanelFeedRuntime = ({
     [effectivePlaceName, loading, polls.length, verdict]
   );
 
-  const { loadMorePolls, isFeedSliceAwaiting } = usePollsFeedRuntimeController({
+  const { loadMorePolls, isFeedSliceAwaiting, feedAwaitingFace } = usePollsFeedRuntimeController({
     visible,
     feedState,
     feedSort,
@@ -129,8 +131,10 @@ export const usePollsPanelFeedRuntime = ({
       resolvedSnap,
       loadMorePolls,
       isFeedSliceAwaiting,
+      feedAwaitingFace,
     }),
     [
+      feedAwaitingFace,
       contentBottomPadding,
       headerAction,
       headerVisualModel,

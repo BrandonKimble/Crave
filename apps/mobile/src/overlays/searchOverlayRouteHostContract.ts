@@ -165,8 +165,8 @@ export type SearchRouteSceneBodyTransportSpec = {
   onMomentumEndJS?: BottomSheetWithFlashListBaseProps<AppRouteSceneListItem>['onMomentumEndJS'];
   showsVerticalScrollIndicator?: boolean;
   keyboardDismissMode?: ScrollViewProps['keyboardDismissMode'];
-  // Over-scroll is enforced no-bounce structurally by BottomSheetScrollContainer (the handoff
-  // requires it); not configurable per scene. See SHEET_BODY_NO_OVERSCROLL.
+  // Over-scroll behavior is owned by the track's single FlashList (TrackSheetPage.tsx, R8);
+  // not configurable per scene. (The old BottomSheetScrollContainer enforcer died in R8.)
   testID?: string;
   activeList?: DualListSelection;
   flashListProps?: BottomSheetWithFlashListBaseProps<AppRouteSceneListItem>['flashListProps'];

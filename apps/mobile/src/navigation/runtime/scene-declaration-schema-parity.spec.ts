@@ -37,6 +37,7 @@ import {
   sceneUsesMountedTrackBody,
   SCENE_FOUNDATION_SPECS,
 } from './scene-foundation-spec';
+import { MOUNTED_TRACK_BODY_SCENE_KEYS } from '../../tracksheet/track-mounted-body-contract';
 import {
   APP_ROUTE_SCENE_KEYS,
   resolveAppRouteSceneSheetHostSceneKey,
@@ -533,6 +534,21 @@ describe('the one scene-declaration schema — parity with the five dialects it 
     it.each(ALL_SCENE_KEYS)('%s resolves the same mounted-body membership', (sceneKey) => {
       expect(sceneUsesMountedTrackBody(sceneKey)).toBe(LEGACY_MOUNTED_TRACK_SCENES.has(sceneKey));
     });
+
+    // THE COMPONENT-MAP ↔ SCHEMA agreement (residue-kill-plan §3): this CI RED
+    // replaced the run-time-only assertMountedBodyAgreement console.error. The
+    // contract's key list drives the exhaustive MOUNTED_BODY_COMPONENTS Record
+    // (map↔list drift is a BUILD error), so list↔schema is the one remaining
+    // seam — a scene declared `body.kind: 'mounted'` with no key here rendered
+    // NOTHING under the old bark, silently in CI.
+    it.each(ALL_SCENE_KEYS)(
+      '%s mounted-body key list agrees with the schema declaration',
+      (sceneKey) => {
+        expect((MOUNTED_TRACK_BODY_SCENE_KEYS as readonly string[]).includes(sceneKey)).toBe(
+          sceneUsesMountedTrackBody(sceneKey)
+        );
+      }
+    );
 
     it.each(ALL_SCENE_KEYS)('%s resolves the same body inset', (sceneKey) => {
       expect(sceneMountedBodyIsEdgeToEdge(sceneKey)).toBe(

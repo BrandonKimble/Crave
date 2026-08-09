@@ -43,8 +43,8 @@ const STATIC_SCENE_SCROLL_CONTENT_INSETS = {
   paddingHorizontal: OVERLAY_HORIZONTAL_PADDING,
 } as const;
 
-// Over-scroll is enforced no-bounce structurally by BottomSheetScrollContainer (the shared sheet
-// scroll container) so the scroll↔sheet handoff works — no per-scene over-scroll config needed.
+// Over-scroll is owned by the track's single FlashList (TrackSheetPage.tsx, post-R8),
+// whose τ-space model handles the scroll↔sheet handoff — no per-scene over-scroll config needed.
 // NOTE: no per-transport contentSurfaceStyle white here anymore — the foundation white layer
 // (SceneBodyFoundationSurface, rendered by the body lane for every scene with a
 // scene-foundation-spec row) paints every sheet scene's white plate; the old lists/profile
@@ -118,9 +118,9 @@ const POST_PHOTOS_BODY_TRANSPORT: AppRouteSceneBodyTransportSpec = {
 };
 
 // W3 messaging (§4.1): the inbox is a RE-SORTING list (rows re-order on every
-// new message) — MVCP must be OFF, and it is via the transport-owned default in
-// sceneFlashListPropsMerge.ts (F983/F2954: disabled everywhere unless a scene
-// opts IN; the redundant per-scene restatement that lived here was deleted).
+// new message) — MVCP must be OFF, and it is: the track's single FlashList disables
+// MVCP unconditionally (TrackSheetPage.tsx, post-R8; F983/F2954 established the
+// disabled-everywhere law under the old host's now-deleted merge module).
 const MESSAGES_INBOX_BODY_TRANSPORT: AppRouteSceneBodyTransportSpec = {
   contentContainerStyle: {
     ...STATIC_SCENE_SCROLL_CONTENT_INSETS,
@@ -135,7 +135,7 @@ const MESSAGES_INBOX_BODY_TRANSPORT: AppRouteSceneBodyTransportSpec = {
 // mid-sheet, which was exactly the W4 keyboard bug. Keyboard props live on the
 // panel's own thread ScrollView. No layout styles here — the transport's
 // contentContainerStyle is typed SceneBodyContentInsets (insets only, compile-
-// enforced); the static-mode frame fill lives in useBottomSheetSceneStackBodyContentRuntime.
+// enforced); the static-mode frame fill lives in the track's leg body rendering (post-R8).
 const DM_SESSION_BODY_TRANSPORT: AppRouteSceneBodyTransportSpec = {
   contentContainerStyle: STATIC_SCENE_SCROLL_CONTENT_INSETS,
 };

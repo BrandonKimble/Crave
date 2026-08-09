@@ -1384,9 +1384,10 @@ export const usePollDetailPanelSpec = ({
       // returns the active reply composer to the inactive chin — the "touch/swipe outside
       // the composer dismisses it" behaviour, without a scroll-blocking overlay.
       keyboardDismissMode: 'on-drag',
-      // Over-scroll is enforced no-bounce structurally by BottomSheetScrollContainer so the thread
-      // pins at its top and the continuous down-swipe hands off cleanly to the sheet-collapse. (An
-      // old per-scene `bounces:true` here was exactly the bug that motivated making it structural.)
+      // Over-scroll behavior is owned by the track's single FlashList (TrackSheetPage,
+      // post-R8) — the thread pins at its top and the continuous down-swipe hands off to
+      // the sheet-collapse via the track's τ-space scroll model. (An old per-scene
+      // `bounces:true` here was exactly the bug that motivated making it structural.)
     },
   };
 };

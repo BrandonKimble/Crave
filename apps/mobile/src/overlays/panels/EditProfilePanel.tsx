@@ -1,5 +1,5 @@
 import React from 'react';
-import type { MountedSceneBodyProps } from '../BottomSheetSceneStackMountedBodyRegistry';
+import type { MountedSceneBodyProps } from '../../tracksheet/track-mounted-body-contract';
 import { Pressable, StyleSheet, TextInput, View } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
 

@@ -2,11 +2,11 @@ import {
   getSceneFoundationSpec,
   resolveSceneLoadingMaterial,
 } from '../../../navigation/runtime/scene-foundation-spec';
+import { resolveToggleAwaitingMaterial } from '../../../toggles/toggle-awaiting-face';
 import {
   markPollsToggleSeamPress,
   reportPollsToggleSeamSlicePainted,
   resetPollsToggleSeamProbeForTest,
-  resolvePollsToggleSeamAwaitingMaterial,
 } from './polls-toggle-seam';
 
 /**
@@ -47,28 +47,26 @@ describe('resolveSceneLoadingMaterial toggle-seam variants (OA9)', () => {
   });
 });
 
-describe('polls toggle-seam awaiting face (OA9 step 3)', () => {
-  // Falsifier: the polls seam never renders the bare-white face while the primitive
-  // is armed. RED by mutating resolvePollsToggleSeamAwaitingMaterial's armed arm to
-  // return null.
-  it('armed: the awaiting window paints the refetch material, not bare white', () => {
-    const material = resolvePollsToggleSeamAwaitingMaterial(true);
+describe('polls toggle-seam awaiting face (OA12 — the primitive mints it)', () => {
+  // Falsifier: the polls awaiting window is the scene's refetch material, resolved
+  // through the primitive's ONE face resolver — never bare white (the OA9 A/B flag
+  // and its disarmed arm are dead; no API exists to produce null for a scene with a
+  // foundation row). RED by mutating resolveToggleAwaitingMaterial's seam to 'cold'
+  // or its return to null.
+  it('the awaiting window paints the refetch material, not bare white', () => {
+    const material = resolveToggleAwaitingMaterial('polls');
     expect(material).not.toBeNull();
     expect(material).toEqual(resolveSceneLoadingMaterial('polls', 'refetch'));
   });
 
-  // Falsifier: variant (b) keeps the strip mounted and interactive during the
-  // awaiting window. Pure decision spec (the render lane does not mount the
-  // persistent header host): polls declares strip 'header' — the strip is chrome
-  // mounted independently of the body the face replaces — AND the face never mints
-  // strip holes over it. RED by flipping either declaration.
-  it('variant (b) leaves the live header strip alone', () => {
+  // Falsifier: variant A keeps the strip mounted and interactive during the awaiting
+  // window. Pure decision spec (the render lane does not mount the persistent header
+  // host): polls declares strip 'header' — the strip is chrome mounted independently
+  // of the body the face replaces — AND the face never mints strip holes over it.
+  // RED by flipping either declaration.
+  it('variant A leaves the live header strip alone', () => {
     expect(getSceneFoundationSpec('polls')?.strip).toBe('header');
-    expect(resolvePollsToggleSeamAwaitingMaterial(true)?.withStripHoles).toBe(false);
-  });
-
-  it('disarmed: the legacy bare-white face (the A/B control arm)', () => {
-    expect(resolvePollsToggleSeamAwaitingMaterial(false)).toBeNull();
+    expect(resolveToggleAwaitingMaterial('polls')?.withStripHoles).toBe(false);
   });
 });
 

@@ -143,7 +143,7 @@ export const projectSceneBoundaryFacts = (sceneKey: string | null): void => {
 // THE CAP is a MEMORY knob, not a UX knob (same class as
 // SCENE_ENTRY_MOUNT_DEPTH_LIMIT): it decides how far back the user can travel and
 // still land on their old scroll position. It is set well above the resident-unit
-// retention budget (RESIDENT_UNIT_RETENTION_LIMIT = 3) because a record here is a few
+// retention budget (RETAINED_UNIT_RETENTION_LIMIT = 3) because a record here is a few
 // numbers, not a mounted tree — the point is a bound that exists, not a tight one.
 const SCENE_SCROLL_RECORD_LIMIT = 48;
 

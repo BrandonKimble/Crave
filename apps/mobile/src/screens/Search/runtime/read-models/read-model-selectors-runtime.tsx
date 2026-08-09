@@ -9,7 +9,6 @@ import type { SearchResultsBodyAdmissionHandoffPhase } from '../shared/search-re
 import type { PhaseBMaterializer } from '../scheduler/phase-b-materializer';
 import { commitSearchMountedResultsPreparedRowsTarget } from '../shared/search-mounted-results-data-store';
 import type { ResultsListItem } from './list-read-model-builder';
-import { useSearchResultsFlashListPolicyRuntime } from './use-search-results-flash-list-policy-runtime';
 import { useSearchResultsHydrationKeyApplyRuntime } from './use-search-results-hydration-key-apply-runtime';
 import { useSearchResultsHydrationKeyCommitEmissionRuntime } from './use-search-results-hydration-key-commit-emission-runtime';
 import { useSearchResultsHydrationOperationIdRuntime } from './use-search-results-hydration-operation-id-runtime';
@@ -65,15 +64,6 @@ type UseSearchResultsReadModelSelectorsArgs = {
   shouldRetainCommittedResultsForPolicy: boolean;
 };
 
-type ResultsFlashListRuntimeProps = {
-  drawDistance: number;
-  overrideProps: {
-    initialDrawBatchSize: number;
-  };
-  viewabilityConfig?: FlashListProps<ResultsListItem>['viewabilityConfig'];
-  onViewableItemsChanged?: FlashListProps<ResultsListItem>['onViewableItemsChanged'];
-};
-
 type SearchResultsReadModelSelectors = {
   safeResultsCountByTab: {
     dishes: number;
@@ -87,7 +77,6 @@ type SearchResultsReadModelSelectors = {
   renderListItem: NonNullable<FlashListProps<ResultsListItem>['renderItem']>;
   listFooterComponent: React.ReactNode;
   preMeasureOverlay: React.ReactNode;
-  flashListRuntimeProps: ResultsFlashListRuntimeProps;
 };
 
 export const useSearchResultsReadModelSelectors = (
@@ -258,7 +247,6 @@ export const useSearchResultsReadModelSelectors = (
   const preMeasureOverlay = useSearchResultsListPremeasureRuntime({
     restaurants,
   });
-  const flashListPolicyRuntime = useSearchResultsFlashListPolicyRuntime();
   // F1062: a `useSearchResultsFlashListViewabilityRuntime` used to merge a
   // `{onViewableItemsChanged, viewabilityConfig}` pair in here. Its callback filtered the
   // viewable set, ran a 250ms rate limiter, stamped the limiter's timestamp — and RETURNED.
@@ -277,10 +265,6 @@ export const useSearchResultsReadModelSelectors = (
     renderListItem,
     listFooterComponent,
     preMeasureOverlay,
-    // F4801 (residue of the F1062 merge): `const flashListRuntimeProps =
-    // flashListPolicyRuntime` was a bare rename left behind when the viewability half
-    // was deleted. The policy runtime IS the props.
-    flashListRuntimeProps: flashListPolicyRuntime,
   };
 };
 

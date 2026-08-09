@@ -49,7 +49,7 @@ export type BottomSheetSharedRuntimeProps = {
   // runtime could decide "is there a secondary list to activate". No scene ever set
   // activeList:'secondary' and the sole producer hardcoded 0, so the decision was always
   // 'primary'. Both the field and the `activeList` prop are gone — the dead secondary-list
-  // branch is now unrepresentable (useBottomSheetSharedRuntime.tsx: resolvedActiveList is
+  // branch is now unrepresentable (the R8-deleted useBottomSheetSharedRuntime resolved
   // 'primary' by construction).
   runtimeConfigAuthority?: BottomSheetSharedRuntimeConfigAuthority;
 };
@@ -90,7 +90,8 @@ export type BottomSheetSharedRuntimeConfigSharedValues = {
 export type BottomSheetSharedGestureRuntime = {
   gestures: {
     sheet: ReturnType<typeof Gesture.Simultaneous>;
-    // The arbitration pair, exposed so BottomSheetScrollContainer can mint a PER-INSTANCE
+    // The arbitration pair, exposed so a scroll container (R8-deleted
+    // BottomSheetScrollContainer, historically) could mint a PER-INSTANCE
     // native scroll gesture with native-side relations (requireExternalGestureToFail(expandPan) +
     // simultaneousWithExternalGesture(collapsePan)) — RNGH OR's relation declarations across the
     // pair, so any number of co-mounted scroll containers arbitrate correctly.
@@ -99,7 +100,7 @@ export type BottomSheetSharedGestureRuntime = {
     /**
      * The THIRD pan, and the one carrying boundary-physics law §3 (bottom overscroll +
      * rubber band + rebound). It was returned by the runtime and consumed by
-     * useBottomSheetSharedRuntime for a long time while this contract declared only two
+     * the (R8-deleted) useBottomSheetSharedRuntime for a long time while this contract declared only two
      * (F4502) — the read compiled against the hook's inferred type, before the narrowing.
      * The runtime's return is annotated with this type now, so the count cannot drift again.
      */
@@ -118,7 +119,7 @@ export type BottomSheetSharedScrollRuntime = {
    * the scene-stack assembly, listed in that memo's dependency array (which is what
    * re-minted the runtime on every page switch), and then deliberately IGNORED by the
    * comparator to absorb the churn its own presence caused. It had no sinks at all.
-   * Applied to the REAL ScrollView inside BottomSheetScrollContainer.
+   * Was applied to the REAL ScrollView inside the R8-deleted BottomSheetScrollContainer.
    */
   shouldEnableScrollShared: SharedValue<boolean>;
   effectiveShowsVerticalScrollIndicator: boolean;

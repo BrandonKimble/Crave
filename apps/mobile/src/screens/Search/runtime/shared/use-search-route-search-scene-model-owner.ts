@@ -23,6 +23,7 @@ import { computeSceneChromeHeight } from '../../../../navigation/runtime/scene-c
 import { useSearchRootSearchScenePanelSurfaceCompositeRuntime } from './use-search-root-search-scene-panel-surface-composite-runtime';
 import { useSearchRootRouteSearchSceneSurfaceTransportRuntime } from './use-search-root-route-search-scene-surface-transport-runtime';
 import { useSearchRootSearchScenePanelSurfaceRenderRuntime } from './use-search-root-search-scene-panel-surface-render-runtime';
+import { SearchResultsItemSeparator } from './search-results-separator';
 import { useSearchRootSearchSceneShellSpecPublicationRuntime } from './use-search-root-search-scene-shell-spec-publication-runtime';
 import { useSearchRootSearchSceneSurfacePanelStateRuntime } from './use-search-root-search-scene-surface-panel-state-runtime';
 import type { SearchRouteResultsPolicyReadModelWriterFacets } from './search-route-results-policy-domain-contract';
@@ -197,9 +198,7 @@ export const useSearchRouteSearchSceneModelOwner = ({
       ListFooterComponent: routeSearchSceneReadModelRuntime
         .routeSearchSceneResultsReadModelSelectors.listFooterComponent as React.ReactElement | null,
       ListEmptyComponent: RESULTS_LOADING_EMPTY_COMPONENT,
-      ItemSeparatorComponent:
-        routeSearchSceneSheetTransportRuntime.routeSearchScenePanelListTransportRuntime
-          .itemSeparatorComponent,
+      ItemSeparatorComponent: SearchResultsItemSeparator,
       secondaryList: routeSearchSceneSecondaryListContent,
       listKey: 'results-restaurants',
       onEndReached:
@@ -221,8 +220,6 @@ export const useSearchRouteSearchSceneModelOwner = ({
         .resultsKeyExtractor,
       routeSearchSceneSheetTransportRuntime.routeSearchSceneListItemContentRuntime
         .resultsRenderItem,
-      routeSearchSceneSheetTransportRuntime.routeSearchScenePanelListTransportRuntime
-        .itemSeparatorComponent,
       routeSearchSceneSheetTransportRuntime.routeSearchSceneSheetPlaneRuntime
         .handleResultsEndReached,
     ]
@@ -269,13 +266,13 @@ export const useSearchRouteSearchSceneModelOwner = ({
             .handleResultsListMomentumEnd,
         showsVerticalScrollIndicator: true,
         keyboardDismissMode: 'on-drag',
-        // Over-scroll is enforced no-bounce structurally by BottomSheetScrollContainer (the shared
-        // sheet scroll container) so the scroll↔sheet handoff works — no per-scene config needed.
+        // Over-scroll is owned by the track's single FlashList (TrackSheetPage.tsx,
+        // post-R8) — the τ-space model handles the scroll↔sheet handoff; no per-scene config.
         testID: 'search-results-flatlist',
         activeList: routeSearchSceneRenderRuntime.activeList,
-        flashListProps: routeSearchSceneSheetTransportRuntime
-          .routeSearchScenePanelListTransportRuntime
-          .resolvedFlashListProps as unknown as SearchRouteSceneBodyTransportSpec['flashListProps'],
+        // Dead cargo deleted (residue-kill-plan §2): the panel-list transport's
+        // resolvedFlashListProps never reached a renderer post-R8.
+        flashListProps: undefined,
         contentSurfaceStyle: undefined,
         listRef: routeSearchSceneSheetTransportRuntime.routeSearchSceneSheetPlaneRuntime
           .listRef as SearchRouteSceneBodyTransportSpec['listRef'],
@@ -286,8 +283,6 @@ export const useSearchRouteSearchSceneModelOwner = ({
         routeSearchSceneRenderRuntime.resultsContentContainerStyle,
         routeSearchSceneScrollIndicatorInsets,
         routeSearchSceneSecondaryListTransport,
-        routeSearchSceneSheetTransportRuntime.routeSearchScenePanelListTransportRuntime
-          .resolvedFlashListProps,
         routeSearchSceneSheetTransportRuntime.routeSearchSceneSheetPlaneRuntime
           .handleResultsListMomentumBegin,
         routeSearchSceneSheetTransportRuntime.routeSearchSceneSheetPlaneRuntime

@@ -1,10 +1,10 @@
 import { InteractionManager } from 'react-native';
 
 import type { OverlayKey } from '../navigation/runtime/app-overlay-route-types';
-import type { ResidencyManagedSceneKey } from './shell-residency-registry';
-import { isResidencyManagedScene, RESIDENCY_MANAGED_SCENES } from './shell-residency-registry';
+import type { RetainedShellSceneKey } from './scene-retention-registry';
+import { isRetainedShellScene, RETAINED_SHELL_SCENES } from './scene-retention-registry';
 
-export { isResidencyManagedScene } from './shell-residency-registry';
+export { isRetainedShellScene } from './scene-retention-registry';
 
 // ─── THE SHELL RESIDENCY MANAGER (THE PAGE L3) ──────────────────────────────────────
 //
@@ -42,19 +42,19 @@ export { isResidencyManagedScene } from './shell-residency-registry';
 //   real body mounts, not dead scaffolding shipped ahead of its writer. (F911: the
 //   `visitOrder` field WAS shipped ahead of its writer and read by nobody for its
 //   whole life; it is deleted and comes back with the budget, as this note promised.)
-// - **THE STRANGLER BOOLEAN (migration bridge B#5):** `isResidencyManagedScene` is
+// - **THE STRANGLER BOOLEAN (migration bridge B#5):** `isRetainedShellScene` is
 //   the one check the legacy hosts consult (conditional mount, persistent header) —
 //   deleted with the last unmigrated scene.
 
 type ShellResidencyState = {
   /** Scenes whose shells are currently mounted resident (mount order). */
-  residentScenes: readonly ResidencyManagedSceneKey[];
+  residentScenes: readonly RetainedShellSceneKey[];
   /** THE visible bit's owner — at most one resident scene is visible. */
-  visibleScene: ResidencyManagedSceneKey | null;
+  visibleScene: RetainedShellSceneKey | null;
   /** Transition participants (the outgoing leg during a live transition): DISPLAYED so
    *  the crossfade never fades a blank, back to hidden at settle. Written by the same
    *  driver as visibleScene — one writer, two coordinated facts. */
-  transitionLiveScenes: readonly ResidencyManagedSceneKey[];
+  transitionLiveScenes: readonly RetainedShellSceneKey[];
 };
 
 let state: ShellResidencyState = {
@@ -83,10 +83,10 @@ export const getShellResidencySnapshot = (): ShellResidencyState => state;
 export type EnsureShellResidentReason = 'prewarm_idle' | 'press_down' | 'navigation';
 
 export const ensureShellResident = (
-  scene: ResidencyManagedSceneKey,
+  scene: RetainedShellSceneKey,
   reason: EnsureShellResidentReason
 ): void => {
-  if (!isResidencyManagedScene(scene) || state.residentScenes.includes(scene)) {
+  if (!isRetainedShellScene(scene) || state.residentScenes.includes(scene)) {
     return;
   }
   if (reason === 'navigation') {
@@ -113,14 +113,14 @@ export const setVisibleResidentScene = (
   transitionLiveScenes: readonly (OverlayKey | null | undefined)[] = []
 ): void => {
   const managedScene =
-    scene != null && isResidencyManagedScene(scene) ? (scene as ResidencyManagedSceneKey) : null;
+    scene != null && isRetainedShellScene(scene) ? (scene as RetainedShellSceneKey) : null;
   if (managedScene != null) {
     ensureShellResident(managedScene, 'navigation');
   }
   const nextVisible = managedScene;
   const nextTransitionLive = transitionLiveScenes.filter(
-    (candidate): candidate is ResidencyManagedSceneKey =>
-      candidate != null && isResidencyManagedScene(candidate) && candidate !== nextVisible
+    (candidate): candidate is RetainedShellSceneKey =>
+      candidate != null && isRetainedShellScene(candidate) && candidate !== nextVisible
   );
   const transitionLiveUnchanged =
     nextTransitionLive.length === state.transitionLiveScenes.length &&
@@ -145,11 +145,11 @@ export const setVisibleResidentScene = (
 /** WARM-BEFORE-NAVIGATE's scheduler: records the reachable residency-managed set
  *  resident at app-idle. WIRED at the scene-stack runtime's first-idle readiness edge
  *  (resolveAppRouteStaticSceneMount residentShellsPrewarmed — the same edge that adds
- *  RESIDENT_SHELL_PREWARM_SCENES to the always-mounted legs), so the bookkeeping and
+ *  RETAINED_SHELL_PREWARM_SCENES to the always-mounted legs), so the bookkeeping and
  *  the actual leg mounts flip together. Idempotent. */
 export const scheduleResidentShellPrewarm = (): void => {
   void InteractionManager.runAfterInteractions(() => {
-    RESIDENCY_MANAGED_SCENES.forEach((scene) => {
+    RETAINED_SHELL_SCENES.forEach((scene) => {
       ensureShellResident(scene, 'prewarm_idle');
     });
     reportPrewarmCoverage();
@@ -163,12 +163,12 @@ export const scheduleResidentShellPrewarm = (): void => {
  *  the assertion moved to the edge where a gap is actually representable: after the
  *  prewarm pass, every managed scene MUST be resident. It goes RED whenever
  *  `ensureShellResident` silently declined one — today the only such path is
- *  `isResidencyManagedScene` disagreeing with `RESIDENCY_MANAGED_SCENES`, and any
+ *  `isRetainedShellScene` disagreeing with `RETAINED_SHELL_SCENES`, and any
  *  future guard, budget or async mount added to the mount path joins it automatically.
  *  Mutation recipe to prove RED: make `ensureShellResident` early-return for one scene
  *  key (e.g. `if (scene === 'lists') return;`) — this barks and names `lists`. */
 const reportPrewarmCoverage = (): void => {
-  const missing = RESIDENCY_MANAGED_SCENES.filter((scene) => !state.residentScenes.includes(scene));
+  const missing = RETAINED_SHELL_SCENES.filter((scene) => !state.residentScenes.includes(scene));
   if (missing.length === 0) {
     return;
   }

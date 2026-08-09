@@ -1,6 +1,5 @@
 import React from 'react';
 import { useWindowDimensions } from 'react-native';
-import type { FlashListProps } from '@shopify/flash-list';
 
 import type {
   AppRouteSceneBodyContentSpec,
@@ -173,12 +172,6 @@ export const useSearchRouteSearchSceneBodyInputOwner = ({
       )?.(...args),
     [rawSceneBodyContentRef]
   );
-  const stableOnUserListScrollActivity = React.useCallback<
-    NonNullable<SearchMountedListBodyTransportSpec['onUserListScrollActivity']>
-  >(
-    (...args) => rawSceneBodyTransportRef.current.onUserListScrollActivity?.(...args),
-    [rawSceneBodyTransportRef]
-  );
   const stableOnScrollOffsetChange = React.useCallback<
     NonNullable<SearchMountedListBodyTransportSpec['onScrollOffsetChange']>
   >(
@@ -208,39 +201,6 @@ export const useSearchRouteSearchSceneBodyInputOwner = ({
   >(
     (...args) => rawSceneBodyTransportRef.current.onMomentumEndJS?.(...args),
     [rawSceneBodyTransportRef]
-  );
-  const stableOnViewableItemsChanged = React.useCallback<
-    NonNullable<FlashListProps<unknown>['onViewableItemsChanged']>
-  >(
-    (info) => {
-      rawSceneBodyTransportRef.current.flashListProps?.onViewableItemsChanged?.(info);
-    },
-    [rawSceneBodyTransportRef]
-  );
-  const stableOnScrollBeginDragFlashList = React.useCallback<
-    NonNullable<FlashListProps<unknown>['onScrollBeginDrag']>
-  >(
-    (event) => {
-      rawSceneBodyTransportRef.current.flashListProps?.onScrollBeginDrag?.(event);
-    },
-    [rawSceneBodyTransportRef]
-  );
-  const stableOnScrollEndDragFlashList = React.useCallback<
-    NonNullable<FlashListProps<unknown>['onScrollEndDrag']>
-  >(
-    (event) => {
-      rawSceneBodyTransportRef.current.flashListProps?.onScrollEndDrag?.(event);
-    },
-    [rawSceneBodyTransportRef]
-  );
-  const stableFlashListProps = React.useMemo<SearchMountedListBodyTransportSpec['flashListProps']>(
-    () => ({
-      onScrollBeginDrag: stableOnScrollBeginDragFlashList,
-      onUserListScrollActivity: stableOnUserListScrollActivity,
-      onScrollEndDrag: stableOnScrollEndDragFlashList,
-      onViewableItemsChanged: stableOnViewableItemsChanged,
-    }),
-    [stableOnScrollBeginDragFlashList, stableOnScrollEndDragFlashList, stableOnViewableItemsChanged]
   );
   const stableSecondaryListContent = React.useMemo<
     SearchMountedListBodyContentSpec['secondaryList']
@@ -311,7 +271,9 @@ export const useSearchRouteSearchSceneBodyInputOwner = ({
         rawSceneBodyTransport.onMomentumBeginJS == null ? undefined : stableOnMomentumBeginJS,
       onMomentumEndJS:
         rawSceneBodyTransport.onMomentumEndJS == null ? undefined : stableOnMomentumEndJS,
-      flashListProps: stableFlashListProps,
+      // Dead cargo deleted (residue-kill-plan §2): the wrappers this used to carry
+      // dereferenced flashListProps fields the search transport never contained.
+      flashListProps: undefined,
     }),
     [
       rawSceneBodyTransport.contentSurfaceStyle,
@@ -325,7 +287,6 @@ export const useSearchRouteSearchSceneBodyInputOwner = ({
       rawSceneBodyTransport.onScrollOffsetChange == null,
       rawSceneBodyTransport.showsVerticalScrollIndicator,
       rawSceneBodyTransport.testID,
-      stableFlashListProps,
       stableOnMomentumBeginJS,
       stableOnMomentumEndJS,
       stableOnScrollBeginDrag,
@@ -356,8 +317,8 @@ export const useSearchRouteSearchSceneBodyInputOwner = ({
       path: 'structural',
       details: {
         // F1042(6): `stableSceneBodyTransport.activeList` is intentionally forced to
-        // `undefined` (this hook does not forward it downstream — the live consumer,
-        // BottomSheetSceneStackListBodySurface, reads the real primary/secondary
+        // `undefined` (this hook does not forward it downstream — the then-live consumer,
+        // the R8-deleted BottomSheetSceneStackListBodySurface, read the real primary/secondary
         // identity from the published results-data-store snapshot instead). Logging
         // that field here made the event structurally incapable of reporting anything
         // but `null`. The real per-render decision is `rawSceneBodyTransport.activeList`

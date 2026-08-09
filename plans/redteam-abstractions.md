@@ -28,9 +28,9 @@
 > | :205–211 | hidden depth computed in JS from `Dimensions` | STALE — **derived natively** from live bounds |
 > | :213–217 | the 12×200ms retrying snap | **DELETED** |
 >
-> One shortlist item did **not** land as written: item 3 ("one paint resolver") was
-> silently displaced by the domain authority — see the correction at
-> `transition-endstate-contract.md` ("ALL DEFERRED ITEMS EXECUTED").
+> (Stale note resolved 2026-08-08: item 3 ("one paint resolver") LANDED in R8 —
+> `resolveTrackPaint`, contract "ONE PAINT RESOLVER"; see the R8 checkpoint in
+> `transition-endstate-contract.md`.)
 
 2026-08-04. Read against: transition-endstate-contract.md (all checkpoints + end
 red team), every file in apps/mobile/src/tracksheet/, TrackScrollKit/Sources/
@@ -47,7 +47,7 @@ glide-only (OA5), the world join (OA1), 60fps.
 
 ## 1. THE MODULE MAP — a rung ledger wearing a module system's clothes
 
-_Verdict 2026-08-08: `hasClearedScreenEdge` DELETED; the settle sampler replaced by a native settle event. The "one paint resolver" fix was DISPLACED by the domain authority, not done — re-evaluate after R8._
+_Verdict 2026-08-08: `hasClearedScreenEdge` DELETED; the settle sampler replaced by a native settle event. The "one paint resolver" fix LANDED in R8 (`resolveTrackPaint`, contract "ONE PAINT RESOLVER")._
 
 **What a from-scratch design looks like.** Given the ratified laws, the pure
 layer has FOUR domain axes, not twelve files:
@@ -103,7 +103,7 @@ scope from the code. The specs are the ledger; move them WITH the code.
 
 ## 2. STATE AUTHORITIES — the echoes are back, one strangler-layer later
 
-_Verdict 2026-08-08: the three host motion refs folded into the motion authority. The four presented-refs → one host-owned latch is still OPEN (queued as an R8 opener)._
+_Verdict 2026-08-08: the three host motion refs folded into the motion authority. The four presented-refs → one host-owned latch LANDED in R8 (`TrackPresentedEntryLatch`)._
 
 **From-scratch:** the system's own history (posture register derivation,
 "every stored echo eventually lied") demands: ONE stored authority per fact,
@@ -121,16 +121,17 @@ memory, the readiness latch, the retention LRU, the route stack (external),
 | `inFlightSnapTargetRef`, `pendingSettleTokenRef`, `hiddenExcursionInFlightRef` (host) | The motion authority's state, scattered as three refs in a hook. See §3.                                                                                                                                                                                                         |
 | `paintedRef` (host)                                                                   | A second "presented" authority. Legitimate latch (deferred swap needs last-painted), but it lives beside `presentedEntryKeyLiveRef` (host) and `presentedEntryKeyRef` + `prevEntryKeyRef` (page) — FOUR refs tracking flavors of "who is presented," in two files.               |
 | JS mirrors `tau`/`sigma`/`dragging` SVs                                               | Necessary bridge mirrors; the code already treats them as lagging (switch reads them only at rest; native computes fresh in refuse()). Correct, but the discipline is tribal — nothing marks a mirror as "rest-only."                                                            |
-| publication bridge (sheetTranslateY/sheetScrollOffset)                                | Mirror-of-a-mirror for legacy riders. Correct strangler artifact; must die with R8's old-system delete or it becomes permanent.                                                                                                                                                  |
+| publication bridge (sheetTranslateY/sheetScrollOffset)                                | Mirror-of-a-mirror for legacy riders. Correct strangler artifact. NOTE 2026-08-08: R8 landed WITHOUT deleting it — the bridge migration is owned by `plans/residue-kill-plan.md` §1.                                                                                             |
 | `lastGoodListRef`                                                                     | Genuine (OA6.1 frozen world) — a store, not an echo. Keep.                                                                                                                                                                                                                       |
 
 **Severity:** medium now, high if left through R8.
 **Class:** echoes whose justifying world was deleted out from under them.
 **Principled fix:** an explicit register of authorities: for each fact, ONE
 owner and a documented read path. Concretely: derive posture from τ/σ inside
-native (delete the register + geometry mirrors as an R8 line item, with a
-falsifier that a switch still cannot move the sheet); collapse the four
-presented-refs to one host-owned latch handed down to the page.
+native (NOTE 2026-08-08: the register + geometry-mirror deletion was NEVER
+scheduled into R8 — it needs coordinator triage; see `plans/residue-kill-plan.md`
+§6.5 — with a falsifier that a switch still cannot move the sheet); the four
+presented-refs → one host-owned latch is DONE (R8's `TrackPresentedEntryLatch`).
 **Migration cost:** low for the JS refs; the native globals are burn-in-risky —
 schedule with R8, not before.
 **What NOT to do:** delete the posture register "because it's derivable"
@@ -344,7 +345,9 @@ of its sets.
   the shell slot) — each is load-bearing; the design made two-headers
   unrepresentable. The prose history reads like accretion; the shape is right.
 - **The freezeUntilSnap branch in the ack bridge** — documented as the hidden
-  family's ROUTING, dies with R8's plan-kind delete. Scheduled, not forgotten.
+  family's ROUTING. CORRECTED 2026-08-08: R8 ruled the OPPOSITE of the earlier
+  note here — the freezeUntilSnap plan kind is NOT deleted; it is the hidden
+  family's live routing (see the R8 checkpoint). It stays.
 - **Scroll memory surviving element eviction** — deliberate (offset outlives
   the React instance); the asymmetric lifetime is the feature.
 - **The entry-stamp opt-in on the scene-input lane** — per-writer adoption is

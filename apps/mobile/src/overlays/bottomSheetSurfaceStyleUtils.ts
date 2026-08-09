@@ -7,8 +7,8 @@ import type { ViewStyle } from 'react-native';
  * silently stripped everything else (a `flex` sent this way vanished — the W4
  * dmSession static-column regression). Now the contract is compile-enforced:
  * an unsupported style key is a type error at the producer, not a silent no-op.
- * Frame-filling layout is the body runtime's job (see staticContentFillStyle in
- * useBottomSheetSceneStackBodyContentRuntime), never the transport's.
+ * Frame-filling layout is the body host's job (post-R8: the track's leg body
+ * rendering in use-track-leg-resolver/TrackSheetPage), never the transport's.
  */
 export type SceneBodyContentInsets = {
   padding?: number;

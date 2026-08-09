@@ -62,6 +62,15 @@ const DELETED_OLD_HOST_MODULES = [
   'host-token-transition-adapter',
   'transition-lane-player',
   'OneTrackPrototype',
+  // R8's gorhom-era family (residue-kill-plan §5, added 2026-08-08):
+  'useBottomSheetSharedRuntime',
+  'BottomSheetScrollContainer',
+  'bottomSheetMomentumReboundMath',
+  'sceneFlashListPropsMerge',
+  'bodyLayerContract',
+  'bodyLayerSkip',
+  'BottomSheetSceneStackListBodySurface',
+  'useBottomSheetSceneStackBodyContentRuntime',
 ];
 
 const walk = (dir, out = []) => {

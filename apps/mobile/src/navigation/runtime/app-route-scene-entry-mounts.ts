@@ -4,10 +4,10 @@ import {
   type OverlayRouteEntry,
 } from './app-overlay-route-types';
 import {
-  isResidencyManagedScene,
-  RESIDENT_UNIT_RETENTION_LIMIT,
-  residentUnitIdentityOf,
-} from '../../overlays/shell-residency-registry';
+  isRetainedShellScene,
+  RETAINED_UNIT_RETENTION_LIMIT,
+  retainedUnitIdentityOf,
+} from '../../overlays/scene-retention-registry';
 
 // ─── W1 slice 1 — entry-keyed mounts (plans/w1-listdetail-structural-spec.md §A.1 C1) ────────
 //
@@ -36,7 +36,7 @@ export type SceneEntryMountUnit = {
  * stack top unmount their body unit but KEEP the entry (data/origin live on the entry and the
  * query cache), so a pop-return remounts skeleton-free. A memory knob, not a UX knob.
  *
- * F1387: numerically equal to `RESIDENT_UNIT_RETENTION_LIMIT` (shell-residency-registry.ts) but
+ * F1387: numerically equal to `RETAINED_UNIT_RETENTION_LIMIT` (scene-retention-registry.ts) but
  * NOT the same fact — this bounds mount DEPTH by stack position, that bounds how many POPPED
  * resident identities stay retained; each is independently derived (this one from the K=3
  * verdict, that one from a measured prototype). For a residency-managed scene the retention
@@ -53,7 +53,7 @@ export const createSceneEntryMountUnitKey = (sceneKey: OverlayKey, entryId: stri
   `${sceneKey}#${entryId}`;
 
 /** L3 residency: a managed scene's resident-unit key — scene + CONTENT identity
- *  (residentUnitIdentityOf), stable across entry pushes/pops so the resident tree
+ *  (retainedUnitIdentityOf), stable across entry pushes/pops so the resident tree
  *  never remounts. */
 export const createResidentSceneUnitKey = (sceneKey: OverlayKey, identity: string): string =>
   `resident:${sceneKey}:${identity}`;
@@ -133,14 +133,14 @@ export const resolveMountedSceneEntryUnits = ({
   }
 
   // L3 RESIDENCY: a managed scene's resident units are keyed by CONTENT IDENTITY
-  // (residentUnitIdentityOf — listId for listDetail, one-per-scene for leaves), with
+  // (retainedUnitIdentityOf — listId for listDetail, one-per-scene for leaves), with
   // a STABLE unitKey so React never remounts the resident tree: a re-push of the
   // same content updates the entry prop in place; a pop keeps the unit resident (the
-  // eviction law's last-N exemption — RESIDENT_UNIT_RETENTION_LIMIT beyond the live
+  // eviction law's last-N exemption — RETAINED_UNIT_RETENTION_LIMIT beyond the live
   // stack, oldest dropped first). Attach rides hasRetainedEntryUnits — no second
   // attach writer. Dismissal changes visibility (the manager's bit + per-unit
   // activity), never the mount.
-  if (isResidencyManagedScene(sceneKey)) {
+  if (isRetainedShellScene(sceneKey)) {
     const previousResidentByKey = new Map<string, SceneEntryMountUnit>();
     previousUnits?.forEach((unit) => {
       if (unit.unitKey.startsWith('resident:')) {
@@ -153,7 +153,7 @@ export const resolveMountedSceneEntryUnits = ({
     const liveEntryByIdentity = new Map<string, OverlayRouteEntry>();
     const ephemeralUnits: SceneEntryMountUnit[] = [];
     units.forEach((unit) => {
-      const identity = residentUnitIdentityOf(unit.entry);
+      const identity = retainedUnitIdentityOf(unit.entry);
       if (identity == null) {
         ephemeralUnits.push(unit);
         return;
@@ -177,7 +177,7 @@ export const resolveMountedSceneEntryUnits = ({
       if (
         !unit.unitKey.startsWith('resident:') ||
         nextUnits.some((next) => next.unitKey === unit.unitKey) ||
-        retainedCount >= RESIDENT_UNIT_RETENTION_LIMIT
+        retainedCount >= RETAINED_UNIT_RETENTION_LIMIT
       ) {
         return;
       }

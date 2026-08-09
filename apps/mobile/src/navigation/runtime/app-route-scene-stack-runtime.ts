@@ -2,9 +2,9 @@ import { getAppOverlayRouteMetadata } from './app-overlay-route-types';
 import { DOCKED_SCENE_KEY } from './docked-scene-target';
 import {
   isDeferredPublicationScene,
-  isResidencyManagedScene,
-  RESIDENT_SHELL_PREWARM_SCENES,
-} from '../../overlays/shell-residency-registry';
+  isRetainedShellScene,
+  RETAINED_SHELL_PREWARM_SCENES,
+} from '../../overlays/scene-retention-registry';
 import { scheduleResidentShellPrewarm } from '../../overlays/shell-residency-manager';
 import {
   getLiveTransitionTxn,
@@ -908,7 +908,7 @@ const resolveMountedSceneKeys = ({
   }
 
   if (staticSceneMountSnapshot.residentShellsShouldMount) {
-    RESIDENT_SHELL_PREWARM_SCENES.forEach((sceneKey) => {
+    RETAINED_SHELL_PREWARM_SCENES.forEach((sceneKey) => {
       appendRouteSceneKey({ mountedSceneKeys, sceneKey });
     });
   }
@@ -2243,7 +2243,7 @@ class AppRouteSceneStackLayerStateController {
     // instantly); the lane re-admits at press-up via P4 presented-activation
     // (immediate admission), and stale queries re-derive at reveal. Unmanaged scenes
     // (polls) keep today's timing — the strangler boolean scopes the law.
-    const isResidencyManaged = isResidencyManagedScene(sceneKey);
+    const isResidencyManaged = isRetainedShellScene(sceneKey);
     const canPrewarmRetainedMountedBody =
       shouldRetainMountedBody &&
       shouldPrewarmRetainedMountedSceneBody(bodyAdmissionPolicy) &&

@@ -1,5 +1,5 @@
 import React from 'react';
-import type { MountedSceneBodyProps } from '../BottomSheetSceneStackMountedBodyRegistry';
+import type { MountedSceneBodyProps } from '../../tracksheet/track-mounted-body-contract';
 import { ChromeTitleText, toSingleLineText } from '../ChromeTitleText';
 import { Pressable, StyleSheet, TextInput, View } from 'react-native';
 import { Feather } from '@expo/vector-icons';

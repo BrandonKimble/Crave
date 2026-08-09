@@ -1,5 +1,5 @@
 import React from 'react';
-import type { MountedSceneBodyProps } from '../BottomSheetSceneStackMountedBodyRegistry';
+import type { MountedSceneBodyProps } from '../../tracksheet/track-mounted-body-contract';
 import { Image, Pressable, StyleSheet, View } from 'react-native';
 
 import { Text } from '../../components';

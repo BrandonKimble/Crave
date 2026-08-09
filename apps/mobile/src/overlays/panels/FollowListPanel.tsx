@@ -1,6 +1,6 @@
 import React from 'react';
 import { useShellLiveness } from '../ShellVisibilityBoundary';
-import type { MountedSceneBodyProps } from '../BottomSheetSceneStackMountedBodyRegistry';
+import type { MountedSceneBodyProps } from '../../tracksheet/track-mounted-body-contract';
 import { Pressable, StyleSheet, View } from 'react-native';
 
 import { Text } from '../../components';

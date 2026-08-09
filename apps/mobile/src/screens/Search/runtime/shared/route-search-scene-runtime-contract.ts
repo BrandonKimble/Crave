@@ -16,7 +16,6 @@ import type { useSearchRootControlResultsExperienceRuntime } from './use-search-
 import type { RouteSceneSwitchAuthority } from './search-root-route-runtime-contract';
 import type { useSearchRootRuntimeVisualAssemblyRuntime } from './use-search-root-runtime-visual-assembly-runtime';
 import type { useSearchRootSearchSceneListItemContentRuntime } from './use-search-root-search-scene-list-item-content-runtime';
-import type { useSearchRootSearchScenePanelListTransportRuntime } from './use-search-root-search-scene-panel-list-transport-runtime';
 import type { useSearchRootSearchSceneFiltersHeaderRuntime } from './use-search-root-search-scene-filters-header-runtime';
 import type { useSearchRootSearchSceneHeaderLayoutRuntime } from './use-search-root-search-scene-header-layout-runtime';
 import type { useSearchRootSearchSceneChromeFreezeRuntime } from './use-search-root-search-scene-chrome-freeze-runtime';
@@ -145,7 +144,4 @@ export type SearchRootRuntimeRouteSearchSceneSheetTransportRuntime = {
     typeof useSearchRootSearchSceneListItemContentRuntime
   >;
   routeSearchSceneSheetPlaneRuntime: ReturnType<typeof useSearchRootSearchSceneSheetPlaneRuntime>;
-  routeSearchScenePanelListTransportRuntime: ReturnType<
-    typeof useSearchRootSearchScenePanelListTransportRuntime
-  >;
 };

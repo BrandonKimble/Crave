@@ -5,7 +5,7 @@ import { useQuery } from '@tanstack/react-query';
 import type { ImagePickerAsset } from 'expo-image-picker';
 
 import { Text } from '../../components';
-import type { MountedSceneBodyProps } from '../BottomSheetSceneStackMountedBodyRegistry';
+import type { MountedSceneBodyProps } from '../../tracksheet/track-mounted-body-contract';
 import { ChromeTitleText, toSingleLineText } from '../ChromeTitleText';
 import { registerPersistentHeaderDescriptor } from '../../navigation/runtime/app-route-persistent-header-registry';
 import { useAppOverlayRouteController } from '../useAppOverlayRouteController';

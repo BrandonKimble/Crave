@@ -34,7 +34,8 @@ import type { OverlayKey } from '../../overlays/types';
  *     be registered by the module that owns the scene's runtime, and hoisting them here would
  *     invert the dependency (this pure, hermetically-testable table would import every panel).
  *     The strip PLACEMENT decision is the column; the strip COMPONENT is the registration.
- *   • The mounted-body COMPONENT map (BottomSheetSceneStackMountedBodyRegistry) — same reason;
+ *   • The mounted-body COMPONENT map (MOUNTED_BODY_COMPONENTS in tracksheet/use-track-leg-resolver,
+ *     key list in tracksheet/track-mounted-body-contract) — same reason;
  *     `track.body.kind === 'mounted'` is the declaration, the component is the registration.
  *   • The sheet-motion descriptor TABLE (app-route-sheet-motion-descriptor-table.ts) stays a
  *     separate table: its rows are keyed on (from, to, transitionKind) with a precedence
@@ -87,8 +88,8 @@ export type SceneFoundationSpec = {
   // on all 18 rows. THE FOUNDATION WHITE LAYER standard it asserted (owner standard,
   // 2026-07-11 — every page renders a white plate over the shared frosted foundation, no
   // page may sit on bare frost) is UNCHANGED; it is simply no longer a per-row field with
-  // a structurally-unreachable false arm. useBottomSheetSceneStackBodyContentRuntime.tsx
-  // now renders the white plate unconditionally for every sheet scene instead of gating
+  // a structurally-unreachable false arm. The body host (post-R8: the track's leg bodies)
+  // renders the white plate unconditionally for every sheet scene instead of gating
   // on `?.bodySurface === 'white'`. Per-page CUTOUTS (holes showing the frost through)
   // are still runtime-registered via `<FrostCutout>` — see ADDING_A_SCENE.md §5. The
   // search/results sheet stays excluded (owns its canonical composition).

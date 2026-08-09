@@ -20,7 +20,7 @@ import { SceneStripLawContext } from '../toggles/toggle-strip-scene-law';
 /**
  * THE FOUNDATION WHITE LAYER (owner standard, 2026-07-11): every sheet scene's body sits on a
  * WHITE plate over the shared frosted foundation — no page renders on bare frost. The plate is
- * rendered HERE, at the body lane (`useBottomSheetSceneStackBodyContentRuntime`), under the
+ * rendered HERE, at the body lane (hosted by the track's leg bodies post-R8), under the
  * scene's scroll/list/static content. The plate is not declared per scene: F1389 deleted the
  * single-inhabitant per-row surface field, and MEMBERSHIP in the foundation table is
  * the enforcer — every key in `SheetSceneKey` has a `SCENE_FOUNDATION_SPECS` row (the record is

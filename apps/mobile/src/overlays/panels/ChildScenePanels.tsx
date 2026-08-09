@@ -28,7 +28,7 @@ import { FollowListPanelBody } from './FollowListPanel';
 import { NotificationsPanelBody } from './NotificationsPanel';
 import { EditProfilePanelBody } from './EditProfilePanel';
 import { ListDetailPanelBody } from './ListDetailPanel';
-import type { MountedSceneBodyProps } from '../BottomSheetSceneStackMountedBodyRegistry';
+import type { MountedSceneBodyProps } from '../../tracksheet/track-mounted-body-contract';
 import { PageBodyShell } from '../PageBodyShell';
 import { ChromeTitleText, toSingleLineText } from '../ChromeTitleText';
 import type { PageStaticBodySpec } from '../page-body-contract';

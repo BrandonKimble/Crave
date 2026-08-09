@@ -201,8 +201,8 @@ export type AppRouteSceneBodyTransportSpec = {
   showsVerticalScrollIndicator?: boolean;
   keyboardDismissMode?: ScrollViewProps['keyboardDismissMode'];
   // NB: over-scroll (bounces / alwaysBounceVertical / overScrollMode) is NOT configurable per scene.
-  // It is enforced no-bounce structurally by BottomSheetScrollContainer because the scroll↔sheet
-  // handoff requires it (see SHEET_BODY_NO_OVERSCROLL). Don't re-add these here.
+  // It is owned by the track's single FlashList (TrackSheetPage.tsx, post-R8), whose τ-space
+  // scroll model handles the scroll↔sheet handoff. Don't re-add these here.
   testID?: string;
   activeList?: BottomSheetWithFlashListBaseProps<AppRouteSceneListItem>['activeList'];
   flashListProps?: BottomSheetWithFlashListBaseProps<AppRouteSceneListItem>['flashListProps'];

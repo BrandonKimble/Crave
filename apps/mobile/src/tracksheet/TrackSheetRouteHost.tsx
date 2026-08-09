@@ -42,7 +42,7 @@ import {
   trackPerfToEpochMs,
 } from './track-press-phase-probe';
 import { useNativeHiddenEdgeSource, useTrackMotionController } from './use-track-motion-controller';
-import { assertMountedBodyAgreement, useTrackLegResolver } from './use-track-leg-resolver';
+import { useTrackLegResolver } from './use-track-leg-resolver';
 import { useTrackA11yAnnouncer } from './use-track-a11y-announcer';
 
 // ─── TrackSheetRouteHost — THE PRODUCTION SHEET HOST ──────────────────────────
@@ -77,7 +77,9 @@ import { useTrackA11yAnnouncer } from './use-track-a11y-announcer';
 const DEEP_LINK_HOST = 'tracksheet-host';
 
 export const TrackSheetRouteHost: React.FC = () => {
-  assertMountedBodyAgreement();
+  // (The old assertMountedBodyAgreement dev bark is gone — the component map is
+  // an exhaustive Record and the key-list↔schema agreement is a parity-spec CI
+  // RED; residue-kill-plan §3.)
   // THE ONE native edge subscription for the whole track (motion controller):
   // mounted once, at the root, feeding the motion authority.
   useNativeHiddenEdgeSource();

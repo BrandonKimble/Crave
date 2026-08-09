@@ -19,7 +19,6 @@ import { useSharedValue } from 'react-native-reanimated';
 
 import type { SheetSceneKey } from '../navigation/runtime/scene-foundation-spec';
 import {
-  SCENE_DECLARATIONS,
   resolveSceneListPartsSource,
   sceneDeclaresSharedRowSurface,
   sceneIsResidentTrackScene,
@@ -57,7 +56,10 @@ import { SaveListMountedSceneBody } from '../overlays/panels/SaveListPanel';
 import { useHomePanelListSceneParts } from '../overlays/panels/HomePanel';
 import { usePollsPanelListSceneParts } from '../overlays/panels/PollsPanel';
 import type { OverlayKey } from '../overlays/types';
-import type { SearchRouteMountedSceneBodyKey } from '../overlays/searchOverlayRouteHostContract';
+import type {
+  MountedSceneBodyProps,
+  MountedTrackBodySceneKey,
+} from './track-mounted-body-contract';
 import { ChromeProbeBoundary, renderListLeader } from './track-sheet-chrome-parts';
 import {
   makeTrackEntryKey,
@@ -104,8 +106,12 @@ const trackBodyLaneWidth = (edgeToEdge: boolean): number =>
 // scene-foundation-spec.ts); this map binds the key to its React component.
 // (Registration cannot hoist into the pure table without inverting the
 // dependency — the table would import every panel.)
-const MOUNTED_BODY_COMPONENTS: Partial<
-  Record<SearchRouteMountedSceneBodyKey, React.ComponentType<{ entry?: OverlayRouteEntry | null }>>
+// F981: an exhaustive Record over the contract's key list — a missing component
+// is a BUILD ERROR; the key-list↔schema agreement is a parity-spec CI RED
+// (scene-declaration-schema-parity.spec.ts), not a dev-only bark.
+const MOUNTED_BODY_COMPONENTS: Record<
+  MountedTrackBodySceneKey,
+  React.ComponentType<MountedSceneBodyProps>
 > = {
   lists: ListsMountedSceneBody,
   profile: ProfileMountedSceneBody,
@@ -121,37 +127,9 @@ const MOUNTED_BODY_COMPONENTS: Partial<
   dmSession: DmSessionPanelBody,
 };
 
-/**
- * The COMPONENT-MAP ↔ SCHEMA agreement check (the F872 failure mode, kept as a
- * falsifier now that the membership fact moved): a scene the schema declares
- * `body.kind: 'mounted'` with no component here renders NOTHING — blank body, no
- * error. The schema is the authority; this bark makes the disagreement loud
- * instead of silent. (The reverse — a component with no mounted declaration — is
- * dead weight and also barks.)
- *
- * Run once at FIRST RENDER, not at module init: this module sits in an import
- * cycle with the panel modules, so SCENE_DECLARATIONS is not yet initialized
- * when this module body runs.
- */
-let mountedBodyAgreementChecked = false;
-export const assertMountedBodyAgreement = (): void => {
-  if (!__DEV__ || mountedBodyAgreementChecked) {
-    return;
-  }
-  mountedBodyAgreementChecked = true;
-  for (const sceneKey of Object.keys(SCENE_DECLARATIONS) as OverlayKey[]) {
-    const declaredMounted = sceneUsesMountedTrackBody(sceneKey);
-    const hasComponent =
-      MOUNTED_BODY_COMPONENTS[sceneKey as SearchRouteMountedSceneBodyKey] != null;
-    if (declaredMounted !== hasComponent) {
-      // eslint-disable-next-line no-console
-      console.error(
-        `[track-host] scene '${sceneKey}' declares mounted-body=${declaredMounted} in the scene ` +
-          `schema but ${hasComponent ? 'HAS' : 'has NO'} mounted body component here.`
-      );
-    }
-  }
-};
+// The old dev-only assertMountedBodyAgreement bark is gone (residue-kill-plan §3):
+// map↔key-list agreement is a BUILD ERROR (exhaustive Record above) and
+// key-list↔schema agreement is a parity-spec CI RED.
 
 /** A leg's resolved body — whatever phase produced it (content, frozen, or the
  * skeleton), it feeds TrackSheetPage's per-leg FlashList props. Loosely typed on
@@ -281,7 +259,9 @@ export const useTrackLegResolver = ({
       // DIRECT bodies, no registry wrapper: the wrapper's residency boundary
       // renders hidden prewarm legs which, without the old host's shell-liveness
       // context, painted VISIBLY below the live body (the phantom duplicate).
-      const Body = MOUNTED_BODY_COMPONENTS[legScene as SearchRouteMountedSceneBodyKey];
+      const Body = MOUNTED_BODY_COMPONENTS[legScene as MountedTrackBodySceneKey] as
+        | React.ComponentType<MountedSceneBodyProps>
+        | undefined;
       if (Body == null) {
         return null;
       }
@@ -1014,8 +994,9 @@ export const useTrackLegResolver = ({
 };
 
 const styles = StyleSheet.create({
-  // Production's body inset (useBottomSheetSceneStackBodyContentRuntime applies
-  // OVERLAY_HORIZONTAL_PADDING via the transport) — mounted bodies expect it.
+  // Production's body inset (the old host's body runtime applied
+  // OVERLAY_HORIZONTAL_PADDING via the transport; the track keeps the same
+  // geometry) — mounted bodies expect it.
   rowSurface: { paddingHorizontal: OVERLAY_HORIZONTAL_PADDING },
   // Mounted cells: the FOUNDATION plate is the white now — the cell must be
   // transparent or cutout holes reveal cell-white instead of frost.

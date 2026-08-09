@@ -358,7 +358,7 @@ export const usePollCreationPanelSpec = ({
       },
       keyboardShouldPersistTaps: 'handled',
       // §J: dragging the form dismisses the keyboard (matches PollDetailPanel); a tap on any field
-      // re-raises it. Over-scroll enforced no-bounce structurally by BottomSheetScrollContainer.
+      // re-raises it. Over-scroll behavior is owned by the track's FlashList (TrackSheetPage, post-R8).
       keyboardDismissMode: 'on-drag',
     },
   };

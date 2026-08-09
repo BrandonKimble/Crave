@@ -26,7 +26,7 @@ import { registerPersistentHeaderDescriptor } from '../../navigation/runtime/app
 import { useAppOverlayRouteController } from '../useAppOverlayRouteController';
 import { useEntityRefActionExecutor } from '../../navigation/runtime/use-entity-ref-action-executor';
 import type { EntityRefType } from '../../navigation/runtime/entity-ref-action-policy';
-import type { MountedSceneBodyProps } from '../BottomSheetSceneStackMountedBodyRegistry';
+import type { MountedSceneBodyProps } from '../../tracksheet/track-mounted-body-contract';
 import { ChromeTitleText, toSingleLineText } from '../ChromeTitleText';
 import type { OverlayRouteParamsMap } from '../../navigation/runtime/app-overlay-route-types';
 import { MonogramAvatar } from '../../components/MonogramAvatar';

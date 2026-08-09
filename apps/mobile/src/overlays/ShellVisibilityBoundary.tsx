@@ -1,7 +1,7 @@
 import React from 'react';
 import { StyleSheet, View } from 'react-native';
 
-import type { ResidencyManagedSceneKey } from './shell-residency-registry';
+import type { RetainedShellSceneKey } from './scene-retention-registry';
 import { getShellResidencySnapshot, subscribeShellResidency } from './shell-residency-manager';
 
 // ─── THE SHELL VISIBILITY BOUNDARY (L3 — the one-writer derivation surface) ─────────
@@ -27,12 +27,12 @@ const ShellLivenessContext = React.createContext<boolean>(true);
  *  legacy world — everything mounted is visible). */
 export const useShellLiveness = (): boolean => React.useContext(ShellLivenessContext);
 
-const isShellDisplayed = (scene: ResidencyManagedSceneKey): boolean => {
+const isShellDisplayed = (scene: RetainedShellSceneKey): boolean => {
   const snapshot = getShellResidencySnapshot();
   return snapshot.visibleScene === scene || snapshot.transitionLiveScenes.includes(scene);
 };
 
-export const useShellVisibility = (scene: ResidencyManagedSceneKey): boolean =>
+export const useShellVisibility = (scene: RetainedShellSceneKey): boolean =>
   React.useSyncExternalStore(
     subscribeShellResidency,
     () => isShellDisplayed(scene),
@@ -43,7 +43,7 @@ export const ShellVisibilityBoundary = ({
   scene,
   children,
 }: {
-  scene: ResidencyManagedSceneKey;
+  scene: RetainedShellSceneKey;
   children: React.ReactNode;
 }): React.ReactElement => {
   const displayed = useShellVisibility(scene);
