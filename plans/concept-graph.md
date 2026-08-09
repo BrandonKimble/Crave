@@ -639,3 +639,16 @@ Dense-per-keystroke throttle: P3, unchanged. OWNER RULING STILL OPEN:
 should Crave Score rank suggestions (today it is only a deep tie-break /
 recall-truncation input)? LANGUAGE RERUNS: add a vi/zh/ko entry block to
 the flow gate per rollout — that IS the re-test the owner mandated.
+
+### §13 CLOSED (2026-08-08, commits ac0d2a4ea / 4e9957631)
+
+AC-P1a COMPLETE: recall reads the locale-chained registry — aliases[] is
+read by NOTHING in the match path (lexicon, attr lane, sparse arms all on
+entity_alias; per-form scoring; fold-symmetric name arms; locale in every
+cache key). Judge re-earned picante/café by machine. editScore is a
+first-class merge signal (the carnes-trigram trap loses to Damerau merit).
+Cost: +~30ms cold per novel term, 0 cached — measured old-vs-new, recorded.
+Flow gate 12/12, search gate 98.7, projection-guard specs green. The
+remaining aliases[] readers (embedding doc, und projection writer) are the
+knowledge-layer retirement item (I-2), not autocomplete. Language reruns:
+add vi/zh/ko blocks to autocomplete-flow-gate.ts per rollout.
