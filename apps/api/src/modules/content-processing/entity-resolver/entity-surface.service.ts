@@ -5,7 +5,7 @@ import {
   isDisplayable,
   normalizeSurface,
 } from './entity-identity';
-import { normalizeLocaleTag } from '../../../shared/locale';
+import { localeLookupChain, normalizeLocaleTag } from '../../../shared/locale';
 
 /**
  * THE SURFACE WRITER (multilingual plan A1) — the ONE writer of
@@ -703,10 +703,15 @@ export async function foldSurfacesFromMerge(
  * Three predicates, and each one is load-bearing:
  *   - `status = 'active'` — a 'candidate' form is banked but unjudged, and a
  *     'deprecated' form is REMEMBERED AS WRONG (R5-6b). Neither grounds.
- *   - `locale = 'und'` — these arms take no locale, so a locale-TAGGED form
- *     matching here would ground for every language at once. That is the F2
- *     bug the gazetteer already removed its legacy-array arm to fix; the
- *     locale-aware lanes read `entity_surface` with a locale chain instead.
+ *   - `locale = ANY(localeLookupChain(documentLocale))` — the recall slice a
+ *     document written in that language may ground through. A caller with no
+ *     locale passes null and the chain is `['und']` — byte-identical to the
+ *     und-only predicate this used to hard-code, which is why every
+ *     locale-less caller is unchanged. An `es` document gets
+ *     `['es','und']`: its own language's words AND the universal ones, and
+ *     NEVER another language's. Matching every locale at once remains the F2
+ *     bug the gazetteer removed its legacy-array arm to fix — the chain is
+ *     the opposite of that, a closed set the request names.
  *   - `role <> 'display'` — a display row makes NO recall claim (it is a label,
  *     or a recall claim the collision guard refused), so grounding on it would
  *     resurrect exactly the claim that lost.
@@ -720,6 +725,16 @@ export async function foldSurfacesFromMerge(
  * $queryRaw's own template turns every interpolation into a bind parameter,
  * so this fragment would arrive as a parameter object instead of a predicate.
  */
-export const RECALL_SURFACE_SCOPE_SQL = Prisma.raw(
-  `s.status = 'active' AND s.locale = 'und' AND s.role <> 'display'`,
-);
+export function recallSurfaceScopeSql(
+  documentLocale: string | null | undefined,
+  alias = 's',
+): Prisma.Sql {
+  // LOWER() on the stored side, because the chain is lowercased by
+  // construction and `normalizeLocaleTag` preserves the canonical case of a
+  // region subtag ('es-MX'). Every other locale-chain read in the codebase
+  // (label-sweep, the localized-surface lane) matches the same way.
+  const table = Prisma.raw(alias);
+  return Prisma.sql`${table}.status = 'active'
+     AND LOWER(${table}.locale) = ANY(${localeLookupChain(documentLocale ?? null)}::text[])
+     AND ${table}.role <> 'display'`;
+}

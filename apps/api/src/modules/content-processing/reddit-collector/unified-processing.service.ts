@@ -953,8 +953,12 @@ export class UnifiedProcessingService implements OnModuleInit {
     engineId: string | null,
   ): Promise<BatchResolutionResult> {
     await this.observeFoodNamespaceCollisions(llmOutput);
+    const documentLocaleById = await this.loadDocumentLocales(
+      llmOutput.mentions,
+    );
     const entityResolutionInput = this.extractEntitiesFromLLMOutput(llmOutput, {
       engineId,
+      documentLocaleById,
     });
     return this.entityResolutionService.resolveBatch(entityResolutionInput, {
       batchSize: this.entityResolutionBatchSize,
@@ -970,12 +974,66 @@ export class UnifiedProcessingService implements OnModuleInit {
    * Extract entities from LLM output for resolution
    * Converts LLM mentions to entity resolution input format
    */
+  /**
+   * THE DOCUMENT'S OWN LANGUAGE, read back from the row it was stamped on.
+   *
+   * Not re-derived through the community: `collection_source_documents.language`
+   * is the fact recorded AT COLLECTION TIME, and a community that gets
+   * re-languaged later must not retroactively re-interpret words already
+   * banked (that is why the column exists at all). A mention with no source
+   * document — the pre-document legacy lanes — stays locale-less, which
+   * resolves to the und-only scope exactly as before.
+   */
+  private async loadDocumentLocales(
+    mentions: ProcessableMention[],
+  ): Promise<Map<string, string>> {
+    const documentIds = Array.from(
+      new Set(
+        mentions
+          .map((mention) => this.getMentionProvenance(mention).sourceDocumentId)
+          .filter((id): id is string => Boolean(id)),
+      ),
+    );
+    if (documentIds.length === 0) {
+      return new Map();
+    }
+    const rows = await this.prismaService.sourceDocument.findMany({
+      where: { documentId: { in: documentIds } },
+      select: { documentId: true, language: true },
+    });
+    const locales = new Map<string, string>();
+    for (const row of rows) {
+      const language = (row.language ?? '').trim();
+      if (language) {
+        locales.set(row.documentId, language);
+      }
+    }
+    return locales;
+  }
+
+  /** The language of the document a mention was read out of, or null. */
+  private mentionDocumentLocale(
+    mention: ProcessableMention,
+    documentLocaleById: Map<string, string>,
+  ): string | null {
+    const documentId = this.getMentionProvenance(mention).sourceDocumentId;
+    if (!documentId) {
+      return null;
+    }
+    return documentLocaleById.get(documentId) ?? null;
+  }
+
   private extractEntitiesFromLLMOutput(
     llmOutput: EnrichedLLMOutputStructure,
-    options: { engineId?: string | null } = {},
+    options: {
+      engineId?: string | null;
+      documentLocaleById?: Map<string, string>;
+    } = {},
   ): EntityResolutionInput[] {
     const entities: EntityResolutionInput[] = [];
     const engineId = options.engineId ?? null;
+    const documentLocaleById =
+      options.documentLocaleById ?? new Map<string, string>();
 
     const getSurfaceString = (surface: unknown, fallback: unknown): string => {
       if (typeof surface === 'string' && surface.length > 0) {
@@ -1017,6 +1075,13 @@ export class UnifiedProcessingService implements OnModuleInit {
     try {
       for (const mention of llmOutput.mentions) {
         this.sanitizeMention(mention);
+        // THE LANGUAGE THE MENTION WAS SAID IN, carried onto every entity it
+        // produces: it scopes the surface slice resolution may ground
+        // through, and it is the locale the banking sites tag new forms with.
+        const documentLocale = this.mentionDocumentLocale(
+          mention,
+          documentLocaleById,
+        );
         // Restaurant entities (deterministic temp IDs)
         if (mention.restaurant) {
           const restaurantTempId = this.buildRestaurantTempId(mention);
@@ -1026,6 +1091,7 @@ export class UnifiedProcessingService implements OnModuleInit {
             mention.restaurant,
           );
           entities.push({
+            documentLocale,
             normalizedName: this.normalizeEntityName(
               mention.restaurant,
               'restaurant',
@@ -1056,6 +1122,7 @@ export class UnifiedProcessingService implements OnModuleInit {
           // aliases are KNOWLEDGE, synthesized per dish offline — collection
           // emits only what was said, so no alias field exists here.)
           entities.push({
+            documentLocale,
             normalizedName: this.normalizeEntityName(mention.food, 'food'),
             originalText: foodSurface,
             entityType: 'food' as const,
@@ -1090,6 +1157,7 @@ export class UnifiedProcessingService implements OnModuleInit {
             const categorySurface = categorySurfaces[i] || category;
 
             entities.push({
+              documentLocale,
               normalizedName: this.normalizeEntityName(category, 'food'),
               originalText: categorySurface || category,
               entityType: 'food' as const,
@@ -1127,6 +1195,7 @@ export class UnifiedProcessingService implements OnModuleInit {
               seenFoodAttrIds.add(attributeTempId);
               const attrSurface = foodAttributeSurfaces[i] || attr;
               entities.push({
+                documentLocale,
                 normalizedName: this.normalizeEntityName(
                   attr,
                   'food_attribute',
@@ -1154,6 +1223,7 @@ export class UnifiedProcessingService implements OnModuleInit {
               }
               seenIngredientIds.add(ingredientTempId);
               entities.push({
+                documentLocale,
                 normalizedName: this.normalizeEntityName(
                   ingredientName,
                   'ingredient',
@@ -1190,6 +1260,7 @@ export class UnifiedProcessingService implements OnModuleInit {
               seenRestaurantAttrIds.add(attributeTempId);
               const attrSurface = restaurantAttrSurfaces[i] || attr;
               entities.push({
+                documentLocale,
                 normalizedName: this.normalizeEntityName(
                   attr,
                   'restaurant_attribute',
@@ -1606,8 +1677,12 @@ export class UnifiedProcessingService implements OnModuleInit {
                 // Banking it makes the next occurrence a free lexical hit.
                 // Source 'extraction': a real person wrote this word about this
                 // thing, so it is TESTIMONY and correctly exempt from P0-b's
-                // collision guard. Untagged ('und') because the corpus is
-                // English and a fabricated language tag is worse than none.
+                // collision guard. TAGGED with the language of the document it
+                // was read out of (the community's declaration, stamped on the
+                // row at collection time) — a fact we configured, not a guess.
+                // The read half moved with it: the recall scope is now
+                // localeLookupChain(documentLocale), so an 'en' form banked
+                // here is visible to every en document AND the und corpus.
                 //
                 // The id is taken from tempIdToEntityIdMap, NEVER from
                 // resolution.entityId: the time-of-use revalidation above
@@ -1634,6 +1709,8 @@ export class UnifiedProcessingService implements OnModuleInit {
                       revalidatedId,
                       surfaces.map((surface) => ({
                         form: surface,
+                        locale:
+                          resolution.originalInput?.documentLocale ?? undefined,
                         source: 'extraction' as const,
                       })),
                       { touchLastUpdated: true },
@@ -2008,15 +2085,18 @@ export class UnifiedProcessingService implements OnModuleInit {
                 // A1: extraction banking goes through THE surface writer,
                 // which marks the dense vector stale and touches
                 // last_updated when the write actually lands a row.
-                // Locale is deliberately UNSET: the
-                // extraction prompt does not yet emit a language on
-                // surfaces (plan A6), and a fabricated tag is worse than
-                // 'und'.
+                // Locale is the DOCUMENT'S, not the prompt's: the extraction
+                // prompt still emits no per-surface language, and inventing
+                // one would be the fabrication the old comment refused. The
+                // document's language is configuration we already hold, so
+                // the form is tagged with the language it was written in.
                 await addSurfaces(
                   tx,
                   entityId,
                   resolution.validatedAliases.map((alias) => ({
                     form: alias,
+                    locale:
+                      resolution.originalInput?.documentLocale ?? undefined,
                     source: 'extraction' as const,
                   })),
                   { touchLastUpdated: true },
@@ -2160,6 +2240,8 @@ export class UnifiedProcessingService implements OnModuleInit {
                     createdEntity.entityId,
                     createSurfaces.map((alias) => ({
                       form: alias,
+                      locale:
+                        resolution.originalInput?.documentLocale ?? undefined,
                       source: 'extraction' as const,
                     })),
                     { markEmbeddingStale: false },

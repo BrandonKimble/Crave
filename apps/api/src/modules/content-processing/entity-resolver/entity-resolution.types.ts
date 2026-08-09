@@ -19,6 +19,18 @@ export interface EntityResolutionInput {
    *  grounds. null = no covering engine (global; poll-surface threads and
    *  identity remain global either way). Never a market key. */
   engineId?: string | null;
+  /**
+   * The language of the SOURCE DOCUMENT this mention was read out of
+   * (`collection_source_documents.language`, stamped from the community's
+   * declaration). It scopes which `entity_surface` rows the mention may
+   * ground through: `localeLookupChain(documentLocale)` — the document's own
+   * language plus the universal 'und' slice, never another language's.
+   *
+   * Absent/null = locale-less caller (query-time linking, poll seeding). The
+   * chain is then `['und']`, which is byte-for-byte the und-only scope the
+   * tiers hard-coded before, so nothing about those callers changes.
+   */
+  documentLocale?: string | null;
 }
 
 /**

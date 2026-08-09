@@ -8,7 +8,7 @@ import { Redis } from 'ioredis';
 import { PrismaService } from '../../../prisma/prisma.service';
 import { foodNameVariants } from './food-lemma';
 import { canonicalFold } from './entity-identity';
-import { RECALL_SURFACE_SCOPE_SQL } from './entity-surface.service';
+import { recallSurfaceScopeSql } from './entity-surface.service';
 
 import { LoggerService, CorrelationUtils } from '../../../shared';
 import { LLMService } from '../../external-integrations/llm/llm.service';
@@ -314,6 +314,64 @@ export class EntityResolutionService implements OnModuleInit {
     config: EntityResolutionConfig,
     globalNewEntityMap: Map<string, EntityResolutionResult>,
   ): Promise<EntityResolutionResult[]> {
+    // LANGUAGE IS A SCOPE, LIKE THE ENGINE. The surface slice a mention may
+    // ground through is decided by the language of the DOCUMENT it was said
+    // in, so mentions from documents of different languages cannot share one
+    // query — exactly as restaurants from different engines cannot. Grouping
+    // it here keeps the tiers below single-scoped and unchanged in shape.
+    // The corpus is one language per community today, so this is one group
+    // in practice; it is a partition, not a loop over languages.
+    const results: EntityResolutionResult[] = [];
+    for (const [localeScope, localeGroup] of this.groupEntitiesByDocumentLocale(
+      entities,
+    )) {
+      results.push(
+        ...(await this.resolveEntitiesByTypeForLocale(
+          localeGroup,
+          entityType,
+          config,
+          globalNewEntityMap,
+          localeScope,
+        )),
+      );
+    }
+    return results;
+  }
+
+  /** The document locale a mention grounds under. null = locale-less caller
+   *  (query-time linking, poll seeding, the gate's own untagged fixtures):
+   *  `localeLookupChain(null)` is `['und']`, the pre-flip scope exactly. */
+  private normalizeDocumentLocale(
+    documentLocale: string | null | undefined,
+  ): string | null {
+    const trimmed = (documentLocale ?? '').trim();
+    if (!trimmed || trimmed.toLowerCase() === 'und') {
+      return null;
+    }
+    return trimmed;
+  }
+
+  private groupEntitiesByDocumentLocale(
+    entities: EntityResolutionInput[],
+  ): Map<string | null, EntityResolutionInput[]> {
+    const groups = new Map<string | null, EntityResolutionInput[]>();
+    for (const entity of entities) {
+      const scope = this.normalizeDocumentLocale(entity.documentLocale);
+      if (!groups.has(scope)) {
+        groups.set(scope, []);
+      }
+      groups.get(scope)!.push(entity);
+    }
+    return groups;
+  }
+
+  private async resolveEntitiesByTypeForLocale(
+    entities: EntityResolutionInput[],
+    entityType: EntityType,
+    config: EntityResolutionConfig,
+    globalNewEntityMap: Map<string, EntityResolutionResult>,
+    documentLocale: string | null,
+  ): Promise<EntityResolutionResult[]> {
     if (entityType !== 'restaurant') {
       return this.resolveEntitiesByTypeForEngine(
         entities,
@@ -321,6 +379,7 @@ export class EntityResolutionService implements OnModuleInit {
         config,
         globalNewEntityMap,
         null,
+        documentLocale,
       );
     }
 
@@ -341,6 +400,7 @@ export class EntityResolutionService implements OnModuleInit {
         config,
         globalNewEntityMap,
         engineScope === 'global' ? null : engineScope,
+        documentLocale,
       );
       results.push(...resolved);
     }
@@ -354,10 +414,12 @@ export class EntityResolutionService implements OnModuleInit {
     config: EntityResolutionConfig,
     globalNewEntityMap: Map<string, EntityResolutionResult>,
     engineId: string | null,
+    documentLocale: string | null,
   ): Promise<EntityResolutionResult[]> {
     this.logger.debug('Resolving entities by type', {
       entityType,
       engineId: engineId ?? undefined,
+      documentLocale: documentLocale ?? undefined,
       count: entities.length,
     });
 
@@ -386,6 +448,7 @@ export class EntityResolutionService implements OnModuleInit {
       unmatchedAfterExact,
       entityType,
       engineId,
+      documentLocale,
     );
     const unmatchedAfterAlias = unmatchedAfterExact.filter(
       (entity) =>
@@ -415,7 +478,12 @@ export class EntityResolutionService implements OnModuleInit {
         // accumulate as separate entities.
         entityType === 'ingredient');
     const fuzzyMatchResults = useLlmMatcher
-      ? await this.performLlmMatches(unmatchedAfterAlias, entityType, engineId)
+      ? await this.performLlmMatches(
+          unmatchedAfterAlias,
+          entityType,
+          engineId,
+          documentLocale,
+        )
       : [];
 
     const unmatchedAfterFuzzy = unmatchedAfterAlias.filter(
@@ -717,6 +785,7 @@ export class EntityResolutionService implements OnModuleInit {
     entities: EntityResolutionInput[],
     entityType: EntityType,
     engineId: string | null,
+    documentLocale: string | null,
   ): Promise<EntityResolutionResult[]> {
     if (entities.length === 0) return [];
 
@@ -772,13 +841,11 @@ export class EntityResolutionService implements OnModuleInit {
           JOIN entity_surface s ON s.entity_id = e.entity_id
          WHERE e.type = ${entityType}::entity_type
            AND e.status <> 'archived'::entity_status
-           AND ${RECALL_SURFACE_SCOPE_SQL}
+           AND ${recallSurfaceScopeSql(documentLocale)}
            AND EXISTS (
              SELECT 1 FROM entity_surface m
               WHERE m.entity_id = e.entity_id
-                AND m.status = 'active'
-                AND m.locale = 'und'
-                AND m.role <> 'display'
+                AND ${recallSurfaceScopeSql(documentLocale, 'm')}
                 AND m.form_folded = ANY(${foldedProbes}::text[])
            )
          GROUP BY e.entity_id, e.name`);
@@ -833,6 +900,7 @@ export class EntityResolutionService implements OnModuleInit {
     entities: EntityResolutionInput[],
     entityType: EntityType,
     engineId: string | null,
+    documentLocale: string | null,
   ): Promise<EntityResolutionResult[]> {
     if (entities.length === 0) return [];
 
@@ -864,7 +932,18 @@ export class EntityResolutionService implements OnModuleInit {
           term,
           [entityType],
           EntityResolutionService.LLM_MATCHER_SHORTLIST_K,
-          { engineId, denseMode: 'always' },
+          {
+            engineId,
+            denseMode: 'always',
+            // THE DOCUMENT'S LANGUAGE OPENS THE LOCALIZED-SURFACE LANE.
+            // Without it this recall could only ever see und rows, so a
+            // Spanish document's mention could never reach the es surfaces
+            // the same corpus banked — the judge would be shown an English-
+            // only shortlist and correctly answer 'new', minting a duplicate
+            // concept per language. null (locale-less callers) behaves
+            // exactly as before: the lane does not run.
+            requestLocale: documentLocale,
+          },
         );
         return { entity, term, candidates };
       },
@@ -882,7 +961,7 @@ export class EntityResolutionService implements OnModuleInit {
           SELECT s.entity_id, array_agg(s.form) AS forms
             FROM entity_surface s
            WHERE s.entity_id = ANY(${candidateIds}::uuid[])
-             AND ${RECALL_SURFACE_SCOPE_SQL}
+             AND ${recallSurfaceScopeSql(documentLocale)}
            GROUP BY s.entity_id`)
       : [];
     const aliasesById = new Map(
@@ -1612,6 +1691,10 @@ export class EntityResolutionService implements OnModuleInit {
         entity.entityType === 'restaurant'
           ? this.normalizeEngineScope(entity.engineId)
           : 'global',
+      // The document's language is part of WHAT WAS ASKED: the same word out
+      // of an es document and an en document sees different surface slices,
+      // so one cached verdict may not answer for both.
+      documentLocale: this.normalizeDocumentLocale(entity.documentLocale),
       tokens: tokenSignature,
       config: {
         enableFuzzyMatching: config.enableFuzzyMatching,

@@ -112,6 +112,13 @@ interface Fixture {
   type: EntityType;
   /** The mention as it would arrive from extraction (already normalized). */
   mention: string;
+  /**
+   * The language of the SOURCE DOCUMENT the mention was read out of
+   * (`collection_source_documents.language`). Omit for the locale-less
+   * caller: the scope is then `['und']`, which is the und-only slice these
+   * fixtures were written against and must keep describing.
+   */
+  documentLocale?: string;
   /** The ideal — and post-surgery — outcome. */
   expect: Outcome;
   note: string;
@@ -127,6 +134,14 @@ const SCRATCH_DISPLAY_FORM = 'zzgate refused word';
 /** und + active + role='recall', banked WITHOUT the accent the user types. */
 const SCRATCH_FOLD_FORM = 'zzgate creme brulee';
 const SCRATCH_FOLD_MENTION = 'zzgate crème brûlée';
+/**
+ * en + active + role='recall' — a form banked EXACTLY as the extraction
+ * banking sites now bank one, out of an English document. It must be visible
+ * to an English document's grounding; a corpus row cannot prove this because
+ * the corpus has no 'en' surfaces yet (locales are und/es/vi only), so the
+ * hazard step 5 exists to close would be unfalsifiable without this seed.
+ */
+const SCRATCH_EN_FORM = 'zzgate freshly banked word';
 
 const FIXTURES: Fixture[] = [
   // ── Tier 1: exact name ──────────────────────────────────────────────────
@@ -489,6 +504,83 @@ const FIXTURES: Fixture[] = [
     expect: UNMATCHED,
     note: 'es surface of "soba noodles" — multiword',
   },
+
+  // ── THE DOCUMENT'S LANGUAGE (step 5): ingestion resolution takes the
+  //    locale chain, so the slice a mention may ground through is decided by
+  //    the language of the document it was said in. Every fixture above has
+  //    NO documentLocale and therefore still reads the und-only slice — that
+  //    they did not move is half the evidence for this change.
+  {
+    id: 'doc-01',
+    type: EntityType.food,
+    mention: 'camarones',
+    documentLocale: 'es',
+    expect: { entity: 'shrimp', tier: 'alias' },
+    note: 'es surface of "shrimp" (role=both), read out of an ES document — the whole point: a Spanish document grounds through Spanish words. RED under the und-only scope',
+  },
+  {
+    id: 'doc-02',
+    type: EntityType.food,
+    mention: 'camarones',
+    expect: UNMATCHED,
+    note: 'THE SAME WORD with no document language — the chain is a closed set the document names, not a widening: an untagged mention still sees und only (loc-01..07 say this for every other es word)',
+  },
+  {
+    id: 'doc-03',
+    type: EntityType.food,
+    mention: 'camarones',
+    documentLocale: 'en',
+    expect: UNMATCHED,
+    note: 'an EN document may not ground through es surfaces — localeLookupChain(en) is [en,und], and es is not in it',
+  },
+  {
+    id: 'doc-04',
+    type: EntityType.food,
+    mention: 'khoai lang',
+    documentLocale: 'en',
+    expect: UNMATCHED,
+    note: 'vi-ONLY surface of "sweet potato" (no und/es row shares its fold): an English document must not reach it — the cross-language leak this scope exists to refuse',
+  },
+  {
+    id: 'doc-05',
+    type: EntityType.food,
+    mention: 'khoai lang',
+    documentLocale: 'vi',
+    expect: { entity: 'sweet potato', tier: 'alias' },
+    note: 'the same word out of a VI document does ground — the refusal above is about language, not about the row being unreachable',
+  },
+  {
+    id: 'doc-06',
+    type: EntityType.food,
+    mention: 'taco',
+    documentLocale: 'es',
+    expect: { entity: 'taco', tier: 'exact' },
+    note: 'the und corpus stays reachable from every language: the chain always ends in und, so an es document keeps grounding the shared vocabulary',
+  },
+  {
+    id: 'doc-07',
+    type: EntityType.food,
+    mention: 'char siu',
+    documentLocale: 'es',
+    expect: { entity: 'bbq pork', tier: 'alias' },
+    note: 'the und ALIAS slice too (al-01 with a document language) — the chain widens, it never narrows what und callers could see',
+  },
+  {
+    id: 'doc-08',
+    type: EntityType.food,
+    mention: SCRATCH_EN_FORM,
+    documentLocale: 'en',
+    expect: { entity: SCRATCH_NAME, tier: 'alias' },
+    note: "THE STEP-4 HAZARD, AS A FIXTURE: a form banked 'en' by the extraction sites must stay visible to English grounding. Under the und-only scope this is RED — which is exactly why the write flip could not land before the read flip",
+  },
+  {
+    id: 'doc-09',
+    type: EntityType.food,
+    mention: SCRATCH_EN_FORM,
+    documentLocale: 'vi',
+    expect: UNMATCHED,
+    note: "and the freshly-banked 'en' form is NOT global: a vi document does not see it (chain [vi,und]) — the tag means something",
+  },
 ];
 
 function sameOutcome(observed: Outcome, expected: Outcome): boolean {
@@ -524,7 +616,8 @@ async function seedScratchFixtures(prisma: PrismaService): Promise<void> {
     `INSERT INTO entity_surface
        (entity_id, form, form_folded, locale, role, source, confidence, status)
      VALUES ($1::uuid, $2, $3, 'und', 'display', 'sweep', 1, 'active'),
-            ($1::uuid, $4, $5, 'und', 'recall',  'sweep', 1, 'active')
+            ($1::uuid, $4, $5, 'und', 'recall',  'sweep', 1, 'active'),
+            ($1::uuid, $6, $7, 'en',  'recall',  'extraction', 1, 'active')
      ON CONFLICT (entity_id, locale, form) DO UPDATE
        SET role = EXCLUDED.role, status = EXCLUDED.status`,
     SCRATCH_ENTITY_ID,
@@ -532,6 +625,8 @@ async function seedScratchFixtures(prisma: PrismaService): Promise<void> {
     canonicalFold(SCRATCH_DISPLAY_FORM),
     SCRATCH_FOLD_FORM,
     canonicalFold(SCRATCH_FOLD_FORM),
+    SCRATCH_EN_FORM,
+    canonicalFold(SCRATCH_EN_FORM),
   );
 }
 
@@ -549,6 +644,7 @@ async function main(): Promise<void> {
         originalText: fixture.mention,
         entityType: fixture.type,
         engineId: null,
+        documentLocale: fixture.documentLocale ?? null,
       })),
       {
         // READ-ONLY + DETERMINISTIC: no creation, no recall/LLM tier. This

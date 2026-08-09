@@ -81,7 +81,17 @@ function fakePrisma(entities: FakeEntityRow[]) {
         sql.includes('FROM core_entities e') &&
         sql.includes('entity_surface')
       ) {
-        const [type, foldedProbes] = values as [EntityType, string[]];
+        // POSITION-FREE READ of the bound values. The surface scope is now
+        // a COMPOSED fragment (`recallSurfaceScopeSql`) that binds its own
+        // locale chain, so the probes are no longer values[1] — they are the
+        // LAST bound array. Destructuring by index silently read the locale
+        // chain as the probe set (every fixture went 'new'), which is the
+        // kind of break a double should not be able to have twice.
+        const type = values[0] as EntityType;
+        const arrays = values.filter((value): value is string[] =>
+          Array.isArray(value),
+        );
+        const foldedProbes = arrays[arrays.length - 1] ?? [];
         const probes = new Set(foldedProbes);
         return live()
           .filter((row) => row.type === type)
