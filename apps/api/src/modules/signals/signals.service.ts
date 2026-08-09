@@ -129,6 +129,22 @@ export interface RecordSignalInput {
    */
   placeId?: string | null;
   occurredAt?: Date;
+  /**
+   * THE LANGUAGE THE ACT WAS PERFORMED IN — canonical BCP 47, or null when
+   * genuinely undecidable (spine step 2).
+   *
+   * The column has existed since the M4b groundwork with the comment "NULL
+   * until detection ships"; detection has shipped, and this is the parameter
+   * that ends that sentence. It matters because `subject_text` keys demand on
+   * RAW UNTAGGED text (A10) — 'pulpo' and 'octopus' are two demand terms
+   * forever — so the language is the ONLY thing that tells the collection
+   * side which of those two words to go searching with.
+   *
+   * NEVER inferred back from subject_text by a reader: the fusion had the
+   * script, the registry and the request prior in hand and a reader has none
+   * of them. Recorded here or not at all.
+   */
+  detectedLocale?: string | null;
   meta?: Record<string, unknown> | null;
 }
 
@@ -405,6 +421,11 @@ export class SignalsService {
         geoMaxLng: geo?.maxLng ?? null,
         actorId,
         occurredAt: input.occurredAt ?? new Date(),
+        // Canonical-cased and length-bounded to the column; an empty or
+        // whitespace tag is the same as no answer, and is stored as one.
+        detectedLocale: input.detectedLocale?.trim()
+          ? input.detectedLocale.trim().slice(0, 35)
+          : null,
         meta: input.meta
           ? (this.compactMeta(input.meta) as Prisma.InputJsonValue)
           : Prisma.DbNull,

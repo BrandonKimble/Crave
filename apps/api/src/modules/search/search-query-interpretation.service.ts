@@ -616,6 +616,11 @@ export class SearchQueryInterpretationService {
             subject: { entityId: null, term: residueText },
             geo: this.signals.bboxFromBounds(request.bounds ?? null),
             occurredAt: now,
+            // THE FUSED LOCALE, not the request header. subject_text keys
+            // demand on RAW UNTAGGED text (A10), so this column is the only
+            // thing that will ever tell collection which language's word it
+            // is holding.
+            detectedLocale: analysis.detectedLocale?.tag ?? null,
             meta: {
               askSearchRequestId:
                 structuredRequest.searchRequestId ?? undefined,
@@ -631,6 +636,7 @@ export class SearchQueryInterpretationService {
             searchRequestId: structuredRequest.searchRequestId,
             engineIds,
             userId: request.userId ?? null,
+            detectedLocale: analysis.detectedLocale?.tag ?? null,
             context: {
               query: request.query,
               source: 'gazetteer_understand',

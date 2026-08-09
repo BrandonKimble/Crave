@@ -72,6 +72,74 @@ describe('on_demand_ask signal write (Phase C ask-event replacement)', () => {
     return { service, signalsPrisma, prisma, tx };
   }
 
+  it("carries the ASK'S LANGUAGE onto both the queue row and the signal", async () => {
+    // Spine step 2. signals.detected_locale existed with zero writers, and
+    // the queue table had no such column: a Vietnamese ask and an English ask
+    // reached collection indistinguishable. Both halves must agree, because a
+    // reader that saw them disagree could not tell which one lied.
+    const { service, signalsPrisma, tx } = createHarness();
+
+    await service.recordRequests(
+      [
+        {
+          term: 'bún đậu mắm tôm',
+          entityType: 'food' as never,
+          reason: 'unresolved' as never,
+          engineIds: [ENGINE_ID],
+          detectedLocale: 'vi',
+        },
+      ],
+      { userId: USER_ID },
+      {
+        bounds: {
+          northEast: { lat: 30.4, lng: -97.6 },
+          southWest: { lat: 30.1, lng: -97.9 },
+        },
+      },
+    );
+    await flush();
+
+    const upsertArgs = tx.onDemandRequest.upsert.mock.calls[0] as unknown as [
+      { create: Record<string, unknown>; update: Record<string, unknown> },
+    ];
+    expect(upsertArgs[0].create.detectedLocale).toBe('vi');
+    expect(
+      signalsPrisma.signal.create.mock.calls[0][0].data.detectedLocale,
+    ).toBe('vi');
+  });
+
+  it('an undecidable later ask never ERASES a locale an earlier ask established', async () => {
+    // The most common ask shape is a bare one-worder whose language is
+    // honestly undecidable. If silence overwrote a decided answer, the column
+    // would flicker to NULL on exactly the rows collection needs.
+    const { service, tx } = createHarness();
+
+    await service.recordRequests(
+      [
+        {
+          term: 'camarones',
+          entityType: 'food' as never,
+          reason: 'unresolved' as never,
+          engineIds: [ENGINE_ID],
+          detectedLocale: null,
+        },
+      ],
+      {},
+      {
+        bounds: {
+          northEast: { lat: 30.4, lng: -97.6 },
+          southWest: { lat: 30.1, lng: -97.9 },
+        },
+      },
+    );
+    await flush();
+
+    const upsertArgs = tx.onDemandRequest.upsert.mock.calls[0] as unknown as [
+      { update: Record<string, unknown> },
+    ];
+    expect('detectedLocale' in upsertArgs[0].update).toBe(false);
+  });
+
   it('records one on_demand_ask signal per gap: term subject, viewport geo, judged-at-read qualifiers', async () => {
     const { service, signalsPrisma } = createHarness();
 

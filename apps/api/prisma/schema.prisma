@@ -1915,6 +1915,18 @@ model OnDemandRequest {
   updatedAt             DateTime              @updatedAt @map("updated_at") @db.Timestamptz(3)
   entityId              String?               @map("entity_id") @db.Uuid
   entityIdentityKey     String                @default("no_entity") @map("entity_identity_key") @db.VarChar(64)
+  /// THE LANGUAGE THE ASK WAS MADE IN (multilingual spine step 2). Canonical
+  /// BCP 47, fused by the query analyzer from script + the registry's own
+  /// locale-tagged vocabulary + the request prior — the SAME value written to
+  /// signals.detected_locale for the paired ask signal. NULL = undecidable,
+  /// the honest answer, never a guess.
+  ///
+  /// It is deliberately NOT part of the demand identity (the @@unique below):
+  /// 'camarones' asked by a Spanish phone and by an English one is ONE demand
+  /// for one word, and splitting the row by locale would halve every
+  /// distinctUserCount that drives collection priority. Locale is an
+  /// attribute of the demand, not a dimension of it.
+  detectedLocale        String?               @map("detected_locale") @db.VarChar(35)
   reason                OnDemandReason
   resultRestaurantCount Int                   @default(0) @map("result_restaurant_count")
   resultFoodCount       Int                   @default(0) @map("result_food_count")
@@ -1971,6 +1983,11 @@ model OnDemandUnsegmentedResidue {
   engineIds       String[]  @default([]) @map("engine_ids")
   context         Json?     @default("{}")
   userId          String?   @map("user_id") @db.Uuid
+  /// The language the residue was typed in, fused at search time (spine step
+  /// 2). The drain carries it onto every typed queue row it mints: the
+  /// segmenter runs MINUTES after the search, with none of the request
+  /// context left, so a locale not captured here is a locale lost forever.
+  detectedLocale  String?   @map("detected_locale") @db.VarChar(35)
   /// pending → segmented (typed rows minted) | discarded (junk / no terms)
   status          String    @default("pending") @db.VarChar(16)
   attempts        Int       @default(0)

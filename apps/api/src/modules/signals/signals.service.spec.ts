@@ -171,6 +171,9 @@ describe('SignalsService write shape', () => {
 
     expect(prisma.signal.create).toHaveBeenCalledWith({
       data: {
+        // Spine step 2: every signal now states the language of the act, or
+        // null when there is none to state (an entity_view has no text).
+        detectedLocale: null,
         kind: 'entity_view',
         subjectType: 'entity',
         subjectId: ENTITY_ID,

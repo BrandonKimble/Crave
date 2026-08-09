@@ -43,6 +43,10 @@ export class UnsegmentedResidueService {
     searchRequestId?: string | null;
     engineIds?: string[];
     userId?: string | null;
+    /** The language the residue was typed in (spine step 2). Captured HERE
+     *  because it can only be captured here: the drain runs minutes later
+     *  with no request, no locale header and no analyzer in scope. */
+    detectedLocale?: string | null;
     context?: Record<string, unknown>;
   }): Promise<void> {
     const text = input.residueText.trim().slice(0, 500);
@@ -57,6 +61,9 @@ export class UnsegmentedResidueService {
         searchRequestId: input.searchRequestId ?? null,
         engineIds: input.engineIds ?? [],
         userId: input.userId ?? null,
+        detectedLocale: input.detectedLocale?.trim()
+          ? input.detectedLocale.trim().slice(0, 35)
+          : null,
         context: (input.context ?? {}) as never,
       },
     });
@@ -77,6 +84,10 @@ export class UnsegmentedResidueService {
       });
       // ONE LLM call per DISTINCT residue text; one recordRequests per ROW
       // (every ask keeps its user/engine/geo attribution).
+      // Grouped by TEXT alone, still: the LLM call is what is being deduped,
+      // and identical text segments into identical terms whatever language
+      // the asker was in. The locale rides per-ROW into recordRequests below,
+      // so grouping never collapses two languages into one.
       const byText = new Map<string, typeof pending>();
       for (const row of pending) {
         const bucket = byText.get(row.residueText) ?? [];
@@ -113,6 +124,7 @@ export class UnsegmentedResidueService {
       engineIds: string[];
       userId: string | null;
       searchRequestId: string | null;
+      detectedLocale: string | null;
       context: unknown;
     }>,
   ): Promise<void> {
@@ -153,6 +165,11 @@ export class UnsegmentedResidueService {
               entityType: entry.entityType,
               reason: 'unresolved',
               engineIds: row.engineIds,
+              // The SEGMENT inherits the language of the text it came out of.
+              // A segmenter that split 'bún đậu mắm tôm nhà hàng' cannot
+              // re-detect per fragment — and would not need to: one person
+              // typed one string in one language.
+              detectedLocale: row.detectedLocale,
               metadata: {
                 source: 'residue_segmenter',
                 residueText,

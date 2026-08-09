@@ -15,12 +15,32 @@ export interface OnDemandRequestInput {
    *  engine mints no queue row but STILL records its on_demand_ask signal —
    *  that is the uncovered-ask lane the ledger's territory read serves. */
   engineIds?: string[];
+  /**
+   * The language the ask was made in (spine step 2), canonical BCP 47 or
+   * null. Rides onto the queue row AND onto the paired `on_demand_ask`
+   * signal, so the two never disagree about what language a searcher used.
+   *
+   * NOT part of the demand identity: 'camarones' asked by a Spanish phone
+   * and by an English one is ONE demand for one word. Splitting the row by
+   * locale would halve the distinctUserCount that drives collection
+   * priority — the exact R4-② mistake, one column over.
+   */
+  detectedLocale?: string | null;
   metadata?: Record<string, unknown>;
 }
 
 export interface OnDemandRequestRecordOptions {
   userId?: string | null;
   seenAt?: Date;
+}
+
+/** One place decides what an empty/oversized tag means, so the queue row and
+ *  its paired signal can never disagree. */
+function normalizeDetectedLocale(
+  value: string | null | undefined,
+): string | null {
+  const tag = value?.trim();
+  return tag ? tag.slice(0, 35) : null;
 }
 
 @Injectable()
@@ -98,6 +118,7 @@ export class OnDemandRequestService {
             entityIdentityKey: queueTarget.entityIdentityKey,
             lastSeenAt: seenAt,
             lastQueuedAt: requestIsQueueable ? seenAt : undefined,
+            detectedLocale: normalizeDetectedLocale(request.detectedLocale),
             metadata,
           };
 
@@ -121,6 +142,15 @@ export class OnDemandRequestService {
           };
           if (requestIsQueueable) {
             updateData.lastQueuedAt = seenAt;
+          }
+          // LAST DECIDED ANSWER WINS, BUT SILENCE NEVER OVERWRITES ONE. A
+          // later ask whose language was undecidable must not erase a locale
+          // an earlier ask actually established — that would make the column
+          // flicker to NULL on the most common ask shape (a bare one-worder)
+          // and lose the very rows collection needs.
+          const askLocale = normalizeDetectedLocale(request.detectedLocale);
+          if (askLocale) {
+            updateData.detectedLocale = askLocale;
           }
 
           if (metadata) {
@@ -209,6 +239,7 @@ export class OnDemandRequestService {
             this.extractBounds(context.bounds) ?? null,
           ),
           occurredAt: seenAt,
+          detectedLocale: normalizeDetectedLocale(request.detectedLocale),
           meta: {
             askSearchRequestId: searchRequestId ?? undefined,
             reason: request.reason,
@@ -257,12 +288,20 @@ export class OnDemandRequestService {
         continue;
       }
       seen.add(key);
+      // FIELD-BY-FIELD REBUILD — every field of OnDemandRequestInput must be
+      // listed here or it is silently dropped on the way to the writer. That
+      // is exactly what happened to `detectedLocale` on its first run: the
+      // caller set it, the column stayed NULL, and nothing anywhere errored.
+      // The dedupe KEY deliberately excludes locale (locale is an attribute
+      // of a demand, not a dimension of it — see the field's doc comment),
+      // but excluding it from the key must not mean dropping the value.
       result.push({
         term: sanitizedTerm,
         entityType: request.entityType,
         reason: request.reason,
         entityId,
         engineIds: this.normalizeEngineIds(request.engineIds),
+        detectedLocale: request.detectedLocale ?? null,
         metadata: request.metadata,
       });
     }
