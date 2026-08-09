@@ -2,6 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { Cron } from '@nestjs/schedule';
 import { PrismaService } from '../../prisma/prisma.service';
 import { OpsAlertsService } from '../external-integrations/shared/ops-alerts.service';
+import { DerivedIndexJob } from '../../shared/derived-index-job';
 import { LoggerService } from '../../shared';
 import { find as findTimeZone } from 'geo-tz';
 import {
@@ -25,24 +26,40 @@ import {
  * DST-naive by construction).
  */
 @Injectable()
-export class OpenIntervalsBuilderService {
-  private readonly logger: LoggerService;
-  private buildInFlight = false;
+export class OpenIntervalsBuilderService extends DerivedIndexJob {
+  protected readonly logger: LoggerService;
+  protected readonly derivedTable = 'derived_location_open_intervals';
+  protected readonly disableFlagEnv = '';
+  protected readonly alert = {
+    kind: 'open_intervals_empty',
+    title: 'Open-now filtering is silently disabled',
+    consequence:
+      'Every "Open now" search is returning UNFILTERED results — closed restaurants included.',
+  };
+  private lastCounts = { input: 0, output: 0 };
 
   constructor(
-    private readonly prisma: PrismaService,
-    private readonly opsAlerts: OpsAlertsService,
+    prisma: PrismaService,
+    opsAlerts: OpsAlertsService,
     loggerService: LoggerService,
   ) {
+    super(prisma, opsAlerts);
     this.logger = loggerService.setContext('OpenIntervalsBuilderService');
   }
 
   @Cron('50 8 * * *')
-  async rebuild(): Promise<void> {
-    if (this.buildInFlight) return;
-    this.buildInFlight = true;
+  async nightly(): Promise<void> {
+    await this.runGuarded();
+  }
+
+  protected async rebuild(): Promise<{ input: number; output: number }> {
+    await this.doRebuild();
+    return this.lastCounts;
+  }
+
+  private async doRebuild(): Promise<void> {
     const started = Date.now();
-    try {
+    {
       // TZ BACKFILL first (self-healing): utc_offset_minutes is DST-naive
       // by construction; the IANA zone derives from coordinates once.
       const missingTz = await this.prisma.$queryRaw<
@@ -148,49 +165,12 @@ export class OpenIntervalsBuilderService {
         },
         { timeout: 300_000 },
       );
+      this.lastCounts = { input: locations.length, output: byKey.size };
       this.logger.info('Location open-intervals rebuilt', {
         locations: locations.length,
         rows: byKey.size,
         tookMs: Date.now() - started,
       });
-
-      // SCREAM, NEVER KILL. The open-now SQL predicate deliberately fails
-      // OPEN: if no candidate location has any interval row, it admits
-      // everything rather than emptying the map. That is the right call for
-      // a user — a degraded filter beats a blank screen — but it makes the
-      // degradation INVISIBLE, because the failure mode looks exactly like
-      // "everything is open". An environment whose nightly build has never
-      // run (fresh deploy, restored DB, staging) silently serves unfiltered
-      // results to every Open-now search, forever, with nothing logged.
-      //
-      // So the bell rings HERE, off the hot path, where both numbers are
-      // known and it costs no per-query work: rows to build, and rows built.
-      if (byKey.size === 0 && locations.length > 0) {
-        this.opsAlerts.emit({
-          severity: 'critical',
-          kind: 'open_intervals_empty',
-          title: 'Open-now filtering is silently disabled',
-          body: [
-            `The open-intervals rebuild produced ZERO rows from ${locations.length} location(s) carrying hours.`,
-            'The search predicate fails open when a query finds no interval rows, so every "Open now" search is currently returning UNFILTERED results — closed restaurants included — and nothing else will report it.',
-            "Check this job's last error, then re-run it.",
-          ].join('\n\n'),
-          dedupeKey: 'open_intervals_empty',
-        });
-      }
-    } catch (error) {
-      // logger.error, NOT warn: only .error reaches Sentry, and this is a
-      // DERIVED INDEX the hot path reads. A rebuild that fails every night
-      // leaves the index permanently stale with nobody told — and the
-      // open-now predicate FAILS OPEN on an empty table, so the staleness
-      // hides itself from users too. The Error goes in the error slot so
-      // Sentry gets a stack and groups it, rather than a bare message.
-      this.logger.error(
-        'Open-intervals rebuild failed',
-        error instanceof Error ? error : new Error(String(error)),
-      );
-    } finally {
-      this.buildInFlight = false;
     }
   }
 }
