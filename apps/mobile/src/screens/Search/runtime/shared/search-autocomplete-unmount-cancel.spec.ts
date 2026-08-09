@@ -67,14 +67,16 @@ const mountAutocompleteRuntime = (cancelAutocomplete: jest.Mock) => {
 };
 
 describe('F6005 autocomplete unmount cancel', () => {
-  it('cancels exactly once when unmounted mid-request', () => {
+  it('cancels exactly once when unmounted mid-request', async () => {
     const cancelAutocomplete = jest.fn();
     const { renderer, runAutocomplete } = mountAutocompleteRuntime(cancelAutocomplete);
 
     expect(runAutocomplete).toHaveBeenCalledTimes(1);
     expect(cancelAutocomplete).not.toHaveBeenCalled();
 
-    act(() => {
+    // F9985: ASYNC act — a sync act() returns with React's scheduler setImmediate
+    // still pending, leaving a live handle on the worker's loop at suite end.
+    await act(async () => {
       renderer.unmount();
     });
 

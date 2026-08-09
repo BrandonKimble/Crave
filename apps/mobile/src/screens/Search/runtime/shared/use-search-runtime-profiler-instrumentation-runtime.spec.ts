@@ -34,9 +34,9 @@ import { useSearchRuntimeProfilerInstrumentationRuntime } from './use-search-run
 
 (globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
-const renderProfilerCallback = (
+const renderProfilerCallback = async (
   searchMode: 'natural' | 'shortcut' | null
-): React.ProfilerOnRenderCallback | null => {
+): Promise<React.ProfilerOnRenderCallback | null> => {
   let observed: React.ProfilerOnRenderCallback | null = null;
 
   const Probe = (): null => {
@@ -54,7 +54,9 @@ const renderProfilerCallback = (
   act(() => {
     tree = TestRenderer.create(React.createElement(Probe));
   });
-  act(() => {
+  // F9985: ASYNC act — a sync act() leaves React's scheduler setImmediate pending,
+  // which is a live handle on the worker's loop when the suite ends.
+  await act(async () => {
     tree?.unmount();
   });
   return observed;
@@ -78,26 +80,26 @@ describe('useSearchRuntimeProfilerInstrumentationRuntime', () => {
     });
   });
 
-  it('returns null when no emit-reason holds, so the hosts unmount React.Profiler', () => {
+  it('returns null when no emit-reason holds, so the hosts unmount React.Profiler', async () => {
     // No perf scenario, natural mode (the shortcut-probe env flag is off in the
     // hermetic lane), nav-switch attribution flag off. This is the app's
     // ordinary state — the state that could not previously produce null.
-    expect(renderProfilerCallback('natural')).toBeNull();
+    expect(await renderProfilerCallback('natural')).toBeNull();
   });
 
-  it('returns a callback while a perf scenario is attributing', () => {
+  it('returns a callback while a perf scenario is attributing', async () => {
     act(() => {
       usePerfScenarioRuntimeStore
         .getState()
         .setActiveConfig(activeScenarioConfig(SEARCH_SUBMIT_NATURAL_SCENARIO));
     });
-    expect(typeof renderProfilerCallback('natural')).toBe('function');
+    expect(typeof (await renderProfilerCallback('natural'))).toBe('function');
   });
 
-  it('stays off for a scenario the attribution predicate does not claim', () => {
+  it('stays off for a scenario the attribution predicate does not claim', async () => {
     act(() => {
       usePerfScenarioRuntimeStore.getState().setActiveConfig(activeScenarioConfig('unrelated'));
     });
-    expect(renderProfilerCallback('natural')).toBeNull();
+    expect(await renderProfilerCallback('natural')).toBeNull();
   });
 });

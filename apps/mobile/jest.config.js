@@ -26,7 +26,10 @@
  * @type {import('jest').Config}
  */
 module.exports = {
-  testEnvironment: 'node',
+  // F9985: node environment + a worker-side handle census that speaks ONLY when jest
+  // force-exits the worker. See jest.worker-handle-census.js — it is jest-environment-node
+  // with a SIGTERM/exit report, so the hermetic lane's semantics are unchanged.
+  testEnvironment: '<rootDir>/jest.worker-handle-census.js',
   setupFiles: ['<rootDir>/jest.setup.js'],
   roots: ['<rootDir>/src'],
   testMatch: ['**/*.spec.ts'],

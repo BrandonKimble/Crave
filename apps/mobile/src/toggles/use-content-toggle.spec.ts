@@ -97,7 +97,7 @@ describe('useContentToggle awaitingFace (OA12 — the primitive mints the face)'
     // scheduler's Immediate, so a bare `renderer.unmount()` lets the hook's
     // cleanup (which disposes the consequence seam and logs) run AFTER the suite
     // ends — an escaped handle that force-exits the jest worker on a slow runner.
-    act(() => {
+    await act(async () => {
       renderer.unmount();
     });
   });
@@ -123,7 +123,7 @@ describe('useContentToggle awaitingFace (OA12 — the primitive mints the face)'
       await gate;
     });
     // F9985: see above — unmount inside act so the seam's dispose runs in-test.
-    act(() => {
+    await act(async () => {
       renderer.unmount();
     });
   });

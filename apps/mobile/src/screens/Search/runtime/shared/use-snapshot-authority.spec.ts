@@ -65,9 +65,13 @@ const renderAuthority = (strict: boolean) => {
       });
     },
     getSnapshot: () => authority!.getSnapshot(),
-    teardown: () => {
+    // F9985: an ASYNC act. A sync act() returns with React's scheduler macrotask
+    // (`performWorkUntilDeadline`, a setImmediate) still pending, so the suite ends
+    // with a live Immediate on the worker's event loop — measured, and the class
+    // jest force-exits a slow runner's worker for. `await act(async …)` drains it.
+    teardown: async () => {
       unsubscribe();
-      act(() => {
+      await act(async () => {
         renderer!.unmount();
       });
     },
@@ -78,7 +82,7 @@ describe('useSnapshotAuthority', () => {
   it.each([
     ['without StrictMode', false],
     ['under StrictMode double-render', true],
-  ])('delivers every snapshot edge to subscribers (%s)', (_label, strict) => {
+  ])('delivers every snapshot edge to subscribers (%s)', async (_label, strict) => {
     const probe = renderAuthority(strict as boolean);
 
     probe.push(1);
@@ -91,10 +95,10 @@ describe('useSnapshotAuthority', () => {
     expect(probe.notifications).toEqual([1, 2, 3]);
     expect(probe.getSnapshot()).toEqual({ value: 3 });
 
-    probe.teardown();
+    await probe.teardown();
   });
 
-  it('does not re-notify when the snapshot is equal by the supplied comparator', () => {
+  it('does not re-notify when the snapshot is equal by the supplied comparator', async () => {
     const probe = renderAuthority(false);
 
     probe.push(1);
@@ -103,10 +107,10 @@ describe('useSnapshotAuthority', () => {
 
     expect(probe.notifications).toEqual([1, 2]);
 
-    probe.teardown();
+    await probe.teardown();
   });
 
-  it('delivers selector subscriptions on every edge, under StrictMode too', () => {
+  it('delivers selector subscriptions on every edge, under StrictMode too', async () => {
     const probe = renderAuthority(true);
     const seen: number[] = [];
     // subscribeSelector is optional on the TYPE but always present on an
@@ -129,6 +133,6 @@ describe('useSnapshotAuthority', () => {
 
     expect(seen).toEqual([1, 2]);
 
-    probe.teardown();
+    await probe.teardown();
   });
 });

@@ -103,7 +103,11 @@ const renderPolicy = (initialWhat: string) => {
       );
     });
   };
-  return { retry, update, unmount: () => act(() => renderer.unmount()) };
+  // F9985: the unmount is an ASYNC act. A sync act() returns with React's scheduler
+  // macrotask (`performWorkUntilDeadline`, a setImmediate) still pending, so the suite
+  // ends with a live Immediate on the worker's event loop — measured, and the class
+  // jest force-exits a slow runner's worker for.
+  return { retry, update, unmount: () => act(async () => renderer.unmount()) };
 };
 
 beforeEach(() => {
@@ -114,16 +118,16 @@ beforeEach(() => {
 });
 
 describe('useSceneLoadFailurePolicy (F2401)', () => {
-  it('(a) announces exactly once per error EDGE, not once per render', () => {
+  it('(a) announces exactly once per error EDGE, not once per render', async () => {
     const { update, unmount } = renderPolicy('these polls');
     expect(announceFailureIfOnline).toHaveBeenCalledTimes(1);
     update({ what: 'these polls' });
     update({ what: 'these polls' });
     expect(announceFailureIfOnline).toHaveBeenCalledTimes(1);
-    unmount();
+    await unmount();
   });
 
-  it('(b) a re-run of the effect while isError stays true leaves the subscription LIVE', () => {
+  it('(b) a re-run of the effect while isError stays true leaves the subscription LIVE', async () => {
     const { retry, update, unmount } = renderPolicy('these polls');
     expect(listeners.size).toBe(1);
 
@@ -141,10 +145,10 @@ describe('useSceneLoadFailurePolicy (F2401)', () => {
     present(ROOT_SCENE);
     expect(retry).toHaveBeenCalledTimes(1);
     expect(announceFailureIfOnline).toHaveBeenCalledTimes(2);
-    unmount();
+    await unmount();
   });
 
-  it('(c) every re-presentation is an edge: announce + retry each time', () => {
+  it('(c) every re-presentation is an edge: announce + retry each time', async () => {
     const { retry, unmount } = renderPolicy('these polls');
     for (let i = 0; i < 3; i += 1) {
       present('lists');
@@ -152,19 +156,19 @@ describe('useSceneLoadFailurePolicy (F2401)', () => {
     }
     expect(retry).toHaveBeenCalledTimes(3);
     expect(announceFailureIfOnline).toHaveBeenCalledTimes(4); // 1 edge + 3 returns
-    unmount();
+    await unmount();
   });
 
-  it('leaving the error state tears the subscription down and re-arms the latch', () => {
+  it('leaving the error state tears the subscription down and re-arms the latch', async () => {
     const { update, unmount } = renderPolicy('these polls');
     update({ isError: false });
     expect(listeners.size).toBe(0);
     update({ isError: true });
     expect(announceFailureIfOnline).toHaveBeenCalledTimes(2);
-    unmount();
+    await unmount();
   });
 
-  it('a CHILD scene announces with a dismissal that pops, and opens no subscription', () => {
+  it('a CHILD scene announces with a dismissal that pops, and opens no subscription', async () => {
     const Probe: React.FC = () => {
       useSceneLoadFailurePolicy(CHILD_SCENE, { isError: true, what: 'this list' });
       return null;
@@ -178,6 +182,6 @@ describe('useSceneLoadFailurePolicy (F2401)', () => {
     const arg = announceFailureIfOnline.mock.calls[0][0] as { onDismissed: () => void };
     arg.onDismissed();
     expect(closeActiveRoute).toHaveBeenCalledTimes(1);
-    act(() => renderer.unmount());
+    await act(async () => renderer.unmount());
   });
 });

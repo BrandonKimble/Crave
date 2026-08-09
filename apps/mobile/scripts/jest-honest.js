@@ -22,7 +22,17 @@
  * Args are passed straight through: `yarn test src/foo.spec.ts -t bar`.
  */
 const { spawn } = require('child_process');
+const fs = require('fs');
+const os = require('os');
 const path = require('path');
+
+/**
+ * F9985: the marker names no suite and no handle, so three CI reds taught us
+ * nothing. `jest.worker-handle-census.js` (the lane's test environment) writes
+ * the worker's live handles here at force-exit; we print them beside the marker.
+ * Nothing is written on a clean run.
+ */
+const censusFile = path.join(os.tmpdir(), `jest-worker-handle-census-${process.pid}.log`);
 
 /** Each marker is a sentence jest prints when work escaped the test lifecycle. */
 const FATAL_MARKERS = [
@@ -51,7 +61,7 @@ const FATAL_MARKERS = [
 const jestBin = path.resolve(__dirname, '..', '..', '..', 'node_modules', '.bin', 'jest');
 const child = spawn(jestBin, process.argv.slice(2), {
   cwd: path.resolve(__dirname, '..'),
-  env: process.env,
+  env: { ...process.env, JEST_WORKER_HANDLE_CENSUS_FILE: censusFile },
 });
 
 let captured = '';
@@ -70,12 +80,17 @@ child.on('error', (error) => {
 });
 
 child.on('close', (code, signal) => {
+  const census = fs.existsSync(censusFile) ? fs.readFileSync(censusFile, 'utf8') : '';
+  if (census) {
+    fs.rmSync(censusFile, { force: true });
+  }
   const hits = FATAL_MARKERS.filter(({ marker }) => captured.includes(marker));
   if (hits.length > 0) {
     process.stderr.write(
       '\n[jest-honest] THE SUITE IS NOT GREEN. Jest reported ' +
         `exit code ${code}, but work escaped the test lifecycle:\n` +
         hits.map(({ marker, why }) => `  - "${marker}"\n      ${why}\n`).join('') +
+        (census ? `\nWhat the force-exited worker still had open:\n${census}` : '') +
         '  Fix the leak (disarm timers in afterEach; mock every method the\n' +
         '  import graph can reach) — do not silence this check.\n'
     );
