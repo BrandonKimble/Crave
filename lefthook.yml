@@ -61,6 +61,9 @@ pre-commit:
 # checkout), which is right before main is shared and wrong on every commit.
 pre-push:
   parallel: false
-  jobs:
+  # (jobs: was a list-typed key in this lefthook version and made EVERY push
+  # fail with a config error — commands: is the map-typed spelling the
+  # pre-commit block already uses.)
+  commands:
     clean-tree-typecheck:
       run: bash scripts/check-clean-tree-typecheck.sh
