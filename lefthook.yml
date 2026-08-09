@@ -45,7 +45,9 @@ pre-commit:
     # active lane forgot it and CI went red four times in one evening — so
     # the commit itself now carries the revert. stage_fixed restages the
     # ledger the tool rewrote.
+    # No glob on purpose: the first commit after this hook landed staled a
+    # ROOT file's row (lefthook.yml itself) and the glob skipped the revert —
+    # any tracked file can hold a review, so every commit runs the ~100ms tool.
     coverage-staleness:
-      glob: '{apps,packages,scripts}/**/*'
       run: node scripts/coverage-staleness.mjs --apply && git add audit/COVERAGE.md
       stage_fixed: true
