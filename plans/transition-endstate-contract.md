@@ -901,3 +901,17 @@ view-mode preference primitive: one stored preference, both surfaces + both
 skeletons derive from it) and enumerate what changes from today's shape.
 SaveList skeleton resolution: interim = rows (matches today's content); the
 TODO(owner) is answered — the end state is preference-driven on both surfaces.
+
+## OWNER RULING OA12 (2026-08-08) — VARIANT A IS THE LAW, BAKED INTO THE PRIMITIVE
+
+The toggle-seam A/B is decided without the device sitting: variant A (strip stays
+live + skeleton beneath where results land) is THE canonical path for EVERY toggle
+strip in the app — polls, lists, profile, search, and strips that do not exist yet.
+It must be BAKED INTO the toggle primitive itself so no surface can opt out or
+forget: a new strip gets the behavior by construction. The A/B flag and the bare-
+white arm DIE. Mandated: a ground-up rederivation (not a retrofit) of the toggle-
+strip + skeleton system as ONE cohesive design — including collapsing skeleton
+ownership to ONE owner (the two-phase identical-twins seam from 018542e8e is
+correct-but-not-ideal; the ideal has no seam because it has one owner). All
+skeleton variants (cold strip-replacing, refetch under-strip, per-scene material)
+must be one family resolved through the one material path.
