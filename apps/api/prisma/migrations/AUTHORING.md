@@ -35,6 +35,20 @@ their checksums), so the pre-existing offenders are grandfathered by name in a
 FROZEN list; adding a new name to that list does not make a migration safe, it
 makes the next deploy crash-loop.
 
+**`ADD COLUMN ... DEFAULT <const>` IS NOT A REWRITE** (measured 2026-08-09). Since
+PG 11 a non-volatile default is stored as an attribute default and existing rows
+are never touched: re-measured here on a full copy of `entity_surface` (62,799
+rows), `ADD COLUMN ... DEFAULT now()` plus a second defaulted column took
+**8.6 ms** — the shape `20260809100000_entity_surface_merge` uses. That
+migration's own header says the `DEFAULT now()` "is a table rewrite" and gives it
+as the REASON for the parallel-worker `SET`s. The reason is wrong; the `SET`s are
+still right, because the same migration builds three indexes and runs a
+corpus-wide `UPDATE` over the merged table. Applied migrations are history and are
+never edited, so the correction lives here — do not copy that header's reasoning
+into a new migration, and do not conclude from it that a plain `ADD COLUMN
+DEFAULT` needs the guard. (A `DEFAULT` that is VOLATILE — `random()`, a function
+call per row — or an `ADD COLUMN` with a `USING`/type change, still rewrites.)
+
 `CREATE INDEX` and narrowed `UPDATE`s are deliberately NOT flagged: whether they
 are heavy depends on the target table's size, which no static scan can know, and
 a gate firing on ~16 false positives would be allowlisted into uselessness

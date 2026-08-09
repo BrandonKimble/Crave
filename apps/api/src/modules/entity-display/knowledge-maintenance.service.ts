@@ -1,5 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { Cron, CronExpression } from '@nestjs/schedule';
+import { Prisma } from '@prisma/client';
+import { PrismaService } from '../../prisma/prisma.service';
 import { isEnvFlagEnabled } from '../../shared/config/env-flag';
 import { LabelSweepService } from './label-sweep.service';
 import { VocabularyGenerator } from './vocabulary-generator';
@@ -21,11 +23,18 @@ import { ConceptSatisfiesService } from '../content-processing/entity-resolver/c
  *   1. VOCABULARY SWEEP (per locale) — labels + surfaces for concepts below
  *      the current prompt version. Blocked surfaces auto-route to the
  *      word-claim adjudicator inside the sweep itself.
- *   2. LABEL RECONCILIATION — any label surface still absent from the alias
- *      registry is offered through the guard + judge ("labels display,
- *      aliases ground" stays true by standing enforcement, not one-time
- *      migration).
- *   3. SATISFIES — rung 4 over the residual candidate pairs.
+ *   2. SATISFIES — rung 4 over the residual candidate pairs.
+ *
+ * (There is no reconciliation step. This header listed one until 2026-08-09;
+ * it described `reconcileLabelSurfaces`, which the surface merge DELETED —
+ * display and recall are two roles of one row, so there are no longer two
+ * stores for a standing pass to reconcile.)
+ *
+ * ONE RUNNER ACROSS PROCESSES. The re-entrancy guard is a Postgres advisory
+ * lock, not a field: a per-process boolean stops the worker re-entering
+ * itself and stops nothing else, so two replicas — or a replica and a
+ * hand-run script — would each run the full rail and each pay the LLM bill.
+ * Same idiom as the promotion drain and the rescore coordinator.
  *
  * SPEND POSTURE: every pass is watermark-bounded (a quiet corpus costs ~$0;
  * a prompt bump re-pays once), the sweep is limit-capped per night, and the
@@ -38,10 +47,13 @@ import { ConceptSatisfiesService } from '../content-processing/entity-resolver/c
  * set the var, redeploy, unset. That is the sanctioned prod execution rail
  * the never-point-local-at-prod law demands.
  */
+/** 'know' — same convention as RESCORE_ADVISORY_LOCK_KEY (0x63726176 'crav')
+ *  and PROMOTION_DRAIN_ADVISORY_LOCK_KEY (0x706f6c79 'poly'). */
+const KNOWLEDGE_MAINTENANCE_ADVISORY_LOCK_KEY = 0x6b6e6f77;
+
 @Injectable()
 export class KnowledgeMaintenanceService {
   private readonly logger = new Logger(KnowledgeMaintenanceService.name);
-  private inFlight = false;
 
   /** Sweep cap per locale per run — bounds one night's spend. */
   private static readonly SWEEP_LIMIT = 2000;
@@ -51,6 +63,7 @@ export class KnowledgeMaintenanceService {
     private readonly labelSweep: LabelSweepService,
     private readonly vocabulary: VocabularyGenerator,
     private readonly satisfies: ConceptSatisfiesService,
+    private readonly prisma: PrismaService,
   ) {}
 
   onModuleInit(): void {
@@ -68,8 +81,18 @@ export class KnowledgeMaintenanceService {
   }
 
   async runOnce(trigger: 'cron' | 'boot' | 'manual'): Promise<void> {
-    if (this.inFlight) return;
-    this.inFlight = true;
+    // CROSS-PROCESS single runner. The loser skips this pass entirely; every
+    // pass in the rail is watermark-driven, so the next tick simply picks up
+    // whatever the winner did not reach — there is nothing to queue.
+    const lock = await this.prisma.$queryRaw<Array<{ locked: boolean }>>(
+      Prisma.sql`SELECT pg_try_advisory_lock(${KNOWLEDGE_MAINTENANCE_ADVISORY_LOCK_KEY}) AS locked`,
+    );
+    if (!lock[0]?.locked) {
+      this.logger.log(
+        `knowledge maintenance skipped trigger=${trigger} (another process holds the rail)`,
+      );
+      return;
+    }
     const startedAt = Date.now();
     try {
       for (const locale of this.labelSweep.sweepLocales()) {
@@ -97,7 +120,20 @@ export class KnowledgeMaintenanceService {
         }`,
       );
     } finally {
-      this.inFlight = false;
+      // Best-effort release; a pooled connection MAY not be the acquiring
+      // session (same caveat as the promotion drain). An unreleased lock
+      // self-heals when the connection closes; log so a stuck rail is
+      // attributable rather than mysterious.
+      const released = await this.prisma
+        .$queryRaw<
+          Array<{ unlocked: boolean }>
+        >(Prisma.sql`SELECT pg_advisory_unlock(${KNOWLEDGE_MAINTENANCE_ADVISORY_LOCK_KEY}) AS unlocked`)
+        .catch(() => [{ unlocked: false }]);
+      if (!released[0]?.unlocked) {
+        this.logger.warn(
+          'knowledge maintenance advisory lock not released by this session',
+        );
+      }
     }
   }
 }

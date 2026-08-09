@@ -28,11 +28,19 @@ import {
  * M2 — THE UNLABELED-CONCEPT SWEEP (mechanism only; the judge is stubbed).
  *
  * THE WATERMARK IS THE RELATION. Round 3 replaced mint-time drafting with this
- * sweep for one reason worth restating: `NOT EXISTS (a label row for this
- * locale)` covers the PAST and the FUTURE with ONE mechanism, needs no second
- * timestamp column to fall out of sync, and never couples concept minting to
- * the active-locale set. Turn on a new locale and every concept ever minted is
- * instantly "due" — no backfill script, no catch-up bucket.
+ * sweep for one reason worth restating: a relation covers the PAST and the
+ * FUTURE with ONE mechanism, needs no second timestamp column to fall out of
+ * sync, and never couples concept minting to the active-locale set. Turn on a
+ * new locale and every concept ever minted is instantly "due" — no backfill
+ * script, no catch-up bucket.
+ *
+ * The relation is "HAVE WE ASKED", not "is there an output" (KL-A, 2026-08-09):
+ * the run LEDGER (`knowledge_pass_runs`, pass `label_sweep:<locale>`) is
+ * written for every concept in every batch, whatever came back, and a label row
+ * at the current prompt version is the same evidence recorded by the passes
+ * that ran before the ledger existed. An output-only watermark made every
+ * abstention permanently due, and — the batch being most-referenced-first —
+ * the same abstentions re-filled the capped nightly head forever.
  *
  * WIRED TO THE NIGHTLY via KnowledgeMaintenanceService (2026-08-08) —
  * behind KNOWLEDGE_MAINTENANCE_ENABLED under the global CRONS_ENABLED
@@ -50,6 +58,16 @@ const LABELED_ENTITY_TYPES = [
   'food',
   'ingredient',
 ];
+
+/**
+ * The ledger key for one locale's sweep. `knowledge_pass_runs` is keyed
+ * (pass, subject, prompt_version) and a sweep is PER LOCALE, so the locale
+ * belongs in the pass name — es and vi ask different questions about the same
+ * concept and must not answer for each other.
+ */
+export function sweepPass(locale: string): string {
+  return `label_sweep:${normalizeLocaleTag(locale)}`;
+}
 
 export interface SweepBatch {
   locale: string;
@@ -112,6 +130,22 @@ export class LabelSweepService {
               AND l.status IN ('active', 'candidate')
               AND l.prompt_version >= ${VOCABULARY_PROMPT_VERSION}
           )
+          -- ...AND WE HAVE NOT ALREADY ASKED (audit KL-A, applied to the
+          -- sweep). An output watermark alone conflates "no label needed" with
+          -- "not yet asked": a concept the generator legitimately omits — an
+          -- untranslatable proper noun, an abstention, a form that fails the
+          -- displayable check — writes no row, stays due FOREVER, and, being
+          -- most-referenced-first, deterministically re-occupies the head of
+          -- every capped nightly run. The concepts behind it are never
+          -- reached. The run ledger records the ASK, so absence-of-run is the
+          -- honest re-offer signal; a label row at this version is the same
+          -- evidence recorded by the older passes, before the ledger existed.
+          AND NOT EXISTS (
+            SELECT 1 FROM knowledge_pass_runs r
+            WHERE r.pass = ${sweepPass(locale)}
+              AND r.subject_id = e.entity_id
+              AND r.prompt_version >= ${VOCABULARY_PROMPT_VERSION}
+          )
       `,
     );
     return Number(rows[0]?.due ?? 0);
@@ -145,6 +179,22 @@ export class LabelSweepService {
               AND LOWER(l.locale) = ANY(${localeLookupChain(locale)}::text[])
               AND l.status IN ('active', 'candidate')
               AND l.prompt_version >= ${VOCABULARY_PROMPT_VERSION}
+          )
+          -- ...AND WE HAVE NOT ALREADY ASKED (audit KL-A, applied to the
+          -- sweep). An output watermark alone conflates "no label needed" with
+          -- "not yet asked": a concept the generator legitimately omits — an
+          -- untranslatable proper noun, an abstention, a form that fails the
+          -- displayable check — writes no row, stays due FOREVER, and, being
+          -- most-referenced-first, deterministically re-occupies the head of
+          -- every capped nightly run. The concepts behind it are never
+          -- reached. The run ledger records the ASK, so absence-of-run is the
+          -- honest re-offer signal; a label row at this version is the same
+          -- evidence recorded by the older passes, before the ledger existed.
+          AND NOT EXISTS (
+            SELECT 1 FROM knowledge_pass_runs r
+            WHERE r.pass = ${sweepPass(locale)}
+              AND r.subject_id = e.entity_id
+              AND r.prompt_version >= ${VOCABULARY_PROMPT_VERSION}
           )
         -- MOST-REFERENCED FIRST. A sweep is always budget-bounded, so the
         -- concepts users actually encounter must be labelled first. This
@@ -201,6 +251,29 @@ export class LabelSweepService {
     // no claim is ever re-litigated or silently re-proposed.
     if (contested.length) {
       await this.claimAdjudicator.adjudicate(contested);
+    }
+    // THE ASK IS RECORDED WHATEVER CAME BACK (KL-A). Every concept in the
+    // batch was put to the generator, so every one gets a run row — 'labeled'
+    // when a displayable label landed, 'not_generated' when the generator
+    // abstained or its form was undisplayable. Without the second case the
+    // abstentions are immortal and starve everything behind them.
+    if (!generator.dryRun && batch.requests.length) {
+      const labeled = new Set(
+        generated
+          .filter((row) => isDisplayable(normalizeSurface(row.form)))
+          .map((row) => row.entityId),
+      );
+      await this.prisma.$executeRaw`
+        INSERT INTO knowledge_pass_runs (pass, subject_id, prompt_version, outcome)
+        VALUES ${Prisma.join(
+          batch.requests.map(
+            (request) =>
+              Prisma.sql`(${sweepPass(locale)}, ${request.entityId}::uuid,
+                          ${VOCABULARY_PROMPT_VERSION},
+                          ${labeled.has(request.entityId) ? 'labeled' : 'not_generated'})`,
+          ),
+        )}
+        ON CONFLICT (pass, subject_id, prompt_version) DO NOTHING`;
     }
     const result: SweepResult = {
       locale,

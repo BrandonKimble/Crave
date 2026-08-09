@@ -65,6 +65,15 @@ export interface GeneratedLabel {
 
 export interface LabelGenerator {
   readonly name: string;
+  /**
+   * TRUE when this generator does not actually ASK anything (the stub). The
+   * sweep's watermark is the run LEDGER — "have we asked about this concept at
+   * this prompt version" — so a dry run must not write ledger rows: recording
+   * an ask that never happened would mark every concept it measured as done
+   * and permanently hide it from the real generator. Required, not optional:
+   * a new generator must state which it is.
+   */
+  readonly dryRun: boolean;
   generate(
     requests: readonly LabelGenerationRequest[],
   ): Promise<GeneratedLabel[]>;
@@ -81,6 +90,7 @@ export interface LabelGenerator {
  */
 export class NoopLabelGenerator implements LabelGenerator {
   readonly name = 'noop';
+  readonly dryRun = true;
 
   generate(
     requests: readonly LabelGenerationRequest[],

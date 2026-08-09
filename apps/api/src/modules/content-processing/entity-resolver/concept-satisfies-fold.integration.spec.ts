@@ -132,6 +132,11 @@ beforeAll(async () => {
   // for the accented pair and this spec reds exactly as before.
   await new NameContainmentEdgeBuilderService(
     prisma as never,
+    // The builder gained an ops-alerts dependency in ed87eef65 (KL-D
+    // self-heal) and this call site was not updated, so the whole
+    // integration suite failed to COMPILE — a gate that cannot run is a
+    // gate that cannot show red.
+    { emit: jest.fn() } as never,
     stubLogger() as never,
   ).rebuildAll();
 });

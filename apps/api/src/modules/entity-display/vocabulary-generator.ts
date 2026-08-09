@@ -51,6 +51,9 @@ export const VOCABULARY_PROMPT_VERSION = 3;
 @Injectable()
 export class VocabularyGenerator implements LabelGenerator {
   readonly name = 'llm-vocabulary';
+  /** It really asks — every concept it is handed is a question posed to the
+   *  model, so every one of them belongs in the run ledger. */
+  readonly dryRun = false;
 
   /** Concepts per LLM call. Matches the sibling knowledge pass's batch size. */
   private static readonly PER_CALL = 20;
