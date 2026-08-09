@@ -1,5 +1,5 @@
 {
-  "ranAt": "2026-08-09T07:53:47.091Z",
+  "ranAt": "2026-08-09T08:33:26.878Z",
   "lang": "es",
   "corpusVersion": 1,
   "scoreboard": {
@@ -2806,6 +2806,33 @@
           "name": "pork",
           "tier": "gazetteer-exact",
           "foldedName": "pork"
+        },
+        {
+          "entityId": "88c10136-e92a-45a5-8e32-a761249ec0e7",
+          "bucket": "food",
+          "type": "food",
+          "span": "sin",
+          "name": "sincronizada",
+          "tier": "linked",
+          "foldedName": "sincronizada"
+        },
+        {
+          "entityId": "9b453df1-0514-48eb-aa90-23c130f079f2",
+          "bucket": "food",
+          "type": "food",
+          "span": "sin",
+          "name": "sincronizada burger",
+          "tier": "linked",
+          "foldedName": "sincronizada burger"
+        },
+        {
+          "entityId": "62822230-19b1-41f7-91a8-9add1ab8b116",
+          "bucket": "food",
+          "type": "food",
+          "span": "sin",
+          "name": "singapore noodle",
+          "tier": "linked",
+          "foldedName": "singapore noodle"
         }
       ],
       "unresolved": [],
@@ -2932,6 +2959,33 @@
           "name": "rice",
           "tier": "gazetteer-exact",
           "foldedName": "rice"
+        },
+        {
+          "entityId": "88c10136-e92a-45a5-8e32-a761249ec0e7",
+          "bucket": "food",
+          "type": "food",
+          "span": "sin",
+          "name": "sincronizada",
+          "tier": "linked",
+          "foldedName": "sincronizada"
+        },
+        {
+          "entityId": "9b453df1-0514-48eb-aa90-23c130f079f2",
+          "bucket": "food",
+          "type": "food",
+          "span": "sin",
+          "name": "sincronizada burger",
+          "tier": "linked",
+          "foldedName": "sincronizada burger"
+        },
+        {
+          "entityId": "62822230-19b1-41f7-91a8-9add1ab8b116",
+          "bucket": "food",
+          "type": "food",
+          "span": "sin",
+          "name": "singapore noodle",
+          "tier": "linked",
+          "foldedName": "singapore noodle"
         }
       ],
       "unresolved": [],
@@ -2974,6 +3028,33 @@
           "name": "chicken",
           "tier": "gazetteer-exact",
           "foldedName": "chicken"
+        },
+        {
+          "entityId": "88c10136-e92a-45a5-8e32-a761249ec0e7",
+          "bucket": "food",
+          "type": "food",
+          "span": "sin",
+          "name": "sincronizada",
+          "tier": "linked",
+          "foldedName": "sincronizada"
+        },
+        {
+          "entityId": "9b453df1-0514-48eb-aa90-23c130f079f2",
+          "bucket": "food",
+          "type": "food",
+          "span": "sin",
+          "name": "sincronizada burger",
+          "tier": "linked",
+          "foldedName": "sincronizada burger"
+        },
+        {
+          "entityId": "62822230-19b1-41f7-91a8-9add1ab8b116",
+          "bucket": "food",
+          "type": "food",
+          "span": "sin",
+          "name": "singapore noodle",
+          "tier": "linked",
+          "foldedName": "singapore noodle"
         }
       ],
       "unresolved": [],
@@ -3016,6 +3097,33 @@
           "name": "meat",
           "tier": "gazetteer-exact",
           "foldedName": "meat"
+        },
+        {
+          "entityId": "88c10136-e92a-45a5-8e32-a761249ec0e7",
+          "bucket": "food",
+          "type": "food",
+          "span": "sin",
+          "name": "sincronizada",
+          "tier": "linked",
+          "foldedName": "sincronizada"
+        },
+        {
+          "entityId": "9b453df1-0514-48eb-aa90-23c130f079f2",
+          "bucket": "food",
+          "type": "food",
+          "span": "sin",
+          "name": "sincronizada burger",
+          "tier": "linked",
+          "foldedName": "sincronizada burger"
+        },
+        {
+          "entityId": "62822230-19b1-41f7-91a8-9add1ab8b116",
+          "bucket": "food",
+          "type": "food",
+          "span": "sin",
+          "name": "singapore noodle",
+          "tier": "linked",
+          "foldedName": "singapore noodle"
         }
       ],
       "unresolved": [],
@@ -3058,6 +3166,33 @@
           "name": "avocado",
           "tier": "gazetteer-exact",
           "foldedName": "avocado"
+        },
+        {
+          "entityId": "88c10136-e92a-45a5-8e32-a761249ec0e7",
+          "bucket": "food",
+          "type": "food",
+          "span": "sin",
+          "name": "sincronizada",
+          "tier": "linked",
+          "foldedName": "sincronizada"
+        },
+        {
+          "entityId": "9b453df1-0514-48eb-aa90-23c130f079f2",
+          "bucket": "food",
+          "type": "food",
+          "span": "sin",
+          "name": "sincronizada burger",
+          "tier": "linked",
+          "foldedName": "sincronizada burger"
+        },
+        {
+          "entityId": "62822230-19b1-41f7-91a8-9add1ab8b116",
+          "bucket": "food",
+          "type": "food",
+          "span": "sin",
+          "name": "singapore noodle",
+          "tier": "linked",
+          "foldedName": "singapore noodle"
         }
       ],
       "unresolved": [],
@@ -3100,6 +3235,33 @@
           "name": "onion",
           "tier": "gazetteer-exact",
           "foldedName": "onion"
+        },
+        {
+          "entityId": "88c10136-e92a-45a5-8e32-a761249ec0e7",
+          "bucket": "food",
+          "type": "food",
+          "span": "sin",
+          "name": "sincronizada",
+          "tier": "linked",
+          "foldedName": "sincronizada"
+        },
+        {
+          "entityId": "9b453df1-0514-48eb-aa90-23c130f079f2",
+          "bucket": "food",
+          "type": "food",
+          "span": "sin",
+          "name": "sincronizada burger",
+          "tier": "linked",
+          "foldedName": "sincronizada burger"
+        },
+        {
+          "entityId": "62822230-19b1-41f7-91a8-9add1ab8b116",
+          "bucket": "food",
+          "type": "food",
+          "span": "sin",
+          "name": "singapore noodle",
+          "tier": "linked",
+          "foldedName": "singapore noodle"
         }
       ],
       "unresolved": [],
@@ -3133,6 +3295,33 @@
           "name": "burrito",
           "tier": "gazetteer-exact",
           "foldedName": "burrito"
+        },
+        {
+          "entityId": "88c10136-e92a-45a5-8e32-a761249ec0e7",
+          "bucket": "food",
+          "type": "food",
+          "span": "sin",
+          "name": "sincronizada",
+          "tier": "linked",
+          "foldedName": "sincronizada"
+        },
+        {
+          "entityId": "9b453df1-0514-48eb-aa90-23c130f079f2",
+          "bucket": "food",
+          "type": "food",
+          "span": "sin",
+          "name": "sincronizada burger",
+          "tier": "linked",
+          "foldedName": "sincronizada burger"
+        },
+        {
+          "entityId": "62822230-19b1-41f7-91a8-9add1ab8b116",
+          "bucket": "food",
+          "type": "food",
+          "span": "sin",
+          "name": "singapore noodle",
+          "tier": "linked",
+          "foldedName": "singapore noodle"
         },
         {
           "entityId": "44c2a929-142b-425d-b161-96c9654b1d75",
@@ -3175,6 +3364,33 @@
           "name": "quesadilla",
           "tier": "gazetteer-exact",
           "foldedName": "quesadilla"
+        },
+        {
+          "entityId": "88c10136-e92a-45a5-8e32-a761249ec0e7",
+          "bucket": "food",
+          "type": "food",
+          "span": "sin",
+          "name": "sincronizada",
+          "tier": "linked",
+          "foldedName": "sincronizada"
+        },
+        {
+          "entityId": "9b453df1-0514-48eb-aa90-23c130f079f2",
+          "bucket": "food",
+          "type": "food",
+          "span": "sin",
+          "name": "sincronizada burger",
+          "tier": "linked",
+          "foldedName": "sincronizada burger"
+        },
+        {
+          "entityId": "62822230-19b1-41f7-91a8-9add1ab8b116",
+          "bucket": "food",
+          "type": "food",
+          "span": "sin",
+          "name": "singapore noodle",
+          "tier": "linked",
+          "foldedName": "singapore noodle"
         },
         {
           "entityId": "10dc6d53-685a-4c2a-a302-d59ade9c5d1e",
@@ -3228,6 +3444,33 @@
           "foldedName": "chicken"
         },
         {
+          "entityId": "88c10136-e92a-45a5-8e32-a761249ec0e7",
+          "bucket": "food",
+          "type": "food",
+          "span": "sin",
+          "name": "sincronizada",
+          "tier": "linked",
+          "foldedName": "sincronizada"
+        },
+        {
+          "entityId": "9b453df1-0514-48eb-aa90-23c130f079f2",
+          "bucket": "food",
+          "type": "food",
+          "span": "sin",
+          "name": "sincronizada burger",
+          "tier": "linked",
+          "foldedName": "sincronizada burger"
+        },
+        {
+          "entityId": "62822230-19b1-41f7-91a8-9add1ab8b116",
+          "bucket": "food",
+          "type": "food",
+          "span": "sin",
+          "name": "singapore noodle",
+          "tier": "linked",
+          "foldedName": "singapore noodle"
+        },
+        {
           "entityId": "17a3a5b1-9a4f-4ab5-928f-3dd1f1945176",
           "bucket": "ingredients",
           "type": "ingredient",
@@ -3277,6 +3520,33 @@
           "name": "onion",
           "tier": "gazetteer-exact",
           "foldedName": "onion"
+        },
+        {
+          "entityId": "88c10136-e92a-45a5-8e32-a761249ec0e7",
+          "bucket": "food",
+          "type": "food",
+          "span": "sin",
+          "name": "sincronizada",
+          "tier": "linked",
+          "foldedName": "sincronizada"
+        },
+        {
+          "entityId": "9b453df1-0514-48eb-aa90-23c130f079f2",
+          "bucket": "food",
+          "type": "food",
+          "span": "sin",
+          "name": "sincronizada burger",
+          "tier": "linked",
+          "foldedName": "sincronizada burger"
+        },
+        {
+          "entityId": "62822230-19b1-41f7-91a8-9add1ab8b116",
+          "bucket": "food",
+          "type": "food",
+          "span": "sin",
+          "name": "singapore noodle",
+          "tier": "linked",
+          "foldedName": "singapore noodle"
         }
       ],
       "unresolved": [],
@@ -3319,6 +3589,33 @@
           "name": "meat",
           "tier": "gazetteer-exact",
           "foldedName": "meat"
+        },
+        {
+          "entityId": "88c10136-e92a-45a5-8e32-a761249ec0e7",
+          "bucket": "food",
+          "type": "food",
+          "span": "sin",
+          "name": "sincronizada",
+          "tier": "linked",
+          "foldedName": "sincronizada"
+        },
+        {
+          "entityId": "9b453df1-0514-48eb-aa90-23c130f079f2",
+          "bucket": "food",
+          "type": "food",
+          "span": "sin",
+          "name": "sincronizada burger",
+          "tier": "linked",
+          "foldedName": "sincronizada burger"
+        },
+        {
+          "entityId": "62822230-19b1-41f7-91a8-9add1ab8b116",
+          "bucket": "food",
+          "type": "food",
+          "span": "sin",
+          "name": "singapore noodle",
+          "tier": "linked",
+          "foldedName": "singapore noodle"
         }
       ],
       "unresolved": [],
@@ -3352,6 +3649,33 @@
           "name": "ramen",
           "tier": "gazetteer-exact",
           "foldedName": "ramen"
+        },
+        {
+          "entityId": "88c10136-e92a-45a5-8e32-a761249ec0e7",
+          "bucket": "food",
+          "type": "food",
+          "span": "sin",
+          "name": "sincronizada",
+          "tier": "linked",
+          "foldedName": "sincronizada"
+        },
+        {
+          "entityId": "9b453df1-0514-48eb-aa90-23c130f079f2",
+          "bucket": "food",
+          "type": "food",
+          "span": "sin",
+          "name": "sincronizada burger",
+          "tier": "linked",
+          "foldedName": "sincronizada burger"
+        },
+        {
+          "entityId": "62822230-19b1-41f7-91a8-9add1ab8b116",
+          "bucket": "food",
+          "type": "food",
+          "span": "sin",
+          "name": "singapore noodle",
+          "tier": "linked",
+          "foldedName": "singapore noodle"
         },
         {
           "entityId": "a046073c-4169-4d4d-90c8-54e8a8a9f9b8",
@@ -3405,7 +3729,7 @@
           "foldedName": "vegetarian"
         }
       ],
-      "unresolved": [],
+      "unresolved": ["no"],
       "analysis": {
         "script": "latin",
         "requestLocale": "es-US",
@@ -3438,96 +3762,6 @@
           "foldedName": "sushi"
         },
         {
-          "entityId": "0578fbbd-5d01-442d-bd43-740ae61481b3",
-          "bucket": "food",
-          "type": "food",
-          "span": "que",
-          "name": "que divino taco",
-          "tier": "linked",
-          "foldedName": "que divino taco"
-        },
-        {
-          "entityId": "77704ddc-d9c2-4197-853a-6b10e14d89dd",
-          "bucket": "food",
-          "type": "food",
-          "span": "que",
-          "name": "quesadilla especial",
-          "tier": "linked",
-          "foldedName": "quesadilla especial"
-        },
-        {
-          "entityId": "6ea4e7ca-1b5a-4f3b-bfae-37ff50c6401f",
-          "bucket": "food",
-          "type": "food",
-          "span": "que",
-          "name": "queso asado",
-          "tier": "linked",
-          "foldedName": "queso asado"
-        },
-        {
-          "entityId": "da6035cd-687a-4baa-9ed2-34705a82848b",
-          "bucket": "food",
-          "type": "food",
-          "span": "que",
-          "name": "quesadilla",
-          "tier": "linked",
-          "foldedName": "quesadilla"
-        },
-        {
-          "entityId": "73366a27-6ad8-4cc3-93d0-a6f37fca774b",
-          "bucket": "food",
-          "type": "food",
-          "span": "que",
-          "name": "quesabirria",
-          "tier": "linked",
-          "foldedName": "quesabirria"
-        },
-        {
-          "entityId": "ff0a3597-88b0-49ff-ae88-25d981fc0692",
-          "bucket": "food",
-          "type": "food",
-          "span": "sea",
-          "name": "sea bass",
-          "tier": "linked",
-          "foldedName": "sea bass"
-        },
-        {
-          "entityId": "3b0a7c32-dbb4-4425-b08b-4dd12ca36f7b",
-          "bucket": "food",
-          "type": "food",
-          "span": "sea",
-          "name": "sea bream",
-          "tier": "linked",
-          "foldedName": "sea bream"
-        },
-        {
-          "entityId": "df7a1ffe-2952-447b-96bb-e0149b3a971f",
-          "bucket": "food",
-          "type": "food",
-          "span": "sea",
-          "name": "seasonal flavors",
-          "tier": "linked",
-          "foldedName": "seasonal flavors"
-        },
-        {
-          "entityId": "5feb7d9f-c086-4959-8546-82a5da5f7c16",
-          "bucket": "food",
-          "type": "food",
-          "span": "sea",
-          "name": "seasonal greens",
-          "tier": "linked",
-          "foldedName": "seasonal greens"
-        },
-        {
-          "entityId": "59a8c8e4-ad9d-45c9-bcf6-85babb6510ce",
-          "bucket": "food",
-          "type": "food",
-          "span": "sea",
-          "name": "seasonal latte",
-          "tier": "linked",
-          "foldedName": "seasonal latte"
-        },
-        {
           "entityId": "08630647-825b-439d-8a47-461cf61a7f3d",
           "bucket": "restaurantAttributes",
           "type": "restaurant_attribute",
@@ -3537,7 +3771,7 @@
           "foldedName": "expensive"
         }
       ],
-      "unresolved": [],
+      "unresolved": ["que no sea"],
       "analysis": {
         "script": "latin",
         "requestLocale": "es-US",
@@ -3663,6 +3897,33 @@
           "foldedName": "coffee"
         },
         {
+          "entityId": "88c10136-e92a-45a5-8e32-a761249ec0e7",
+          "bucket": "food",
+          "type": "food",
+          "span": "sin",
+          "name": "sincronizada",
+          "tier": "linked",
+          "foldedName": "sincronizada"
+        },
+        {
+          "entityId": "9b453df1-0514-48eb-aa90-23c130f079f2",
+          "bucket": "food",
+          "type": "food",
+          "span": "sin",
+          "name": "sincronizada burger",
+          "tier": "linked",
+          "foldedName": "sincronizada burger"
+        },
+        {
+          "entityId": "62822230-19b1-41f7-91a8-9add1ab8b116",
+          "bucket": "food",
+          "type": "food",
+          "span": "sin",
+          "name": "singapore noodle",
+          "tier": "linked",
+          "foldedName": "singapore noodle"
+        },
+        {
           "entityId": "cfbeb4cc-1a49-4e35-8155-440c4c6c5004",
           "bucket": "ingredients",
           "type": "ingredient",
@@ -3703,6 +3964,33 @@
           "name": "birria",
           "tier": "gazetteer-exact",
           "foldedName": "birria"
+        },
+        {
+          "entityId": "88c10136-e92a-45a5-8e32-a761249ec0e7",
+          "bucket": "food",
+          "type": "food",
+          "span": "sin",
+          "name": "sincronizada",
+          "tier": "linked",
+          "foldedName": "sincronizada"
+        },
+        {
+          "entityId": "9b453df1-0514-48eb-aa90-23c130f079f2",
+          "bucket": "food",
+          "type": "food",
+          "span": "sin",
+          "name": "sincronizada burger",
+          "tier": "linked",
+          "foldedName": "sincronizada burger"
+        },
+        {
+          "entityId": "62822230-19b1-41f7-91a8-9add1ab8b116",
+          "bucket": "food",
+          "type": "food",
+          "span": "sin",
+          "name": "singapore noodle",
+          "tier": "linked",
+          "foldedName": "singapore noodle"
         },
         {
           "entityId": "8965509f-4c09-4343-895a-85fecc85f969",
