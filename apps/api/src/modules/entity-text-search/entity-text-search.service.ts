@@ -253,6 +253,7 @@ export class EntityTextSearchService {
         type: EntityType;
         exact: boolean;
         sim: number;
+        form: string;
       }[]
     >(Prisma.sql`
       -- F3801: DEDUP ORDER AND RELEVANCE ORDER ARE DIFFERENT QUESTIONS.
@@ -271,7 +272,11 @@ export class EntityTextSearchService {
         SELECT DISTINCT ON (e.entity_id)
                e.entity_id AS "entityId", e.name, e.type,
                (ea.form_folded = ${folded}) AS "exact",
-               similarity(ea.form_folded, ${folded}) AS "sim"
+               similarity(ea.form_folded, ${folded}) AS "sim",
+               -- The MATCHED SURFACE travels with the row: the tier below is
+               -- a statement about the form that matched, and it cannot be
+               -- recomputed from the entity's name (see the mapper).
+               ea.form_folded AS "form"
           FROM entity_alias ea
           JOIN core_entities e ON e.entity_id = ea.entity_id
          WHERE ea.status = 'active'
@@ -292,24 +297,42 @@ export class EntityTextSearchService {
     `);
     // Tiered exactly like the sparse lane so downstream confidence bands and
     // the link decider treat a localized hit as the same KIND of evidence.
-    return rows.map((row) => ({
-      entityId: row.entityId,
-      name: row.name,
-      type: row.type,
-      // exact 1; prefix = honest coverage; fuzzy = the measured trigram
-      // sim, WEARING ITS OWN TIER so the linker's fuzzy floors judge it —
-      // a trigram row labeled 'prefix' would be judged by the wrong band.
-      similarity: row.exact
-        ? 1
-        : canonicalFold(row.name).startsWith(folded)
-          ? folded.length / Math.max(row.name.length, 1)
-          : Number(row.sim),
-      evidence: row.exact
-        ? ('exact' as const)
-        : canonicalFold(row.name).startsWith(folded)
-          ? ('prefix' as const)
-          : ('fuzzy' as const),
-    }));
+    //
+    // THE TIER DESCRIBES THE FORM THAT MATCHED — not the entity's name. Every
+    // arm of the WHERE above tests `ea.form_folded`, so the mapper has to ask
+    // the same column. It used to classify with `canonicalFold(row.name)`,
+    // which is a DIFFERENT STRING on precisely the rows this lane exists for:
+    // a Spanish alias hanging off an entity whose name is in another language.
+    // A real prefix hit then failed the name test and fell through to 'fuzzy',
+    // and the linker judged it by fuzzy floors (~0.95 absolute) instead of the
+    // prefix band — so a user typing a prefix in their own language got their
+    // best suggestions rejected or ranked below worse ones. Harmless while the
+    // lane was exact+prefix and every non-exact row was 'prefix' regardless;
+    // the AC-P2c trigram arm made the misread reachable by giving it a third
+    // tier to fall into.
+    return rows.map((row) => {
+      const form = row.form ?? '';
+      const isPrefix = !row.exact && form.startsWith(folded);
+      return {
+        entityId: row.entityId,
+        name: row.name,
+        type: row.type,
+        // exact 1; prefix = honest coverage (how much of the matched surface
+        // the user actually typed); fuzzy = the measured trigram sim, WEARING
+        // ITS OWN TIER so the linker's fuzzy floors judge it — a trigram row
+        // labeled 'prefix' would be judged by the wrong band.
+        similarity: row.exact
+          ? 1
+          : isPrefix
+            ? folded.length / Math.max(form.length, 1)
+            : Number(row.sim),
+        evidence: row.exact
+          ? ('exact' as const)
+          : isPrefix
+            ? ('prefix' as const)
+            : ('fuzzy' as const),
+      };
+    });
   }
 
   /**

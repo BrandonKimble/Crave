@@ -141,6 +141,46 @@ describe('searchLocalizedSurfaces: the exact match survives the LIMIT (F3801)', 
     );
   });
 
+  it('tiers by the MATCHED FORM, not the entity name (the alias IS the point)', async () => {
+    // THE LAW, stated directly rather than caught in passing. Every arm of
+    // this lane's WHERE tests `ea.form_folded`, so the tier must ask the same
+    // column. The seeds above are the case that matters: the aliases are
+    // `zzqlocalizedextension0..5` while the entity NAMES are
+    // `itest-localized-prefix-N` — nothing in common. That is not contrived,
+    // it is the whole reason the lane exists (a Spanish alias hanging off an
+    // entity named in another language).
+    //
+    // Classifying with canonicalFold(row.name) made every such row fall
+    // through to 'fuzzy', where the linker judges by fuzzy floors (~0.95
+    // absolute) instead of the prefix band — a user typing a prefix in their
+    // own language got their best suggestions rejected or outranked. It was
+    // unreachable while the lane was exact+prefix and every non-exact row was
+    // 'prefix' anyway; the AC-P2c trigram arm gave the misread a third tier
+    // to land in.
+    const matches = await service.searchLocalizedSurfaces(
+      TERM,
+      ['food'],
+      LIMIT,
+      'es',
+    );
+    const prefixRows = matches.filter((m) => m.evidence === 'prefix');
+
+    expect(prefixRows.length).toBe(LIMIT - 1);
+    for (const row of prefixRows) {
+      // The name shares NOTHING with the term — if the tier consulted the
+      // name, this row could not be 'prefix'.
+      expect(canonicalFold(row.name).startsWith(canonicalFold(TERM))).toBe(
+        false,
+      );
+      // And the score is coverage of the MATCHED SURFACE
+      // (`zzqlocalized` of `zzqlocalizedextensionN`), never of the name.
+      const expected =
+        canonicalFold(TERM).length / canonicalFold(`${TERM}extension0`).length;
+      expect(row.similarity).toBeCloseTo(expected, 5);
+      expect(row.similarity).toBeLessThan(1);
+    }
+  });
+
   it('is deterministic across repeated executions (unique entity_id tiebreak, F1902)', async () => {
     const first = await service.searchLocalizedSurfaces(
       TERM,
