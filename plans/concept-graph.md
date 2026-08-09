@@ -621,3 +621,21 @@ ignores walls (the user named the restaurant). Both now documented as
 deliberate — auditors stop flagging them. AUTOCOMPLETE WORKSTREAM GREENLIT:
 full empirical flow testing → design → complete implementation → behavior
 tests → language-gate reruns when vi/zh/ko land.
+
+### §13 progress (2026-08-08, commits ea79cb388 / fe2378691)
+
+AUTOCOMPLETE FLOW GATE built (autocomplete-flow-gate.ts) — 12/12 GREEN.
+LANDED: AC-P0 attr-lane locale (picante / sin gluten chips typed-reachable
+in es); AC-P2c localized trigram arm + GIN index (typo tolerance for every
+language, honest 'fuzzy' tier); AC-P2a locale in the cache key. EMPIRICAL
+CORRECTIONS to the deep-read: Despaña + the vegetariano chip already worked
+(legacy und data); dish names source-faithful BY DESIGN (concepts localize,
+dishes never — encoded in gate es-05/es-07).
+REMAINING (AC-P1a): retire the aliases[] haystack/tsv/unnest arms onto the
+locale-chained registry — core-recall surgery, own session with EXPLAIN
+parity; INTERIM: aliases-projection-und-only.integration.spec.ts turns the
+"0 leaking forms" coincidence into a checked law (mutation-provable).
+Dense-per-keystroke throttle: P3, unchanged. OWNER RULING STILL OPEN:
+should Crave Score rank suggestions (today it is only a deep tie-break /
+recall-truncation input)? LANGUAGE RERUNS: add a vi/zh/ko entry block to
+the flow gate per rollout — that IS the re-test the owner mandated.
