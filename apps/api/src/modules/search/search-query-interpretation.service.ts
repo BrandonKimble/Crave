@@ -37,11 +37,67 @@ function stripCueTokens(
 ): string {
   const cues = negationCueTexts(analysis);
   if (!cues.size) return text;
+  // Compare in FOLDED space: the cue set is folded (canonicalFold strips
+  // diacritics), so a raw-lowercase compare silently missed every accented
+  // cue — "không" never matched the folded "khong" and vi hygiene would
+  // have been a no-op.
   const kept = text
     .split(/\s+/)
-    .filter((word) => !cues.has(word.toLowerCase()));
-  return kept.length ? kept.join(' ') : text;
+    .filter((word) => !cues.has(canonicalFold(word)));
+  // ALL CUE ⇒ NOTHING TO EMBED. Returning the original text here (the old
+  // fallback) handed the semantic model a bare negator — "phở không thịt"
+  // grounds phở and thịt, leaving the run "không", which was then embedded
+  // and linked as if it were a dish. An empty string tells the caller to
+  // skip the dense attempt: there is no positive concept in this run.
+  return kept.join(' ');
 }
+export interface ResidueToken {
+  text: string;
+  start: number;
+  end: number;
+  /** How this token re-joins to the previous one (' ' spaced, '' in CJK). */
+  separator: string;
+}
+
+/** Residue = maximal runs of adjacent tokens no grounded span covers.
+ *  Contiguity is decided by COVERAGE ALONE (negation v2 literal ignore):
+ *  nothing else may split a run, so "khachapuri no adjika" yields exactly
+ *  the shape "khachapuri and adjika" does — one run. */
+export function buildResidueRuns(
+  tokens: readonly ResidueToken[],
+  covered: (t: { start: number; end: number }) => boolean,
+): Array<{ text: string; start: number; end: number }> {
+  const residueRuns: Array<{ text: string; start: number; end: number }> = [];
+  for (const token of tokens) {
+    if (covered(token)) continue;
+    const last = residueRuns[residueRuns.length - 1];
+    // ONE RULE: extend the current run across this token when nothing lies
+    // between them. A non-empty gap means a GROUNDED token sits there (an
+    // ungrounded one would already have extended the run on its own turn),
+    // and that ends the run.
+    //
+    // ADJACENCY INCLUDES TOUCHING (red-team addendum, executed): the old
+    // shape required `last.end < token.start` — a strict gap, which every
+    // spaced script has and an unspaced one never does. So each CJK
+    // sub-token became its OWN run, and 不要香菜的牛肉面 asked on-demand
+    // collection to go learn 不, 要 and 香 — three single characters, none
+    // of which is a food concept, seeding discovery with noise and burning
+    // three probes where the unknown term is the contiguous RUN. Sub-tokens
+    // that re-join with '' are one surface-form unit, here as in ngrams().
+    const between = last
+      ? tokens.filter((t) => t.start >= last.end && t.end <= token.start)
+      : [];
+    if (last && token.start >= last.end && between.length === 0) {
+      // Join TOKEN texts, never the raw slice — raw punctuation between
+      // tokens ("aaa, bbb") would poison exact/alias probes and the
+      // staging record (red team ⑪).
+      last.text = `${last.text}${token.separator}${token.text}`;
+      last.end = token.end;
+    } else residueRuns.push({ ...token });
+  }
+  return residueRuns;
+}
+
 import { DietaryConstraintRegistry } from './dietary-constraints';
 import { UnsegmentedResidueService } from './unsegmented-residue.service';
 import type {
@@ -224,32 +280,17 @@ export class SearchQueryInterpretationService {
       // 麻辣牛肉面 probes and stages 牛肉面, never "牛 肉 面".
       separator: t.separator,
     }));
-    const cueTokenStarts = new Set(analysis.negationCues.map((c) => c.start));
+    // LITERAL IGNORE (negation v2, plan §12b): a cue token is an ORDINARY
+    // word here. It is never marked covered — marking it deleted it from
+    // the residue probes, the unresolved report, the on-demand collection
+    // ask and LLM staging, so "No Name Burgers" probed "name burgers" and
+    // seeded discovery with a mangled name, and a mid-query cue SPLIT one
+    // residue run in two ("khachapuri no adjika" must behave exactly like
+    // "khachapuri and adjika"). The ONLY place cues are removed is the
+    // dense-embed input below.
     const covered = (t: { start: number; end: number }) =>
-      groups.some((g) => g.start <= t.start && g.end >= t.end) ||
-      // A negation cue is UNDERSTOOD, not unknown: staging "sin" as an
-      // on-demand ask would seed collection with a Spanish stopword.
-      cueTokenStarts.has(t.start);
-    const residueRuns: { text: string; start: number; end: number }[] = [];
-    for (const token of tokens) {
-      if (covered(token)) continue;
-      const last = residueRuns[residueRuns.length - 1];
-      if (last && tokens.some((t) => t.start > last.end && t.end < token.start))
-        residueRuns.push({ ...token });
-      else if (last && last.end < token.start) {
-        // extend the current run only across directly adjacent residue
-        const between = tokens.filter(
-          (t) => t.start >= last.end && t.end <= token.start,
-        );
-        if (between.every((t) => !covered(t))) {
-          // Join TOKEN texts, never the raw slice — raw punctuation between
-          // tokens ("aaa, bbb") would poison exact/alias probes and the
-          // staging record (red team ⑪).
-          last.text = `${last.text}${token.separator}${token.text}`;
-          last.end = token.end;
-        } else residueRuns.push({ ...token });
-      } else residueRuns.push({ ...token });
-    }
+      groups.some((g) => g.start <= t.start && g.end >= t.end);
+    const residueRuns = buildResidueRuns(tokens, covered);
 
     // RESIDUE-JOIN RULE: probe each run joined with its adjacent grounded
     // spans FIRST — "brekfast tacos" must reach the COMPOUND "breakfast
@@ -292,11 +333,29 @@ export class SearchQueryInterpretationService {
           !isDietaryGroup(g) &&
           abuts(run.end, g.start),
       );
+      // The compound is joined the way the user TYPED it: a space where the
+      // query has one, nothing where the run and its neighbour touch (an
+      // unspaced CJK query grounds 牛肉面 and probes 麻辣牛肉面, never
+      // "麻辣 牛肉面" — a form no stored surface carries).
+      const joiner = (aEnd: number, bStart: number) =>
+        aEnd === bStart ? '' : ' ';
       const attempts: Array<{ text: string; consumes?: EntitySpanGroup }> = [
         ...(right
-          ? [{ text: `${run.text} ${right.text}`, consumes: right }]
+          ? [
+              {
+                text: `${run.text}${joiner(run.end, right.start)}${right.text}`,
+                consumes: right,
+              },
+            ]
           : []),
-        ...(left ? [{ text: `${left.text} ${run.text}`, consumes: left }] : []),
+        ...(left
+          ? [
+              {
+                text: `${left.text}${joiner(left.end, run.start)}${run.text}`,
+                consumes: left,
+              },
+            ]
+          : []),
         { text: run.text },
       ];
       let linked = false;
@@ -346,9 +405,13 @@ export class SearchQueryInterpretationService {
       // shrimp forever). A fuzzy substring match on foreign text is weak
       // evidence, not a link; dense arbitrates and, if admitted, REPLACES
       // it. Exact/alias links still terminate — they are claims.
+      // Cue tokens never reach the embedder; a run made ENTIRELY of cues has
+      // no positive concept to embed, so the dense tier is skipped outright.
+      const denseCandidateText = stripCueTokens(analysis, run.text);
       if (
         (!linked || (linkedWasWeak && analysis.isNonEnglish)) &&
         probeBudget > 0 &&
+        denseCandidateText.length > 0 &&
         (analysis.isNonLatinScript || analysis.isNonEnglish)
       ) {
         probeBudget -= 1;
@@ -358,7 +421,7 @@ export class SearchQueryInterpretationService {
         // is the only component capable of UNDERSTANDING a negation, and it
         // once inverted "sin cerdo" into vegan ramen. Embedding "cerdo"
         // instead yields pork, positively — literal ignore, mechanically.
-        const denseText = stripCueTokens(analysis, run.text);
+        const denseText = denseCandidateText;
         const denseResult = await this.linkUnified(
           {
             tempId: `food:${uuid()}`,
@@ -447,10 +510,10 @@ export class SearchQueryInterpretationService {
       // compound's evidence (taco 2,328 ev vs vegetarian taco 2). Under
       // the ranking invariant this cannot reorder anything: matching
       // decides eligibility, Crave Score decides order.
-      // GUARD: a sub-span behind a negation cue must NOT become eligible —
-      // "pizza sin gluten" grounds `gluten free pizza` whole; the bare
-      // `gluten` inside it would invert the constraint (fail closed, same
-      // law as R5-3).
+      // (No negation guard here, by ruling: under LITERAL IGNORE a cue is
+      // an ordinary word, so "pizza sin gluten" grounds `gluten free pizza`
+      // and its parts positively like any other compound. The guard this
+      // comment used to describe was deleted in addb677c0.)
       // COMPOSITIONALITY GUARD (rung-2 concept containment): a part is only
       // a valid decomposition when the compound CONCEPT's own name contains
       // the part concept's name — `vegetarian taco` ⊇ {taco, vegetarian} ✓;

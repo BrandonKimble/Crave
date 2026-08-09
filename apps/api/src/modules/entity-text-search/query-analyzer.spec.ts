@@ -118,22 +118,33 @@ describe('query analyzer (A2 seam)', () => {
       expect(folded).toContain('面 austin');
     });
 
-    it('splits a Han run from an adjacent Kana run at the script boundary', () => {
-      const analysis = analyzeQuery('豚骨ラーメン', null);
-      const folded = analysis.ngrams(4).map((n) => n.folded);
-      expect(folded).toContain('豚骨');
-      expect(folded).toContain('ラーメン');
-      // The run boundary is a WORD boundary (spaced), the inside is not.
-      // ー (formally Script=Common) stays glued to its katakana run.
-      expect(folded).toContain('豚骨 ラー');
-      expect(analysis.tokens.map((t) => t.separator)).toEqual([
-        ' ',
-        '',
-        ' ',
-        '',
-        '',
-        '',
-      ]);
+    it('never puts a space inside an unspaced run — Han+Kana, Han+digit (F4)', () => {
+      // A script change is NOT a word boundary: 豚骨ラーメン and 麻辣3号 are
+      // each typed as one word, and the FULL-length n-gram has to equal the
+      // stored identity_key (the spaceless fold of the surface) or the span
+      // that actually names the dish/shop can never ground.
+      for (const [query, expected] of [
+        ['豚骨ラーメン', ['豚', '骨', 'ラ', 'ー', 'メ', 'ン']],
+        ['ラーメン屋', ['ラ', 'ー', 'メ', 'ン', '屋']],
+        ['麻辣3号', ['麻', '辣', '3', '号']],
+      ] as const) {
+        const analysis = analyzeQuery(query, null);
+        expect(analysis.tokens.map((t) => t.raw)).toEqual(expected);
+        expect(analysis.tokens.map((t) => t.separator)).toEqual([
+          ' ',
+          ...expected.slice(1).map(() => ''),
+        ]);
+        const ngrams = analysis.ngrams(NGRAM_MAX_PHRASE_WORDS_CEILING);
+        const folded = ngrams.map((n) => n.folded);
+        expect(folded.some((f) => f.includes(' '))).toBe(false);
+        // The whole surface is offered, and every n-gram's folded text is
+        // the fold of its OWN raw slice.
+        expect(folded).toContain(canonicalFold(query));
+        for (const ngram of ngrams) {
+          expect(ngram.folded).toBe(canonicalFold(ngram.raw));
+          expect(analysis.raw.slice(ngram.start, ngram.end)).toBe(ngram.raw);
+        }
+      }
     });
 
     it('leaves HANGUL alone — Korean is space-delimited already', () => {

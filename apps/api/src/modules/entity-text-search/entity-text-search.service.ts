@@ -1374,10 +1374,23 @@ export class EntityTextSearchService {
     if (this.bankedPhraseWords && this.bankedPhraseWords.expiresAt > now) {
       return this.bankedPhraseWords.value;
     }
+    // MEASURED IN ANALYZER TOKENS, NOT SPACE-WORDS. An unspaced CJK surface
+    // is ONE space-word but N query tokens — the analyzer emits one per Han/
+    // Kana character — so counting spaces would ask for a 1-token window and
+    // leave every banked Chinese/Japanese surface unassemblable at exactly
+    // the span that names it. Adding the CJK character count is an UPPER
+    // bound (it double-counts each CJK word by one), which is the safe
+    // direction for a window: never short, and clamped by the cost ceiling.
     const rows = await this.prisma.$queryRaw<{ words: number | null }[]>(
       Prisma.sql`
-        SELECT max(array_length(string_to_array(form_folded, ' '), 1))::int
-                 AS "words"
+        SELECT max(
+                 array_length(string_to_array(form_folded, ' '), 1)
+                 + (
+                     length(form_folded)
+                     - length(regexp_replace(form_folded,
+                         '[぀-ヿ㐀-䶿一-鿿]', '', 'g'))
+                   )
+               )::int AS "words"
           FROM entity_surface
          WHERE status = 'active' AND role <> 'display'`,
     );
@@ -1537,12 +1550,15 @@ export class EntityTextSearchService {
              -- the word properly WORSE than typing it lazily. A display row
              -- still cannot ground anything on its own: the recall arms above
              -- are untouched, and this set only decides whether an already-
-             -- matched entity survives the accent test.
+             -- matched entity survives the accent test. The LOCALE filter is
+             -- absent for the same reason: how a word is spelled is a fact
+             -- about the entity, not a per-locale recall claim. With it, an
+             -- en-locale request for 'bánh mì' could not see the vi spelling
+             -- and refused the dish (red team, executed).
              ARRAY(
                SELECT ea.form FROM entity_surface ea
                WHERE ea.entity_id = e.entity_id
                  AND ea.status = 'active'
-                 ${aliasLocaleFilter}
                  AND ea.form_folded = ANY(${candidates}::text[])
              ) AS "rawAliases"`;
     const rows = await this.prisma.$queryRaw<
@@ -1597,6 +1613,17 @@ export class EntityTextSearchService {
     // named "good taco" grounding at confidence 1.0) is structurally gone.
 
     const candidateSet = new Set(candidates);
+    // Every accent-free string the registry banks as a whole surface, as far
+    // as THIS query can see. Built from the rows already fetched — no extra
+    // round trip — and read by the accent-complete arm of the admission rule.
+    const bankedPlainForms = new Set<string>();
+    for (const row of rows) {
+      for (const form of [row.name, ...row.normAliases, ...row.rawAliases]) {
+        const folded = canonicalFold(form);
+        if (folded && folded === diacriticFold(form))
+          bankedPlainForms.add(folded);
+      }
+    }
     const rawSpans: Array<{
       start: number;
       end: number;
@@ -1621,11 +1648,12 @@ export class EntityTextSearchService {
       // name, its untagged recall forms, and the raw form of every surface
       // that matched. normAliases is LOWER(form) — lowercasing preserves
       // accents, so it is still raw evidence.
-      const diacriticForms = new Set<string>([
-        diacriticFold(row.name),
-        ...row.normAliases.map((a) => diacriticFold(a)),
-        ...row.rawAliases.map((a) => diacriticFold(a)),
-      ]);
+      const spellings = [row.name, ...row.normAliases, ...row.rawAliases].map(
+        (form) => ({
+          folded: canonicalFold(form),
+          diacritic: diacriticFold(form),
+        }),
+      );
       for (const phrase of matchedPhrases) {
         for (const span of candidateSpans.get(phrase) ?? []) {
           // DIACRITIC EVIDENCE (see admitsAtExactTier): a span the user typed
@@ -1636,7 +1664,8 @@ export class EntityTextSearchService {
           if (
             !admitsAtExactTier(
               { folded: phrase, diacritic: span.diacritic },
-              diacriticForms,
+              spellings,
+              bankedPlainForms,
             )
           ) {
             continue;

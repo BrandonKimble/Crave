@@ -79,10 +79,18 @@ export interface QueryToken {
  * active recall surfaces (10.3%), including the whole Vietnamese cuisine
  * vocabulary ('ẩm thực Địa Trung Hải' → mediterranean, five tokens). Those
  * queries did not park — they SHREDDED into their parts and ground nonsense
- * ('Địa'→plate, 'Trung'→egg). 12 covers 99.96% of the banked distribution and
- * still bounds the worst case (48 tokens x 12 = 576 candidates).
+ * ('Địa'→plate, 'Trung'→egg).
+ *
+ * 12 CLAMPED THE REAL DATA (red-team F5, re-measured 2026-08-09 against the
+ * dev mirror): the longest active recall surface is 15 tokens ('banh bagel
+ * thap cam voi kem pho mai hanh la va ca hoi xong khoi'), the only row above
+ * 12 of 57,657 — so the ceiling, not the vocabulary, was the reason it could
+ * never be assembled. 16 covers every banked surface measured with headroom
+ * and still bounds the worst case (48 tokens x 16 = 768 candidates in one
+ * `= ANY(text[])` probe; a 12-token scan measured ~1.4ms, and the ceiling is
+ * only ever reached by queries that are themselves that long).
  */
-export const NGRAM_MAX_PHRASE_WORDS_CEILING = 12;
+export const NGRAM_MAX_PHRASE_WORDS_CEILING = 16;
 
 export interface QueryNgram {
   /** Folded phrase text (tokens joined by a single space). */
@@ -168,6 +176,17 @@ export const LANGUAGE_PACKS: ReadonlyMap<string, LanguagePack> = new Map(
     pack('de', ['ohne', 'kein', 'keine', 'nicht']),
     pack('fr', ['sans', 'pas']),
     pack('pt', ['sem']),
+    // vi is a SHIPPED locale (F4): without this pack "phở không thịt"
+    // embedded whole and the dense tier — the one component that can
+    // UNDERSTAND negation — could invert it (the sin cerdo → vegan class)
+    // in the third launch language. Standard high-frequency negators only;
+    // `khong`/`chang` are the plain negations, `dung` the prohibitive,
+    // `mien` the "hold the / free of" sense. Deliberately NOT listed:
+    // `chua` ("not yet") and `it` ("little"), which are degree words and
+    // appear inside dish text. Cue lists affect ONLY dense-input
+    // stripping, never lexical grounding, so a false positive costs one
+    // word of embedded context and nothing else.
+    pack('vi', ['không', 'chẳng', 'đừng', 'miễn']),
   ].map((p) => [p.language, p]),
 );
 
@@ -336,8 +355,22 @@ const CJK_RUN_SCRIPT = (ch: string): 'han' | 'kana' | null =>
 
 /** Splits ONE raw token into the tokens the analyzer emits for it. A token
  *  with no Han/Kana yields exactly itself (byte-identical, one allocation
- *  more than before). A token containing them is cut at script-run
- *  boundaries; Han and Kana runs are further cut into characters. */
+ *  more than before). A token containing them is cut into per-character CJK
+ *  sub-tokens plus the non-CJK stretches between them.
+ *
+ *  WHAT DECIDES THE SEPARATOR (red-team F4, executed): raw ADJACENCY, never
+ *  script identity. TOKEN_RE already cut the query at every real word
+ *  boundary — whitespace and punctuation — so everything inside ONE matched
+ *  token was typed with nothing between it, and re-assembling it must
+ *  reproduce exactly that. Only the FIRST sub-token carries ' ' (it joins to
+ *  the previous WORD); every later one carries ''. Deriving the separator
+ *  from a Han→Kana or CJK→digit script change instead put a space inside
+ *  words that have none: 豚骨ラーメン rendered "豚骨 ラーメン" and 麻辣3号
+ *  rendered "麻辣 3 号", so the full-length n-gram could never equal the
+ *  stored identity_key (which is the fold of the surface, spaceless) and a
+ *  kanji+kana compound — most Japanese dish and shop names — was unmatchable
+ *  at exactly the span that identifies it. The invariant this restores:
+ *  every n-gram's folded text equals canonicalFold of its own raw slice. */
 export function segmentToken(raw: string, start: number): QueryToken[] {
   const chars = Array.from(raw);
   if (!chars.some((ch) => CJK_RUN_SCRIPT(ch) !== null)) {
@@ -352,49 +385,36 @@ export function segmentToken(raw: string, start: number): QueryToken[] {
       },
     ];
   }
-  const out: QueryToken[] = [];
+  /** [rawPiece, startOffset] in order: one per CJK character, one per
+   *  non-CJK stretch. */
+  const pieces: Array<[string, number]> = [];
   let offset = start;
   let plain = '';
   let plainStart = start;
   const flushPlain = () => {
     if (!plain) return;
-    out.push({
-      raw: plain,
-      folded: canonicalFold(plain),
-      diacritic: diacriticFold(plain),
-      start: plainStart,
-      end: plainStart + plain.length,
-      separator: ' ',
-    });
+    pieces.push([plain, plainStart]);
     plain = '';
   };
-  let previousWasCjk = false;
-  let previousCjkScript: 'han' | 'kana' | null = null;
   for (const ch of chars) {
-    const cjk = CJK_RUN_SCRIPT(ch);
-    if (cjk) {
+    if (CJK_RUN_SCRIPT(ch) !== null) {
       flushPlain();
-      // A run boundary (Han→Kana) is a word boundary; inside one run the
-      // characters re-assemble with no separator.
-      const separator = previousWasCjk && cjk === previousCjkScript ? '' : ' ';
-      out.push({
-        raw: ch,
-        folded: canonicalFold(ch),
-        diacritic: diacriticFold(ch),
-        start: offset,
-        end: offset + ch.length,
-        separator,
-      });
+      pieces.push([ch, offset]);
     } else {
       if (!plain) plainStart = offset;
       plain += ch;
     }
-    previousWasCjk = cjk !== null;
-    previousCjkScript = cjk;
     offset += ch.length;
   }
   flushPlain();
-  return out;
+  return pieces.map(([piece, pieceStart], index) => ({
+    raw: piece,
+    folded: canonicalFold(piece),
+    diacritic: diacriticFold(piece),
+    start: pieceStart,
+    end: pieceStart + piece.length,
+    separator: index === 0 ? ' ' : '',
+  }));
 }
 
 export interface AnalyzeOptions {

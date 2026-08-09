@@ -22,8 +22,12 @@
  *   - minNgrams: the query must yield at least this many distinct folded
  *     n-grams (an unspaced Han query yielding 1 is the original defect);
  *   - mustInclude: folded spans that must be offered to the gazetteer;
- *   - noSpaceInside: no folded n-gram may contain a space (a spaced key
- *     matches no stored surface — identity_key for 牛肉面 is 牛肉面);
+ *   - fold-of-own-slice: every n-gram's folded text equals canonicalFold of
+ *     the raw slice it covers, so a space appears if and only if the user
+ *     typed whitespace there (a key with an invented space matches no stored
+ *     surface — identity_key for 豚骨ラーメン is 豚骨ラーメン). This is
+ *     derived, never per-case: an opt-out flag here de-fanged the assertion
+ *     once already;
  *   - foldIsIdentity: canonicalFold must not mangle the script (no case,
  *     no diacritics, CJK voicing preserved);
  *   - tokens: exact token list, so a Latin/Hangul regression is loud.
@@ -37,7 +41,10 @@
  * Run: npx ts-node -T scripts/search-harness/cjk-segmentation-gate.ts
  */
 import { out } from './_shared';
-import { analyzeQuery } from '../../src/modules/entity-text-search/query-analyzer';
+import {
+  analyzeQuery,
+  NGRAM_MAX_PHRASE_WORDS_CEILING,
+} from '../../src/modules/entity-text-search/query-analyzer';
 import { canonicalFold } from '../../src/modules/content-processing/entity-resolver/entity-identity';
 
 interface Case {
@@ -51,10 +58,20 @@ interface Case {
   tokens?: string[];
   /** Latin/Hangul cases assert the exact prior n-gram list. */
   exactNgrams?: string[];
-  allowSpaces?: boolean;
 }
 
-const MAX_PHRASE_WORDS = 4; // what the gazetteer actually asks for
+/**
+ * The n-gram window. Production DERIVES it from the data — the longest
+ * active recall surface, measured in analyzer tokens
+ * (`resolveBankedSurfacePhraseWords`) — and clamps it at the analyzer's cost
+ * ceiling. This gate is pure (no DB), so it asks for the CEILING: the widest
+ * window production can ever open, which is what an unspaced surface needs
+ * (豚骨ラーメン is one banked surface but SIX query tokens). An earlier
+ * revision hardcoded 4 with the comment "what the gazetteer actually asks
+ * for" — that number was already stale and it hid the F4 defect, because a
+ * 6-token surface could not be assembled to be compared at all.
+ */
+const MAX_PHRASE_WORDS = NGRAM_MAX_PHRASE_WORDS_CEILING;
 
 const CASES: Case[] = [
   {
@@ -63,7 +80,7 @@ const CASES: Case[] = [
     script: 'cjk',
     minNgrams: 2,
     tokens: ['麻', '辣', '牛', '肉', '面'],
-    mustInclude: ['麻辣', '牛肉', '牛肉面', '麻辣牛肉'],
+    mustInclude: ['麻辣', '牛肉', '牛肉面', '麻辣牛肉', '麻辣牛肉面'],
   },
   {
     id: 'zh-restaurant-name',
@@ -73,24 +90,50 @@ const CASES: Case[] = [
     mustInclude: ['海底', '海底捞'],
   },
   {
+    id: 'zh-han-digit-name',
+    // Han + digit with no whitespace — a common zh shop name. The digit is
+    // not a word boundary; "麻辣 3 号" would match no stored surface.
+    query: '麻辣3号',
+    script: 'cjk',
+    minNgrams: 4,
+    tokens: ['麻', '辣', '3', '号'],
+    mustInclude: ['麻辣', '3号', '麻辣3号'],
+  },
+  {
     id: 'zh-mixed-latin',
     query: 'spicy 牛肉面 austin',
     script: 'cjk',
     minNgrams: 5,
     tokens: ['spicy', '牛', '肉', '面', 'austin'],
-    mustInclude: ['牛肉面', 'spicy', 'austin'],
-    allowSpaces: true,
+    mustInclude: ['牛肉面', 'spicy', 'austin', 'spicy 牛肉面 austin'],
   },
   {
-    id: 'ja-han-kana-boundary',
+    id: 'ja-han-kana-compound',
     query: '豚骨ラーメン',
     // Kana outranks Han in the script gate (a query with any kana is
     // Japanese, while Han alone is ambiguous zh/ja).
     script: 'kana',
-    minNgrams: 2,
-    // ー (Script=Common) must stay glued to its katakana run.
-    mustInclude: ['豚骨', 'ラーメン'],
-    allowSpaces: true,
+    minNgrams: 6,
+    // The FULL compound must be offered as one spaceless span — that is the
+    // form the surface is stored under. ー (Script=Common) stays glued to
+    // its katakana run, and the Han→Kana change is NOT a word boundary.
+    mustInclude: ['豚骨', 'ラーメン', '豚骨ラーメン'],
+    tokens: ['豚', '骨', 'ラ', 'ー', 'メ', 'ン'],
+  },
+  {
+    id: 'ja-kana-han-compound',
+    query: 'ラーメン屋',
+    script: 'kana',
+    minNgrams: 5,
+    mustInclude: ['ラーメン', 'ラーメン屋'],
+    tokens: ['ラ', 'ー', 'メ', 'ン', '屋'],
+  },
+  {
+    id: 'ja-tokyo-ramen',
+    query: '東京ラーメン',
+    script: 'kana',
+    minNgrams: 6,
+    mustInclude: ['東京', 'ラーメン', '東京ラーメン'],
   },
   {
     id: 'ko-spaced-unchanged',
@@ -100,7 +143,6 @@ const CASES: Case[] = [
     minNgrams: 6,
     tokens: ['매운', '한국', '음식'],
     mustInclude: ['한국 음식', '매운 한국 음식'],
-    allowSpaces: true,
   },
   {
     id: 'ko-single-word',
@@ -110,7 +152,6 @@ const CASES: Case[] = [
     minNgrams: 1,
     tokens: ['비빔밥'],
     mustInclude: ['비빔밥'],
-    allowSpaces: true,
   },
   {
     id: 'en-unchanged',
@@ -120,7 +161,6 @@ const CASES: Case[] = [
     tokens: ['breakfast', 'taco'],
     mustInclude: ['breakfast taco'],
     exactNgrams: ['breakfast', 'breakfast taco', 'taco'],
-    allowSpaces: true,
   },
   {
     id: 'en-accented-name-unchanged',
@@ -130,7 +170,6 @@ const CASES: Case[] = [
     tokens: ['Despaña', 'bakery'],
     mustInclude: ['despana bakery'],
     exactNgrams: ['despana', 'despana bakery', 'bakery'],
-    allowSpaces: true,
   },
 ];
 
@@ -170,8 +209,18 @@ function main(): void {
       JSON.stringify(folded) !== JSON.stringify(c.exactNgrams)
     )
       failures.push(`ngrams!=prior ${JSON.stringify(folded)}`);
-    if (!c.allowSpaces && folded.some((f) => f.includes(' ')))
-      failures.push('spaced folded key inside an unspaced run');
+    // THE INVARIANT, DERIVED — not a per-case opt-out (red-team F4b: five of
+    // eight cases carried `allowSpaces: true`, including the one that
+    // actually violated the rule, so the assertion could never RED). Every
+    // n-gram's folded text must equal the fold of its OWN raw slice: a space
+    // may appear if and only if the user typed whitespace there. That single
+    // rule covers both directions — spaces invented inside an unspaced run,
+    // and spaces lost across a real word boundary.
+    const spaceInvented = ngrams.find((n) => n.folded !== canonicalFold(n.raw));
+    if (spaceInvented)
+      failures.push(
+        `folded "${spaceInvented.folded}" != fold of its raw slice "${spaceInvented.raw}"`,
+      );
     // The span-offset contract holds for sub-tokens too.
     const badOffset = ngrams.find(
       (n) => analysis.raw.slice(n.start, n.end) !== n.raw,
