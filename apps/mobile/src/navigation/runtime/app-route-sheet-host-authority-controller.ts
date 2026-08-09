@@ -1,5 +1,6 @@
 import type { BottomSheetRuntimeModel } from '../../overlays/useBottomSheetRuntime';
 import { runOnUI, type SharedValue } from 'react-native-reanimated';
+import { getTrackSheetPositionAuthority } from '../../tracksheet/track-sheet-position-authority';
 import type {
   BottomSheetSharedRuntimeConfigSharedValues,
   BottomSheetSharedRuntimeConfigSnapshot,
@@ -334,8 +335,6 @@ const areMotionRuntimeSnapshotsEqual = (
   left.stateEntry?.initialSnapPoint === right.stateEntry?.initialSnapPoint &&
   left.stateEntry?.currentSnapPoint === right.stateEntry?.currentSnapPoint &&
   left.stateEntry?.sheetYValue === right.stateEntry?.sheetYValue &&
-  left.stateEntry?.scrollOffsetValue === right.stateEntry?.scrollOffsetValue &&
-  left.stateEntry?.momentumFlag === right.stateEntry?.momentumFlag &&
   left.stateEntry?.motionCommandValue === right.stateEntry?.motionCommandValue;
 
 const areSheetHostNavigationSelectorSnapshotsEqual = (
@@ -612,7 +611,13 @@ class AppRouteSheetHostAuthorityController {
           this.recomputeRuntimeReseed(true);
         },
         areSheetHostSearchSurfaceRuntimeReseedSnapshotsEqual
-      )
+      ),
+      // The track's position publication changes identity exactly once per
+      // track-host mount (first commit's layout effect) — the motion-state
+      // entry must re-mint so stateEntry.sheetYValue carries the published SV.
+      getTrackSheetPositionAuthority().subscribe(() => {
+        this.recomputeAll(true);
+      })
     );
   }
 
@@ -1022,16 +1027,23 @@ class AppRouteSheetHostAuthorityController {
     const { activeShellSpec, canRenderSurface, resolvedRuntimeModel, visible } =
       resolvedSurfaceInput;
     const initialSnapPoint = this.resolveSheetRuntimeInitialSnap(resolvedSurfaceInput);
-    return canRenderSurface && resolvedRuntimeModel != null
+    // THE PIPE CARRIES THE TRACK'S OWN SV (residue-kill item 12): sheetYValue
+    // is the track's published sheetTopY — the exact object TrackSheetPage
+    // animates with — not a mirrored rival. No publication yet ⇒ no motion
+    // facts to state (the track host publishes in its first commit's layout
+    // effect, before anything paints; the subscription in the constructor
+    // recomputes this snapshot the moment it lands).
+    const trackSheetPosition = getTrackSheetPositionAuthority().getPosition();
+    return canRenderSurface && resolvedRuntimeModel != null && trackSheetPosition != null
       ? {
           stateEntry: {
             visible,
             snapPoints: activeShellSpec.snapPoints,
             initialSnapPoint,
             currentSnapPoint: this.currentSnap === 'hidden' ? initialSnapPoint : this.currentSnap,
-            sheetYValue: resolvedRuntimeModel.presentationState.sheetY,
-            scrollOffsetValue: resolvedRuntimeModel.presentationState.scrollOffset,
-            momentumFlag: resolvedRuntimeModel.presentationState.momentumFlag,
+            // The ONE widening cast back from the RN-free structural type: the
+            // published object is a real reanimated derived value at runtime.
+            sheetYValue: trackSheetPosition.sheetTopY as SharedValue<number>,
             motionCommandValue: resolvedRuntimeModel.snapController.motionCommand,
           },
         }
@@ -1219,17 +1231,10 @@ class AppRouteSheetHostAuthorityController {
       if (areAppRouteSheetHostSurfaceBodySnapshotsEqual(this.bodySnapshot, nextSnapshot)) {
         return false;
       }
-      const previousSheetYValue = this.bodySnapshot.motionStateEntry?.sheetYValue ?? null;
-      const nextSheetYValue = nextSnapshot.motionStateEntry?.sheetYValue ?? null;
-      const shouldSeedIncomingSheetPosition =
-        resolvedSurfaceInput.surfaceVisualPolicy.phase === 'results_dismissing' &&
-        resolvedSurfaceInput.surfaceVisualPolicy.bottomBandOwner === 'docked_scene' &&
-        previousSheetYValue != null &&
-        nextSheetYValue != null &&
-        previousSheetYValue !== nextSheetYValue;
-      if (shouldSeedIncomingSheetPosition) {
-        nextSheetYValue.value = previousSheetYValue.value;
-      }
+      // The results_dismissing "seed the incoming sheetYValue" write that lived
+      // here is DELETED with the publication bridge: sheetYValue is now the ONE
+      // track-published SV on every entry, so previous !== next can never hold
+      // and a controller-side write would be a rogue second writer (check 5).
       this.bodySnapshot = nextSnapshot;
       if (notify && notifyBody) {
         withSearchNavSwitchRuntimeAttribution('sheetHost', 'notify:body', () => {

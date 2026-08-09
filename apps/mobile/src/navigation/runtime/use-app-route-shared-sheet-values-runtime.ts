@@ -2,7 +2,7 @@ import React from 'react';
 
 import { useSharedValue } from 'react-native-reanimated';
 
-import { calculateSnapPoints, type SheetPosition } from '../../overlays/sheetUtils';
+import { calculateSnapPoints } from '../../overlays/sheetUtils';
 import type { AppRouteSharedSheetRuntimeOwner } from './app-route-shared-sheet-runtime-contract';
 
 type UseAppRouteSharedSheetValuesRuntimeArgs = {
@@ -11,13 +11,11 @@ type UseAppRouteSharedSheetValuesRuntimeArgs = {
   insetsTop: number;
   navBarTopForSnaps: number;
   overlayTabHeaderHeight: number;
-  initialSharedSheetPosition: SheetPosition;
-  initialSharedSheetVisible: boolean;
 };
 
 export type AppRouteSharedSheetValuesRuntime = Pick<
   AppRouteSharedSheetRuntimeOwner,
-  'snapPoints' | 'sheetTranslateY' | 'sheetScrollOffset' | 'sheetMomentum'
+  'snapPoints' | 'sheetMomentum'
 > & {
   syncSnapPoints: (input: {
     screenHeight: number;
@@ -34,8 +32,6 @@ export const useAppRouteSharedSheetValuesRuntime = ({
   insetsTop,
   navBarTopForSnaps,
   overlayTabHeaderHeight,
-  initialSharedSheetPosition,
-  initialSharedSheetVisible,
 }: UseAppRouteSharedSheetValuesRuntimeArgs): AppRouteSharedSheetValuesRuntime => {
   const snapPointsRef = React.useRef(
     calculateSnapPoints(
@@ -48,12 +44,9 @@ export const useAppRouteSharedSheetValuesRuntime = ({
   );
   const snapPoints = snapPointsRef.current;
 
-  const sheetTranslateY = useSharedValue(
-    initialSharedSheetVisible
-      ? (snapPoints[initialSharedSheetPosition] ?? screenHeight)
-      : screenHeight
-  );
-  const sheetScrollOffset = useSharedValue(0);
+  // The rival sheetTranslateY/sheetScrollOffset SharedValues that lived here
+  // are DELETED (residue-kill item 12): position is the track's own publication
+  // (track-sheet-position-authority); scroll is a point-in-time getter there.
   const sheetMomentum = useSharedValue(false);
 
   const syncSnapPoints: AppRouteSharedSheetValuesRuntime['syncSnapPoints'] = React.useCallback(
@@ -89,11 +82,9 @@ export const useAppRouteSharedSheetValuesRuntime = ({
   return React.useMemo(
     () => ({
       snapPoints,
-      sheetTranslateY,
-      sheetScrollOffset,
       sheetMomentum,
       syncSnapPoints,
     }),
-    [sheetMomentum, sheetScrollOffset, sheetTranslateY, snapPoints, syncSnapPoints]
+    [sheetMomentum, snapPoints, syncSnapPoints]
   );
 };

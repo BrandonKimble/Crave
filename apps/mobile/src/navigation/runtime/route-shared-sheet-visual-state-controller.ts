@@ -4,7 +4,7 @@ type Listener = () => void;
 
 export type RouteSharedSheetVisualBinding = Pick<
   AppRouteSharedSheetVisualBinding,
-  'snapPoints' | 'sheetTranslateY' | 'sheetScrollOffset' | 'sheetMomentum' | 'getCurrentSheetSnap'
+  'snapPoints' | 'sheetMomentum' | 'getCurrentSheetSnap'
 > | null;
 
 export type RouteSharedSheetVisualAuthority = {
@@ -25,8 +25,6 @@ const areRouteSharedSheetVisualBindingsEqual = (
   (left != null &&
     right != null &&
     left.snapPoints === right.snapPoints &&
-    left.sheetTranslateY === right.sheetTranslateY &&
-    left.sheetScrollOffset === right.sheetScrollOffset &&
     left.sheetMomentum === right.sheetMomentum &&
     left.getCurrentSheetSnap === right.getCurrentSheetSnap);
 

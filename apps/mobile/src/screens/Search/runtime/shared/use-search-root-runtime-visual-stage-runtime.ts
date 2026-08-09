@@ -1,4 +1,7 @@
 import React from 'react';
+import type { SharedValue } from 'react-native-reanimated';
+
+import { useTrackSheetTopY } from '../../../../tracksheet/use-track-sheet-top-y';
 
 import { useAppRouteSceneChromeMotionRuntimeOwner } from '../../../../navigation/runtime/AppRouteSceneChromeMotionRuntimeProvider';
 import { useAppRouteSheetHostOwner } from '../../../../navigation/runtime/AppRouteSheetHostRuntimeProvider';
@@ -101,14 +104,19 @@ export const useSearchRootRuntimeVisualStageRuntime = ({
   const appRouteSharedSheetRuntimeOwner =
     overlayFoundationAssemblyRuntime.rootOverlayFoundationRuntime.appRouteSharedSheetRuntimeOwner;
   const routeSheetMotionState = mountedRouteSheetMotionState ?? routeSheetRuntimeMotionState;
+  const trackSheetTopY = useTrackSheetTopY();
   const searchSurfaceSheetTranslateY =
-    routeSheetMotionState?.sheetYValue ?? appRouteSharedSheetRuntimeOwner.sheetTranslateY;
+    // Entry present ⇒ the entry's sheetYValue IS the track's published SV;
+    // entry null ⇒ read the same published SV straight from the position
+    // authority. One object either way — a frozen dead-mirror fallback is
+    // unrepresentable (residue-kill item 12).
+    routeSheetMotionState?.sheetYValue ?? (trackSheetTopY as SharedValue<number>);
   const searchSurfaceSnapPoints =
     routeSheetMotionState?.snapPoints ?? appRouteSharedSheetRuntimeOwner.snapPoints;
   const searchSurfaceCurrentSnap =
     routeSheetMotionState?.currentSnapPoint ?? appRouteSharedSheetRuntimeOwner.sheetState;
   const dismissMotionPlaneRuntime = useSearchDismissMotionPlaneRuntime({
-    sheetTranslateY: searchSurfaceSheetTranslateY,
+    trackSheetTopY: searchSurfaceSheetTranslateY,
     currentSheetSnap: searchSurfaceCurrentSnap,
     snapPoints: searchSurfaceSnapPoints,
     collapsedSnap: searchSurfaceSnapPoints.collapsed,

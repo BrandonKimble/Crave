@@ -1,4 +1,7 @@
 import React from 'react';
+import type { SharedValue } from 'react-native-reanimated';
+
+import { useTrackSheetTopY } from '../../../../tracksheet/use-track-sheet-top-y';
 import { selectSearchMode } from './search-desired-tuple-selectors';
 
 import { useResultsPresentationShellLocalState } from './use-results-presentation-shell-local-state';
@@ -30,7 +33,7 @@ type UseResultsPresentationShellRuntimeArgs = {
   searchRuntimeBus: SearchRuntimeBus;
   resultsPresentationAuthority: ResultsPresentationAuthority;
   onSearchSheetContentLaneChanged?: (change: ResultsPresentationPolicyFactsLaneChange) => void;
-  resultsSheetRuntime: Pick<AppRouteSharedSheetRuntimeOwner, 'sheetTranslateY' | 'snapPoints'>;
+  resultsSheetRuntime: Pick<AppRouteSharedSheetRuntimeOwner, 'snapPoints'>;
 };
 
 export const useResultsPresentationShellRuntime = ({
@@ -101,6 +104,7 @@ export const useResultsPresentationShellRuntime = ({
     ['desiredTuple'] as const
   );
 
+  const trackSheetTopY = useTrackSheetTopY();
   const shellModel = useResultsPresentationShellModelRuntime({
     query,
     submittedQuery,
@@ -109,7 +113,9 @@ export const useResultsPresentationShellRuntime = ({
     isSuggestionPanelActive,
     shouldRenderSearchOverlay,
     shouldEnableShortcutInteractions,
-    sheetY: resultsSheetRuntime.sheetTranslateY,
+    // The track's published sheetTopY (residue-kill item 12): the shell model's
+    // backdrop/veil interpolations ride the track's own SV, not a mirror.
+    sheetY: trackSheetTopY as SharedValue<number>,
     resultsSnapY: resultsSheetRuntime.snapPoints.middle,
     collapsedY: resultsSheetRuntime.snapPoints.collapsed,
     backdropTarget: shellLocalState.backdropTarget,

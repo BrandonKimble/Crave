@@ -5,8 +5,6 @@ import type {
 import { EMPTY_SEARCH_ROUTE_VISUAL_STATE } from '../../../../overlays/searchRouteOverlayRuntimeContract';
 
 export const DEFAULT_PRESENTATION_STATE: SearchRouteSceneStackPresentationState = {
-  sheetTranslateY: EMPTY_SEARCH_ROUTE_VISUAL_STATE.sheetTranslateY,
-  sheetScrollOffset: EMPTY_SEARCH_ROUTE_VISUAL_STATE.sheetScrollOffset,
   sheetMomentum: EMPTY_SEARCH_ROUTE_VISUAL_STATE.sheetMomentum,
 };
 

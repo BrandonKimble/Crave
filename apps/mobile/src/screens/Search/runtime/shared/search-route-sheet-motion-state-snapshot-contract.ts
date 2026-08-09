@@ -3,6 +3,8 @@ import type {
   BottomSheetSnapPoint,
   BottomSheetSnapPoints,
 } from '../../../../overlays/bottomSheetMotionTypes';
+import type { SharedValue } from 'react-native-reanimated';
+
 import type { BottomSheetRuntimeModel } from '../../../../overlays/useBottomSheetRuntime';
 
 export type SearchRouteSheetMotionStateEntry = {
@@ -10,9 +12,11 @@ export type SearchRouteSheetMotionStateEntry = {
   snapPoints: BottomSheetSnapPoints;
   initialSnapPoint: BottomSheetSnapPoint;
   currentSnapPoint: BottomSheetSnap;
-  sheetYValue: BottomSheetRuntimeModel['presentationState']['sheetY'];
-  scrollOffsetValue: BottomSheetRuntimeModel['presentationState']['scrollOffset'];
-  momentumFlag: BottomSheetRuntimeModel['presentationState']['momentumFlag'];
+  /** The track's OWN published sheetTopY (track-sheet-position-authority) —
+   *  the exact object TrackSheetPage animates with, not a mirror. The old
+   *  scrollOffsetValue/momentumFlag lanes are gone: nothing ever read them
+   *  (scroll is a point-in-time getter on the position authority now). */
+  sheetYValue: SharedValue<number>;
   motionCommandValue: BottomSheetRuntimeModel['snapController']['motionCommand'];
 };
 

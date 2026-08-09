@@ -182,10 +182,10 @@ const TrackSheetRouteSurface: React.FC<{ scene: OverlayKey }> = ({ scene: sceneO
   // startup geometry seed (the same routeOverlaySnapPoints the production sheet
   // rides), and the presented scene tracks the PresentationFrame — tab presses
   // switch this host's chrome exactly as they switch the production sheet's.
-  // THE CANONICAL GEOMETRY + PUBLICATION SVs: the shared sheet runtime owner is
-  // the live production source (snapPoints synced in place; sheetTranslateY /
-  // sheetScrollOffset are what every legacy rider subscribes to). Geometry
-  // unification: attach config and chrome both read THIS object now.
+  // THE CANONICAL GEOMETRY: the shared sheet runtime owner is the live
+  // production source (snapPoints synced in place). Geometry unification:
+  // attach config and chrome both read THIS object now. (Position is the
+  // track's own publication — see track-sheet-position-authority.)
   const sharedSheetOwner = useAppRouteSharedSheetRuntimeOwner();
   const snapPoints = sharedSheetOwner.snapPoints;
   const sceneRuntime = useAppRouteSceneRuntime();
@@ -453,20 +453,9 @@ const useTrackScenePageChrome = (
   // one strip element PER ENTRY, cached until the entry's leg is evicted —
   // mounted once in the band and opacity-flipped, so chips never re-measure on
   // a switch, and two entries of the same scene keep independent strip state.
-  const sharedSheetOwner2 = useAppRouteSharedSheetRuntimeOwner();
-  // POST-FLIP: the track is the ONLY sheetTranslateY writer (the old runtime
-  // no longer renders), so the full binding is on — search chrome scale, the
-  // scrim, and the shortcut choreography ride the track (inventory §3). The
-  // pre-flip misfire (suggestion surface) was the OLD system's state machines
-  // reacting to a second writer; with one writer the semantics are the
-  // production ones. Behavioral riders stay on the burn-in watchlist.
-  const sharedSheetPublicationBindings = React.useMemo(
-    () => ({
-      sheetTranslateY: sharedSheetOwner2.sheetTranslateY,
-      sheetScrollOffset: sharedSheetOwner2.sheetScrollOffset,
-    }),
-    [sharedSheetOwner2.sheetScrollOffset, sharedSheetOwner2.sheetTranslateY]
-  );
+  // THE PUBLICATION BRIDGE IS DELETED (residue-kill item 12): TrackSheetPage
+  // publishes its own sheetTopY through the track position authority; there is
+  // no app-owned rival SV pair to bind any more.
   const geometry = React.useMemo(
     () => ({
       expandedTop: snapPoints.expanded,
@@ -485,7 +474,6 @@ const useTrackScenePageChrome = (
     navActionProgress,
     onNavActionPress,
     onGrabHandlePress,
-    sharedSheetPublicationBindings,
     onGestureSettle,
   };
 };
@@ -510,7 +498,6 @@ const UnifiedTrackScenePage: React.FC<TrackScenePageProps> = ({
     navActionProgress,
     onNavActionPress,
     onGrabHandlePress,
-    sharedSheetPublicationBindings,
     onGestureSettle,
   } = useTrackScenePageChrome(scene, snapPoints);
   const { presentedEntryKey, legs } = useTrackLegResolver({
@@ -541,7 +528,6 @@ const UnifiedTrackScenePage: React.FC<TrackScenePageProps> = ({
         headerFocusRef={headerFocusRef}
         debugHud={debugVisuals}
         commandsRef={commandsRef}
-        publicationBindings={sharedSheetPublicationBindings}
         onGestureSettle={onGestureSettle}
         // R7 fence, pending side: a native drag begin is a proven motion fact —
         // it OPENS a drag episode in the motion authority (so a redraw arming

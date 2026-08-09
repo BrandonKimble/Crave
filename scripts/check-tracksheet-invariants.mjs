@@ -161,16 +161,17 @@ for (const file of files) {
     });
   }
 
-  // 5 — ONE WRITER for the published sheet SVs (residue-kill-plan item 12 #10).
-  //     TrackSheetPage's mirror reactions are the only legitimate writer of
-  //     sheetTranslateY/sheetScrollOffset; any `.value =` assignment to either
-  //     outside src/tracksheet is a rogue second writer racing the track's
-  //     next mirror frame.
+  // 5 — ONE WRITER for the published sheet position (residue-kill item 12).
+  //     Post-migration the published value is the track's OWN derived
+  //     sheetTopY (track-sheet-position-authority) — it has NO legitimate
+  //     assignment anywhere outside src/tracksheet; the legacy mirror names
+  //     stay in the regex so a resurrected mirror is caught as a writer too.
   if (
     !rel(file).replace(/\\/g, '/').startsWith('apps/mobile/src/tracksheet/') &&
     !isSpecOrFixture(file)
   ) {
-    const rogueSheetSvWrite = /\b(?:sheetScrollOffset|sheetTranslateY)\.value\s*=[^=]/;
+    const rogueSheetSvWrite =
+      /\b(?:sheetScrollOffset|sheetTranslateY|trackSheetTopY|sheetTopY)\.value\s*=[^=]/;
     lines.forEach((line, i) => {
       if (rogueSheetSvWrite.test(line)) {
         failures.push(
@@ -189,6 +190,23 @@ for (const file of files) {
       failures.push(`${rel(file)}:${i + 1} 'instant' sheet motion (OA5: every sheet glides)`);
     }
   });
+
+  // 6 — THE PUBLICATION BRIDGE STAYS DEAD (residue-kill item 12, migrated
+  //     2026-08-09). Position is the track's OWN published sheetTopY
+  //     (track-sheet-position-authority) and scroll is a point-in-time getter
+  //     there; the app-owned mirror pair (sheetTranslateY/sheetScrollOffset)
+  //     and the page's `publicationBindings` mirror block are deleted. ANY
+  //     reappearance of those identifiers in code (comments are stripped) is
+  //     the bridge growing back — including in specs and fixtures, which were
+  //     migrated with it.
+  const bridgeToken = /\b(?:publicationBindings|sheetTranslateY|sheetScrollOffset)\b/;
+  lines.forEach((line, i) => {
+    if (bridgeToken.test(line)) {
+      failures.push(
+        `${rel(file)}:${i + 1} publication-bridge identifier regrowth (item 12: the track publishes its own sheetTopY; no mirror pair)`
+      );
+    }
+  });
 }
 
 if (failures.length > 0) {
@@ -196,4 +214,4 @@ if (failures.length > 0) {
   for (const failure of failures) console.error(`  ${failure}`);
   process.exit(1);
 }
-console.log(`[tracksheet-invariants] OK — ${files.length} files scanned, 5 invariants hold.`);
+console.log(`[tracksheet-invariants] OK — ${files.length} files scanned, 6 invariants hold.`);

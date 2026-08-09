@@ -138,10 +138,10 @@ const mountRuntime = (
   // The sheet is mid-travel (100) well above the collapsed boundary (500), so the dismiss
   // is a real observed motion, NOT the "already collapsed, complete immediately" path — the
   // recovery deadline is armed and left pending on a stalled poll boundary.
-  const sheetTranslateY = { value: 100 };
+  const trackSheetTopY = { value: 100 };
   return mountHook(() =>
     useSearchDismissMotionPlaneRuntime({
-      sheetTranslateY: sheetTranslateY as never,
+      trackSheetTopY: trackSheetTopY as never,
       currentSheetSnap: 'middle',
       snapPoints: SNAP_POINTS as never,
       collapsedSnap: SNAP_POINTS.collapsed,

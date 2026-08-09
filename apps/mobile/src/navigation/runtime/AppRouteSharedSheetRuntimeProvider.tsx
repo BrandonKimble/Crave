@@ -50,12 +50,7 @@ export const AppRouteSharedSheetRuntimeProvider = ({
   });
   const visualBinding = React.useMemo(
     () => getAppRouteSharedSheetVisualBinding(runtimeOwner),
-    [
-      runtimeOwner.sheetMomentum,
-      runtimeOwner.sheetScrollOffset,
-      runtimeOwner.sheetTranslateY,
-      runtimeOwner.snapPoints,
-    ]
+    [runtimeOwner.sheetMomentum, runtimeOwner.snapPoints]
   );
 
   React.useEffect(() => {

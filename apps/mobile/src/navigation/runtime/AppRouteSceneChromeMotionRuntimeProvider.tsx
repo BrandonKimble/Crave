@@ -1,5 +1,7 @@
 import React from 'react';
-import { useSharedValue } from 'react-native-reanimated';
+import { useSharedValue, type SharedValue } from 'react-native-reanimated';
+
+import { useTrackSheetTopY } from '../../tracksheet/use-track-sheet-top-y';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { resolveExpandedMiddleSnaps, resolveExpandedTop } from '../../overlays/sheetUtils';
@@ -177,7 +179,6 @@ export const AppRouteSceneChromeMotionRuntimeProvider = ({
       routeSceneRuntime.routeOverlayCommandAuthority.getSnapshot()
     ),
   });
-  const routeOwnedBootstrapSheetTranslateY = useSharedValue(initialChromeTransitionConfig.middle);
   const chromeExpandedSnap = useSharedValue(initialChromeTransitionConfig.expanded);
   const chromeMiddleSnap = useSharedValue(initialChromeTransitionConfig.middle);
 
@@ -202,17 +203,6 @@ export const AppRouteSceneChromeMotionRuntimeProvider = ({
       routeSceneRuntime.routeOverlayCommandAuthority,
     ]
   );
-
-  React.useLayoutEffect(() => {
-    if (activeRouteSheetMotionStateEntry != null) {
-      return;
-    }
-    routeOwnedBootstrapSheetTranslateY.value = initialChromeTransitionConfig.middle;
-  }, [
-    activeRouteSheetMotionStateEntry,
-    initialChromeTransitionConfig.middle,
-    routeOwnedBootstrapSheetTranslateY,
-  ]);
 
   React.useLayoutEffect(() => {
     const syncChromeSnapTargets = () => {
@@ -260,11 +250,17 @@ export const AppRouteSceneChromeMotionRuntimeProvider = ({
     routeSceneRuntime.routeOverlayChromeModeAuthority,
   ]);
 
+  // The track's published sheetTopY — the SAME object the motion-state entry
+  // carries. Reading it here (not via the entry) keeps the chrome chain live
+  // even on entry-null frames (no renderable surface), and makes a frozen
+  // dead-mirror fallback unrepresentable: both branches are one SV. The old
+  // routeOwnedBootstrapSheetTranslateY rival is deleted with the bridge.
+  const trackSheetTopY = useTrackSheetTopY();
   const runtime = useAppRouteSceneChromeTransitionRuntime({
     expandedSnap: chromeExpandedSnap,
     middleSnap: chromeMiddleSnap,
-    sheetTranslateY:
-      activeRouteSheetMotionStateEntry?.sheetYValue ?? routeOwnedBootstrapSheetTranslateY,
+    trackSheetTopY:
+      activeRouteSheetMotionStateEntry?.sheetYValue ?? (trackSheetTopY as SharedValue<number>),
   });
 
   useAppRouteSceneChromeMotionTargetRuntime({

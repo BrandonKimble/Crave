@@ -14,7 +14,7 @@ import { SEARCH_CHROME_SHEET_RESPONSE_ZONE_PX } from '../../screens/Search/const
 type UseAppRouteSceneChromeTransitionRuntimeArgs = {
   expandedSnap: number | SharedValue<number>;
   middleSnap: number | SharedValue<number>;
-  sheetTranslateY: SharedValue<number>;
+  trackSheetTopY: SharedValue<number>;
   transitionProgressOverride?: SharedValue<number>;
   visibilityProgressOverride?: SharedValue<number>;
 };
@@ -34,7 +34,7 @@ const useChromeSnapSharedValue = (snap: number | SharedValue<number>): SharedVal
 const useAppRouteSceneChromeSheetProgressRuntime = ({
   expandedSnap,
   middleSnap,
-  sheetTranslateY,
+  trackSheetTopY,
   transitionProgressOverride,
   visibilityProgressOverride,
 }: UseAppRouteSceneChromeTransitionRuntimeArgs) => {
@@ -49,12 +49,12 @@ const useAppRouteSceneChromeSheetProgressRuntime = ({
       return middleY <= expandedY ? 1 : 0;
     }
     return interpolate(
-      sheetTranslateY.value,
+      trackSheetTopY.value,
       [expandedY, responseEndY],
       [0, 1],
       Extrapolation.CLAMP
     );
-  }, [chromeTransitionExpandedSnap, chromeTransitionMiddleSnap, sheetTranslateY]);
+  }, [chromeTransitionExpandedSnap, chromeTransitionMiddleSnap, trackSheetTopY]);
 
   const searchChromeTransitionProgress =
     transitionProgressOverride ?? derivedSearchChromeTransitionProgress;
@@ -95,7 +95,7 @@ const useAppRouteSceneChromeSheetProgressRuntime = ({
 export const useAppRouteSceneChromeTransitionRuntime = ({
   expandedSnap,
   middleSnap,
-  sheetTranslateY,
+  trackSheetTopY,
 }: Omit<UseAppRouteSceneChromeTransitionRuntimeArgs, 'transitionProgressOverride'>) => {
   const overlayChromeTransitionProgress = useSharedValue(1);
   const overlayChromeVisibilityProgress = useSharedValue(1);
@@ -106,7 +106,7 @@ export const useAppRouteSceneChromeTransitionRuntime = ({
     useAppRouteSceneChromeSheetProgressRuntime({
       expandedSnap,
       middleSnap,
-      sheetTranslateY,
+      trackSheetTopY,
     });
 
   useAnimatedReaction(
@@ -126,18 +126,18 @@ export const useAppRouteSceneChromeTransitionRuntime = ({
   );
 
   useAnimatedReaction(
-    () => sheetTranslateY.value,
+    () => trackSheetTopY.value,
     (next) => {
       overlayBackdropSheetTopY.value = next;
     },
-    [overlayBackdropSheetTopY, sheetTranslateY]
+    [overlayBackdropSheetTopY, trackSheetTopY]
   );
 
   const { searchChromeOpacity, searchChromeScale, searchBarInputAnimatedStyle } =
     useAppRouteSceneChromeSheetProgressRuntime({
       expandedSnap,
       middleSnap,
-      sheetTranslateY,
+      trackSheetTopY,
       transitionProgressOverride: overlayChromeTransitionProgress,
       visibilityProgressOverride: overlayChromeVisibilityProgress,
     });

@@ -1,5 +1,7 @@
 import React from 'react';
 
+import { getTrackSheetPositionAuthority } from '../../../../tracksheet/track-sheet-position-authority';
+
 import { SCREEN_HEIGHT, USA_FALLBACK_CENTER, USA_FALLBACK_ZOOM } from '../../constants/search';
 import type { SearchRootEnvironment } from './search-root-environment-contract';
 import type { SearchRootOverlayFoundationRuntime } from './search-root-overlay-foundation-runtime-contract';
@@ -24,8 +26,10 @@ export const useSearchRootProfileCameraTransitionRuntime = ({
 
   return React.useMemo<ProfilePresentationCameraLayoutModel>(
     () => ({
-      sheetScrollOffset: appRouteSharedSheetRuntimeOwner.sheetScrollOffset,
-      sheetTranslateY: appRouteSharedSheetRuntimeOwner.sheetTranslateY,
+      // Point-in-time facts from the track position authority (residue-kill
+      // item 12): the profile capture asks for the presented entry's scroll at
+      // the moment it needs it — no live mirror SVs.
+      getPresentedListScroll: getTrackSheetPositionAuthority().getPresentedListScroll,
       snapPoints: {
         expanded: appRouteSharedSheetRuntimeOwner.snapPoints.expanded,
         middle: appRouteSharedSheetRuntimeOwner.snapPoints.middle,
@@ -53,9 +57,7 @@ export const useSearchRootProfileCameraTransitionRuntime = ({
       rootOverlaySessionSurfaceRuntime.searchBarTop,
       rootPrimitivesRuntime.mapState.mapCenter,
       rootPrimitivesRuntime.mapState.mapZoom,
-      appRouteSharedSheetRuntimeOwner.sheetScrollOffset,
       appRouteSharedSheetRuntimeOwner.sheetState,
-      appRouteSharedSheetRuntimeOwner.sheetTranslateY,
       appRouteSharedSheetRuntimeOwner.snapPoints.collapsed,
       appRouteSharedSheetRuntimeOwner.snapPoints.expanded,
       appRouteSharedSheetRuntimeOwner.snapPoints.middle,

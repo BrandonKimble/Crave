@@ -93,6 +93,24 @@ export const useResultsPresentationToggleCoordinator = ({
             // Search consequences report failure through the resolution seam (the
             // failure level + uniform modal); the engine-level event is trace-only
             // here. Other surfaces may route it to the announcer.
+            //
+            // WHY THERE IS NO CONTROL REVERT HERE (G2 red-team trace, 2026-08-08):
+            // world-class failures are not the content class's lying-control defect,
+            // because search's control IS the desired tuple, by architecture. A failed
+            // rerun's real failure edge never even reaches this event (the runner in
+            // kickRerunThroughCoordinator detaches `env.resolve` and returns
+            // awaitVisualSync — failures land as the bus's `searchResolutionFailure`
+            // level, single writer: the presentation seam). From there the design
+            // treats desired ≠ presented + failure-set as a NAMED state: the uniform
+            // failure modal announces it, the snackbar/empty-state Retry re-asserts
+            // the DESIRED (still-flipped) tuple via retrySearchDesiredResolution, and
+            // reconnect auto-retry does the same. Reverting the pill on failure would
+            // make every retry affordance re-run the OLD world — the user's intent
+            // would be silently discarded. The pill therefore honestly shows DESIRE
+            // under an explicit failure surface; the seam-level law that the world
+            // class performs no control restore is pinned in
+            // toggle-strip-consequence.spec.ts ("world class never restores a control
+            // on failure").
             return;
           }
           lifecycleRef.current(event);

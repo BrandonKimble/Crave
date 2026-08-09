@@ -67,6 +67,7 @@ import {
 } from './track-press-phase-probe';
 import { computeOutgoingScroll, TrackEntryScrollMemory } from './track-entry-scroll-memory';
 import type { TrackPresentedEntryLatch } from './track-presented-authority';
+import { getTrackSheetPositionAuthority } from './track-sheet-position-authority';
 import { executeEntrySwitch, planEntrySwitch, TrackRestoreCoordinator } from './track-entry-switch';
 
 // ─── TrackSheetPage — THE sheet-page standard ──────────────────────────────────
@@ -294,13 +295,6 @@ export type TrackSheetPageProps = {
    * the current key inside callbacks and consumes the switch edge from it —
    * its former current+prev ref pair is deleted. */
   presentedLatch: TrackPresentedEntryLatch;
-  /** THE PUBLICATION BRIDGE (acceptance inventory §5.8): mirror the track into
-   * the app-wide shared sheet values — every legacy subscriber (search chrome
-   * transition, scrim, dismiss plane, origin capture) rides the track. */
-  publicationBindings?: {
-    sheetTranslateY?: SharedValue<number>;
-    sheetScrollOffset?: SharedValue<number>;
-  };
   /** THE SETTLE OBSERVER: fires once per GESTURE-born rest on a detent (τ of
    * the detent). Feeds posture memory — seats are gesture-written only
    * (inventory §5.10). Programmatic settles never fire it. */
@@ -343,7 +337,6 @@ export function TrackSheetPage({
   commandsRef,
   presentedEntryKey,
   presentedLatch,
-  publicationBindings,
   onGestureSettle,
   onSettle,
   onDragBegin,
@@ -590,28 +583,22 @@ export function TrackSheetPage({
     [attachToTag, applyPin]
   );
 
-  // THE PUBLICATION BRIDGE: one-way, UI-thread mirrors — the track is the ONE
-  // writer; legacy readers see the exact values the old sheet used to publish.
-  const boundTranslateY = publicationBindings?.sheetTranslateY ?? null;
-  const boundScrollOffset = publicationBindings?.sheetScrollOffset ?? null;
-  useAnimatedReaction(
-    () => sheetTopY.value,
-    (value) => {
-      if (boundTranslateY != null) {
-        boundTranslateY.value = value;
-      }
-    },
-    [boundTranslateY]
-  );
-  useAnimatedReaction(
-    () => Math.max(0, tau.value - trackH),
-    (value) => {
-      if (boundScrollOffset != null) {
-        boundScrollOffset.value = value;
-      }
-    },
-    [boundScrollOffset, trackH]
-  );
+  // THE POSITION PUBLICATION (residue-kill item 12): the publication bridge —
+  // two per-frame useAnimatedReaction mirrors into app-owned rival SVs — is
+  // DELETED. The track publishes its OWN derived sheetTopY (the exact object
+  // this page animates with, zero copies) plus a point-in-time getter for the
+  // presented entry's list scroll. Every rider (search chrome transition,
+  // scrim, dismiss plane, origin capture, profile snapshots) reads THESE.
+  React.useLayoutEffect(() => {
+    const authority = getTrackSheetPositionAuthority();
+    authority.publish({
+      sheetTopY,
+      getPresentedListScroll: () => Math.max(0, tau.value - trackH),
+    });
+    return () => {
+      authority.clear();
+    };
+  }, [sheetTopY, tau, trackH]);
 
   // ── THE SETTLE OBSERVER: NATIVE FACT, NOT JS INFERENCE ──
   // ~30 lines of τ-sampling lived here (an animated reaction that called it

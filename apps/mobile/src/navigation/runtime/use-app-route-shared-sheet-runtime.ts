@@ -1,5 +1,4 @@
 import React from 'react';
-import { useAnimatedStyle } from 'react-native-reanimated';
 
 import { OVERLAY_TAB_HEADER_HEIGHT } from '../../overlays/overlaySheetStyles';
 import { useBottomSheetRuntimeModel } from '../../overlays/useBottomSheetRuntime';
@@ -97,37 +96,21 @@ export const useAppRouteSharedSheetRuntime = ({
       ),
     [routeSceneRuntime.routeHostOverlayGeometryAuthority]
   );
-  const initialSharedSheetPosition = resolveInitialSharedSheetPosition({
-    shouldShowDockedSceneTarget:
-      initialRouteSharedSheetOverlaySessionState.shouldShowDockedSceneTarget,
-    // F953: was hardcoded 'polls' — the shared sheet's INITIAL HOME POSITION was being read
-    // out of the CONTENT seat after the docked retarget.
-    currentHomeSeatSheetSnap:
-      routeSceneRuntime.routeSheetSnapSessionActions.getRouteSceneSwitchSceneSnap(
-        HOME_SEAT_CARRIER_SCENE_KEY
-      ),
-  });
-  const initialSharedSheetVisible = initialSharedSheetPosition !== 'hidden';
-
+  // (F953's initial-home-position resolution lives in the sync effect below —
+  // the top-level copy fed only the deleted rival SV's initial value.)
   const sharedSheetValuesRuntime = useAppRouteSharedSheetValuesRuntime({
     screenHeight: SCREEN_HEIGHT,
     searchBarTop: initialRouteHostOverlayGeometry.searchBarTop,
     insetsTop,
     navBarTopForSnaps: initialRouteHostOverlayGeometry.navBarTopForSnaps,
     overlayTabHeaderHeight: OVERLAY_TAB_HEADER_HEIGHT,
-    initialSharedSheetPosition,
-    initialSharedSheetVisible,
   });
-  const sharedSheetRuntimeModel = useBottomSheetRuntimeModel({
-    presentationStateOverride: {
-      sheetY: sharedSheetValuesRuntime.sheetTranslateY,
-      scrollOffset: sharedSheetValuesRuntime.sheetScrollOffset,
-      momentumFlag: sharedSheetValuesRuntime.sheetMomentum,
-    },
-  });
-  const sharedSheetContainerAnimatedStyle = useAnimatedStyle(() => ({
-    transform: [{ translateY: sharedSheetValuesRuntime.sheetTranslateY.value }],
-  }));
+  // Residue-kill item 12: the presentationState override (the bridge SVs
+  // masquerading as the model's presentation lane) and the container translateY
+  // style (a transform for the OLD sheet container — its underlay was never
+  // mounted post-R8) are DELETED. The model owns inert defaults; position is
+  // the track's own publication.
+  const sharedSheetRuntimeModel = useBottomSheetRuntimeModel({});
   const getHomeSeatSheetSnap = React.useCallback(
     () =>
       routeSceneRuntime.routeSheetSnapSessionActions.getRouteSceneSwitchSceneSnap(
@@ -246,8 +229,6 @@ export const useAppRouteSharedSheetRuntime = ({
     getHomeSeatSheetSnap,
     initialRouteOverlayMotionState,
     initialRouteSharedSheetOverlaySessionState,
-    initialSharedSheetVisible,
-    initialSharedSheetPosition,
     insetsTop,
     sharedSheetRuntimeModel.snapController.clearCommand,
     sharedSheetValuesRuntime.syncSnapPoints,
@@ -270,8 +251,6 @@ export const useAppRouteSharedSheetRuntime = ({
       get sheetState() {
         return sharedSheetPresentationRuntime.getSnapshot().sheetState;
       },
-      sheetTranslateY: sharedSheetValuesRuntime.sheetTranslateY,
-      sheetScrollOffset: sharedSheetValuesRuntime.sheetScrollOffset,
       sheetMomentum: sharedSheetValuesRuntime.sheetMomentum,
       sharedSheetRuntimeModel,
       get shouldRenderMountedSharedSheet() {
@@ -279,17 +258,11 @@ export const useAppRouteSharedSheetRuntime = ({
       },
       shouldRenderMountedSharedSheetRef:
         sharedSheetPresentationRuntime.shouldRenderMountedSharedSheetRef,
-      sharedSheetContainerAnimatedStyle,
       markSharedSheetHidden: sharedSheetPresentationRuntime.markSharedSheetHidden,
       prepareSharedSheetForSearchPresentation:
         sharedSheetPresentationRuntime.prepareSharedSheetForSearchPresentation,
     }),
-    [
-      sharedSheetContainerAnimatedStyle,
-      sharedSheetRuntimeModel,
-      sharedSheetValuesRuntime,
-      sharedSheetPresentationRuntime,
-    ]
+    [sharedSheetRuntimeModel, sharedSheetValuesRuntime, sharedSheetPresentationRuntime]
   );
 };
 
@@ -297,8 +270,6 @@ export const getAppRouteSharedSheetVisualBinding = (
   owner: AppRouteSharedSheetRuntimeOwner
 ): AppRouteSharedSheetVisualBinding => ({
   snapPoints: owner.snapPoints,
-  sheetTranslateY: owner.sheetTranslateY,
-  sheetScrollOffset: owner.sheetScrollOffset,
   sheetMomentum: owner.sheetMomentum,
   getCurrentSheetSnap: () => owner.sheetState,
 });

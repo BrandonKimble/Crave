@@ -108,7 +108,7 @@ type SearchSurfaceMotionPlaneSample = {
 type SearchDismissMotionProofStage = 'early_progress' | 'mid_progress' | 'motion';
 
 type UseSearchDismissMotionPlaneRuntimeArgs = {
-  sheetTranslateY: SharedValue<number>;
+  trackSheetTopY: SharedValue<number>;
   currentSheetSnap: SheetPosition;
   snapPoints: Record<Exclude<SheetPosition, 'hidden'>, number> & { hidden?: number };
   collapsedSnap: number;
@@ -145,7 +145,7 @@ const resolveSearchDismissMotionProofStage = (
 };
 
 export const useSearchDismissMotionPlaneRuntime = ({
-  sheetTranslateY,
+  trackSheetTopY,
   currentSheetSnap,
   snapPoints,
   collapsedSnap,
@@ -331,7 +331,7 @@ export const useSearchDismissMotionPlaneRuntime = ({
             authority: 'SearchSurfaceMotionPlaneRuntime',
             recoveryReason: outcome.reason,
             collapsedY: dismissMotionCollapsedY.value,
-            sheetY: sheetTranslateY.value,
+            sheetY: trackSheetTopY.value,
             startY: dismissMotionStartY.value,
             pollPageReadyForBoundary: dismissMotionPollPageReadyForBoundary.value >= 0.5,
             transactionId,
@@ -349,7 +349,7 @@ export const useSearchDismissMotionPlaneRuntime = ({
       dismissMotionPollPageReadyForBoundary,
       dismissMotionStartY,
       dismissMotionWaitingForPollPageAtBoundary,
-      sheetTranslateY,
+      trackSheetTopY,
     ]
   );
 
@@ -374,13 +374,13 @@ export const useSearchDismissMotionPlaneRuntime = ({
           authority: 'SearchSurfaceMotionPlaneRuntime',
           collapsedY: dismissMotionCollapsedY.value,
           dismissProgress: resolveSearchDismissProgress(
-            sheetTranslateY.value,
+            trackSheetTopY.value,
             dismissMotionStartY.value,
             dismissMotionCollapsedY.value
           ),
-          motionObserved: sheetTranslateY.value > dismissMotionStartY.value + 1,
+          motionObserved: trackSheetTopY.value > dismissMotionStartY.value + 1,
           pollPageReadyForBoundary: dismissMotionPollPageReadyForBoundary.value >= 0.5,
-          sheetY: sheetTranslateY.value,
+          sheetY: trackSheetTopY.value,
           startY: dismissMotionStartY.value,
           transactionId,
         });
@@ -392,7 +392,7 @@ export const useSearchDismissMotionPlaneRuntime = ({
       dismissMotionCollapsedY,
       dismissMotionPollPageReadyForBoundary,
       dismissMotionStartY,
-      sheetTranslateY,
+      trackSheetTopY,
     ]
   );
 
@@ -443,7 +443,7 @@ export const useSearchDismissMotionPlaneRuntime = ({
       activeDismissTransactionIdRef.current = transactionId;
       armDismissMotionBoundaryWatchdog(transactionId);
       armDismissMotionBoundaryRecoveryDeadline(transactionId);
-      const rawStartY = sheetTranslateY.value;
+      const rawStartY = trackSheetTopY.value;
       const targetY = collapsedSnap;
       const currentSnapY = snapPoints[currentSheetSnap] ?? rawStartY;
       const hasVisibleSnapStart =
@@ -511,7 +511,7 @@ export const useSearchDismissMotionPlaneRuntime = ({
       armDismissMotionBoundaryRecoveryDeadline,
       armDismissMotionBoundaryWatchdog,
       clearDismissMotionBoundaryTimers,
-      sheetTranslateY,
+      trackSheetTopY,
       snapPoints,
     ]
   );
@@ -526,7 +526,7 @@ export const useSearchDismissMotionPlaneRuntime = ({
       activeOpenTransactionIdRef.current = transactionId;
       const targetY = snapPoints.middle;
       const collapsedY = collapsedSnap;
-      const rawStartY = sheetTranslateY.value;
+      const rawStartY = trackSheetTopY.value;
       const startY =
         Number.isFinite(rawStartY) && rawStartY > targetY + 0.5 && rawStartY < collapsedY - 0.5
           ? rawStartY
@@ -558,7 +558,7 @@ export const useSearchDismissMotionPlaneRuntime = ({
       openMotionStartedAck,
       openMotionStartY,
       openMotionTargetY,
-      sheetTranslateY,
+      trackSheetTopY,
       snapPoints.middle,
     ]
   );
@@ -679,7 +679,7 @@ export const useSearchDismissMotionPlaneRuntime = ({
         return null;
       }
       const targetY = collapsedSnap;
-      const currentY = sheetTranslateY.value;
+      const currentY = trackSheetTopY.value;
       if (!Number.isFinite(currentY) || currentY >= targetY - 8) {
         return null;
       }
@@ -691,7 +691,7 @@ export const useSearchDismissMotionPlaneRuntime = ({
       }
       dismissMotionCachedVisibleStartY.value = nextVisibleY;
     },
-    [collapsedSnap, dismissMotionActive, dismissMotionCachedVisibleStartY, sheetTranslateY]
+    [collapsedSnap, dismissMotionActive, dismissMotionCachedVisibleStartY, trackSheetTopY]
   );
 
   useAnimatedReaction(
@@ -724,7 +724,7 @@ export const useSearchDismissMotionPlaneRuntime = ({
         return 0;
       }
       const reachedCollapsedBoundary =
-        sheetTranslateY.value >=
+        trackSheetTopY.value >=
         dismissMotionCollapsedY.value - SEARCH_DISMISS_COLLAPSED_BOUNDARY_EPSILON_PT;
       if (!reachedCollapsedBoundary) {
         return 0;
@@ -749,7 +749,7 @@ export const useSearchDismissMotionPlaneRuntime = ({
       dismissMotionCollapsedY,
       dismissMotionPollPageReadyForBoundary,
       dismissMotionWaitingForPollPageAtBoundary,
-      sheetTranslateY,
+      trackSheetTopY,
     ]
   );
 
@@ -761,7 +761,7 @@ export const useSearchDismissMotionPlaneRuntime = ({
       return 1;
     }
     return resolveSearchDismissProgress(
-      sheetTranslateY.value,
+      trackSheetTopY.value,
       dismissMotionStartY.value,
       dismissMotionCollapsedY.value
     );
@@ -770,7 +770,7 @@ export const useSearchDismissMotionPlaneRuntime = ({
     dismissMotionBoundaryReached,
     dismissMotionCollapsedY,
     dismissMotionStartY,
-    sheetTranslateY,
+    trackSheetTopY,
   ]);
 
   useAnimatedReaction(
@@ -778,7 +778,7 @@ export const useSearchDismissMotionPlaneRuntime = ({
       if (openMotionActive.value < 0.5 || openMotionStartedAck.value >= 0.5) {
         return 0;
       }
-      return Math.abs(sheetTranslateY.value - openMotionStartY.value) > 8 ? 1 : 0;
+      return Math.abs(trackSheetTopY.value - openMotionStartY.value) > 8 ? 1 : 0;
     },
     (shouldNotify) => {
       if (shouldNotify < 0.5 || openMotionStartedAck.value >= 0.5) {
@@ -792,7 +792,7 @@ export const useSearchDismissMotionPlaneRuntime = ({
       openMotionActive,
       openMotionStartedAck,
       openMotionStartY,
-      sheetTranslateY,
+      trackSheetTopY,
     ]
   );
 
@@ -801,7 +801,7 @@ export const useSearchDismissMotionPlaneRuntime = ({
       if (openMotionActive.value < 0.5 || openMotionSettled.value >= 0.5) {
         return 0;
       }
-      return sheetTranslateY.value <= openMotionTargetY.value + 1 ? 1 : 0;
+      return trackSheetTopY.value <= openMotionTargetY.value + 1 ? 1 : 0;
     },
     (settled) => {
       if (settled < 0.5 || openMotionSettled.value >= 0.5) {
@@ -810,7 +810,7 @@ export const useSearchDismissMotionPlaneRuntime = ({
       openMotionSettled.value = 1;
       runOnJS(markOpenSheetSettled)();
     },
-    [markOpenSheetSettled, openMotionActive, openMotionSettled, openMotionTargetY, sheetTranslateY]
+    [markOpenSheetSettled, openMotionActive, openMotionSettled, openMotionTargetY, trackSheetTopY]
   );
 
   const searchSurfacePageBundleProgress = useDerivedValue<number>(() => {
@@ -827,13 +827,13 @@ export const useSearchDismissMotionPlaneRuntime = ({
         dismissMotionActive.value,
         dismissMotionBoundaryReached.value,
         dismissMotionPollPageReadyForBoundary.value,
-        sheetTranslateY.value,
+        trackSheetTopY.value,
         dismissMotionCollapsedY.value
       );
       const boundaryReached =
         dismissMotionPageBundleHandoffProgress.value >= 0.5 || visualBoundaryReady;
       const physicalCollapsedSettled =
-        sheetTranslateY.value >=
+        trackSheetTopY.value >=
         dismissMotionCollapsedY.value - SEARCH_DISMISS_COLLAPSED_BOUNDARY_EPSILON_PT;
       const proofStage = resolveSearchDismissMotionProofStage(progress, boundaryReached);
       const shouldEmitProofEdge =
@@ -865,7 +865,7 @@ export const useSearchDismissMotionPlaneRuntime = ({
         progress,
         rawStartY: dismissMotionRawStartY.value,
         sampleBucket: Math.round(progress * 4),
-        sheetY: sheetTranslateY.value,
+        sheetY: trackSheetTopY.value,
         startSource:
           dismissMotionStartSource.value === 2
             ? ('cachedVisible' as const)
@@ -907,7 +907,7 @@ export const useSearchDismissMotionPlaneRuntime = ({
       dismissMotionWaitingForPollPageAtBoundary,
       logDismissMotionPlaneSample,
       searchDismissMotionProgress,
-      sheetTranslateY,
+      trackSheetTopY,
     ]
   );
 

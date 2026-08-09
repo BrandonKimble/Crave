@@ -26,8 +26,10 @@ export type ProfileViewState = {
 };
 
 export type ProfilePresentationCameraLayoutModel = {
-  sheetScrollOffset: { value: number };
-  sheetTranslateY: { value: number };
+  /** The presented entry's list scroll, NOW — a point-in-time fact asked of the
+   *  track position authority at capture time (residue-kill item 12), not a
+   *  live mirror SV. Nothing here ever needed a stream. */
+  getPresentedListScroll: () => number;
   snapPoints: { expanded: number; middle: number; collapsed: number };
   sheetState: Exclude<OverlaySheetSnap, 'hidden'>;
   mapCenter: [number, number] | null;
@@ -71,7 +73,7 @@ export const createProfilePresentationModelRuntime = ({
     mapHighlightedRestaurantId: shellMapHighlightedRestaurantId,
   },
   cameraLayoutModel: {
-    sheetScrollOffset,
+    getPresentedListScroll,
     snapPoints,
     searchBarTop,
     searchBarHeight,
@@ -102,7 +104,7 @@ export const createProfilePresentationModelRuntime = ({
     resolveProfileCameraPadding: getResolvedProfileCameraPadding,
     getProfileTransitionSnapshotCapture: () =>
       resolveProfileTransitionSnapshotCapture({
-        sheetScrollOffset: sheetScrollOffset.value,
+        presentedListScroll: getPresentedListScroll(),
       }),
   };
 };

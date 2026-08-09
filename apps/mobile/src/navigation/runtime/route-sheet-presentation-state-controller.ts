@@ -12,12 +12,7 @@ const arePresentationStatesEqual = (
   left: SearchRouteSceneStackPresentationState | null,
   right: SearchRouteSceneStackPresentationState | null
 ): boolean =>
-  left === right ||
-  (left != null &&
-    right != null &&
-    left.sheetTranslateY === right.sheetTranslateY &&
-    left.sheetScrollOffset === right.sheetScrollOffset &&
-    left.sheetMomentum === right.sheetMomentum);
+  left === right || (left != null && right != null && left.sheetMomentum === right.sheetMomentum);
 
 const createPresentationState = (
   routeSharedSheetVisual: RouteSharedSheetVisualBinding
@@ -25,8 +20,6 @@ const createPresentationState = (
   routeSharedSheetVisual == null
     ? null
     : {
-        sheetTranslateY: routeSharedSheetVisual.sheetTranslateY,
-        sheetScrollOffset: routeSharedSheetVisual.sheetScrollOffset,
         sheetMomentum: routeSharedSheetVisual.sheetMomentum,
       };
 

@@ -5,11 +5,12 @@ import type { ProfileTransitionSnapshotCapture } from '../../../../navigation/ru
 // mints the entry rather than by a parallel ledger with its own timing. What is left is the
 // results-scroll offset, which is genuinely this record's own axis.
 export const resolveProfileTransitionSnapshotCapture = ({
-  sheetScrollOffset,
+  presentedListScroll,
 }: {
-  sheetScrollOffset: number;
+  /** The presented entry's list scroll at capture time (track position authority). */
+  presentedListScroll: number;
 }): ProfileTransitionSnapshotCapture => {
   return {
-    savedResultsScrollOffset: sheetScrollOffset,
+    savedResultsScrollOffset: presentedListScroll,
   };
 };

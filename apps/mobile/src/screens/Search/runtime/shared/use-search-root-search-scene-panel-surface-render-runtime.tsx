@@ -1,5 +1,4 @@
 import React from 'react';
-import Reanimated from 'react-native-reanimated';
 
 import { overlaySheetStyles } from '../../../../overlays/overlaySheetStyles';
 import styles from '../../styles';
@@ -24,18 +23,11 @@ export const useSearchRootSearchScenePanelSurfaceRenderRuntime = ({
     () => [overlaySheetStyles.surface, styles.resultsSheetSurface],
     []
   );
-  const underlayComponent = React.useMemo(
-    () => (
-      <Reanimated.View
-        pointerEvents="none"
-        style={[
-          styles.resultsShadow,
-          searchSceneSheetPlaneRuntime.sharedSheetContainerAnimatedStyle,
-        ]}
-      />
-    ),
-    [searchSceneSheetPlaneRuntime.sharedSheetContainerAnimatedStyle]
-  );
+  // Residue-kill item 12 (verified): the results-shadow underlay rode the OLD
+  // sheet container's translateY style, and no renderer ever mounted the
+  // 'underlay' chrome surface post-R8 (only chromeSurfaces.header is read) —
+  // the component and its style are deleted, not re-homed.
+  const underlayComponent = null;
 
   return React.useMemo(
     () => ({

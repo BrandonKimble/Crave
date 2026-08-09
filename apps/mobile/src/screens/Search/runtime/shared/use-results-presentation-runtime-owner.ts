@@ -47,7 +47,6 @@ export type UseResultsPresentationOwnerArgs = {
   isClearingSearchRef: React.MutableRefObject<boolean>;
   resultsSheetRuntime: Pick<
     AppRouteSharedSheetRuntimeOwner,
-    | 'sheetTranslateY'
     | 'snapPoints'
     | 'prepareSharedSheetForSearchPresentation'
     | 'sharedSheetRuntimeModel'

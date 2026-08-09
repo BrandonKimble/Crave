@@ -49,16 +49,6 @@ export const useSearchRootSearchSceneSheetPlaneRuntime = ({
     () => [styles.resultsSheetContainer, sceneVisualRuntime.resultsSheetVisibilityAnimatedStyle],
     [sceneVisualRuntime.resultsSheetVisibilityAnimatedStyle]
   );
-  const resultsSheetContainerAnimatedStyle = React.useMemo(
-    () => [
-      appRouteSharedSheetRuntimeOwner.sharedSheetContainerAnimatedStyle,
-      sceneVisualRuntime.resultsSheetVisibilityAnimatedStyle,
-    ],
-    [
-      appRouteSharedSheetRuntimeOwner.sharedSheetContainerAnimatedStyle,
-      sceneVisualRuntime.resultsSheetVisibilityAnimatedStyle,
-    ]
-  );
 
   React.useEffect(() => {
     searchState.setShouldDisableSearchShortcuts(false);
@@ -76,7 +66,6 @@ export const useSearchRootSearchSceneSheetPlaneRuntime = ({
       handleResultsSheetSettlingChange,
       interactionEnabled: !shouldDisableResultsSheetInteractionForRender,
       listRef: searchState.resultsScrollRef,
-      sharedSheetContainerAnimatedStyle: resultsSheetContainerAnimatedStyle as StyleProp<ViewStyle>,
       runtimeModel: sharedSheetRuntimeModel,
       sheetState,
       snapPoints,
@@ -91,7 +80,6 @@ export const useSearchRootSearchSceneSheetPlaneRuntime = ({
       handleResultsListScrollEnd,
       handleResultsSheetDragStateChange,
       handleResultsSheetSettlingChange,
-      resultsSheetContainerAnimatedStyle,
       resultsSheetContainerStyle,
       sharedSheetRuntimeModel,
       searchState.resultsScrollRef,
