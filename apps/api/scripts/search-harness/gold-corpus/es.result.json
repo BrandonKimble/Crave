@@ -1,5 +1,5 @@
 {
-  "ranAt": "2026-08-08T23:45:41.336Z",
+  "ranAt": "2026-08-09T01:06:33.444Z",
   "lang": "es",
   "corpusVersion": 1,
   "scoreboard": {
@@ -2876,15 +2876,18 @@
           "name": "ramen",
           "tier": "gazetteer-exact",
           "foldedName": "ramen"
-        }
-      ],
-      "excluded": [
+        },
         {
-          "text": "cerdo",
-          "folded": "cerdo",
-          "cue": "sin/es"
+          "entityId": "e4abca51-a876-41b9-a3c7-4a718eba8f90",
+          "bucket": "food",
+          "type": "food",
+          "span": "cerdo",
+          "name": "pork",
+          "tier": "gazetteer-exact",
+          "foldedName": "pork"
         }
       ],
+      "excluded": [],
       "unresolved": [],
       "analysis": {
         "script": "latin",
@@ -2897,7 +2900,7 @@
         "denseTierUsed": false
       },
       "misGroundings": [],
-      "notes": "KNOWN-RED SEED. Pre-R5-3 this returned VEGAN ramen — silent inversion. Non-inversion is the hard clause."
+      "notes": "KNOWN-RED SEED. Pre-R5-3 this returned VEGAN ramen — silent inversion. Non-inversion is the hard clause. | RE-AUTHORED 2026-08-08 (negation v2, plan §12b): LITERAL IGNORE — the negated word grounds POSITIVELY like any mentioned ingredient; only dense INVERSION (vegan/vegetarian for a sin-X query) stays forbidden. excluded assertions deleted with the machinery."
     },
     {
       "id": "ng-02",
@@ -2940,7 +2943,7 @@
         "denseTierUsed": false
       },
       "misGroundings": [],
-      "notes": "The negated span IS a corpus entity ('queso' ingredient) — the fail-closed path must drop a groundable span, not just unknown residue. | RE-AUTHORED 2026-08-07 (negation doctrine): app deliberately does NOT support negation; sin-X may ground positively (sin queso->cheeseless). Assert non-inversion only."
+      "notes": "The negated span IS a corpus entity ('queso' ingredient) — the fail-closed path must drop a groundable span, not just unknown residue. | RE-AUTHORED 2026-08-07 (negation doctrine): app deliberately does NOT support negation; sin-X may ground positively (sin queso->cheeseless). Assert non-inversion only. | RE-AUTHORED 2026-08-08 (negation v2, plan §12b): LITERAL IGNORE — the negated word grounds POSITIVELY like any mentioned ingredient; only dense INVERSION (vegan/vegetarian for a sin-X query) stays forbidden. excluded assertions deleted with the machinery."
     },
     {
       "id": "ng-03",
@@ -2983,7 +2986,7 @@
         "denseTierUsed": false
       },
       "misGroundings": [],
-      "notes": "Same cue over a different head. | RE-AUTHORED 2026-08-07 (negation doctrine): app deliberately does NOT support negation; sin-X may ground positively (sin queso->cheeseless). Assert non-inversion only."
+      "notes": "Same cue over a different head. | RE-AUTHORED 2026-08-07 (negation doctrine): app deliberately does NOT support negation; sin-X may ground positively (sin queso->cheeseless). Assert non-inversion only. | RE-AUTHORED 2026-08-08 (negation v2, plan §12b): LITERAL IGNORE — the negated word grounds POSITIVELY like any mentioned ingredient; only dense INVERSION (vegan/vegetarian for a sin-X query) stays forbidden. excluded assertions deleted with the machinery."
     },
     {
       "id": "ng-04",
@@ -3002,15 +3005,18 @@
           "name": "sushi",
           "tier": "gazetteer-exact",
           "foldedName": "sushi"
-        }
-      ],
-      "excluded": [
+        },
         {
-          "text": "arroz",
-          "folded": "arroz",
-          "cue": "sin/es"
+          "entityId": "77490d5e-e33e-4f6e-b1b8-d370755faf1f",
+          "bucket": "food",
+          "type": "food",
+          "span": "arroz",
+          "name": "rice",
+          "tier": "gazetteer-exact",
+          "foldedName": "rice"
         }
       ],
+      "excluded": [],
       "unresolved": [],
       "analysis": {
         "script": "latin",
@@ -3023,7 +3029,7 @@
         "denseTierUsed": false
       },
       "misGroundings": [],
-      "notes": "Negated span is a BRIDGE word — it must not reach the dense tier (dense is precisely what inverts)."
+      "notes": "Negated span is a BRIDGE word — it must not reach the dense tier (dense is precisely what inverts). | RE-AUTHORED 2026-08-08 (negation v2, plan §12b): LITERAL IGNORE — the negated word grounds POSITIVELY like any mentioned ingredient; only dense INVERSION (vegan/vegetarian for a sin-X query) stays forbidden. excluded assertions deleted with the machinery."
     },
     {
       "id": "ng-05",
@@ -3042,15 +3048,18 @@
           "name": "ramen",
           "tier": "gazetteer-exact",
           "foldedName": "ramen"
-        }
-      ],
-      "excluded": [
+        },
         {
-          "text": "pollo",
-          "folded": "pollo",
-          "cue": "sin/es"
+          "entityId": "12bcdfbd-7736-4d47-82e7-b7cf30b5fa93",
+          "bucket": "food",
+          "type": "food",
+          "span": "pollo",
+          "name": "chicken",
+          "tier": "gazetteer-exact",
+          "foldedName": "chicken"
         }
       ],
+      "excluded": [],
       "unresolved": [],
       "analysis": {
         "script": "latin",
@@ -3063,7 +3072,7 @@
         "denseTierUsed": false
       },
       "misGroundings": [],
-      "notes": "Negated span is a source-faithful corpus row."
+      "notes": "Negated span is a source-faithful corpus row. | RE-AUTHORED 2026-08-08 (negation v2, plan §12b): LITERAL IGNORE — the negated word grounds POSITIVELY like any mentioned ingredient; only dense INVERSION (vegan/vegetarian for a sin-X query) stays forbidden. excluded assertions deleted with the machinery."
     },
     {
       "id": "ng-06",
@@ -3082,15 +3091,18 @@
           "name": "pizza",
           "tier": "gazetteer-exact",
           "foldedName": "pizza"
-        }
-      ],
-      "excluded": [
+        },
         {
-          "text": "carne",
-          "folded": "carne",
-          "cue": "sin/es"
+          "entityId": "3b38ad58-7750-42c8-9363-0b2742f704b2",
+          "bucket": "food",
+          "type": "food",
+          "span": "carne",
+          "name": "meat",
+          "tier": "gazetteer-exact",
+          "foldedName": "meat"
         }
       ],
+      "excluded": [],
       "unresolved": [],
       "analysis": {
         "script": "latin",
@@ -3103,7 +3115,7 @@
         "denseTierUsed": false
       },
       "misGroundings": [],
-      "notes": "The classic inversion bait: 'no meat' semantically equals vegetarian, and a bi-encoder WILL say so. It must not."
+      "notes": "The classic inversion bait: 'no meat' semantically equals vegetarian, and a bi-encoder WILL say so. It must not. | RE-AUTHORED 2026-08-08 (negation v2, plan §12b): LITERAL IGNORE — the negated word grounds POSITIVELY like any mentioned ingredient; only dense INVERSION (vegan/vegetarian for a sin-X query) stays forbidden. excluded assertions deleted with the machinery."
     },
     {
       "id": "ng-07",
@@ -3122,15 +3134,18 @@
           "name": "salad",
           "tier": "gazetteer-exact",
           "foldedName": "salad"
-        }
-      ],
-      "excluded": [
+        },
         {
-          "text": "aguacate",
-          "folded": "aguacate",
-          "cue": "sin/es"
+          "entityId": "5dbb584c-790e-4078-acb1-d60185968264",
+          "bucket": "food",
+          "type": "food",
+          "span": "aguacate",
+          "name": "avocado",
+          "tier": "gazetteer-exact",
+          "foldedName": "avocado"
         }
       ],
+      "excluded": [],
       "unresolved": [],
       "analysis": {
         "script": "latin",
@@ -3143,7 +3158,7 @@
         "denseTierUsed": false
       },
       "misGroundings": [],
-      "notes": "Head is itself a bridge word — parking the head is acceptable; INVERTING the constraint is not. Concepts left empty deliberately."
+      "notes": "Head is itself a bridge word — parking the head is acceptable; INVERTING the constraint is not. Concepts left empty deliberately. | RE-AUTHORED 2026-08-08 (negation v2, plan §12b): LITERAL IGNORE — the negated word grounds POSITIVELY like any mentioned ingredient; only dense INVERSION (vegan/vegetarian for a sin-X query) stays forbidden. excluded assertions deleted with the machinery."
     },
     {
       "id": "ng-08",
@@ -3162,15 +3177,18 @@
           "name": "tacos",
           "tier": "gazetteer-exact",
           "foldedName": "tacos"
-        }
-      ],
-      "excluded": [
+        },
         {
-          "text": "cebolla",
-          "folded": "cebolla",
-          "cue": "sin/es"
+          "entityId": "49c21044-3384-4940-8aa0-121da9892206",
+          "bucket": "food",
+          "type": "food",
+          "span": "cebolla",
+          "name": "onion",
+          "tier": "gazetteer-exact",
+          "foldedName": "onion"
         }
       ],
+      "excluded": [],
       "unresolved": [],
       "analysis": {
         "script": "latin",
@@ -3183,7 +3201,7 @@
         "denseTierUsed": false
       },
       "misGroundings": [],
-      "notes": "Negated span is unknown residue in the English corpus — still a recorded constraint (the excludedSpan carries empty entityIds)."
+      "notes": "Negated span is unknown residue in the English corpus — still a recorded constraint (the excludedSpan carries empty entityIds). | RE-AUTHORED 2026-08-08 (negation v2, plan §12b): LITERAL IGNORE — the negated word grounds POSITIVELY like any mentioned ingredient; only dense INVERSION (vegan/vegetarian for a sin-X query) stays forbidden. excluded assertions deleted with the machinery."
     },
     {
       "id": "ng-09",
@@ -3202,15 +3220,18 @@
           "name": "burrito",
           "tier": "gazetteer-exact",
           "foldedName": "burrito"
-        }
-      ],
-      "excluded": [
+        },
         {
-          "text": "frijoles",
-          "folded": "frijoles",
-          "cue": "sin/es"
+          "entityId": "44c2a929-142b-425d-b161-96c9654b1d75",
+          "bucket": "ingredients",
+          "type": "ingredient",
+          "span": "frijoles",
+          "name": "beans",
+          "tier": "gazetteer-exact",
+          "foldedName": "beans"
         }
       ],
+      "excluded": [],
       "unresolved": [],
       "analysis": {
         "script": "latin",
@@ -3223,7 +3244,7 @@
         "denseTierUsed": false
       },
       "misGroundings": [],
-      "notes": "Bridge word behind a cue."
+      "notes": "Bridge word behind a cue. | RE-AUTHORED 2026-08-08 (negation v2, plan §12b): LITERAL IGNORE — the negated word grounds POSITIVELY like any mentioned ingredient; only dense INVERSION (vegan/vegetarian for a sin-X query) stays forbidden. excluded assertions deleted with the machinery."
     },
     {
       "id": "ng-10",
@@ -3242,15 +3263,27 @@
           "name": "quesadilla",
           "tier": "gazetteer-exact",
           "foldedName": "quesadilla"
-        }
-      ],
-      "excluded": [
+        },
         {
-          "text": "crema",
-          "folded": "crema",
-          "cue": "sin/es"
+          "entityId": "10dc6d53-685a-4c2a-a302-d59ade9c5d1e",
+          "bucket": "ingredients",
+          "type": "ingredient",
+          "span": "crema",
+          "name": "cream",
+          "tier": "gazetteer-exact",
+          "foldedName": "cream"
+        },
+        {
+          "entityId": "5cc72741-a47d-4c7f-9146-684f7eed3d4d",
+          "bucket": "ingredients",
+          "type": "ingredient",
+          "span": "crema",
+          "name": "crema",
+          "tier": "gazetteer-exact",
+          "foldedName": "crema"
         }
       ],
+      "excluded": [],
       "unresolved": [],
       "analysis": {
         "script": "latin",
@@ -3263,7 +3296,7 @@
         "denseTierUsed": false
       },
       "misGroundings": [],
-      "notes": "'crema' IS a corpus ingredient — groundable span behind a cue."
+      "notes": "'crema' IS a corpus ingredient — groundable span behind a cue. | RE-AUTHORED 2026-08-08 (negation v2, plan §12b): LITERAL IGNORE — the negated word grounds POSITIVELY like any mentioned ingredient; only dense INVERSION (vegan/vegetarian for a sin-X query) stays forbidden. excluded assertions deleted with the machinery."
     },
     {
       "id": "ng-11",
@@ -3282,15 +3315,18 @@
           "name": "chicken",
           "tier": "gazetteer-exact",
           "foldedName": "chicken"
-        }
-      ],
-      "excluded": [
+        },
         {
-          "text": "piel",
-          "folded": "piel",
-          "cue": "sin/es"
+          "entityId": "17a3a5b1-9a4f-4ab5-928f-3dd1f1945176",
+          "bucket": "ingredients",
+          "type": "ingredient",
+          "span": "piel",
+          "name": "skin",
+          "tier": "gazetteer-exact",
+          "foldedName": "skin"
         }
       ],
+      "excluded": [],
       "unresolved": [],
       "analysis": {
         "script": "latin",
@@ -3303,7 +3339,7 @@
         "denseTierUsed": false
       },
       "misGroundings": [],
-      "notes": "'skin' exists as an ingredient row — a bridge target that must stay unreached. | RE-AUTHORED 2026-08-07: pollo merged into chicken."
+      "notes": "'skin' exists as an ingredient row — a bridge target that must stay unreached. | RE-AUTHORED 2026-08-07: pollo merged into chicken. | RE-AUTHORED 2026-08-08 (negation v2, plan §12b): LITERAL IGNORE — the negated word grounds POSITIVELY like any mentioned ingredient; only dense INVERSION (vegan/vegetarian for a sin-X query) stays forbidden. excluded assertions deleted with the machinery."
     },
     {
       "id": "ng-12",
@@ -3322,15 +3358,18 @@
           "name": "pasta",
           "tier": "gazetteer-exact",
           "foldedName": "pasta"
-        }
-      ],
-      "excluded": [
+        },
         {
-          "text": "cebolla",
-          "folded": "cebolla",
-          "cue": "sin/es"
+          "entityId": "49c21044-3384-4940-8aa0-121da9892206",
+          "bucket": "food",
+          "type": "food",
+          "span": "cebolla",
+          "name": "onion",
+          "tier": "gazetteer-exact",
+          "foldedName": "onion"
         }
       ],
+      "excluded": [],
       "unresolved": [],
       "analysis": {
         "script": "latin",
@@ -3343,7 +3382,7 @@
         "denseTierUsed": false
       },
       "misGroundings": [],
-      "notes": "Locale-invariant head + negated residue."
+      "notes": "Locale-invariant head + negated residue. | RE-AUTHORED 2026-08-08 (negation v2, plan §12b): LITERAL IGNORE — the negated word grounds POSITIVELY like any mentioned ingredient; only dense INVERSION (vegan/vegetarian for a sin-X query) stays forbidden. excluded assertions deleted with the machinery."
     },
     {
       "id": "ng-13",
@@ -3362,15 +3401,18 @@
           "name": "tacos",
           "tier": "gazetteer-exact",
           "foldedName": "tacos"
-        }
-      ],
-      "excluded": [
+        },
         {
-          "text": "carne",
-          "folded": "carne",
-          "cue": "sin/es"
+          "entityId": "3b38ad58-7750-42c8-9363-0b2742f704b2",
+          "bucket": "food",
+          "type": "food",
+          "span": "carne",
+          "name": "meat",
+          "tier": "gazetteer-exact",
+          "foldedName": "meat"
         }
       ],
+      "excluded": [],
       "unresolved": [],
       "analysis": {
         "script": "latin",
@@ -3383,7 +3425,7 @@
         "denseTierUsed": false
       },
       "misGroundings": [],
-      "notes": "Second inversion-bait shape, different head."
+      "notes": "Second inversion-bait shape, different head. | RE-AUTHORED 2026-08-08 (negation v2, plan §12b): LITERAL IGNORE — the negated word grounds POSITIVELY like any mentioned ingredient; only dense INVERSION (vegan/vegetarian for a sin-X query) stays forbidden. excluded assertions deleted with the machinery."
     },
     {
       "id": "ng-14",
@@ -3402,15 +3444,18 @@
           "name": "ramen",
           "tier": "gazetteer-exact",
           "foldedName": "ramen"
-        }
-      ],
-      "excluded": [
+        },
         {
-          "text": "huevo",
-          "folded": "huevo",
-          "cue": "sin/es"
+          "entityId": "a046073c-4169-4d4d-90c8-54e8a8a9f9b8",
+          "bucket": "ingredients",
+          "type": "ingredient",
+          "span": "huevo",
+          "name": "egg",
+          "tier": "gazetteer-exact",
+          "foldedName": "egg"
         }
       ],
+      "excluded": [],
       "unresolved": [],
       "analysis": {
         "script": "latin",
@@ -3423,7 +3468,7 @@
         "denseTierUsed": false
       },
       "misGroundings": [],
-      "notes": "Bridge word behind a cue."
+      "notes": "Bridge word behind a cue. | RE-AUTHORED 2026-08-08 (negation v2, plan §12b): LITERAL IGNORE — the negated word grounds POSITIVELY like any mentioned ingredient; only dense INVERSION (vegan/vegetarian for a sin-X query) stays forbidden. excluded assertions deleted with the machinery."
     },
     {
       "id": "ng-15",
@@ -3442,15 +3487,18 @@
           "name": "pizza",
           "tier": "gazetteer-exact",
           "foldedName": "pizza"
-        }
-      ],
-      "excluded": [
+        },
         {
-          "text": "vegetariana",
-          "folded": "vegetariana",
-          "cue": "no/en"
+          "entityId": "6f332d26-e126-462c-a58e-0b8954687be6",
+          "bucket": "foodAttributes",
+          "type": "food_attribute",
+          "span": "vegetariana",
+          "name": "vegetarian",
+          "tier": "gazetteer-exact",
+          "foldedName": "vegetarian"
         }
       ],
+      "excluded": [],
       "unresolved": [],
       "analysis": {
         "script": "latin",
@@ -3463,7 +3511,7 @@
         "denseTierUsed": false
       },
       "misGroundings": [],
-      "notes": "Cue 'no' (both an es and an en pack cue). Negating a SPINE constraint — the case where a wrong answer is most visible."
+      "notes": "Cue 'no' (both an es and an en pack cue). Negating a SPINE constraint — the case where a wrong answer is most visible. | RE-AUTHORED 2026-08-08 (negation v2, plan §12b): LITERAL IGNORE — the negated word grounds POSITIVELY like any mentioned ingredient; only dense INVERSION (vegan/vegetarian for a sin-X query) stays forbidden. excluded assertions deleted with the machinery."
     },
     {
       "id": "ng-16",
@@ -3529,6 +3577,51 @@
           "foldedName": "quesabirria"
         },
         {
+          "entityId": "ff0a3597-88b0-49ff-ae88-25d981fc0692",
+          "bucket": "food",
+          "type": "food",
+          "span": "sea",
+          "name": "sea bass",
+          "tier": "linked",
+          "foldedName": "sea bass"
+        },
+        {
+          "entityId": "3b0a7c32-dbb4-4425-b08b-4dd12ca36f7b",
+          "bucket": "food",
+          "type": "food",
+          "span": "sea",
+          "name": "sea bream",
+          "tier": "linked",
+          "foldedName": "sea bream"
+        },
+        {
+          "entityId": "df7a1ffe-2952-447b-96bb-e0149b3a971f",
+          "bucket": "food",
+          "type": "food",
+          "span": "sea",
+          "name": "seasonal flavors",
+          "tier": "linked",
+          "foldedName": "seasonal flavors"
+        },
+        {
+          "entityId": "5feb7d9f-c086-4959-8546-82a5da5f7c16",
+          "bucket": "food",
+          "type": "food",
+          "span": "sea",
+          "name": "seasonal greens",
+          "tier": "linked",
+          "foldedName": "seasonal greens"
+        },
+        {
+          "entityId": "59a8c8e4-ad9d-45c9-bcf6-85babb6510ce",
+          "bucket": "food",
+          "type": "food",
+          "span": "sea",
+          "name": "seasonal latte",
+          "tier": "linked",
+          "foldedName": "seasonal latte"
+        },
+        {
           "entityId": "08630647-825b-439d-8a47-461cf61a7f3d",
           "bucket": "restaurantAttributes",
           "type": "restaurant_attribute",
@@ -3538,13 +3631,7 @@
           "foldedName": "expensive"
         }
       ],
-      "excluded": [
-        {
-          "text": "sea",
-          "folded": "sea",
-          "cue": "no/en"
-        }
-      ],
+      "excluded": [],
       "unresolved": [],
       "analysis": {
         "script": "latin",
@@ -3557,7 +3644,7 @@
         "denseTierUsed": true
       },
       "misGroundings": [],
-      "notes": "KNOWN-RED SHAPE: the cue is NOT adjacent to the negated word (negatedSpan only looks one token left), and 'caro' is a price directive, not a concept. Asserts only NON-INVERSION — excluded is deliberately empty so this entry cannot manufacture a false green."
+      "notes": "KNOWN-RED SHAPE: the cue is NOT adjacent to the negated word (negatedSpan only looks one token left), and 'caro' is a price directive, not a concept. Asserts only NON-INVERSION — excluded is deliberately empty so this entry cannot manufacture a false green. | RE-AUTHORED 2026-08-08 (negation v2, plan §12b): LITERAL IGNORE — the negated word grounds POSITIVELY like any mentioned ingredient; only dense INVERSION (vegan/vegetarian for a sin-X query) stays forbidden. excluded assertions deleted with the machinery."
     },
     {
       "id": "ng-17",
@@ -3600,7 +3687,7 @@
         "denseTierUsed": false
       },
       "misGroundings": [],
-      "notes": "Negating the P3 normalized concept. 'comida' is a carrier with no expected grounding. | RE-AUTHORED 2026-08-07 (negation doctrine): app deliberately does NOT support negation; sin-X may ground positively (sin queso->cheeseless). Assert non-inversion only."
+      "notes": "Negating the P3 normalized concept. 'comida' is a carrier with no expected grounding. | RE-AUTHORED 2026-08-07 (negation doctrine): app deliberately does NOT support negation; sin-X may ground positively (sin queso->cheeseless). Assert non-inversion only. | RE-AUTHORED 2026-08-08 (negation v2, plan §12b): LITERAL IGNORE — the negated word grounds POSITIVELY like any mentioned ingredient; only dense INVERSION (vegan/vegetarian for a sin-X query) stays forbidden. excluded assertions deleted with the machinery."
     },
     {
       "id": "ng-18",
@@ -3628,6 +3715,15 @@
           "name": "sugar free",
           "tier": "gazetteer-exact",
           "foldedName": "sugar free"
+        },
+        {
+          "entityId": "9d44e3fe-ccc6-4394-a930-7f5a0a813262",
+          "bucket": "ingredients",
+          "type": "ingredient",
+          "span": "azúcar",
+          "name": "sugar",
+          "tier": "linked",
+          "foldedName": "sugar"
         }
       ],
       "excluded": [],
@@ -3643,7 +3739,7 @@
         "denseTierUsed": false
       },
       "misGroundings": [],
-      "notes": "Accent inside the negated span — the excludedSpan text is asserted FOLDED (azúcar→azucar). | RE-AUTHORED 2026-08-07 (negation doctrine): app deliberately does NOT support negation; sin-X may ground positively (sin queso->cheeseless). Assert non-inversion only."
+      "notes": "Accent inside the negated span — the excludedSpan text is asserted FOLDED (azúcar→azucar). | RE-AUTHORED 2026-08-07 (negation doctrine): app deliberately does NOT support negation; sin-X may ground positively (sin queso->cheeseless). Assert non-inversion only. | RE-AUTHORED 2026-08-08 (negation v2, plan §12b): LITERAL IGNORE — the negated word grounds POSITIVELY like any mentioned ingredient; only dense INVERSION (vegan/vegetarian for a sin-X query) stays forbidden. excluded assertions deleted with the machinery."
     },
     {
       "id": "ng-19",
@@ -3662,15 +3758,18 @@
           "name": "coffee",
           "tier": "gazetteer-exact",
           "foldedName": "coffee"
-        }
-      ],
-      "excluded": [
+        },
         {
-          "text": "leche",
-          "folded": "leche",
-          "cue": "sin/es"
+          "entityId": "cfbeb4cc-1a49-4e35-8155-440c4c6c5004",
+          "bucket": "ingredients",
+          "type": "ingredient",
+          "span": "leche",
+          "name": "milk",
+          "tier": "gazetteer-exact",
+          "foldedName": "milk"
         }
       ],
+      "excluded": [],
       "unresolved": [],
       "analysis": {
         "script": "latin",
@@ -3683,7 +3782,7 @@
         "denseTierUsed": false
       },
       "misGroundings": [],
-      "notes": "Bridge head + bridge negated span. park=true: the head may legitimately not reach 'coffee'; the constraint record is the hard part."
+      "notes": "Bridge head + bridge negated span. park=true: the head may legitimately not reach 'coffee'; the constraint record is the hard part. | RE-AUTHORED 2026-08-08 (negation v2, plan §12b): LITERAL IGNORE — the negated word grounds POSITIVELY like any mentioned ingredient; only dense INVERSION (vegan/vegetarian for a sin-X query) stays forbidden. excluded assertions deleted with the machinery."
     },
     {
       "id": "ng-20",
@@ -3702,15 +3801,18 @@
           "name": "birria",
           "tier": "gazetteer-exact",
           "foldedName": "birria"
-        }
-      ],
-      "excluded": [
+        },
         {
-          "text": "cilantro",
-          "folded": "cilantro",
-          "cue": "sin/es"
+          "entityId": "8965509f-4c09-4343-895a-85fecc85f969",
+          "bucket": "ingredients",
+          "type": "ingredient",
+          "span": "cilantro",
+          "name": "cilantro",
+          "tier": "gazetteer-exact",
+          "foldedName": "cilantro"
         }
       ],
+      "excluded": [],
       "unresolved": [],
       "analysis": {
         "script": "latin",
@@ -3723,7 +3825,7 @@
         "denseTierUsed": false
       },
       "misGroundings": [],
-      "notes": "Source-faithful head + a negated span that is an EXACT English-corpus ingredient name — the cleanest fail-closed test in the set."
+      "notes": "Source-faithful head + a negated span that is an EXACT English-corpus ingredient name — the cleanest fail-closed test in the set. | RE-AUTHORED 2026-08-08 (negation v2, plan §12b): LITERAL IGNORE — the negated word grounds POSITIVELY like any mentioned ingredient; only dense INVERSION (vegan/vegetarian for a sin-X query) stays forbidden. excluded assertions deleted with the machinery."
     },
     {
       "id": "at-01",
@@ -3946,6 +4048,15 @@
           "name": "gluten free",
           "tier": "gazetteer-exact",
           "foldedName": "gluten free"
+        },
+        {
+          "entityId": "51675b4a-c50c-4c9d-afbf-4d911c0a5be6",
+          "bucket": "ingredients",
+          "type": "ingredient",
+          "span": "gluten",
+          "name": "gluten",
+          "tier": "linked",
+          "foldedName": "gluten"
         }
       ],
       "excluded": [],

@@ -25,8 +25,23 @@ import {
 } from './evidence-admission';
 import {
   analyzeQuery,
-  negatedSpan,
+  negationCueTexts,
 } from '../entity-text-search/query-analyzer';
+
+/** Negation v2: remove cue words ("no", "sin", "without", …) from a phrase
+ *  before the dense fallback embeds it — never from lexical matching, where
+ *  a cue inside a NAME ("No Name Burgers", "sin gluten" aliases) is real. */
+function stripCueTokens(
+  analysis: Parameters<typeof negationCueTexts>[0],
+  text: string,
+): string {
+  const cues = negationCueTexts(analysis);
+  if (!cues.size) return text;
+  const kept = text
+    .split(/\s+/)
+    .filter((word) => !cues.has(word.toLowerCase()));
+  return kept.length ? kept.join(' ') : text;
+}
 import { DietaryConstraintRegistry } from './dietary-constraints';
 import { UnsegmentedResidueService } from './unsegmented-residue.service';
 import type {
@@ -207,26 +222,18 @@ export class SearchQueryInterpretationService {
     // stop-list here. TODO(post-cleanup): enable the pinned generic-query
     // cases in search-generic-queries.spec.ts once the graph is clean.
     // NEGATION GATE, TIER 1 (R5-3) — applied BEFORE anything can act on a
-    // span. Negated groups stay in `groups` for RESIDUE COVERAGE (their
-    // text was understood; it must not be re-probed or staged as unknown)
-    // but are excluded from placement, from the residue-join lane, and
-    // from the dense tier.
+    // NEGATION V2 (owner ruling 2026-08-08, plan §12b): LITERAL IGNORE.
+    // "tacos no cilantro" grounds cilantro as a positive mention — exactly
+    // as if the user listed an ingredient. The old cue-span machinery
+    // (negatedGroups / excludedSpans recording) was the crude middle the
+    // owner rejected: a cue list cannot tell negation from a word inside a
+    // name ("No Name Burgers" lost "name") and taught users nothing. The
+    // ONE surviving rule is DENSE-INPUT HYGIENE below: cue tokens are
+    // stripped before the semantic fallback embeds a phrase, so the model
+    // that CAN understand negation never gets the chance ("sin cerdo"
+    // embeds as "cerdo" -> pork, positively; the vegan-ramen inversion
+    // stays impossible). Dietary toggles are the only real exclusions.
     const groups = rawGroups;
-    const excludedSpans: ExcludedSpan[] = [];
-    const negatedGroups = new Set<EntitySpanGroup>();
-    for (const group of groups) {
-      const cue = negatedSpan(analysis, group);
-      if (!cue) continue;
-      negatedGroups.add(group);
-      excludedSpans.push({
-        text: group.text,
-        start: group.start,
-        end: group.end,
-        cue: cue.cue,
-        cueLocale: cue.locale,
-        entityIds: group.entities.map((e) => e.entityId),
-      });
-    }
     const gazetteerMs = performance.now() - gazetteerStart;
 
     // Residue = token runs no grounded span covers. Same 48-token cap as
@@ -293,21 +300,6 @@ export class SearchQueryInterpretationService {
     let denseTierUsed = false;
     for (const run of residueRuns) {
       // R5-3 FAIL CLOSED on residue too: "ramen sin cerdo" grounds ramen
-      // and leaves "cerdo" as residue — a residue run behind a cue must
-      // NOT be probed, must NOT reach dense (dense is precisely what
-      // inverted it into vegan ramen), and must NOT be staged as demand.
-      const runCue = negatedSpan(analysis, run);
-      if (runCue) {
-        excludedSpans.push({
-          text: run.text,
-          start: run.start,
-          end: run.end,
-          cue: runCue.cue,
-          cueLocale: runCue.locale,
-          entityIds: [],
-        });
-        continue;
-      }
       if (probeBudget <= 0) {
         unresolvedResidues.push(run.text);
         continue;
@@ -315,14 +307,12 @@ export class SearchQueryInterpretationService {
       const left = groups.find(
         (g) =>
           !consumedGroups.has(g) &&
-          !negatedGroups.has(g) &&
           !isDietaryGroup(g) &&
           abuts(g.end, run.start),
       );
       const right = groups.find(
         (g) =>
           !consumedGroups.has(g) &&
-          !negatedGroups.has(g) &&
           !isDietaryGroup(g) &&
           abuts(run.end, g.start),
       );
@@ -387,13 +377,19 @@ export class SearchQueryInterpretationService {
       ) {
         probeBudget -= 1;
         denseTierUsed = true;
+        // DENSE-INPUT HYGIENE (negation v2, the ONE surviving cue rule):
+        // strip cue tokens before the semantic model sees the phrase. Dense
+        // is the only component capable of UNDERSTANDING a negation, and it
+        // once inverted "sin cerdo" into vegan ramen. Embedding "cerdo"
+        // instead yields pork, positively — literal ignore, mechanically.
+        const denseText = stripCueTokens(analysis, run.text);
         const denseResult = await this.linkUnified(
           {
             tempId: `food:${uuid()}`,
-            normalizedName: run.text.toLowerCase(),
-            originalText: run.text,
+            normalizedName: denseText.toLowerCase(),
+            originalText: denseText,
             entityType: 'food',
-            aliases: [run.text],
+            aliases: [denseText],
             engineId: null,
           },
           {
@@ -427,9 +423,7 @@ export class SearchQueryInterpretationService {
       // MAXIMAL LINKING: a CONSUMED group (residue-join built a compound
       // over it — "brekfast tacos" → breakfast taco) still places. The
       // compound is the primary reading; the bare span it absorbed is the
-      // decomposed one, and discarding it was the consume defect. Only
-      // negated groups stay out (fail closed, R5-3).
-      if (negatedGroups.has(group)) continue;
+      // decomposed one, and discarding it was the consume defect.
       const dietaryEntity = group.entities.find((e) =>
         dietaryIds.has(e.entityId),
       );
@@ -497,7 +491,6 @@ export class SearchQueryInterpretationService {
           .split(' ')
           .every((tok) => winnerTokens.has(singularish(tok)));
       for (const sub of group.subGroups ?? []) {
-        if (negatedSpan(analysis, sub)) continue;
         const contained = sub.entities.filter(isContainedPart);
         if (!contained.length) continue;
         const subDietary = contained.find((e) => dietaryIds.has(e.entityId));
@@ -633,7 +626,8 @@ export class SearchQueryInterpretationService {
         ? [{ type: 'food' as EntityType, terms: unresolvedResidues }]
         : [],
       phaseTimings,
-      ...(excludedSpans.length ? { excludedSpans } : {}),
+      // NEGATION V2: excludedSpans is DEAD (never populated) — kept off the
+      // wire entirely; the field remains on the type for client compat only.
       queryAnalysis: {
         script: analysis.script,
         requestLocale: analysis.requestLocale,

@@ -375,7 +375,19 @@ export function denseQueryInput(term: string, locale: string | null): string {
   return tag ? `[${tag}] ${term}` : term;
 }
 
-/** R5-3: a cue that IMMEDIATELY precedes a span negates it. Adjacency is
+/** NEGATION V2 (plan §12b): the folded cue tokens present in THIS query —
+ *  used ONLY as dense-input hygiene (strip before embedding). Lexical
+ *  matching never consults cues anymore: a cue inside a name is a real
+ *  word ("No Name Burgers"). */
+export function negationCueTexts(analysis: {
+  negationCues: NegationCue[];
+}): ReadonlySet<string> {
+  return new Set(analysis.negationCues.map((cue) => cue.cue));
+}
+
+/** R5-3 (legacy; no production caller since negation v2 — kept for the
+ *  analyzer spec surface): a cue that IMMEDIATELY precedes a span negates
+ *  it. Adjacency is
  *  token-level (the cue is the token just before the span's first token) —
  *  a cue anywhere in the query is NOT a licence to drop every span
  *  ("tacos without cheese, with salsa"). */

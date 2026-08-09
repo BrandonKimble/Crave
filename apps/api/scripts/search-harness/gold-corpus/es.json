@@ -907,11 +907,11 @@
       "stratum": "negation",
       "expected": {
         "concepts": ["ramen"],
-        "excluded": ["cerdo"],
-        "mustNotResolve": ["vegan", "vegetarian", "pork"]
+        "excluded": [],
+        "mustNotResolve": ["vegan", "vegetarian"]
       },
       "park": false,
-      "notes": "KNOWN-RED SEED. Pre-R5-3 this returned VEGAN ramen — silent inversion. Non-inversion is the hard clause."
+      "notes": "KNOWN-RED SEED. Pre-R5-3 this returned VEGAN ramen — silent inversion. Non-inversion is the hard clause. | RE-AUTHORED 2026-08-08 (negation v2, plan §12b): LITERAL IGNORE — the negated word grounds POSITIVELY like any mentioned ingredient; only dense INVERSION (vegan/vegetarian for a sin-X query) stays forbidden. excluded assertions deleted with the machinery."
     },
     {
       "id": "ng-02",
@@ -920,10 +920,10 @@
       "expected": {
         "concepts": ["tacos"],
         "excluded": [],
-        "mustNotResolve": ["queso", "cheese"]
+        "mustNotResolve": []
       },
       "park": false,
-      "notes": "The negated span IS a corpus entity ('queso' ingredient) — the fail-closed path must drop a groundable span, not just unknown residue. | RE-AUTHORED 2026-08-07 (negation doctrine): app deliberately does NOT support negation; sin-X may ground positively (sin queso->cheeseless). Assert non-inversion only."
+      "notes": "The negated span IS a corpus entity ('queso' ingredient) — the fail-closed path must drop a groundable span, not just unknown residue. | RE-AUTHORED 2026-08-07 (negation doctrine): app deliberately does NOT support negation; sin-X may ground positively (sin queso->cheeseless). Assert non-inversion only. | RE-AUTHORED 2026-08-08 (negation v2, plan §12b): LITERAL IGNORE — the negated word grounds POSITIVELY like any mentioned ingredient; only dense INVERSION (vegan/vegetarian for a sin-X query) stays forbidden. excluded assertions deleted with the machinery."
     },
     {
       "id": "ng-03",
@@ -932,10 +932,10 @@
       "expected": {
         "concepts": ["pizza"],
         "excluded": [],
-        "mustNotResolve": ["queso", "cheese"]
+        "mustNotResolve": []
       },
       "park": false,
-      "notes": "Same cue over a different head. | RE-AUTHORED 2026-08-07 (negation doctrine): app deliberately does NOT support negation; sin-X may ground positively (sin queso->cheeseless). Assert non-inversion only."
+      "notes": "Same cue over a different head. | RE-AUTHORED 2026-08-07 (negation doctrine): app deliberately does NOT support negation; sin-X may ground positively (sin queso->cheeseless). Assert non-inversion only. | RE-AUTHORED 2026-08-08 (negation v2, plan §12b): LITERAL IGNORE — the negated word grounds POSITIVELY like any mentioned ingredient; only dense INVERSION (vegan/vegetarian for a sin-X query) stays forbidden. excluded assertions deleted with the machinery."
     },
     {
       "id": "ng-04",
@@ -943,11 +943,11 @@
       "stratum": "negation",
       "expected": {
         "concepts": ["sushi"],
-        "excluded": ["arroz"],
-        "mustNotResolve": ["rice"]
+        "excluded": [],
+        "mustNotResolve": []
       },
       "park": false,
-      "notes": "Negated span is a BRIDGE word — it must not reach the dense tier (dense is precisely what inverts)."
+      "notes": "Negated span is a BRIDGE word — it must not reach the dense tier (dense is precisely what inverts). | RE-AUTHORED 2026-08-08 (negation v2, plan §12b): LITERAL IGNORE — the negated word grounds POSITIVELY like any mentioned ingredient; only dense INVERSION (vegan/vegetarian for a sin-X query) stays forbidden. excluded assertions deleted with the machinery."
     },
     {
       "id": "ng-05",
@@ -955,11 +955,11 @@
       "stratum": "negation",
       "expected": {
         "concepts": ["ramen"],
-        "excluded": ["pollo"],
-        "mustNotResolve": ["pollo", "chicken"]
+        "excluded": [],
+        "mustNotResolve": []
       },
       "park": false,
-      "notes": "Negated span is a source-faithful corpus row."
+      "notes": "Negated span is a source-faithful corpus row. | RE-AUTHORED 2026-08-08 (negation v2, plan §12b): LITERAL IGNORE — the negated word grounds POSITIVELY like any mentioned ingredient; only dense INVERSION (vegan/vegetarian for a sin-X query) stays forbidden. excluded assertions deleted with the machinery."
     },
     {
       "id": "ng-06",
@@ -967,11 +967,11 @@
       "stratum": "negation",
       "expected": {
         "concepts": ["pizza"],
-        "excluded": ["carne"],
-        "mustNotResolve": ["beef", "vegetarian", "vegan"]
+        "excluded": [],
+        "mustNotResolve": ["vegetarian", "vegan"]
       },
       "park": false,
-      "notes": "The classic inversion bait: 'no meat' semantically equals vegetarian, and a bi-encoder WILL say so. It must not."
+      "notes": "The classic inversion bait: 'no meat' semantically equals vegetarian, and a bi-encoder WILL say so. It must not. | RE-AUTHORED 2026-08-08 (negation v2, plan §12b): LITERAL IGNORE — the negated word grounds POSITIVELY like any mentioned ingredient; only dense INVERSION (vegan/vegetarian for a sin-X query) stays forbidden. excluded assertions deleted with the machinery."
     },
     {
       "id": "ng-07",
@@ -979,11 +979,11 @@
       "stratum": "negation",
       "expected": {
         "concepts": [],
-        "excluded": ["aguacate"],
-        "mustNotResolve": ["avocado"]
+        "excluded": [],
+        "mustNotResolve": []
       },
       "park": true,
-      "notes": "Head is itself a bridge word — parking the head is acceptable; INVERTING the constraint is not. Concepts left empty deliberately."
+      "notes": "Head is itself a bridge word — parking the head is acceptable; INVERTING the constraint is not. Concepts left empty deliberately. | RE-AUTHORED 2026-08-08 (negation v2, plan §12b): LITERAL IGNORE — the negated word grounds POSITIVELY like any mentioned ingredient; only dense INVERSION (vegan/vegetarian for a sin-X query) stays forbidden. excluded assertions deleted with the machinery."
     },
     {
       "id": "ng-08",
@@ -991,11 +991,11 @@
       "stratum": "negation",
       "expected": {
         "concepts": ["tacos"],
-        "excluded": ["cebolla"],
-        "mustNotResolve": ["onion"]
+        "excluded": [],
+        "mustNotResolve": []
       },
       "park": false,
-      "notes": "Negated span is unknown residue in the English corpus — still a recorded constraint (the excludedSpan carries empty entityIds)."
+      "notes": "Negated span is unknown residue in the English corpus — still a recorded constraint (the excludedSpan carries empty entityIds). | RE-AUTHORED 2026-08-08 (negation v2, plan §12b): LITERAL IGNORE — the negated word grounds POSITIVELY like any mentioned ingredient; only dense INVERSION (vegan/vegetarian for a sin-X query) stays forbidden. excluded assertions deleted with the machinery."
     },
     {
       "id": "ng-09",
@@ -1003,11 +1003,11 @@
       "stratum": "negation",
       "expected": {
         "concepts": ["burrito"],
-        "excluded": ["frijoles"],
-        "mustNotResolve": ["beans"]
+        "excluded": [],
+        "mustNotResolve": []
       },
       "park": false,
-      "notes": "Bridge word behind a cue."
+      "notes": "Bridge word behind a cue. | RE-AUTHORED 2026-08-08 (negation v2, plan §12b): LITERAL IGNORE — the negated word grounds POSITIVELY like any mentioned ingredient; only dense INVERSION (vegan/vegetarian for a sin-X query) stays forbidden. excluded assertions deleted with the machinery."
     },
     {
       "id": "ng-10",
@@ -1015,11 +1015,11 @@
       "stratum": "negation",
       "expected": {
         "concepts": ["quesadilla"],
-        "excluded": ["crema"],
-        "mustNotResolve": ["crema", "sour cream"]
+        "excluded": [],
+        "mustNotResolve": []
       },
       "park": false,
-      "notes": "'crema' IS a corpus ingredient — groundable span behind a cue."
+      "notes": "'crema' IS a corpus ingredient — groundable span behind a cue. | RE-AUTHORED 2026-08-08 (negation v2, plan §12b): LITERAL IGNORE — the negated word grounds POSITIVELY like any mentioned ingredient; only dense INVERSION (vegan/vegetarian for a sin-X query) stays forbidden. excluded assertions deleted with the machinery."
     },
     {
       "id": "ng-11",
@@ -1027,11 +1027,11 @@
       "stratum": "negation",
       "expected": {
         "concepts": ["chicken"],
-        "excluded": ["piel"],
-        "mustNotResolve": ["skin"]
+        "excluded": [],
+        "mustNotResolve": []
       },
       "park": false,
-      "notes": "'skin' exists as an ingredient row — a bridge target that must stay unreached. | RE-AUTHORED 2026-08-07: pollo merged into chicken."
+      "notes": "'skin' exists as an ingredient row — a bridge target that must stay unreached. | RE-AUTHORED 2026-08-07: pollo merged into chicken. | RE-AUTHORED 2026-08-08 (negation v2, plan §12b): LITERAL IGNORE — the negated word grounds POSITIVELY like any mentioned ingredient; only dense INVERSION (vegan/vegetarian for a sin-X query) stays forbidden. excluded assertions deleted with the machinery."
     },
     {
       "id": "ng-12",
@@ -1039,11 +1039,11 @@
       "stratum": "negation",
       "expected": {
         "concepts": ["pasta"],
-        "excluded": ["cebolla"],
-        "mustNotResolve": ["onion"]
+        "excluded": [],
+        "mustNotResolve": []
       },
       "park": false,
-      "notes": "Locale-invariant head + negated residue."
+      "notes": "Locale-invariant head + negated residue. | RE-AUTHORED 2026-08-08 (negation v2, plan §12b): LITERAL IGNORE — the negated word grounds POSITIVELY like any mentioned ingredient; only dense INVERSION (vegan/vegetarian for a sin-X query) stays forbidden. excluded assertions deleted with the machinery."
     },
     {
       "id": "ng-13",
@@ -1051,11 +1051,11 @@
       "stratum": "negation",
       "expected": {
         "concepts": ["tacos"],
-        "excluded": ["carne"],
-        "mustNotResolve": ["beef", "vegetarian", "vegan"]
+        "excluded": [],
+        "mustNotResolve": ["vegetarian", "vegan"]
       },
       "park": false,
-      "notes": "Second inversion-bait shape, different head."
+      "notes": "Second inversion-bait shape, different head. | RE-AUTHORED 2026-08-08 (negation v2, plan §12b): LITERAL IGNORE — the negated word grounds POSITIVELY like any mentioned ingredient; only dense INVERSION (vegan/vegetarian for a sin-X query) stays forbidden. excluded assertions deleted with the machinery."
     },
     {
       "id": "ng-14",
@@ -1063,11 +1063,11 @@
       "stratum": "negation",
       "expected": {
         "concepts": ["ramen"],
-        "excluded": ["huevo"],
-        "mustNotResolve": ["egg"]
+        "excluded": [],
+        "mustNotResolve": []
       },
       "park": false,
-      "notes": "Bridge word behind a cue."
+      "notes": "Bridge word behind a cue. | RE-AUTHORED 2026-08-08 (negation v2, plan §12b): LITERAL IGNORE — the negated word grounds POSITIVELY like any mentioned ingredient; only dense INVERSION (vegan/vegetarian for a sin-X query) stays forbidden. excluded assertions deleted with the machinery."
     },
     {
       "id": "ng-15",
@@ -1075,11 +1075,11 @@
       "stratum": "negation",
       "expected": {
         "concepts": ["pizza"],
-        "excluded": ["vegetariana"],
-        "mustNotResolve": ["vegetarian"]
+        "excluded": [],
+        "mustNotResolve": []
       },
       "park": false,
-      "notes": "Cue 'no' (both an es and an en pack cue). Negating a SPINE constraint — the case where a wrong answer is most visible."
+      "notes": "Cue 'no' (both an es and an en pack cue). Negating a SPINE constraint — the case where a wrong answer is most visible. | RE-AUTHORED 2026-08-08 (negation v2, plan §12b): LITERAL IGNORE — the negated word grounds POSITIVELY like any mentioned ingredient; only dense INVERSION (vegan/vegetarian for a sin-X query) stays forbidden. excluded assertions deleted with the machinery."
     },
     {
       "id": "ng-16",
@@ -1091,7 +1091,7 @@
         "mustNotResolve": []
       },
       "park": false,
-      "notes": "KNOWN-RED SHAPE: the cue is NOT adjacent to the negated word (negatedSpan only looks one token left), and 'caro' is a price directive, not a concept. Asserts only NON-INVERSION — excluded is deliberately empty so this entry cannot manufacture a false green."
+      "notes": "KNOWN-RED SHAPE: the cue is NOT adjacent to the negated word (negatedSpan only looks one token left), and 'caro' is a price directive, not a concept. Asserts only NON-INVERSION — excluded is deliberately empty so this entry cannot manufacture a false green. | RE-AUTHORED 2026-08-08 (negation v2, plan §12b): LITERAL IGNORE — the negated word grounds POSITIVELY like any mentioned ingredient; only dense INVERSION (vegan/vegetarian for a sin-X query) stays forbidden. excluded assertions deleted with the machinery."
     },
     {
       "id": "ng-17",
@@ -1100,10 +1100,10 @@
       "expected": {
         "concepts": [],
         "excluded": [],
-        "mustNotResolve": ["spicy"]
+        "mustNotResolve": []
       },
       "park": true,
-      "notes": "Negating the P3 normalized concept. 'comida' is a carrier with no expected grounding. | RE-AUTHORED 2026-08-07 (negation doctrine): app deliberately does NOT support negation; sin-X may ground positively (sin queso->cheeseless). Assert non-inversion only."
+      "notes": "Negating the P3 normalized concept. 'comida' is a carrier with no expected grounding. | RE-AUTHORED 2026-08-07 (negation doctrine): app deliberately does NOT support negation; sin-X may ground positively (sin queso->cheeseless). Assert non-inversion only. | RE-AUTHORED 2026-08-08 (negation v2, plan §12b): LITERAL IGNORE — the negated word grounds POSITIVELY like any mentioned ingredient; only dense INVERSION (vegan/vegetarian for a sin-X query) stays forbidden. excluded assertions deleted with the machinery."
     },
     {
       "id": "ng-18",
@@ -1112,10 +1112,10 @@
       "expected": {
         "concepts": [],
         "excluded": [],
-        "mustNotResolve": ["sugar"]
+        "mustNotResolve": []
       },
       "park": true,
-      "notes": "Accent inside the negated span — the excludedSpan text is asserted FOLDED (azúcar→azucar). | RE-AUTHORED 2026-08-07 (negation doctrine): app deliberately does NOT support negation; sin-X may ground positively (sin queso->cheeseless). Assert non-inversion only."
+      "notes": "Accent inside the negated span — the excludedSpan text is asserted FOLDED (azúcar→azucar). | RE-AUTHORED 2026-08-07 (negation doctrine): app deliberately does NOT support negation; sin-X may ground positively (sin queso->cheeseless). Assert non-inversion only. | RE-AUTHORED 2026-08-08 (negation v2, plan §12b): LITERAL IGNORE — the negated word grounds POSITIVELY like any mentioned ingredient; only dense INVERSION (vegan/vegetarian for a sin-X query) stays forbidden. excluded assertions deleted with the machinery."
     },
     {
       "id": "ng-19",
@@ -1123,11 +1123,11 @@
       "stratum": "negation",
       "expected": {
         "concepts": ["coffee"],
-        "excluded": ["leche"],
-        "mustNotResolve": ["milk"]
+        "excluded": [],
+        "mustNotResolve": []
       },
       "park": true,
-      "notes": "Bridge head + bridge negated span. park=true: the head may legitimately not reach 'coffee'; the constraint record is the hard part."
+      "notes": "Bridge head + bridge negated span. park=true: the head may legitimately not reach 'coffee'; the constraint record is the hard part. | RE-AUTHORED 2026-08-08 (negation v2, plan §12b): LITERAL IGNORE — the negated word grounds POSITIVELY like any mentioned ingredient; only dense INVERSION (vegan/vegetarian for a sin-X query) stays forbidden. excluded assertions deleted with the machinery."
     },
     {
       "id": "ng-20",
@@ -1135,11 +1135,11 @@
       "stratum": "negation",
       "expected": {
         "concepts": ["birria"],
-        "excluded": ["cilantro"],
-        "mustNotResolve": ["cilantro"]
+        "excluded": [],
+        "mustNotResolve": []
       },
       "park": false,
-      "notes": "Source-faithful head + a negated span that is an EXACT English-corpus ingredient name — the cleanest fail-closed test in the set."
+      "notes": "Source-faithful head + a negated span that is an EXACT English-corpus ingredient name — the cleanest fail-closed test in the set. | RE-AUTHORED 2026-08-08 (negation v2, plan §12b): LITERAL IGNORE — the negated word grounds POSITIVELY like any mentioned ingredient; only dense INVERSION (vegan/vegetarian for a sin-X query) stays forbidden. excluded assertions deleted with the machinery."
     },
     {
       "id": "at-01",
