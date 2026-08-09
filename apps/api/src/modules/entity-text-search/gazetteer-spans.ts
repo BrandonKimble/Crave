@@ -44,6 +44,41 @@ export interface EntitySpanGroup {
   subGroups?: EntitySpanGroup[];
 }
 
+/**
+ * DIACRITIC EVIDENCE — the exact-tier admission rule (2026-08-09).
+ *
+ * THE DEFECT: the exact tier matches on the FOLDED key, and the fold strips
+ * accents so de-diacritized typing works ('pho' → phở, the way most people
+ * type Vietnamese on a US keyboard). But the same collapse merges words that
+ * are only distinguished BY their accents, and it did so at confidence 1.0:
+ * 'bò' (beef) ground to avocado (via bơ), 'mỹ' (American) to mian (via mỳ),
+ * 'cơm chay' (vegetarian rice) to scorched rice (via cơm cháy). A confident
+ * wrong answer, on the one tier that admits no doubt.
+ *
+ * THE RULE, in one line: **when the user types accents, the accents are
+ * evidence.** A span typed WITH accents is admitted at the exact tier only by
+ * a surface that agrees on them; a surface that matches only after the accents
+ * are stripped is not exact — it may still be reached by the lower-evidence
+ * lanes (residue probe, dense link), which is where a genuine near-miss
+ * belongs. A span typed WITHOUT accents carries no evidence either way, so
+ * the folded key rules exactly as before and 'pho'/'bo' behave identically to
+ * yesterday.
+ *
+ * Language-neutral and list-free: nothing here knows Vietnamese exists. It
+ * falls out of `diacriticFold` vs `canonicalFold` — see entity-identity.ts.
+ * The accent-agreeing case also settles the collision the fold created: when
+ * `bơ` and a hypothetical `bò` both fold to 'bo', typing `bò` admits only the
+ * one that matches raw.
+ */
+export function admitsAtExactTier(
+  span: { folded: string; diacritic: string },
+  entityDiacriticForms: ReadonlySet<string>,
+): boolean {
+  // No accents typed ⇒ no evidence ⇒ the folded key decides (unchanged).
+  if (span.diacritic === span.folded) return true;
+  return entityDiacriticForms.has(span.diacritic);
+}
+
 interface RawSpanMatch extends SpanEntity {
   start: number;
   end: number;

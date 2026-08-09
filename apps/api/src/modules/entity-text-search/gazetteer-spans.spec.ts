@@ -1,5 +1,9 @@
 import { EntityType } from '@prisma/client';
-import { groupEntitySpans, pickSpanWinner } from './gazetteer-spans';
+import {
+  admitsAtExactTier,
+  groupEntitySpans,
+  pickSpanWinner,
+} from './gazetteer-spans';
 
 const span = (
   start: number,
@@ -109,5 +113,64 @@ describe('pickSpanWinner', () => {
     const a = pickSpanWinner(group, [EntityType.restaurant]);
     const b = pickSpanWinner(reversed, [EntityType.restaurant]);
     expect(a.entityId).toBe(b.entityId);
+  });
+});
+
+/**
+ * DIACRITIC EVIDENCE — the exact-tier admission rule (2026-08-09).
+ *
+ * The vi launch gate found three confident wrong answers with one root cause:
+ * the fold strips accents (so 'pho' finds phở), which also collapses words
+ * that are ONLY distinguished by their accents — and the exact tier then
+ * grounded them at confidence 1.0. 'bò' (beef) → avocado, via the banked
+ * surface 'bơ'. The shape below is that case, unit-sized.
+ */
+describe('admitsAtExactTier — typed accents are evidence', () => {
+  const bo = { folded: 'bo', diacritic: 'bò' };
+  const boNoAccents = { folded: 'bo', diacritic: 'bo' };
+
+  it('refuses a fold-only neighbour when the user typed accents (bò is not bơ)', () => {
+    expect(admitsAtExactTier(bo, new Set(['bơ']))).toBe(false);
+  });
+
+  it('admits the surface that agrees on the accents', () => {
+    expect(admitsAtExactTier(bo, new Set(['bơ', 'bò']))).toBe(true);
+  });
+
+  it('leaves de-diacritized typing exactly as it was (pho → phở keeps working)', () => {
+    // No accents typed ⇒ no evidence ⇒ the folded key alone decides, so even a
+    // surface that carries accents is still admitted. This is the half of the
+    // fold that MUST NOT regress: it is how Vietnamese is typed on a US
+    // keyboard.
+    expect(admitsAtExactTier(boNoAccents, new Set(['bơ']))).toBe(true);
+    expect(
+      admitsAtExactTier({ folded: 'pho', diacritic: 'pho' }, new Set(['phở'])),
+    ).toBe(true);
+  });
+
+  it('refuses an accent-bearing span no surface spells that way at all', () => {
+    // 'cơm chay' (vegetarian rice) vs the only banked surface 'cơm cháy'
+    // (scorched rice) — the span parks rather than grounding the wrong dish.
+    expect(
+      admitsAtExactTier(
+        { folded: 'com chay', diacritic: 'cơm chay' },
+        new Set(['cơm cháy']),
+      ),
+    ).toBe(false);
+  });
+
+  it('is language-neutral — the same rule over Spanish', () => {
+    expect(
+      admitsAtExactTier(
+        { folded: 'cafe', diacritic: 'café' },
+        new Set(['café']),
+      ),
+    ).toBe(true);
+    expect(
+      admitsAtExactTier(
+        { folded: 'cafe', diacritic: 'café' },
+        new Set(['cafe']),
+      ),
+    ).toBe(false);
   });
 });

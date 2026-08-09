@@ -93,6 +93,33 @@ const COMBINING_DIACRITICS =
  *  itself typed the other; (2) every accented letter absent from the finite
  *  hand list (pinyin carons, Czech d-caron, …) silently survived unfolded. */
 export function canonicalFold(name: string): string {
+  return foldWithAccentPolicy(name, true);
+}
+
+/** THE ACCENT-PRESERVING FOLD — canonicalFold's twin, differing in EXACTLY
+ *  one step: the combining-diacritic strip is skipped. Everything else
+ *  (NFKD/NFC, format-control deletion, lowercasing, the non-decomposable
+ *  table, apostrophe strip, separator collapse, trim) is the SAME code path,
+ *  which is why both live in one private implementation — a copy would drift,
+ *  and the whole point of this function is that the two keys differ ONLY by
+ *  accents.
+ *
+ *  THE INVARIANT THIS BUYS: `diacriticFold(x) !== canonicalFold(x)` is
+ *  precisely the predicate "x carries at least one accent". That is the
+ *  evidence test the query path needs — see the DIACRITIC EVIDENCE rule in
+ *  EntityTextSearchService.scanForKnownEntityGroups. When a user TYPES
+ *  accents, the accents are evidence; a stored surface that disagrees on them
+ *  is a different word (bò beef vs bơ butter/avocado, cơm chay vegetarian rice
+ *  vs cơm cháy scorched rice), not an exact match. When the user types no
+ *  accents ('pho', 'bo') there is no evidence and the folded key rules, so
+ *  de-diacritized typing — the way most people type Vietnamese on a US
+ *  keyboard — keeps working exactly as before. Language-neutral: nothing here
+ *  knows what Vietnamese is. */
+export function diacriticFold(name: string): string {
+  return foldWithAccentPolicy(name, false);
+}
+
+function foldWithAccentPolicy(name: string, stripAccents: boolean): string {
   return (
     name
       .normalize('NFKD')
@@ -110,7 +137,7 @@ export function canonicalFold(name: string): string {
       // voicing, NOT Arabic harakat, NOT Thai/Devanagari vowel signs — those
       // live outside these blocks and are handled by the mark-preserving
       // separator step below.
-      .replace(COMBINING_DIACRITICS, '')
+      .replace(COMBINING_DIACRITICS, stripAccents ? '' : '$&')
       .normalize('NFC')
       .toLowerCase()
       .replace(NON_DECOMPOSABLE_RE, (ch) => NON_DECOMPOSABLE[ch] ?? ch)

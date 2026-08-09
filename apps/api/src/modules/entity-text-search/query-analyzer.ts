@@ -1,5 +1,8 @@
 import { detectAll } from 'tinyld/light';
-import { canonicalFold } from '../content-processing/entity-resolver/entity-identity';
+import {
+  canonicalFold,
+  diacriticFold,
+} from '../content-processing/entity-resolver/entity-identity';
 
 /**
  * THE ANALYZER SEAM (multilingual plan A2 + M4b/R5-2 + R5-3).
@@ -45,6 +48,11 @@ export interface QueryToken {
   raw: string;
   /** canonicalFold(raw) — the ONE fold, imported, never re-implemented. */
   folded: string;
+  /** diacriticFold(raw) — the SAME fold with the accent strip skipped. It is
+   *  the ACCENT EVIDENCE of what the user typed: `diacritic !== folded` says
+   *  "this token was typed with accents", and the gazetteer uses that to
+   *  refuse a stored surface that disagrees on them (bò is not bơ). */
+  diacritic: string;
   start: number;
   end: number;
   /**
@@ -60,9 +68,28 @@ export interface QueryToken {
   separator: ' ' | '';
 }
 
+/**
+ * The longest phrase `ngrams()` will ever assemble, however large a
+ * `maxPhraseWords` a caller asks for. This is a COST CEILING (candidates are
+ * O(tokens x maxN) and feed a `= ANY(text[])` probe), not a statement about
+ * vocabulary — callers name the phrase length their data actually needs.
+ *
+ * It was 5 and the gazetteer asked for 4, which silently made the exact-alias
+ * scan blind to every banked surface longer than four words: 5,947 of 57,652
+ * active recall surfaces (10.3%), including the whole Vietnamese cuisine
+ * vocabulary ('ẩm thực Địa Trung Hải' → mediterranean, five tokens). Those
+ * queries did not park — they SHREDDED into their parts and ground nonsense
+ * ('Địa'→plate, 'Trung'→egg). 12 covers 99.96% of the banked distribution and
+ * still bounds the worst case (48 tokens x 12 = 576 candidates).
+ */
+export const NGRAM_MAX_PHRASE_WORDS_CEILING = 12;
+
 export interface QueryNgram {
   /** Folded phrase text (tokens joined by a single space). */
   folded: string;
+  /** The same phrase under the accent-preserving fold, assembled from the
+   *  tokens by the identical join so the two keys differ ONLY by accents. */
+  diacritic: string;
   /** Raw slice of the query this n-gram covers. */
   raw: string;
   start: number;
@@ -318,6 +345,7 @@ export function segmentToken(raw: string, start: number): QueryToken[] {
       {
         raw,
         folded: canonicalFold(raw),
+        diacritic: diacriticFold(raw),
         start,
         end: start + raw.length,
         separator: ' ',
@@ -333,6 +361,7 @@ export function segmentToken(raw: string, start: number): QueryToken[] {
     out.push({
       raw: plain,
       folded: canonicalFold(plain),
+      diacritic: diacriticFold(plain),
       start: plainStart,
       end: plainStart + plain.length,
       separator: ' ',
@@ -351,6 +380,7 @@ export function segmentToken(raw: string, start: number): QueryToken[] {
       out.push({
         raw: ch,
         folded: canonicalFold(ch),
+        diacritic: diacriticFold(ch),
         start: offset,
         end: offset + ch.length,
         separator,
@@ -436,7 +466,10 @@ export function analyzeQuery(
     isNonLatinScript: script !== 'latin' && script !== 'other',
     isNonEnglish: fusedBase != null && fusedBase !== 'en',
     ngrams(maxPhraseWords: number): QueryNgram[] {
-      const maxN = Math.max(1, Math.min(maxPhraseWords, 5));
+      const maxN = Math.max(
+        1,
+        Math.min(maxPhraseWords, NGRAM_MAX_PHRASE_WORDS_CEILING),
+      );
       const out: QueryNgram[] = [];
       for (let i = 0; i < tokens.length; i++) {
         for (let n = 1; n <= maxN && i + n <= tokens.length; n++) {
@@ -445,15 +478,20 @@ export function analyzeQuery(
           // spaced script, '' inside an unspaced CJK run). For Latin/Hangul
           // every separator is ' ', so this is the old `.join(' ')` exactly.
           let folded = '';
+          let diacritic = '';
           for (const t of slice) {
             if (!t.folded) continue;
             folded = folded ? folded + t.separator + t.folded : t.folded;
+            diacritic = diacritic
+              ? diacritic + t.separator + t.diacritic
+              : t.diacritic;
           }
           if (!folded) continue;
           const start = slice[0].start;
           const end = slice[n - 1].end;
           out.push({
             folded,
+            diacritic,
             raw: raw.slice(start, end),
             start,
             end,

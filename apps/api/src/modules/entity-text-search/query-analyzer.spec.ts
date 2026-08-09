@@ -1,4 +1,9 @@
-import { analyzeQuery, denseQueryInput, detectScript } from './query-analyzer';
+import {
+  analyzeQuery,
+  denseQueryInput,
+  detectScript,
+  NGRAM_MAX_PHRASE_WORDS_CEILING,
+} from './query-analyzer';
 import { canonicalFold } from '../content-processing/entity-resolver/entity-identity';
 
 describe('query analyzer (A2 seam)', () => {
@@ -215,5 +220,54 @@ describe('query analyzer (A2 seam)', () => {
     it('is a NO-OP without a locale — existing callers embed exactly as before', () => {
       expect(denseQueryInput('pan', null)).toBe('pan');
     });
+  });
+});
+
+/**
+ * PHRASE LENGTH. The gazetteer is an EQUALITY probe against banked surfaces,
+ * so an n-gram window shorter than the longest banked surface does not make
+ * the query park — it SHREDS it. 'ẩm thực Địa Trung Hải' (five tokens, banked
+ * whole on `mediterranean`) ground 'Địa'→plate and 'Trung'→egg instead, at
+ * confidence 1.0. The window is data-derived now; the analyzer's job is to be
+ * able to ASSEMBLE what the data asks for.
+ */
+describe('ngrams — phrase length reaches the longest banked surface', () => {
+  const query = 'ẩm thực Địa Trung Hải';
+
+  it('assembles the whole 5-token phrase when asked for 5', () => {
+    const analysis = analyzeQuery(query, 'vi-VN');
+    expect(analysis.ngrams(5).map((n) => n.folded)).toContain(
+      'am thuc dia trung hai',
+    );
+  });
+
+  it('could NOT assemble it at the old window of 4 (the defect, pinned)', () => {
+    const analysis = analyzeQuery(query, 'vi-VN');
+    expect(analysis.ngrams(4).map((n) => n.folded)).not.toContain(
+      'am thuc dia trung hai',
+    );
+  });
+
+  it('honours a window past the old hard-coded internal cap of 5', () => {
+    const long = 'one two three four five six seven';
+    expect(
+      analyzeQuery(long, 'en')
+        .ngrams(7)
+        .map((n) => n.folded),
+    ).toContain('one two three four five six seven');
+  });
+
+  it('clamps at the cost ceiling however much a caller asks for', () => {
+    const tokens = Array.from({ length: 20 }, (_, i) => `w${i}`);
+    const analysis = analyzeQuery(tokens.join(' '), 'en');
+    const longest = Math.max(...analysis.ngrams(999).map((n) => n.tokenCount));
+    expect(longest).toBe(NGRAM_MAX_PHRASE_WORDS_CEILING);
+  });
+
+  it('carries an accent-preserving key alongside the folded one', () => {
+    const analysis = analyzeQuery('cơm chay', 'vi-VN');
+    const bigram = analysis.ngrams(2).find((n) => n.tokenCount === 2)!;
+    expect(bigram.folded).toBe('com chay');
+    expect(bigram.diacritic).toBe('cơm chay');
   });
 });

@@ -1,24 +1,17 @@
 {
-  "ranAt": "2026-08-09T07:20:15.618Z",
+  "ranAt": "2026-08-09T07:36:38.248Z",
   "lang": "vi",
   "corpusVersion": 1,
   "scoreboard": {
-    "overall": 95.33333333333333,
-    "top1SingleConcept": 94,
+    "overall": 98,
+    "top1SingleConcept": 97,
     "negationNonInversion": 100,
-    "constraintPreservation": 96.66666666666667,
+    "constraintPreservation": 100,
     "homographMisGroundings": [
-      "bò→avocado[gazetteer-exact]",
-      "mỹ→mian[gazetteer-exact]",
       "canh→viet sandwich[linked]",
-      "nem→little gem lettuce[linked]",
-      "cơm chay→scorched rice[gazetteer-exact]"
+      "nem→little gem lettuce[linked]"
     ],
-    "homographMisGroundingsExact": [
-      "bò→avocado[gazetteer-exact]",
-      "mỹ→mian[gazetteer-exact]",
-      "cơm chay→scorched rice[gazetteer-exact]"
-    ]
+    "homographMisGroundingsExact": []
   },
   "results": [
     {
@@ -206,15 +199,6 @@
           "name": "bun cha",
           "tier": "gazetteer-exact",
           "foldedName": "bun cha"
-        },
-        {
-          "entityId": "2b683f4e-1101-42de-921d-d6a0fa80495d",
-          "bucket": "ingredients",
-          "type": "ingredient",
-          "span": "bún",
-          "name": "bun",
-          "tier": "linked",
-          "foldedName": "bun"
         }
       ],
       "unresolved": [],
@@ -341,15 +325,6 @@
           "name": "banh cuon",
           "tier": "gazetteer-exact",
           "foldedName": "banh cuon"
-        },
-        {
-          "entityId": "987c3052-2840-4fee-98bc-94bff7f428c3",
-          "bucket": "food",
-          "type": "food",
-          "span": "bánh cuốn",
-          "name": "pork rice rolls",
-          "tier": "gazetteer-exact",
-          "foldedName": "pork rice rolls"
         }
       ],
       "unresolved": [],
@@ -416,15 +391,6 @@
           "name": "bun bo hue",
           "tier": "gazetteer-exact",
           "foldedName": "bun bo hue"
-        },
-        {
-          "entityId": "2b683f4e-1101-42de-921d-d6a0fa80495d",
-          "bucket": "ingredients",
-          "type": "ingredient",
-          "span": "bún",
-          "name": "bun",
-          "tier": "linked",
-          "foldedName": "bun"
         }
       ],
       "unresolved": [],
@@ -681,15 +647,6 @@
       "preservation": 1,
       "reasons": [],
       "grounded": [
-        {
-          "entityId": "38dd8008-11fd-4771-8203-7434a8040bd4",
-          "bucket": "food",
-          "type": "food",
-          "span": "bún",
-          "name": "bun",
-          "tier": "gazetteer-exact",
-          "foldedName": "bun"
-        },
         {
           "entityId": "f2623f78-29ff-49ac-ad64-d786687ff4bd",
           "bucket": "food",
@@ -2350,15 +2307,6 @@
       "reasons": [],
       "grounded": [
         {
-          "entityId": "ca15d0cc-13d5-4e38-8d2b-95dc4dd28808",
-          "bucket": "foodAttributes",
-          "type": "food_attribute",
-          "span": "hàng",
-          "name": "pungent",
-          "tier": "gazetteer-exact",
-          "foldedName": "pungent"
-        },
-        {
           "entityId": "9f109755-4025-44ab-8cdc-5b8a9eb7ec73",
           "bucket": "restaurantAttributes",
           "type": "restaurant_attribute",
@@ -2368,7 +2316,7 @@
           "foldedName": "italian"
         }
       ],
-      "unresolved": ["nhà"],
+      "unresolved": ["nhà hàng"],
       "analysis": {
         "script": "latin",
         "requestLocale": "vi-VN",
@@ -2528,48 +2476,21 @@
       "query": "ẩm thực Địa Trung Hải",
       "stratum": "compound",
       "locale": "vi-VN",
-      "pass": false,
-      "preservation": 0,
-      "reasons": ["NOT GROUNDED: mediterranean"],
+      "pass": true,
+      "preservation": 1,
+      "reasons": [],
       "grounded": [
         {
-          "entityId": "c4548107-a51f-4c41-bbf6-8dd847a7fb59",
-          "bucket": "food",
-          "type": "food",
-          "span": "Địa",
-          "name": "plate",
+          "entityId": "f9b9c67a-249f-4e09-a33a-4aefb47ebc84",
+          "bucket": "restaurantAttributes",
+          "type": "restaurant_attribute",
+          "span": "ẩm thực Địa Trung Hải",
+          "name": "mediterranean",
           "tier": "gazetteer-exact",
-          "foldedName": "plate"
-        },
-        {
-          "entityId": "ce4c9ce8-8a7f-4789-b9e4-242beac3eb17",
-          "bucket": "food",
-          "type": "food",
-          "span": "Trung",
-          "name": "egg",
-          "tier": "gazetteer-exact",
-          "foldedName": "egg"
-        },
-        {
-          "entityId": "6d03b9c7-863f-48d0-8802-074094ee43b3",
-          "bucket": "food",
-          "type": "food",
-          "span": "Hải",
-          "name": "tiger cry",
-          "tier": "linked",
-          "foldedName": "tiger cry"
-        },
-        {
-          "entityId": "e22a1a1c-9e8d-4ecf-be4e-04eb6103d3c0",
-          "bucket": "foodAttributes",
-          "type": "food_attribute",
-          "span": "ẩm",
-          "name": "warm",
-          "tier": "gazetteer-exact",
-          "foldedName": "warm"
+          "foldedName": "mediterranean"
         }
       ],
-      "unresolved": ["thực"],
+      "unresolved": [],
       "analysis": {
         "script": "latin",
         "requestLocale": "vi-VN",
@@ -2578,7 +2499,7 @@
           "confidence": 0.5,
           "source": "request-prior"
         },
-        "denseTierUsed": true
+        "denseTierUsed": false
       },
       "misGroundings": [],
       "notes": "Banked 'ẩm thực Địa Trung Hải'→mediterranean — a 5-token Vietnamese phrase for one English word."
@@ -2719,15 +2640,6 @@
       "reasons": [],
       "grounded": [
         {
-          "entityId": "ca15d0cc-13d5-4e38-8d2b-95dc4dd28808",
-          "bucket": "foodAttributes",
-          "type": "food_attribute",
-          "span": "hàng",
-          "name": "pungent",
-          "tier": "gazetteer-exact",
-          "foldedName": "pungent"
-        },
-        {
           "entityId": "523eec4d-ead5-4ca0-a897-b5de1b259793",
           "bucket": "restaurantAttributes",
           "type": "restaurant_attribute",
@@ -2746,7 +2658,7 @@
           "foldedName": "romantic"
         }
       ],
-      "unresolved": ["nhà"],
+      "unresolved": ["nhà hàng"],
       "analysis": {
         "script": "latin",
         "requestLocale": "vi-VN",
@@ -2913,15 +2825,6 @@
       "preservation": 1,
       "reasons": [],
       "grounded": [
-        {
-          "entityId": "38dd8008-11fd-4771-8203-7434a8040bd4",
-          "bucket": "food",
-          "type": "food",
-          "span": "bún",
-          "name": "bun",
-          "tier": "gazetteer-exact",
-          "foldedName": "bun"
-        },
         {
           "entityId": "f2623f78-29ff-49ac-ad64-d786687ff4bd",
           "bucket": "food",
@@ -3517,15 +3420,6 @@
           "foldedName": "bun cha"
         },
         {
-          "entityId": "2b683f4e-1101-42de-921d-d6a0fa80495d",
-          "bucket": "ingredients",
-          "type": "ingredient",
-          "span": "bún",
-          "name": "bun",
-          "tier": "linked",
-          "foldedName": "bun"
-        },
-        {
           "entityId": "8c571c9c-bccb-40a4-b566-136781d209d0",
           "bucket": "ingredients",
           "type": "ingredient",
@@ -3790,16 +3684,16 @@
           "foldedName": "rice"
         },
         {
-          "entityId": "9112c473-ec70-482b-8967-6e4d6a08fc8a",
-          "bucket": "ingredients",
-          "type": "ingredient",
-          "span": "mặn",
-          "name": "plum",
-          "tier": "gazetteer-exact",
-          "foldedName": "plum"
+          "entityId": "30416a46-5507-4114-8309-1ea935bf5dc2",
+          "bucket": "foodAttributes",
+          "type": "food_attribute",
+          "span": "không mặn",
+          "name": "unsweet",
+          "tier": "linked",
+          "foldedName": "unsweet"
         }
       ],
-      "unresolved": ["không"],
+      "unresolved": [],
       "analysis": {
         "script": "latin",
         "requestLocale": "vi-VN",
@@ -4529,23 +4423,11 @@
       "query": "bò",
       "stratum": "homograph",
       "locale": "vi-VN",
-      "pass": false,
+      "pass": true,
       "preservation": 0,
-      "reasons": [
-        "MIS-GROUNDED (outside allowed set): avocado[gazetteer-exact]"
-      ],
-      "grounded": [
-        {
-          "entityId": "5dbb584c-790e-4078-acb1-d60185968264",
-          "bucket": "food",
-          "type": "food",
-          "span": "bò",
-          "name": "avocado",
-          "tier": "gazetteer-exact",
-          "foldedName": "avocado"
-        }
-      ],
-      "unresolved": [],
+      "reasons": ["clean park (safe)"],
+      "grounded": [],
+      "unresolved": ["bò"],
       "analysis": {
         "script": "latin",
         "requestLocale": "vi-VN",
@@ -4554,9 +4436,9 @@
           "confidence": 1,
           "source": "detector"
         },
-        "denseTierUsed": false
+        "denseTierUsed": true
       },
-      "misGroundings": ["avocado[gazetteer-exact]"],
+      "misGroundings": [],
       "notes": "THE SHARPEST VIETNAMESE HOMOGRAPH: tone marks are meaning. 'bò' = beef, 'bơ' = butter/avocado — and BOTH fold to 'bo', where the corpus banks 'bo'→avocado + butter and NOTHING on beef. A confident avocado answer to a beef query is the vi twin of the es 'tuna' case. SAFE = beef, or clean park."
     },
     {
@@ -4723,24 +4605,11 @@
       "query": "mỹ",
       "stratum": "homograph",
       "locale": "vi-VN",
-      "pass": false,
+      "pass": true,
       "preservation": 0,
-      "reasons": [
-        "FORBIDDEN GROUNDING: mian",
-        "MIS-GROUNDED (outside allowed set): mian[gazetteer-exact]"
-      ],
-      "grounded": [
-        {
-          "entityId": "db337785-109a-4c69-af3c-d5acc572eeec",
-          "bucket": "food",
-          "type": "food",
-          "span": "mỹ",
-          "name": "mian",
-          "tier": "gazetteer-exact",
-          "foldedName": "mian"
-        }
-      ],
-      "unresolved": [],
+      "reasons": ["clean park (safe)"],
+      "grounded": [],
+      "unresolved": ["mỹ"],
       "analysis": {
         "script": "latin",
         "requestLocale": "vi-VN",
@@ -4751,7 +4620,7 @@
         },
         "denseTierUsed": false
       },
-      "misGroundings": ["mian[gazetteer-exact]"],
+      "misGroundings": [],
       "notes": "TONE-FOLD COLLISION: 'Mỹ' = America/American, but folded it is 'my', which the corpus banks on the Chinese noodle 'mian'. A user asking for American food must not be handed a noodle dish. SAFE = american, or park."
     },
     {
@@ -4940,18 +4809,9 @@
       "stratum": "homograph",
       "locale": "vi-VN",
       "pass": true,
-      "preservation": 0.5,
+      "preservation": 0.25,
       "reasons": [],
       "grounded": [
-        {
-          "entityId": "38dd8008-11fd-4771-8203-7434a8040bd4",
-          "bucket": "food",
-          "type": "food",
-          "span": "bún",
-          "name": "bun",
-          "tier": "gazetteer-exact",
-          "foldedName": "bun"
-        },
         {
           "entityId": "f2623f78-29ff-49ac-ad64-d786687ff4bd",
           "bucket": "food",
@@ -5056,30 +4916,27 @@
       "query": "cơm chay",
       "stratum": "homograph",
       "locale": "vi-VN",
-      "pass": false,
-      "preservation": 0.5,
-      "reasons": [
-        "FORBIDDEN GROUNDING: scorched rice",
-        "MIS-GROUNDED (outside allowed set): scorched rice[gazetteer-exact]"
-      ],
+      "pass": true,
+      "preservation": 1,
+      "reasons": [],
       "grounded": [
         {
-          "entityId": "484a73f1-51e1-4ada-8b75-8ec9bd031114",
+          "entityId": "77490d5e-e33e-4f6e-b1b8-d370755faf1f",
           "bucket": "food",
           "type": "food",
-          "span": "cơm chay",
-          "name": "scorched rice",
-          "tier": "gazetteer-exact",
-          "foldedName": "scorched rice"
-        },
-        {
-          "entityId": "35e1f3b8-f85d-472b-b378-803fd071eea1",
-          "bucket": "ingredients",
-          "type": "ingredient",
           "span": "cơm",
           "name": "rice",
-          "tier": "linked",
+          "tier": "gazetteer-exact",
           "foldedName": "rice"
+        },
+        {
+          "entityId": "6f332d26-e126-462c-a58e-0b8954687be6",
+          "bucket": "foodAttributes",
+          "type": "food_attribute",
+          "span": "chay",
+          "name": "vegetarian",
+          "tier": "gazetteer-exact",
+          "foldedName": "vegetarian"
         }
       ],
       "unresolved": [],
@@ -5093,7 +4950,7 @@
         },
         "denseTierUsed": false
       },
-      "misGroundings": ["scorched rice[gazetteer-exact]"],
+      "misGroundings": [],
       "notes": "The other half of hg-15: a vegetarian-rice query whose folded form is banked on scorched rice. SAFE = rice and/or vegetarian, or park; being handed a rice crust is a wrong-sense grounding a diner would notice immediately."
     },
     {
@@ -5283,15 +5140,6 @@
       "reasons": [],
       "grounded": [
         {
-          "entityId": "6317fa6e-62ea-497a-a6e4-52201c2a2fe1",
-          "bucket": "food",
-          "type": "food",
-          "span": "tôi",
-          "name": "garlic",
-          "tier": "gazetteer-exact",
-          "foldedName": "garlic"
-        },
-        {
           "entityId": "dfcea5a8-359f-410c-9ca6-85f4196ff8b2",
           "bucket": "food",
           "type": "food",
@@ -5301,7 +5149,7 @@
           "foldedName": "sushi"
         }
       ],
-      "unresolved": ["muốn ăn"],
+      "unresolved": ["tôi muốn ăn"],
       "analysis": {
         "script": "latin",
         "requestLocale": "vi-VN",
@@ -5325,15 +5173,6 @@
       "reasons": [],
       "grounded": [
         {
-          "entityId": "6317fa6e-62ea-497a-a6e4-52201c2a2fe1",
-          "bucket": "food",
-          "type": "food",
-          "span": "tôi",
-          "name": "garlic",
-          "tier": "gazetteer-exact",
-          "foldedName": "garlic"
-        },
-        {
           "entityId": "6b829aa2-4a1f-45b1-b304-eb3ace7ba11b",
           "bucket": "food",
           "type": "food",
@@ -5352,7 +5191,7 @@
           "foldedName": "pizza"
         }
       ],
-      "unresolved": ["cho"],
+      "unresolved": ["cho tôi"],
       "analysis": {
         "script": "latin",
         "requestLocale": "vi-VN",
@@ -5376,15 +5215,6 @@
       "reasons": [],
       "grounded": [
         {
-          "entityId": "e0a90a3f-a173-4852-b28a-c02c3e0e4b9f",
-          "bucket": "food",
-          "type": "food",
-          "span": "gần",
-          "name": "liver",
-          "tier": "gazetteer-exact",
-          "foldedName": "liver"
-        },
-        {
           "entityId": "cd6be86b-aae0-4e62-9c8a-df3589a0e832",
           "bucket": "restaurantAttributes",
           "type": "restaurant_attribute",
@@ -5394,7 +5224,7 @@
           "foldedName": "ramen"
         }
       ],
-      "unresolved": ["đây"],
+      "unresolved": ["gần đây"],
       "analysis": {
         "script": "latin",
         "requestLocale": "vi-VN",
@@ -5418,15 +5248,6 @@
       "reasons": [],
       "grounded": [
         {
-          "entityId": "6317fa6e-62ea-497a-a6e4-52201c2a2fe1",
-          "bucket": "food",
-          "type": "food",
-          "span": "tôi",
-          "name": "garlic",
-          "tier": "gazetteer-exact",
-          "foldedName": "garlic"
-        },
-        {
           "entityId": "2a2b6fe3-779b-42ad-9c1a-4cb88fa80815",
           "bucket": "food",
           "type": "food",
@@ -5434,18 +5255,9 @@
           "name": "burger",
           "tier": "gazetteer-exact",
           "foldedName": "burger"
-        },
-        {
-          "entityId": "a34ebfc4-c86b-4f2a-a73d-0b455a43972d",
-          "bucket": "food",
-          "type": "food",
-          "span": "thích",
-          "name": "candy",
-          "tier": "linked",
-          "foldedName": "candy"
         }
       ],
-      "unresolved": [],
+      "unresolved": ["tôi thích"],
       "analysis": {
         "script": "latin",
         "requestLocale": "vi-VN",
@@ -5502,15 +5314,6 @@
       "reasons": [],
       "grounded": [
         {
-          "entityId": "b01592d6-f94a-4b23-afdb-9764d21095ad",
-          "bucket": "restaurants",
-          "type": "restaurant",
-          "span": "quán",
-          "name": "Quan Sushi Grill",
-          "tier": "gazetteer-exact",
-          "foldedName": "quan sushi grill"
-        },
-        {
           "entityId": "cb2e4fac-a778-4c30-a95a-319e86a61f4f",
           "bucket": "food",
           "type": "food",
@@ -5536,18 +5339,9 @@
           "name": "bbq",
           "tier": "linked",
           "foldedName": "bbq"
-        },
-        {
-          "entityId": "9ad14bcb-15ce-4f4f-aee2-097f73bce132",
-          "bucket": "ingredients",
-          "type": "ingredient",
-          "span": "tìm",
-          "name": "heart",
-          "tier": "gazetteer-exact",
-          "foldedName": "heart"
         }
       ],
-      "unresolved": [],
+      "unresolved": ["tìm quán"],
       "analysis": {
         "script": "latin",
         "requestLocale": "vi-VN",
@@ -5556,7 +5350,7 @@
           "confidence": 1,
           "source": "detector"
         },
-        "denseTierUsed": false
+        "denseTierUsed": true
       },
       "misGroundings": [],
       "notes": "English 2-gram concept that must beat its own parts ('korean' + 'bbq'), under a Vietnamese carrier."
@@ -5604,15 +5398,6 @@
       "reasons": [],
       "grounded": [
         {
-          "entityId": "6317fa6e-62ea-497a-a6e4-52201c2a2fe1",
-          "bucket": "food",
-          "type": "food",
-          "span": "tôi",
-          "name": "garlic",
-          "tier": "gazetteer-exact",
-          "foldedName": "garlic"
-        },
-        {
           "entityId": "dd390a0b-4199-4e1b-b1df-2fea78f11cc7",
           "bucket": "food",
           "type": "food",
@@ -5620,15 +5405,6 @@
           "name": "ice cream",
           "tier": "gazetteer-exact",
           "foldedName": "ice cream"
-        },
-        {
-          "entityId": "77dd20cb-7574-477a-801f-f5394e3634c8",
-          "bucket": "food",
-          "type": "food",
-          "span": "muốn",
-          "name": "spring roll",
-          "tier": "linked",
-          "foldedName": "spring roll"
         },
         {
           "entityId": "fd5a75b5-7dd4-49f9-9704-e7b272e9bf98",
@@ -5649,7 +5425,7 @@
           "foldedName": "cream"
         }
       ],
-      "unresolved": [],
+      "unresolved": ["tôi muốn"],
       "analysis": {
         "script": "latin",
         "requestLocale": "vi-VN",
@@ -5678,7 +5454,7 @@
           "type": "restaurant",
           "span": "quán",
           "name": "Quan Sushi Grill",
-          "tier": "gazetteer-exact",
+          "tier": "linked",
           "foldedName": "quan sushi grill"
         },
         {
@@ -5731,18 +5507,9 @@
           "name": "seafood",
           "tier": "gazetteer-exact",
           "foldedName": "seafood"
-        },
-        {
-          "entityId": "ca15d0cc-13d5-4e38-8d2b-95dc4dd28808",
-          "bucket": "foodAttributes",
-          "type": "food_attribute",
-          "span": "hàng",
-          "name": "pungent",
-          "tier": "gazetteer-exact",
-          "foldedName": "pungent"
         }
       ],
-      "unresolved": ["nhà"],
+      "unresolved": ["nhà hàng"],
       "analysis": {
         "script": "latin",
         "requestLocale": "vi-VN",
@@ -5782,18 +5549,9 @@
           "name": "walk-in friendly",
           "tier": "linked",
           "foldedName": "walk in friendly"
-        },
-        {
-          "entityId": "44c2a929-142b-425d-b161-96c9654b1d75",
-          "bucket": "ingredients",
-          "type": "ingredient",
-          "span": "đâu",
-          "name": "beans",
-          "tier": "gazetteer-exact",
-          "foldedName": "beans"
         }
       ],
-      "unresolved": ["ở"],
+      "unresolved": ["ở đâu"],
       "analysis": {
         "script": "latin",
         "requestLocale": "vi-VN",
@@ -5817,15 +5575,6 @@
       "reasons": [],
       "grounded": [
         {
-          "entityId": "6317fa6e-62ea-497a-a6e4-52201c2a2fe1",
-          "bucket": "food",
-          "type": "food",
-          "span": "tôi",
-          "name": "garlic",
-          "tier": "gazetteer-exact",
-          "foldedName": "garlic"
-        },
-        {
           "entityId": "ea223900-5f0e-447f-83a2-74b23ca8b933",
           "bucket": "food",
           "type": "food",
@@ -5833,18 +5582,9 @@
           "name": "pasta",
           "tier": "gazetteer-exact",
           "foldedName": "pasta"
-        },
-        {
-          "entityId": "77dd20cb-7574-477a-801f-f5394e3634c8",
-          "bucket": "food",
-          "type": "food",
-          "span": "muốn",
-          "name": "spring roll",
-          "tier": "linked",
-          "foldedName": "spring roll"
         }
       ],
-      "unresolved": [],
+      "unresolved": ["tôi muốn"],
       "analysis": {
         "script": "latin",
         "requestLocale": "vi-VN",
@@ -5873,7 +5613,7 @@
           "type": "restaurant",
           "span": "quán",
           "name": "Quan Sushi Grill",
-          "tier": "gazetteer-exact",
+          "tier": "linked",
           "foldedName": "quan sushi grill"
         },
         {
@@ -5959,18 +5699,9 @@
           "name": "salad",
           "tier": "gazetteer-exact",
           "foldedName": "salad"
-        },
-        {
-          "entityId": "9ad14bcb-15ce-4f4f-aee2-097f73bce132",
-          "bucket": "ingredients",
-          "type": "ingredient",
-          "span": "tìm",
-          "name": "heart",
-          "tier": "gazetteer-exact",
-          "foldedName": "heart"
         }
       ],
-      "unresolved": [],
+      "unresolved": ["tìm"],
       "analysis": {
         "script": "latin",
         "requestLocale": "vi-VN",
@@ -5979,7 +5710,7 @@
           "confidence": 1,
           "source": "detector"
         },
-        "denseTierUsed": false
+        "denseTierUsed": true
       },
       "misGroundings": [],
       "notes": "Shortest possible code-switch: one carrier verb + one English noun."
@@ -6032,7 +5763,7 @@
           "type": "restaurant",
           "span": "quán",
           "name": "Quan Sushi Grill",
-          "tier": "gazetteer-exact",
+          "tier": "linked",
           "foldedName": "quan sushi grill"
         },
         {
@@ -6069,15 +5800,6 @@
       "reasons": [],
       "grounded": [
         {
-          "entityId": "6317fa6e-62ea-497a-a6e4-52201c2a2fe1",
-          "bucket": "food",
-          "type": "food",
-          "span": "tôi",
-          "name": "garlic",
-          "tier": "gazetteer-exact",
-          "foldedName": "garlic"
-        },
-        {
           "entityId": "dc27d7c4-5b49-429d-9d11-ab65827fb6d9",
           "bucket": "food",
           "type": "food",
@@ -6087,7 +5809,7 @@
           "foldedName": "hot pot"
         }
       ],
-      "unresolved": ["muốn thử"],
+      "unresolved": ["tôi muốn thử"],
       "analysis": {
         "script": "latin",
         "requestLocale": "vi-VN",
@@ -6158,7 +5880,7 @@
           "type": "restaurant",
           "span": "quán",
           "name": "Quan Sushi Grill",
-          "tier": "gazetteer-exact",
+          "tier": "linked",
           "foldedName": "quan sushi grill"
         },
         {

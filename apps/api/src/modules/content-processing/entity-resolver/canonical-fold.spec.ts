@@ -1,6 +1,7 @@
 import { EntityType } from '@prisma/client';
 import {
   canonicalFold,
+  diacriticFold,
   entityIdentityKey,
   isDisplayable,
   normalizeSurface,
@@ -134,5 +135,54 @@ describe('isDisplayable — the write-ingress "is this a real surface" authority
     for (const s of ['', '   ', '\u00a0', '\u2007', '\u200b', '!!!', '—']) {
       expect(isDisplayable(s)).toBe(false);
     }
+  });
+});
+
+/**
+ * THE ACCENT-PRESERVING TWIN. `diacriticFold` exists so the query path can ask
+ * one question the folded key cannot answer: did the user's accents agree with
+ * the stored spelling? Its contract is a DIFFERENCE, so the tests are all
+ * about the difference.
+ */
+describe('diacriticFold — canonicalFold minus exactly the accent strip', () => {
+  it('keeps accents that canonicalFold removes', () => {
+    expect(diacriticFold('phở')).toBe('phở');
+    expect(canonicalFold('phở')).toBe('pho');
+  });
+
+  it('separates the Vietnamese tone-distinct words the fold merges', () => {
+    // Every pair here is one folded key and three different foods.
+    expect(canonicalFold('bò')).toBe(canonicalFold('bơ'));
+    expect(diacriticFold('bò')).not.toBe(diacriticFold('bơ'));
+    expect(canonicalFold('cơm chay')).toBe(canonicalFold('cơm cháy'));
+    expect(diacriticFold('cơm chay')).not.toBe(diacriticFold('cơm cháy'));
+    expect(canonicalFold('mỹ')).toBe(canonicalFold('mỳ'));
+    expect(diacriticFold('mỹ')).not.toBe(diacriticFold('mỳ'));
+  });
+
+  it('agrees with canonicalFold on everything that is NOT an accent', () => {
+    // Case, apostrophes (straight and curly), punctuation, format controls,
+    // NFD/NFC input and the non-decomposable table are all handled by the SAME
+    // shared implementation — so the two keys are equal whenever the input
+    // carries no accents. THIS is what makes `diacritic !== folded` a sound
+    // test for "the user typed accents".
+    for (const text of [
+      'Phil’s Ice House',
+      "Phil's ice house",
+      'tex-mex',
+      'ta​co',
+      'Straße',
+      '  BANH   MI  ',
+      '牛肉面',
+      'ผัดไทย',
+    ]) {
+      expect(diacriticFold(text)).toBe(canonicalFold(text));
+    }
+  });
+
+  it('is NFC/NFD-blind, like the fold it mirrors', () => {
+    expect(diacriticFold('cà phê'.normalize('NFD'))).toBe(
+      diacriticFold('cà phê'.normalize('NFC')),
+    );
   });
 });

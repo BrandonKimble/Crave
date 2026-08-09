@@ -4,7 +4,10 @@ import { PrismaService } from '../../prisma/prisma.service';
 import { descendantPlaceIds } from '../places/place-dag-read';
 import { LoggerService } from '../../shared';
 import { localeLookupChain } from '../../shared/locale';
-import { canonicalFold } from '../content-processing/entity-resolver/entity-identity';
+import {
+  canonicalFold,
+  diacriticFold,
+} from '../content-processing/entity-resolver/entity-identity';
 import { EmbeddingService } from '../external-integrations/llm/embedding.service';
 
 interface EntitySearchRow {
@@ -115,6 +118,7 @@ import {
   editBudgetForLength,
 } from './entity-lexicon';
 import {
+  admitsAtExactTier,
   groupEntitySpans,
   pickSpanWinner,
   type EntitySpanGroup,
@@ -122,6 +126,7 @@ import {
 import {
   analyzeQuery,
   denseQueryInput,
+  NGRAM_MAX_PHRASE_WORDS_CEILING,
   type QueryAnalysis,
 } from './query-analyzer';
 
@@ -1352,6 +1357,38 @@ export class EntityTextSearchService {
    *  bounding the candidate array. */
   private static readonly GAZETTEER_MAX_TOKENS = 48;
 
+  /** Memo for the longest banked surface, in words (5-minute TTL — a
+   *  vocabulary sweep that banks a longer surface becomes reachable within
+   *  one TTL, and a warm process never pays for the aggregate). */
+  private bankedPhraseWords: { value: number; expiresAt: number } | null = null;
+
+  /**
+   * How many words the exact-alias scan must be able to assemble: the longest
+   * ACTIVE recall surface in the registry, clamped by the analyzer's cost
+   * ceiling. Read from the data because that is the only number with meaning
+   * — the previous literal 4 made 10.3% of the registry unmatchable, and any
+   * new literal would rot the same way the moment a sweep banks a longer name.
+   */
+  private async resolveBankedSurfacePhraseWords(): Promise<number> {
+    const now = Date.now();
+    if (this.bankedPhraseWords && this.bankedPhraseWords.expiresAt > now) {
+      return this.bankedPhraseWords.value;
+    }
+    const rows = await this.prisma.$queryRaw<{ words: number | null }[]>(
+      Prisma.sql`
+        SELECT max(array_length(string_to_array(form_folded, ' '), 1))::int
+                 AS "words"
+          FROM entity_surface
+         WHERE status = 'active' AND role <> 'display'`,
+    );
+    const value = Math.min(
+      Math.max(rows[0]?.words ?? 1, 1),
+      NGRAM_MAX_PHRASE_WORDS_CEILING,
+    );
+    this.bankedPhraseWords = { value, expiresAt: now + 5 * 60 * 1000 };
+    return value;
+  }
+
   /**
    * Multi-type gazetteer scan (search rebuild phase 1): every known-entity
    * span with EVERY entity that exact span names — the types come from the
@@ -1395,14 +1432,27 @@ export class EntityTextSearchService {
       });
     if (!analysis.tokens.length) return [];
 
-    const candidateSpans = new Map<string, { start: number; end: number }[]>();
-    for (const ngram of analysis.ngrams(options.maxPhraseWords ?? 4)) {
+    // PHRASE LENGTH COMES FROM THE DATA, not a literal. The scan is an
+    // EQUALITY probe against banked surfaces, so the only defensible window is
+    // "as long as the longest surface anyone banked" — a shorter one does not
+    // park the query, it SHREDS it into parts that ground nonsense (see
+    // NGRAM_MAX_PHRASE_WORDS_CEILING). Measured once per process (5-minute
+    // TTL) and clamped by the ceiling, which is the cost guard.
+    const maxPhraseWords =
+      options.maxPhraseWords ?? (await this.resolveBankedSurfacePhraseWords());
+    const candidateSpans = new Map<
+      string,
+      { start: number; end: number; diacritic: string }[]
+    >();
+    for (const ngram of analysis.ngrams(maxPhraseWords)) {
+      const span = {
+        start: ngram.start,
+        end: ngram.end,
+        diacritic: ngram.diacritic,
+      };
       const arr = candidateSpans.get(ngram.folded);
-      if (arr) arr.push({ start: ngram.start, end: ngram.end });
-      else
-        candidateSpans.set(ngram.folded, [
-          { start: ngram.start, end: ngram.end },
-        ]);
+      if (arr) arr.push(span);
+      else candidateSpans.set(ngram.folded, [span]);
     }
     const candidates = Array.from(candidateSpans.keys());
     if (!candidates.length) return [];
@@ -1456,7 +1506,30 @@ export class EntityTextSearchService {
                  AND ea.role <> 'display'
                  ${aliasLocaleFilter}
                  AND ea.form_folded = ANY(${candidates}::text[])
-             ) AS "foldedAliases"`;
+             ) AS "foldedAliases",
+             -- The RAW (accent-bearing) spelling of every surface that
+             -- matched on the folded key. The folded key cannot answer "did
+             -- the user's accents agree?" — only the raw form can, and the
+             -- admission rule (admitsAtExactTier) needs that answer. Unpaired
+             -- with foldedAliases ON PURPOSE: equality of the accent-
+             -- preserving forms implies equality of their folds, so the flat
+             -- SET is exactly as discriminating as pairs would be.
+             -- NOTE THE MISSING role-not-display filter: this arm is EVIDENCE OF
+             -- SPELLING, not a recall claim. In the live registry the recall
+             -- row is routinely the de-diacritized spelling ('banh mi') while
+             -- the accented one ('bánh mì') is the entity's DISPLAY row — the
+             -- same entity, the same word. Excluding display here made typing
+             -- the word properly WORSE than typing it lazily. A display row
+             -- still cannot ground anything on its own: the recall arms above
+             -- are untouched, and this set only decides whether an already-
+             -- matched entity survives the accent test.
+             ARRAY(
+               SELECT ea.form FROM entity_surface ea
+               WHERE ea.entity_id = e.entity_id
+                 AND ea.status = 'active'
+                 ${aliasLocaleFilter}
+                 AND ea.form_folded = ANY(${candidates}::text[])
+             ) AS "rawAliases"`;
     const rows = await this.prisma.$queryRaw<
       {
         entityId: string;
@@ -1466,6 +1539,7 @@ export class EntityTextSearchService {
         foldedName: string | null;
         normAliases: string[];
         foldedAliases: string[];
+        rawAliases: string[];
       }[]
     >(Prisma.sql`
       SELECT e.entity_id AS "entityId", e.name, e.type,
@@ -1528,8 +1602,30 @@ export class EntityTextSearchService {
       for (const alias of row.foldedAliases) {
         if (candidateSet.has(alias)) matchedPhrases.add(alias);
       }
+      // Every accent-bearing spelling this entity can be typed as: its own
+      // name, its untagged alias array, and the raw form of every surface that
+      // matched. `normAliases` is LOWER(a) — lowercasing preserves accents, so
+      // it is still raw evidence.
+      const diacriticForms = new Set<string>([
+        diacriticFold(row.name),
+        ...row.normAliases.map((a) => diacriticFold(a)),
+        ...row.rawAliases.map((a) => diacriticFold(a)),
+      ]);
       for (const phrase of matchedPhrases) {
         for (const span of candidateSpans.get(phrase) ?? []) {
+          // DIACRITIC EVIDENCE (see admitsAtExactTier): a span the user typed
+          // WITH accents is not exact-matched by a surface that disagrees on
+          // them. Skipping leaves the span as residue, where the lower-
+          // evidence lanes may still reach it — the tier is what is refused,
+          // not the candidate.
+          if (
+            !admitsAtExactTier(
+              { folded: phrase, diacritic: span.diacritic },
+              diacriticForms,
+            )
+          ) {
+            continue;
+          }
           rawSpans.push({
             start: span.start,
             end: span.end,
