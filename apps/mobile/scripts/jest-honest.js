@@ -80,7 +80,19 @@ child.on('error', (error) => {
 });
 
 child.on('close', (code, signal) => {
-  const census = fs.existsSync(censusFile) ? fs.readFileSync(censusFile, 'utf8') : '';
+  // THE RACE THAT LOST THE FIRST LIVE FIRING (CI run 31300503095): the worker is
+  // SIGTERM'd as jest shuts down, so its dump can land AFTER jest's own exit. We
+  // read once jest has closed and, if a fatal marker fired, wait for the dump —
+  // jest SIGKILLs the worker 500ms after SIGTERM, so 3s is a generous ceiling.
+  const readCensus = () => (fs.existsSync(censusFile) ? fs.readFileSync(censusFile, 'utf8') : '');
+  let census = readCensus();
+  if (!census && FATAL_MARKERS.some(({ marker }) => captured.includes(marker))) {
+    const deadline = Date.now() + 3000;
+    while (!census && Date.now() < deadline) {
+      Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 50);
+      census = readCensus();
+    }
+  }
   if (census) {
     fs.rmSync(censusFile, { force: true });
   }

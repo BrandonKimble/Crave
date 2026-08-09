@@ -13,9 +13,16 @@
  * catch that signal and print them — constructor name plus, for a timer or an
  * immediate, the SOURCE of its callback, which names the owning module.
  *
- * It is silent on a clean run: no SIGTERM arrives, `exit` fires with an empty
- * handle set, nothing is written. It only speaks on the failure it exists to
- * explain, so it costs nothing to leave armed forever.
+ * It is silent on a clean run: every suite ends with an empty resource set, no
+ * SIGTERM arrives, nothing is written. It only speaks on the failure it exists
+ * to explain, so it costs nothing to leave armed forever.
+ *
+ * IT REPORTS TWICE, ON PURPOSE. The force-exit dump is the direct evidence, but
+ * it can be LOST: jest sends SIGKILL 500ms after SIGTERM, and a descheduled
+ * worker on a loaded 2-core runner may never get to write. So every suite whose
+ * TEARDOWN already leaves a live resource is recorded as it happens — the trail
+ * that survives a SIGKILL and names the carrier suite directly. That per-suite
+ * census is what found F9985's five leaking react-test-renderer suites.
  *
  * WHY AN ENVIRONMENT AND NOT A SETUP FILE: `setupFilesAfterEnv` runs inside the
  * jest sandbox, whose `process` is a COPY installed by jest-environment-node —
@@ -34,10 +41,37 @@ const { TestEnvironment: NodeEnvironment } = require('jest-environment-node');
  * a live Immediate. `process.getActiveResourcesInfo()` is the honest list; the
  * handle list is kept only because it can still name a socket or a stream.
  */
+/**
+ * A WHITELIST, not a blocklist. `getActiveResourcesInfo()` also reports the
+ * worker's own plumbing — WriteWrap entries for stdout in flight, TTY/Pipe wraps,
+ * the IPC channel — which are alive by design on every healthy run and would make
+ * this instrument noisy enough to ignore. These are the kinds a SPEC can leave
+ * behind and jest will refuse to exit on.
+ */
+const LEAKABLE_RESOURCE_KINDS = new Set([
+  'Timeout',
+  'Immediate',
+  'TCPWrap',
+  'TCPSocketWrap',
+  'TCPServerWrap',
+  'UDPWrap',
+  'FSEventWrap',
+  'FSReqCallback',
+  'StatWatcher',
+  'DNSChannel',
+  'GetAddrInfoReqWrap',
+  'HTTPParser',
+  'HTTPClientRequest',
+  'HTTPIncomingMessage',
+  'MessagePort',
+  'Worker',
+  'ChildProcess',
+  'Process',
+  'ZlibStream',
+]);
+
 const activeResourceKinds = () =>
-  process
-    .getActiveResourcesInfo()
-    .filter((kind) => !/^(TTYWrap|PipeWrap|FileHandle|Signal)/.test(kind));
+  process.getActiveResourcesInfo().filter((kind) => LEAKABLE_RESOURCE_KINDS.has(kind));
 
 const describeHandle = (handle) => {
   const name = handle && handle.constructor ? handle.constructor.name : String(handle);
@@ -58,7 +92,12 @@ const censusLines = () =>
         .map(describeHandle)
         .filter((entry) => !IS_INFRASTRUCTURE.test(entry))
     )
-    .concat(process._getActiveRequests().map(describeHandle));
+    .concat(
+      process
+        ._getActiveRequests()
+        .filter((request) => LEAKABLE_RESOURCE_KINDS.has(request?.constructor?.name))
+        .map(describeHandle)
+    );
 
 // The report CANNOT go to stderr: jest has stopped draining the worker's pipes by
 // the time it force-exits it (measured — a stderr write from the SIGTERM handler
@@ -86,6 +125,7 @@ const report = (cause, lastTestPath) => {
 class WorkerHandleCensusEnvironment extends NodeEnvironment {
   constructor(config, context) {
     super(config, context);
+    this.testPath = context.testPath;
     WorkerHandleCensusEnvironment.lastTestPath = context.testPath;
     if (process.__workerHandleCensusArmed) return;
     process.__workerHandleCensusArmed = true;
@@ -96,6 +136,14 @@ class WorkerHandleCensusEnvironment extends NodeEnvironment {
     process.on('exit', () => {
       report('exited with handles still open', WorkerHandleCensusEnvironment.lastTestPath);
     });
+  }
+
+  async teardown() {
+    await super.teardown();
+    // The trail that survives SIGKILL: a suite that ends with a live resource is
+    // the carrier, whether or not this worker later gets to write its force-exit
+    // dump. Silent when clean, which is every suite on a healthy run.
+    report(`left a live resource after the suite's teardown`, this.testPath);
   }
 }
 
