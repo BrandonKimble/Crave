@@ -267,16 +267,6 @@ const styles = StyleSheet.create({
     color: themeColors.textBody,
     lineHeight: LINE_HEIGHTS.body,
   },
-  resultsShadow: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    bottom: 0,
-    borderTopLeftRadius: OVERLAY_CORNER_RADIUS,
-    borderTopRightRadius: OVERLAY_CORNER_RADIUS,
-    backgroundColor: 'transparent',
-  },
   resultsSheetSurface: {
     backgroundColor: 'transparent',
   },
