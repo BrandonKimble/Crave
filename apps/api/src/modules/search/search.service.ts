@@ -566,7 +566,11 @@ export class SearchService {
     let pooledPage = await executeStage({
       restaurantPagination: pooledPagination,
       dishPagination: pooledPagination,
-      includeSqlPreview: false,
+      // Red team 2026-08-09 (#6): this was hardcoded false since 2026-07-24,
+      // so /search/run could NEVER emit the preview its own gate approved —
+      // the debug field the preview derivation serves was dead on the one
+      // endpoint debug readers use. The gate (dev-env + flag) decides.
+      includeSqlPreview,
     });
 
     // Coverage for the expansion trigger: in pooled mode the admitted-set
@@ -730,7 +734,7 @@ export class SearchService {
         pooledPage = await executeStage({
           restaurantPagination: pooledPagination,
           dishPagination: pooledPagination,
-          includeSqlPreview: false,
+          includeSqlPreview,
         });
       }
     }
@@ -1736,17 +1740,22 @@ export class SearchService {
     const executeMs = performance.now() - executeStart;
 
     if (relevanceByFoodId) {
+      // AUDIT H5, second site: a NON-exact row with no measured relevance must
+      // never default to 1 — that is the exact-match value. The pooled-stage
+      // cousin ring reaches here through the pooled tier (not always through
+      // the pre-probe grounding map, which already carries COUSIN_RELEVANCE),
+      // so the fallback is the same cousin floor, not "unknown".
       for (const dish of exec.dishes) {
         dish.relevance =
           relevanceByFoodId[dish.foodId] ??
-          (dish.exactMatch === false ? undefined : 1);
+          (dish.exactMatch === false ? COUSIN_RELEVANCE : 1);
       }
       for (const restaurant of exec.restaurants) {
         const snippetScores = (restaurant.topFood ?? [])
           .map(
             (snippet) =>
               relevanceByFoodId[snippet.foodId] ??
-              (restaurant.exactMatch === false ? undefined : 1),
+              (restaurant.exactMatch === false ? COUSIN_RELEVANCE : 1),
           )
           .filter((value): value is number => typeof value === 'number');
         restaurant.relevance = snippetScores.length

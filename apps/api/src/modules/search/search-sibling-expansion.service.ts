@@ -57,41 +57,73 @@ export class SearchSiblingExpansionService {
    * similar-ring inside the pooled stage, and the lexical-expansion path all
    * read siblings/satisfies for the SAME anchor set — up to three identical
    * round-trips per search, and the pooled stage can execute more than once
-   * (page fill). A request-scoped reader memoizes each read by its full
-   * argument identity (anchor set + cut options), so every consumer sees the
-   * same resolution and the DB is asked once. The memo lives and dies with
-   * the request — no cross-request staleness surface.
+   * (page fill). A request-scoped reader memoizes each read by argument
+   * identity, so every consumer sees the same resolution and the DB is
+   * asked once. The memo lives and dies with the request — no
+   * cross-request staleness surface.
+   *
+   * Two red-team-proven traps this shape avoids (2026-08-09):
+   * - The key preserves ANCHOR ORDER. The underlying reads cap anchors by
+   *   insertion order (`.slice(0, maxAnchors)`), so the same id SET in a
+   *   different order is a DIFFERENT question (74 vs 77 siblings measured).
+   *   A sorted key silently handed the first caller's answer to everyone.
+   * - Each consumer gets its OWN shallow copy of the result. The memoized
+   *   promise otherwise hands one shared array to every call site, and a
+   *   single in-place mutation (sort/splice) would corrupt the others'
+   *   view.
    */
   forRequest(): SiblingExpansionReader {
     const memo = new Map<string, Promise<unknown>>();
-    const keyed = <T>(key: string, run: () => Promise<T>): Promise<T> => {
-      const hit = memo.get(key);
-      if (hit) return hit as Promise<T>;
-      const pending = run();
-      memo.set(key, pending);
-      return pending;
+    const keyed = <T>(
+      key: string,
+      run: () => Promise<T>,
+      copy: (value: T) => T,
+    ): Promise<T> => {
+      let pending = memo.get(key) as Promise<T> | undefined;
+      if (!pending) {
+        pending = run();
+        memo.set(key, pending);
+      }
+      return pending.then(copy);
     };
-    const idsKey = (ids: string[]): string =>
-      Array.from(new Set(ids.filter(Boolean)))
-        .sort()
-        .join(',');
+    const idsKey = (ids: string[]): string => ids.filter(Boolean).join(',');
+    const copyArray = <T>(rows: T[]): T[] => rows.slice();
     return {
       getCategoryMemberFoodIds: (ids) =>
-        keyed(`cat|${idsKey(ids)}`, () => this.getCategoryMemberFoodIds(ids)),
+        keyed(
+          `cat|${idsKey(ids)}`,
+          () => this.getCategoryMemberFoodIds(ids),
+          copyArray,
+        ),
       getNameContainmentVariantFoodIds: (ids) =>
-        keyed(`ncv|${idsKey(ids)}`, () =>
-          this.getNameContainmentVariantFoodIds(ids),
+        keyed(
+          `ncv|${idsKey(ids)}`,
+          () => this.getNameContainmentVariantFoodIds(ids),
+          (value) => ({
+            isVariantOf: value.isVariantOf.slice(),
+            mentionsIt: value.mentionsIt.slice(),
+          }),
         ),
       getSameNamedIngredientIds: (ids) =>
-        keyed(`twin|${idsKey(ids)}`, () => this.getSameNamedIngredientIds(ids)),
+        keyed(
+          `twin|${idsKey(ids)}`,
+          () => this.getSameNamedIngredientIds(ids),
+          copyArray,
+        ),
       getSiblingFoodIds: (ids, options) =>
         keyed(
           `sib|${idsKey(ids)}|${options.forwardK}|${options.mutualR}|${options.minCosine}|${options.maxAnchors}`,
           () => this.getSiblingFoodIds(ids, options),
+          copyArray,
         ),
       getSatisfiesFoodIds: (ids, options) =>
-        keyed(`sat|${idsKey(ids)}|${options?.maxAnchors ?? 3}`, () =>
-          this.getSatisfiesFoodIds(ids, options),
+        keyed(
+          `sat|${idsKey(ids)}|${options?.maxAnchors ?? 3}`,
+          () => this.getSatisfiesFoodIds(ids, options),
+          (value) => ({
+            satisfies: value.satisfies.slice(),
+            cousin: value.cousin.slice(),
+          }),
         ),
     };
   }
