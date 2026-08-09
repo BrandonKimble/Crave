@@ -460,6 +460,14 @@ Two consequences follow directly:
 - **Menu formats are not food attributes** — but a format CAN be a restaurant
   attribute when it characterizes the venue ("tasting menu", "omakase",
   "buffet" describe how a place serves).
+- **A DISH TYPE is never an attribute, on either side.** "pizza", "ramen",
+  "tacos", "hot pot" name THINGS, not properties — they fail
+  describes-vs-judges from the other direction: a place doesn't HAVE pizza
+  as a quality, it SERVES pizza, and that claim belongs in `food`/
+  `food_categories` where it ranks and searches as food. A pizza place's
+  venue-side identity is its cuisine ("italian"), never the dish word.
+  ("Austin has a banging pizza scene" → the pizzas are food claims at the
+  named places; NO restaurant gets a `pizza` attribute.)
 
 ### D.4 Which side does it attach to?
 
@@ -532,8 +540,13 @@ burger in EV?") and a reply ONLY names a restaurant while passing the TESTIMONY
 TEST, reuse the ask's target as `food`/`food_categories` with
 `is_menu_item: false`. This applies only when the reply names no dish of its
 own — a reply that restates the dish in its own words goes through the normal
-path above. **The ask itself never emits.** Cuisines and dietary flags are
-attributes and never enter `food_categories`.
+path above. **The inherited target must itself pass the PREDICTION TEST** —
+"best burger" hands down `burger`; "nice dinners on a budget", "lunch spots?",
+"date-night ideas" hand down NOTHING, because dinner and lunch predict no food
+at all: those replies are restaurant-only mentions (an occasion may become a
+`restaurant_attributes` entry per Step D, never a food). **The ask itself
+never emits.** Cuisines and dietary flags are attributes and never enter
+`food_categories`.
 
 Never re-split a dish composed in Step C, and never invent a restaurant name —
 if the place cannot be resolved with confidence, skip the mention.

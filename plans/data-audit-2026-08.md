@@ -1729,3 +1729,45 @@ enrich-restaurants CLI splits --force (identity refresh) from
 --retry-terminal (guard bypass) — two decisions, two flags. Config comment
 rewritten from the dead archive-arm description to the money guard.
 275 tests green across enrichment + search + collector.
+
+## JUNK-ENTITY RE-DERIVATION (2026-08-09, owner-named class)
+
+Owner asked whether food:"and"/"after", restaurant:"Best", food:"lunch"/
+"dinner", and pizza-as-restaurant-attribute were addressed. Traced each:
+
+- food "and"/"after": GONE (earlier cleanups); regeneration covered by the
+  candidate's per-token order test. No action.
+- restaurant "Best": active husk, 0 events — GC food. No action.
+- food "dinner" (46 ev) / "lunch" (30 ev): ROOT CAUSE FOUND, and the
+  candidate prompt did NOT cover it — the ask-reuse path inherits the
+  ask's target as `food` without running the PREDICTION TEST, so "nice
+  dinners on a budget?" manufactured food:"dinner" from every bare-name
+  reply. FIXED: Step E now requires the inherited target to pass the
+  PREDICTION TEST ("best burger" hands down burger; a when-only ask hands
+  down NOTHING — restaurant-only mentions).
+- pizza as restaurant_attribute (ACTIVE, 166 events, plus one archived
+  twin): ROOT CAUSE FOUND, and this one was a REGRESSION IN MY REWRITE —
+  the live prompt banned dish-type attributes in a buried §2.5 note that
+  the from-scratch rewrite lost, and the word passes the STANDALONE test,
+  so the gates alone don't stop it. FIXED as a principle, not a list
+  (Step D.3): a dish type names a THING, not a property — a place doesn't
+  HAVE pizza as a quality, it SERVES pizza, and that claim belongs in
+  food/food_categories.
+
+Both fixes proven: gold set now 20 cases x 5 repeats — candidate 20/20,
+live 13/1/6 (the live prompt FAILS the new pizza-attribute case,
+confirming it as a live defect, and passes ask-reuse only because its
+buried note sometimes holds). Zero regressions.
+
+DATA disposition: the dinner/lunch/pizza-attr EVENTS ride the re-extract
+(the sanctioned repair path) — the prompt now prevents regeneration.
+archive-dish-named-attributes.ts was dry-run and its finding BANKED: DO
+NOT --apply in current form — its name-collision predicate now sweeps in
+legitimate cuisine/dietary attributes (vegan, thai, sichuan...) because
+cuisine-as-food residue still exists; applying would violate
+dietary-never-dropped. It stays as a measurement probe.
+
+LESSON recorded for the pass itself: a from-scratch rewrite can LOSE
+buried rules the old prompt carried. The gold set is the regression net —
+every buried-note rule that matters must have a case, which is exactly
+what D13/D14 now are.

@@ -1,12 +1,17 @@
 /**
  * @script-class: probe
- * @finding: NOT YET BANKED — record what this probe answered, or delete it.
- *
- * A banked probe's value is the RECORDED RESULT, kept so the finding stays
- * reproducible. This one has no runner and no written-down finding: the
- * F414 sweep (2026-08-02) could establish the first fact mechanically but
- * not the second, and inventing one would be worse than leaving it visible.
- * Until a finding is written here, this file is a deletion candidate.
+ * @finding: BANKED 2026-08-09 (junk-entity rederivation) — DO NOT --apply IN
+ *   ITS CURRENT FORM. Dry run reports 36 collisions / 4,668 refs, but the
+ *   name-collides-with-active-food predicate now sweeps in LEGITIMATE
+ *   cuisine and dietary attributes (vegan, thai, sichuan, sicilian, turkish,
+ *   vietnamese...) that only "collide" because cuisine-as-food residue
+ *   entities still exist — applying would violate the dietary-never-dropped
+ *   ruling (owner 2026-07-30) and the cuisine-both-sides law. The TRUE
+ *   dish-type-attribute class (pizza: 166 events, ramen, sushi, salad bar)
+ *   is now prevented at the source by the candidate prompt's "a dish type is
+ *   never an attribute" rule (Step D.3) and its existing rows are repaired
+ *   by the re-extract, which replaces the venue-attr claims with food
+ *   claims. This script stays as the measurement probe only.
  */
 import 'dotenv/config';
 process.env.PROCESS_ROLE ||= 'api';

@@ -381,5 +381,50 @@
       "restaurants": ["otoko"],
       "foods": ["omakase"]
     }
+  },
+  {
+    "id": "D13-occasion-ask-reuse",
+    "why": "Junk-entity rederivation 2026-08-09: food entities `dinner` (46 ev) and `lunch` (30 ev) minted through ask-reuse \u2014 the reply inherits the ask's target without the PREDICTION TEST, so a when-only ask manufactures a when-only food. Real source shape.",
+    "posts": [
+      {
+        "id": "SRC050",
+        "title": "Nice dinners on a budget?",
+        "body": "Looking for a good dinner spot that won't break the bank.",
+        "extract_from_post": false,
+        "comments": [
+          {
+            "id": "SRC051",
+            "body": "Lichas, Jacobys, Ah Sing Den. All great."
+          }
+        ]
+      }
+    ],
+    "expect": {
+      "restaurants": ["lichas", "jacobys"],
+      "notFoods": ["dinner", "dinners"]
+    }
+  },
+  {
+    "id": "D14-dish-as-restaurant-attribute",
+    "why": "Junk-entity rederivation 2026-08-09: `pizza` lives as an ACTIVE restaurant_attribute with 166 events. The live prompt's ban was a buried 2.5 note; the candidate lost it AND the word passes the STANDALONE test \u2014 a dish type names a thing, not a property. Real source shape.",
+    "posts": [
+      {
+        "id": "SRC052",
+        "title": "Pizza in Austin?",
+        "body": "",
+        "extract_from_post": false,
+        "comments": [
+          {
+            "id": "SRC053",
+            "body": "Austin has a banging pizza scene. Desano, Pedrosos, All Day, Love Supreme, Homeslice are all great."
+          }
+        ]
+      }
+    ],
+    "expect": {
+      "restaurants": ["desano", "homeslice"],
+      "foods": ["pizza"],
+      "notAttributes": ["pizza"]
+    }
   }
 ]
