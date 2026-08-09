@@ -18,15 +18,23 @@ from-scratch mentality applies at every layer. A section leaves this file
 only after (a) implementation, (b) verification gates, AND (c) an
 adversarial pass that tried to refute it.
 
+## LOCKED DECISIONS (owner-ratified; implementation items reference these)
+
+L1. **GROUNDING = COMPOUND ONLY (locked 2026-08-09 evening).** The longest
+    grounded span is the ask; decomposed food-parts are NEVER emitted as
+    asks (measured: siblings beat parts even on mexican breakfast, and the
+    24-query battery showed 7 improvements / 0 regressions); attribute
+    parts survive as CONSTRAINTS (vegan/spicy wire dietary+attribute
+    machinery, never fill); parts become the PRIMARY reading only when no
+    compound grounds at all. Thin compounds rescue through siblings/judged
+    + on-demand learning, never through food-parts.
+    IMPLEMENTATION: kill the food-part emission in maximal linking
+    (search-query-interpretation), delete band-3 from the ladder design,
+    re-run the 24-query battery + all gates as the proof, guard spec
+    (a decomposed food part reaching the ask set = RED).
+
 ## A. Awaiting an OWNER DECISION (blocked on a word from him)
 
-0. **STEP-1 LOCK (grounding), proposed 2026-08-09 evening — awaiting yes**:
-   compound-only grounding; food-PARTS DIE entirely (measured: siblings
-   beat parts even on mexican breakfast — chilaquiles/huevos rancheros vs
-   the breakfast×mexican flood); attribute parts survive as CONSTRAINTS
-   (vegan/spicy wire dietary/attribute machinery, never fill); parts are
-   PRIMARY only when no compound grounds at all. On lock: entry #1 of a
-   new locked-decisions section here, then implementation.
 1. **The admission ladder** (the al-pastor discovery, the big one).
    UPDATE post-eval: band 2 = DENSE ∪ JUDGED-COUSINS MINUS JUDGED REJECTS,
    decided by measurement (7fc655383: union 20/20 coverage vs 17-18 alone,
