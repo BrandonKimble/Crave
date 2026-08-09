@@ -64,19 +64,78 @@ export interface EntitySpanGroup {
  * the folded key rules exactly as before and 'pho'/'bo' behave identically to
  * yesterday.
  *
+ * THE SCOPE IS PER TOKEN, and that is the whole subtlety (red team, executed,
+ * 2026-08-09 — the first cut of this rule compared the WHOLE span and was
+ * refuted). PARTIAL accenting is the normal way Vietnamese is typed: 'phở bo',
+ * 'bún bò hue', 'cà phê sữa da'. Under a whole-span test none of those agrees
+ * with any banked surface, so the phrase was refused and SHREDDED into
+ * confidently-wrong single tokens ('phở bo' → pho + avocado). Measured over
+ * the vi gold corpus with exactly one word de-accented: 73 of 150 queries
+ * changed grounding, 59 losing the right concept. So evidence is read where
+ * the user actually supplied it — token by token. An accented token must
+ * agree with the surface's token in the same position; a plain token asks
+ * nothing, exactly as before.
+ *
  * Language-neutral and list-free: nothing here knows Vietnamese exists. It
  * falls out of `diacriticFold` vs `canonicalFold` — see entity-identity.ts.
  * The accent-agreeing case also settles the collision the fold created: when
  * `bơ` and a hypothetical `bò` both fold to 'bo', typing `bò` admits only the
  * one that matches raw.
  */
+export interface SurfaceSpelling {
+  /** canonicalFold(form) — the key the recall arm matched on. */
+  folded: string;
+  /** diacriticFold(form) — the same form with its accents intact. */
+  diacritic: string;
+}
+
 export function admitsAtExactTier(
   span: { folded: string; diacritic: string },
-  entityDiacriticForms: ReadonlySet<string>,
+  spellings: readonly SurfaceSpelling[],
+  /** Every ACCENT-FREE spelling the registry actually banks as a whole
+   *  surface, as seen by this query. A plain token that appears here is a WORD
+   *  the user spelled correctly, not a lazily de-accented one — see the
+   *  accent-complete note in the rule below. */
+  bankedPlainForms: ReadonlySet<string> = new Set(),
 ): boolean {
-  // No accents typed ⇒ no evidence ⇒ the folded key decides (unchanged).
+  // Nothing accented anywhere in the span ⇒ no evidence ⇒ the folded key
+  // decides, exactly as it always did.
   if (span.diacritic === span.folded) return true;
-  return entityDiacriticForms.has(span.diacritic);
+  const spanFolded = span.folded.split(' ');
+  const spanTyped = span.diacritic.split(' ');
+  return spellings.some((spelling) => {
+    // Only a surface that actually matched THIS span's folded key can be its
+    // exact match; the evidence set is wider than the match (it carries every
+    // spelling the entity has) so the fold equality is re-checked here.
+    if (spelling.folded !== span.folded) return false;
+    const surface = spelling.diacritic.split(' ');
+    // Token counts are equal whenever the folds are — accents never add or
+    // remove a space. The guard is for the impossible case, and it falls back
+    // to the whole-phrase comparison rather than inventing an alignment.
+    if (
+      surface.length !== spanTyped.length ||
+      surface.length !== spanFolded.length
+    ) {
+      return spelling.diacritic === span.diacritic;
+    }
+    for (let i = 0; i < spanTyped.length; i++) {
+      // Token typed WITHOUT accents ⇒ no evidence about this position ⇒ it
+      // already matched on the fold and nothing more is asked of it.
+      if (spanTyped[i] === spanFolded[i]) {
+        // ACCENT-COMPLETE TOKEN. A plain token normally asks nothing — that is
+        // what makes 'phở bo' reach phở bò. But when the registry banks that
+        // exact accent-free string as a surface of its own, the token is a
+        // WORD the user spelled completely, not an accent they skipped:
+        // 'chay' (vegetarian) is banked; 'bo' is not. Without this, 'cơm chay'
+        // (vegetarian rice) matches the scorched-rice surface 'cơm cháy'
+        // through its second token and hands a diner a rice crust. The
+        // discriminator is the DATA, not a word list of ours.
+        if (!bankedPlainForms.has(spanTyped[i])) continue;
+      }
+      if (surface[i] !== spanTyped[i]) return false;
+    }
+    return true;
+  });
 }
 
 interface RawSpanMatch extends SpanEntity {

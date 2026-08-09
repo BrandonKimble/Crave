@@ -23,7 +23,8 @@
     "TONE-MARK FOLD: canonicalFold strips Vietnamese diacritics, so bò/bơ/bo, mì/mỹ/my, chay/cháy, cá/ca all collapse to one folded key. Vietnamese is the language where the fold that HELPS de-diacritized typing (sn-02, sn-04, sn-25, cp-03) is the same mechanism that MERGES distinct words (hg-01, hg-06, hg-15/16, hg-20). Both halves are measured here on purpose.",
     "COMPOUND-FIRST VOCABULARY: Vietnamese dish names are multi-token and the longer span is almost always the right concept (phở bò tái > phở bò > phở; bún thịt nướng > thịt nướng). The compound stratum is largely a longest-span-wins test.",
     "DIETARY BOUNDARY: chay (vegetarian) vs thuần chay (vegan) share a token and must never substitute for each other — at-02/at-03.",
-    "QUESTION PARTICLE: 'có ... không' is a yes/no frame, and its 'không' is NOT a negation cue (cs-07, cs-16)."
+    "QUESTION PARTICLE: 'có ... không' is a yes/no frame, and its 'không' is NOT a negation cue (cs-07, cs-16).",
+    "PARTIAL ACCENTING (pa-* stratum, added 2026-08-09 after a red team refuted a whole-span accent rule): most vi input is neither fully accented nor fully plain. A rule that reads accents as evidence must read them PER TOKEN, or every half-typed phrase shreds — measured at 161 of 275 one-word-de-accented variants changing their grounding."
   ],
   "knownRedSeeds": [
     "hg-01 (bò)",
@@ -1727,6 +1728,163 @@
       },
       "park": false,
       "notes": "De-diacritized dish inside a Vietnamese frame ('ngon' = tasty, a quality word with no entity). 'Pho' also exists as a RESTAURANT name — type-aware admission matters."
+    },
+    {
+      "id": "pa-01",
+      "query": "phở bo",
+      "stratum": "compound",
+      "expected": {
+        "concepts": ["beef pho"],
+        "mustNotResolve": []
+      },
+      "park": false,
+      "notes": "PARTIAL ACCENTING — the input mode a corpus authored only in the clean regimes cannot see. Telex/VNI half-applied, iOS autocorrect mixes, one word typed lazily: this is NORMAL Vietnamese input, not a typo. The accent-evidence rule reads evidence PER TOKEN for exactly this reason — an accented token must agree with the surface, a plain one asks nothing. Authored against the DB: 'phở bò' is banked vi on beef pho / beef rib pho; the user typed the tone on 'phở' and skipped it on 'bò'.",
+      "allowCompositional": true
+    },
+    {
+      "id": "pa-02",
+      "query": "pho bò",
+      "stratum": "compound",
+      "expected": {
+        "concepts": ["beef pho"],
+        "mustNotResolve": []
+      },
+      "park": false,
+      "notes": "PARTIAL ACCENTING — the input mode a corpus authored only in the clean regimes cannot see. Telex/VNI half-applied, iOS autocorrect mixes, one word typed lazily: this is NORMAL Vietnamese input, not a typo. The accent-evidence rule reads evidence PER TOKEN for exactly this reason — an accented token must agree with the surface, a plain one asks nothing. Authored against the DB: The mirror of pa-01 — the accent lands on the SECOND word instead. Position must not matter.",
+      "allowCompositional": true
+    },
+    {
+      "id": "pa-03",
+      "query": "bún bò hue",
+      "stratum": "compound",
+      "expected": {
+        "concepts": ["bun bo hue"],
+        "mustNotResolve": []
+      },
+      "park": false,
+      "notes": "PARTIAL ACCENTING — the input mode a corpus authored only in the clean regimes cannot see. Telex/VNI half-applied, iOS autocorrect mixes, one word typed lazily: this is NORMAL Vietnamese input, not a typo. The accent-evidence rule reads evidence PER TOKEN for exactly this reason — an accented token must agree with the surface, a plain one asks nothing. Authored against the DB: 'bún bò huế' is banked vi; 'huế'→'hue' is the classic half-applied Telex ending.",
+      "allowCompositional": true
+    },
+    {
+      "id": "pa-04",
+      "query": "cà phê sữa da",
+      "stratum": "compound",
+      "expected": {
+        "concepts": ["iced viet coffee"],
+        "mustNotResolve": []
+      },
+      "park": false,
+      "notes": "PARTIAL ACCENTING — the input mode a corpus authored only in the clean regimes cannot see. Telex/VNI half-applied, iOS autocorrect mixes, one word typed lazily: this is NORMAL Vietnamese input, not a typo. The accent-evidence rule reads evidence PER TOKEN for exactly this reason — an accented token must agree with the surface, a plain one asks nothing. Authored against the DB: 'cà phê sữa đá' is banked (vi + und); 'đá'→'da' loses both the tone AND the đ, the commonest US-keyboard slip.",
+      "allowCompositional": true
+    },
+    {
+      "id": "pa-05",
+      "query": "cà phe sua da",
+      "stratum": "compound",
+      "expected": {
+        "concepts": ["coffee"],
+        "mustNotResolve": []
+      },
+      "park": false,
+      "notes": "PARTIAL ACCENTING — the input mode a corpus authored only in the clean regimes cannot see. Telex/VNI half-applied, iOS autocorrect mixes, one word typed lazily: this is NORMAL Vietnamese input, not a typo. The accent-evidence rule reads evidence PER TOKEN for exactly this reason — an accented token must agree with the surface, a plain one asks nothing. Authored against the DB: Mostly plain with ONE accent left on 'cà'. A single surviving accent must not refuse the whole phrase — the defect this stratum was written to catch.",
+      "allowCompositional": true
+    },
+    {
+      "id": "pa-06",
+      "query": "gỏi cuon",
+      "stratum": "single_noun",
+      "expected": {
+        "concepts": ["spring roll"],
+        "mustNotResolve": []
+      },
+      "park": false,
+      "notes": "PARTIAL ACCENTING — the input mode a corpus authored only in the clean regimes cannot see. Telex/VNI half-applied, iOS autocorrect mixes, one word typed lazily: this is NORMAL Vietnamese input, not a typo. The accent-evidence rule reads evidence PER TOKEN for exactly this reason — an accented token must agree with the surface, a plain one asks nothing. Authored against the DB: 'gỏi cuốn' is banked und on spring roll.",
+      "allowCompositional": true
+    },
+    {
+      "id": "pa-07",
+      "query": "bánh mì",
+      "stratum": "single_noun",
+      "locale": "en-US",
+      "expected": {
+        "concepts": ["banh mi"],
+        "mustNotResolve": []
+      },
+      "park": false,
+      "notes": "PARTIAL ACCENTING — the input mode a corpus authored only in the clean regimes cannot see. Telex/VNI half-applied, iOS autocorrect mixes, one word typed lazily: this is NORMAL Vietnamese input, not a typo. The accent-evidence rule reads evidence PER TOKEN for exactly this reason — an accented token must agree with the surface, a plain one asks nothing. Authored against the DB: Fully accented, but asserted at locale en to pin that SPELLING EVIDENCE is not locale-scoped: the accented form lives on the vi display row while the en/und recall row is 'banh mi'. Scoping the evidence to the request locale refused the dish and handed back the restaurant 'Bánh'.",
+      "allowCompositional": true
+    },
+    {
+      "id": "pa-08",
+      "query": "ẩm thực Hy Lap",
+      "stratum": "compound",
+      "expected": {
+        "concepts": ["greek"],
+        "mustNotResolve": []
+      },
+      "park": false,
+      "notes": "PARTIAL ACCENTING — the input mode a corpus authored only in the clean regimes cannot see. Telex/VNI half-applied, iOS autocorrect mixes, one word typed lazily: this is NORMAL Vietnamese input, not a typo. The accent-evidence rule reads evidence PER TOKEN for exactly this reason — an accented token must agree with the surface, a plain one asks nothing. Authored against the DB: 'ẩm thực Hy Lạp' is banked vi on the greek attribute — five tokens, so this entry also covers the phrase-length window.",
+      "allowCompositional": true
+    },
+    {
+      "id": "pa-09",
+      "query": "chỉ nhận tiền mat",
+      "stratum": "attribute",
+      "expected": {
+        "concepts": ["cash only"],
+        "mustNotResolve": []
+      },
+      "park": false,
+      "notes": "PARTIAL ACCENTING — the input mode a corpus authored only in the clean regimes cannot see. Telex/VNI half-applied, iOS autocorrect mixes, one word typed lazily: this is NORMAL Vietnamese input, not a typo. The accent-evidence rule reads evidence PER TOKEN for exactly this reason — an accented token must agree with the surface, a plain one asks nothing. Authored against the DB: 'chỉ nhận tiền mặt' is banked vi on the cash-only attribute; the final word is typed plain.",
+      "allowCompositional": true
+    },
+    {
+      "id": "pa-10",
+      "query": "cơm tam",
+      "stratum": "single_noun",
+      "expected": {
+        "concepts": ["com tam"],
+        "mustNotResolve": []
+      },
+      "park": false,
+      "notes": "PARTIAL ACCENTING — the input mode a corpus authored only in the clean regimes cannot see. Telex/VNI half-applied, iOS autocorrect mixes, one word typed lazily: this is NORMAL Vietnamese input, not a typo. The accent-evidence rule reads evidence PER TOKEN for exactly this reason — an accented token must agree with the surface, a plain one asks nothing. Authored against the DB: 'cơm tấm' is banked vi on com tam (and broken rice); 'tấm'→'tam' plain.",
+      "allowCompositional": true
+    },
+    {
+      "id": "pa-11",
+      "query": "bánh xeo",
+      "stratum": "single_noun",
+      "expected": {
+        "concepts": ["banh xeo"],
+        "mustNotResolve": []
+      },
+      "park": false,
+      "notes": "PARTIAL ACCENTING — the input mode a corpus authored only in the clean regimes cannot see. Telex/VNI half-applied, iOS autocorrect mixes, one word typed lazily: this is NORMAL Vietnamese input, not a typo. The accent-evidence rule reads evidence PER TOKEN for exactly this reason — an accented token must agree with the surface, a plain one asks nothing. Authored against the DB: 'bánh xèo' is the vi display spelling, 'banh xeo' the recall row — a partial mix must reach the dish either way.",
+      "allowCompositional": true
+    },
+    {
+      "id": "pa-12",
+      "query": "bun thịt nướng",
+      "stratum": "compound",
+      "expected": {
+        "concepts": ["pork vermicelli"],
+        "mustNotResolve": []
+      },
+      "park": false,
+      "notes": "PARTIAL ACCENTING — the input mode a corpus authored only in the clean regimes cannot see. Telex/VNI half-applied, iOS autocorrect mixes, one word typed lazily: this is NORMAL Vietnamese input, not a typo. The accent-evidence rule reads evidence PER TOKEN for exactly this reason — an accented token must agree with the surface, a plain one asks nothing. Authored against the DB: 'bún thịt nướng' is banked vi on pork vermicelli; the HEAD word is the plain one here.",
+      "allowCompositional": true
+    },
+    {
+      "id": "pa-13",
+      "query": "cơm chay",
+      "stratum": "homograph",
+      "expected": {
+        "concepts": ["rice", "vegetarian"],
+        "mustNotResolve": ["crispy rice", "scorched rice"]
+      },
+      "park": true,
+      "notes": "PARTIAL ACCENTING — the input mode a corpus authored only in the clean regimes cannot see. Telex/VNI half-applied, iOS autocorrect mixes, one word typed lazily: this is NORMAL Vietnamese input, not a typo. The accent-evidence rule reads evidence PER TOKEN for exactly this reason — an accented token must agree with the surface, a plain one asks nothing. Authored against the DB: THE COUNTERWEIGHT. Every entry above says a plain token asks nothing — this one says the evidence that IS present is still enforced. 'chay' is banked vi as a word of its own (vegetarian), so it is a complete spelling, not a skipped accent, and must not match the scorched-rice surface 'cơm cháy'. Duplicates hg-16's assertion deliberately: it is the boundary the partial-accent rule is most likely to erode.",
+      "allowCompositional": true
     }
   ]
 }

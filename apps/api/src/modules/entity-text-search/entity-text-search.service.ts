@@ -1560,7 +1560,26 @@ export class EntityTextSearchService {
                WHERE ea.entity_id = e.entity_id
                  AND ea.status = 'active'
                  AND ea.form_folded = ANY(${candidates}::text[])
-             ) AS "rawAliases"`;
+             ) AS "rawAliases",
+             -- The entity's surfaces that are TAGGED IN THE REQUEST'S OWN
+             -- LANGUAGE ('und' excluded). This is the accent-complete
+             -- evidence: a form banked under 'vi' is how the word is SPELLED
+             -- in Vietnamese, whereas the same string under 'und' is the
+             -- de-diacritized romanization the fold exists to serve. The
+             -- distinction is the whole difference between 'chay'
+             -- (vegetarian — a vi surface, a complete word) and 'banh' /
+             -- 'bun' / 'pho' / 'phe' (und romanizations). Judging accent-
+             -- completeness in the universal bucket refused 'banh mì',
+             -- 'pho bò', 'cà phe' and nine more (measured).
+             ARRAY(
+               SELECT LOWER(ea.form) FROM entity_surface ea
+               WHERE ea.entity_id = e.entity_id
+                 AND ea.status = 'active'
+                 AND LOWER(ea.locale) = ANY(${localeChain.filter(
+                   (l) => l !== 'und',
+                 )}::text[])
+                 AND ea.form_folded = ANY(${candidates}::text[])
+             ) AS "langTaggedForms"`;
     const rows = await this.prisma.$queryRaw<
       {
         entityId: string;
@@ -1571,6 +1590,7 @@ export class EntityTextSearchService {
         normAliases: string[];
         foldedAliases: string[];
         rawAliases: string[];
+        langTaggedForms: string[];
       }[]
     >(Prisma.sql`
       SELECT e.entity_id AS "entityId", e.name, e.type,
@@ -1613,15 +1633,19 @@ export class EntityTextSearchService {
     // named "good taco" grounding at confidence 1.0) is structurally gone.
 
     const candidateSet = new Set(candidates);
-    // Every accent-free string the registry banks as a whole surface, as far
-    // as THIS query can see. Built from the rows already fetched — no extra
-    // round trip — and read by the accent-complete arm of the admission rule.
+    // Every accent-free string the registry banks AS A SURFACE OF THE
+    // REQUEST'S OWN LANGUAGE, as far as this query can see. Built from the
+    // rows already fetched — no extra round trip — and read by the accent-
+    // complete arm of the admission rule. A null-locale request has no
+    // language-tagged chain, so this set is empty and the rule falls back to
+    // pure per-token evidence: the conservative side.
     const bankedPlainForms = new Set<string>();
     for (const row of rows) {
-      for (const form of [row.name, ...row.normAliases, ...row.rawAliases]) {
+      for (const form of row.langTaggedForms) {
         const folded = canonicalFold(form);
-        if (folded && folded === diacriticFold(form))
+        if (folded && folded === diacriticFold(form)) {
           bankedPlainForms.add(folded);
+        }
       }
     }
     const rawSpans: Array<{

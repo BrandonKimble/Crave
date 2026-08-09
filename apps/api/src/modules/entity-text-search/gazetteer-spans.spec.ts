@@ -4,6 +4,10 @@ import {
   groupEntitySpans,
   pickSpanWinner,
 } from './gazetteer-spans';
+import {
+  canonicalFold,
+  diacriticFold,
+} from '../content-processing/entity-resolver/entity-identity';
 
 const span = (
   start: number,
@@ -123,54 +127,145 @@ describe('pickSpanWinner', () => {
  * the fold strips accents (so 'pho' finds phở), which also collapses words
  * that are ONLY distinguished by their accents — and the exact tier then
  * grounded them at confidence 1.0. 'bò' (beef) → avocado, via the banked
- * surface 'bơ'. The shape below is that case, unit-sized.
+ * surface 'bơ'.
+ *
+ * The FIRST cut of the rule compared the whole span and was refuted by the red
+ * team with executed evidence: partial accenting ('phở bo') is the normal way
+ * Vietnamese is typed, and a whole-span test refused all of it. The scope is
+ * PER TOKEN. Both regimes are pinned below.
  */
-describe('admitsAtExactTier — typed accents are evidence', () => {
-  const bo = { folded: 'bo', diacritic: 'bò' };
-  const boNoAccents = { folded: 'bo', diacritic: 'bo' };
-
-  it('refuses a fold-only neighbour when the user typed accents (bò is not bơ)', () => {
-    expect(admitsAtExactTier(bo, new Set(['bơ']))).toBe(false);
+describe('admitsAtExactTier — typed accents are evidence, token by token', () => {
+  /** A banked surface, in the shape the recall query hands the rule. */
+  const spell = (...forms: string[]) =>
+    forms.map((form) => ({
+      folded: canonicalFold(form),
+      diacritic: diacriticFold(form),
+    }));
+  /** The accent-free strings the registry banks as whole surfaces. */
+  const banked = (...forms: string[]) => new Set(forms);
+  /** A typed span, in the shape the analyzer hands the rule. */
+  const typed = (query: string) => ({
+    folded: canonicalFold(query),
+    diacritic: diacriticFold(query),
   });
 
-  it('admits the surface that agrees on the accents', () => {
-    expect(admitsAtExactTier(bo, new Set(['bơ', 'bò']))).toBe(true);
+  describe('fully accented — the tone reds this rule exists for', () => {
+    it('refuses a fold-only neighbour (bò beef is not bơ avocado)', () => {
+      expect(admitsAtExactTier(typed('bò'), spell('bơ'))).toBe(false);
+    });
+
+    it('admits the surface that agrees on the accents', () => {
+      expect(admitsAtExactTier(typed('bò'), spell('bơ', 'bò'))).toBe(true);
+    });
+
+    it('parks a phrase no surface spells that way (cơm chay ≠ cơm cháy)', () => {
+      // 'chay' (vegetarian) is banked accent-free, so the second token is a
+      // WORD the user spelled, not an accent they skipped — see the
+      // accent-complete arm.
+      expect(
+        admitsAtExactTier(typed('cơm chay'), spell('cơm cháy'), banked('chay')),
+      ).toBe(false);
+    });
+
+    it('refuses mỹ (American) reaching mỳ (noodle)', () => {
+      expect(admitsAtExactTier(typed('mỹ'), spell('mỳ'))).toBe(false);
+    });
   });
 
-  it('leaves de-diacritized typing exactly as it was (pho → phở keeps working)', () => {
-    // No accents typed ⇒ no evidence ⇒ the folded key alone decides, so even a
-    // surface that carries accents is still admitted. This is the half of the
-    // fold that MUST NOT regress: it is how Vietnamese is typed on a US
-    // keyboard.
-    expect(admitsAtExactTier(boNoAccents, new Set(['bơ']))).toBe(true);
-    expect(
-      admitsAtExactTier({ folded: 'pho', diacritic: 'pho' }, new Set(['phở'])),
-    ).toBe(true);
+  describe('fully plain — de-diacritized typing is untouched', () => {
+    it('admits an accented surface for a plain query (pho → phở)', () => {
+      expect(admitsAtExactTier(typed('pho'), spell('phở'))).toBe(true);
+      expect(admitsAtExactTier(typed('bo'), spell('bơ'))).toBe(true);
+    });
+
+    it('admits a plain multi-word query against an accented surface', () => {
+      expect(
+        admitsAtExactTier(typed('ca phe sua da'), spell('cà phê sữa đá')),
+      ).toBe(true);
+    });
   });
 
-  it('refuses an accent-bearing span no surface spells that way at all', () => {
-    // 'cơm chay' (vegetarian rice) vs the only banked surface 'cơm cháy'
-    // (scorched rice) — the span parks rather than grounding the wrong dish.
-    expect(
-      admitsAtExactTier(
-        { folded: 'com chay', diacritic: 'cơm chay' },
-        new Set(['cơm cháy']),
-      ),
-    ).toBe(false);
+  describe('PARTIALLY accented — the normal vi input mode (red team, executed)', () => {
+    it('admits a phrase whose accented tokens agree and whose plain ones ask nothing', () => {
+      // 'phở bo': token 0 typed with accents and agrees; token 1 typed plain,
+      // so it matched on the fold and nothing more is asked of it.
+      expect(admitsAtExactTier(typed('phở bo'), spell('phở bò'))).toBe(true);
+      expect(admitsAtExactTier(typed('bún bò hue'), spell('bún bò huế'))).toBe(
+        true,
+      );
+      expect(
+        admitsAtExactTier(typed('cà phê sữa da'), spell('cà phê sữa đá')),
+      ).toBe(true);
+      expect(admitsAtExactTier(typed('gỏi cuon'), spell('gỏi cuốn'))).toBe(
+        true,
+      );
+    });
+
+    it('still refuses when an ACCENTED token disagrees, however plain the rest', () => {
+      expect(admitsAtExactTier(typed('phở bò'), spell('phở bơ'))).toBe(false);
+    });
+
+    it("does not let a plain token borrow the accented one's agreement", () => {
+      // 'bánh bo' against 'bánh bơ' — token 1 is plain, so this IS admitted;
+      // the point of the pair is that reversing which token carries accents
+      // flips the verdict, i.e. the rule is genuinely positional.
+      expect(admitsAtExactTier(typed('bánh bo'), spell('bánh bơ'))).toBe(true);
+      expect(admitsAtExactTier(typed('banh bò'), spell('bánh bơ'))).toBe(false);
+    });
+  });
+
+  describe('the accent-complete arm — a plain token that is itself a word', () => {
+    it('holds a plain token to the surface when the registry banks it plain', () => {
+      // THE cơm chay / cơm cháy separation, and the reason it is not a word
+      // list: 'chay' is banked accent-free, 'bo' is not.
+      expect(
+        admitsAtExactTier(typed('cơm chay'), spell('cơm cháy'), banked('chay')),
+      ).toBe(false);
+      expect(
+        admitsAtExactTier(typed('phở bo'), spell('phở bò'), banked('chay')),
+      ).toBe(true);
+    });
+
+    it('still admits when the accent-complete token AGREES with the surface', () => {
+      expect(
+        admitsAtExactTier(typed('cơm chay'), spell('cơm chay'), banked('chay')),
+      ).toBe(true);
+    });
+  });
+
+  describe('the evidence set is wider than the match', () => {
+    it('ignores a spelling that does not fold to THIS span', () => {
+      // An entity carries every spelling it has; only the ones that folded to
+      // the matched key can be its exact match.
+      expect(admitsAtExactTier(typed('bò'), spell('bò kho', 'bơ'))).toBe(false);
+    });
+  });
+
+  describe('normalization', () => {
+    it('is NFC/NFD-blind on both sides', () => {
+      expect(
+        admitsAtExactTier(
+          typed('phở bò'.normalize('NFD')),
+          spell('phở bò'.normalize('NFC')),
+        ),
+      ).toBe(true);
+    });
+
+    it('is case-blind', () => {
+      expect(admitsAtExactTier(typed('Phở Bò'), spell('phở bò'))).toBe(true);
+    });
   });
 
   it('is language-neutral — the same rule over Spanish', () => {
+    expect(admitsAtExactTier(typed('café'), spell('café'))).toBe(true);
+    expect(admitsAtExactTier(typed('café'), spell('cafe'))).toBe(false);
+    expect(admitsAtExactTier(typed('cafe'), spell('café'))).toBe(true);
+    // Partial accenting in Spanish behaves identically.
     expect(
       admitsAtExactTier(
-        { folded: 'cafe', diacritic: 'café' },
-        new Set(['café']),
+        typed('cocina mediterranea'),
+        spell('cocina mediterránea'),
       ),
     ).toBe(true);
-    expect(
-      admitsAtExactTier(
-        { folded: 'cafe', diacritic: 'café' },
-        new Set(['cafe']),
-      ),
-    ).toBe(false);
   });
 });

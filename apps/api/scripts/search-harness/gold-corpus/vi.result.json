@@ -1,10 +1,10 @@
 {
-  "ranAt": "2026-08-09T07:54:17.378Z",
+  "ranAt": "2026-08-09T08:34:07.732Z",
   "lang": "vi",
   "corpusVersion": 1,
   "scoreboard": {
-    "overall": 98,
-    "top1SingleConcept": 97,
+    "overall": 98.15950920245399,
+    "top1SingleConcept": 97.16981132075472,
     "negationNonInversion": 100,
     "constraintPreservation": 100,
     "homographMisGroundings": [
@@ -2811,7 +2811,7 @@
           "confidence": 1,
           "source": "detector"
         },
-        "denseTierUsed": true
+        "denseTierUsed": false
       },
       "misGroundings": [],
       "notes": "NEGATION v2 (LITERAL IGNORE): 'không X' is not a supported exclusion — the mentioned word may ground POSITIVELY like any other ingredient. The assertion is head preservation + NON-INVERSION: the parse must never flip into the semantic opposite (a vegetarian/vegan constraint the user did not ask for). INVERSION BAIT: 'no meat' is semantically vegetarian and a bi-encoder will say so. It must not."
@@ -2853,7 +2853,7 @@
           "confidence": 1,
           "source": "detector"
         },
-        "denseTierUsed": true
+        "denseTierUsed": false
       },
       "misGroundings": [],
       "notes": "NEGATION v2 (LITERAL IGNORE): 'không X' is not a supported exclusion — the mentioned word may ground POSITIVELY like any other ingredient. The assertion is head preservation + NON-INVERSION: the parse must never flip into the semantic opposite (a vegetarian/vegan constraint the user did not ask for). Same bait over a rice-noodle head."
@@ -2895,7 +2895,7 @@
           "confidence": 1,
           "source": "detector"
         },
-        "denseTierUsed": true
+        "denseTierUsed": false
       },
       "misGroundings": [],
       "notes": "NEGATION v2 (LITERAL IGNORE): 'không X' is not a supported exclusion — the mentioned word may ground POSITIVELY like any other ingredient. The assertion is head preservation + NON-INVERSION: the parse must never flip into the semantic opposite (a vegetarian/vegan constraint the user did not ask for). 'hành'→onions is a banked ingredient — a groundable span behind the cue."
@@ -2955,7 +2955,7 @@
           "confidence": 1,
           "source": "detector"
         },
-        "denseTierUsed": true
+        "denseTierUsed": false
       },
       "misGroundings": [],
       "notes": "NEGATION v2 (LITERAL IGNORE): 'không X' is not a supported exclusion — the mentioned word may ground POSITIVELY like any other ingredient. The assertion is head preservation + NON-INVERSION: the parse must never flip into the semantic opposite (a vegetarian/vegan constraint the user did not ask for). 'pate' is an English-corpus ingredient row; grounding it positively is allowed under v2."
@@ -3150,7 +3150,7 @@
           "confidence": 1,
           "source": "detector"
         },
-        "denseTierUsed": true
+        "denseTierUsed": false
       },
       "misGroundings": [],
       "notes": "NEGATION v2 (LITERAL IGNORE): 'không X' is not a supported exclusion — the mentioned word may ground POSITIVELY like any other ingredient. The assertion is head preservation + NON-INVERSION: the parse must never flip into the semantic opposite (a vegetarian/vegan constraint the user did not ask for). Negated span is a banked food ('rau'→vegetable)."
@@ -3192,7 +3192,7 @@
           "confidence": 1,
           "source": "detector"
         },
-        "denseTierUsed": true
+        "denseTierUsed": false
       },
       "misGroundings": [],
       "notes": "NEGATION v2 (LITERAL IGNORE): 'không X' is not a supported exclusion — the mentioned word may ground POSITIVELY like any other ingredient. The assertion is head preservation + NON-INVERSION: the parse must never flip into the semantic opposite (a vegetarian/vegan constraint the user did not ask for). 'skin' exists as an English ingredient row — a bridge target behind the cue."
@@ -3294,7 +3294,7 @@
           "confidence": 1,
           "source": "detector"
         },
-        "denseTierUsed": true
+        "denseTierUsed": false
       },
       "misGroundings": [],
       "notes": "NEGATION v2 (LITERAL IGNORE): 'không X' is not a supported exclusion — the mentioned word may ground POSITIVELY like any other ingredient. The assertion is head preservation + NON-INVERSION: the parse must never flip into the semantic opposite (a vegetarian/vegan constraint the user did not ask for). Source-faithful head + banked negated ingredient."
@@ -3345,7 +3345,7 @@
           "confidence": 1,
           "source": "detector"
         },
-        "denseTierUsed": true
+        "denseTierUsed": false
       },
       "misGroundings": [],
       "notes": "NEGATION v2 (LITERAL IGNORE): 'không X' is not a supported exclusion — the mentioned word may ground POSITIVELY like any other ingredient. The assertion is head preservation + NON-INVERSION: the parse must never flip into the semantic opposite (a vegetarian/vegan constraint the user did not ask for). Source-faithful head; 'mỡ' (fat) is unknown residue."
@@ -3396,7 +3396,7 @@
           "confidence": 1,
           "source": "detector"
         },
-        "denseTierUsed": true
+        "denseTierUsed": false
       },
       "misGroundings": [],
       "notes": "NEGATION v2 (LITERAL IGNORE): 'không X' is not a supported exclusion — the mentioned word may ground POSITIVELY like any other ingredient. The assertion is head preservation + NON-INVERSION: the parse must never flip into the semantic opposite (a vegetarian/vegan constraint the user did not ask for). The commonest real Vietnamese order-modification phrase in the set."
@@ -3438,7 +3438,7 @@
           "confidence": 1,
           "source": "detector"
         },
-        "denseTierUsed": true
+        "denseTierUsed": false
       },
       "misGroundings": [],
       "notes": "NEGATION v2 (LITERAL IGNORE): 'không X' is not a supported exclusion — the mentioned word may ground POSITIVELY like any other ingredient. The assertion is head preservation + NON-INVERSION: the parse must never flip into the semantic opposite (a vegetarian/vegan constraint the user did not ask for). Negated span is a banked 2-gram ('nước mắm'→fish sauce) — a multi-token groundable span behind the cue."
@@ -3498,7 +3498,7 @@
           "confidence": 1,
           "source": "detector"
         },
-        "denseTierUsed": true
+        "denseTierUsed": false
       },
       "misGroundings": [],
       "notes": "NEGATION v2 (LITERAL IGNORE): 'không X' is not a supported exclusion — the mentioned word may ground POSITIVELY like any other ingredient. The assertion is head preservation + NON-INVERSION: the parse must never flip into the semantic opposite (a vegetarian/vegan constraint the user did not ask for). English head under a Vietnamese negation frame."
@@ -3660,7 +3660,7 @@
           "confidence": 1,
           "source": "detector"
         },
-        "denseTierUsed": true
+        "denseTierUsed": false
       },
       "misGroundings": [],
       "notes": "NEGATION v2 (LITERAL IGNORE): 'không X' is not a supported exclusion — the mentioned word may ground POSITIVELY like any other ingredient. The assertion is head preservation + NON-INVERSION: the parse must never flip into the semantic opposite (a vegetarian/vegan constraint the user did not ask for). Inversion bait over a locale-invariant head."
@@ -3684,13 +3684,13 @@
           "foldedName": "rice"
         },
         {
-          "entityId": "30416a46-5507-4114-8309-1ea935bf5dc2",
-          "bucket": "foodAttributes",
-          "type": "food_attribute",
-          "span": "không mặn",
-          "name": "unsweet",
+          "entityId": "1780ec78-d202-4abe-8d4b-9425494e3abe",
+          "bucket": "food",
+          "type": "food",
+          "span": "mặn",
+          "name": "khao man gai",
           "tier": "linked",
-          "foldedName": "unsweet"
+          "foldedName": "khao man gai"
         }
       ],
       "unresolved": [],
@@ -5915,6 +5915,561 @@
       },
       "misGroundings": [],
       "notes": "De-diacritized dish inside a Vietnamese frame ('ngon' = tasty, a quality word with no entity). 'Pho' also exists as a RESTAURANT name — type-aware admission matters."
+    },
+    {
+      "id": "pa-01",
+      "query": "phở bo",
+      "stratum": "compound",
+      "locale": "vi-VN",
+      "pass": true,
+      "preservation": 1,
+      "reasons": [],
+      "grounded": [
+        {
+          "entityId": "45ba08a7-ffc1-4394-bae8-99cca1f7db44",
+          "bucket": "food",
+          "type": "food",
+          "span": "phở bo",
+          "name": "beef pho",
+          "tier": "gazetteer-exact",
+          "foldedName": "beef pho"
+        },
+        {
+          "entityId": "8c39422d-5186-47ee-b0f6-25dfae8da72a",
+          "bucket": "food",
+          "type": "food",
+          "span": "phở bo",
+          "name": "beef rib pho",
+          "tier": "gazetteer-exact",
+          "foldedName": "beef rib pho"
+        },
+        {
+          "entityId": "08f45e9c-abf7-4db2-bbc9-d772538ca720",
+          "bucket": "food",
+          "type": "food",
+          "span": "phở",
+          "name": "pho",
+          "tier": "linked",
+          "foldedName": "pho"
+        }
+      ],
+      "unresolved": [],
+      "analysis": {
+        "script": "latin",
+        "requestLocale": "vi-VN",
+        "detectedLocale": {
+          "tag": "vi-VN",
+          "confidence": 0.5,
+          "source": "request-prior"
+        },
+        "denseTierUsed": false
+      },
+      "misGroundings": [],
+      "notes": "PARTIAL ACCENTING — the input mode a corpus authored only in the clean regimes cannot see. Telex/VNI half-applied, iOS autocorrect mixes, one word typed lazily: this is NORMAL Vietnamese input, not a typo. The accent-evidence rule reads evidence PER TOKEN for exactly this reason — an accented token must agree with the surface, a plain one asks nothing. Authored against the DB: 'phở bò' is banked vi on beef pho / beef rib pho; the user typed the tone on 'phở' and skipped it on 'bò'."
+    },
+    {
+      "id": "pa-02",
+      "query": "pho bò",
+      "stratum": "compound",
+      "locale": "vi-VN",
+      "pass": true,
+      "preservation": 1,
+      "reasons": [],
+      "grounded": [
+        {
+          "entityId": "45ba08a7-ffc1-4394-bae8-99cca1f7db44",
+          "bucket": "food",
+          "type": "food",
+          "span": "pho bò",
+          "name": "beef pho",
+          "tier": "gazetteer-exact",
+          "foldedName": "beef pho"
+        },
+        {
+          "entityId": "8c39422d-5186-47ee-b0f6-25dfae8da72a",
+          "bucket": "food",
+          "type": "food",
+          "span": "pho bò",
+          "name": "beef rib pho",
+          "tier": "gazetteer-exact",
+          "foldedName": "beef rib pho"
+        },
+        {
+          "entityId": "08f45e9c-abf7-4db2-bbc9-d772538ca720",
+          "bucket": "food",
+          "type": "food",
+          "span": "pho",
+          "name": "pho",
+          "tier": "linked",
+          "foldedName": "pho"
+        }
+      ],
+      "unresolved": [],
+      "analysis": {
+        "script": "latin",
+        "requestLocale": "vi-VN",
+        "detectedLocale": {
+          "tag": "it",
+          "confidence": 1,
+          "source": "detector"
+        },
+        "denseTierUsed": false
+      },
+      "misGroundings": [],
+      "notes": "PARTIAL ACCENTING — the input mode a corpus authored only in the clean regimes cannot see. Telex/VNI half-applied, iOS autocorrect mixes, one word typed lazily: this is NORMAL Vietnamese input, not a typo. The accent-evidence rule reads evidence PER TOKEN for exactly this reason — an accented token must agree with the surface, a plain one asks nothing. Authored against the DB: The mirror of pa-01 — the accent lands on the SECOND word instead. Position must not matter."
+    },
+    {
+      "id": "pa-03",
+      "query": "bún bò hue",
+      "stratum": "compound",
+      "locale": "vi-VN",
+      "pass": true,
+      "preservation": 1,
+      "reasons": [],
+      "grounded": [
+        {
+          "entityId": "494d6cb2-bf85-4200-9503-19a5ad6c0379",
+          "bucket": "food",
+          "type": "food",
+          "span": "bún bò hue",
+          "name": "bun bo hue",
+          "tier": "gazetteer-exact",
+          "foldedName": "bun bo hue"
+        }
+      ],
+      "unresolved": [],
+      "analysis": {
+        "script": "latin",
+        "requestLocale": "vi-VN",
+        "detectedLocale": {
+          "tag": "it",
+          "confidence": 1,
+          "source": "detector"
+        },
+        "denseTierUsed": false
+      },
+      "misGroundings": [],
+      "notes": "PARTIAL ACCENTING — the input mode a corpus authored only in the clean regimes cannot see. Telex/VNI half-applied, iOS autocorrect mixes, one word typed lazily: this is NORMAL Vietnamese input, not a typo. The accent-evidence rule reads evidence PER TOKEN for exactly this reason — an accented token must agree with the surface, a plain one asks nothing. Authored against the DB: 'bún bò huế' is banked vi; 'huế'→'hue' is the classic half-applied Telex ending."
+    },
+    {
+      "id": "pa-04",
+      "query": "cà phê sữa da",
+      "stratum": "compound",
+      "locale": "vi-VN",
+      "pass": true,
+      "preservation": 1,
+      "reasons": [],
+      "grounded": [
+        {
+          "entityId": "4e02fa2c-9f05-4397-badb-bea2eb50164b",
+          "bucket": "food",
+          "type": "food",
+          "span": "cà phê sữa da",
+          "name": "iced viet coffee",
+          "tier": "gazetteer-exact",
+          "foldedName": "iced viet coffee"
+        },
+        {
+          "entityId": "16d9b342-76f8-43b4-b913-d0b239d38ebd",
+          "bucket": "foodAttributes",
+          "type": "food_attribute",
+          "span": "da",
+          "name": "iced",
+          "tier": "linked",
+          "foldedName": "iced"
+        },
+        {
+          "entityId": "4b82e20d-a8a1-47f5-a3cd-feaae73841fe",
+          "bucket": "ingredients",
+          "type": "ingredient",
+          "span": "cà phê",
+          "name": "coffee",
+          "tier": "linked",
+          "foldedName": "coffee"
+        }
+      ],
+      "unresolved": [],
+      "analysis": {
+        "script": "latin",
+        "requestLocale": "vi-VN",
+        "detectedLocale": {
+          "tag": "pt",
+          "confidence": 1,
+          "source": "detector"
+        },
+        "denseTierUsed": false
+      },
+      "misGroundings": [],
+      "notes": "PARTIAL ACCENTING — the input mode a corpus authored only in the clean regimes cannot see. Telex/VNI half-applied, iOS autocorrect mixes, one word typed lazily: this is NORMAL Vietnamese input, not a typo. The accent-evidence rule reads evidence PER TOKEN for exactly this reason — an accented token must agree with the surface, a plain one asks nothing. Authored against the DB: 'cà phê sữa đá' is banked (vi + und); 'đá'→'da' loses both the tone AND the đ, the commonest US-keyboard slip."
+    },
+    {
+      "id": "pa-05",
+      "query": "cà phe sua da",
+      "stratum": "compound",
+      "locale": "vi-VN",
+      "pass": true,
+      "preservation": 1,
+      "reasons": [],
+      "grounded": [
+        {
+          "entityId": "4e02fa2c-9f05-4397-badb-bea2eb50164b",
+          "bucket": "food",
+          "type": "food",
+          "span": "cà phe sua da",
+          "name": "iced viet coffee",
+          "tier": "gazetteer-exact",
+          "foldedName": "iced viet coffee"
+        },
+        {
+          "entityId": "16d9b342-76f8-43b4-b913-d0b239d38ebd",
+          "bucket": "foodAttributes",
+          "type": "food_attribute",
+          "span": "da",
+          "name": "iced",
+          "tier": "linked",
+          "foldedName": "iced"
+        },
+        {
+          "entityId": "4b82e20d-a8a1-47f5-a3cd-feaae73841fe",
+          "bucket": "ingredients",
+          "type": "ingredient",
+          "span": "cà phe",
+          "name": "coffee",
+          "tier": "linked",
+          "foldedName": "coffee"
+        }
+      ],
+      "unresolved": [],
+      "analysis": {
+        "script": "latin",
+        "requestLocale": "vi-VN",
+        "detectedLocale": {
+          "tag": "vi-VN",
+          "confidence": 0.5,
+          "source": "request-prior"
+        },
+        "denseTierUsed": false
+      },
+      "misGroundings": [],
+      "notes": "PARTIAL ACCENTING — the input mode a corpus authored only in the clean regimes cannot see. Telex/VNI half-applied, iOS autocorrect mixes, one word typed lazily: this is NORMAL Vietnamese input, not a typo. The accent-evidence rule reads evidence PER TOKEN for exactly this reason — an accented token must agree with the surface, a plain one asks nothing. Authored against the DB: Mostly plain with ONE accent left on 'cà'. A single surviving accent must not refuse the whole phrase — the defect this stratum was written to catch."
+    },
+    {
+      "id": "pa-06",
+      "query": "gỏi cuon",
+      "stratum": "single_noun",
+      "locale": "vi-VN",
+      "pass": true,
+      "preservation": 1,
+      "reasons": [],
+      "grounded": [
+        {
+          "entityId": "77dd20cb-7574-477a-801f-f5394e3634c8",
+          "bucket": "food",
+          "type": "food",
+          "span": "gỏi cuon",
+          "name": "spring roll",
+          "tier": "gazetteer-exact",
+          "foldedName": "spring roll"
+        }
+      ],
+      "unresolved": [],
+      "analysis": {
+        "script": "latin",
+        "requestLocale": "vi-VN",
+        "detectedLocale": {
+          "tag": "vi-VN",
+          "confidence": 0.5,
+          "source": "request-prior"
+        },
+        "denseTierUsed": false
+      },
+      "misGroundings": [],
+      "notes": "PARTIAL ACCENTING — the input mode a corpus authored only in the clean regimes cannot see. Telex/VNI half-applied, iOS autocorrect mixes, one word typed lazily: this is NORMAL Vietnamese input, not a typo. The accent-evidence rule reads evidence PER TOKEN for exactly this reason — an accented token must agree with the surface, a plain one asks nothing. Authored against the DB: 'gỏi cuốn' is banked und on spring roll."
+    },
+    {
+      "id": "pa-07",
+      "query": "bánh mì",
+      "stratum": "single_noun",
+      "locale": "en-US",
+      "pass": true,
+      "preservation": 1,
+      "reasons": [],
+      "grounded": [
+        {
+          "entityId": "33c909c3-0de7-4cd6-aaea-ca05e968f0a0",
+          "bucket": "restaurants",
+          "type": "restaurant",
+          "span": "bánh",
+          "name": "Bánh",
+          "tier": "linked",
+          "foldedName": "banh"
+        },
+        {
+          "entityId": "78d11036-478c-41bb-a78d-4a7320dde99c",
+          "bucket": "food",
+          "type": "food",
+          "span": "bánh mì",
+          "name": "banh mi",
+          "tier": "gazetteer-exact",
+          "foldedName": "banh mi"
+        },
+        {
+          "entityId": "9cd8f4aa-bb68-4bee-937f-45fee496d147",
+          "bucket": "food",
+          "type": "food",
+          "span": "bánh mì",
+          "name": "viet sandwich",
+          "tier": "gazetteer-exact",
+          "foldedName": "viet sandwich"
+        }
+      ],
+      "unresolved": [],
+      "analysis": {
+        "script": "latin",
+        "requestLocale": "en-US",
+        "detectedLocale": {
+          "tag": "it",
+          "confidence": 1,
+          "source": "detector"
+        },
+        "denseTierUsed": false
+      },
+      "misGroundings": [],
+      "notes": "PARTIAL ACCENTING — the input mode a corpus authored only in the clean regimes cannot see. Telex/VNI half-applied, iOS autocorrect mixes, one word typed lazily: this is NORMAL Vietnamese input, not a typo. The accent-evidence rule reads evidence PER TOKEN for exactly this reason — an accented token must agree with the surface, a plain one asks nothing. Authored against the DB: Fully accented, but asserted at locale en to pin that SPELLING EVIDENCE is not locale-scoped: the accented form lives on the vi display row while the en/und recall row is 'banh mi'. Scoping the evidence to the request locale refused the dish and handed back the restaurant 'Bánh'."
+    },
+    {
+      "id": "pa-08",
+      "query": "ẩm thực Hy Lap",
+      "stratum": "compound",
+      "locale": "vi-VN",
+      "pass": true,
+      "preservation": 1,
+      "reasons": [],
+      "grounded": [
+        {
+          "entityId": "ec4144aa-f351-4ccf-b6f9-9837f9afe217",
+          "bucket": "restaurantAttributes",
+          "type": "restaurant_attribute",
+          "span": "ẩm thực Hy Lap",
+          "name": "greek",
+          "tier": "gazetteer-exact",
+          "foldedName": "greek"
+        }
+      ],
+      "unresolved": [],
+      "analysis": {
+        "script": "latin",
+        "requestLocale": "vi-VN",
+        "detectedLocale": {
+          "tag": "vi-VN",
+          "confidence": 0.5,
+          "source": "request-prior"
+        },
+        "denseTierUsed": false
+      },
+      "misGroundings": [],
+      "notes": "PARTIAL ACCENTING — the input mode a corpus authored only in the clean regimes cannot see. Telex/VNI half-applied, iOS autocorrect mixes, one word typed lazily: this is NORMAL Vietnamese input, not a typo. The accent-evidence rule reads evidence PER TOKEN for exactly this reason — an accented token must agree with the surface, a plain one asks nothing. Authored against the DB: 'ẩm thực Hy Lạp' is banked vi on the greek attribute — five tokens, so this entry also covers the phrase-length window."
+    },
+    {
+      "id": "pa-09",
+      "query": "chỉ nhận tiền mat",
+      "stratum": "attribute",
+      "locale": "vi-VN",
+      "pass": true,
+      "preservation": 1,
+      "reasons": [],
+      "grounded": [
+        {
+          "entityId": "576599d0-17bd-421c-962a-6dc3c287eb03",
+          "bucket": "restaurantAttributes",
+          "type": "restaurant_attribute",
+          "span": "chỉ nhận tiền mat",
+          "name": "cash only",
+          "tier": "gazetteer-exact",
+          "foldedName": "cash only"
+        }
+      ],
+      "unresolved": [],
+      "analysis": {
+        "script": "latin",
+        "requestLocale": "vi-VN",
+        "detectedLocale": {
+          "tag": "vi-VN",
+          "confidence": 0.5,
+          "source": "request-prior"
+        },
+        "denseTierUsed": false
+      },
+      "misGroundings": [],
+      "notes": "PARTIAL ACCENTING — the input mode a corpus authored only in the clean regimes cannot see. Telex/VNI half-applied, iOS autocorrect mixes, one word typed lazily: this is NORMAL Vietnamese input, not a typo. The accent-evidence rule reads evidence PER TOKEN for exactly this reason — an accented token must agree with the surface, a plain one asks nothing. Authored against the DB: 'chỉ nhận tiền mặt' is banked vi on the cash-only attribute; the final word is typed plain."
+    },
+    {
+      "id": "pa-10",
+      "query": "cơm tam",
+      "stratum": "single_noun",
+      "locale": "vi-VN",
+      "pass": true,
+      "preservation": 1,
+      "reasons": [],
+      "grounded": [
+        {
+          "entityId": "bad1e222-175c-4473-8620-b95d021bab77",
+          "bucket": "food",
+          "type": "food",
+          "span": "cơm tam",
+          "name": "com tam",
+          "tier": "gazetteer-exact",
+          "foldedName": "com tam"
+        },
+        {
+          "entityId": "c0cdfe0a-e330-4bb8-b501-0c69066503ef",
+          "bucket": "food",
+          "type": "food",
+          "span": "cơm tam",
+          "name": "broken rice",
+          "tier": "gazetteer-exact",
+          "foldedName": "broken rice"
+        }
+      ],
+      "unresolved": [],
+      "analysis": {
+        "script": "latin",
+        "requestLocale": "vi-VN",
+        "detectedLocale": {
+          "tag": "vi-VN",
+          "confidence": 0.5,
+          "source": "request-prior"
+        },
+        "denseTierUsed": false
+      },
+      "misGroundings": [],
+      "notes": "PARTIAL ACCENTING — the input mode a corpus authored only in the clean regimes cannot see. Telex/VNI half-applied, iOS autocorrect mixes, one word typed lazily: this is NORMAL Vietnamese input, not a typo. The accent-evidence rule reads evidence PER TOKEN for exactly this reason — an accented token must agree with the surface, a plain one asks nothing. Authored against the DB: 'cơm tấm' is banked vi on com tam (and broken rice); 'tấm'→'tam' plain."
+    },
+    {
+      "id": "pa-11",
+      "query": "bánh xeo",
+      "stratum": "single_noun",
+      "locale": "vi-VN",
+      "pass": true,
+      "preservation": 1,
+      "reasons": [],
+      "grounded": [
+        {
+          "entityId": "33c909c3-0de7-4cd6-aaea-ca05e968f0a0",
+          "bucket": "restaurants",
+          "type": "restaurant",
+          "span": "bánh",
+          "name": "Bánh",
+          "tier": "linked",
+          "foldedName": "banh"
+        },
+        {
+          "entityId": "1823cd02-5e4f-4207-afa7-475aa101968b",
+          "bucket": "food",
+          "type": "food",
+          "span": "bánh xeo",
+          "name": "banh xeo",
+          "tier": "gazetteer-exact",
+          "foldedName": "banh xeo"
+        }
+      ],
+      "unresolved": [],
+      "analysis": {
+        "script": "latin",
+        "requestLocale": "vi-VN",
+        "detectedLocale": {
+          "tag": "vi-VN",
+          "confidence": 0.5,
+          "source": "request-prior"
+        },
+        "denseTierUsed": false
+      },
+      "misGroundings": [],
+      "notes": "PARTIAL ACCENTING — the input mode a corpus authored only in the clean regimes cannot see. Telex/VNI half-applied, iOS autocorrect mixes, one word typed lazily: this is NORMAL Vietnamese input, not a typo. The accent-evidence rule reads evidence PER TOKEN for exactly this reason — an accented token must agree with the surface, a plain one asks nothing. Authored against the DB: 'bánh xèo' is the vi display spelling, 'banh xeo' the recall row — a partial mix must reach the dish either way."
+    },
+    {
+      "id": "pa-12",
+      "query": "bun thịt nướng",
+      "stratum": "compound",
+      "locale": "vi-VN",
+      "pass": true,
+      "preservation": 1,
+      "reasons": [],
+      "grounded": [
+        {
+          "entityId": "eaf556f2-803a-4fcd-a309-c9a92c61416f",
+          "bucket": "food",
+          "type": "food",
+          "span": "bun thịt nướng",
+          "name": "pork vermicelli",
+          "tier": "gazetteer-exact",
+          "foldedName": "pork vermicelli"
+        },
+        {
+          "entityId": "82716a95-3dff-49d3-b1dc-f1cb1d59800a",
+          "bucket": "ingredients",
+          "type": "ingredient",
+          "span": "bun",
+          "name": "vermicelli",
+          "tier": "linked",
+          "foldedName": "vermicelli"
+        }
+      ],
+      "unresolved": [],
+      "analysis": {
+        "script": "latin",
+        "requestLocale": "vi-VN",
+        "detectedLocale": {
+          "tag": "vi-VN",
+          "confidence": 0.5,
+          "source": "request-prior"
+        },
+        "denseTierUsed": false
+      },
+      "misGroundings": [],
+      "notes": "PARTIAL ACCENTING — the input mode a corpus authored only in the clean regimes cannot see. Telex/VNI half-applied, iOS autocorrect mixes, one word typed lazily: this is NORMAL Vietnamese input, not a typo. The accent-evidence rule reads evidence PER TOKEN for exactly this reason — an accented token must agree with the surface, a plain one asks nothing. Authored against the DB: 'bún thịt nướng' is banked vi on pork vermicelli; the HEAD word is the plain one here."
+    },
+    {
+      "id": "pa-13",
+      "query": "cơm chay",
+      "stratum": "homograph",
+      "locale": "vi-VN",
+      "pass": true,
+      "preservation": 1,
+      "reasons": [],
+      "grounded": [
+        {
+          "entityId": "77490d5e-e33e-4f6e-b1b8-d370755faf1f",
+          "bucket": "food",
+          "type": "food",
+          "span": "cơm",
+          "name": "rice",
+          "tier": "gazetteer-exact",
+          "foldedName": "rice"
+        },
+        {
+          "entityId": "6f332d26-e126-462c-a58e-0b8954687be6",
+          "bucket": "foodAttributes",
+          "type": "food_attribute",
+          "span": "chay",
+          "name": "vegetarian",
+          "tier": "gazetteer-exact",
+          "foldedName": "vegetarian"
+        }
+      ],
+      "unresolved": [],
+      "analysis": {
+        "script": "latin",
+        "requestLocale": "vi-VN",
+        "detectedLocale": {
+          "tag": "vi-VN",
+          "confidence": 0.5,
+          "source": "request-prior"
+        },
+        "denseTierUsed": false
+      },
+      "misGroundings": [],
+      "notes": "PARTIAL ACCENTING — the input mode a corpus authored only in the clean regimes cannot see. Telex/VNI half-applied, iOS autocorrect mixes, one word typed lazily: this is NORMAL Vietnamese input, not a typo. The accent-evidence rule reads evidence PER TOKEN for exactly this reason — an accented token must agree with the surface, a plain one asks nothing. Authored against the DB: THE COUNTERWEIGHT. Every entry above says a plain token asks nothing — this one says the evidence that IS present is still enforced. 'chay' is banked vi as a word of its own (vegetarian), so it is a complete spelling, not a skipped accent, and must not match the scorched-rice surface 'cơm cháy'. Duplicates hg-16's assertion deliberately: it is the boundary the partial-accent rule is most likely to erode."
     }
   ]
 }
