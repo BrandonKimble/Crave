@@ -138,6 +138,57 @@ const FLOWS: FlowEntry[] = [
     mustInclude: [{ name: 'gluten free' }],
     note: 'negative-concept alias (sin gluten) prefix-reachable',
   },
+  // ── Vietnamese ──────────────────────────────────────────────────────────
+  // The third language (2026-08-09). Every assertion below was verified
+  // against the banked registry BEFORE it was written: the vi vocabulary
+  // sweep banked 8,751 labels + 14,375 active `vi` alias rows, and each row
+  // asserted here was read out of entity_alias first. Vietnamese is the
+  // DIACRITIC test the Latin-1 languages could not be: `phở`/`pho`,
+  // `hải sản`/`hai san` are one folded key by the N1 law, so a locale that
+  // folds wrong shows up here as a miss, not as a silent near-match.
+  {
+    id: 'vi-01',
+    locale: 'vi',
+    query: 'phở',
+    mustInclude: [{ name: 'pho', type: 'food' }],
+    note: 'exact vi surface with diacritics reaches the concept (fold: phở→pho)',
+  },
+  {
+    id: 'vi-02',
+    locale: 'vi',
+    query: 'chay',
+    mustInclude: [{ name: 'vegetarian', type: 'food_attribute' }],
+    note: 'THE P0 in Vietnamese: the attribute chip is typeable in vi',
+  },
+  {
+    id: 'vi-03',
+    locale: 'vi',
+    query: 'chay',
+    mustInclude: [{ name: 'vegetarian', type: 'food_attribute' }],
+    localizedLabel: true,
+    note: 'the chip DISPLAYS "chay" while submitting the canonical token',
+  },
+  {
+    id: 'vi-04',
+    locale: 'vi',
+    query: 'hải sản',
+    mustInclude: [{ name: 'seafood', type: 'ingredient' }],
+    note: 'multiword vi surface reaches the English food concept',
+  },
+  {
+    id: 'vi-05',
+    locale: 'vi',
+    query: 'không chứa glut',
+    mustInclude: [{ name: 'gluten free', type: 'food_attribute' }],
+    note: 'multiword vi PREFIX (mid-word, unfinished) reaches the negative concept',
+  },
+  {
+    id: 'vi-06',
+    locale: 'vi',
+    query: 'thuan chy',
+    mustInclude: [{ name: 'vegan', type: 'food_attribute' }],
+    note: 'vi typo via the edit lane: diacritics dropped AND a letter missing — vegan, never vegetarian (the dietary-boundary rule holds under a typo)',
+  },
 ];
 
 async function main(): Promise<void> {
