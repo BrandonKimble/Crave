@@ -1,7 +1,8 @@
 import { isEnvFlagExplicitlyDisabled } from '../../shared/config/env-flag';
-import { Injectable } from '@nestjs/common';
+import { Injectable, OnModuleInit } from '@nestjs/common';
 import { Cron, CronExpression } from '@nestjs/schedule';
 import { PrismaService } from '../../prisma/prisma.service';
+import { OpsAlertsService } from '../external-integrations/shared/ops-alerts.service';
 import { LoggerService } from '../../shared';
 
 /**
@@ -23,17 +24,55 @@ import { LoggerService } from '../../shared';
  * Follows the derived_entity_sibling_edges idiom exactly: full replace in a
  * transaction, read-time status re-check at the consumers, cron behind the
  * explicit-disable flag under the global CRONS_ENABLED kill-switch.
+ *
+ * BOOT SELF-HEAL (red team 2026-08-09, found LIVE in prod): the migration
+ * creates the table EMPTY and the reader fails open to [] — so a deploy
+ * landing after the 04:00 cron serves up to ~24h of searches with rung-2
+ * widening silently OFF ("taco" stops pulling "al pastor taco"), and the
+ * satisfies judge pays extra LLM spend for the exclusions it can't see.
+ * Absent derived data is not a config choice, it is un-derived derivation:
+ * boot detects the empty table and rebuilds immediately. The rebuild is a
+ * transactional full-replace, so two replicas racing at boot do duplicate
+ * seconds of SQL, never corruption. If the rebuild yields ZERO edges while
+ * active foods exist, that is the invisible-degradation mode — scream on
+ * the ops channel, exactly like the open-intervals builder.
  */
 @Injectable()
-export class NameContainmentEdgeBuilderService {
+export class NameContainmentEdgeBuilderService implements OnModuleInit {
   private readonly logger: LoggerService;
   private cronInFlight = false;
 
   constructor(
     private readonly prisma: PrismaService,
+    private readonly opsAlerts: OpsAlertsService,
     loggerService: LoggerService,
   ) {
     this.logger = loggerService.setContext('NameContainmentEdgeBuilder');
+  }
+
+  async onModuleInit(): Promise<void> {
+    if (
+      isEnvFlagExplicitlyDisabled(
+        process.env.NAME_CONTAINMENT_EDGE_BUILDER_ENABLED,
+      )
+    ) {
+      return;
+    }
+    try {
+      const [row] = await this.prisma.$queryRaw<{ empty: boolean }[]>`
+        SELECT NOT EXISTS (SELECT 1 FROM derived_name_containment_edges) AS empty`;
+      if (row?.empty) {
+        this.logger.info(
+          'Name-containment table empty at boot — self-healing rebuild',
+        );
+        await this.rebuildAll();
+      }
+    } catch (error) {
+      this.logger.error(
+        'Name-containment boot self-heal failed',
+        error instanceof Error ? error : new Error(String(error)),
+      );
+    }
   }
 
   /** Full replace: every active-food pair where base's folded name appears
@@ -65,6 +104,24 @@ export class NameContainmentEdgeBuilderService {
       edges,
       ms: Date.now() - start,
     });
+    if (edges === 0) {
+      const [foods] = await this.prisma.$queryRaw<{ n: number }[]>`
+        SELECT count(*)::int AS n FROM core_entities
+        WHERE type = 'food'::entity_type AND status = 'active'::entity_status`;
+      if ((foods?.n ?? 0) > 0) {
+        this.opsAlerts.emit({
+          severity: 'critical',
+          kind: 'name_containment_empty',
+          title: 'Rung-2 name-containment widening is silently disabled',
+          body: [
+            `The containment rebuild produced ZERO edges from ${foods.n} active food(s).`,
+            'The query-time reader fails open to [], so variant widening ("taco" → "al pastor taco") is OFF for every search and the satisfies judge is paying for exclusions it cannot see. Nothing else will report this.',
+            "Check this job's last error, then re-run it.",
+          ].join('\n\n'),
+          dedupeKey: 'name_containment_empty',
+        });
+      }
+    }
     return { edges };
   }
 
