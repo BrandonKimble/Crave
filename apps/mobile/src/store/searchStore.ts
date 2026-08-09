@@ -135,6 +135,11 @@ export const useSearchStore = create<SearchState>()(
         // submission resets to the default variant, so any carried filter
         // value would be wiped by the first search anyway. The migration
         // discards all previously persisted payloads.
+        // The double-cast is zustand's persist typing wart, not ours: migrate
+        // is declared to return the FULL store (methods included) but the
+        // framework only ever merges the persisted FIELDS over the live
+        // store. defaultState is the complete persisted-field surface
+        // (satisfies SearchRuntimeMirroredState above), so this is honest.
         return { ...defaultState } as unknown as SearchState;
       },
       storage: createJSONStorage(() => {

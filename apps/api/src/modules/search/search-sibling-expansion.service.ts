@@ -222,7 +222,6 @@ export class SearchSiblingExpansionService {
 
   async getNameContainmentVariantFoodIds(
     baseFoodIds: string[],
-    options: { maxAnchors?: number } = {},
   ): Promise<{ isVariantOf: string[]; mentionsIt: string[] }> {
     // KL-D: reads the MATERIALIZED rung-2 table — ONE folded-key definition
     // shared with the satisfies judge (the lower(name) live scan diverged
@@ -231,7 +230,6 @@ export class SearchSiblingExpansionService {
     // un-indexable word-boundary LIKE and its maxAnchors cap are deleted;
     // this is an indexed lookup now. Read-time status re-check follows the
     // sibling-edge idiom.
-    void options;
     const ids = Array.from(new Set(baseFoodIds.filter(Boolean)));
     if (!ids.length) return { isVariantOf: [], mentionsIt: [] };
     try {
