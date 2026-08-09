@@ -96,23 +96,19 @@ function createHarness(options: HarnessOptions = {}) {
       }),
     },
     pollWeeklyTick: {
-      // F4919: the idempotency pre-filter KEYS ON THE DUE (placeId, weekOf)
-      // pairs. Serve an existing tick ONLY when the query actually asked for
-      // its pair (the `where.OR` list production builds from `due`). A read
-      // widened to `{}` (every tick ever) now matches nothing here, so the
-      // suppression it is meant to prove goes RED instead of falsely green.
-      findMany: jest.fn(
-        (args: { where?: { OR?: { placeId: string; weekOf: string }[] } }) => {
-          const asked = new Set(
-            (args.where?.OR ?? []).map((p) => `${p.placeId}:${p.weekOf}`),
-          );
-          return Promise.resolve(
-            (options.existingTicks ?? []).filter((t) =>
-              asked.has(`${t.placeId}:${t.weekOf}`),
-            ),
-          );
-        },
-      ),
+      // F4919 discipline on the CRAVE-27 shape: the idempotency pre-filter
+      // keys on the due WEEKS (`where.weekOf.in`; the place filter moved to
+      // JS after the OR-of-pairs form blew Postgres's 32,767-bind cap on a
+      // Sunday with ~20k places due). Serve an existing tick ONLY when the
+      // query actually asked for its week — a read widened to `{}` (every
+      // tick ever) still matches nothing here, so the suppression this
+      // proves goes RED instead of falsely green.
+      findMany: jest.fn((args: { where?: { weekOf?: { in?: string[] } } }) => {
+        const askedWeeks = new Set(args.where?.weekOf?.in ?? []);
+        return Promise.resolve(
+          (options.existingTicks ?? []).filter((t) => askedWeeks.has(t.weekOf)),
+        );
+      }),
     },
     poll: { findMany: jest.fn().mockResolvedValue(options.harvestPolls ?? []) },
     pollTopic: {

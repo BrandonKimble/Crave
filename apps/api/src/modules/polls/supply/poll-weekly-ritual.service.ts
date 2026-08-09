@@ -237,9 +237,16 @@ export class PollWeeklyRitualService {
     }
 
     // Idempotency pre-check (cheap filter; the tick row inside the publish
-    // transaction is the true guarantee).
+    // transaction is the true guarantee). Keyed by WEEK, not by (place, week)
+    // pairs: on a Sunday every eligible place comes due in the same window,
+    // and the old OR-of-pairs shape bound 2 params per place — 41,421 binds
+    // on 2026-08-09, past Postgres's hard 32,767 prepared-statement cap
+    // (CRAVE-27, every hourly tick failing). Distinct weeks number at most
+    // two across timezones, so binds are bounded by construction and the
+    // place filter moves to the set below.
+    const weeks = [...new Set(due.map((d) => d.weekOf))];
     const existingTicks = await this.prisma.pollWeeklyTick.findMany({
-      where: { OR: due.map((d) => ({ placeId: d.placeId, weekOf: d.weekOf })) },
+      where: { weekOf: { in: weeks } },
       select: { placeId: true, weekOf: true },
     });
     const ticked = new Set(
