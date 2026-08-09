@@ -41,7 +41,7 @@ import {
   useIsScreenReaderEnabled,
   type ReorderScrollAdapter,
 } from '../../components/reorder';
-import type { MountedSceneBodyProps } from '../BottomSheetSceneStackMountedBodyRegistry';
+import type { MountedSceneBodyProps } from '../../tracksheet/track-mounted-body-contract';
 import { getOverlaySceneScrollHandle } from '../sceneScrollStateRegistry';
 import { useEditModeSession } from '../edit-mode-session';
 import { OVERLAY_HORIZONTAL_PADDING } from '../overlaySheetStyles';
@@ -370,6 +370,8 @@ type ListDetailSliceData = {
     kind: 'sort' | 'open_now' | 'price' | 'city'
   ) => void;
   contentPhase: string;
+  /** OA12: the primitive's awaiting face (non-null exactly while 'awaiting'). */
+  awaitingFace: React.ReactElement | null;
 };
 
 type ListDetailReadyData = {
@@ -936,7 +938,11 @@ const ListDetailReadyContent = React.memo(({ data }: { data: ListDetailReadyData
             scrollAdapter={scrollAdapter}
             testIDPrefix="list-detail-edit"
           />
-        ) : data.slice.contentPhase === 'awaiting' ? null : rowCount === 0 ? (
+        ) : data.slice.contentPhase === 'awaiting' ? (
+          // OA12 variant A: the strip above stays live; the results region paints the
+          // primitive's refetch skeleton (never the old bare-white gap).
+          data.slice.awaitingFace
+        ) : rowCount === 0 ? (
           <StateBody message="Nothing saved here yet." testID="list-detail-empty" />
         ) : (
           richRows.map((row, index) => (
@@ -1205,10 +1211,16 @@ export const ListDetailPanelBody = React.memo(({ entry }: MountedSceneBodyProps)
   // map + cards through the reconciler).
   const sliceRef = React.useRef({ sort: effectiveSort, openNow, priceLevel, cityPlaceId });
   sliceRef.current = { sort: effectiveSort, openNow, priceLevel, cityPlaceId };
-  const { seam: contentSeam, phase: contentPhase } = useContentToggle<
-    'sort' | 'open_now' | 'price' | 'city'
-  >({
+  const {
+    seam: contentSeam,
+    phase: contentPhase,
+    awaitingFace: contentAwaitingFace,
+  } = useContentToggle<'sort' | 'open_now' | 'price' | 'city'>({
     surfaceName: 'list-detail',
+    // OA12: the awaiting window paints the listDetail refetch skeleton where the
+    // rows land (the live in-list strip stays above it) — the face is the
+    // primitive's, not this panel's.
+    scene: 'listDetail',
     captureControlBaseline: () => {
       const snapshot = sliceRef.current;
       return () => {
@@ -1838,6 +1850,7 @@ export const ListDetailPanelBody = React.memo(({ entry }: MountedSceneBodyProps)
             cityChipLabel,
             applySlice,
             contentPhase,
+            awaitingFace: contentAwaitingFace,
           },
         }
       : null;

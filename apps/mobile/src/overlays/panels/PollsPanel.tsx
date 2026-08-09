@@ -52,11 +52,7 @@ import { useSearchNavSwitchCommitAttribution } from '../../screens/Search/runtim
 import { logPerfScenarioSearchRequestLifecycle } from '../../perf/perf-scenario-attribution';
 import { MonogramAvatar } from '../../components/MonogramAvatar';
 import { resolveSceneLoadingMaterial } from '../../navigation/runtime/scene-foundation-spec';
-import {
-  isPollsToggleSeamSkeletonArmed,
-  reportPollsToggleSeamSlicePainted,
-  resolvePollsToggleSeamAwaitingMaterial,
-} from './runtime/polls-toggle-seam';
+import { reportPollsToggleSeamSlicePainted } from './runtime/polls-toggle-seam';
 
 // OA2/G-SKEL (R8): the loading material comes from the scene's foundation
 // row through the ONE resolver — never a call-site rowType literal.
@@ -116,9 +112,9 @@ const TIME_LABEL_BY_VALUE: Record<PollFeedTime, string> = {
 const TIME_OPTIONS = deriveSelectorOptions(TIME_LABEL_BY_VALUE);
 
 // The polls feed is RE-SORTABLE, so FlashList's maintain-visible-content-position
-// (chat-style anchoring) must stay OFF here — and it is, via the transport-owned
-// default in sceneFlashListPropsMerge.ts (F983 inverted the law: MVCP is disabled
-// everywhere unless a scene explicitly opts IN; no per-scene opt-out needed).
+// (chat-style anchoring) must stay OFF here — and it is: post-R8 the track's single
+// FlashList disables MVCP unconditionally (TrackSheetPage.tsx). (F983 inverted the
+// law under the old host's sceneFlashListPropsMerge, now deleted.)
 // F2954 deleted the redundant per-scene restatement that lived here — and its
 // comment's claim that "search/restaurant keep the default" was false.
 
@@ -646,6 +642,7 @@ export const usePollsPanelListSceneParts = (): {
     promise,
     loadMorePolls,
     isFeedSliceAwaiting,
+    feedAwaitingFace,
   } = pollsPanelFeedRuntime;
 
   const shouldShowCollapsedSpinner = loading || (isSystemUnavailable && polls.length === 0);
@@ -679,8 +676,8 @@ export const usePollsPanelListSceneParts = (): {
 
   // Leg 4 content choreography (useContentToggle): between a strip press-up and the
   // new slice's arrival the OLD CARDS ARE OUT — the list is empty and the awaiting
-  // window paints the OA9 variant-(b) face below the live header strip (or bare
-  // white when disarmed); never a "create the first poll" message mid-toggle.
+  // window paints the primitive's OA12 face below the live header strip; never a
+  // "create the first poll" message mid-toggle, never bare white.
   const listData: readonly Poll[] =
     hasVisiblePolls && !isFeedSliceAwaiting && !shouldShowCollapsedSpinner
       ? polls
@@ -719,25 +716,13 @@ export const usePollsPanelListSceneParts = (): {
 
   const ListEmptyComponent = React.useMemo(() => {
     if (isFeedSliceAwaiting) {
-      // OA9 toggle-seam variant (b): the strip is live header chrome (declared
-      // strip: 'header' — mounted by the persistent header host, independent of
-      // this body), and the results region paints the refetch face instead of the
-      // old bare-white gap. A/B lever for the on-device verdict: disarm via
-      // `globalThis.__CRAVE_POLLS_TOGGLE_SEAM_SKELETON = false` (dev) to restore
-      // the legacy bare-white face (return null; new cards snap in on the seam's
-      // ready edge either way).
-      const awaitingMaterial = resolvePollsToggleSeamAwaitingMaterial(
-        isPollsToggleSeamSkeletonArmed()
-      );
-      if (awaitingMaterial == null) {
-        return null;
-      }
-      return (
-        <SceneLoadingSurface
-          rowType={awaitingMaterial.rowType}
-          withFilterStripHoles={awaitingMaterial.withStripHoles}
-        />
-      );
+      // OA12 variant A (the law, baked into the primitive): the strip is live header
+      // chrome (declared strip: 'header' — mounted by the persistent header host,
+      // independent of this body), and the results region paints the primitive's
+      // awaiting face — the polls refetch skeleton minted by useContentToggle. The
+      // OA9 A/B flag and its bare-white arm are dead; this panel no longer decides
+      // (and cannot suppress) the face.
+      return feedAwaitingFace;
     }
     if (shouldShowCollapsedSpinner) {
       // Expanded surface: paint the structure-matched skeleton (poll cards ≈ restaurant rows)
@@ -776,6 +761,7 @@ export const usePollsPanelListSceneParts = (): {
       </Text>
     );
   }, [
+    feedAwaitingFace,
     headerPlaceName,
     isExpandedSurface,
     isFeedSliceAwaiting,
@@ -813,10 +799,8 @@ export const usePollsPanelListSceneParts = (): {
       // §6 pagination's PRIMARY trigger — the handoff scroll container produces no
       // native drag events and never fires onEndReached (see the contract note).
       onUserListScrollActivity: handleFeedUserScrollActivity,
-      // Over-scroll is enforced no-bounce structurally by BottomSheetScrollContainer (see
-      // SHEET_BODY_NO_OVERSCROLL) so the continuous down-handoff works — no per-scene config.
-      // MVCP-off comes from the transport default (sceneFlashListPropsMerge.ts) — no
-      // per-scene flashListProps needed.
+      // Over-scroll and MVCP-off are owned by the track's single FlashList
+      // (TrackSheetPage.tsx, post-R8) — no per-scene flashListProps needed.
     }),
     [contentBottomPadding, handleFeedUserScrollActivity]
   );

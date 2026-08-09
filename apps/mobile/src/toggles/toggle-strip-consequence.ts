@@ -15,8 +15,9 @@
  *   deliberately simple and NEVER touches the map/list coordination machinery:
  *
  *     press-up → `scheduleCommit` → contentPhase flips to 'awaiting' SYNCHRONOUSLY —
- *       the surface's old cards exit NOW (the strip is chrome and stays; the gap is
- *       bare white under the strip — NO skeleton between slices, the law)
+ *       the surface's old cards exit NOW (the strip is chrome and stays; the gap
+ *       paints the scene's refetch skeleton under the live strip — variant A, the
+ *       OA12 law, minted by useContentToggle's `awaitingFace`)
  *     → restarting quiet window (a tap burst re-arms; the runner fires once)
  *     → runner executes (fetch, or a synchronous client re-slice)
  *     → resolution edge (engine finalize/fail/cancel) → contentPhase back to
@@ -55,7 +56,8 @@ export type ToggleStripConsequence = 'world' | 'content';
 
 /**
  * The content choreography's one observable: 'awaiting' = old cards are out and the
- * new slice is not ready yet (body renders NOTHING — bare white under the strip);
+ * new slice is not ready yet (the results region paints the primitive's awaiting
+ * face — the scene's refetch skeleton under the live strip, OA12);
  * 'settled' = content seated. World seams are always 'settled' (their cover is the
  * presentation fade, not a content gap).
  */

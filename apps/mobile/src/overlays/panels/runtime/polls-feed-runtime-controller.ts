@@ -106,10 +106,13 @@ export type PollsFeedRuntimeController = {
   scheduleFeedQueryCommit: () => void;
   /**
    * 'awaiting' between press-up (old cards out) and content-ready (new slice in) —
-   * the body renders NOTHING during it: bare white under the header strip, never a
-   * skeleton, never a stale empty-state message.
+   * the results region paints `feedAwaitingFace` during it (OA12): the polls refetch
+   * skeleton under the live header strip; never bare white, never a stale
+   * empty-state message.
    */
   isFeedSliceAwaiting: boolean;
+  /** The primitive's awaiting face (non-null exactly while isFeedSliceAwaiting). */
+  feedAwaitingFace: React.ReactElement | null;
 };
 
 export const usePollsFeedRuntimeController = ({
@@ -459,8 +462,15 @@ export const usePollsFeedRuntimeController = ({
   // engine's cancel can't abort. Failure UX stays with the controller's retry ladder
   // + deferred load-failed verdict (never the modal); the seam settles the phase on
   // the runner's resolution either way, so the surface can never park on bare white.
-  const { seam: feedContentToggleSeam, phase: feedContentPhase } = useContentToggle<'feed_query'>({
+  const {
+    seam: feedContentToggleSeam,
+    phase: feedContentPhase,
+    awaitingFace: feedAwaitingFace,
+  } = useContentToggle<'feed_query'>({
     surfaceName: 'polls-feed',
+    // OA12: the awaiting window paints the polls refetch skeleton under the live
+    // header strip — the face is the primitive's, not the panel's.
+    scene: 'polls',
     // Leg 5 failure path: the seam holds a restore to the last SETTLED control
     // snapshot and fires it on the 'failed' edge — the optimistic pill snaps back so
     // the control never lies over stale content. The restore write is suppressed
@@ -633,7 +643,8 @@ export const usePollsFeedRuntimeController = ({
       loadMorePolls,
       scheduleFeedQueryCommit,
       isFeedSliceAwaiting: feedContentPhase === 'awaiting',
+      feedAwaitingFace,
     }),
-    [feedContentPhase, loadMorePolls, refreshPollFeed, scheduleFeedQueryCommit]
+    [feedAwaitingFace, feedContentPhase, loadMorePolls, refreshPollFeed, scheduleFeedQueryCommit]
   );
 };
