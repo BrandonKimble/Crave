@@ -56,7 +56,20 @@ export class KeywordAttemptHistoryService {
     engineName: string;
     /** §11 attempt-ledger key: (engine, term). */
     engineId?: string;
+    /**
+     * THE LEDGER IDENTITY — the fold. Dedupes two spellings of one query into
+     * one row. NOT a query: the fold strips combining marks, so
+     * 'bún đậu mắm tôm' folds to 'bun đau mam tom', which is neither
+     * Vietnamese nor ASCII and matches nothing on any vendor.
+     */
     normalizedTerm: string;
+    /**
+     * THE QUERY — the diacritic-preserving text that was actually sent. The
+     * refresh lane re-runs terms straight out of this ledger, so this is the
+     * string it must re-send; writing the fold here is what sent every
+     * foreign-language term back out mangled in perpetuity.
+     */
+    term: string;
     outcome: KeywordAttemptOutcome;
     /** The query's full yield (success/no_results harvests only). */
     resultCount?: number;
@@ -71,8 +84,12 @@ export class KeywordAttemptHistoryService {
         : new Date();
     const engineName = params.engineName.trim().toLowerCase();
     const normalizedTerm = params.normalizedTerm.trim().toLowerCase();
+    // The query keeps its diacritics and its case-as-sent; only surrounding
+    // whitespace is meaningless. It is never folded — that is the whole point
+    // of it being a second column.
+    const term = params.term.trim();
 
-    if (!engineName.length || !normalizedTerm.length) {
+    if (!engineName.length || !normalizedTerm.length || !term.length) {
       return;
     }
 
@@ -105,6 +122,7 @@ export class KeywordAttemptHistoryService {
           engineName,
           engineId: params.engineId ?? null,
           normalizedTerm,
+          term,
           lastAttemptAt: attemptedAt,
           lastOutcome: params.outcome,
           ...harvestFields,
@@ -114,6 +132,11 @@ export class KeywordAttemptHistoryService {
         },
         update: {
           ...(params.engineId ? { engineId: params.engineId } : {}),
+          // The query is refreshed to what was ACTUALLY just sent. That is
+          // what makes the backfill self-healing: a migrated row carries the
+          // fold until the first real attempt under a properly-spelled term
+          // replaces it with the true query.
+          term,
           lastAttemptAt: attemptedAt,
           lastOutcome: params.outcome,
           ...harvestFields,

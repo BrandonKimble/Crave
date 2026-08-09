@@ -76,6 +76,7 @@ describe('KeywordAttemptHistoryService — harvest snapshot (§12.3 exact)', () 
     await service.recordAttempt({
       engineName: 'region-us-tx-austin',
       normalizedTerm: 'birria',
+      term: 'birria',
       outcome: 'success',
       resultCount: 42,
       corpusDocs: 9_000,
@@ -93,6 +94,7 @@ describe('KeywordAttemptHistoryService — harvest snapshot (§12.3 exact)', () 
     await service.recordAttempt({
       engineName: 'region-us-tx-austin',
       normalizedTerm: 'quokka',
+      term: 'quokka',
       outcome: 'no_results',
       resultCount: 0,
       corpusDocs: 9_000,
@@ -110,6 +112,7 @@ describe('KeywordAttemptHistoryService — harvest snapshot (§12.3 exact)', () 
       await service.recordAttempt({
         engineName: 'region-us-tx-austin',
         normalizedTerm: 'birria',
+        term: 'birria',
         outcome,
         resultCount: 99,
         corpusDocs: 9_999,

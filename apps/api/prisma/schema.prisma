@@ -2015,7 +2015,19 @@ model OnDemandRequestUser {
 
 model KeywordAttemptHistory {
   engineName          String                 @map("engine_name") @db.VarChar(255)
+  /// THE LEDGER IDENTITY — the folded key. Two spellings of one query are one
+  /// ledger row, which is the whole reason a fold exists here. It is the PK
+  /// half and the dedupe key, and it is NOT a query: the fold strips combining
+  /// marks, so 'bún đậu mắm tôm' folds to 'bun đau mam tom' — a string that is
+  /// neither Vietnamese nor ASCII and matches nothing on any search vendor.
   normalizedTerm      String                 @map("normalized_term") @db.VarChar(255)
+  /// THE QUERY — the diacritic-preserving text actually sent to the vendor.
+  /// The refresh lane re-runs terms straight out of this ledger, and it used
+  /// to re-run `normalized_term`: every re-searched foreign-language term went
+  /// back out MANGLED, forever, and its measured-barren result then taught the
+  /// eligibility clamp that the term was worthless. Identity and query are two
+  /// different jobs and now have two different columns.
+  term                String                 @db.VarChar(255)
   /// §11 attempt ledger: the schedulable unit is (engine, term); engineName
   /// is the engine's natural key.
   engineId            String?                @map("engine_id") @db.Uuid

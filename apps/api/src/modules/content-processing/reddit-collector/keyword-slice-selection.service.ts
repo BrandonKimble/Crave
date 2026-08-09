@@ -1142,7 +1142,13 @@ export class KeywordSliceSelectionService {
       );
 
       return {
-        term: row.normalizedTerm,
+        // THE QUERY, not its fold. `normalizedTerm` is the ledger IDENTITY —
+        // NFKD with every combining mark stripped — and re-sending it put
+        // 'bun đau mam tom' on the wire forever in place of
+        // 'bún đậu mắm tôm'. The zero results that came back were then
+        // written here as a harvest snapshot, teaching the eligibility clamp
+        // the term was barren. Identity keys the row; `term` is what we ask.
+        term: row.term,
         normalizedTerm: row.normalizedTerm,
         slice: 'refresh',
         score: stalenessScore,

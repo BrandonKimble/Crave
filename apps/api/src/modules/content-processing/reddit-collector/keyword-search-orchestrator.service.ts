@@ -485,6 +485,10 @@ export class KeywordSearchOrchestratorService {
             engineName,
             engineId: options.engineId,
             normalizedTerm: entry.normalizedTerm,
+            // The term AS SENT — diacritics intact. The ledger keys on the
+            // fold but must remember the query, or the refresh lane re-sends
+            // a mangled string forever.
+            term: entry.term,
             outcome: attemptOutcome,
             // Harvest snapshot for the derived eligibility clamp. The
             // count is the query's FULL yield (posts + comments — NOTE:

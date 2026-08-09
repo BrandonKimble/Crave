@@ -276,7 +276,10 @@ export class OnDemandRequestService {
     const seen = new Set<string>();
     const result: OnDemandRequestInput[] = [];
     for (const request of requests) {
-      const sanitizedTerm = this.sanitizeTerm(request.term);
+      const sanitizedTerm = this.sanitizeTerm(
+        request.term,
+        request.detectedLocale,
+      );
       if (!sanitizedTerm) {
         continue;
       }
@@ -318,8 +321,14 @@ export class OnDemandRequestService {
     return normalized.length ? normalized : null;
   }
 
-  private sanitizeTerm(term: string): string {
-    const stripped = stripGenericTokens(term);
+  /**
+   * The ask's OWN language decides which generic vocabulary may judge it. An
+   * ask detected as `es`/`vi` is no longer measured against an English
+   * stop-list that could sanitize it to '' — i.e. drop the collection request
+   * entirely — on the strength of a word list it was never subject to.
+   */
+  private sanitizeTerm(term: string, detectedLocale?: string | null): string {
+    const stripped = stripGenericTokens(term, detectedLocale);
     return stripped.isGenericOnly ? '' : stripped.text;
   }
 
