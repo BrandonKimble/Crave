@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { ServiceUnavailableException, Injectable } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { LoggerService } from '../../shared';
@@ -125,9 +125,23 @@ export class DietaryConstraintRegistry {
         }
       }
     }
-    return Array.from(names)
+    const walls = Array.from(names)
       .sort()
       .map((name) => ({ name, ...pairs.get(name)! }));
+    // FAIL CLOSED on a degenerate wall (dietary audit §3): a wall whose pair
+    // carries NEITHER attribute id (e.g. the curated entity was re-typed as
+    // an ingredient) would constrain NOTHING — zero arms = no wall = a
+    // silent lie to the user who toggled it. Refuse loudly instead; the
+    // standardized failure surface handles it like any other outage.
+    for (const wall of walls) {
+      if (!wall.foodAttributeId && !wall.restaurantAttributeId) {
+        throw new ServiceUnavailableException({
+          code: 'dietary_wall_degenerate',
+          message: `dietary wall '${wall.name}' has no attribute arms — refusing to serve unwalled results`,
+        });
+      }
+    }
+    return walls;
   }
 
   /**
@@ -240,9 +254,11 @@ export class DietaryConstraintRegistry {
       if (this.cache) {
         return this.cache.pairs;
       }
-      throw new Error(
-        'dietary constraint registry unavailable and no cached copy exists — refusing to serve unwalled results',
-      );
+      throw new ServiceUnavailableException({
+        code: 'dietary_registry_unavailable',
+        message:
+          'dietary constraint registry unavailable and no cached copy exists — refusing to serve unwalled results',
+      });
     }
   }
 

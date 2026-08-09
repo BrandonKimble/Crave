@@ -3,6 +3,7 @@ import React from 'react';
 import type { NaturalSearchRequest } from '../../../types';
 import type { UserListType } from '../../../services/user-lists';
 import type { SearchRuntimeBus } from '../runtime/shared/search-runtime-bus';
+import { DEFAULT_SEARCH_FILTER_VARIANT } from '../runtime/shared/search-desired-state-contract';
 import {
   clearPendingSearchRequestDecoration,
   registerPendingSearchRequestDecoration,
@@ -81,7 +82,8 @@ export const useSearchStructuredSubmitOwner = ({
             ...(params.seeLocations ? { seeLocations: true } : null),
           },
           tab: 'restaurants',
-          filterVariant: { includeSimilar: false },
+          // Fresh toggles per search (owner ruling 2026-08-08, plan §12a).
+          filterVariant: DEFAULT_SEARCH_FILTER_VARIANT,
           committedBounds: captureCommittedBounds(viewportBoundsService),
         },
         'entity_tap'
@@ -185,7 +187,8 @@ export const useSearchStructuredSubmitOwner = ({
             shortcutTab: targetTab === 'dishes' ? 'dishes' : 'restaurants',
           },
           tab: targetTab === 'dishes' ? 'dishes' : 'restaurants',
-          filterVariant: { includeSimilar: false },
+          // Fresh toggles per search (owner ruling 2026-08-08, plan §12a).
+          filterVariant: DEFAULT_SEARCH_FILTER_VARIANT,
           committedBounds: adoptedBounds,
         },
         options?.searchThisArea ? 'search_this_area' : 'initial_submit'

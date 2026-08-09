@@ -76,7 +76,10 @@ const defaultState = {
 
 // The persisted subset — the four FILTER fields, and only those. Both `partialize` and the
 // migration's key-strip derive from this one list so they can never drift apart.
-export const PERSISTED_KEYS = ['openNow', 'dietary', 'priceLevels', 'risingActive'] as const;
+// FRESH TOGGLES PER SEARCH (owner ruling 2026-08-08): filter state no longer
+// survives across launches — every submission resets to the default variant,
+// so persisting these fields only stored values the next submit wiped.
+export const PERSISTED_KEYS = [] as const;
 type PersistedKey = (typeof PERSISTED_KEYS)[number];
 
 // Single source: the persisted payload is exactly the PERSISTED_KEYS projection of state, so
@@ -128,22 +131,11 @@ export const useSearchStore = create<SearchState>()(
           return persistedState as SearchState;
         }
 
-        // v8 stripped the removed '100+ votes' key; v9 keeps ONLY the three persisted filter
-        // fields, dropping the query / page / history / bounds payload that no reader ever
-        // read. Anything not in PERSISTED_KEYS is discarded rather than carried forward.
-        const state = persistedState as Record<string, unknown>;
-        const carried: Partial<Record<PersistedKey, unknown>> = {};
-        PERSISTED_KEYS.forEach((key) => {
-          if (state[key] !== undefined) {
-            carried[key] = state[key];
-          }
-        });
-        return {
-          ...defaultState,
-          ...carried,
-          dietary: normalizeDietary(carried.dietary),
-          priceLevels: normalizePriceLevels(carried.priceLevels),
-        } as SearchState;
+        // v10 (fresh-toggles ruling 2026-08-08): NOTHING persists — every
+        // submission resets to the default variant, so any carried filter
+        // value would be wiped by the first search anyway. The migration
+        // discards all previously persisted payloads.
+        return { ...defaultState } as unknown as SearchState;
       },
       storage: createJSONStorage(() => {
         if (

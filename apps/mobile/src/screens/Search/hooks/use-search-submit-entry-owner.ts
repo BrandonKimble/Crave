@@ -6,6 +6,7 @@ import {
   captureCommittedBounds,
   writeSearchDesiredTuple,
 } from '../runtime/shared/search-desired-state-writer';
+import { DEFAULT_SEARCH_FILTER_VARIANT } from '../runtime/shared/search-desired-state-contract';
 import type { ViewportBoundsService } from '../runtime/viewport/viewport-bounds-service';
 import type { SearchRuntimeBus } from '../runtime/shared/search-runtime-bus';
 import { publishSearchMountedResultsDataSnapshot } from '../runtime/shared/search-mounted-results-data-store';
@@ -163,7 +164,14 @@ export const useSearchSubmitEntryOwner = ({
             // similar" toggle IN the identity write — the same pattern every structured
             // lane already uses. In-place re-presents (STA, retry) keep it: they pass
             // replaceResultsInPlace, exactly the fact the old entrySurface gate encoded.
-            ...(options?.replaceResultsInPlace ? {} : { filterVariant: { includeSimilar: false } }),
+            // FRESH TOGGLES PER SEARCH (owner ruling 2026-08-08, plan §12a): every
+            // new submission starts with the DEFAULT variant — no filter state
+            // carries across searches (Google-style). In-place re-presents
+            // (search-this-area, retry) keep the active variant, exactly as the
+            // replaceResultsInPlace guard already encoded for includeSimilar.
+            ...(options?.replaceResultsInPlace
+              ? {}
+              : { filterVariant: DEFAULT_SEARCH_FILTER_VARIANT }),
           },
           'initial_submit'
         ).changed;
