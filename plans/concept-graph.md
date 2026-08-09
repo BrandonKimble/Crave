@@ -562,3 +562,27 @@ two-fold divergence, deletes the un-indexable LIKE); H6 resolveFoodWidening
 (one widening resolution per request + memoization); H8 open-now two-mechanism
 verify; stale-comment sweep + dead exports; then structural: entity_surface
 merge, retire aliases[], preview-from-SQL, tokenized surface store.
+
+## 12. OWNER RULINGS 2026-08-08 (evening) — toggles + negation v2
+
+**(a) FRESH TOGGLES PER SEARCH (Google-style).** Every new search submission
+starts with cleared toggles; no filter state carries across submissions.
+CLIENT change (stop carrying toggle state into a new submit); the server
+stays truthful about whatever the request carries (C3 passthrough stands),
+and the dietary fail-closed guard stands (a request that DOES carry a wall
+must never be served unwalled — the wall lookup is a separate cached query
+that can fail while results succeed).
+
+**(b) NEGATION = LITERAL IGNORE (supersedes the record-not-enforce shape).**
+"tacos no cilantro" grounds cilantro as a POSITIVE mention — exactly as if
+the user listed an ingredient. The cue-span machinery (negatedSpan drops,
+excludedSpans recording, the small cue-word list's grounding effects) is the
+crude middle the owner rejected: it misfires on names ("No Name Burgers"
+loses "name") and teaches nothing. DELETE it. The ONE surviving rule,
+reframed as dense-input hygiene not negation handling: cue tokens are
+stripped from any phrase before the DENSE fallback embeds it, so the
+semantic model can never interpret a negation ("sin cerdo" → embeds
+"cerdo" → pork, positively; the vegan-ramen inversion stays impossible).
+Gold negation stratum re-authors to: mentioned word grounds positively +
+non-inversion. Dietary toggles remain the only real exclusions.
+Implementation: mostly deletive; FIRST item of the next working session.
