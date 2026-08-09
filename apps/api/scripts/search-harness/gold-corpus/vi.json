@@ -1379,8 +1379,7 @@
         "concepts": ["soup"],
         "mustNotResolve": []
       },
-      "park": true,
-      "notes": "'canh' = a clear soup, and is NOT banked as a vi alias (verified). Also one fold from 'cánh' (wing) and 'cạnh' (edge). SAFE = soup via dense, or park."
+      "notes": "UN-PARKED 2026-08-09: 'canh' (a clear soup) is banked on soup and grounds gazetteer-exact. It was unbanked because the claims registry adjudicated on the accent-DESTROYING recall fold, so canh/cánh (wing)/cạnh (edge) arrived as one word and the offer lost a hearing that was never real. The claim unit is the FORM now, so the three words no longer contest each other. Live assertion, not a park: a wing or an edge here would be the failure."
     },
     {
       "id": "hg-10",
@@ -1402,7 +1401,7 @@
         "mustNotResolve": []
       },
       "park": true,
-      "notes": "'nem' is unbanked bare; only 'nem cuốn'→spring roll exists. Reaching spring roll is defensible; anything else is not."
+      "notes": "STILL PARKED, and the reason is now known precisely (2026-08-09). 'nem' is unbanked bare not because anything refused it — with form-scoped claims nothing contests it — but because the vocabulary generator never OFFERS the bare word: asked for spring roll in vi it emits the compounds ('nem cuốn', 'nem rán', 'chả giò'). So bare 'nem' falls to the fuzzy linker, which reaches 'little gem lettuce' — a substring accident, not a locale defect. The fix is a generator that also emits the head word, and it is not owed to the claims registry."
     },
     {
       "id": "hg-12",

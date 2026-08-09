@@ -1,16 +1,13 @@
 {
-  "ranAt": "2026-08-09T08:34:07.732Z",
+  "ranAt": "2026-08-09T08:58:49.507Z",
   "lang": "vi",
   "corpusVersion": 1,
   "scoreboard": {
-    "overall": 98.15950920245399,
-    "top1SingleConcept": 97.16981132075472,
+    "overall": 98.77300613496932,
+    "top1SingleConcept": 98.11320754716981,
     "negationNonInversion": 100,
     "constraintPreservation": 100,
-    "homographMisGroundings": [
-      "canh→viet sandwich[linked]",
-      "nem→little gem lettuce[linked]"
-    ],
+    "homographMisGroundings": ["nem→little gem lettuce[linked]"],
     "homographMisGroundingsExact": []
   },
   "results": [
@@ -115,6 +112,15 @@
           "name": "viet sandwich",
           "tier": "gazetteer-exact",
           "foldedName": "viet sandwich"
+        },
+        {
+          "entityId": "d0cee3f7-5e48-4efc-86ce-dfbf8f3ca5eb",
+          "bucket": "food",
+          "type": "food",
+          "span": "bánh mì",
+          "name": "bread",
+          "tier": "gazetteer-exact",
+          "foldedName": "bread"
         }
       ],
       "unresolved": [],
@@ -166,6 +172,15 @@
           "name": "viet sandwich",
           "tier": "gazetteer-exact",
           "foldedName": "viet sandwich"
+        },
+        {
+          "entityId": "d0cee3f7-5e48-4efc-86ce-dfbf8f3ca5eb",
+          "bucket": "food",
+          "type": "food",
+          "span": "banh mi",
+          "name": "bread",
+          "tier": "gazetteer-exact",
+          "foldedName": "bread"
         }
       ],
       "unresolved": [],
@@ -325,6 +340,15 @@
           "name": "banh cuon",
           "tier": "gazetteer-exact",
           "foldedName": "banh cuon"
+        },
+        {
+          "entityId": "81639118-f216-4944-b4d3-01d32d8bc69e",
+          "bucket": "food",
+          "type": "food",
+          "span": "bánh cuốn",
+          "name": "rice noodle wrap",
+          "tier": "gazetteer-exact",
+          "foldedName": "rice noodle wrap"
         }
       ],
       "unresolved": [],
@@ -449,6 +473,15 @@
       "preservation": 1,
       "reasons": [],
       "grounded": [
+        {
+          "entityId": "7eeb7cb1-5653-46e7-a24b-af91cd5e85cd",
+          "bucket": "food",
+          "type": "food",
+          "span": "tôm",
+          "name": "shrimp",
+          "tier": "gazetteer-exact",
+          "foldedName": "shrimp"
+        },
         {
           "entityId": "b5c058ab-7ab6-4ccb-912a-cc6b366b5ade",
           "bucket": "food",
@@ -680,15 +713,6 @@
       "preservation": 1,
       "reasons": [],
       "grounded": [
-        {
-          "entityId": "9b12c271-a4eb-418c-9fe3-4c2cce425801",
-          "bucket": "food",
-          "type": "food",
-          "span": "rau",
-          "name": "veggies",
-          "tier": "gazetteer-exact",
-          "foldedName": "veggies"
-        },
         {
           "entityId": "a562dee6-7105-4d17-8b6c-7dd15a4ea018",
           "bucket": "food",
@@ -1135,6 +1159,15 @@
           "name": "pork",
           "tier": "gazetteer-exact",
           "foldedName": "pork"
+        },
+        {
+          "entityId": "fa3af5bd-d31b-4ecc-9685-f33be001eb19",
+          "bucket": "ingredients",
+          "type": "ingredient",
+          "span": "heo",
+          "name": "pork",
+          "tier": "gazetteer-exact",
+          "foldedName": "pork"
         }
       ],
       "unresolved": [],
@@ -1168,6 +1201,15 @@
           "name": "beef",
           "tier": "gazetteer-exact",
           "foldedName": "beef"
+        },
+        {
+          "entityId": "43142a71-5424-480b-a9a8-f293487cc31e",
+          "bucket": "ingredients",
+          "type": "ingredient",
+          "span": "bò",
+          "name": "beef",
+          "tier": "gazetteer-exact",
+          "foldedName": "beef"
         }
       ],
       "unresolved": [],
@@ -1194,6 +1236,15 @@
       "reasons": [],
       "grounded": [
         {
+          "entityId": "39c04460-3129-4bc0-a74a-f85bde2101bd",
+          "bucket": "food",
+          "type": "food",
+          "span": "gà nướng",
+          "name": "roast chicken",
+          "tier": "gazetteer-exact",
+          "foldedName": "roast chicken"
+        },
+        {
           "entityId": "d091b65c-ea76-4807-8c5b-d7270dd0fc6f",
           "bucket": "food",
           "type": "food",
@@ -1201,15 +1252,6 @@
           "name": "grilled chicken",
           "tier": "gazetteer-exact",
           "foldedName": "grilled chicken"
-        },
-        {
-          "entityId": "5e7775c8-82bc-410a-bce3-7b5d05e49249",
-          "bucket": "foodAttributes",
-          "type": "food_attribute",
-          "span": "nướng",
-          "name": "grilled",
-          "tier": "linked",
-          "foldedName": "grilled"
         },
         {
           "entityId": "c9957bd2-edf1-4839-90eb-72442ba7354a",
@@ -1252,6 +1294,15 @@
           "name": "vietnamese beef stew",
           "tier": "gazetteer-exact",
           "foldedName": "vietnamese beef stew"
+        },
+        {
+          "entityId": "43142a71-5424-480b-a9a8-f293487cc31e",
+          "bucket": "ingredients",
+          "type": "ingredient",
+          "span": "bò",
+          "name": "beef",
+          "tier": "linked",
+          "foldedName": "beef"
         }
       ],
       "unresolved": [],
@@ -1327,6 +1378,15 @@
           "name": "steamed bun",
           "tier": "gazetteer-exact",
           "foldedName": "steamed bun"
+        },
+        {
+          "entityId": "ed8e2ad1-e9cd-4ed2-ba0f-8c772ff63b57",
+          "bucket": "food",
+          "type": "food",
+          "span": "bánh bao",
+          "name": "bao",
+          "tier": "gazetteer-exact",
+          "foldedName": "bao"
         }
       ],
       "unresolved": [],
@@ -1506,15 +1566,6 @@
           "foldedName": "beef pho"
         },
         {
-          "entityId": "8c39422d-5186-47ee-b0f6-25dfae8da72a",
-          "bucket": "food",
-          "type": "food",
-          "span": "phở bò",
-          "name": "beef rib pho",
-          "tier": "gazetteer-exact",
-          "foldedName": "beef rib pho"
-        },
-        {
           "entityId": "08f45e9c-abf7-4db2-bbc9-d772538ca720",
           "bucket": "food",
           "type": "food",
@@ -1522,6 +1573,15 @@
           "name": "pho",
           "tier": "linked",
           "foldedName": "pho"
+        },
+        {
+          "entityId": "43142a71-5424-480b-a9a8-f293487cc31e",
+          "bucket": "ingredients",
+          "type": "ingredient",
+          "span": "bò",
+          "name": "beef",
+          "tier": "linked",
+          "foldedName": "beef"
         }
       ],
       "unresolved": [],
@@ -1608,15 +1668,6 @@
           "foldedName": "beef pho"
         },
         {
-          "entityId": "8c39422d-5186-47ee-b0f6-25dfae8da72a",
-          "bucket": "food",
-          "type": "food",
-          "span": "pho bo",
-          "name": "beef rib pho",
-          "tier": "gazetteer-exact",
-          "foldedName": "beef rib pho"
-        },
-        {
           "entityId": "08f45e9c-abf7-4db2-bbc9-d772538ca720",
           "bucket": "food",
           "type": "food",
@@ -1624,6 +1675,15 @@
           "name": "pho",
           "tier": "linked",
           "foldedName": "pho"
+        },
+        {
+          "entityId": "43142a71-5424-480b-a9a8-f293487cc31e",
+          "bucket": "ingredients",
+          "type": "ingredient",
+          "span": "bo",
+          "name": "beef",
+          "tier": "linked",
+          "foldedName": "beef"
         }
       ],
       "unresolved": [],
@@ -1650,6 +1710,15 @@
       "reasons": [],
       "grounded": [
         {
+          "entityId": "9fe0fbcb-08c5-46ac-9876-7262f9f0ebd8",
+          "bucket": "food",
+          "type": "food",
+          "span": "cơm gà",
+          "name": "chicken bowl",
+          "tier": "gazetteer-exact",
+          "foldedName": "chicken bowl"
+        },
+        {
           "entityId": "c5fb004b-984d-478f-99aa-cda7ad2677b1",
           "bucket": "food",
           "type": "food",
@@ -1657,15 +1726,6 @@
           "name": "chicken and rice",
           "tier": "gazetteer-exact",
           "foldedName": "chicken and rice"
-        },
-        {
-          "entityId": "35e1f3b8-f85d-472b-b378-803fd071eea1",
-          "bucket": "ingredients",
-          "type": "ingredient",
-          "span": "cơm",
-          "name": "rice",
-          "tier": "linked",
-          "foldedName": "rice"
         },
         {
           "entityId": "c9957bd2-edf1-4839-90eb-72442ba7354a",
@@ -1896,6 +1956,15 @@
           "foldedName": "grilled shrimp"
         },
         {
+          "entityId": "7eeb7cb1-5653-46e7-a24b-af91cd5e85cd",
+          "bucket": "food",
+          "type": "food",
+          "span": "tôm",
+          "name": "shrimp",
+          "tier": "linked",
+          "foldedName": "shrimp"
+        },
+        {
           "entityId": "5e7775c8-82bc-410a-bce3-7b5d05e49249",
           "bucket": "foodAttributes",
           "type": "food_attribute",
@@ -1936,15 +2005,6 @@
           "name": "pork vermicelli",
           "tier": "gazetteer-exact",
           "foldedName": "pork vermicelli"
-        },
-        {
-          "entityId": "82716a95-3dff-49d3-b1dc-f1cb1d59800a",
-          "bucket": "ingredients",
-          "type": "ingredient",
-          "span": "bún",
-          "name": "vermicelli",
-          "tier": "linked",
-          "foldedName": "vermicelli"
         }
       ],
       "unresolved": [],
@@ -2020,6 +2080,15 @@
           "name": "shaken beef",
           "tier": "gazetteer-exact",
           "foldedName": "shaken beef"
+        },
+        {
+          "entityId": "43142a71-5424-480b-a9a8-f293487cc31e",
+          "bucket": "ingredients",
+          "type": "ingredient",
+          "span": "bò",
+          "name": "beef",
+          "tier": "linked",
+          "foldedName": "beef"
         }
       ],
       "unresolved": [],
@@ -2053,6 +2122,15 @@
           "name": "shrimp rolls",
           "tier": "gazetteer-exact",
           "foldedName": "shrimp rolls"
+        },
+        {
+          "entityId": "7eeb7cb1-5653-46e7-a24b-af91cd5e85cd",
+          "bucket": "food",
+          "type": "food",
+          "span": "tôm",
+          "name": "shrimp",
+          "tier": "linked",
+          "foldedName": "shrimp"
         }
       ],
       "unresolved": [],
@@ -2733,6 +2811,15 @@
           "foldedName": "rice"
         },
         {
+          "entityId": "39c04460-3129-4bc0-a74a-f85bde2101bd",
+          "bucket": "food",
+          "type": "food",
+          "span": "gà nướng",
+          "name": "roast chicken",
+          "tier": "gazetteer-exact",
+          "foldedName": "roast chicken"
+        },
+        {
           "entityId": "d091b65c-ea76-4807-8c5b-d7270dd0fc6f",
           "bucket": "food",
           "type": "food",
@@ -2740,15 +2827,6 @@
           "name": "grilled chicken",
           "tier": "gazetteer-exact",
           "foldedName": "grilled chicken"
-        },
-        {
-          "entityId": "5e7775c8-82bc-410a-bce3-7b5d05e49249",
-          "bucket": "foodAttributes",
-          "type": "food_attribute",
-          "span": "nướng",
-          "name": "grilled",
-          "tier": "linked",
-          "foldedName": "grilled"
         },
         {
           "entityId": "c9957bd2-edf1-4839-90eb-72442ba7354a",
@@ -2839,6 +2917,15 @@
           "bucket": "food",
           "type": "food",
           "span": "thịt bò",
+          "name": "beef",
+          "tier": "gazetteer-exact",
+          "foldedName": "beef"
+        },
+        {
+          "entityId": "43142a71-5424-480b-a9a8-f293487cc31e",
+          "bucket": "ingredients",
+          "type": "ingredient",
+          "span": "bò",
           "name": "beef",
           "tier": "gazetteer-exact",
           "foldedName": "beef"
@@ -2935,6 +3022,15 @@
           "name": "viet sandwich",
           "tier": "gazetteer-exact",
           "foldedName": "viet sandwich"
+        },
+        {
+          "entityId": "d0cee3f7-5e48-4efc-86ce-dfbf8f3ca5eb",
+          "bucket": "food",
+          "type": "food",
+          "span": "bánh mì",
+          "name": "bread",
+          "tier": "gazetteer-exact",
+          "foldedName": "bread"
         },
         {
           "entityId": "93d01a72-e5bf-46c6-adda-351cb14370a1",
@@ -3123,15 +3219,6 @@
           "foldedName": "rice"
         },
         {
-          "entityId": "9b12c271-a4eb-418c-9fe3-4c2cce425801",
-          "bucket": "food",
-          "type": "food",
-          "span": "rau",
-          "name": "veggies",
-          "tier": "gazetteer-exact",
-          "foldedName": "veggies"
-        },
-        {
           "entityId": "a562dee6-7105-4d17-8b6c-7dd15a4ea018",
           "bucket": "food",
           "type": "food",
@@ -3276,6 +3363,15 @@
           "foldedName": "banh xeo"
         },
         {
+          "entityId": "7eeb7cb1-5653-46e7-a24b-af91cd5e85cd",
+          "bucket": "food",
+          "type": "food",
+          "span": "tôm",
+          "name": "shrimp",
+          "tier": "gazetteer-exact",
+          "foldedName": "shrimp"
+        },
+        {
           "entityId": "b5c058ab-7ab6-4ccb-912a-cc6b366b5ade",
           "bucket": "food",
           "type": "food",
@@ -3367,15 +3463,6 @@
           "name": "pho",
           "tier": "gazetteer-exact",
           "foldedName": "pho"
-        },
-        {
-          "entityId": "9b12c271-a4eb-418c-9fe3-4c2cce425801",
-          "bucket": "food",
-          "type": "food",
-          "span": "rau",
-          "name": "veggies",
-          "tier": "gazetteer-exact",
-          "foldedName": "veggies"
         },
         {
           "entityId": "a562dee6-7105-4d17-8b6c-7dd15a4ea018",
@@ -3684,16 +3771,16 @@
           "foldedName": "rice"
         },
         {
-          "entityId": "1780ec78-d202-4abe-8d4b-9425494e3abe",
-          "bucket": "food",
-          "type": "food",
+          "entityId": "b9e2ab23-0b4a-4f3c-aa1a-7ef692977d62",
+          "bucket": "foodAttributes",
+          "type": "food_attribute",
           "span": "mặn",
-          "name": "khao man gai",
-          "tier": "linked",
-          "foldedName": "khao man gai"
+          "name": "salty",
+          "tier": "gazetteer-exact",
+          "foldedName": "salty"
         }
       ],
-      "unresolved": [],
+      "unresolved": ["không"],
       "analysis": {
         "script": "latin",
         "requestLocale": "vi-VN",
@@ -3702,7 +3789,7 @@
           "confidence": 1,
           "source": "detector"
         },
-        "denseTierUsed": true
+        "denseTierUsed": false
       },
       "misGroundings": [],
       "notes": "NEGATION v2 (LITERAL IGNORE): 'không X' is not a supported exclusion — the mentioned word may ground POSITIVELY like any other ingredient. The assertion is head preservation + NON-INVERSION: the parse must never flip into the semantic opposite (a vegetarian/vegan constraint the user did not ask for). Negating a taste attribute rather than an ingredient."
@@ -4424,10 +4511,20 @@
       "stratum": "homograph",
       "locale": "vi-VN",
       "pass": true,
-      "preservation": 0,
-      "reasons": ["clean park (safe)"],
-      "grounded": [],
-      "unresolved": ["bò"],
+      "preservation": 1,
+      "reasons": [],
+      "grounded": [
+        {
+          "entityId": "ab87265a-7d1a-4334-b851-93e41c0faeff",
+          "bucket": "food",
+          "type": "food",
+          "span": "bò",
+          "name": "beef",
+          "tier": "gazetteer-exact",
+          "foldedName": "beef"
+        }
+      ],
+      "unresolved": [],
       "analysis": {
         "script": "latin",
         "requestLocale": "vi-VN",
@@ -4436,7 +4533,7 @@
           "confidence": 1,
           "source": "detector"
         },
-        "denseTierUsed": true
+        "denseTierUsed": false
       },
       "misGroundings": [],
       "notes": "THE SHARPEST VIETNAMESE HOMOGRAPH: tone marks are meaning. 'bò' = beef, 'bơ' = butter/avocado — and BOTH fold to 'bo', where the corpus banks 'bo'→avocado + butter and NOTHING on beef. A confident avocado answer to a beef query is the vi twin of the es 'tuna' case. SAFE = beef, or clean park."
@@ -4606,10 +4703,20 @@
       "stratum": "homograph",
       "locale": "vi-VN",
       "pass": true,
-      "preservation": 0,
-      "reasons": ["clean park (safe)"],
-      "grounded": [],
-      "unresolved": ["mỹ"],
+      "preservation": 1,
+      "reasons": [],
+      "grounded": [
+        {
+          "entityId": "ad62b0e6-809c-47c3-8697-2d8b8fac91e2",
+          "bucket": "restaurantAttributes",
+          "type": "restaurant_attribute",
+          "span": "mỹ",
+          "name": "american",
+          "tier": "gazetteer-exact",
+          "foldedName": "american"
+        }
+      ],
+      "unresolved": [],
       "analysis": {
         "script": "latin",
         "requestLocale": "vi-VN",
@@ -4694,18 +4801,18 @@
       "query": "canh",
       "stratum": "homograph",
       "locale": "vi-VN",
-      "pass": false,
-      "preservation": 0,
-      "reasons": ["MIS-GROUNDED (outside allowed set): viet sandwich[linked]"],
+      "pass": true,
+      "preservation": 1,
+      "reasons": [],
       "grounded": [
         {
-          "entityId": "9cd8f4aa-bb68-4bee-937f-45fee496d147",
+          "entityId": "821d07a6-0ec3-482c-a140-b6c103a152a4",
           "bucket": "food",
           "type": "food",
           "span": "canh",
-          "name": "viet sandwich",
-          "tier": "linked",
-          "foldedName": "viet sandwich"
+          "name": "soup",
+          "tier": "gazetteer-exact",
+          "foldedName": "soup"
         }
       ],
       "unresolved": [],
@@ -4717,10 +4824,10 @@
           "confidence": 0.5,
           "source": "request-prior"
         },
-        "denseTierUsed": true
+        "denseTierUsed": false
       },
-      "misGroundings": ["viet sandwich[linked]"],
-      "notes": "'canh' = a clear soup, and is NOT banked as a vi alias (verified). Also one fold from 'cánh' (wing) and 'cạnh' (edge). SAFE = soup via dense, or park."
+      "misGroundings": [],
+      "notes": "UN-PARKED 2026-08-09: 'canh' (a clear soup) is banked on soup and grounds gazetteer-exact. It was unbanked because the claims registry adjudicated on the accent-DESTROYING recall fold, so canh/cánh (wing)/cạnh (edge) arrived as one word and the offer lost a hearing that was never real. The claim unit is the FORM now, so the three words no longer contest each other. Live assertion, not a park: a wing or an edge here would be the failure."
     },
     {
       "id": "hg-10",
@@ -4778,7 +4885,7 @@
         "denseTierUsed": true
       },
       "misGroundings": ["little gem lettuce[linked]"],
-      "notes": "'nem' is unbanked bare; only 'nem cuốn'→spring roll exists. Reaching spring roll is defensible; anything else is not."
+      "notes": "STILL PARKED, and the reason is now known precisely (2026-08-09). 'nem' is unbanked bare not because anything refused it — with form-scoped claims nothing contests it — but because the vocabulary generator never OFFERS the bare word: asked for spring roll in vi it emits the compounds ('nem cuốn', 'nem rán', 'chả giò'). So bare 'nem' falls to the fuzzy linker, which reaches 'little gem lettuce' — a substring accident, not a locale defect. The fix is a generator that also emits the head word, and it is not owed to the claims registry."
     },
     {
       "id": "hg-12",
@@ -5840,15 +5947,6 @@
           "name": "sandwich",
           "tier": "gazetteer-exact",
           "foldedName": "sandwich"
-        },
-        {
-          "entityId": "8f26ae55-e27b-465c-bac5-ade9ee064905",
-          "bucket": "food",
-          "type": "food",
-          "span": "sandwich",
-          "name": "sub sandwich",
-          "tier": "gazetteer-exact",
-          "foldedName": "sub sandwich"
         }
       ],
       "unresolved": ["muốn ăn"],
@@ -5935,15 +6033,6 @@
           "foldedName": "beef pho"
         },
         {
-          "entityId": "8c39422d-5186-47ee-b0f6-25dfae8da72a",
-          "bucket": "food",
-          "type": "food",
-          "span": "phở bo",
-          "name": "beef rib pho",
-          "tier": "gazetteer-exact",
-          "foldedName": "beef rib pho"
-        },
-        {
           "entityId": "08f45e9c-abf7-4db2-bbc9-d772538ca720",
           "bucket": "food",
           "type": "food",
@@ -5951,6 +6040,15 @@
           "name": "pho",
           "tier": "linked",
           "foldedName": "pho"
+        },
+        {
+          "entityId": "43142a71-5424-480b-a9a8-f293487cc31e",
+          "bucket": "ingredients",
+          "type": "ingredient",
+          "span": "bo",
+          "name": "beef",
+          "tier": "linked",
+          "foldedName": "beef"
         }
       ],
       "unresolved": [],
@@ -5986,15 +6084,6 @@
           "foldedName": "beef pho"
         },
         {
-          "entityId": "8c39422d-5186-47ee-b0f6-25dfae8da72a",
-          "bucket": "food",
-          "type": "food",
-          "span": "pho bò",
-          "name": "beef rib pho",
-          "tier": "gazetteer-exact",
-          "foldedName": "beef rib pho"
-        },
-        {
           "entityId": "08f45e9c-abf7-4db2-bbc9-d772538ca720",
           "bucket": "food",
           "type": "food",
@@ -6002,6 +6091,15 @@
           "name": "pho",
           "tier": "linked",
           "foldedName": "pho"
+        },
+        {
+          "entityId": "43142a71-5424-480b-a9a8-f293487cc31e",
+          "bucket": "ingredients",
+          "type": "ingredient",
+          "span": "bò",
+          "name": "beef",
+          "tier": "linked",
+          "foldedName": "beef"
         }
       ],
       "unresolved": [],
@@ -6404,15 +6502,6 @@
           "name": "pork vermicelli",
           "tier": "gazetteer-exact",
           "foldedName": "pork vermicelli"
-        },
-        {
-          "entityId": "82716a95-3dff-49d3-b1dc-f1cb1d59800a",
-          "bucket": "ingredients",
-          "type": "ingredient",
-          "span": "bun",
-          "name": "vermicelli",
-          "tier": "linked",
-          "foldedName": "vermicelli"
         }
       ],
       "unresolved": [],
