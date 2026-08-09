@@ -1,4 +1,9 @@
 /**
+ * @script-class: probe
+ * @finding: vocabulary-pass word-set instability on identical re-asks — the
+ *   flip that motivated "the pass ENUMERATES and the judge decides"
+ *   (d85def24b). Kept so that finding stays reproducible per locale.
+ *
  * FLIP-RATE PROBE — how stable is the vocabulary pass's WORD SET on identical
  * re-asks? Runs the v4 prompt and the v5 (rederived) prompt N times each over
  * the same concept batch and reports, per concept, how many DISTINCT alias
