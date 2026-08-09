@@ -1,6 +1,7 @@
 import { PrismaClient } from '@prisma/client';
 import {
   buildOperatingMetadataFromLocation,
+  buildStructuredWeeklyHours,
   evaluateOperatingStatus,
 } from './utils/restaurant-status';
 
@@ -28,7 +29,93 @@ import {
  */
 const prisma = new PrismaClient();
 
+// SEEDED WITNESS (F9981 class): this spec used to assert the corpus already
+// held interval-backed locations, so its verdict depended on WHICH database
+// ran it — green on any populated corpus, red on CI's fresh one. The parity
+// law needs at least one interval-backed location to say anything, so the
+// spec now seeds its own: a synthetic restaurant + location whose interval
+// rows are derived THROUGH THE SAME exported chain the builder service uses
+// (buildOperatingMetadataFromLocation → buildStructuredWeeklyHours, with the
+// service's midnight-crossing split) — parity-identical by construction,
+// exactly like production rows. Corpus rows still sweep in as bonus coverage.
+const SEED_ENTITY_ID = 'eeeeeeee-eeee-4eee-8eee-eeeeeee0h8h8'.replace(
+  /h/g,
+  'a',
+);
+const SEED_HOURS = {
+  monday: '9:00 AM – 5:00 PM',
+  tuesday: '9:00 AM – 5:00 PM',
+  wednesday: '9:00 AM – 5:00 PM',
+  thursday: '9:00 AM – 5:00 PM',
+  // Midnight-crosser on purpose: exercises the split rule both mechanisms
+  // must agree on.
+  friday: '5:00 PM – 1:00 AM',
+  saturday: '10:00 AM – 11:00 PM',
+  sunday: 'Closed',
+};
+
+beforeAll(async () => {
+  await prisma.entity.create({
+    data: {
+      entityId: SEED_ENTITY_ID,
+      name: 'itest-open-now-parity-restaurant',
+      type: 'restaurant',
+    },
+  });
+  const location = await prisma.restaurantLocation.create({
+    data: {
+      restaurantId: SEED_ENTITY_ID,
+      hours: SEED_HOURS,
+      timeZone: 'America/Chicago',
+    },
+  });
+  const metadata = buildOperatingMetadataFromLocation(
+    SEED_HOURS,
+    null,
+    'America/Chicago',
+  );
+  const weekly = buildStructuredWeeklyHours(metadata, null);
+  if (!weekly) {
+    throw new Error('seed hours failed to parse — the witness cannot exist');
+  }
+  const rows: Array<{ dow: number; startMin: number; endMin: number }> = [];
+  weekly.days.forEach((day, dayIndex) => {
+    for (const interval of day.intervals) {
+      if (interval.end <= interval.start) continue;
+      if (interval.end <= 1440) {
+        rows.push({
+          dow: dayIndex,
+          startMin: interval.start,
+          endMin: interval.end,
+        });
+      } else {
+        rows.push({ dow: dayIndex, startMin: interval.start, endMin: 1440 });
+        rows.push({
+          dow: (dayIndex + 1) % 7,
+          startMin: 0,
+          endMin: interval.end - 1440,
+        });
+      }
+    }
+  });
+  for (const row of rows) {
+    await prisma.$executeRaw`
+      INSERT INTO derived_location_open_intervals (location_id, dow, start_min, end_min)
+      VALUES (${location.locationId}::uuid, ${row.dow}, ${row.startMin}, ${row.endMin})
+      ON CONFLICT DO NOTHING
+    `;
+  }
+});
+
 afterAll(async () => {
+  await prisma.$executeRaw`
+    DELETE FROM derived_location_open_intervals
+    WHERE location_id IN (
+      SELECT location_id FROM core_restaurant_locations
+      WHERE restaurant_id = ${SEED_ENTITY_ID}::uuid
+    )
+  `;
+  await prisma.entity.deleteMany({ where: { entityId: SEED_ENTITY_ID } });
   await prisma.$disconnect();
 });
 
