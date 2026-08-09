@@ -717,3 +717,24 @@ incumbent languages' word claims by fold (vi cost es 17 surfaces, gate
 unmoved — but know it before language 4); (c) en-as-real-locale: 577 en
 rows already exist while display path treats en as implicit — a
 vocabulary-sweep decision, not blocking.
+
+### §14 CLOSED (2026-08-09, eb12cd764) — red team ran, refuted, and was answered
+
+The 3-agent adversarial pass produced 11 executed-proof defects; ALL fixed
+same night, each fix independently gate-proven: per-token accent evidence
+(aa3d45fd8; 161→39 on the partial-accent A/B), CJK adjacency joiner +
+run-level residue (52388c76d), cousins labeled + display-score out of ALL
+ordering (8135d2237, 0 map-vs-card contradictions after), H6 memo
+order/aliasing + sqlPreview wiring (d64dae20f), containment boot self-heal
+(ed87eef65 — prod had been serving with rung-2 OFF), guard bypasses closed
++ eviction keeps the user's label (0e439c897/56512df51/74b346ff4), and the
+night's deepest cut: CLAIMS ARE PER-FORM, NOT PER-FOLD (c65ac0b74 — tone
+marks are phonemic; every vi-vs-vi hearing was a false conflict) with the
+74-row false-conflict clear + vocabulary completion (a50bf2cc1).
+Final control at HEAD: es 98.7 / vi 98.8 / flow 18/18 / resolution 49/49 /
+invariants 22. Ship handed to the deploy session at eb12cd764.
+PROD FOLLOW-UP OWED: run the false-conflict clear + vi vocabulary pass
+against prod's registry after the deploy (local-only tonight).
+Attacks that FAILED (also §14 evidence): tier never orders anywhere; DST
+parity 75 instants × 11k locations; preview injection/execution; the
+WordClaimVerdict brand itself; zero residual aliases[] readers.
