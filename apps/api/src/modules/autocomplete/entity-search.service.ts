@@ -105,11 +105,14 @@ export class EntitySearchService {
     term: string,
     entityTypes: EntityType[],
     limit: number,
+    locale?: string,
   ): Promise<EntitySearchResult[]> {
     const matches = await this.textSearch.searchAttributeAutocompleteEntities(
       term,
       entityTypes,
       limit,
+      // AC-P0: the app locale reaches the attribute lane like every other.
+      { requestLocale: locale ?? null },
     );
     return matches.map((row) => ({
       entityId: row.entityId,

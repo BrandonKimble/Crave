@@ -475,7 +475,7 @@ export class EntityTextSearchService {
     term: string,
     entityTypes: EntityType[],
     limit: number,
-    options: { engineId?: string | null } = {},
+    options: { engineId?: string | null; requestLocale?: string | null } = {},
   ): Promise<TextSearchMatch[]> {
     const normalizedTerm = this.normalizeTerm(term);
     if (
@@ -494,18 +494,43 @@ export class EntityTextSearchService {
     }
 
     const safeLimit = Math.max(1, Math.min(limit, this.maxLimit));
-    const resultsByTerm = await this.searchEntitiesForTerms(
-      [normalizedTerm],
-      attributeTypes,
-      Math.min(safeLimit * 4, this.maxLimit),
-      { engineId: options.engineId },
+    // AC-P0 (autocomplete i18n audit, §13): the attribute lane was the ONE
+    // matching lane with no locale — 1,921 es attribute surfaces existed,
+    // the chips RENDERED in Spanish, and typing 'picante'/'sin gluten'
+    // could never surface them. The locale-chained surface registry runs
+    // beside the legacy lane exactly as it does for the entity lane, and a
+    // registry hit is the STRONGER evidence (exact/prefix on an adjudicated
+    // surface), so it merges in front.
+    const [resultsByTerm, localized] = await Promise.all([
+      this.searchEntitiesForTerms(
+        [normalizedTerm],
+        attributeTypes,
+        Math.min(safeLimit * 4, this.maxLimit),
+        { engineId: options.engineId },
+      ),
+      options.requestLocale
+        ? this.searchLocalizedSurfaces(
+            term,
+            attributeTypes,
+            safeLimit,
+            options.requestLocale,
+          )
+        : Promise.resolve([]),
+    ]);
+    const legacy = (resultsByTerm.get(normalizedTerm) ?? []).filter((match) =>
+      this.isAttributeAutocompleteTextMatch(normalizedTerm, match),
     );
-
-    return (resultsByTerm.get(normalizedTerm) ?? [])
-      .filter((match) =>
-        this.isAttributeAutocompleteTextMatch(normalizedTerm, match),
-      )
-      .slice(0, safeLimit);
+    const seen = new Set(localized.map((row) => row.entityId));
+    return [
+      ...localized.map((row) => ({
+        entityId: row.entityId,
+        name: row.name,
+        type: row.type,
+        similarity: row.similarity,
+        evidence: row.evidence,
+      })),
+      ...legacy.filter((row) => !seen.has(row.entityId)),
+    ].slice(0, safeLimit);
   }
 
   async searchEntitiesForTerms(

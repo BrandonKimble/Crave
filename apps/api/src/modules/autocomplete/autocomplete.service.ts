@@ -384,6 +384,7 @@ export class AutocompleteService {
             normalizedQuery,
             attributeEntityTypes,
             Math.max(limit, ATTRIBUTE_RECALL_FLOOR),
+            locale,
           )
         : Promise.resolve([]),
     ]);
