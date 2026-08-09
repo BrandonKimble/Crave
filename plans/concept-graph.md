@@ -586,3 +586,28 @@ semantic model can never interpret a negation ("sin cerdo" → embeds
 Gold negation stratum re-authors to: mentioned word grounds positively +
 non-inversion. Dietary toggles remain the only real exclusions.
 Implementation: mostly deletive; FIRST item of the next working session.
+
+## 13. AUTOCOMPLETE MULTILINGUAL — deep-read verdict (2026-08-08)
+
+VERDICT: structurally close to ideal (same localeLookupChain, canonicalFold
+in the localized lane, submitToken on 100% of rows, labels display-only) —
+but the i18n lane was BOLTED BESIDE the pre-i18n lane instead of replacing
+it. One P0, measured live:
+
+P0 — THE ATTRIBUTE LANE HAS NO LOCALE PARAMETER AT ALL. 1,921 es attribute
+surfaces exist and the chips RENDER in Spanish, but an es user typing
+'vegetariano' can never surface the vegetarian chip they can see.
+Display-localized, match-English-only.
+
+P1s: sparse lane still reads the unlocalized aliases[] haystack (F2 latent —
+0 leaking rows today by data coincidence, nothing enforces it) and matches
+on lower() not the fold (Despaña/Harry's reachable in search, not in
+autocomplete); localized lane is exact+prefix only (typo tolerance is an
+English-only privilege). P2s: Redis cache key omits locale though locale
+changes recall (stated invariant false); food names never localize while
+ingredients do (mixed-language panel after twin-merge); dense embeds on
+EVERY keystroke after the first space (comment says autocomplete shouldn't).
+Crave Score is only a deep tie-break in suggestions, not a ranking input —
+flag for owner. Fix order: attr-locale → alias-arm to registry → fold
+symmetry → cache key → food-localization ruling → localized fuzzy → dense
+throttle.
