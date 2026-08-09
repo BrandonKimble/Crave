@@ -164,10 +164,13 @@ const pack = (language: string, cues: string[]): LanguagePack => ({
   negationCues: new Set(cues.map((c) => canonicalFold(c))),
 });
 
-/** R5-3 tier 1: closed ~10-word lists. Deliberately NOT extended with
- *  "hold the", "free of", "-less" — every addition must be measured on the
- *  gold corpus, and a false cue FAILS CLOSED (drops a span) so the cost of
- *  over-listing is real. */
+/** Closed ~10-word lists. Under negation v2 (LITERAL IGNORE) these lists
+ *  drive EXACTLY ONE thing: stripping cue tokens from the text handed to
+ *  the DENSE EMBEDDER. They no longer touch lexical grounding, residue
+ *  runs, staging or the on-demand ask, so a false cue costs one word of
+ *  embedded context rather than a dropped span — the old "FAILS CLOSED
+ *  (drops a span)" cost died with the cue machinery. Still kept small and
+ *  high-precision: not extended with "hold the", "free of", "-less". */
 export const LANGUAGE_PACKS: ReadonlyMap<string, LanguagePack> = new Map(
   [
     pack('en', ['no', 'without', 'not', 'non']),
@@ -187,6 +190,13 @@ export const LANGUAGE_PACKS: ReadonlyMap<string, LanguagePack> = new Map(
     // stripping, never lexical grounding, so a false positive costs one
     // word of embedded context and nothing else.
     pack('vi', ['không', 'chẳng', 'đừng', 'miễn']),
+    // NO zh/ko/ja pack, deliberately. Neither is a SUPPORTED_LOCALE, and the
+    // one consumer (dense-input stripping) removes WHITESPACE-DELIMITED
+    // words: an unspaced 不要肉 carries no whitespace to split on, so a zh
+    // pack would either no-op or, once someone "fixed" it, delete a whole
+    // run. CJK negation hygiene is real work (strip at the segmented-token
+    // level), not a list entry — adding the list now would be machinery
+    // that cannot do its job.
   ].map((p) => [p.language, p]),
 );
 
