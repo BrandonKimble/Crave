@@ -80,10 +80,12 @@ adversarial pass that tried to refute it.
    es/vi generic keyword vocabulary authored (a Spanish ask still ships
    'mejores' — conservative, but budget-wasting at scale).
 
-6b. **Conjunction loss (grounding gap, found in the lock battery)**:
-   'birria tacos and margaritas' loses the margaritas entirely — multi-item
-   asks keep only the first item. Needs its own design: parallel asks per
-   conjunct. Independent of the step-1 lock.
+6b. **Conjunction "gap" RECLASSIFIED (2026-08-09 evening)**: retested with
+   clean examples — 'tacos and pizza' / 'wings and beer' ground BOTH sides
+   already; conjunctions are parallel asks today, no design needed (owner
+   kept current behavior). The margaritas loss was the junk class: a
+   fuzzy span glued 'and' onto the next word + a literal junk 'and'
+   entity in the graph. Folds into corpus cleanup (C2/A4).
 
 ## C. READY TO BUILD (ratified or unambiguous, not started)
 
