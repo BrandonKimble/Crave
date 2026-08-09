@@ -1,5 +1,5 @@
 import { identityInsertData } from '../content-processing/entity-resolver/entity-identity';
-import { addAliases } from '../content-processing/entity-resolver/entity-alias.service';
+import { addSurfaces } from '../content-processing/entity-resolver/entity-surface.service';
 import { Inject, Injectable } from '@nestjs/common';
 import { EntityType, Prisma } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
@@ -348,12 +348,12 @@ export class RestaurantCuisineExtractionService {
 
       if (matched) {
         // A1: through THE projection writer. normalizeAliasList's
-        // trim+collapse is what addAliases applies to every form, and its
+        // trim+collapse is what addSurfaces applies to every form, and its
         // append order is what the seq-ordered projection reproduces —
         // the resulting array is unchanged, but each cuisine surface now
         // carries source 'cuisine'.
         await this.prisma.$transaction((tx) =>
-          addAliases(
+          addSurfaces(
             tx,
             matched.entityId,
             scopedAliases.map((alias) => ({
@@ -381,7 +381,7 @@ export class RestaurantCuisineExtractionService {
         select: { entityId: true },
       });
       await this.prisma.$transaction((tx) =>
-        addAliases(
+        addSurfaces(
           tx,
           created.entityId,
           createAliases.map((alias) => ({

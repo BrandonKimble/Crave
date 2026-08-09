@@ -563,6 +563,39 @@ two-fold divergence, deletes the un-indexable LIKE); H6 resolveFoodWidening
 verify; stale-comment sweep + dead exports; then structural: entity_surface
 merge, retire aliases[], preview-from-SQL, tokenized surface store.
 
+### §11 structural item 2 DONE — the surface merge (2026-08-09)
+
+`entity_labels` is GONE. One table, `entity_surface`, with a ROLE column
+(display|recall|both) keyed on (entity_id, locale, form) — the key BOTH
+tables already used, which was the split's own confession. Migration
+20260809100000; data merged losslessly: 15,817 twinned rows collapsed to
+role='both', 1,021 label-over-deprecated-alias rows to role='display'
+(the refused recall claim is now CARRIED BY role, not by a second table),
+3,418 label-only rows to role='display', 42,541 recall rows unchanged.
+62,797 rows total, 16,838 duplicates deleted.
+
+`reconcileLabelSurfaces` is DELETED and cannot return: a label form is
+offered for recall exactly ONCE, when its row is written, and if the
+collision guard refuses it `addSurfaces` DEGRADES the row to role='display'
+instead of dropping it. The row is simultaneously the label the user reads
+and the memory that its recall claim lost — so there is no gap between two
+stores for a standing pass to close. `upsertLabelRow` is deleted too; its
+atomic is_default election (F9342) moved into the one writer.
+
+Renamed `entity_alias` -> `entity_surface` (and addAliases -> addSurfaces):
+neither 'alias' nor 'labels' names the merged concept, and keeping either
+would re-encode the deleted split in the table name.
+
+EVERY recall arm now carries `role <> 'display'` (gazetteer localized lane,
+sparse per-form arm, the two matched-forms arms, lexicon/typo dictionary,
+demand-vocabulary known-surface set, adjudicator incumbents + judge
+context); the display read carries `role <> 'recall'`. Verified: launch
+gate 98.7 (148/150, unchanged), autocomplete flow gate 18/18, decomposed
+tier probe GREEN, yarn test:db 41/41, 22 invariants / 40 proofs green.
+
+REMAINING structural: retire aliases[] (item 4) and previews-from-dataSql
+(item 6) — both scoped and mapped, neither started. See the commit body.
+
 ## 12. OWNER RULINGS 2026-08-08 (evening) — toggles + negation v2
 
 **(a) FRESH TOGGLES PER SEARCH (Google-style).** Every new search submission

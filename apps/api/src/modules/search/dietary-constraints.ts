@@ -152,16 +152,16 @@ export class DietaryConstraintRegistry {
    * matching dish happen to be vegan" (that is the dish projection's job).
    *
    * Returns one condition per wall so callers can AND them into whatever
-   * WHERE they are already assembling. `entityAlias` is the restaurant-entity
+   * WHERE they are already assembling. `entitySurface` is the restaurant-entity
    * alias in the caller's query (`r` in the ranked builder, `e` in coverage);
    * that alias was the ONLY difference between the two byte-equivalent copies
    * this replaces.
    */
   static restaurantWallConditions(
     walls: readonly DietaryWall[],
-    entityAlias: string,
+    entitySurface: string,
   ): Prisma.Sql[] {
-    const alias = Prisma.raw(entityAlias);
+    const alias = Prisma.raw(entitySurface);
     const conditions: Prisma.Sql[] = [];
     for (const wall of walls) {
       const arms: Prisma.Sql[] = [];

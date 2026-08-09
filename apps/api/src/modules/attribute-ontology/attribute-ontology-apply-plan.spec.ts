@@ -7,10 +7,13 @@ import { identityInsertData } from '../content-processing/entity-resolver/entity
 
 // The alias writer touches the DB; the applyPlan unit test only cares that the
 // rename UPDATE carries the RIGHT identity, so stub the alias fold.
-jest.mock('../content-processing/entity-resolver/entity-alias.service', () => ({
-  addAliases: jest.fn().mockResolvedValue(undefined),
-  foldAliasesFromMerge: jest.fn().mockResolvedValue(undefined),
-}));
+jest.mock(
+  '../content-processing/entity-resolver/entity-surface.service',
+  () => ({
+    addSurfaces: jest.fn().mockResolvedValue(undefined),
+    foldSurfacesFromMerge: jest.fn().mockResolvedValue(undefined),
+  }),
+);
 
 const logger = {
   setContext: () => logger,

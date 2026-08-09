@@ -32,7 +32,7 @@ describe('aliases[] projection stays und-only (P0-a / latent-F2 guard)', () => {
            LATERAL unnest(e.aliases) AS arr(form)
       WHERE e.status = 'active'
         AND NOT EXISTS (
-          SELECT 1 FROM entity_alias a
+          SELECT 1 FROM entity_surface a
            WHERE a.entity_id = e.entity_id
              AND a.form = arr.form
              AND a.locale = 'und'

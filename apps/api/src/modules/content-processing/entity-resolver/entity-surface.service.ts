@@ -17,7 +17,7 @@ import { normalizeLocaleTag } from '../../../shared/locale';
  * zero language tag, no folded mirror — feeding confidence-1.0 grounding
  * AND the dense embedding doc.
  *
- * The shape now: `entity_alias` ROWS are the truth (form + APP-FOLDED
+ * The shape now: `entity_surface` ROWS are the truth (form + APP-FOLDED
  * mirror + BCP-47 locale + source + confidence + status); the array is a
  * DERIVED PROJECTION of the ACTIVE forms, in insertion (seq) order. This
  * is the identity_key precedent — one app function owns the write, the DB
@@ -38,13 +38,22 @@ import { normalizeLocaleTag } from '../../../shared/locale';
  * over a fold — Postgres Unicode character classes are platform-dependent
  * and a SQL mirror can never be trusted across environments.
  *
- * LABELS ARE NOT ALIASES: this table is the RECALL bag. Display forms
- * live in `entity_labels`. Writing a translated label in here is on the
- * plan's NEVER list.
+ * ONE STORE, TWO ROLES (surface merge, §11-2, 2026-08-09). `entity_labels`
+ * is gone: display and recall were never two concepts, only two ROLES of
+ * one row, and the standing reconciler that copied one store into the other
+ * was the proof. `role` is 'recall' (grounds, never rendered), 'display'
+ * (rendered, never grounds) or 'both'.
+ *
+ * 'display' IS THE GUARD'S VERDICT, NOT A SEPARATE SPECIES. A display form
+ * is offered for recall exactly once — here, when its row is created. If
+ * the collision guard refuses it (the word already names another concept),
+ * the row still lands so the user can READ it, DEGRADED to role='display'.
+ * That single row is simultaneously the label and the memory that its
+ * recall claim lost, which is why no reconciliation pass exists or can.
  */
 
 /** A surface form to bank on an entity. */
-export interface AliasInput {
+export interface SurfaceInput {
   /** The verbatim surface, case-preserved. Trimmed and whitespace-collapsed here. */
   form: string;
   /**
@@ -55,7 +64,7 @@ export interface AliasInput {
    */
   locale?: string;
   /** Provenance. Must be one of the CHECK-constrained source values. */
-  source: AliasSource;
+  source: SurfaceSource;
   /** Writer's confidence in the pairing. Defaults to 1 (asserted, not inferred). */
   confidence?: number;
   /**
@@ -63,10 +72,38 @@ export interface AliasInput {
    * withheld from the array until judged; 'deprecated' is remembered as
    * WRONG so query spam cannot re-propose it forever (R5-6b).
    */
-  status?: AliasStatus;
+  status?: SurfaceStatus;
+  /**
+   * 'recall' (default) — a corpus/query surface that grounds and is never
+   * rendered. 'display' — a label the user reads, making NO recall claim.
+   * 'both' — a label that also claims the word for recall; the collision
+   * guard adjudicates that claim and DEGRADES the row to 'display' if it
+   * loses, so a 'both' offer never costs the user the label.
+   */
+  role?: SurfaceRole;
+  /** Display-side: the R5-6(a) per-locale disambiguator ("pan"). */
+  description?: string | null;
+  /**
+   * Display-side: elect this form the default label for (entity, locale)
+   * IF none exists yet. Election happens INSIDE the insert (F9342) — there
+   * is no read-then-write window — and the partial unique
+   * `uq_entity_surface_one_default` is the final arbiter.
+   */
+  isDefault?: boolean;
+  /** Display-side ordering within a locale. */
+  rank?: number;
+  /** Display-side: the vocabulary-prompt version that produced the form. */
+  promptVersion?: number;
 }
 
-export type AliasSource =
+export type SurfaceRole = 'display' | 'recall' | 'both';
+
+/** Does this role make a RECALL claim (and so face the collision guard)? */
+function claimsRecall(role: SurfaceRole): boolean {
+  return role !== 'display';
+}
+
+export type SurfaceSource =
   | 'legacy'
   | 'merge_fold'
   | 'ontology_rename'
@@ -76,9 +113,13 @@ export type AliasSource =
   | 'cuisine'
   | 'query_banking'
   | 'vocabulary'
-  | 'seed';
+  | 'seed'
+  // The display half's provenances, merged in with its rows (§11-2).
+  | 'sweep'
+  | 'manual'
+  | 'synthesis';
 
-export type AliasStatus = 'candidate' | 'active' | 'deprecated';
+export type SurfaceStatus = 'candidate' | 'active' | 'deprecated';
 
 /**
  * SOURCES WHOSE FORMS ARE *INFERRED*, NOT OBSERVED — the ones the collision
@@ -99,11 +140,16 @@ export type AliasStatus = 'candidate' | 'active' | 'deprecated';
  * regression in an otherwise +19.4-point run. Grounding is an equality claim;
  * an inferred form that already names something else cannot make it.
  */
-const INFERRED_ALIAS_SOURCES: ReadonlySet<AliasSource> = new Set([
+const INFERRED_SURFACE_SOURCES: ReadonlySet<SurfaceSource> = new Set([
   'knowledge_synthesis',
   'vocabulary',
   'seed',
   'query_banking',
+  // Merged in with the display half: a label sweep and a knowledge
+  // synthesis are both a model asserting a word, so both are inference.
+  // 'manual' is a human, which is testimony.
+  'sweep',
+  'synthesis',
 ]);
 
 /** Non-exported brand: only mintWordClaimVerdict (below) can construct a
@@ -120,7 +166,7 @@ export function mintWordClaimVerdict(): WordClaimVerdict {
   return { [ADJUDICATED_BRAND]: true } as WordClaimVerdict;
 }
 
-export interface AddAliasesOptions {
+export interface AddSurfacesOptions {
   /**
    * Forms to DEMOTE to 'deprecated' before the projection is rebuilt —
    * the ontology rename's "drop the new display name from the aliases"
@@ -165,14 +211,18 @@ export interface AddAliasesOptions {
  *   perfect run. A guard whose blast radius cannot be seen is a guard nobody
  *   can trust.
  */
-export async function addAliases(
+export async function addSurfaces(
   tx: Prisma.TransactionClient,
   entityId: string,
-  forms: AliasInput[],
-  options: AddAliasesOptions = {},
+  forms: SurfaceInput[],
+  options: AddSurfacesOptions = {},
 ): Promise<{ aliases: string[]; blocked: string[] }> {
-  const rows: Array<Required<Omit<AliasInput, 'locale'>> & { locale: string }> =
-    [];
+  const rows: Array<
+    Required<Omit<SurfaceInput, 'locale' | 'description'>> & {
+      locale: string;
+      description: string | null;
+    }
+  > = [];
   const seen = new Set<string>();
   for (const input of forms) {
     const form = normalizeSurface(input.form ?? '');
@@ -193,17 +243,31 @@ export async function addAliases(
       source: input.source,
       confidence: input.confidence ?? 1,
       status: input.status ?? 'active',
+      role: input.role ?? 'recall',
+      description: input.description ?? null,
+      isDefault: input.isDefault ?? false,
+      rank: input.rank ?? 0,
+      promptVersion: input.promptVersion ?? 1,
     });
   }
 
-  // P0-b COLLISION GUARD — inferred forms only (see INFERRED_ALIAS_SOURCES).
+  // P0-b COLLISION GUARD — inferred forms only (see INFERRED_SURFACE_SOURCES).
   // An inferred surface that already names ANOTHER entity, or is already
   // another entity's active alias, is refused: it would ground the wrong
   // concept at confidence 1.0, and the ranking invariant means a wrong
   // grounding with a high Crave Score ranks FIRST. Observed surfaces are
   // exempt — they are evidence, not inference.
+  //
+  // ONLY A RECALL CLAIM IS POLICED (surface merge, §11-2). A role='display'
+  // row grounds nothing, so it cannot ground the WRONG thing — there is no
+  // claim to refuse. A role='both' row that loses is not dropped: it is
+  // DEGRADED to 'display', so the user keeps the label while the word stays
+  // with its rightful owner. That degradation is what makes a standing
+  // label/alias reconciler both unnecessary and impossible.
   const blockedForms: string[] = [];
-  const inferred = rows.filter((r) => INFERRED_ALIAS_SOURCES.has(r.source));
+  const inferred = rows.filter(
+    (r) => INFERRED_SURFACE_SOURCES.has(r.source) && claimsRecall(r.role),
+  );
   if (inferred.length > 0 && !options.adjudicated) {
     const foldedCandidates = Array.from(
       new Set(inferred.map((r) => canonicalFold(r.form)).filter(Boolean)),
@@ -217,7 +281,7 @@ export async function addAliases(
            AND e.status <> 'archived'::entity_status
         UNION
         SELECT ea.form_folded AS folded
-          FROM entity_alias ea
+          FROM entity_surface ea
          WHERE ea.form_folded = ANY(${foldedCandidates}::text[])
            AND ea.entity_id <> ${entityId}::uuid
            AND ea.status = 'active'`;
@@ -237,7 +301,8 @@ export async function addAliases(
         for (let i = rows.length - 1; i >= 0; i -= 1) {
           const row = rows[i];
           if (
-            INFERRED_ALIAS_SOURCES.has(row.source) &&
+            INFERRED_SURFACE_SOURCES.has(row.source) &&
+            claimsRecall(row.role) &&
             // A 'deprecated' write is the adjudicator RECORDING a lost claim
             // (remembered-wrong, R5-6b) — it never enters the projection or
             // grounds anything, so the guard must not block the memory.
@@ -245,7 +310,11 @@ export async function addAliases(
             blocked.has(canonicalFold(row.form))
           ) {
             blockedForms.push(row.form);
-            rows.splice(i, 1);
+            if (row.role === 'both') {
+              row.role = 'display';
+            } else {
+              rows.splice(i, 1);
+            }
           }
         }
       }
@@ -253,17 +322,7 @@ export async function addAliases(
   }
 
   if (rows.length > 0) {
-    const values = Prisma.join(
-      rows.map(
-        (r) =>
-          Prisma.sql`(${entityId}::uuid, ${r.form}, ${canonicalFold(r.form)}, ${r.locale}, ${r.source}, ${r.confidence}, ${r.status})`,
-      ),
-    );
-    await tx.$executeRaw`
-      INSERT INTO entity_alias
-        (entity_id, form, form_folded, locale, source, confidence, status)
-      VALUES ${values}
-      ON CONFLICT (entity_id, locale, form) DO NOTHING`;
+    await insertSurfaceRows(tx, entityId, rows, false);
   }
 
   // Match on the app-written `form_folded`, NOT `lower(form)`: JS
@@ -277,7 +336,7 @@ export async function addAliases(
     .filter((folded) => folded.length > 0);
   if (deprecate.length > 0) {
     await tx.$executeRaw`
-      UPDATE entity_alias SET status = 'deprecated'
+      UPDATE entity_surface SET status = 'deprecated'
       WHERE entity_id = ${entityId}::uuid
         AND form_folded = ANY(${deprecate}::text[])
         AND status <> 'deprecated'`;
@@ -285,6 +344,93 @@ export async function addAliases(
 
   const aliases = await projectAliases(tx, entityId, options);
   return { aliases, blocked: blockedForms };
+}
+
+interface SurfaceRow {
+  form: string;
+  locale: string;
+  source: SurfaceSource;
+  confidence: number;
+  status: SurfaceStatus;
+  role: SurfaceRole;
+  description: string | null;
+  isDefault: boolean;
+  rank: number;
+  promptVersion: number;
+}
+
+/**
+ * The ONE insert. Two things happen here that used to live in two writers.
+ *
+ * THE DEFAULT ELECTION IS ATOMIC (F9342, carried over from the label
+ * writer): `is_default` is decided IN the statement as "this row wants it
+ * AND no default exists for this (entity, locale)", so there is no
+ * read-then-write window two concurrent writers can both pass. The partial
+ * unique `uq_entity_surface_one_default` arbitrates the one genuinely
+ * simultaneous case, and `forceNonDefault` is its retry: a default already
+ * exists, so this row simply is not it.
+ *
+ * THE CONFLICT CLAUSE MERGES ROLES rather than dropping the write. A recall
+ * write landing on an existing display row (or the reverse) means the form
+ * is now BOTH — and a write that got this far has already cleared the
+ * collision guard, so widening is earned, never assumed. Recall writes
+ * never touch status: a re-offer must not resurrect a claim the adjudicator
+ * deprecated (the old DO NOTHING preserved this by accident; it is stated
+ * here on purpose).
+ */
+async function insertSurfaceRows(
+  tx: Prisma.TransactionClient,
+  entityId: string,
+  rows: SurfaceRow[],
+  forceNonDefault: boolean,
+): Promise<void> {
+  const values = Prisma.join(
+    rows.map((r) => {
+      const wantsDefault =
+        !forceNonDefault &&
+        r.isDefault &&
+        r.status === 'active' &&
+        r.role !== 'recall';
+      const isDefaultExpr = wantsDefault
+        ? Prisma.sql`NOT EXISTS (
+            SELECT 1 FROM entity_surface d
+             WHERE d.entity_id = ${entityId}::uuid
+               AND d.locale = ${r.locale}
+               AND d.is_default)`
+        : Prisma.sql`false`;
+      return Prisma.sql`(${entityId}::uuid, ${r.form}, ${canonicalFold(r.form)}, ${r.locale}, ${r.role}, ${r.source}, ${r.confidence}, ${r.status}, ${r.description}, ${isDefaultExpr}, ${r.rank}, ${r.promptVersion})`;
+    }),
+  );
+  try {
+    await tx.$executeRaw`
+      INSERT INTO entity_surface
+        (entity_id, form, form_folded, locale, role, source, confidence,
+         status, description, is_default, rank, prompt_version)
+      VALUES ${values}
+      ON CONFLICT (entity_id, locale, form) DO UPDATE SET
+        role = CASE WHEN entity_surface.role = EXCLUDED.role
+                    THEN entity_surface.role ELSE 'both' END,
+        status = CASE WHEN EXCLUDED.role = 'recall'
+                      THEN entity_surface.status ELSE EXCLUDED.status END,
+        description = CASE WHEN EXCLUDED.role = 'recall'
+                           THEN entity_surface.description
+                           ELSE EXCLUDED.description END,
+        rank = CASE WHEN EXCLUDED.role = 'recall'
+                    THEN entity_surface.rank ELSE EXCLUDED.rank END,
+        prompt_version = GREATEST(entity_surface.prompt_version,
+                                  EXCLUDED.prompt_version),
+        updated_at = now()`;
+  } catch (error) {
+    if (
+      !forceNonDefault &&
+      error instanceof Error &&
+      error.message.includes('uq_entity_surface_one_default')
+    ) {
+      await insertSurfaceRows(tx, entityId, rows, true);
+      return;
+    }
+    throw error;
+  }
 }
 
 /**
@@ -296,12 +442,12 @@ export async function projectAliases(
   tx: Prisma.TransactionClient,
   entityId: string,
   options: Pick<
-    AddAliasesOptions,
+    AddSurfacesOptions,
     'markEmbeddingStale' | 'touchLastUpdated'
   > = {},
 ): Promise<string[]> {
   // F1 (wave-3 red team, executed lost-update): serialize projections per
-  // entity — two concurrent addAliases both read rows then blind-write the
+  // entity — two concurrent addSurfaces both read rows then blind-write the
   // array; the loser's form vanished from all four read arms. Row lock
   // makes the second projector wait and re-read committed truth.
   await tx.$executeRaw`SELECT 1 FROM core_entities WHERE entity_id = ${entityId}::uuid FOR UPDATE`;
@@ -322,12 +468,12 @@ export async function projectAliases(
   // into ONE similarity haystack, so tagged multilingual forms would
   // mechanically dilute English trigram similarity for EVERY entity and shrink
   // the containment-coverage term. Tagged surfaces are reachable through the
-  // locale-aware gazetteer (entity_alias, locale-chained); the array stays what
+  // locale-aware gazetteer (entity_surface, locale-chained); the array stays what
   // every legacy reader already assumes it is — an untagged bag.
   const ordered = await tx.$queryRaw<Array<{ form: string }>>`
     SELECT form FROM (
       SELECT DISTINCT ON (form) form, seq
-      FROM entity_alias
+      FROM entity_surface
       WHERE entity_id = ${entityId}::uuid AND status = 'active'
         AND locale = 'und'
       ORDER BY form, seq
@@ -365,15 +511,15 @@ export async function projectAliases(
  * Replaces the two verbatim-copied `array_agg(DISTINCT unnest(...))`
  * statements in finalizeMergeCompletion and the ontology merge.
  */
-export async function foldAliasesFromMerge(
+export async function foldSurfacesFromMerge(
   tx: Prisma.TransactionClient,
   canonicalId: string,
   duplicateId: string,
-  options: AddAliasesOptions = {},
+  options: AddSurfacesOptions = {},
 ): Promise<string[]> {
   // The loser's own display name becomes a surface on the winner.
   await tx.$executeRaw`
-    INSERT INTO entity_alias
+    INSERT INTO entity_surface
       (entity_id, form, form_folded, locale, source, confidence, status)
     SELECT ${canonicalId}::uuid, x.name, x.identity_key, 'und', 'merge_fold', 1, 'active'
     FROM core_entities x
@@ -387,10 +533,10 @@ export async function foldAliasesFromMerge(
 
   // The loser's alias rows carry over WITH their locale and provenance.
   await tx.$executeRaw`
-    INSERT INTO entity_alias
+    INSERT INTO entity_surface
       (entity_id, form, form_folded, locale, source, confidence, status)
     SELECT ${canonicalId}::uuid, a.form, a.form_folded, a.locale, a.source, a.confidence, a.status
-    FROM entity_alias a
+    FROM entity_surface a
     WHERE a.entity_id = ${duplicateId}::uuid
     ON CONFLICT (entity_id, locale, form) DO NOTHING`;
 

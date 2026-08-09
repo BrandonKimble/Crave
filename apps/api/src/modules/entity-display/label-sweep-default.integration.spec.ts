@@ -5,7 +5,7 @@
  * THE DEFECT: is_default was computed from a findFirst, then written via a
  * separate upsert. Across that gap two writers for the same (entity_id,
  * locale) could each read "no default yet" and both write is_default=true —
- * violating the partial unique `uq_entity_labels_one_default` and aborting the
+ * violating the partial unique `uq_entity_surface_one_default` and aborting the
  * whole sweep on the un-caught upsert. The election now happens INSIDE the
  * insert (`status='active' AND NOT EXISTS(another default)`), so the
  * read-then-write window is gone; the partial unique arbitrates the rare
@@ -50,7 +50,7 @@ function label(form: string): GeneratedLabel {
 }
 
 async function defaultCount(): Promise<number> {
-  const rows = await prisma.entityLabel.findMany({
+  const rows = await prisma.entitySurface.findMany({
     where: { entityId: ENTITY_ID, locale: LOCALE, isDefault: true },
     select: { form: true },
   });
@@ -58,7 +58,7 @@ async function defaultCount(): Promise<number> {
 }
 
 async function cleanup(): Promise<void> {
-  await prisma.entityLabel.deleteMany({ where: { entityId: ENTITY_ID } });
+  await prisma.entitySurface.deleteMany({ where: { entityId: ENTITY_ID } });
   await prisma.entity.deleteMany({ where: { entityId: ENTITY_ID } });
 }
 
@@ -98,7 +98,7 @@ describe('LabelSweepService.writeLabels: at most one default per (entity, locale
 
     // Still exactly one default, and the FIRST writer kept it.
     expect(await defaultCount()).toBe(1);
-    const theDefault = await prisma.entityLabel.findFirst({
+    const theDefault = await prisma.entitySurface.findFirst({
       where: { entityId: ENTITY_ID, locale: LOCALE, isDefault: true },
       select: { form: true },
     });
@@ -110,7 +110,7 @@ describe('LabelSweepService.writeLabels: at most one default per (entity, locale
     // adversarial case the partial unique must arbitrate. Under the old
     // findFirst+upsert this could either land two defaults or abort a sweep
     // with an uncaught unique violation.
-    await prisma.entityLabel.deleteMany({ where: { entityId: ENTITY_ID } });
+    await prisma.entitySurface.deleteMany({ where: { entityId: ENTITY_ID } });
 
     await expect(
       Promise.all([

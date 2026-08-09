@@ -5,7 +5,7 @@
  * HISTORY: this spec was born as label-fold-symmetry (F7600) when labels
  * doubled as match surfaces (the former arm 4). The claims registry
  * (§9.9, commit 8f7e4096c) removed that arm — labels are DISPLAY-only,
- * every label surface worth grounding was reconciled into entity_alias
+ * every label surface worth grounding was reconciled into entity_surface
  * through the collision guard + word-claim adjudicator, and the standing
  * KnowledgeMaintenanceService keeps reconciling. The fold-symmetry law the
  * finding established therefore lives on in the ALIAS arm: an accented
@@ -13,12 +13,12 @@
  * folded spelling, because the query side always folds.
  *
  * WHY A DB SPEC: the match is a SQL comparison of the folded candidate
- * against entity_alias.form_folded. A mock cannot demonstrate it; only a
+ * against entity_surface.form_folded. A mock cannot demonstrate it; only a
  * real row and the real arm can.
  *
  * THE SEED IS ADVERSARIAL: the alias form carries an accent (`é`) and a
  * cedilla (`ç`), so canonicalFold(form) differs from LOWER(form). The
- * entity's name and legacy aliases[] are unrelated, so the entity_alias arm
+ * entity's name and legacy aliases[] are unrelated, so the entity_surface arm
  * is the ONLY path that can ground it — if the arm misses, the entity is
  * unreachable.
  *
@@ -68,16 +68,16 @@ beforeAll(async () => {
   await prisma.entity.create({
     data: {
       entityId: ENTITY_ID,
-      // Unrelated name/aliases: the entity_alias arm is the only path.
+      // Unrelated name/aliases: the entity_surface arm is the only path.
       name: `${TEST_TAG}-unrelated-name`,
       type: 'food_attribute',
     },
   });
-  await prisma.entityAlias.create({
+  await prisma.entitySurface.create({
     data: {
       entityId: ENTITY_ID,
       form: ALIAS_FORM,
-      // Written the way addAliases() writes it — the fold IS the law's
+      // Written the way addSurfaces() writes it — the fold IS the law's
       // write-side half; the arm's read side matches against it.
       formFolded: canonicalFold(ALIAS_FORM),
       locale: 'es',
@@ -88,7 +88,7 @@ beforeAll(async () => {
 });
 
 afterAll(async () => {
-  await prisma.entityAlias.deleteMany({ where: { entityId: ENTITY_ID } });
+  await prisma.entitySurface.deleteMany({ where: { entityId: ENTITY_ID } });
   await prisma.entity.deleteMany({ where: { entityId: ENTITY_ID } });
   await prisma.$disconnect();
 });

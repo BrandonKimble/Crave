@@ -64,7 +64,7 @@ function unusedLlm(): LLMService {
 
 async function seedEntity(label: string, type: 'food' | 'restaurant') {
   const name = `${TEST_TAG}-${label}`;
-  // foldAliasesFromMerge only banks the loser's name if identity_key is
+  // foldSurfacesFromMerge only banks the loser's name if identity_key is
   // populated (it reads the STORED fold, not a computed one — see the
   // function's own comment) — mirror the real creation path so this spec
   // exercises the true alias-banking behaviour, not an artifact of a

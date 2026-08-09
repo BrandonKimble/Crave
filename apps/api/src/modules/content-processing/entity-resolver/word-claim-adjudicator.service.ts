@@ -3,10 +3,10 @@ import { PrismaService } from '../../../prisma/prisma.service';
 import { LoggerService } from '../../../shared';
 import { LLMService } from '../../external-integrations/llm/llm.service';
 import {
-  addAliases,
+  addSurfaces,
   mintWordClaimVerdict,
-  type AliasSource,
-} from './entity-alias.service';
+  type SurfaceSource,
+} from './entity-surface.service';
 import { canonicalFold } from './entity-identity';
 
 /**
@@ -60,7 +60,7 @@ export interface ContestedClaim {
   locale: string;
   /** The entity trying to claim it. */
   entityId: string;
-  source: AliasSource;
+  source: SurfaceSource;
 }
 
 export interface AdjudicationSummary {
@@ -209,69 +209,6 @@ export class WordClaimAdjudicatorService {
     return summary;
   }
 
-  /**
-   * LABEL-SURFACE RECONCILIATION — the standing half of the one-registry law.
-   * Any active label surface absent from the alias store (and not the
-   * entity's own identity — a proper-noun label is display, not vocabulary)
-   * is offered through the guard; blocked offers go to adjudication. First
-   * run moved 1,543 (2026-08-08); thereafter this is the drip that keeps
-   * "labels display, aliases ground" true as sweeps mint new labels.
-   */
-  async reconcileLabelSurfaces(
-    options: { dryRun?: boolean; limit?: number } = {},
-  ): Promise<{ offered: number; banked: number } & AdjudicationSummary> {
-    const dryRun = options.dryRun ?? false;
-    const limit = options.limit ?? 100000;
-    const rows = await this.prisma.$queryRawUnsafe<
-      Array<{ entity_id: string; form: string; locale: string }>
-    >(
-      `SELECT l.entity_id::text AS entity_id, l.form, l.locale
-         FROM entity_labels l
-         JOIN core_entities e ON e.entity_id = l.entity_id AND e.status = 'active'
-        WHERE l.status = 'active'
-          AND l.form_folded <> e.identity_key
-          AND NOT EXISTS (
-            SELECT 1 FROM entity_alias a
-             WHERE a.entity_id = l.entity_id
-               AND a.form_folded = l.form_folded)
-        ORDER BY l.entity_id
-        LIMIT $1`,
-      limit,
-    );
-    let banked = 0;
-    const contested: ContestedClaim[] = [];
-    for (const row of rows) {
-      if (dryRun) continue;
-      const result = await this.prisma.$transaction((tx) =>
-        addAliases(tx, row.entity_id, [
-          { form: row.form, locale: row.locale, source: 'vocabulary' },
-        ]),
-      );
-      if (result.blocked.length) {
-        contested.push({
-          form: row.form,
-          locale: row.locale,
-          entityId: row.entity_id,
-          source: 'vocabulary',
-        });
-      } else {
-        banked += 1;
-      }
-    }
-    const summary = contested.length
-      ? await this.adjudicate(contested, { dryRun })
-      : {
-          considered: 0,
-          testimonyUpheld: 0,
-          judged: 0,
-          bothUpheld: 0,
-          incumbentEvicted: 0,
-          newcomerRefused: 0,
-          unjudged: 0,
-        };
-    return { offered: rows.length, banked, ...summary };
-  }
-
   private async entityCard(entityId: string): Promise<Claimant | null> {
     const rows = await this.prisma.$queryRaw<
       Array<{ entity_id: string; name: string; type: string }>
@@ -291,8 +228,11 @@ export class WordClaimAdjudicatorService {
 
   private async sampleSurfaces(entityId: string): Promise<string[]> {
     const rows = await this.prisma.$queryRaw<Array<{ form: string }>>`
-      SELECT form FROM entity_alias
+      SELECT form FROM entity_surface
        WHERE entity_id = ${entityId}::uuid AND status = 'active'
+         -- Recall surfaces only: this is "what do people CALL it", the
+         -- judge's context for what the concept actually is.
+         AND role <> 'display'
        ORDER BY created_at ASC LIMIT 3`;
     return rows.map((r) => r.form);
   }
@@ -308,20 +248,24 @@ export class WordClaimAdjudicatorService {
         name: string;
         type: string;
         source: string | null;
-        alias_id: string | null;
+        surface_id: string | null;
         is_name: boolean;
       }>
     >`SELECT e.entity_id::text, e.name, e.type::text, NULL AS source,
-             NULL::uuid AS alias_id, TRUE AS is_name
+             NULL::uuid AS surface_id, TRUE AS is_name
         FROM core_entities e
        WHERE e.identity_key = ${folded} AND e.status <> 'archived'
          AND e.entity_id <> ${exceptEntityId}::uuid
       UNION ALL
       SELECT e.entity_id::text, e.name, e.type::text, a.source,
-             a.alias_id, FALSE
-        FROM entity_alias a
+             a.surface_id, FALSE
+        FROM entity_surface a
         JOIN core_entities e ON e.entity_id = a.entity_id
        WHERE a.form_folded = ${folded} AND a.status = 'active'
+         -- An INCUMBENT is an entity that HOLDS the word for recall. A
+         -- role='display' row makes no recall claim (its own was refused or
+         -- withheld), so it contests nothing.
+         AND a.role <> 'display'
          AND e.status = 'active'
          AND a.entity_id <> ${exceptEntityId}::uuid`;
     const claimants: Claimant[] = [];
@@ -332,7 +276,7 @@ export class WordClaimAdjudicatorService {
         type: row.type,
         context: await this.sampleSurfaces(row.entity_id),
         testimony: row.is_name || TESTIMONY_SOURCES.has(row.source ?? ''),
-        aliasId: row.alias_id,
+        aliasId: row.surface_id,
       });
     }
     return claimants;
@@ -434,7 +378,7 @@ export class WordClaimAdjudicatorService {
   private async bank(claim: ContestedClaim, dryRun: boolean): Promise<void> {
     if (dryRun) return;
     await this.prisma.$transaction((tx) =>
-      addAliases(
+      addSurfaces(
         tx,
         claim.entityId,
         [{ form: claim.form, locale: claim.locale, source: claim.source }],
@@ -451,7 +395,7 @@ export class WordClaimAdjudicatorService {
   private async refuse(claim: ContestedClaim, dryRun: boolean): Promise<void> {
     if (dryRun) return;
     await this.prisma.$transaction((tx) =>
-      addAliases(tx, claim.entityId, [
+      addSurfaces(tx, claim.entityId, [
         {
           form: claim.form,
           locale: claim.locale,
@@ -468,7 +412,7 @@ export class WordClaimAdjudicatorService {
       .filter((id): id is string => id !== null);
     if (!ids.length) return;
     await this.prisma.$executeRaw`
-      UPDATE entity_alias SET status = 'deprecated'
-       WHERE alias_id = ANY(${ids}::uuid[])`;
+      UPDATE entity_surface SET status = 'deprecated'
+       WHERE surface_id = ANY(${ids}::uuid[])`;
   }
 }

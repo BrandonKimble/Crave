@@ -6,9 +6,9 @@ import {
 } from './enrichment-failure-taxonomy';
 import { identityInsertData } from '../content-processing/entity-resolver/entity-identity';
 import {
-  addAliases,
-  type AliasInput,
-} from '../content-processing/entity-resolver/entity-alias.service';
+  addSurfaces,
+  type SurfaceInput,
+} from '../content-processing/entity-resolver/entity-surface.service';
 import { Injectable, Inject } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import {
@@ -768,7 +768,7 @@ export class RestaurantLocationEnrichmentService {
     // after the entity row commits (see below).
     let pendingPlacesAliases: {
       entityId: string;
-      forms: AliasInput[];
+      forms: SurfaceInput[];
     } | null = null;
     let targetNameForUpdate: string | null = null;
     let enrichmentScore: number | undefined;
@@ -1342,7 +1342,7 @@ export class RestaurantLocationEnrichmentService {
   ): {
     updateData: Prisma.EntityUpdateInput;
     updatedFields: string[];
-    aliasForms: AliasInput[];
+    aliasForms: SurfaceInput[];
   } {
     const updateData: Prisma.EntityUpdateInput = {};
     const updatedFields: string[] = [];
@@ -1408,7 +1408,7 @@ export class RestaurantLocationEnrichmentService {
     // duplicate's name, and inventing a tag for those would poison both
     // languages' retrieval with no rollback.
     const locale = canonicalLocale?.trim() || undefined;
-    const aliasForms: AliasInput[] = mergedAliases.map((form) => ({
+    const aliasForms: SurfaceInput[] = mergedAliases.map((form) => ({
       form,
       source: 'places' as const,
       ...(locale && canonicalTrimmed && form === canonicalTrimmed
@@ -1423,13 +1423,13 @@ export class RestaurantLocationEnrichmentService {
    *  goes through the projection writer, which re-derives `aliases[]`. */
   private async bankPlacesAliases(
     entityId: string,
-    aliasForms: AliasInput[],
+    aliasForms: SurfaceInput[],
   ): Promise<void> {
     if (!aliasForms.length) {
       return;
     }
     await this.prisma.$transaction((tx) =>
-      addAliases(tx, entityId, aliasForms),
+      addSurfaces(tx, entityId, aliasForms),
     );
   }
 
@@ -2620,7 +2620,7 @@ export class RestaurantLocationEnrichmentService {
     });
     if (seedAliases.length) {
       await this.prisma.$transaction((tx) =>
-        addAliases(
+        addSurfaces(
           tx,
           created.entityId,
           seedAliases.map((form) => ({ form, source: 'seed' as const })),

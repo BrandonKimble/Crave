@@ -3,9 +3,9 @@ import { EntityType, Prisma } from '@prisma/client';
 import { LoggerService } from '../../shared';
 import { identityInsertData } from '../content-processing/entity-resolver/entity-identity';
 import {
-  addAliases,
-  foldAliasesFromMerge,
-} from '../content-processing/entity-resolver/entity-alias.service';
+  addSurfaces,
+  foldSurfacesFromMerge,
+} from '../content-processing/entity-resolver/entity-surface.service';
 import { PrismaService } from '../../prisma/prisma.service';
 import { LLMService } from '../external-integrations/llm/llm.service';
 import { EmbeddingService } from '../external-integrations/llm/embedding.service';
@@ -710,7 +710,7 @@ export class AttributeOntologyService {
             // finalizeMergeCompletion), provenance 'merge_fold' recorded,
             // carried rows keep their own locale. The writer marks the
             // dense doc stale when the projection actually changes.
-            await foldAliasesFromMerge(
+            await foldSurfacesFromMerge(
               tx,
               merge.canonicalEntityId,
               merge.mergedEntityId,
@@ -791,7 +791,7 @@ export class AttributeOntologyService {
             // replacing the old array_remove: demotion is remembered, so
             // a later writer re-proposing it does not silently resurrect
             // the name into its own recall bag.
-            await addAliases(
+            await addSurfaces(
               tx,
               rename.entityId,
               [{ form: rename.from, source: 'ontology_rename' }],

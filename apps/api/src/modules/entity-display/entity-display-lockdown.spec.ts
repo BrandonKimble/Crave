@@ -266,17 +266,21 @@ describe('concept display is routed through ONE function (N10 lockdown)', () => 
     expect(stale).toEqual([]);
   });
 
-  it('the display function exists and is the only thing that reads entity_labels for display', () => {
+  it('the display function exists and is the only thing that reads entity_surface for display', () => {
     const service = readFileSync(
       join(SRC, 'modules/entity-display/entity-display.service.ts'),
       'utf-8',
     );
     expect(service).toContain('displayLabel(');
-    expect(service).toContain('entityLabel.findMany');
+    expect(service).toContain('entitySurface.findMany');
+    // The DISPLAY predicate: recall-only surfaces are never rendered.
+    expect(service).toContain("role: { not: 'recall' }");
 
     const otherReaders = walk(SRC)
       .filter((file) => !file.includes('entity-display'))
-      .filter((file) => readFileSync(file, 'utf-8').includes('entityLabel.'))
+      .filter((file) =>
+        readFileSync(file, 'utf-8').includes('entitySurface.findMany'),
+      )
       .map((file) => file.slice(SRC.length + 1));
     expect(otherReaders).toEqual([]);
   });

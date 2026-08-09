@@ -16,7 +16,7 @@
  *   - LATENCY: p50/p95 per language, so "we made search multilingual" cannot
  *     quietly mean "we made search slower".
  *
- * A pair is only meaningful if the Spanish surface EXISTS in entity_alias —
+ * A pair is only meaningful if the Spanish surface EXISTS in entity_surface —
  * otherwise this measures the corpus's coverage, not the code's behaviour. So
  * the pairs are DISCOVERED from real data, never hand-written, and the run
  * reports how many concepts were eligible to test.
@@ -61,15 +61,16 @@ async function main(): Promise<void> {
     // ambiguous across concepts.
     const pairs = await prisma.$queryRawUnsafe<Pair[]>(
       `SELECT e.entity_id::text AS "entityId", e.name AS english, a.form AS spanish
-         FROM entity_alias a
+         FROM entity_surface a
          JOIN core_entities e ON e.entity_id = a.entity_id
-        WHERE a.locale LIKE 'es%' AND a.status = 'active'
+        WHERE a.locale LIKE 'es%' AND a.status = 'active' AND a.role <> 'display'
           AND e.status = 'active' AND e.type = 'food'::entity_type
           AND lower(a.form) <> lower(e.name)
           AND NOT EXISTS (
-                SELECT 1 FROM entity_alias b
+                SELECT 1 FROM entity_surface b
                  WHERE b.form_folded = a.form_folded
                    AND b.entity_id <> a.entity_id AND b.status = 'active'
+                   AND b.role <> 'display'
               )
         ORDER BY e.name
         LIMIT $1`,

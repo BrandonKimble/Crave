@@ -1,4 +1,4 @@
-/** BACKFILL the entity_alias rows from the legacy `core_entities.aliases`
+/** BACKFILL the entity_surface rows from the legacy `core_entities.aliases`
  *  array (multilingual plan A1). Every existing array element becomes one
  *  row: locale 'und' (untagged legacy — a FABRICATED language tag would
  *  poison both languages' retrieval with no rollback), source 'legacy',
@@ -18,7 +18,7 @@
  */
 import { PrismaClient, Prisma } from '@prisma/client';
 import { canonicalFold } from '../src/modules/content-processing/entity-resolver/entity-identity';
-import { projectAliases } from '../src/modules/content-processing/entity-resolver/entity-alias.service';
+import { projectAliases } from '../src/modules/content-processing/entity-resolver/entity-surface.service';
 
 const BATCH = 500;
 
@@ -40,7 +40,7 @@ async function main(): Promise<void> {
   const flush = async (): Promise<void> => {
     if (pending.length === 0) return;
     inserted += await prisma.$executeRaw`
-      INSERT INTO entity_alias
+      INSERT INTO entity_surface
         (entity_id, form, form_folded, locale, source, confidence, status)
       VALUES ${Prisma.join(pending)}
       ON CONFLICT (entity_id, locale, form) DO NOTHING`;
@@ -80,7 +80,7 @@ async function main(): Promise<void> {
     SELECT e.entity_id FROM core_entities e
     WHERE COALESCE(e.aliases::text[], ARRAY[]::text[]) IS DISTINCT FROM COALESCE(
       (SELECT array_agg(d.form ORDER BY d.seq)::text[] FROM (
-         SELECT DISTINCT ON (a.form) a.form, a.seq FROM entity_alias a
+         SELECT DISTINCT ON (a.form) a.form, a.seq FROM entity_surface a
          WHERE a.entity_id = e.entity_id AND a.status = 'active'
          ORDER BY a.form, a.seq
        ) d), ARRAY[]::text[])`;
@@ -90,16 +90,16 @@ async function main(): Promise<void> {
   console.log('arrays re-projected:', drifted.length);
 
   const total = await prisma.$queryRaw<Array<{ n: number }>>`
-    SELECT count(*)::int AS n FROM entity_alias`;
+    SELECT count(*)::int AS n FROM entity_surface`;
   const bySource = await prisma.$queryRaw<
     Array<{ source: string; n: number }>
-  >`SELECT source, count(*)::int AS n FROM entity_alias GROUP BY 1 ORDER BY 2 DESC`;
+  >`SELECT source, count(*)::int AS n FROM entity_surface GROUP BY 1 ORDER BY 2 DESC`;
   const unfoldable = await prisma.$queryRaw<Array<{ n: number }>>`
-    SELECT count(*)::int AS n FROM entity_alias WHERE form_folded = ''`;
+    SELECT count(*)::int AS n FROM entity_surface WHERE form_folded = ''`;
 
   console.log('inserted this run:', inserted);
   console.log('empty forms skipped:', skippedEmpty);
-  console.log('entity_alias total:', total[0].n);
+  console.log('entity_surface total:', total[0].n);
   console.log('by source:', bySource);
   // form_folded = '' means the surface has no letters or digits in ANY
   // script (emoji-only, '!!!'). Not an error — just not a recall key.

@@ -4,7 +4,7 @@ import { PrismaService } from '../../prisma/prisma.service';
 import { LoggerService } from '../../shared';
 import { LLMService } from '../external-integrations/llm/llm.service';
 import { EntityTextSearchService } from '../entity-text-search/entity-text-search.service';
-import { addAliases } from '../content-processing/entity-resolver/entity-alias.service';
+import { addSurfaces } from '../content-processing/entity-resolver/entity-surface.service';
 import { canonicalFold } from '../content-processing/entity-resolver/entity-identity';
 
 /**
@@ -35,7 +35,7 @@ import { canonicalFold } from '../content-processing/entity-resolver/entity-iden
  * decides, and it fails closed to `new`. Nothing is banked on a guess.
  *
  * The alias is written with source `query_banking` — a value that has existed
- * in the AliasSource union with zero producers, reserved for exactly this —
+ * in the SurfaceSource union with zero producers, reserved for exactly this —
  * which puts it under P0-b's collision guard, so a learned word that already
  * names a different concept is refused.
  */
@@ -122,7 +122,12 @@ export class DemandVocabularyService {
     // Known surfaces, folded by the SAME function that wrote form_folded.
     const knownRows = await this.prisma.$queryRawUnsafe<
       Array<{ form_folded: string }>
-    >(`SELECT DISTINCT form_folded FROM entity_alias WHERE status = 'active'`);
+    >(
+      // Recall predicate: a display-only surface is a refused recall
+      // claim, so it does not make a demand term 'already known'.
+      `SELECT DISTINCT form_folded FROM entity_surface
+        WHERE status = 'active' AND role <> 'display'`,
+    );
     const known = new Set(knownRows.map((row) => row.form_folded));
 
     for (const row of terms) {
@@ -188,7 +193,7 @@ export class DemandVocabularyService {
         // may refuse a learned term that already names another concept, and
         // counting the verdict would report a refusal as a success.
         const result = await this.prisma.$transaction(async (tx) =>
-          addAliases(
+          addSurfaces(
             tx,
             matched.entityId,
             [{ form: term, locale, source: 'query_banking' as const }],

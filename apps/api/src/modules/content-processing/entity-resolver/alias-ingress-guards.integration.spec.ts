@@ -1,6 +1,6 @@
 import { PrismaClient } from '@prisma/client';
 import { randomUUID } from 'crypto';
-import { addAliases, projectAliases } from './entity-alias.service';
+import { addSurfaces, projectAliases } from './entity-surface.service';
 import { identityInsertData } from './entity-identity';
 
 /**
@@ -37,7 +37,7 @@ describe('alias ingress guards — proven against a live database', () => {
   afterAll(async () => {
     if (made.length) {
       await prisma.$executeRawUnsafe(
-        `DELETE FROM entity_alias WHERE entity_id = ANY($1::uuid[])`,
+        `DELETE FROM entity_surface WHERE entity_id = ANY($1::uuid[])`,
         made,
       );
       await prisma.$executeRawUnsafe(
@@ -51,7 +51,7 @@ describe('alias ingress guards — proven against a live database', () => {
   it('P0-a: a locale-TAGGED alias is stored as a row but stays OUT of the array', async () => {
     const id = await mintFood(`zzq guard dish ${randomUUID().slice(0, 8)}`);
     await prisma.$transaction(async (tx) => {
-      await addAliases(tx, id, [
+      await addSurfaces(tx, id, [
         { form: 'zzq-untagged-surface', source: 'extraction' },
         { form: 'zzq-tagged-surface', locale: 'es', source: 'seed' },
       ]);
@@ -60,7 +60,7 @@ describe('alias ingress guards — proven against a live database', () => {
     const rows = await prisma.$queryRawUnsafe<
       Array<{ form: string; locale: string }>
     >(
-      `SELECT form, locale FROM entity_alias WHERE entity_id = $1::uuid ORDER BY form`,
+      `SELECT form, locale FROM entity_surface WHERE entity_id = $1::uuid ORDER BY form`,
       id,
     );
     // Both rows exist — the tagged one is reachable via the locale-aware gazetteer.
@@ -86,7 +86,7 @@ describe('alias ingress guards — proven against a live database', () => {
     );
 
     await prisma.$transaction(async (tx) => {
-      await addAliases(tx, target, [
+      await addSurfaces(tx, target, [
         // the soup->caldo class: an inferred surface naming a different concept
         { form: occupied, source: 'seed', locale: 'es' },
         { form: 'zzq-inferred-safe', source: 'seed', locale: 'es' },
@@ -94,7 +94,7 @@ describe('alias ingress guards — proven against a live database', () => {
     });
 
     const forms = await prisma.$queryRawUnsafe<Array<{ form: string }>>(
-      `SELECT form FROM entity_alias WHERE entity_id = $1::uuid`,
+      `SELECT form FROM entity_surface WHERE entity_id = $1::uuid`,
       target,
     );
     const got = forms.map((f) => f.form);
@@ -110,13 +110,13 @@ describe('alias ingress guards — proven against a live database', () => {
     );
 
     await prisma.$transaction(async (tx) => {
-      await addAliases(tx, target, [
+      await addSurfaces(tx, target, [
         { form: occupied, source: 'extraction' }, // a real person said this
       ]);
     });
 
     const forms = await prisma.$queryRawUnsafe<Array<{ form: string }>>(
-      `SELECT form FROM entity_alias WHERE entity_id = $1::uuid`,
+      `SELECT form FROM entity_surface WHERE entity_id = $1::uuid`,
       target,
     );
     expect(forms.map((f) => f.form)).toContain(occupied);
@@ -125,7 +125,7 @@ describe('alias ingress guards — proven against a live database', () => {
   it('projectAliases stays idempotent under the und filter', async () => {
     const id = await mintFood(`zzq idem dish ${randomUUID().slice(0, 8)}`);
     await prisma.$transaction(async (tx) => {
-      await addAliases(tx, id, [{ form: 'zzq-idem-a', source: 'extraction' }]);
+      await addSurfaces(tx, id, [{ form: 'zzq-idem-a', source: 'extraction' }]);
     });
     const first = await prisma.$transaction((tx) => projectAliases(tx, id));
     const second = await prisma.$transaction((tx) => projectAliases(tx, id));

@@ -1,7 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../../prisma/prisma.service';
-import { foldAliasesFromMerge } from '../entity-resolver/entity-alias.service';
+import { foldSurfacesFromMerge } from '../entity-resolver/entity-surface.service';
 
 /**
  * THE ONE HOME for "which facts belong to the current extraction?"
@@ -439,7 +439,7 @@ export async function finalizeMergeCompletion(
   // projection writer — provenance ('merge_fold') and each carried row's
   // locale survive, where the old array_agg destroyed both. The legacy
   // aliases[] array is re-derived from the rows by the same call.
-  await foldAliasesFromMerge(tx, canonicalId, duplicateId);
+  await foldSurfacesFromMerge(tx, canonicalId, duplicateId);
   await tx.$executeRaw`
     UPDATE core_entities SET status = 'archived'
     WHERE entity_id = ${duplicateId}::uuid`;

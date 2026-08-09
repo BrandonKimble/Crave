@@ -26,7 +26,7 @@ import {
   identityInsertData,
   identityProbeNames,
 } from '../entity-resolver/entity-identity';
-import { addAliases } from '../entity-resolver/entity-alias.service';
+import { addSurfaces } from '../entity-resolver/entity-surface.service';
 import { derivedBboxSelectSql } from '../../places/places-catalog.service';
 import {
   ProcessingResult,
@@ -1629,7 +1629,7 @@ export class UnifiedProcessingService implements OnModuleInit {
                     ),
                   );
                   if (revalidatedId && surfaces.length) {
-                    await addAliases(
+                    await addSurfaces(
                       tx,
                       revalidatedId,
                       surfaces.map((surface) => ({
@@ -2022,7 +2022,7 @@ export class UnifiedProcessingService implements OnModuleInit {
                 // extraction prompt does not yet emit a language on
                 // surfaces (plan A6), and a fabricated tag is worse than
                 // 'und'.
-                await addAliases(
+                await addSurfaces(
                   tx,
                   entityId,
                   resolution.validatedAliases.map((alias) => ({
@@ -2163,7 +2163,7 @@ export class UnifiedProcessingService implements OnModuleInit {
                 // markEmbeddingStale:false — a brand-new row has no
                 // embedding to invalidate.
                 if (entityData.aliases) {
-                  await addAliases(
+                  await addSurfaces(
                     tx,
                     createdEntity.entityId,
                     (entityData.aliases as string[]).map((alias) => ({

@@ -94,10 +94,9 @@ model Entity {
   primaryLocation                     RestaurantLocation?           @relation("PrimaryLocation", fields: [primaryLocationId], references: [locationId])
   curatedListItems                    CuratedListItem[]             @relation("CuratedListItemEntity")
   curatedListItemRestaurants          CuratedListItem[]             @relation("CuratedListItemRestaurant")
-  entityAliases                       EntityAlias[]                 @relation("EntityAliasEntity")
+  entitySurfaces                      EntitySurface[]               @relation("EntitySurfaceEntity")
   satisfiesFrom                       EntitySatisfies[]             @relation("SatisfiesFrom")
   satisfiesTo                         EntitySatisfies[]             @relation("SatisfiesTo")
-  entityLabels                        EntityLabel[]                 @relation("EntityLabelEntity")
 
   @@index([type], map: "idx_entities_type")
   @@index([type, status], map: "idx_entities_type_status")
@@ -119,11 +118,6 @@ model Entity {
   @@map("core_entities")
 }
 
-/// SURFACE forms — what corpora and users SAY (multilingual plan A1).
-/// Rows are the TRUTH; `Entity.aliases` is a DERIVED PROJECTION of the
-/// active forms, written by exactly one app function (addAliases in
-/// entity-alias.service.ts). Never a display surface — display is
-/// EntityLabel. Recall only.
 /// THE SUBSTITUTABILITY EDGE (concept-graph plan, rung 4): "if a user asked
 /// for FROM and we showed them TO, would they be satisfied?"
 ///
@@ -154,91 +148,89 @@ model EntitySatisfies {
   @@map("entity_satisfies")
 }
 
-model EntityAlias {
-  aliasId    String   @id @default(dbgenerated("gen_random_uuid()")) @map("alias_id") @db.Uuid
-  entityId   String   @map("entity_id") @db.Uuid
-  /// PROJECTION ORDER (bigserial). The legacy array is rebuilt as the
-  /// active forms in seq order, reproducing today's append semantics.
-  /// Nothing reads aliases[] positionally, so seq is the only authority.
-  seq        BigInt   @unique @default(autoincrement())
-  form       String   @db.VarChar(255)
-  /// APP-WRITTEN canonicalFold(form) — the folded mirror N1 needed. There
-  /// is no SQL fold: Postgres Unicode classes are platform-dependent.
-  /// Write it ONLY via addAliases().
-  formFolded String   @map("form_folded") @db.VarChar(255)
+/// THE SURFACE STORE — every string a concept is known by, in every locale.
+///
+/// ONE TABLE BY MERGE (§11 structural item 2). `entity_alias` (recall) and
+/// `entity_labels` (display) were the same concept split in two, and the
+/// split's own confession was that both keyed on (entity_id, locale, form)
+/// — one as a unique index, one as a primary key. The standing reconciler
+/// (WordClaimAdjudicator.reconcileLabelSurfaces) existed only to copy the
+/// display store into the recall store forever; at merge time 16,838 of
+/// 20,256 label rows already had a byte-identical alias twin. Merged
+/// 2026-08-09; the reconciler is deleted and cannot return.
+///
+/// ROLE is the axis the split was pretending to be:
+///   'recall'  — grounds a query, never rendered (a corpus surface)
+///   'display' — rendered, never grounds
+///   'both'    — the ordinary case for a swept label
+/// A 'display' row is not a different KIND of thing: it is a surface whose
+/// RECALL CLAIM was refused by the collision guard (P0-b) or withheld. The
+/// role IS the recorded verdict, which is why no reconciliation pass is
+/// possible — a label form is offered for recall once, when its row is
+/// created, and the outcome is stored in the same row the user reads.
+///
+/// THE FOLD LAW: `formFolded` is APP-WRITTEN via canonicalFold at the one
+/// write site (addSurfaces). There is no SQL fold — Postgres Unicode
+/// classes are platform-dependent, so a SQL mirror can never be trusted
+/// across environments.
+model EntitySurface {
+  surfaceId  String @id @default(dbgenerated("gen_random_uuid()")) @map("surface_id") @db.Uuid
+  entityId   String @map("entity_id") @db.Uuid
+  /// Insertion order (bigserial). Kept as the deterministic tiebreak for
+  /// any read that needs a stable order over one entity's surfaces.
+  seq        BigInt @unique @default(autoincrement())
+  form       String @db.VarChar(255)
+  /// APP-WRITTEN canonicalFold(form) — the folded mirror every match arm
+  /// compares against, on BOTH sides. Written ONLY by addSurfaces.
+  formFolded String @map("form_folded") @db.VarChar(255)
   /// Canonical BCP 47 (R5-5: full tags — es-MX, zh-Hans), or 'und' for
   /// untagged legacy rows.
-  locale     String   @default("und")
+  locale     String @default("und")
+  /// display | recall | both. See the model doc: 'display' is a REFUSED or
+  /// withheld recall claim, not a separate species. Every recall arm must
+  /// filter `role <> 'display'`; every display read `role <> 'recall'`.
+  role       String @default("recall")
   /// legacy | merge_fold | ontology_rename | extraction |
-  /// knowledge_synthesis | places | cuisine | query_banking | seed
+  /// knowledge_synthesis | places | cuisine | query_banking | vocabulary |
+  /// seed | sweep | manual | synthesis. Provenance decides whether the
+  /// collision guard polices the claim (INFERRED_SURFACE_SOURCES), so it
+  /// must name the pass that actually wrote the row.
   source     String
-  confidence Float    @default(1)
-  /// candidate | active | deprecated. R5-6(b): the self-teaching loop
-  /// needs a DEMOTION path so a judge-rejected pairing is remembered as
-  /// wrong instead of re-proposed by query spam forever. Only 'active'
-  /// rows enter the aliases[] projection.
-  status     String   @default("active")
-  createdAt  DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
-  entity     Entity   @relation("EntityAliasEntity", fields: [entityId], references: [entityId], onDelete: Cascade)
+  confidence Float  @default(1)
+  /// candidate | active | deprecated. R5-6(b): the self-teaching loop needs
+  /// a DEMOTION path so a judge-rejected pairing is remembered as wrong
+  /// instead of re-proposed by query spam forever.
+  status     String @default("active")
 
-  @@unique([entityId, locale, form], map: "uq_entity_alias_entity_locale_form")
-  @@index([formFolded], map: "idx_entity_alias_form_folded")
-  @@index([locale, formFolded], map: "idx_entity_alias_locale_form_folded")
-  @@index([entityId], map: "idx_entity_alias_entity_id")
-  @@map("entity_alias")
-}
+  /// R5-6(a), the Wikidata disambiguator: display forms collide across
+  /// concepts ("pan"). Drafted by the sweep in the same call; it sharpens
+  /// judge-merge. Display-side; NULL on recall-only rows.
+  description   String? @db.VarChar(500)
+  /// The one label a user sees for this (entity, locale). Display-side —
+  /// `entity_surface_default_is_display` forbids it on a recall-only row.
+  isDefault     Boolean @default(false) @map("is_default")
+  rank          Int     @default(0)
+  /// Vocabulary-prompt version that wrote this row; the sweep re-offers
+  /// rows below the generator's current version (one re-pay per bump).
+  promptVersion Int     @default(1) @map("prompt_version")
 
-/// DISPLAY forms — what a user SEES, per locale (multilingual plan M2).
-/// No writer yet by design; the M2 nightly unlabeled-concept sweep fills
-/// it. RULING: labels and aliases must NEVER fuse — writing labels into
-/// the alias bag is on the NEVER list.
-model EntityLabel {
-  entityId      String   @map("entity_id") @db.Uuid
-  /// Canonical BCP 47 (R5-5). RFC 4647 lookup fallback es-MX → es-419 → es.
-  locale        String
-  form          String   @db.VarChar(255)
-  /// APP-WRITTEN canonicalFold(form) — the folded RECALL mirror, the exact
-  /// shape entity_alias.form_folded carries. The labels-as-surfaces match arm
-  /// (entity-text-search: scanForKnownEntityGroups) folds BOTH sides; without
-  /// this column it compared a folded query candidate against LOWER(form) and
-  /// every accented/apostrophe label — the es rows the arm exists to serve —
-  /// was structurally unmatchable. There is NO SQL fold (Postgres Unicode
-  /// classes are platform-dependent); write it ONLY via canonicalFold at the
-  /// one write site (LabelSweepService.writeLabels).
-  formFolded    String   @map("form_folded") @db.VarChar(255)
-  /// R5-6(a) the Wikidata disambiguator: labels collide across concepts
-  /// ("pan"). Drafted by the sweep in the same call; sharpens judge-merge.
-  description   String?  @db.VarChar(500)
-  isDefault     Boolean  @default(false) @map("is_default")
-  rank          Int      @default(0)
-  /// Vocabulary-prompt version that wrote this row; the sweep re-offers rows
-  /// below the generator's current version (one re-pay per prompt bump).
-  promptVersion Int      @default(1) @map("prompt_version")
-  /// R5-10: the sweep and the spine seeder judge by MULTI-SAMPLE CONSENSUS.
-  /// Agreement lands 'active'; disagreement lands 'candidate' for human
-  /// review; a rejected label is 'deprecated' (remembered as wrong, not
-  /// re-proposed). Only 'active' rows are ever displayed.
-  /// candidate | active | deprecated.
-  status        String   @default("active")
-  /// Provenance: seeded, swept, manual, or synthesis-produced.
-  source        String   @default("seed")
-  createdAt     DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
-  updatedAt     DateTime @default(now()) @map("updated_at") @db.Timestamptz(6)
-  entity        Entity   @relation("EntityLabelEntity", fields: [entityId], references: [entityId], onDelete: Cascade)
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime @default(now()) @map("updated_at") @db.Timestamptz(6)
 
-  // Raw-SQL PARTIAL unique (migration 20260804000000):
-  // uq_entity_labels_one_default ON (entity_id, locale) WHERE is_default —
-  // exactly one default label per locale. Not expressible in Prisma; do
-  // not re-add as a plain @@unique (that would be a SECOND, non-partial
+  entity Entity @relation("EntitySurfaceEntity", fields: [entityId], references: [entityId], onDelete: Cascade)
+
+  // Raw-SQL PARTIAL unique (migration 20260809100000):
+  // uq_entity_surface_one_default ON (entity_id, locale) WHERE is_default —
+  // exactly one default display form per locale. Not expressible in Prisma;
+  // do not re-add as a plain @@unique (that would be a SECOND, non-partial
   // index and permanent migrate-diff drift).
-  @@id([entityId, locale, form], map: "pk_entity_labels")
-  @@index([locale], map: "idx_entity_labels_locale")
-  @@index([locale, status], map: "idx_entity_labels_locale_status")
-  /// The labels match arm: fold BOTH sides, then match — mirrors the two
-  /// entity_alias.form_folded indexes exactly.
-  @@index([formFolded], map: "idx_entity_labels_form_folded")
-  @@index([locale, formFolded], map: "idx_entity_labels_locale_form_folded")
-  @@map("entity_labels")
+  @@unique([entityId, locale, form], map: "uq_entity_surface_entity_locale_form")
+  @@index([formFolded], map: "idx_entity_surface_form_folded")
+  @@index([locale, formFolded], map: "idx_entity_surface_locale_form_folded")
+  @@index([entityId], map: "idx_entity_surface_entity_id")
+  @@index([locale], map: "idx_entity_surface_locale")
+  @@index([locale, status], map: "idx_entity_surface_locale_status")
+  @@map("entity_surface")
 }
 
 model RestaurantLocation {

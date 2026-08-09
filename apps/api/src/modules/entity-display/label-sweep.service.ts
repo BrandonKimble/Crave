@@ -9,11 +9,10 @@ import {
   normalizeLocaleTag,
 } from '../../shared/locale';
 import {
-  canonicalFold,
   isDisplayable,
   normalizeSurface,
 } from '../content-processing/entity-resolver/entity-identity';
-import { addAliases } from '../content-processing/entity-resolver/entity-alias.service';
+import { addSurfaces } from '../content-processing/entity-resolver/entity-surface.service';
 import {
   WordClaimAdjudicatorService,
   type ContestedClaim,
@@ -104,8 +103,11 @@ export class LabelSweepService {
         WHERE e.type::text = ANY(${LABELED_ENTITY_TYPES})
           AND e.status = 'active'
           AND NOT EXISTS (
-            SELECT 1 FROM entity_labels l
+            SELECT 1 FROM entity_surface l
             WHERE l.entity_id = e.entity_id
+              -- Display predicate: a role='recall' corpus surface does not
+              -- make a concept LABELLED (surface merge, §11-2).
+              AND l.role <> 'recall'
               AND LOWER(l.locale) = ANY(${localeLookupChain(locale)}::text[])
               AND l.status IN ('active', 'candidate')
               AND l.prompt_version >= ${VOCABULARY_PROMPT_VERSION}
@@ -135,8 +137,11 @@ export class LabelSweepService {
         WHERE e.type::text = ANY(${LABELED_ENTITY_TYPES})
           AND e.status = 'active'
           AND NOT EXISTS (
-            SELECT 1 FROM entity_labels l
+            SELECT 1 FROM entity_surface l
             WHERE l.entity_id = e.entity_id
+              -- Display predicate: a role='recall' corpus surface does not
+              -- make a concept LABELLED (surface merge, §11-2).
+              AND l.role <> 'recall'
               AND LOWER(l.locale) = ANY(${localeLookupChain(locale)}::text[])
               AND l.status IN ('active', 'candidate')
               AND l.prompt_version >= ${VOCABULARY_PROMPT_VERSION}
@@ -215,9 +220,19 @@ export class LabelSweepService {
   }
 
   /**
-   * The ONE writer for generated labels. `is_default` is set only for a row
-   * that both won consensus and cleared the MQM threshold — a disputed label
-   * must never become the default a user sees while it waits for review.
+   * The ONE writer for generated labels — and, since the surface merge
+   * (§11-2), for their recall claims in the SAME transaction.
+   *
+   * A label form is offered with role='both': a word a real speaker READS
+   * is normally a word they SAY. The collision guard adjudicates that claim
+   * once, here. If it loses, `addSurfaces` DEGRADES the row to 'display' —
+   * the user keeps the label, the word keeps its owner, and the refusal is
+   * recorded in the row itself. That is why `reconcileLabelSurfaces` is
+   * deleted: there is no longer a gap between a display store and a recall
+   * store for a standing pass to close.
+   *
+   * The generator's declared search surfaces are a SEPARATE, role='recall'
+   * write so the offered/banked/blocked tally stays about them alone.
    */
   async writeLabels(
     labels: readonly GeneratedLabel[],
@@ -227,51 +242,52 @@ export class LabelSweepService {
   ): Promise<number> {
     let written = 0;
     for (const label of labels) {
-      // Same ingress primitives as the alias writer: NFC + format-control
-      // strip so a surface has ONE normal form, a validated BCP-47 tag so a
-      // typo can't land as free text the match filter drops, and the
-      // Unicode-aware displayable guard so a zero-width/NBSP-only label (which
-      // JS .trim() and SQL btrim both miss) never renders an invisible name.
+      // Same ingress primitives as every other surface: NFC + format-control
+      // strip so a form has ONE normal form, a validated BCP-47 tag so a typo
+      // cannot land as free text the match filter drops, and the
+      // Unicode-aware displayable guard so a zero-width/NBSP-only label
+      // (which JS .trim() and SQL btrim both miss) never renders an
+      // invisible name.
       const form = normalizeSurface(label.form);
       const locale = normalizeLocaleTag(label.locale);
       if (!isDisplayable(form)) {
         continue;
       }
-      // `uq_entity_labels_one_default` is a PARTIAL unique on
-      // (entity_id, locale) WHERE is_default — a second default for the same
-      // pair is a constraint violation, not a preference. First writer wins;
-      // promoting a later label is a review action, never a side effect of a
-      // sweep re-run.
-      //
-      // THE ELECTION IS ATOMIC (F9342). It used to read the existing default
-      // with findFirst, then write is_default across a gap — two concurrent
-      // writers for the same (entity_id, locale) could both read "no default"
-      // and both write is_default=true, either violating the partial unique
-      // (aborting the whole sweep on an un-caught upsert) or, worse, both
-      // landing. The election now happens INSIDE the insert: is_default is
-      // `status='active' AND NOT EXISTS(another default for this pair)`
-      // evaluated in the same statement, so the read-then-write gap is gone.
-      // The partial unique remains the final arbiter for the genuinely
-      // simultaneous case (two forms whose NOT EXISTS both saw no default in
-      // their own snapshot); we catch ONLY that one violation and re-insert
-      // this row as a non-default, which is the minimal correct consequence —
-      // a default already exists, so this label simply is not it, and the
-      // sweep continues instead of aborting mid-batch.
-      await this.upsertLabelRow(label, form, locale, source, false);
+      const labelResult = await this.prisma.$transaction((tx) =>
+        addSurfaces(tx, label.entityId, [
+          {
+            form,
+            locale,
+            source,
+            role: 'both',
+            status: label.status,
+            description: label.description ?? null,
+            // Elect this the default label if the pair has none yet. The
+            // election happens inside the insert; the partial unique
+            // arbitrates the simultaneous case.
+            isDefault: true,
+            promptVersion: VOCABULARY_PROMPT_VERSION,
+          },
+        ]),
+      );
       written += 1;
+      // A refused label form is a CONTESTED CLAIM, not a lost label: the row
+      // landed as 'display'. The adjudicator can still win it back the word.
+      for (const blocked of labelResult.blocked) {
+        contested?.push({
+          form: blocked,
+          locale,
+          entityId: label.entityId,
+          source,
+        });
+      }
 
-      // SEARCH SURFACES ride the same verdict. The label is what a user READS;
-      // these are what they can MATCH — and the surfaces are the half that
-      // moved the launch gate (77.3% -> 96.7%). Locale-TAGGED, so P0-a keeps
-      // them out of the unlocalized aliases[] projection and only the
-      // locale-aware gazetteer sees them; source 'vocabulary' marks them
-      // INFERRED, so P0-b's collision guard refuses any that already name a
-      // different concept (the soup->caldo class).
-      // EXACTLY what the generator declared — the label form is NOT added
-      // implicitly. A generator that returns no surfaces means "bank none"
-      // (a proper noun: `Royale with Cheese` is its own label in every
-      // language, but claiming it is a SPANISH search word would be a
-      // fabrication, and the name arm already matches it in any locale).
+      // SEARCH SURFACES the generator declared. The label is what a user
+      // READS; these are what they can MATCH — and the surfaces are the half
+      // that moved the launch gate (77.3% -> 96.7%). Locale-TAGGED; source
+      // 'vocabulary' marks them INFERRED, so the collision guard refuses any
+      // that already name a different concept (the soup->caldo class).
+      // EXACTLY what the generator declared — nothing is added implicitly.
       const surfaces = Array.from(
         new Set((label.aliases ?? []).map((s) => s.trim())),
       ).filter(Boolean);
@@ -279,27 +295,27 @@ export class LabelSweepService {
         if (surfaceTally) surfaceTally.offered += surfaces.length;
         try {
           await this.prisma.$transaction(async (tx) => {
-            const result = await addAliases(
+            const result = await addSurfaces(
               tx,
               label.entityId,
               surfaces.map((surface) => ({
                 form: surface,
                 locale,
                 // Its OWN provenance, not the dish pass's. Borrowing
-                // 'knowledge_synthesis' to get under the collision guard would
-                // make a bad alias untraceable to the pass that wrote it and
-                // impossible to roll back independently. 'vocabulary' is in
-                // INFERRED_ALIAS_SOURCES, so the guard still applies.
+                // 'knowledge_synthesis' to get under the collision guard
+                // would make a bad surface untraceable to the pass that
+                // wrote it. 'vocabulary' is INFERRED, so the guard applies.
                 source: 'vocabulary' as const,
+                role: 'recall' as const,
               })),
             );
             if (surfaceTally) {
               surfaceTally.blocked += result.blocked.length;
               surfaceTally.banked += surfaces.length - result.blocked.length;
             }
-            for (const form of result.blocked) {
+            for (const blockedForm of result.blocked) {
               contested?.push({
-                form,
+                form: blockedForm,
                 locale,
                 entityId: label.entityId,
                 source: 'vocabulary',
@@ -318,74 +334,5 @@ export class LabelSweepService {
       }
     }
     return written;
-  }
-
-  /**
-   * Write one label row, electing is_default ATOMICALLY (F9342).
-   *
-   * A single INSERT ... ON CONFLICT: is_default is decided IN the statement as
-   * `status='active' AND NOT EXISTS(another default for this entity/locale)`,
-   * so there is no read-then-write window. On conflict with an existing row
-   * for the same (entity_id, locale, form) we refresh the mutable columns and
-   * never touch is_default (the form is the conflict key, so the election is
-   * invariant). `forceNonDefault` is the retry path for the one race the
-   * partial unique arbitrates: two DISTINCT forms of the same pair whose
-   * NOT EXISTS both saw no default — the loser re-inserts as non-default.
-   */
-  private async upsertLabelRow(
-    label: GeneratedLabel,
-    form: string,
-    locale: string,
-    source: string,
-    forceNonDefault: boolean,
-  ): Promise<void> {
-    // The FOLD LAW: a label cannot be written without its folded recall mirror
-    // (same canonicalFold entity_alias.form_folded uses), so the labels match
-    // arm can fold BOTH sides. Never a SQL fold. Writing it on UPDATE too
-    // self-heals any row whose fold predates this column (pre-backfill '' seed).
-    const formFolded = canonicalFold(form);
-    const wantsDefault = !forceNonDefault && label.status === 'active';
-    // is_default = wantsDefault AND no default already exists for this pair,
-    // evaluated in the same snapshot as the insert. When forceNonDefault, the
-    // NOT EXISTS is short-circuited to a literal false.
-    const isDefaultExpr = wantsDefault
-      ? Prisma.sql`NOT EXISTS (
-            SELECT 1 FROM entity_labels d
-             WHERE d.entity_id = ${label.entityId}::uuid
-               AND d.locale = ${locale}
-               AND d.is_default
-          )`
-      : Prisma.sql`false`;
-    try {
-      await this.prisma.$executeRaw`
-        INSERT INTO entity_labels
-          (entity_id, locale, form, form_folded, description, is_default,
-           rank, status, source, prompt_version, created_at, updated_at)
-        VALUES (
-          ${label.entityId}::uuid, ${locale}, ${form}, ${formFolded},
-          ${label.description ?? null}, ${isDefaultExpr},
-          0, ${label.status}, ${source}, ${VOCABULARY_PROMPT_VERSION},
-          now(), now()
-        )
-        ON CONFLICT (entity_id, locale, form) DO UPDATE SET
-          form_folded = EXCLUDED.form_folded,
-          description = EXCLUDED.description,
-          status = EXCLUDED.status,
-          prompt_version = EXCLUDED.prompt_version,
-          updated_at = now()`;
-    } catch (error) {
-      // The ONLY violation we absorb: a concurrent writer already elected the
-      // default for this (entity_id, locale). Re-insert this row as a
-      // non-default so the sweep continues rather than aborting mid-batch.
-      if (
-        !forceNonDefault &&
-        error instanceof Error &&
-        error.message.includes('uq_entity_labels_one_default')
-      ) {
-        await this.upsertLabelRow(label, form, locale, source, true);
-        return;
-      }
-      throw error;
-    }
   }
 }

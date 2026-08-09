@@ -20,7 +20,7 @@ import type {
  *
  * WHY IT MATTERS MORE THAN IT LOOKS: today `displayLabel` mostly returns
  * `entity.name`, so routing through it changes nothing visible. That is the
- * point. When M2's label sweep fills entity_labels for 8,272 concepts, the
+ * point. When M2's label sweep fills entity_surface for 8,272 concepts, the
  * edit is THIS FUNCTION — not archaeology across every DTO in the codebase
  * that ever touched `.name`. A3 demoted the stable slug to later precisely
  * because the indirection, not the slug, is the part that must exist before
@@ -61,10 +61,14 @@ export class EntityDisplayService {
     }
     const ids = [...new Set(entityIds)];
     try {
-      const rows = await this.prisma.entityLabel.findMany({
+      const rows = await this.prisma.entitySurface.findMany({
         where: {
           entityId: { in: ids },
           status: 'active',
+          // THE DISPLAY PREDICATE (surface merge, §11-2). One table holds
+          // display and recall forms now; a role='recall' row is a corpus
+          // surface nobody should ever be shown ("ctm" for tikka masala).
+          role: { not: 'recall' },
           // Prefix band: 'es' pulls 'es', 'es-MX', 'es-419' in one query, and
           // the per-entity fallback below picks the best of them. Two round
           // trips to discover a regional row would be one too many.

@@ -3,8 +3,8 @@
  * THE FOR-UPDATE LOCK ACTUALLY SERIALIZES CONCURRENT ALIAS WRITERS — against
  * a real Postgres.
  *
- * F1870/F1 (wave-3 red team): `entity_alias`/`core_entities.aliases` had a
- * proven LOST-UPDATE race — two concurrent `addAliases` calls both read the
+ * F1870/F1 (wave-3 red team): `entity_surface`/`core_entities.aliases` had a
+ * proven LOST-UPDATE race — two concurrent `addSurfaces` calls both read the
  * active alias rows, then both blind-wrote the derived `aliases[]` array;
  * whichever committed second silently overwrote the first writer's form from
  * every read arm (GIN overlap, FTS, trgm, per-alias unnest). `projectAliases`
@@ -13,7 +13,7 @@
  * commits and then read ITS committed state.
  *
  * This spec proves the lock closes the race two ways: (1) real wall-clock
- * concurrent `addAliases` calls at the same entity, both forms surviving;
+ * concurrent `addSurfaces` calls at the same entity, both forms surviving;
  * and (2) a DETERMINISTIC version that forces the classic read-then-write
  * window open via test-only instrumentation (wrapTxWithReadGate) rather
  * than hoping Node's scheduler happens to interleave two fast transactions
@@ -26,7 +26,7 @@
  * Run: yarn test:db   (needs DATABASE_URL — a dev/mirror database, never prod)
  */
 import { Prisma, PrismaClient } from '@prisma/client';
-import { addAliases } from './entity-alias.service';
+import { addSurfaces } from './entity-surface.service';
 
 /**
  * Wraps a transaction client so the ONE query that reads the active-alias
@@ -89,13 +89,13 @@ beforeAll(() => {
 });
 
 afterAll(async () => {
-  await prisma.$executeRaw`DELETE FROM entity_alias WHERE entity_id = ANY(${ids}::uuid[])`;
+  await prisma.$executeRaw`DELETE FROM entity_surface WHERE entity_id = ANY(${ids}::uuid[])`;
   await prisma.entity.deleteMany({ where: { entityId: { in: ids } } });
   await prisma.$disconnect();
 });
 
-describe('entity_alias.aliases projection under concurrent writers (FOR UPDATE lock, F1)', () => {
-  it('two concurrent addAliases calls on the SAME entity both survive in the final projection', async () => {
+describe('entity_surface.aliases projection under concurrent writers (FOR UPDATE lock, F1)', () => {
+  it('two concurrent addSurfaces calls on the SAME entity both survive in the final projection', async () => {
     const entityId = await seedEntity('concurrent');
 
     // Two independent transactions, started concurrently, each adding a
@@ -105,12 +105,12 @@ describe('entity_alias.aliases projection under concurrent writers (FOR UPDATE l
     // chance to interleave them; the FOR UPDATE lock is what prevents it.
     await Promise.all([
       prisma.$transaction((tx) =>
-        addAliases(tx, entityId, [
+        addSurfaces(tx, entityId, [
           { form: 'writer-alpha-form', source: 'extraction' },
         ]),
       ),
       prisma.$transaction((tx) =>
-        addAliases(tx, entityId, [
+        addSurfaces(tx, entityId, [
           { form: 'writer-beta-form', source: 'extraction' },
         ]),
       ),
@@ -124,11 +124,11 @@ describe('entity_alias.aliases projection under concurrent writers (FOR UPDATE l
       new Set(['writer-alpha-form', 'writer-beta-form']),
     );
 
-    // Cross-check against the source of truth (entity_alias rows), not just
+    // Cross-check against the source of truth (entity_surface rows), not just
     // the derived projection — proves BOTH insert statements landed, not
     // just that the array happens to contain the right strings.
     const rows = await prisma.$queryRaw<Array<{ form: string }>>`
-      SELECT form FROM entity_alias
+      SELECT form FROM entity_surface
       WHERE entity_id = ${entityId}::uuid AND status = 'active'
       ORDER BY form`;
     expect(rows.map((r) => r.form).sort()).toEqual([
@@ -163,7 +163,7 @@ describe('entity_alias.aliases projection under concurrent writers (FOR UPDATE l
 
     const writerA = prisma.$transaction(
       (tx) =>
-        addAliases(
+        addSurfaces(
           wrapTxWithReadGate(tx, gate, () => {
             gateFired = true;
           }),
@@ -180,7 +180,9 @@ describe('entity_alias.aliases projection under concurrent writers (FOR UPDATE l
     // happens-after A's.
     await new Promise((r) => setTimeout(r, 200));
     const writerBDone = prisma.$transaction((tx) =>
-      addAliases(tx, entityId, [{ form: 'race-form-b', source: 'extraction' }]),
+      addSurfaces(tx, entityId, [
+        { form: 'race-form-b', source: 'extraction' },
+      ]),
     );
 
     // Now widen the window: let A resume its (already-completed) read and

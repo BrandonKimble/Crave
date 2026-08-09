@@ -1,5 +1,5 @@
 import { identityInsertData } from '../content-processing/entity-resolver/entity-identity';
-import { addAliases } from '../content-processing/entity-resolver/entity-alias.service';
+import { addSurfaces } from '../content-processing/entity-resolver/entity-surface.service';
 import { BadRequestException, Injectable } from '@nestjs/common';
 import { EntityType, Prisma } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
@@ -424,7 +424,7 @@ export class PollEntitySeedService {
       if (createdAliases.length) {
         const placeLocale =
           match.place?.displayName?.languageCode?.trim() || undefined;
-        await addAliases(
+        await addSurfaces(
           tx,
           entity.entityId,
           createdAliases.map((form) => ({

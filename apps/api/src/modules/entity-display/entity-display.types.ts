@@ -5,7 +5,7 @@
  *   - `name`     — the CANONICAL English string. It is the concept's
  *                  identity-adjacent text and the token every matcher in the
  *                  product speaks. It is NOT a display string.
- *   - label      — what the user SEES (entity_labels, per locale).
+ *   - label      — what the user SEES (entity_surface role display|both, per locale).
  *   - submitToken — what the client SENDS BACK when the user taps the thing.
  *
  * The third one is the round-4 dependency that makes the other two safe: the

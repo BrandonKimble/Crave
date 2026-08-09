@@ -23,7 +23,7 @@ import 'dotenv/config';
 import { NestFactory } from '@nestjs/core';
 import { AppModule } from '../src/app.module';
 import { PrismaService } from '../src/prisma/prisma.service';
-import { projectAliases } from '../src/modules/content-processing/entity-resolver/entity-alias.service';
+import { projectAliases } from '../src/modules/content-processing/entity-resolver/entity-surface.service';
 import { stopCronsForScript } from '../src/shared/utils/stop-crons';
 
 async function main(): Promise<void> {
@@ -50,18 +50,18 @@ async function main(): Promise<void> {
               -- justifies it. Words identical across languages ('halal',
               -- 'kosher') carry BOTH an und row and a tagged one, and the und
               -- row is what legitimately puts them in the array.
-              SELECT 1 FROM entity_alias ea
+              SELECT 1 FROM entity_surface ea
               WHERE ea.entity_id = e.entity_id
                 AND ea.status = 'active' AND ea.locale <> 'und'
                 AND ea.form = ANY(e.aliases)
                 AND NOT EXISTS (
-                      SELECT 1 FROM entity_alias u
+                      SELECT 1 FROM entity_surface u
                       WHERE u.entity_id = e.entity_id AND u.form = ea.form
                         AND u.locale = 'und' AND u.status = 'active'
                     )
             )
          OR EXISTS (
-              SELECT 1 FROM entity_alias ea
+              SELECT 1 FROM entity_surface ea
               WHERE ea.entity_id = e.entity_id
                 AND ea.status = 'active' AND ea.locale = 'und'
                 AND NOT (ea.form = ANY(COALESCE(e.aliases, ARRAY[]::varchar[])))

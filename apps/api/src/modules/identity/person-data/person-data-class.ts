@@ -788,8 +788,7 @@ export const COLUMN_COVERAGE: readonly ColumnCoverageEntry[] = [
       ['derived_food_category_edges', 'Derived from the entity graph.'],
       ['derived_location_open_intervals', 'Derived restaurant hours.'],
       ['engines', 'Geographic search engines (place-id sets).'],
-      ['entity_alias', 'Vocabulary.'],
-      ['entity_labels', 'Vocabulary.'],
+      ['entity_surface', 'Vocabulary.'],
       ['entity_redirects', 'Vocabulary.'],
       ['entity_satisfies', 'Vocabulary.'],
       [

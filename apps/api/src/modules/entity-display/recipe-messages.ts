@@ -19,7 +19,7 @@
  * TRANSLATION NOTE (why these are not machine-translated at read time): these
  * are OUR sentences about OUR product — a fixed, tiny, high-traffic set. They
  * are authored here per locale exactly once. The only thing that varies per
- * row is the CONCEPT NOUN inside them, which comes from entity_labels.
+ * row is the CONCEPT NOUN inside them, which comes from the display role of entity_surface.
  */
 import { DEFAULT_LOCALE } from '../../shared/locale';
 
@@ -104,7 +104,7 @@ const EN: Catalogue = {
 /**
  * ES authored here, not translated on read. Note what is NOT translated
  * inside them: `{city}`, `{place}` (proper nouns) and `{label}` (which
- * arrives already localized from entity_labels, or already source-faithful
+ * arrives already localized from the display surfaces, or already source-faithful
  * for a dish — "Lo mejor de birria en Austin" is correct, "estofado" is not).
  */
 const ES: Catalogue = {

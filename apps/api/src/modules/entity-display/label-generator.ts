@@ -12,7 +12,7 @@
  * writing nothing, which is strictly better than a scored guess. So the score
  * was always the same constant compared against itself, and the error-span
  * array was always empty: scaffolding for a design that does not exist.
- * `status` stays because the entity_labels column is real and a future human
+ * `status` stays because the entity_surface.status column is real and a future human
  * review flow would set it; the generator only ever emits 'active'.
  *
  * MULTI-SAMPLE CONSENSUS WAS REMOVED, and the removal is a MEASUREMENT, not a
@@ -57,7 +57,7 @@ export interface GeneratedLabel {
    *
    * They ride together because they are ONE judgment about one concept in one
    * language; paying for that twice would be waste. They are STORED apart
-   * (`entity_labels` vs `entity_alias`) because display and matching have
+   * (role='display' vs role='recall') because display and matching have
    * different laws. Optional, so label-only generators stay valid.
    */
   aliases?: string[];

@@ -1,5 +1,5 @@
 {
-  "ranAt": "2026-08-09T05:58:06.593Z",
+  "ranAt": "2026-08-09T07:21:23.956Z",
   "lang": "es",
   "corpusVersion": 1,
   "scoreboard": {
@@ -5036,7 +5036,7 @@
       "stratum": "homograph",
       "locale": "es-US",
       "pass": true,
-      "preservation": 1,
+      "preservation": 0.5,
       "reasons": [],
       "grounded": [
         {
@@ -5047,15 +5047,6 @@
           "name": "masa",
           "tier": "gazetteer-exact",
           "foldedName": "masa"
-        },
-        {
-          "entityId": "3b0eb120-1882-4fee-a167-8b1b20be2105",
-          "bucket": "food",
-          "type": "food",
-          "span": "masa",
-          "name": "dough",
-          "tier": "gazetteer-exact",
-          "foldedName": "dough"
         }
       ],
       "unresolved": [],

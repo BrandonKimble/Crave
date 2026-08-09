@@ -149,7 +149,7 @@ export function lookupSupported(
 
 /**
  * NORMALIZE A STORED LOCALE TAG at the write ingress — the ONE validator every
- * locale-bearing column (entity_alias.locale, entity_labels.locale) passes
+ * locale-bearing column (entity_surface.locale, entity_surface.locale (role<>'recall')) passes
  * through. `Intl.Locale` is the principled BCP-47 parser: it canonicalizes
  * casing (`ES`→`es`, `pt-br`→`pt-BR`) and THROWS on a malformed shape (`es_MX`,
  * a 100-char blob, `''`), so a typo can never land as free text that the match
@@ -159,7 +159,7 @@ export function lookupSupported(
  *
  * `'und'` (RFC 5646 "undetermined") is the universal-alias sentinel and passes
  * through. Anything unparseable becomes `'und'` — the conservative floor, the
- * same choice `AliasInput` documents ("a FABRICATED tag is worse than none").
+ * same choice `SurfaceInput` documents ("a FABRICATED tag is worse than none").
  */
 export function normalizeLocaleTag(raw: string | null | undefined): string {
   const trimmed = (raw ?? '').trim();

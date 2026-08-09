@@ -84,7 +84,7 @@ beforeAll(async () => {
       type: 'food',
     },
   });
-  await prisma.entityAlias.create({
+  await prisma.entitySurface.create({
     data: {
       entityId: EXACT_ENTITY_ID,
       form: TERM,
@@ -100,7 +100,7 @@ beforeAll(async () => {
     await prisma.entity.create({
       data: { entityId, name: `${TEST_TAG}-prefix-${index}`, type: 'food' },
     });
-    await prisma.entityAlias.create({
+    await prisma.entitySurface.create({
       data: {
         entityId,
         form: surface,
@@ -114,7 +114,9 @@ beforeAll(async () => {
 });
 
 afterAll(async () => {
-  await prisma.entityAlias.deleteMany({ where: { entityId: { in: allIds } } });
+  await prisma.entitySurface.deleteMany({
+    where: { entityId: { in: allIds } },
+  });
   await prisma.entity.deleteMany({ where: { entityId: { in: allIds } } });
   await prisma.$disconnect();
 });
@@ -199,7 +201,7 @@ describe('searchLocalizedSurfaces: the exact match survives the LIMIT (F3801)', 
 
   it('deduplicates to one row per entity even when an entity has several matching aliases', async () => {
     // The dedup the DISTINCT ON exists for must survive being moved inward.
-    await prisma.entityAlias.create({
+    await prisma.entitySurface.create({
       data: {
         entityId: EXACT_ENTITY_ID,
         form: `${TERM}alt`,
@@ -222,7 +224,7 @@ describe('searchLocalizedSurfaces: the exact match survives the LIMIT (F3801)', 
       expect(matches[0].entityId).toBe(EXACT_ENTITY_ID);
       expect(matches[0].evidence).toBe('exact');
     } finally {
-      await prisma.entityAlias.deleteMany({
+      await prisma.entitySurface.deleteMany({
         where: { entityId: EXACT_ENTITY_ID, form: `${TERM}alt` },
       });
     }

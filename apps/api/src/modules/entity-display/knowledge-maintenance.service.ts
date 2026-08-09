@@ -3,7 +3,6 @@ import { Cron, CronExpression } from '@nestjs/schedule';
 import { isEnvFlagEnabled } from '../../shared/config/env-flag';
 import { LabelSweepService } from './label-sweep.service';
 import { VocabularyGenerator } from './vocabulary-generator';
-import { WordClaimAdjudicatorService } from '../content-processing/entity-resolver/word-claim-adjudicator.service';
 import { ConceptSatisfiesService } from '../content-processing/entity-resolver/concept-satisfies.service';
 
 /**
@@ -51,7 +50,6 @@ export class KnowledgeMaintenanceService {
   constructor(
     private readonly labelSweep: LabelSweepService,
     private readonly vocabulary: VocabularyGenerator,
-    private readonly adjudicator: WordClaimAdjudicatorService,
     private readonly satisfies: ConceptSatisfiesService,
   ) {}
 
@@ -83,10 +81,6 @@ export class KnowledgeMaintenanceService {
           `maintenance sweep locale=${locale} due=${sweep.due} written=${sweep.written} banked=${sweep.surfacesBanked} blocked=${sweep.surfacesBlocked}`,
         );
       }
-      const reconciled = await this.adjudicator.reconcileLabelSurfaces();
-      this.logger.log(
-        `maintenance reconcile offered=${reconciled.offered} banked=${reconciled.banked} judged=${reconciled.judged} evicted=${reconciled.incumbentEvicted} refused=${reconciled.newcomerRefused}`,
-      );
       const judged = await this.satisfies.run({
         limit: KnowledgeMaintenanceService.SATISFIES_LIMIT,
       });

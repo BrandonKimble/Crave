@@ -142,7 +142,7 @@ const FLOWS: FlowEntry[] = [
   // The third language (2026-08-09). Every assertion below was verified
   // against the banked registry BEFORE it was written: the vi vocabulary
   // sweep banked 8,751 labels + 14,375 active `vi` alias rows, and each row
-  // asserted here was read out of entity_alias first. Vietnamese is the
+  // asserted here was read out of entity_surface first. Vietnamese is the
   // DIACRITIC test the Latin-1 languages could not be: `phở`/`pho`,
   // `hải sản`/`hai san` are one folded key by the N1 law, so a locale that
   // folds wrong shows up here as a miss, not as a silent near-match.

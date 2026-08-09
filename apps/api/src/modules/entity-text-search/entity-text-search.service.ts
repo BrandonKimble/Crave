@@ -223,7 +223,7 @@ export class EntityTextSearchService {
    * word at all.
    *
    * Since AC-P1a the sparse lane itself reads the locale-chained
-   * entity_alias registry, so tagged surfaces reach it too — this lane
+   * entity_surface registry, so tagged surfaces reach it too — this lane
    * remains the EXACT/PREFIX/localized-label specialist (label rendering,
    * canonicalFold identity, per-locale ranking) layered over that recall.
    *
@@ -277,9 +277,14 @@ export class EntityTextSearchService {
                -- a statement about the form that matched, and it cannot be
                -- recomputed from the entity's name (see the mapper).
                ea.form_folded AS "form"
-          FROM entity_alias ea
+          FROM entity_surface ea
           JOIN core_entities e ON e.entity_id = ea.entity_id
          WHERE ea.status = 'active'
+           -- THE RECALL PREDICATE (surface merge, §11-2). One table now holds
+           -- display and recall forms; role='display' is a surface whose
+           -- recall claim the collision guard REFUSED, so it must never
+           -- ground. Every recall arm carries this filter.
+           AND ea.role <> 'display'
            AND LOWER(ea.locale) = ANY(${chain}::text[])
            AND (ea.form_folded = ${folded}
                 OR ea.form_folded LIKE ${folded + '%'}
@@ -383,7 +388,7 @@ export class EntityTextSearchService {
       denseLocale?: string | null;
       /**
        * BCP 47. OPT-IN: when present, the LOCALIZED-SURFACE lane runs — the
-       * only way a locale-tagged `entity_alias` row reaches this core, and
+       * only way a locale-tagged `entity_surface` row reaches this core, and
        * therefore the only way autocomplete can match a foreign word. Callers
        * with no locale (ingestion, poll seeding) behave exactly as before.
        */
@@ -1278,9 +1283,10 @@ export class EntityTextSearchService {
               min(length(a.form_folded))
                 FILTER (WHERE word_similarity(v.term, a.form_folded) = 1
                           AND a.form_folded <> v.folded_term) AS a_contain_len
-            FROM entity_alias a
+            FROM entity_surface a
             WHERE a.entity_id = e.entity_id
               AND a.status = 'active'
+              AND a.role <> 'display'
               AND LOWER(a.locale) = ANY(${chain}::text[])
           ) al ON true
           WHERE e.type = ANY(${entityTypeArray})
@@ -1412,14 +1418,14 @@ export class EntityTextSearchService {
     // the active catalogue per search):
     //   1. identity_key = folded candidate      (N1 name fold symmetry)
     //   2. LOWER(name)  = candidate             (exact typed name)
-    //   3. entity_alias.form_folded, locale-chained (N1 alias fold symmetry)
-    // The former arm 4 (entity_labels) is REMOVED — see the claims-registry
+    //   3. entity_surface.form_folded, locale-chained (N1 alias fold symmetry)
+    // The former arm 4 (the display role) is REMOVED — see the claims-registry
     // note below; labels are display-only and the alias store is the one
     // guarded surface registry.
     // The legacy `crave_text_array_lower(aliases)` GIN arm was REMOVED here
     // (i18n red team, executed): it was the untyped, UNLOCALED shadow of
-    // entity_alias — it re-grounded seeded es forms ('americana') for English
-    // requests, the F2 class one arm over. entity_alias is a proven complete
+    // entity_surface — it re-grounded seeded es forms ('americana') for English
+    // requests, the F2 class one arm over. entity_surface is a proven complete
     // superset of that array (0 of 19,297 lowered array forms absent from it,
     // measured), so dropping the arm loses no reachability and collapses the
     // two alias surfaces into one, locale-filtered surface.
@@ -1444,9 +1450,10 @@ export class EntityTextSearchService {
              e.identity_key AS "foldedName",
              ARRAY(SELECT LOWER(a) FROM unnest(e.aliases) a) AS "normAliases",
              ARRAY(
-               SELECT ea.form_folded FROM entity_alias ea
+               SELECT ea.form_folded FROM entity_surface ea
                WHERE ea.entity_id = e.entity_id
                  AND ea.status = 'active'
+                 AND ea.role <> 'display'
                  ${aliasLocaleFilter}
                  AND ea.form_folded = ANY(${candidates}::text[])
              ) AS "foldedAliases"`;
@@ -1483,9 +1490,10 @@ export class EntityTextSearchService {
       WHERE e.status = 'active'::entity_status
         AND e.type = ANY(${typeArray})
         AND EXISTS (
-          SELECT 1 FROM entity_alias ea
+          SELECT 1 FROM entity_surface ea
           WHERE ea.entity_id = e.entity_id
             AND ea.status = 'active'
+            AND ea.role <> 'display'
             ${aliasLocaleFilter}
             AND ea.form_folded = ANY(${candidates}::text[])
         )
@@ -1493,7 +1501,7 @@ export class EntityTextSearchService {
     `);
     // LANE 4 (labels-as-surfaces) REMOVED (claims registry, §9.9, 2026-08-07):
     // labels are DISPLAY-only again. Every label surface worth grounding was
-    // reconciled into entity_alias through the collision guard + word-claim
+    // reconciled into entity_surface through the collision guard + word-claim
     // adjudicator (scripts/reconcile-surface-claims.ts, 1,543 surfaces), so
     // the alias store is the ONE claims registry — a surface cannot ground
     // without passing the claim law. The junk-label class (`taco` on a dish
@@ -1574,7 +1582,7 @@ export class EntityTextSearchService {
    * filter (identity is global; the scope is only a retrieval prior).
    */
   private async buildRestaurantEngineTerritoryFilter(
-    entityAlias: string,
+    entitySurface: string,
     engineId: string | null,
   ): Promise<Prisma.Sql> {
     const territoryPlaceIds =
@@ -1583,7 +1591,7 @@ export class EntityTextSearchService {
       return Prisma.empty;
     }
 
-    const entityReference = Prisma.raw(entityAlias);
+    const entityReference = Prisma.raw(entitySurface);
     return Prisma.sql`
       AND (
         ${entityReference}.type != 'restaurant'

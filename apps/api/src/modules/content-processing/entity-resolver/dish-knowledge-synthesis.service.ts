@@ -1,5 +1,5 @@
 import { identityInsertData } from './entity-identity';
-import { addAliases } from './entity-alias.service';
+import { addSurfaces } from './entity-surface.service';
 import { Injectable } from '@nestjs/common';
 import { Cron, CronExpression } from '@nestjs/schedule';
 import { EntityStatus, EntityType } from '@prisma/client';
@@ -156,7 +156,7 @@ export class DishKnowledgeSynthesisService {
         // and these are SURFACES, never labels (the plan's NEVER list).
         if (newAliases.length) {
           await this.prisma.$transaction((tx) =>
-            addAliases(
+            addSurfaces(
               tx,
               dish.entityId,
               newAliases.map((alias) => ({

@@ -1,6 +1,6 @@
 import * as fs from 'fs';
 import * as path from 'path';
-import type { AddAliasesOptions } from './entity-alias.service';
+import type { AddSurfacesOptions } from './entity-surface.service';
 
 /**
  * F9968 — the adjudicated guard-bypass must be UNREPRESENTABLE, not
@@ -22,7 +22,7 @@ import type { AddAliasesOptions } from './entity-alias.service';
 
 // ── Type half ──────────────────────────────────────────────────────────────
 // @ts-expect-error F9968: a bare boolean must NOT satisfy the branded verdict
-const bypassAttempt: AddAliasesOptions = { adjudicated: true };
+const bypassAttempt: AddSurfacesOptions = { adjudicated: true };
 void bypassAttempt;
 
 // ── Importer half ──────────────────────────────────────────────────────────
@@ -53,7 +53,7 @@ describe('F9968 — mintWordClaimVerdict single-importer law', () => {
       .filter(
         (rel) =>
           rel !==
-          'modules/content-processing/entity-resolver/entity-alias.service.ts',
+          'modules/content-processing/entity-resolver/entity-surface.service.ts',
       );
     const unexpected = importers.filter((rel) => !ALLOWED_IMPORTERS.has(rel));
     expect({ unexpected }).toEqual({ unexpected: [] });
