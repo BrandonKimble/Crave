@@ -1,8 +1,9 @@
 import { isEnvFlagExplicitlyDisabled } from '../../shared/config/env-flag';
-import { Injectable } from '@nestjs/common';
+import { Injectable, OnModuleInit } from '@nestjs/common';
 import { Cron, CronExpression } from '@nestjs/schedule';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
+import { OpsAlertsService } from '../external-integrations/shared/ops-alerts.service';
 import { LoggerService } from '../../shared';
 
 // Neighbors fetched per anchor for rank math. Deeper than the persisted set so
@@ -46,15 +47,47 @@ interface NeighborRow {
  * — a joined/CTE vector defeats the HNSW index (per-row distance → seq scan).
  */
 @Injectable()
-export class EntitySiblingEdgeBuilderService {
+export class EntitySiblingEdgeBuilderService implements OnModuleInit {
   private readonly logger: LoggerService;
   private rebuildInFlight = false;
 
   constructor(
     private readonly prisma: PrismaService,
+    private readonly opsAlerts: OpsAlertsService,
     loggerService: LoggerService,
   ) {
     this.logger = loggerService.setContext('EntitySiblingEdgeBuilderService');
+  }
+
+  /** DERIVED-INDEX LAW (cron audit 2026-08-09, the containment-table prod
+   *  incident generalized): an empty derived table is un-derived derivation,
+   *  not a config state. A deploy landing after the 4AM window otherwise
+   *  serves up to ~24h with dense sibling widening silently OFF — the reader
+   *  fails open to [] and nothing reports it. Boot detects and rebuilds;
+   *  racing replicas duplicate seconds of SQL, never corruption. */
+  async onModuleInit(): Promise<void> {
+    if (
+      isEnvFlagExplicitlyDisabled(
+        process.env.ENTITY_SIBLING_EDGES_REBUILD_ENABLED,
+      )
+    ) {
+      return;
+    }
+    try {
+      const [row] = await this.prisma.$queryRaw<{ empty: boolean }[]>`
+        SELECT NOT EXISTS (SELECT 1 FROM derived_entity_sibling_edges) AS empty`;
+      if (row?.empty) {
+        this.logger.info(
+          'Sibling-edge table empty at boot — self-healing rebuild',
+        );
+        await this.rebuildAll();
+      }
+    } catch (error) {
+      this.logger.error(
+        'Sibling-edge boot self-heal failed',
+        error instanceof Error ? error : new Error(String(error)),
+      );
+    }
   }
 
   async rebuildAll(): Promise<{ anchors: number; edges: number }> {
@@ -140,6 +173,22 @@ export class EntitySiblingEdgeBuilderService {
       ...result,
       ms: Date.now() - started,
     });
+    if (result.edges === 0 && result.anchors > 0) {
+      // Zero-output-with-input = the invisible-degradation mode: the reader
+      // fails open, so dense sibling widening dies with nothing on screen
+      // or in the logs to say so. Scream here, off the hot path.
+      this.opsAlerts.emit({
+        severity: 'critical',
+        kind: 'sibling_edges_empty',
+        title: 'Dense sibling widening is silently disabled',
+        body: [
+          `The sibling-edge rebuild produced ZERO edges from ${result.anchors} anchor(s) with embeddings.`,
+          'The search reader fails open to [], so "similar dishes" widening is OFF for every search and nothing else will report it.',
+          "Check this job's last error, then re-run it.",
+        ].join('\n\n'),
+        dedupeKey: 'sibling_edges_empty',
+      });
+    }
     return result;
   }
 
