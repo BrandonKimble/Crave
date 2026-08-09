@@ -35,6 +35,7 @@ import { SearchEntityExpansionService } from './search-entity-expansion.service'
 import {
   SearchSiblingExpansionService,
   type SiblingCutOptions,
+  type SiblingExpansionReader,
 } from './search-sibling-expansion.service';
 import { DietaryConstraintRegistry } from './dietary-constraints';
 import type { SearchExecutionDirectives } from './search-execution-directives';
@@ -433,6 +434,10 @@ export class SearchService {
     // Known interactions (accepted): siblings count toward the relaxation
     // trigger, and the widened coverage can suppress the lexical-expansion
     // trigger below.
+    // H6: ONE widening resolution per request — every sibling/satisfies read
+    // below (pre-probe seed, pooled-stage similar ring, lexical expansion)
+    // goes through this memoized reader.
+    const widening = this.siblingExpansion.forRequest();
     {
       const anchorFoodIds = this.collectEntityIds(request.entities.food);
       if (anchorFoodIds.length) {
@@ -446,24 +451,21 @@ export class SearchService {
           // Category members apply on EVERY search (they replace the old
           // per-connection `c.categories &&` SQL arm) — one-hop: resolved
           // from the exact query foods only.
-          this.siblingExpansion.getCategoryMemberFoodIds(anchorFoodIds),
+          widening.getCategoryMemberFoodIds(anchorFoodIds),
           // Name-containment failsafe (owner ruling 2026-07-25): 57% of
           // name-evident variants lacked a category edge — a dish literally
           // SAYING the word is instance evidence, same tier as edges.
-          this.siblingExpansion.getNameContainmentVariantFoodIds(anchorFoodIds),
+          widening.getNameContainmentVariantFoodIds(anchorFoodIds),
           // Twin-ingredient union: "burrata" the food also means dishes
           // CONTAINING burrata (the builder ORs containment in).
-          this.siblingExpansion.getSameNamedIngredientIds(anchorFoodIds),
+          widening.getSameNamedIngredientIds(anchorFoodIds),
           this.siblingsWanted(request, 'preProbe')
-            ? this.siblingExpansion.getSiblingFoodIds(
-                anchorFoodIds,
-                this.denseSiblingsCut,
-              )
+            ? widening.getSiblingFoodIds(anchorFoodIds, this.denseSiblingsCut)
             : Promise.resolve([] as { siblingId: string; relevance: number }[]),
           // LLM-judged substitutability (concept-graph rung 4) — the residual
           // that grammar and the category graph could not decide. `satisfies`
           // is a tier-0 claim, `cousin` rides the tier-1 widened set.
-          this.siblingExpansion.getSatisfiesFoodIds(anchorFoodIds),
+          widening.getSatisfiesFoodIds(anchorFoodIds),
         ]);
         // Head-final name variants ARE the thing (tier 0 with verified
         // category members); terms that merely mention the query food
@@ -544,6 +546,7 @@ export class SearchService {
       return this.executePooledStage({
         request,
         planExpansion,
+        widening,
         pagination,
         restaurantPagination: params.restaurantPagination,
         dishPagination: params.dishPagination,
@@ -609,7 +612,11 @@ export class SearchService {
       const expansionAttempt: Promise<{
         result: PlanExpansionState | null;
         degraded: 'error' | null;
-      }> = this.buildPlanExpansionForRequest(request, pooledPage.stagePlan)
+      }> = this.buildPlanExpansionForRequest(
+        request,
+        pooledPage.stagePlan,
+        widening,
+      )
         .then((result) => ({ result, degraded: null }))
         .catch((error: unknown) => {
           this.logger.warn('Plan expansion failed (failing open)', {
@@ -1579,6 +1586,7 @@ export class SearchService {
   private async executePooledStage(params: {
     request: SearchQueryRequestDto;
     planExpansion: PlanExpansionState | null;
+    widening: SiblingExpansionReader;
     pagination: PaginationState;
     restaurantPagination: { skip: number; take: number };
     dishPagination: { skip: number; take: number };
@@ -1676,14 +1684,11 @@ export class SearchService {
       if (anchorIds.length) {
         const memberIds = new Set(constraints.ids.foodIds);
         const [siblings, judged] = await Promise.all([
-          this.siblingExpansion.getSiblingFoodIds(
-            anchorIds,
-            this.denseSiblingsCut,
-          ),
+          params.widening.getSiblingFoodIds(anchorIds, this.denseSiblingsCut),
           // Judged cousins (rung 4) belong in the ring alongside dense
           // siblings — they are the BETTER-vetted half of "adjacent things",
           // and the ring is what the auto-fill gate and the chip both read.
-          this.siblingExpansion.getSatisfiesFoodIds(anchorIds),
+          params.widening.getSatisfiesFoodIds(anchorIds),
         ]);
         similarFoodIds = Array.from(
           new Set([
@@ -3199,6 +3204,7 @@ export class SearchService {
   private async buildPlanExpansionForRequest(
     request: SearchQueryRequestDto,
     plan: QueryPlan,
+    widening: SiblingExpansionReader,
   ): Promise<PlanExpansionState | null> {
     const existingFoodIds = new Set<string>();
     const existingFoodAttributeIds = new Set<string>();
@@ -3403,10 +3409,7 @@ export class SearchService {
           ...foodIdsFromPrimaryFoodAttributeText,
         ]);
         const siblingMatches = (
-          await this.siblingExpansion.getSiblingFoodIds(
-            anchorFoodIds,
-            this.denseSiblingsCut,
-          )
+          await widening.getSiblingFoodIds(anchorFoodIds, this.denseSiblingsCut)
         ).filter((s) => !seen.has(s.siblingId));
         denseSiblingFoodIds = siblingMatches.map((s) => s.siblingId);
         for (const s of siblingMatches)

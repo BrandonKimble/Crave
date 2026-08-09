@@ -7,6 +7,16 @@ import {
 import { PrismaService } from '../../prisma/prisma.service';
 import { LoggerService } from '../../shared';
 
+/** Request-scoped memoized view of the widening reads (H6). */
+export type SiblingExpansionReader = Pick<
+  SearchSiblingExpansionService,
+  | 'getCategoryMemberFoodIds'
+  | 'getNameContainmentVariantFoodIds'
+  | 'getSameNamedIngredientIds'
+  | 'getSiblingFoodIds'
+  | 'getSatisfiesFoodIds'
+>;
+
 export interface SiblingCutOptions {
   /** Max forward rank (nearest-first position in the anchor's neighborhood). */
   forwardK: number;
@@ -40,6 +50,50 @@ export class SearchSiblingExpansionService {
     loggerService: LoggerService,
   ) {
     this.logger = loggerService.setContext('SearchSiblingExpansionService');
+  }
+
+  /**
+   * ONE WIDENING RESOLUTION PER REQUEST (audit H6). The pre-probe seed, the
+   * similar-ring inside the pooled stage, and the lexical-expansion path all
+   * read siblings/satisfies for the SAME anchor set — up to three identical
+   * round-trips per search, and the pooled stage can execute more than once
+   * (page fill). A request-scoped reader memoizes each read by its full
+   * argument identity (anchor set + cut options), so every consumer sees the
+   * same resolution and the DB is asked once. The memo lives and dies with
+   * the request — no cross-request staleness surface.
+   */
+  forRequest(): SiblingExpansionReader {
+    const memo = new Map<string, Promise<unknown>>();
+    const keyed = <T>(key: string, run: () => Promise<T>): Promise<T> => {
+      const hit = memo.get(key);
+      if (hit) return hit as Promise<T>;
+      const pending = run();
+      memo.set(key, pending);
+      return pending;
+    };
+    const idsKey = (ids: string[]): string =>
+      Array.from(new Set(ids.filter(Boolean)))
+        .sort()
+        .join(',');
+    return {
+      getCategoryMemberFoodIds: (ids) =>
+        keyed(`cat|${idsKey(ids)}`, () => this.getCategoryMemberFoodIds(ids)),
+      getNameContainmentVariantFoodIds: (ids) =>
+        keyed(`ncv|${idsKey(ids)}`, () =>
+          this.getNameContainmentVariantFoodIds(ids),
+        ),
+      getSameNamedIngredientIds: (ids) =>
+        keyed(`twin|${idsKey(ids)}`, () => this.getSameNamedIngredientIds(ids)),
+      getSiblingFoodIds: (ids, options) =>
+        keyed(
+          `sib|${idsKey(ids)}|${options.forwardK}|${options.mutualR}|${options.minCosine}|${options.maxAnchors}`,
+          () => this.getSiblingFoodIds(ids, options),
+        ),
+      getSatisfiesFoodIds: (ids, options) =>
+        keyed(`sat|${idsKey(ids)}|${options?.maxAnchors ?? 3}`, () =>
+          this.getSatisfiesFoodIds(ids, options),
+        ),
+    };
   }
 
   /**
