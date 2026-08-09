@@ -37,3 +37,15 @@ pre-commit:
 
     secrets:
       run: gitleaks protect --staged --verbose --redact
+
+    # COVERAGE STALENESS FOLLOWS THE COMMIT (2026-08-08). A reviewed COVERAGE
+    # row whose file this commit changes is no longer reviewed; the revert is
+    # purely mechanical by the tool's own design (only MISSING paths need
+    # human judgement, and those still fail CI for it). Left to memory, every
+    # active lane forgot it and CI went red four times in one evening — so
+    # the commit itself now carries the revert. stage_fixed restages the
+    # ledger the tool rewrote.
+    coverage-staleness:
+      glob: '{apps,packages,scripts}/**/*'
+      run: node scripts/coverage-staleness.mjs --apply && git add audit/COVERAGE.md
+      stage_fixed: true
