@@ -247,6 +247,10 @@ export class SearchQueryInterpretationService {
       text: t.raw,
       start: t.start,
       end: t.end,
+      // How this token re-joins to the previous one — ' ' for every spaced
+      // script, '' inside an unspaced CJK run, so a residue run over
+      // 麻辣牛肉面 probes and stages 牛肉面, never "牛 肉 面".
+      separator: t.separator,
     }));
     const cueTokenStarts = new Set(analysis.negationCues.map((c) => c.start));
     const covered = (t: { start: number; end: number }) =>
@@ -269,7 +273,7 @@ export class SearchQueryInterpretationService {
           // Join TOKEN texts, never the raw slice — raw punctuation between
           // tokens ("aaa, bbb") would poison exact/alias probes and the
           // staging record (red team ⑪).
-          last.text = `${last.text} ${token.text}`;
+          last.text = `${last.text}${token.separator}${token.text}`;
           last.end = token.end;
         } else residueRuns.push({ ...token });
       } else residueRuns.push({ ...token });

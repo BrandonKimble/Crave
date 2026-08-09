@@ -4,6 +4,7 @@ import {
   detectScript,
   negatedSpan,
 } from './query-analyzer';
+import { canonicalFold } from '../content-processing/entity-resolver/entity-identity';
 
 describe('query analyzer (A2 seam)', () => {
   describe('the span-offset contract', () => {
@@ -57,6 +58,121 @@ describe('query analyzer (A2 seam)', () => {
     it('flags non-Latin script on the analysis', () => {
       expect(analyzeQuery('тако', null).isNonLatinScript).toBe(true);
       expect(analyzeQuery('taco', null).isNonLatinScript).toBe(false);
+    });
+  });
+
+  describe('unspaced CJK segmentation (M6)', () => {
+    it('cuts an unspaced Han query into character sub-tokens', () => {
+      const analysis = analyzeQuery('麻辣牛肉面', null);
+      expect(analysis.tokens.map((t) => t.raw)).toEqual([
+        '麻',
+        '辣',
+        '牛',
+        '肉',
+        '面',
+      ]);
+      // Every sub-token after the first of the run re-joins with NO space.
+      expect(analysis.tokens.map((t) => t.separator)).toEqual([
+        ' ',
+        '',
+        '',
+        '',
+        '',
+      ]);
+    });
+
+    it('yields matchable multi-character n-grams (the RED that motivated this)', () => {
+      const folded = analyzeQuery('麻辣牛肉面', null)
+        .ngrams(4)
+        .map((n) => n.folded);
+      // Before segmentation this query produced ONE n-gram and nothing
+      // could match a sub-concept.
+      expect(folded.length).toBeGreaterThan(1);
+      expect(folded).toContain('麻辣'); // bigram, the cjk_bigram baseline
+      expect(folded).toContain('牛肉');
+      expect(folded).toContain('牛肉面'); // the actual dish surface
+      expect(folded.some((f) => f.includes(' '))).toBe(false);
+    });
+
+    it('keeps n-gram offsets pointing at the RAW slice', () => {
+      const analysis = analyzeQuery('麻辣牛肉面', null);
+      for (const ngram of analysis.ngrams(4)) {
+        expect(analysis.raw.slice(ngram.start, ngram.end)).toBe(ngram.raw);
+        expect(ngram.raw).toBe(ngram.folded);
+      }
+    });
+
+    it('handles mixed Latin + Han, cutting only the Han run', () => {
+      const analysis = analyzeQuery('spicy 牛肉面 austin', null);
+      expect(analysis.tokens.map((t) => t.raw)).toEqual([
+        'spicy',
+        '牛',
+        '肉',
+        '面',
+        'austin',
+      ]);
+      const folded = analysis.ngrams(4).map((n) => n.folded);
+      expect(folded).toContain('牛肉面');
+      // The Han run joins to its Latin neighbours as a WORD boundary.
+      expect(folded).toContain('spicy 牛');
+      expect(folded).toContain('面 austin');
+    });
+
+    it('splits a Han run from an adjacent Kana run at the script boundary', () => {
+      const analysis = analyzeQuery('豚骨ラーメン', null);
+      const folded = analysis.ngrams(4).map((n) => n.folded);
+      expect(folded).toContain('豚骨');
+      expect(folded).toContain('ラーメン');
+      // The run boundary is a WORD boundary (spaced), the inside is not.
+      // ー (formally Script=Common) stays glued to its katakana run.
+      expect(folded).toContain('豚骨 ラー');
+      expect(analysis.tokens.map((t) => t.separator)).toEqual([
+        ' ',
+        '',
+        ' ',
+        '',
+        '',
+        '',
+      ]);
+    });
+
+    it('leaves HANGUL alone — Korean is space-delimited already', () => {
+      const analysis = analyzeQuery('매운 한국 음식', null);
+      expect(analysis.tokens.map((t) => t.raw)).toEqual([
+        '매운',
+        '한국',
+        '음식',
+      ]);
+      expect(analysis.tokens.every((t) => t.separator === ' ')).toBe(true);
+      expect(analysis.ngrams(3).map((n) => n.folded)).toContain('한국 음식');
+    });
+
+    it('leaves LATIN byte-identical to its prior output', () => {
+      const analysis = analyzeQuery('breakfast taco', null);
+      expect(analysis.tokens.map((t) => t.raw)).toEqual(['breakfast', 'taco']);
+      expect(analysis.ngrams(4).map((n) => n.folded)).toEqual([
+        'breakfast',
+        'breakfast taco',
+        'taco',
+      ]);
+      expect(
+        analyzeQuery('Despaña bakery & cafe', null)
+          .ngrams(3)
+          .map((n) => n.folded),
+      ).toEqual([
+        'despana',
+        'despana bakery',
+        'despana bakery cafe',
+        'bakery',
+        'bakery cafe',
+        'cafe',
+      ]);
+    });
+
+    it('canonicalFold is the IDENTITY on CJK (no case, no diacritics)', () => {
+      for (const text of ['麻辣牛肉面', '豚骨ラーメン', '牛肉', 'がぎ']) {
+        expect(canonicalFold(text)).toBe(text);
+      }
     });
   });
 

@@ -47,6 +47,17 @@ export interface QueryToken {
   folded: string;
   start: number;
   end: number;
+  /**
+   * HOW THIS TOKEN JOINS TO THE ONE BEFORE IT when tokens are re-assembled
+   * into a phrase (n-grams, residue runs). ' ' for word-delimited scripts —
+   * the shape every Latin/Hangul/Cyrillic query has always had. '' for the
+   * 2nd..nth character of an UNSPACED CJK run: 麻辣牛肉面 is one typed word,
+   * so its sub-tokens must re-assemble as 麻辣牛 and never as "麻 辣 牛"
+   * (a folded key with spaces matches no stored surface — identity_key for
+   * 牛肉面 is 牛肉面). The first token of a run keeps ' ': it joins to the
+   * PREVIOUS word, which is a word boundary.
+   */
+  separator: ' ' | '';
 }
 
 export interface QueryNgram {
@@ -256,6 +267,106 @@ export function fuseLocale(
  *  as "harry" + "s" before this, so its own name could never match. */
 const TOKEN_RE = /[\p{L}\p{N}][\p{L}\p{N}'’‘ʼ&.-]*/gu;
 
+/**
+ * UNSPACED-SCRIPT SEGMENTATION (M6, near-term shape).
+ *
+ * Chinese and Japanese put no spaces between words, so TOKEN_RE — a
+ * whitespace/punctuation tokenizer — returns 麻辣牛肉面 as ONE token and the
+ * n-gram generator then has exactly one span to offer. Nothing can match a
+ * sub-concept: not the gazetteer (which probes folded n-grams against
+ * identity_key), not the residue lane, not the typo lattice.
+ *
+ * THE IDEAL SHAPE, and why it is character-level: the long-term home for
+ * segmentation is the tokenized surface store (plan §11 item 7), which
+ * indexes the STORED side the same way. Until that store exists the query
+ * side must produce spans that match surfaces stored whole, and the
+ * language-neutral way every search engine does that is the character
+ * n-gram (Lucene/Elasticsearch `cjk_bigram`, Postgres pg_bigm). We emit the
+ * CHARACTERS of each CJK run as sub-tokens with separator '' — the existing
+ * n-gram generator then derives the bigrams, trigrams and 4-grams for free,
+ * with correct RAW offsets, and cjk_bigram's behaviour is a subset of what
+ * comes out. No dictionary, no model, no per-language table: pure, and the
+ * same code path for zh and ja.
+ *
+ * HANGUL IS DELIBERATELY EXCLUDED. Korean IS space-delimited ('매운 한국
+ * 음식' already tokenizes into three words); character-splitting it would
+ * shred real words into syllable blocks. Latin, Cyrillic, Thai, Arabic and
+ * every other script are untouched — this function returns the input token
+ * unchanged unless it actually contains Han or Kana.
+ */
+// SCRIPT_EXTENSIONS, not Script: the characters that GLUE a CJK run together
+// are formally Script=Common and would otherwise cut it. The prolonged sound
+// mark ー (U+30FC) sits inside every katakana loanword — ラーメン — and the
+// iteration marks 々ゝゞ inside Japanese compounds; scx assigns them to the
+// scripts they actually belong to. Kana is ONE class (hiragana + katakana):
+// they interleave inside a single word, and ー carries scx={Hira,Kana}.
+const CJK_RUN_SCRIPT = (ch: string): 'han' | 'kana' | null =>
+  /\p{Script_Extensions=Hiragana}|\p{Script_Extensions=Katakana}/u.test(ch)
+    ? 'kana'
+    : /\p{Script_Extensions=Han}/u.test(ch)
+      ? 'han'
+      : null;
+
+/** Splits ONE raw token into the tokens the analyzer emits for it. A token
+ *  with no Han/Kana yields exactly itself (byte-identical, one allocation
+ *  more than before). A token containing them is cut at script-run
+ *  boundaries; Han and Kana runs are further cut into characters. */
+export function segmentToken(raw: string, start: number): QueryToken[] {
+  const chars = Array.from(raw);
+  if (!chars.some((ch) => CJK_RUN_SCRIPT(ch) !== null)) {
+    return [
+      {
+        raw,
+        folded: canonicalFold(raw),
+        start,
+        end: start + raw.length,
+        separator: ' ',
+      },
+    ];
+  }
+  const out: QueryToken[] = [];
+  let offset = start;
+  let plain = '';
+  let plainStart = start;
+  const flushPlain = () => {
+    if (!plain) return;
+    out.push({
+      raw: plain,
+      folded: canonicalFold(plain),
+      start: plainStart,
+      end: plainStart + plain.length,
+      separator: ' ',
+    });
+    plain = '';
+  };
+  let previousWasCjk = false;
+  let previousCjkScript: 'han' | 'kana' | null = null;
+  for (const ch of chars) {
+    const cjk = CJK_RUN_SCRIPT(ch);
+    if (cjk) {
+      flushPlain();
+      // A run boundary (Han→Kana) is a word boundary; inside one run the
+      // characters re-assemble with no separator.
+      const separator = previousWasCjk && cjk === previousCjkScript ? '' : ' ';
+      out.push({
+        raw: ch,
+        folded: canonicalFold(ch),
+        start: offset,
+        end: offset + ch.length,
+        separator,
+      });
+    } else {
+      if (!plain) plainStart = offset;
+      plain += ch;
+    }
+    previousWasCjk = cjk !== null;
+    previousCjkScript = cjk;
+    offset += ch.length;
+  }
+  flushPlain();
+  return out;
+}
+
 export interface AnalyzeOptions {
   /** Query-shape guard, mirrors the gazetteer's DoS cap. */
   maxTokens?: number;
@@ -278,13 +389,13 @@ export function analyzeQuery(
   TOKEN_RE.lastIndex = 0;
   let match: RegExpExecArray | null;
   while ((match = TOKEN_RE.exec(raw)) !== null) {
-    const folded = canonicalFold(match[0]);
-    tokens.push({
-      raw: match[0],
-      folded,
-      start: match.index,
-      end: match.index + match[0].length,
-    });
+    // Whitespace/punctuation gives the WORDS of a spaced script and the
+    // whole unspaced run of a CJK one; segmentToken cuts the latter down to
+    // matchable sub-tokens and returns the former untouched.
+    for (const token of segmentToken(match[0], match.index)) {
+      tokens.push(token);
+      if (tokens.length >= maxTokens) break;
+    }
     if (tokens.length >= maxTokens) break;
   }
 
@@ -330,10 +441,14 @@ export function analyzeQuery(
       for (let i = 0; i < tokens.length; i++) {
         for (let n = 1; n <= maxN && i + n <= tokens.length; n++) {
           const slice = tokens.slice(i, i + n);
-          const folded = slice
-            .map((t) => t.folded)
-            .filter(Boolean)
-            .join(' ');
+          // Each token states how it joins to the one before it (' ' for a
+          // spaced script, '' inside an unspaced CJK run). For Latin/Hangul
+          // every separator is ' ', so this is the old `.join(' ')` exactly.
+          let folded = '';
+          for (const t of slice) {
+            if (!t.folded) continue;
+            folded = folded ? folded + t.separator + t.folded : t.folded;
+          }
           if (!folded) continue;
           const start = slice[0].start;
           const end = slice[n - 1].end;
