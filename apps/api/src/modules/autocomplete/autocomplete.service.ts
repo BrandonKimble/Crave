@@ -345,6 +345,7 @@ export class AutocompleteService {
       cacheEntityTypes,
       normalizedQuery,
       this.attributeLaneEnabled,
+      locale,
     );
     const cacheLookup = await this.getFromCache(cacheKey);
     if (cacheLookup.response) {
@@ -1639,6 +1640,7 @@ export class AutocompleteService {
     entityTypes: EntityType[],
     normalizedQuery: string,
     attributeLaneEnabled: boolean,
+    locale: string,
   ): string {
     const scopeKey = entityTypes.slice().sort().join(',');
     const queryToken = encodeURIComponent(normalizedQuery);
@@ -1646,11 +1648,15 @@ export class AutocompleteService {
     // extermination, leg 2) — the cache scope is a fixed 'global' segment,
     // kept as a literal in the key so a future place-scoped cache is an
     // additive change, not a silent format break.
+    // AC-P2a (i18n audit): locale IS part of recall (localized-surface lane
+    // + dense prefix), so the old locale-less key served the WRONG locale's
+    // candidate set to a user who switched languages inside the TTL — the
+    // 'localization is a pure projection' claim the key relied on was false.
     return `${this.cacheRedisKeyPrefix}:${
       userId ?? 'anon'
     }:${scopeKey}:global:attrs-${
       attributeLaneEnabled ? 'on' : 'off'
-    }:${queryToken}`;
+    }:${locale}:${queryToken}`;
   }
 
   /**

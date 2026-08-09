@@ -249,7 +249,13 @@ export class EntityTextSearchService {
       entityTypes.map((t) => Prisma.sql`${t}::entity_type`),
     )}]`;
     const rows = await this.prisma.$queryRaw<
-      { entityId: string; name: string; type: EntityType; exact: boolean }[]
+      {
+        entityId: string;
+        name: string;
+        type: EntityType;
+        exact: boolean;
+        sim: number;
+      }[]
     >(Prisma.sql`
       -- F3801: DEDUP ORDER AND RELEVANCE ORDER ARE DIFFERENT QUESTIONS.
       -- DISTINCT ON REQUIRES its key to lead the ORDER BY, so the old
@@ -266,18 +272,24 @@ export class EntityTextSearchService {
       SELECT * FROM (
         SELECT DISTINCT ON (e.entity_id)
                e.entity_id AS "entityId", e.name, e.type,
-               (ea.form_folded = ${folded}) AS "exact"
+               (ea.form_folded = ${folded}) AS "exact",
+               similarity(ea.form_folded, ${folded}) AS "sim"
           FROM entity_alias ea
           JOIN core_entities e ON e.entity_id = ea.entity_id
          WHERE ea.status = 'active'
            AND LOWER(ea.locale) = ANY(${chain}::text[])
            AND (ea.form_folded = ${folded}
-                OR ea.form_folded LIKE ${folded + '%'})
+                OR ea.form_folded LIKE ${folded + '%'}
+                -- AC-P2c: the TRIGRAM arm — typo tolerance was an
+                -- English-only privilege while this lane was exact+prefix.
+                -- Same banded threshold as the sparse lane; the GIN trgm
+                -- index on form_folded makes it a probe.
+                OR (${folded.length >= 4} AND similarity(ea.form_folded, ${folded}) >= ${this.resolveSimilarityThreshold(folded)}))
            AND e.status = 'active'::entity_status
            AND e.type = ANY(${typeArray})
-         ORDER BY e.entity_id, (ea.form_folded = ${folded}) DESC
+         ORDER BY e.entity_id, (ea.form_folded = ${folded}) DESC, similarity(ea.form_folded, ${folded}) DESC
       ) deduped
-       ORDER BY deduped."exact" DESC, deduped.name ASC, deduped."entityId" ASC
+       ORDER BY deduped."exact" DESC, deduped."sim" DESC, deduped.name ASC, deduped."entityId" ASC
        LIMIT ${Math.max(1, Math.min(limit, this.maxLimit))}
     `);
     // Tiered exactly like the sparse lane so downstream confidence bands and
@@ -286,8 +298,19 @@ export class EntityTextSearchService {
       entityId: row.entityId,
       name: row.name,
       type: row.type,
-      similarity: row.exact ? 1 : folded.length / Math.max(row.name.length, 1),
-      evidence: row.exact ? ('exact' as const) : ('prefix' as const),
+      // exact 1; prefix = honest coverage; fuzzy = the measured trigram
+      // sim, WEARING ITS OWN TIER so the linker's fuzzy floors judge it —
+      // a trigram row labeled 'prefix' would be judged by the wrong band.
+      similarity: row.exact
+        ? 1
+        : canonicalFold(row.name).startsWith(folded)
+          ? folded.length / Math.max(row.name.length, 1)
+          : Number(row.sim),
+      evidence: row.exact
+        ? ('exact' as const)
+        : canonicalFold(row.name).startsWith(folded)
+          ? ('prefix' as const)
+          : ('fuzzy' as const),
     }));
   }
 

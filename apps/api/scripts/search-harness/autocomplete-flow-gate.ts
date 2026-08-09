@@ -108,8 +108,6 @@ const FLOWS: FlowEntry[] = [
     locale: 'es',
     query: 'camarnes',
     mustInclude: [{ name: 'shrimp' }],
-    expectRed:
-      'AC-P2c: localized lane is exact+prefix only — typo tolerance is an English-only privilege',
     note: 'es typo should reach shrimp like en typos reach vegan',
   },
   {
