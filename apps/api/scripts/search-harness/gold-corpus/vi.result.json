@@ -1,14 +1,22 @@
 {
-  "ranAt": "2026-08-09T19:03:47.811Z",
+  "ranAt": "2026-08-09T21:41:46.369Z",
   "lang": "vi",
   "corpusVersion": 1,
   "scoreboard": {
-    "overall": 98.78048780487805,
-    "top1SingleConcept": 98.13084112149532,
+    "overall": 90.2439024390244,
+    "top1SingleConcept": 91.58878504672897,
     "negationNonInversion": 100,
-    "constraintPreservation": 100,
-    "homographMisGroundings": ["nem→little gem lettuce[linked]"],
-    "homographMisGroundingsExact": []
+    "constraintPreservation": 85.13513513513513,
+    "homographMisGroundings": [
+      "giá→soybean sprout[gazetteer-exact]",
+      "mì→mian[gazetteer-exact]",
+      "bún→vermicelli bowl[gazetteer-exact]"
+    ],
+    "homographMisGroundingsExact": [
+      "giá→soybean sprout[gazetteer-exact]",
+      "mì→mian[gazetteer-exact]",
+      "bún→vermicelli bowl[gazetteer-exact]"
+    ]
   },
   "results": [
     {
@@ -112,15 +120,6 @@
           "name": "viet sandwich",
           "tier": "gazetteer-exact",
           "foldedName": "viet sandwich"
-        },
-        {
-          "entityId": "d0cee3f7-5e48-4efc-86ce-dfbf8f3ca5eb",
-          "bucket": "food",
-          "type": "food",
-          "span": "bánh mì",
-          "name": "bread",
-          "tier": "gazetteer-exact",
-          "foldedName": "bread"
         }
       ],
       "unresolved": [],
@@ -128,9 +127,9 @@
         "script": "latin",
         "requestLocale": "vi-VN",
         "detectedLocale": {
-          "tag": "it",
-          "confidence": 1,
-          "source": "detector"
+          "tag": "vi-VN",
+          "confidence": 0.5,
+          "source": "request-prior"
         },
         "denseTierUsed": false
       },
@@ -172,15 +171,6 @@
           "name": "viet sandwich",
           "tier": "gazetteer-exact",
           "foldedName": "viet sandwich"
-        },
-        {
-          "entityId": "d0cee3f7-5e48-4efc-86ce-dfbf8f3ca5eb",
-          "bucket": "food",
-          "type": "food",
-          "span": "banh mi",
-          "name": "bread",
-          "tier": "gazetteer-exact",
-          "foldedName": "bread"
         }
       ],
       "unresolved": [],
@@ -349,6 +339,15 @@
           "name": "rice noodle wrap",
           "tier": "gazetteer-exact",
           "foldedName": "rice noodle wrap"
+        },
+        {
+          "entityId": "e0b4a277-f273-4418-837b-c8a72ba4737c",
+          "bucket": "food",
+          "type": "food",
+          "span": "bánh cuốn",
+          "name": "cheong fun",
+          "tier": "gazetteer-exact",
+          "foldedName": "cheong fun"
         }
       ],
       "unresolved": [],
@@ -398,9 +397,9 @@
         "script": "latin",
         "requestLocale": "vi-VN",
         "detectedLocale": {
-          "tag": "it",
+          "tag": "vi-VN",
           "confidence": 1,
-          "source": "detector"
+          "source": "surface"
         },
         "denseTierUsed": false
       },
@@ -424,6 +423,15 @@
           "name": "bun bo hue",
           "tier": "gazetteer-exact",
           "foldedName": "bun bo hue"
+        },
+        {
+          "entityId": "d47a44f8-2ddf-4903-880b-a42451c8d226",
+          "bucket": "food",
+          "type": "food",
+          "span": "bún bò huế",
+          "name": "spicy beef noodle soup",
+          "tier": "gazetteer-exact",
+          "foldedName": "spicy beef noodle soup"
         }
       ],
       "unresolved": [],
@@ -431,9 +439,9 @@
         "script": "latin",
         "requestLocale": "vi-VN",
         "detectedLocale": {
-          "tag": "it",
-          "confidence": 1,
-          "source": "detector"
+          "tag": "vi-VN",
+          "confidence": 0.5,
+          "source": "request-prior"
         },
         "denseTierUsed": false
       },
@@ -465,8 +473,8 @@
         "requestLocale": "vi-VN",
         "detectedLocale": {
           "tag": "vi-VN",
-          "confidence": 0.5,
-          "source": "request-prior"
+          "confidence": 1,
+          "source": "surface"
         },
         "denseTierUsed": false
       },
@@ -478,9 +486,9 @@
       "query": "tôm",
       "stratum": "single_noun",
       "locale": "vi-VN",
-      "pass": true,
-      "preservation": 1,
-      "reasons": [],
+      "pass": false,
+      "preservation": 0.5,
+      "reasons": ["NOT GROUNDED: prawns"],
       "grounded": [
         {
           "entityId": "7eeb7cb1-5653-46e7-a24b-af91cd5e85cd",
@@ -490,15 +498,6 @@
           "name": "shrimp",
           "tier": "gazetteer-exact",
           "foldedName": "shrimp"
-        },
-        {
-          "entityId": "b5c058ab-7ab6-4ccb-912a-cc6b366b5ade",
-          "bucket": "food",
-          "type": "food",
-          "span": "tôm",
-          "name": "prawns",
-          "tier": "gazetteer-exact",
-          "foldedName": "prawns"
         }
       ],
       "unresolved": [],
@@ -507,8 +506,8 @@
         "requestLocale": "vi-VN",
         "detectedLocale": {
           "tag": "vi-VN",
-          "confidence": 0.5,
-          "source": "request-prior"
+          "confidence": 1,
+          "source": "surface"
         },
         "denseTierUsed": false
       },
@@ -540,8 +539,8 @@
         "requestLocale": "vi-VN",
         "detectedLocale": {
           "tag": "vi-VN",
-          "confidence": 0.5,
-          "source": "request-prior"
+          "confidence": 1,
+          "source": "surface"
         },
         "denseTierUsed": false
       },
@@ -572,9 +571,9 @@
         "script": "latin",
         "requestLocale": "vi-VN",
         "detectedLocale": {
-          "tag": "es",
+          "tag": "vi-VN",
           "confidence": 1,
-          "source": "detector"
+          "source": "surface"
         },
         "denseTierUsed": false
       },
@@ -606,8 +605,8 @@
         "requestLocale": "vi-VN",
         "detectedLocale": {
           "tag": "vi-VN",
-          "confidence": 0.5,
-          "source": "request-prior"
+          "confidence": 1,
+          "source": "surface"
         },
         "denseTierUsed": false
       },
@@ -639,8 +638,8 @@
         "requestLocale": "vi-VN",
         "detectedLocale": {
           "tag": "vi-VN",
-          "confidence": 0.5,
-          "source": "request-prior"
+          "confidence": 1,
+          "source": "surface"
         },
         "denseTierUsed": false
       },
@@ -672,8 +671,8 @@
         "requestLocale": "vi-VN",
         "detectedLocale": {
           "tag": "vi-VN",
-          "confidence": 0.5,
-          "source": "request-prior"
+          "confidence": 1,
+          "source": "surface"
         },
         "denseTierUsed": false
       },
@@ -685,18 +684,27 @@
       "query": "bún",
       "stratum": "single_noun",
       "locale": "vi-VN",
-      "pass": true,
-      "preservation": 1,
-      "reasons": [],
+      "pass": false,
+      "preservation": 0,
+      "reasons": ["NOT GROUNDED: rice noodle"],
       "grounded": [
         {
-          "entityId": "f2623f78-29ff-49ac-ad64-d786687ff4bd",
+          "entityId": "6e666716-a419-45b8-93fd-c0a2274af7cb",
           "bucket": "food",
           "type": "food",
           "span": "bún",
-          "name": "rice noodle",
+          "name": "vermicelli bowl",
           "tier": "gazetteer-exact",
-          "foldedName": "rice noodle"
+          "foldedName": "vermicelli bowl"
+        },
+        {
+          "entityId": "e3a3aa75-60aa-4310-a06c-77a967fab87c",
+          "bucket": "food",
+          "type": "food",
+          "span": "bún",
+          "name": "vermicelli",
+          "tier": "gazetteer-exact",
+          "foldedName": "vermicelli"
         }
       ],
       "unresolved": [],
@@ -705,8 +713,8 @@
         "requestLocale": "vi-VN",
         "detectedLocale": {
           "tag": "vi-VN",
-          "confidence": 0.5,
-          "source": "request-prior"
+          "confidence": 1,
+          "source": "surface"
         },
         "denseTierUsed": false
       },
@@ -723,6 +731,15 @@
       "reasons": [],
       "grounded": [
         {
+          "entityId": "9b12c271-a4eb-418c-9fe3-4c2cce425801",
+          "bucket": "food",
+          "type": "food",
+          "span": "rau",
+          "name": "veggies",
+          "tier": "gazetteer-exact",
+          "foldedName": "veggies"
+        },
+        {
           "entityId": "a562dee6-7105-4d17-8b6c-7dd15a4ea018",
           "bucket": "food",
           "type": "food",
@@ -738,8 +755,8 @@
         "requestLocale": "vi-VN",
         "detectedLocale": {
           "tag": "vi-VN",
-          "confidence": 0.5,
-          "source": "request-prior"
+          "confidence": 1,
+          "source": "surface"
         },
         "denseTierUsed": false
       },
@@ -771,8 +788,8 @@
         "requestLocale": "vi-VN",
         "detectedLocale": {
           "tag": "vi-VN",
-          "confidence": 0.5,
-          "source": "request-prior"
+          "confidence": 1,
+          "source": "surface"
         },
         "denseTierUsed": false
       },
@@ -804,8 +821,8 @@
         "requestLocale": "vi-VN",
         "detectedLocale": {
           "tag": "vi-VN",
-          "confidence": 0.5,
-          "source": "request-prior"
+          "confidence": 1,
+          "source": "surface"
         },
         "denseTierUsed": false
       },
@@ -837,8 +854,8 @@
         "requestLocale": "vi-VN",
         "detectedLocale": {
           "tag": "vi-VN",
-          "confidence": 0.5,
-          "source": "request-prior"
+          "confidence": 1,
+          "source": "surface"
         },
         "denseTierUsed": false
       },
@@ -870,8 +887,8 @@
         "requestLocale": "vi-VN",
         "detectedLocale": {
           "tag": "vi-VN",
-          "confidence": 0.5,
-          "source": "request-prior"
+          "confidence": 1,
+          "source": "surface"
         },
         "denseTierUsed": false
       },
@@ -902,9 +919,9 @@
         "script": "latin",
         "requestLocale": "vi-VN",
         "detectedLocale": {
-          "tag": "pt",
+          "tag": "vi-VN",
           "confidence": 1,
-          "source": "detector"
+          "source": "surface"
         },
         "denseTierUsed": false
       },
@@ -936,8 +953,8 @@
         "requestLocale": "vi-VN",
         "detectedLocale": {
           "tag": "vi-VN",
-          "confidence": 0.5,
-          "source": "request-prior"
+          "confidence": 1,
+          "source": "surface"
         },
         "denseTierUsed": false
       },
@@ -968,9 +985,9 @@
         "script": "latin",
         "requestLocale": "vi-VN",
         "detectedLocale": {
-          "tag": "it",
+          "tag": "vi-VN",
           "confidence": 1,
-          "source": "detector"
+          "source": "surface"
         },
         "denseTierUsed": false
       },
@@ -1002,8 +1019,8 @@
         "requestLocale": "vi-VN",
         "detectedLocale": {
           "tag": "vi-VN",
-          "confidence": 0.5,
-          "source": "request-prior"
+          "confidence": 1,
+          "source": "surface"
         },
         "denseTierUsed": false
       },
@@ -1044,8 +1061,8 @@
         "requestLocale": "vi-VN",
         "detectedLocale": {
           "tag": "vi-VN",
-          "confidence": 0.5,
-          "source": "request-prior"
+          "confidence": 1,
+          "source": "surface"
         },
         "denseTierUsed": false
       },
@@ -1077,8 +1094,8 @@
         "requestLocale": "vi-VN",
         "detectedLocale": {
           "tag": "vi-VN",
-          "confidence": 0.5,
-          "source": "request-prior"
+          "confidence": 1,
+          "source": "surface"
         },
         "denseTierUsed": false
       },
@@ -1110,8 +1127,8 @@
         "requestLocale": "vi-VN",
         "detectedLocale": {
           "tag": "vi-VN",
-          "confidence": 0.5,
-          "source": "request-prior"
+          "confidence": 1,
+          "source": "surface"
         },
         "denseTierUsed": false
       },
@@ -1143,8 +1160,8 @@
         "requestLocale": "vi-VN",
         "detectedLocale": {
           "tag": "vi-VN",
-          "confidence": 0.5,
-          "source": "request-prior"
+          "confidence": 1,
+          "source": "surface"
         },
         "denseTierUsed": false
       },
@@ -1168,15 +1185,6 @@
           "name": "pork",
           "tier": "gazetteer-exact",
           "foldedName": "pork"
-        },
-        {
-          "entityId": "fa3af5bd-d31b-4ecc-9685-f33be001eb19",
-          "bucket": "ingredients",
-          "type": "ingredient",
-          "span": "heo",
-          "name": "pork",
-          "tier": "gazetteer-exact",
-          "foldedName": "pork"
         }
       ],
       "unresolved": [],
@@ -1185,8 +1193,8 @@
         "requestLocale": "vi-VN",
         "detectedLocale": {
           "tag": "vi-VN",
-          "confidence": 0.5,
-          "source": "request-prior"
+          "confidence": 1,
+          "source": "surface"
         },
         "denseTierUsed": false
       },
@@ -1210,15 +1218,6 @@
           "name": "beef",
           "tier": "gazetteer-exact",
           "foldedName": "beef"
-        },
-        {
-          "entityId": "43142a71-5424-480b-a9a8-f293487cc31e",
-          "bucket": "ingredients",
-          "type": "ingredient",
-          "span": "bò",
-          "name": "beef",
-          "tier": "gazetteer-exact",
-          "foldedName": "beef"
         }
       ],
       "unresolved": [],
@@ -1226,9 +1225,9 @@
         "script": "latin",
         "requestLocale": "vi-VN",
         "detectedLocale": {
-          "tag": "it",
+          "tag": "vi-VN",
           "confidence": 1,
-          "source": "detector"
+          "source": "surface"
         },
         "denseTierUsed": false
       },
@@ -1245,13 +1244,13 @@
       "reasons": [],
       "grounded": [
         {
-          "entityId": "39c04460-3129-4bc0-a74a-f85bde2101bd",
+          "entityId": "2d976861-9953-4264-a12c-19b7819b18a9",
           "bucket": "food",
           "type": "food",
           "span": "gà nướng",
-          "name": "roast chicken",
+          "name": "pollo al horno",
           "tier": "gazetteer-exact",
-          "foldedName": "roast chicken"
+          "foldedName": "pollo al horno"
         },
         {
           "entityId": "d091b65c-ea76-4807-8c5b-d7270dd0fc6f",
@@ -1261,15 +1260,6 @@
           "name": "grilled chicken",
           "tier": "gazetteer-exact",
           "foldedName": "grilled chicken"
-        },
-        {
-          "entityId": "c9957bd2-edf1-4839-90eb-72442ba7354a",
-          "bucket": "ingredients",
-          "type": "ingredient",
-          "span": "gà",
-          "name": "chicken",
-          "tier": "linked",
-          "foldedName": "chicken"
         }
       ],
       "unresolved": [],
@@ -1278,8 +1268,8 @@
         "requestLocale": "vi-VN",
         "detectedLocale": {
           "tag": "vi-VN",
-          "confidence": 0.5,
-          "source": "request-prior"
+          "confidence": 1,
+          "source": "surface"
         },
         "denseTierUsed": false
       },
@@ -1305,9 +1295,9 @@
           "foldedName": "vietnamese beef stew"
         },
         {
-          "entityId": "43142a71-5424-480b-a9a8-f293487cc31e",
-          "bucket": "ingredients",
-          "type": "ingredient",
+          "entityId": "ab87265a-7d1a-4334-b851-93e41c0faeff",
+          "bucket": "food",
+          "type": "food",
           "span": "bò",
           "name": "beef",
           "tier": "linked",
@@ -1319,9 +1309,9 @@
         "script": "latin",
         "requestLocale": "vi-VN",
         "detectedLocale": {
-          "tag": "it",
+          "tag": "vi-VN",
           "confidence": 1,
-          "source": "detector"
+          "source": "surface"
         },
         "denseTierUsed": false
       },
@@ -1387,15 +1377,6 @@
           "name": "steamed bun",
           "tier": "gazetteer-exact",
           "foldedName": "steamed bun"
-        },
-        {
-          "entityId": "ed8e2ad1-e9cd-4ed2-ba0f-8c772ff63b57",
-          "bucket": "food",
-          "type": "food",
-          "span": "bánh bao",
-          "name": "bao",
-          "tier": "gazetteer-exact",
-          "foldedName": "bao"
         }
       ],
       "unresolved": [],
@@ -1404,8 +1385,8 @@
         "requestLocale": "vi-VN",
         "detectedLocale": {
           "tag": "vi-VN",
-          "confidence": 0.5,
-          "source": "request-prior"
+          "confidence": 1,
+          "source": "surface"
         },
         "denseTierUsed": false
       },
@@ -1431,6 +1412,24 @@
           "foldedName": "grilled meat"
         },
         {
+          "entityId": "c3b169ed-8b25-4c8e-8bdd-d3c700eca72c",
+          "bucket": "food",
+          "type": "food",
+          "span": "thịt nướng",
+          "name": "grilled protein",
+          "tier": "gazetteer-exact",
+          "foldedName": "grilled protein"
+        },
+        {
+          "entityId": "3b38ad58-7750-42c8-9363-0b2742f704b2",
+          "bucket": "food",
+          "type": "food",
+          "span": "thịt",
+          "name": "meat",
+          "tier": "linked",
+          "foldedName": "meat"
+        },
+        {
           "entityId": "5e7775c8-82bc-410a-bce3-7b5d05e49249",
           "bucket": "foodAttributes",
           "type": "food_attribute",
@@ -1438,15 +1437,6 @@
           "name": "grilled",
           "tier": "linked",
           "foldedName": "grilled"
-        },
-        {
-          "entityId": "e498b973-499c-41e1-a3ce-28a597365f2f",
-          "bucket": "ingredients",
-          "type": "ingredient",
-          "span": "thịt",
-          "name": "meat",
-          "tier": "linked",
-          "foldedName": "meat"
         }
       ],
       "unresolved": [],
@@ -1455,8 +1445,8 @@
         "requestLocale": "vi-VN",
         "detectedLocale": {
           "tag": "vi-VN",
-          "confidence": 0.5,
-          "source": "request-prior"
+          "confidence": 1,
+          "source": "surface"
         },
         "denseTierUsed": false
       },
@@ -1489,6 +1479,15 @@
           "name": "noodle",
           "tier": "gazetteer-exact",
           "foldedName": "noodle"
+        },
+        {
+          "entityId": "db337785-109a-4c69-af3c-d5acc572eeec",
+          "bucket": "food",
+          "type": "food",
+          "span": "mi",
+          "name": "mian",
+          "tier": "gazetteer-exact",
+          "foldedName": "mian"
         },
         {
           "entityId": "a8806174-fb75-4447-9cf9-43cfb60ec3fc",
@@ -1533,13 +1532,13 @@
           "foldedName": "banh"
         },
         {
-          "entityId": "db337785-109a-4c69-af3c-d5acc572eeec",
-          "bucket": "food",
-          "type": "food",
+          "entityId": "ad62b0e6-809c-47c3-8697-2d8b8fac91e2",
+          "bucket": "restaurantAttributes",
+          "type": "restaurant_attribute",
           "span": "my",
-          "name": "mian",
+          "name": "american",
           "tier": "gazetteer-exact",
-          "foldedName": "mian"
+          "foldedName": "american"
         }
       ],
       "unresolved": [],
@@ -1566,6 +1565,15 @@
       "reasons": [],
       "grounded": [
         {
+          "entityId": "339c1fb2-99c2-428f-93d1-5fb526cb0545",
+          "bucket": "food",
+          "type": "food",
+          "span": "phở bò",
+          "name": "beef noodle soup",
+          "tier": "gazetteer-exact",
+          "foldedName": "beef noodle soup"
+        },
+        {
           "entityId": "45ba08a7-ffc1-4394-bae8-99cca1f7db44",
           "bucket": "food",
           "type": "food",
@@ -1575,18 +1583,9 @@
           "foldedName": "beef pho"
         },
         {
-          "entityId": "08f45e9c-abf7-4db2-bbc9-d772538ca720",
+          "entityId": "ab87265a-7d1a-4334-b851-93e41c0faeff",
           "bucket": "food",
           "type": "food",
-          "span": "phở",
-          "name": "pho",
-          "tier": "linked",
-          "foldedName": "pho"
-        },
-        {
-          "entityId": "43142a71-5424-480b-a9a8-f293487cc31e",
-          "bucket": "ingredients",
-          "type": "ingredient",
           "span": "bò",
           "name": "beef",
           "tier": "linked",
@@ -1598,9 +1597,9 @@
         "script": "latin",
         "requestLocale": "vi-VN",
         "detectedLocale": {
-          "tag": "it",
+          "tag": "vi-VN",
           "confidence": 1,
-          "source": "detector"
+          "source": "surface"
         },
         "denseTierUsed": false
       },
@@ -1635,9 +1634,9 @@
           "foldedName": "pho"
         },
         {
-          "entityId": "c9957bd2-edf1-4839-90eb-72442ba7354a",
-          "bucket": "ingredients",
-          "type": "ingredient",
+          "entityId": "12bcdfbd-7736-4d47-82e7-b7cf30b5fa93",
+          "bucket": "food",
+          "type": "food",
           "span": "gà",
           "name": "chicken",
           "tier": "linked",
@@ -1650,8 +1649,8 @@
         "requestLocale": "vi-VN",
         "detectedLocale": {
           "tag": "vi-VN",
-          "confidence": 0.5,
-          "source": "request-prior"
+          "confidence": 1,
+          "source": "surface"
         },
         "denseTierUsed": false
       },
@@ -1668,6 +1667,15 @@
       "reasons": [],
       "grounded": [
         {
+          "entityId": "339c1fb2-99c2-428f-93d1-5fb526cb0545",
+          "bucket": "food",
+          "type": "food",
+          "span": "pho bo",
+          "name": "beef noodle soup",
+          "tier": "gazetteer-exact",
+          "foldedName": "beef noodle soup"
+        },
+        {
           "entityId": "45ba08a7-ffc1-4394-bae8-99cca1f7db44",
           "bucket": "food",
           "type": "food",
@@ -1677,18 +1685,9 @@
           "foldedName": "beef pho"
         },
         {
-          "entityId": "08f45e9c-abf7-4db2-bbc9-d772538ca720",
+          "entityId": "ab87265a-7d1a-4334-b851-93e41c0faeff",
           "bucket": "food",
           "type": "food",
-          "span": "pho",
-          "name": "pho",
-          "tier": "linked",
-          "foldedName": "pho"
-        },
-        {
-          "entityId": "43142a71-5424-480b-a9a8-f293487cc31e",
-          "bucket": "ingredients",
-          "type": "ingredient",
           "span": "bo",
           "name": "beef",
           "tier": "linked",
@@ -1701,8 +1700,8 @@
         "requestLocale": "vi-VN",
         "detectedLocale": {
           "tag": "vi-VN",
-          "confidence": 0.5,
-          "source": "request-prior"
+          "confidence": 1,
+          "source": "surface"
         },
         "denseTierUsed": false
       },
@@ -1719,15 +1718,6 @@
       "reasons": [],
       "grounded": [
         {
-          "entityId": "9fe0fbcb-08c5-46ac-9876-7262f9f0ebd8",
-          "bucket": "food",
-          "type": "food",
-          "span": "cơm gà",
-          "name": "chicken bowl",
-          "tier": "gazetteer-exact",
-          "foldedName": "chicken bowl"
-        },
-        {
           "entityId": "c5fb004b-984d-478f-99aa-cda7ad2677b1",
           "bucket": "food",
           "type": "food",
@@ -1737,9 +1727,27 @@
           "foldedName": "chicken and rice"
         },
         {
-          "entityId": "c9957bd2-edf1-4839-90eb-72442ba7354a",
-          "bucket": "ingredients",
-          "type": "ingredient",
+          "entityId": "faf0258b-3dad-4782-b194-a22fe0e7ea21",
+          "bucket": "food",
+          "type": "food",
+          "span": "cơm gà",
+          "name": "chicken leg over rice",
+          "tier": "gazetteer-exact",
+          "foldedName": "chicken leg over rice"
+        },
+        {
+          "entityId": "77490d5e-e33e-4f6e-b1b8-d370755faf1f",
+          "bucket": "food",
+          "type": "food",
+          "span": "cơm",
+          "name": "rice",
+          "tier": "linked",
+          "foldedName": "rice"
+        },
+        {
+          "entityId": "12bcdfbd-7736-4d47-82e7-b7cf30b5fa93",
+          "bucket": "food",
+          "type": "food",
           "span": "gà",
           "name": "chicken",
           "tier": "linked",
@@ -1752,8 +1760,8 @@
         "requestLocale": "vi-VN",
         "detectedLocale": {
           "tag": "vi-VN",
-          "confidence": 0.5,
-          "source": "request-prior"
+          "confidence": 1,
+          "source": "surface"
         },
         "denseTierUsed": false
       },
@@ -1779,6 +1787,15 @@
           "foldedName": "fried rice"
         },
         {
+          "entityId": "77490d5e-e33e-4f6e-b1b8-d370755faf1f",
+          "bucket": "food",
+          "type": "food",
+          "span": "cơm",
+          "name": "rice",
+          "tier": "linked",
+          "foldedName": "rice"
+        },
+        {
           "entityId": "08a8caf8-0758-4367-9f2a-c0a8f2ab9da9",
           "bucket": "foodAttributes",
           "type": "food_attribute",
@@ -1786,15 +1803,6 @@
           "name": "fried",
           "tier": "linked",
           "foldedName": "fried"
-        },
-        {
-          "entityId": "35e1f3b8-f85d-472b-b378-803fd071eea1",
-          "bucket": "ingredients",
-          "type": "ingredient",
-          "span": "cơm",
-          "name": "rice",
-          "tier": "linked",
-          "foldedName": "rice"
         }
       ],
       "unresolved": [],
@@ -1802,9 +1810,9 @@
         "script": "latin",
         "requestLocale": "vi-VN",
         "detectedLocale": {
-          "tag": "pt",
+          "tag": "vi-VN",
           "confidence": 1,
-          "source": "detector"
+          "source": "surface"
         },
         "denseTierUsed": false
       },
@@ -1821,6 +1829,15 @@
       "reasons": [],
       "grounded": [
         {
+          "entityId": "044849f8-d1d7-45da-9b20-70ae01cb34bd",
+          "bucket": "food",
+          "type": "food",
+          "span": "mì xào",
+          "name": "sticky noodles",
+          "tier": "gazetteer-exact",
+          "foldedName": "sticky noodles"
+        },
+        {
           "entityId": "446eda73-141c-401d-b554-9cf72004ede8",
           "bucket": "food",
           "type": "food",
@@ -1828,6 +1845,15 @@
           "name": "chow mein",
           "tier": "gazetteer-exact",
           "foldedName": "chow mein"
+        },
+        {
+          "entityId": "d4df6cdd-938c-4861-9118-11c84c960bbf",
+          "bucket": "ingredients",
+          "type": "ingredient",
+          "span": "mì",
+          "name": "noodle",
+          "tier": "linked",
+          "foldedName": "noodle"
         }
       ],
       "unresolved": [],
@@ -1835,9 +1861,9 @@
         "script": "latin",
         "requestLocale": "vi-VN",
         "detectedLocale": {
-          "tag": "it",
+          "tag": "vi-VN",
           "confidence": 1,
-          "source": "detector"
+          "source": "surface"
         },
         "denseTierUsed": false
       },
@@ -1863,6 +1889,15 @@
           "foldedName": "fried chicken"
         },
         {
+          "entityId": "12bcdfbd-7736-4d47-82e7-b7cf30b5fa93",
+          "bucket": "food",
+          "type": "food",
+          "span": "gà",
+          "name": "chicken",
+          "tier": "linked",
+          "foldedName": "chicken"
+        },
+        {
           "entityId": "08a8caf8-0758-4367-9f2a-c0a8f2ab9da9",
           "bucket": "foodAttributes",
           "type": "food_attribute",
@@ -1870,15 +1905,6 @@
           "name": "fried",
           "tier": "linked",
           "foldedName": "fried"
-        },
-        {
-          "entityId": "c9957bd2-edf1-4839-90eb-72442ba7354a",
-          "bucket": "ingredients",
-          "type": "ingredient",
-          "span": "gà",
-          "name": "chicken",
-          "tier": "linked",
-          "foldedName": "chicken"
         }
       ],
       "unresolved": [],
@@ -1887,8 +1913,8 @@
         "requestLocale": "vi-VN",
         "detectedLocale": {
           "tag": "vi-VN",
-          "confidence": 0.5,
-          "source": "request-prior"
+          "confidence": 1,
+          "source": "surface"
         },
         "denseTierUsed": false
       },
@@ -1914,6 +1940,15 @@
           "foldedName": "fried fish"
         },
         {
+          "entityId": "bcb888b0-d59a-4c2f-956a-ab7374c4cfa5",
+          "bucket": "food",
+          "type": "food",
+          "span": "cá",
+          "name": "fish",
+          "tier": "linked",
+          "foldedName": "fish"
+        },
+        {
           "entityId": "08a8caf8-0758-4367-9f2a-c0a8f2ab9da9",
           "bucket": "foodAttributes",
           "type": "food_attribute",
@@ -1921,15 +1956,6 @@
           "name": "fried",
           "tier": "linked",
           "foldedName": "fried"
-        },
-        {
-          "entityId": "89fcf723-562f-4099-af8f-2c9eec57ab2a",
-          "bucket": "ingredients",
-          "type": "ingredient",
-          "span": "cá",
-          "name": "fish",
-          "tier": "linked",
-          "foldedName": "fish"
         }
       ],
       "unresolved": [],
@@ -1937,9 +1963,9 @@
         "script": "latin",
         "requestLocale": "vi-VN",
         "detectedLocale": {
-          "tag": "pt",
+          "tag": "vi-VN",
           "confidence": 1,
-          "source": "detector"
+          "source": "surface"
         },
         "denseTierUsed": false
       },
@@ -1965,6 +1991,15 @@
           "foldedName": "grilled shrimp"
         },
         {
+          "entityId": "7eeb7cb1-5653-46e7-a24b-af91cd5e85cd",
+          "bucket": "food",
+          "type": "food",
+          "span": "tôm",
+          "name": "shrimp",
+          "tier": "linked",
+          "foldedName": "shrimp"
+        },
+        {
           "entityId": "5e7775c8-82bc-410a-bce3-7b5d05e49249",
           "bucket": "foodAttributes",
           "type": "food_attribute",
@@ -1972,15 +2007,6 @@
           "name": "grilled",
           "tier": "linked",
           "foldedName": "grilled"
-        },
-        {
-          "entityId": "c04eaa3a-b107-4efb-932c-bd5358175bfc",
-          "bucket": "ingredients",
-          "type": "ingredient",
-          "span": "tôm",
-          "name": "shrimp",
-          "tier": "linked",
-          "foldedName": "shrimp"
         }
       ],
       "unresolved": [],
@@ -1989,8 +2015,8 @@
         "requestLocale": "vi-VN",
         "detectedLocale": {
           "tag": "vi-VN",
-          "confidence": 0.5,
-          "source": "request-prior"
+          "confidence": 1,
+          "source": "surface"
         },
         "denseTierUsed": false
       },
@@ -2002,27 +2028,63 @@
       "query": "bún thịt nướng",
       "stratum": "compound",
       "locale": "vi-VN",
-      "pass": true,
-      "preservation": 1,
-      "reasons": [],
+      "pass": false,
+      "preservation": 0,
+      "reasons": ["NOT GROUNDED: pork vermicelli"],
       "grounded": [
         {
           "entityId": "6e666716-a419-45b8-93fd-c0a2274af7cb",
           "bucket": "food",
           "type": "food",
-          "span": "bún thịt nướng",
+          "span": "bún",
           "name": "vermicelli bowl",
           "tier": "gazetteer-exact",
           "foldedName": "vermicelli bowl"
         },
         {
-          "entityId": "eaf556f2-803a-4fcd-a309-c9a92c61416f",
+          "entityId": "e3a3aa75-60aa-4310-a06c-77a967fab87c",
           "bucket": "food",
           "type": "food",
-          "span": "bún thịt nướng",
-          "name": "pork vermicelli",
+          "span": "bún",
+          "name": "vermicelli",
           "tier": "gazetteer-exact",
-          "foldedName": "pork vermicelli"
+          "foldedName": "vermicelli"
+        },
+        {
+          "entityId": "44ab6d3b-4174-4506-a24b-3b35d2b76c6d",
+          "bucket": "food",
+          "type": "food",
+          "span": "thịt nướng",
+          "name": "grilled meat",
+          "tier": "gazetteer-exact",
+          "foldedName": "grilled meat"
+        },
+        {
+          "entityId": "c3b169ed-8b25-4c8e-8bdd-d3c700eca72c",
+          "bucket": "food",
+          "type": "food",
+          "span": "thịt nướng",
+          "name": "grilled protein",
+          "tier": "gazetteer-exact",
+          "foldedName": "grilled protein"
+        },
+        {
+          "entityId": "3b38ad58-7750-42c8-9363-0b2742f704b2",
+          "bucket": "food",
+          "type": "food",
+          "span": "thịt",
+          "name": "meat",
+          "tier": "linked",
+          "foldedName": "meat"
+        },
+        {
+          "entityId": "5e7775c8-82bc-410a-bce3-7b5d05e49249",
+          "bucket": "foodAttributes",
+          "type": "food_attribute",
+          "span": "nướng",
+          "name": "grilled",
+          "tier": "linked",
+          "foldedName": "grilled"
         }
       ],
       "unresolved": [],
@@ -2030,9 +2092,9 @@
         "script": "latin",
         "requestLocale": "vi-VN",
         "detectedLocale": {
-          "tag": "vi-VN",
-          "confidence": 0.5,
-          "source": "request-prior"
+          "tag": "es",
+          "confidence": 1,
+          "source": "surface"
         },
         "denseTierUsed": false
       },
@@ -2044,27 +2106,27 @@
       "query": "cơm sườn",
       "stratum": "compound",
       "locale": "vi-VN",
-      "pass": true,
-      "preservation": 1,
-      "reasons": [],
+      "pass": false,
+      "preservation": 0,
+      "reasons": ["NOT GROUNDED: pork chop plate"],
       "grounded": [
         {
-          "entityId": "5c1be93a-c6ae-4687-9d31-837291265612",
+          "entityId": "625f7efc-70c1-4f02-aa27-99017396a47a",
           "bucket": "food",
           "type": "food",
           "span": "cơm sườn",
-          "name": "pork chop plate",
+          "name": "broken rice with pork chop",
           "tier": "gazetteer-exact",
-          "foldedName": "pork chop plate"
+          "foldedName": "broken rice with pork chop"
         },
         {
-          "entityId": "abc0e552-3f69-42a1-b723-4600c2010dc1",
+          "entityId": "77490d5e-e33e-4f6e-b1b8-d370755faf1f",
           "bucket": "food",
           "type": "food",
-          "span": "sườn",
-          "name": "pork chop",
+          "span": "cơm",
+          "name": "rice",
           "tier": "linked",
-          "foldedName": "pork chop"
+          "foldedName": "rice"
         }
       ],
       "unresolved": [],
@@ -2073,8 +2135,8 @@
         "requestLocale": "vi-VN",
         "detectedLocale": {
           "tag": "vi-VN",
-          "confidence": 0.5,
-          "source": "request-prior"
+          "confidence": 1,
+          "source": "surface"
         },
         "denseTierUsed": false
       },
@@ -2100,9 +2162,9 @@
           "foldedName": "shaken beef"
         },
         {
-          "entityId": "43142a71-5424-480b-a9a8-f293487cc31e",
-          "bucket": "ingredients",
-          "type": "ingredient",
+          "entityId": "ab87265a-7d1a-4334-b851-93e41c0faeff",
+          "bucket": "food",
+          "type": "food",
           "span": "bò",
           "name": "beef",
           "tier": "linked",
@@ -2114,9 +2176,9 @@
         "script": "latin",
         "requestLocale": "vi-VN",
         "detectedLocale": {
-          "tag": "it",
-          "confidence": 1,
-          "source": "detector"
+          "tag": "vi-VN",
+          "confidence": 0.5,
+          "source": "request-prior"
         },
         "denseTierUsed": false
       },
@@ -2142,9 +2204,9 @@
           "foldedName": "shrimp rolls"
         },
         {
-          "entityId": "c04eaa3a-b107-4efb-932c-bd5358175bfc",
-          "bucket": "ingredients",
-          "type": "ingredient",
+          "entityId": "7eeb7cb1-5653-46e7-a24b-af91cd5e85cd",
+          "bucket": "food",
+          "type": "food",
           "span": "tôm",
           "name": "shrimp",
           "tier": "linked",
@@ -2157,8 +2219,8 @@
         "requestLocale": "vi-VN",
         "detectedLocale": {
           "tag": "vi-VN",
-          "confidence": 0.5,
-          "source": "request-prior"
+          "confidence": 1,
+          "source": "surface"
         },
         "denseTierUsed": false
       },
@@ -2189,9 +2251,9 @@
         "script": "latin",
         "requestLocale": "vi-VN",
         "detectedLocale": {
-          "tag": "it",
+          "tag": "vi-VN",
           "confidence": 1,
-          "source": "detector"
+          "source": "surface"
         },
         "denseTierUsed": false
       },
@@ -2241,8 +2303,8 @@
         "requestLocale": "vi-VN",
         "detectedLocale": {
           "tag": "vi-VN",
-          "confidence": 0.5,
-          "source": "request-prior"
+          "confidence": 1,
+          "source": "surface"
         },
         "denseTierUsed": false
       },
@@ -2300,9 +2362,9 @@
         "script": "latin",
         "requestLocale": "vi-VN",
         "detectedLocale": {
-          "tag": "it",
+          "tag": "vi-VN",
           "confidence": 1,
-          "source": "detector"
+          "source": "surface"
         },
         "denseTierUsed": false
       },
@@ -2328,6 +2390,15 @@
           "foldedName": "iced viet coffee"
         },
         {
+          "entityId": "926935db-c5d9-45f8-8618-05fb6a9fd3e9",
+          "bucket": "food",
+          "type": "food",
+          "span": "cà phê",
+          "name": "coffee",
+          "tier": "linked",
+          "foldedName": "coffee"
+        },
+        {
           "entityId": "16d9b342-76f8-43b4-b913-d0b239d38ebd",
           "bucket": "foodAttributes",
           "type": "food_attribute",
@@ -2335,15 +2406,6 @@
           "name": "iced",
           "tier": "linked",
           "foldedName": "iced"
-        },
-        {
-          "entityId": "4b82e20d-a8a1-47f5-a3cd-feaae73841fe",
-          "bucket": "ingredients",
-          "type": "ingredient",
-          "span": "cà phê",
-          "name": "coffee",
-          "tier": "linked",
-          "foldedName": "coffee"
         }
       ],
       "unresolved": [],
@@ -2351,9 +2413,9 @@
         "script": "latin",
         "requestLocale": "vi-VN",
         "detectedLocale": {
-          "tag": "pt",
+          "tag": "vi-VN",
           "confidence": 1,
-          "source": "detector"
+          "source": "surface"
         },
         "denseTierUsed": false
       },
@@ -2384,9 +2446,9 @@
         "script": "latin",
         "requestLocale": "vi-VN",
         "detectedLocale": {
-          "tag": "it",
+          "tag": "vi-VN",
           "confidence": 1,
-          "source": "detector"
+          "source": "surface"
         },
         "denseTierUsed": false
       },
@@ -2436,16 +2498,16 @@
       "reasons": [],
       "grounded": [
         {
-          "entityId": "523eec4d-ead5-4ca0-a897-b5de1b259793",
-          "bucket": "restaurantAttributes",
-          "type": "restaurant_attribute",
-          "span": "đồ ăn Việt Nam",
+          "entityId": "39830fab-097a-4ea7-9591-fd623b737bdd",
+          "bucket": "food",
+          "type": "food",
+          "span": "Việt Nam",
           "name": "vietnamese",
           "tier": "gazetteer-exact",
           "foldedName": "vietnamese"
         }
       ],
-      "unresolved": [],
+      "unresolved": ["đồ ăn"],
       "analysis": {
         "script": "latin",
         "requestLocale": "vi-VN",
@@ -2454,7 +2516,7 @@
           "confidence": 0.5,
           "source": "request-prior"
         },
-        "denseTierUsed": false
+        "denseTierUsed": true
       },
       "misGroundings": [],
       "notes": "Banked 3-gram 'đồ ăn Việt Nam'→vietnamese (restaurant_attribute)."
@@ -2484,8 +2546,8 @@
         "requestLocale": "vi-VN",
         "detectedLocale": {
           "tag": "vi-VN",
-          "confidence": 0.5,
-          "source": "request-prior"
+          "confidence": 1,
+          "source": "surface"
         },
         "denseTierUsed": false
       },
@@ -2497,27 +2559,27 @@
       "query": "BBQ Hàn Quốc",
       "stratum": "compound",
       "locale": "vi-VN",
-      "pass": true,
-      "preservation": 1,
-      "reasons": [],
+      "pass": false,
+      "preservation": 0,
+      "reasons": ["NOT GROUNDED: korean bbq"],
       "grounded": [
         {
-          "entityId": "6ee9bfc5-7bb4-468f-8983-a0566c0cd104",
-          "bucket": "restaurantAttributes",
-          "type": "restaurant_attribute",
-          "span": "BBQ Hàn Quốc",
-          "name": "korean bbq",
-          "tier": "gazetteer-exact",
-          "foldedName": "korean bbq"
-        },
-        {
-          "entityId": "980f562b-e754-401f-8913-cae8befc7e66",
-          "bucket": "restaurantAttributes",
-          "type": "restaurant_attribute",
+          "entityId": "53df955f-ec55-4392-ba46-e1184c52fafc",
+          "bucket": "food",
+          "type": "food",
           "span": "BBQ",
           "name": "bbq",
-          "tier": "linked",
+          "tier": "gazetteer-exact",
           "foldedName": "bbq"
+        },
+        {
+          "entityId": "d9667e84-717c-4329-ac55-3cf283ff345c",
+          "bucket": "food",
+          "type": "food",
+          "span": "Hàn Quốc",
+          "name": "korean",
+          "tier": "gazetteer-exact",
+          "foldedName": "korean"
         }
       ],
       "unresolved": [],
@@ -2559,8 +2621,8 @@
         "requestLocale": "vi-VN",
         "detectedLocale": {
           "tag": "vi-VN",
-          "confidence": 0.5,
-          "source": "request-prior"
+          "confidence": 1,
+          "source": "surface"
         },
         "denseTierUsed": false
       },
@@ -2592,8 +2654,8 @@
         "requestLocale": "vi-VN",
         "detectedLocale": {
           "tag": "vi-VN",
-          "confidence": 0.5,
-          "source": "request-prior"
+          "confidence": 1,
+          "source": "surface"
         },
         "denseTierUsed": false
       },
@@ -2625,8 +2687,8 @@
         "requestLocale": "vi-VN",
         "detectedLocale": {
           "tag": "vi-VN",
-          "confidence": 0.5,
-          "source": "request-prior"
+          "confidence": 1,
+          "source": "surface"
         },
         "denseTierUsed": false
       },
@@ -2638,9 +2700,9 @@
       "query": "phở cay",
       "stratum": "compound",
       "locale": "vi-VN",
-      "pass": true,
-      "preservation": 1,
-      "reasons": [],
+      "pass": false,
+      "preservation": 0.5,
+      "reasons": ["NOT GROUNDED: spicy"],
       "grounded": [
         {
           "entityId": "08f45e9c-abf7-4db2-bbc9-d772538ca720",
@@ -2652,13 +2714,13 @@
           "foldedName": "pho"
         },
         {
-          "entityId": "d5912bd2-54c8-41a1-86c5-d3328abeaca4",
+          "entityId": "042653d2-f070-45f0-aa1c-5da1caf6df2c",
           "bucket": "foodAttributes",
           "type": "food_attribute",
           "span": "cay",
-          "name": "spicy",
+          "name": "spiced",
           "tier": "gazetteer-exact",
-          "foldedName": "spicy"
+          "foldedName": "spiced"
         }
       ],
       "unresolved": [],
@@ -2736,9 +2798,9 @@
       "reasons": [],
       "grounded": [
         {
-          "entityId": "523eec4d-ead5-4ca0-a897-b5de1b259793",
-          "bucket": "restaurantAttributes",
-          "type": "restaurant_attribute",
+          "entityId": "39830fab-097a-4ea7-9591-fd623b737bdd",
+          "bucket": "food",
+          "type": "food",
           "span": "Việt Nam",
           "name": "vietnamese",
           "tier": "gazetteer-exact",
@@ -2759,9 +2821,9 @@
         "script": "latin",
         "requestLocale": "vi-VN",
         "detectedLocale": {
-          "tag": "pt",
-          "confidence": 1,
-          "source": "detector"
+          "tag": "vi-VN",
+          "confidence": 0.5,
+          "source": "request-prior"
         },
         "denseTierUsed": true
       },
@@ -2829,13 +2891,13 @@
           "foldedName": "rice"
         },
         {
-          "entityId": "39c04460-3129-4bc0-a74a-f85bde2101bd",
+          "entityId": "2d976861-9953-4264-a12c-19b7819b18a9",
           "bucket": "food",
           "type": "food",
           "span": "gà nướng",
-          "name": "roast chicken",
+          "name": "pollo al horno",
           "tier": "gazetteer-exact",
-          "foldedName": "roast chicken"
+          "foldedName": "pollo al horno"
         },
         {
           "entityId": "d091b65c-ea76-4807-8c5b-d7270dd0fc6f",
@@ -2845,15 +2907,6 @@
           "name": "grilled chicken",
           "tier": "gazetteer-exact",
           "foldedName": "grilled chicken"
-        },
-        {
-          "entityId": "c9957bd2-edf1-4839-90eb-72442ba7354a",
-          "bucket": "ingredients",
-          "type": "ingredient",
-          "span": "gà",
-          "name": "chicken",
-          "tier": "linked",
-          "foldedName": "chicken"
         }
       ],
       "unresolved": [],
@@ -2903,9 +2956,9 @@
         "script": "latin",
         "requestLocale": "vi-VN",
         "detectedLocale": {
-          "tag": "fr",
-          "confidence": 1,
-          "source": "detector"
+          "tag": "vi-VN",
+          "confidence": 0.5,
+          "source": "request-prior"
         },
         "denseTierUsed": false
       },
@@ -2917,33 +2970,33 @@
       "query": "bún không thịt bò",
       "stratum": "negation",
       "locale": "vi-VN",
-      "pass": true,
-      "preservation": 1,
-      "reasons": [],
+      "pass": false,
+      "preservation": 0,
+      "reasons": ["head not grounded: missing rice noodle"],
       "grounded": [
         {
-          "entityId": "f2623f78-29ff-49ac-ad64-d786687ff4bd",
+          "entityId": "6e666716-a419-45b8-93fd-c0a2274af7cb",
           "bucket": "food",
           "type": "food",
           "span": "bún",
-          "name": "rice noodle",
+          "name": "vermicelli bowl",
           "tier": "gazetteer-exact",
-          "foldedName": "rice noodle"
+          "foldedName": "vermicelli bowl"
+        },
+        {
+          "entityId": "e3a3aa75-60aa-4310-a06c-77a967fab87c",
+          "bucket": "food",
+          "type": "food",
+          "span": "bún",
+          "name": "vermicelli",
+          "tier": "gazetteer-exact",
+          "foldedName": "vermicelli"
         },
         {
           "entityId": "ab87265a-7d1a-4334-b851-93e41c0faeff",
           "bucket": "food",
           "type": "food",
           "span": "thịt bò",
-          "name": "beef",
-          "tier": "gazetteer-exact",
-          "foldedName": "beef"
-        },
-        {
-          "entityId": "43142a71-5424-480b-a9a8-f293487cc31e",
-          "bucket": "ingredients",
-          "type": "ingredient",
-          "span": "bò",
           "name": "beef",
           "tier": "gazetteer-exact",
           "foldedName": "beef"
@@ -2954,9 +3007,9 @@
         "script": "latin",
         "requestLocale": "vi-VN",
         "detectedLocale": {
-          "tag": "it",
-          "confidence": 1,
-          "source": "detector"
+          "tag": "vi-VN",
+          "confidence": 0.5,
+          "source": "request-prior"
         },
         "denseTierUsed": false
       },
@@ -2982,13 +3035,13 @@
           "foldedName": "pho"
         },
         {
-          "entityId": "67529bfb-394a-4bab-817a-f8b4ca7eb2cc",
-          "bucket": "ingredients",
-          "type": "ingredient",
+          "entityId": "49c21044-3384-4940-8aa0-121da9892206",
+          "bucket": "food",
+          "type": "food",
           "span": "hành",
-          "name": "onions",
+          "name": "onion",
           "tier": "gazetteer-exact",
-          "foldedName": "onions"
+          "foldedName": "onion"
         }
       ],
       "unresolved": ["không"],
@@ -2996,9 +3049,9 @@
         "script": "latin",
         "requestLocale": "vi-VN",
         "detectedLocale": {
-          "tag": "fr",
-          "confidence": 1,
-          "source": "detector"
+          "tag": "vi-VN",
+          "confidence": 0.5,
+          "source": "request-prior"
         },
         "denseTierUsed": false
       },
@@ -3042,15 +3095,6 @@
           "foldedName": "viet sandwich"
         },
         {
-          "entityId": "d0cee3f7-5e48-4efc-86ce-dfbf8f3ca5eb",
-          "bucket": "food",
-          "type": "food",
-          "span": "bánh mì",
-          "name": "bread",
-          "tier": "gazetteer-exact",
-          "foldedName": "bread"
-        },
-        {
           "entityId": "93d01a72-e5bf-46c6-adda-351cb14370a1",
           "bucket": "ingredients",
           "type": "ingredient",
@@ -3065,9 +3109,9 @@
         "script": "latin",
         "requestLocale": "vi-VN",
         "detectedLocale": {
-          "tag": "it",
-          "confidence": 1,
-          "source": "detector"
+          "tag": "vi-VN",
+          "confidence": 0.5,
+          "source": "request-prior"
         },
         "denseTierUsed": false
       },
@@ -3093,6 +3137,15 @@
           "foldedName": "pizza pie"
         },
         {
+          "entityId": "b33eb888-0acd-432b-bebd-e14d0699ec13",
+          "bucket": "food",
+          "type": "food",
+          "span": "pizza",
+          "name": "pitzas",
+          "tier": "gazetteer-exact",
+          "foldedName": "pitzas"
+        },
+        {
           "entityId": "b3a4c3e8-307f-4694-89b2-9160fcaa0436",
           "bucket": "food",
           "type": "food",
@@ -3116,9 +3169,9 @@
         "script": "latin",
         "requestLocale": "vi-VN",
         "detectedLocale": {
-          "tag": "fr",
-          "confidence": 1,
-          "source": "detector"
+          "tag": "vi-VN",
+          "confidence": 0.5,
+          "source": "request-prior"
         },
         "denseTierUsed": false
       },
@@ -3153,6 +3206,15 @@
           "foldedName": "sugar free"
         },
         {
+          "entityId": "30416a46-5507-4114-8309-1ea935bf5dc2",
+          "bucket": "foodAttributes",
+          "type": "food_attribute",
+          "span": "không đường",
+          "name": "unsweet",
+          "tier": "gazetteer-exact",
+          "foldedName": "unsweet"
+        },
+        {
           "entityId": "9d44e3fe-ccc6-4394-a930-7f5a0a813262",
           "bucket": "ingredients",
           "type": "ingredient",
@@ -3167,9 +3229,9 @@
         "script": "latin",
         "requestLocale": "vi-VN",
         "detectedLocale": {
-          "tag": "pt",
-          "confidence": 1,
-          "source": "detector"
+          "tag": "vi-VN",
+          "confidence": 0.5,
+          "source": "request-prior"
         },
         "denseTierUsed": false
       },
@@ -3209,9 +3271,9 @@
         "script": "latin",
         "requestLocale": "vi-VN",
         "detectedLocale": {
-          "tag": "fr",
-          "confidence": 1,
-          "source": "detector"
+          "tag": "vi-VN",
+          "confidence": 0.5,
+          "source": "request-prior"
         },
         "denseTierUsed": false
       },
@@ -3237,6 +3299,15 @@
           "foldedName": "rice"
         },
         {
+          "entityId": "9b12c271-a4eb-418c-9fe3-4c2cce425801",
+          "bucket": "food",
+          "type": "food",
+          "span": "rau",
+          "name": "veggies",
+          "tier": "gazetteer-exact",
+          "foldedName": "veggies"
+        },
+        {
           "entityId": "a562dee6-7105-4d17-8b6c-7dd15a4ea018",
           "bucket": "food",
           "type": "food",
@@ -3251,9 +3322,9 @@
         "script": "latin",
         "requestLocale": "vi-VN",
         "detectedLocale": {
-          "tag": "fr",
-          "confidence": 1,
-          "source": "detector"
+          "tag": "vi-VN",
+          "confidence": 0.5,
+          "source": "request-prior"
         },
         "denseTierUsed": false
       },
@@ -3279,13 +3350,13 @@
           "foldedName": "chicken"
         },
         {
-          "entityId": "16d9b342-76f8-43b4-b913-d0b239d38ebd",
-          "bucket": "foodAttributes",
-          "type": "food_attribute",
+          "entityId": "17a3a5b1-9a4f-4ab5-928f-3dd1f1945176",
+          "bucket": "ingredients",
+          "type": "ingredient",
           "span": "da",
-          "name": "iced",
+          "name": "skin",
           "tier": "gazetteer-exact",
-          "foldedName": "iced"
+          "foldedName": "skin"
         }
       ],
       "unresolved": ["không"],
@@ -3293,9 +3364,9 @@
         "script": "latin",
         "requestLocale": "vi-VN",
         "detectedLocale": {
-          "tag": "fr",
-          "confidence": 1,
-          "source": "detector"
+          "tag": "vi-VN",
+          "confidence": 0.5,
+          "source": "request-prior"
         },
         "denseTierUsed": false
       },
@@ -3344,9 +3415,9 @@
         "script": "latin",
         "requestLocale": "vi-VN",
         "detectedLocale": {
-          "tag": "fr",
-          "confidence": 1,
-          "source": "detector"
+          "tag": "vi-VN",
+          "confidence": 0.5,
+          "source": "request-prior"
         },
         "denseTierUsed": false
       },
@@ -3388,15 +3459,6 @@
           "name": "shrimp",
           "tier": "gazetteer-exact",
           "foldedName": "shrimp"
-        },
-        {
-          "entityId": "b5c058ab-7ab6-4ccb-912a-cc6b366b5ade",
-          "bucket": "food",
-          "type": "food",
-          "span": "tôm",
-          "name": "prawns",
-          "tier": "gazetteer-exact",
-          "foldedName": "prawns"
         }
       ],
       "unresolved": ["không"],
@@ -3404,9 +3466,9 @@
         "script": "latin",
         "requestLocale": "vi-VN",
         "detectedLocale": {
-          "tag": "fr",
-          "confidence": 1,
-          "source": "detector"
+          "tag": "vi-VN",
+          "confidence": 0.5,
+          "source": "request-prior"
         },
         "denseTierUsed": false
       },
@@ -3422,6 +3484,15 @@
       "preservation": 1,
       "reasons": [],
       "grounded": [
+        {
+          "entityId": "e6353850-c93c-4fc8-8b5a-6f929354fbd4",
+          "bucket": "restaurants",
+          "type": "restaurant",
+          "span": "mỡ",
+          "name": "Mos",
+          "tier": "linked",
+          "foldedName": "mos"
+        },
         {
           "entityId": "bad1e222-175c-4473-8620-b95d021bab77",
           "bucket": "food",
@@ -3439,27 +3510,18 @@
           "name": "broken rice",
           "tier": "gazetteer-exact",
           "foldedName": "broken rice"
-        },
-        {
-          "entityId": "d205e258-42b2-4221-8879-88d8a8d42813",
-          "bucket": "ingredients",
-          "type": "ingredient",
-          "span": "mỡ",
-          "name": "fat",
-          "tier": "gazetteer-exact",
-          "foldedName": "fat"
         }
       ],
-      "unresolved": ["không"],
+      "unresolved": [],
       "analysis": {
         "script": "latin",
         "requestLocale": "vi-VN",
         "detectedLocale": {
-          "tag": "fr",
-          "confidence": 1,
-          "source": "detector"
+          "tag": "vi-VN",
+          "confidence": 0.5,
+          "source": "request-prior"
         },
-        "denseTierUsed": false
+        "denseTierUsed": true
       },
       "misGroundings": [],
       "notes": "NEGATION v2 (LITERAL IGNORE): 'không X' is not a supported exclusion — the mentioned word may ground POSITIVELY like any other ingredient. The assertion is head preservation + NON-INVERSION: the parse must never flip into the semantic opposite (a vegetarian/vegan constraint the user did not ask for). Source-faithful head; 'mỡ' (fat) is unknown residue."
@@ -3483,6 +3545,15 @@
           "foldedName": "pho"
         },
         {
+          "entityId": "9b12c271-a4eb-418c-9fe3-4c2cce425801",
+          "bucket": "food",
+          "type": "food",
+          "span": "rau",
+          "name": "veggies",
+          "tier": "gazetteer-exact",
+          "foldedName": "veggies"
+        },
+        {
           "entityId": "a562dee6-7105-4d17-8b6c-7dd15a4ea018",
           "bucket": "food",
           "type": "food",
@@ -3497,9 +3568,9 @@
         "script": "latin",
         "requestLocale": "vi-VN",
         "detectedLocale": {
-          "tag": "fr",
-          "confidence": 1,
-          "source": "detector"
+          "tag": "vi-VN",
+          "confidence": 0.5,
+          "source": "request-prior"
         },
         "denseTierUsed": false
       },
@@ -3539,9 +3610,9 @@
         "script": "latin",
         "requestLocale": "vi-VN",
         "detectedLocale": {
-          "tag": "fr",
-          "confidence": 1,
-          "source": "detector"
+          "tag": "vi-VN",
+          "confidence": 0.5,
+          "source": "request-prior"
         },
         "denseTierUsed": false
       },
@@ -3567,6 +3638,15 @@
           "foldedName": "sushi"
         },
         {
+          "entityId": "bcb888b0-d59a-4c2f-956a-ab7374c4cfa5",
+          "bucket": "food",
+          "type": "food",
+          "span": "cá",
+          "name": "fish",
+          "tier": "linked",
+          "foldedName": "fish"
+        },
+        {
           "entityId": "b371c5b1-b47a-4d44-9e78-35dee213111e",
           "bucket": "foodAttributes",
           "type": "food_attribute",
@@ -3583,15 +3663,6 @@
           "name": "raw fish",
           "tier": "gazetteer-exact",
           "foldedName": "raw fish"
-        },
-        {
-          "entityId": "89fcf723-562f-4099-af8f-2c9eec57ab2a",
-          "bucket": "ingredients",
-          "type": "ingredient",
-          "span": "cá",
-          "name": "fish",
-          "tier": "linked",
-          "foldedName": "fish"
         }
       ],
       "unresolved": ["không"],
@@ -3599,9 +3670,9 @@
         "script": "latin",
         "requestLocale": "vi-VN",
         "detectedLocale": {
-          "tag": "fr",
-          "confidence": 1,
-          "source": "detector"
+          "tag": "vi-VN",
+          "confidence": 0.5,
+          "source": "request-prior"
         },
         "denseTierUsed": false
       },
@@ -3645,6 +3716,15 @@
           "foldedName": "sugar free"
         },
         {
+          "entityId": "30416a46-5507-4114-8309-1ea935bf5dc2",
+          "bucket": "foodAttributes",
+          "type": "food_attribute",
+          "span": "không đường",
+          "name": "unsweet",
+          "tier": "gazetteer-exact",
+          "foldedName": "unsweet"
+        },
+        {
           "entityId": "68a0f8a7-783c-4afe-8b4b-9060f304acfd",
           "bucket": "ingredients",
           "type": "ingredient",
@@ -3677,9 +3757,9 @@
         "script": "latin",
         "requestLocale": "vi-VN",
         "detectedLocale": {
-          "tag": "it",
-          "confidence": 1,
-          "source": "detector"
+          "tag": "vi-VN",
+          "confidence": 0.5,
+          "source": "request-prior"
         },
         "denseTierUsed": false
       },
@@ -3710,9 +3790,9 @@
         "script": "latin",
         "requestLocale": "vi-VN",
         "detectedLocale": {
-          "tag": "fr",
-          "confidence": 1,
-          "source": "detector"
+          "tag": "vi-VN",
+          "confidence": 0.5,
+          "source": "request-prior"
         },
         "denseTierUsed": true
       },
@@ -3738,6 +3818,15 @@
           "foldedName": "pizza pie"
         },
         {
+          "entityId": "b33eb888-0acd-432b-bebd-e14d0699ec13",
+          "bucket": "food",
+          "type": "food",
+          "span": "pizza",
+          "name": "pitzas",
+          "tier": "gazetteer-exact",
+          "foldedName": "pitzas"
+        },
+        {
           "entityId": "b3a4c3e8-307f-4694-89b2-9160fcaa0436",
           "bucket": "food",
           "type": "food",
@@ -3761,9 +3850,9 @@
         "script": "latin",
         "requestLocale": "vi-VN",
         "detectedLocale": {
-          "tag": "fr",
-          "confidence": 1,
-          "source": "detector"
+          "tag": "vi-VN",
+          "confidence": 0.5,
+          "source": "request-prior"
         },
         "denseTierUsed": false
       },
@@ -3796,6 +3885,15 @@
           "name": "salty",
           "tier": "gazetteer-exact",
           "foldedName": "salty"
+        },
+        {
+          "entityId": "cdcfb6df-29e1-4530-8f13-69c32fa8a68d",
+          "bucket": "foodAttributes",
+          "type": "food_attribute",
+          "span": "mặn",
+          "name": "savory",
+          "tier": "gazetteer-exact",
+          "foldedName": "savory"
         }
       ],
       "unresolved": ["không"],
@@ -3803,9 +3901,9 @@
         "script": "latin",
         "requestLocale": "vi-VN",
         "detectedLocale": {
-          "tag": "fr",
-          "confidence": 1,
-          "source": "detector"
+          "tag": "vi-VN",
+          "confidence": 0.5,
+          "source": "request-prior"
         },
         "denseTierUsed": false
       },
@@ -3845,9 +3943,9 @@
         "script": "latin",
         "requestLocale": "vi-VN",
         "detectedLocale": {
-          "tag": "fr",
-          "confidence": 1,
-          "source": "detector"
+          "tag": "vi-VN",
+          "confidence": 0.5,
+          "source": "request-prior"
         },
         "denseTierUsed": false
       },
@@ -3859,18 +3957,18 @@
       "query": "cay",
       "stratum": "attribute",
       "locale": "vi-VN",
-      "pass": true,
-      "preservation": 1,
-      "reasons": [],
+      "pass": false,
+      "preservation": 0,
+      "reasons": ["NOT GROUNDED: spicy"],
       "grounded": [
         {
-          "entityId": "d5912bd2-54c8-41a1-86c5-d3328abeaca4",
+          "entityId": "042653d2-f070-45f0-aa1c-5da1caf6df2c",
           "bucket": "foodAttributes",
           "type": "food_attribute",
           "span": "cay",
-          "name": "spicy",
+          "name": "spiced",
           "tier": "gazetteer-exact",
-          "foldedName": "spicy"
+          "foldedName": "spiced"
         }
       ],
       "unresolved": [],
@@ -3879,8 +3977,8 @@
         "requestLocale": "vi-VN",
         "detectedLocale": {
           "tag": "vi-VN",
-          "confidence": 0.5,
-          "source": "request-prior"
+          "confidence": 1,
+          "source": "surface"
         },
         "denseTierUsed": false
       },
@@ -3912,8 +4010,8 @@
         "requestLocale": "vi-VN",
         "detectedLocale": {
           "tag": "vi-VN",
-          "confidence": 0.5,
-          "source": "request-prior"
+          "confidence": 1,
+          "source": "surface"
         },
         "denseTierUsed": false
       },
@@ -3945,8 +4043,8 @@
         "requestLocale": "vi-VN",
         "detectedLocale": {
           "tag": "vi-VN",
-          "confidence": 0.5,
-          "source": "request-prior"
+          "confidence": 1,
+          "source": "surface"
         },
         "denseTierUsed": false
       },
@@ -3986,9 +4084,9 @@
         "script": "latin",
         "requestLocale": "vi-VN",
         "detectedLocale": {
-          "tag": "fr",
+          "tag": "vi-VN",
           "confidence": 1,
-          "source": "detector"
+          "source": "surface"
         },
         "denseTierUsed": false
       },
@@ -4053,8 +4151,8 @@
         "requestLocale": "vi-VN",
         "detectedLocale": {
           "tag": "vi-VN",
-          "confidence": 0.5,
-          "source": "request-prior"
+          "confidence": 1,
+          "source": "surface"
         },
         "denseTierUsed": false
       },
@@ -4085,9 +4183,9 @@
         "script": "latin",
         "requestLocale": "vi-VN",
         "detectedLocale": {
-          "tag": "it",
+          "tag": "vi-VN",
           "confidence": 1,
-          "source": "detector"
+          "source": "surface"
         },
         "denseTierUsed": false
       },
@@ -4119,8 +4217,8 @@
         "requestLocale": "vi-VN",
         "detectedLocale": {
           "tag": "vi-VN",
-          "confidence": 0.5,
-          "source": "request-prior"
+          "confidence": 1,
+          "source": "surface"
         },
         "denseTierUsed": false
       },
@@ -4152,8 +4250,8 @@
         "requestLocale": "vi-VN",
         "detectedLocale": {
           "tag": "vi-VN",
-          "confidence": 0.5,
-          "source": "request-prior"
+          "confidence": 1,
+          "source": "surface"
         },
         "denseTierUsed": false
       },
@@ -4184,9 +4282,9 @@
         "script": "latin",
         "requestLocale": "vi-VN",
         "detectedLocale": {
-          "tag": "pt",
+          "tag": "vi-VN",
           "confidence": 1,
-          "source": "detector"
+          "source": "surface"
         },
         "denseTierUsed": false
       },
@@ -4218,8 +4316,8 @@
         "requestLocale": "vi-VN",
         "detectedLocale": {
           "tag": "vi-VN",
-          "confidence": 0.5,
-          "source": "request-prior"
+          "confidence": 1,
+          "source": "surface"
         },
         "denseTierUsed": false
       },
@@ -4231,21 +4329,11 @@
       "query": "sân thượng",
       "stratum": "attribute",
       "locale": "vi-VN",
-      "pass": true,
-      "preservation": 1,
-      "reasons": [],
-      "grounded": [
-        {
-          "entityId": "1c629813-ffc1-4860-bf00-5ca06dccc4fb",
-          "bucket": "restaurantAttributes",
-          "type": "restaurant_attribute",
-          "span": "sân thượng",
-          "name": "rooftop",
-          "tier": "gazetteer-exact",
-          "foldedName": "rooftop"
-        }
-      ],
-      "unresolved": [],
+      "pass": false,
+      "preservation": 0,
+      "reasons": ["NOT GROUNDED: rooftop"],
+      "grounded": [],
+      "unresolved": ["sân thượng"],
       "analysis": {
         "script": "latin",
         "requestLocale": "vi-VN",
@@ -4254,7 +4342,7 @@
           "confidence": 0.5,
           "source": "request-prior"
         },
-        "denseTierUsed": false
+        "denseTierUsed": true
       },
       "misGroundings": [],
       "notes": "Banked 'sân thượng'→rooftop."
@@ -4284,8 +4372,8 @@
         "requestLocale": "vi-VN",
         "detectedLocale": {
           "tag": "vi-VN",
-          "confidence": 0.5,
-          "source": "request-prior"
+          "confidence": 1,
+          "source": "surface"
         },
         "denseTierUsed": false
       },
@@ -4317,8 +4405,8 @@
         "requestLocale": "vi-VN",
         "detectedLocale": {
           "tag": "vi-VN",
-          "confidence": 0.5,
-          "source": "request-prior"
+          "confidence": 1,
+          "source": "surface"
         },
         "denseTierUsed": false
       },
@@ -4349,9 +4437,9 @@
         "script": "latin",
         "requestLocale": "vi-VN",
         "detectedLocale": {
-          "tag": "pt",
+          "tag": "vi-VN",
           "confidence": 1,
-          "source": "detector"
+          "source": "surface"
         },
         "denseTierUsed": false
       },
@@ -4383,8 +4471,8 @@
         "requestLocale": "vi-VN",
         "detectedLocale": {
           "tag": "vi-VN",
-          "confidence": 0.5,
-          "source": "request-prior"
+          "confidence": 1,
+          "source": "surface"
         },
         "denseTierUsed": false
       },
@@ -4416,8 +4504,8 @@
         "requestLocale": "vi-VN",
         "detectedLocale": {
           "tag": "vi-VN",
-          "confidence": 0.5,
-          "source": "request-prior"
+          "confidence": 1,
+          "source": "surface"
         },
         "denseTierUsed": false
       },
@@ -4437,10 +4525,19 @@
           "entityId": "092f9cb2-74c9-49da-92a6-3ffcf05d2245",
           "bucket": "restaurantAttributes",
           "type": "restaurant_attribute",
-          "span": "có wifi",
+          "span": "wifi",
           "name": "wifi",
           "tier": "gazetteer-exact",
           "foldedName": "wifi"
+        },
+        {
+          "entityId": "2d589779-0572-4c1b-863c-6a50a10ce679",
+          "bucket": "ingredients",
+          "type": "ingredient",
+          "span": "có",
+          "name": "romaine",
+          "tier": "linked",
+          "foldedName": "romaine"
         }
       ],
       "unresolved": [],
@@ -4452,7 +4549,7 @@
           "confidence": 0.5,
           "source": "request-prior"
         },
-        "denseTierUsed": false
+        "denseTierUsed": true
       },
       "misGroundings": [],
       "notes": "Banked 'có wifi'→wifi; 'có' (has) is a carrier that must not block the match."
@@ -4462,30 +4559,39 @@
       "query": "bãi đậu xe",
       "stratum": "attribute",
       "locale": "vi-VN",
-      "pass": true,
-      "preservation": 1,
-      "reasons": [],
+      "pass": false,
+      "preservation": 0,
+      "reasons": ["NOT GROUNDED: parking"],
       "grounded": [
         {
-          "entityId": "9466ee50-fefb-4fce-971a-5440e3e529ec",
-          "bucket": "restaurantAttributes",
-          "type": "restaurant_attribute",
-          "span": "bãi đậu xe",
-          "name": "parking",
+          "entityId": "001a597e-bfd0-4f0a-a1ad-fe63289e1364",
+          "bucket": "food",
+          "type": "food",
+          "span": "đậu",
+          "name": "beans",
           "tier": "gazetteer-exact",
-          "foldedName": "parking"
+          "foldedName": "beans"
+        },
+        {
+          "entityId": "335932fe-5dfb-4f83-9bc7-aa59f20119d9",
+          "bucket": "food",
+          "type": "food",
+          "span": "xe",
+          "name": "king cake",
+          "tier": "linked",
+          "foldedName": "king cake"
         }
       ],
-      "unresolved": [],
+      "unresolved": ["bãi"],
       "analysis": {
         "script": "latin",
         "requestLocale": "vi-VN",
         "detectedLocale": {
-          "tag": "pt",
-          "confidence": 1,
-          "source": "detector"
+          "tag": "vi-VN",
+          "confidence": 0.5,
+          "source": "request-prior"
         },
-        "denseTierUsed": false
+        "denseTierUsed": true
       },
       "misGroundings": [],
       "notes": "Banked 3-token phrase → parking."
@@ -4515,8 +4621,8 @@
         "requestLocale": "vi-VN",
         "detectedLocale": {
           "tag": "vi-VN",
-          "confidence": 0.5,
-          "source": "request-prior"
+          "confidence": 1,
+          "source": "surface"
         },
         "denseTierUsed": false
       },
@@ -4547,9 +4653,9 @@
         "script": "latin",
         "requestLocale": "vi-VN",
         "detectedLocale": {
-          "tag": "it",
+          "tag": "vi-VN",
           "confidence": 1,
-          "source": "detector"
+          "source": "surface"
         },
         "denseTierUsed": false
       },
@@ -4562,9 +4668,18 @@
       "stratum": "homograph",
       "locale": "vi-VN",
       "pass": true,
-      "preservation": 0.5,
+      "preservation": 1,
       "reasons": [],
       "grounded": [
+        {
+          "entityId": "10c49ded-1303-4b6e-bd49-2bc0ca793b1e",
+          "bucket": "food",
+          "type": "food",
+          "span": "bơ",
+          "name": "butter",
+          "tier": "gazetteer-exact",
+          "foldedName": "butter"
+        },
         {
           "entityId": "5dbb584c-790e-4078-acb1-d60185968264",
           "bucket": "food",
@@ -4581,8 +4696,8 @@
         "requestLocale": "vi-VN",
         "detectedLocale": {
           "tag": "vi-VN",
-          "confidence": 0.5,
-          "source": "request-prior"
+          "confidence": 1,
+          "source": "surface"
         },
         "denseTierUsed": false
       },
@@ -4614,8 +4729,8 @@
         "requestLocale": "vi-VN",
         "detectedLocale": {
           "tag": "vi-VN",
-          "confidence": 0.5,
-          "source": "request-prior"
+          "confidence": 1,
+          "source": "surface"
         },
         "denseTierUsed": false
       },
@@ -4627,18 +4742,20 @@
       "query": "giá",
       "stratum": "homograph",
       "locale": "vi-VN",
-      "pass": true,
-      "preservation": 1,
-      "reasons": [],
+      "pass": false,
+      "preservation": 0.3333333333333333,
+      "reasons": [
+        "MIS-GROUNDED (outside allowed set): soybean sprout[gazetteer-exact]"
+      ],
       "grounded": [
         {
-          "entityId": "525c28db-3578-4290-b7fa-43177120fdd4",
+          "entityId": "0a1d53a2-7cc6-4c42-8fa9-8f782df1e009",
           "bucket": "ingredients",
           "type": "ingredient",
           "span": "giá",
-          "name": "sprout",
+          "name": "soybean sprout",
           "tier": "gazetteer-exact",
-          "foldedName": "sprout"
+          "foldedName": "soybean sprout"
         },
         {
           "entityId": "b8f957ef-c8a5-4b87-bf11-7d143ec96f15",
@@ -4648,15 +4765,6 @@
           "name": "bean sprout",
           "tier": "gazetteer-exact",
           "foldedName": "bean sprout"
-        },
-        {
-          "entityId": "fc1a826d-e60e-4899-9b61-007752aeea22",
-          "bucket": "ingredients",
-          "type": "ingredient",
-          "span": "giá",
-          "name": "sprouts",
-          "tier": "gazetteer-exact",
-          "foldedName": "sprouts"
         }
       ],
       "unresolved": [],
@@ -4665,12 +4773,12 @@
         "requestLocale": "vi-VN",
         "detectedLocale": {
           "tag": "vi-VN",
-          "confidence": 0.5,
-          "source": "request-prior"
+          "confidence": 1,
+          "source": "surface"
         },
         "denseTierUsed": false
       },
-      "misGroundings": [],
+      "misGroundings": ["soybean sprout[gazetteer-exact]"],
       "notes": "'giá' = bean sprouts AND 'price'. Banked on the sprout senses. A price-shaped or restaurant-shaped capture would be the failure."
     },
     {
@@ -4678,9 +4786,9 @@
       "query": "mì",
       "stratum": "homograph",
       "locale": "vi-VN",
-      "pass": true,
+      "pass": false,
       "preservation": 0.6666666666666666,
-      "reasons": [],
+      "reasons": ["MIS-GROUNDED (outside allowed set): mian[gazetteer-exact]"],
       "grounded": [
         {
           "entityId": "042de43d-2fb6-460d-bbea-b8779b79b52a",
@@ -4699,6 +4807,15 @@
           "name": "noodle",
           "tier": "gazetteer-exact",
           "foldedName": "noodle"
+        },
+        {
+          "entityId": "db337785-109a-4c69-af3c-d5acc572eeec",
+          "bucket": "food",
+          "type": "food",
+          "span": "mì",
+          "name": "mian",
+          "tier": "gazetteer-exact",
+          "foldedName": "mian"
         }
       ],
       "unresolved": [],
@@ -4706,13 +4823,13 @@
         "script": "latin",
         "requestLocale": "vi-VN",
         "detectedLocale": {
-          "tag": "it",
+          "tag": "vi-VN",
           "confidence": 1,
-          "source": "detector"
+          "source": "surface"
         },
         "denseTierUsed": false
       },
-      "misGroundings": [],
+      "misGroundings": ["mian[gazetteer-exact]"],
       "notes": "'mì' = wheat noodles; banked on noodle/noodles. Also one fold away from 'mỹ' (America) — see hg-06."
     },
     {
@@ -4739,9 +4856,9 @@
         "script": "latin",
         "requestLocale": "vi-VN",
         "detectedLocale": {
-          "tag": "en",
-          "confidence": 0.5,
-          "source": "detector"
+          "tag": "vi-VN",
+          "confidence": 1,
+          "source": "surface"
         },
         "denseTierUsed": false
       },
@@ -4772,9 +4889,9 @@
         "script": "latin",
         "requestLocale": "vi-VN",
         "detectedLocale": {
-          "tag": "fr",
+          "tag": "vi-VN",
           "confidence": 1,
-          "source": "detector"
+          "source": "surface"
         },
         "denseTierUsed": false
       },
@@ -4806,8 +4923,8 @@
         "requestLocale": "vi-VN",
         "detectedLocale": {
           "tag": "vi-VN",
-          "confidence": 0.5,
-          "source": "request-prior"
+          "confidence": 1,
+          "source": "surface"
         },
         "denseTierUsed": false
       },
@@ -4839,8 +4956,8 @@
         "requestLocale": "vi-VN",
         "detectedLocale": {
           "tag": "vi-VN",
-          "confidence": 0.5,
-          "source": "request-prior"
+          "confidence": 1,
+          "source": "surface"
         },
         "denseTierUsed": false
       },
@@ -4875,23 +4992,11 @@
       "query": "nem",
       "stratum": "homograph",
       "locale": "vi-VN",
-      "pass": false,
+      "pass": true,
       "preservation": 0,
-      "reasons": [
-        "MIS-GROUNDED (outside allowed set): little gem lettuce[linked]"
-      ],
-      "grounded": [
-        {
-          "entityId": "0db484d2-b91b-4986-bd90-cf720b4f17c1",
-          "bucket": "ingredients",
-          "type": "ingredient",
-          "span": "nem",
-          "name": "little gem lettuce",
-          "tier": "linked",
-          "foldedName": "little gem lettuce"
-        }
-      ],
-      "unresolved": [],
+      "reasons": ["clean park (safe)"],
+      "grounded": [],
+      "unresolved": ["nem"],
       "analysis": {
         "script": "latin",
         "requestLocale": "vi-VN",
@@ -4902,7 +5007,7 @@
         },
         "denseTierUsed": true
       },
-      "misGroundings": ["little gem lettuce[linked]"],
+      "misGroundings": [],
       "notes": "STILL PARKED, and the reason is now known precisely (2026-08-09). 'nem' is unbanked bare not because anything refused it — with form-scoped claims nothing contests it — but because the vocabulary generator never OFFERS the bare word: asked for spring roll in vi it emits the compounds ('nem cuốn', 'nem rán', 'chả giò'). So bare 'nem' falls to the fuzzy linker, which reaches 'little gem lettuce' — a substring accident, not a locale defect. The fix is a generator that also emits the head word, and it is not owed to the claims registry."
     },
     {
@@ -4911,19 +5016,29 @@
       "stratum": "homograph",
       "locale": "vi-VN",
       "pass": true,
-      "preservation": 0,
-      "reasons": ["clean park (safe)"],
-      "grounded": [],
-      "unresolved": ["gỏi"],
+      "preservation": 1,
+      "reasons": [],
+      "grounded": [
+        {
+          "entityId": "9bf9040b-414a-4715-b74f-ada874c66af8",
+          "bucket": "ingredients",
+          "type": "ingredient",
+          "span": "gỏi",
+          "name": "salad",
+          "tier": "gazetteer-exact",
+          "foldedName": "salad"
+        }
+      ],
+      "unresolved": [],
       "analysis": {
         "script": "latin",
         "requestLocale": "vi-VN",
         "detectedLocale": {
           "tag": "vi-VN",
-          "confidence": 0.5,
-          "source": "request-prior"
+          "confidence": 1,
+          "source": "surface"
         },
-        "denseTierUsed": true
+        "denseTierUsed": false
       },
       "misGroundings": [],
       "notes": "'gỏi' = a Vietnamese salad; unbanked bare (only 'gỏi cuốn tôm' is banked — cp-13). SAFE = salad, or park."
@@ -4933,18 +5048,29 @@
       "query": "bún",
       "stratum": "homograph",
       "locale": "vi-VN",
-      "pass": true,
+      "pass": false,
       "preservation": 0.25,
-      "reasons": [],
+      "reasons": [
+        "MIS-GROUNDED (outside allowed set): vermicelli bowl[gazetteer-exact]"
+      ],
       "grounded": [
         {
-          "entityId": "f2623f78-29ff-49ac-ad64-d786687ff4bd",
+          "entityId": "6e666716-a419-45b8-93fd-c0a2274af7cb",
           "bucket": "food",
           "type": "food",
           "span": "bún",
-          "name": "rice noodle",
+          "name": "vermicelli bowl",
           "tier": "gazetteer-exact",
-          "foldedName": "rice noodle"
+          "foldedName": "vermicelli bowl"
+        },
+        {
+          "entityId": "e3a3aa75-60aa-4310-a06c-77a967fab87c",
+          "bucket": "food",
+          "type": "food",
+          "span": "bún",
+          "name": "vermicelli",
+          "tier": "gazetteer-exact",
+          "foldedName": "vermicelli"
         }
       ],
       "unresolved": [],
@@ -4953,12 +5079,12 @@
         "requestLocale": "vi-VN",
         "detectedLocale": {
           "tag": "vi-VN",
-          "confidence": 0.5,
-          "source": "request-prior"
+          "confidence": 1,
+          "source": "surface"
         },
         "denseTierUsed": false
       },
-      "misGroundings": [],
+      "misGroundings": ["vermicelli bowl[gazetteer-exact]"],
       "notes": "CROSS-LANGUAGE HOMOGRAPH: Vietnamese 'bún' = rice vermicelli; English 'bun' = bread. The corpus holds BOTH and they fold identically. | AUTHORING CORRECTION (gate run 1): the first draft forbade 'bun'. That contradicts the ratified es ruling (hg-07/hg-08, tuna/pie): an exact English NAME match is correct for ANY locale in an English-corpus market — the locale guard governs tagged ALIAS rows, not source-faithful names. The parse returned rice noodle AND bun; the Vietnamese sense is present, so this is breadth, not a mis-grounding."
     },
     {
@@ -4971,13 +5097,13 @@
       "reasons": [],
       "grounded": [
         {
-          "entityId": "7f3e1488-2eae-4fa8-a993-b5be166e2549",
-          "bucket": "foodAttributes",
-          "type": "food_attribute",
+          "entityId": "a410a77f-d88a-4e92-bef2-067e0e16705a",
+          "bucket": "food",
+          "type": "food",
           "span": "thơm",
-          "name": "fragrant",
+          "name": "pineapple",
           "tier": "gazetteer-exact",
-          "foldedName": "fragrant"
+          "foldedName": "pineapple"
         }
       ],
       "unresolved": [],
@@ -4986,8 +5112,8 @@
         "requestLocale": "vi-VN",
         "detectedLocale": {
           "tag": "vi-VN",
-          "confidence": 0.5,
-          "source": "request-prior"
+          "confidence": 1,
+          "source": "surface"
         },
         "denseTierUsed": false
       },
@@ -5000,7 +5126,7 @@
       "stratum": "homograph",
       "locale": "vi-VN",
       "pass": true,
-      "preservation": 0.6666666666666666,
+      "preservation": 1,
       "reasons": [],
       "grounded": [
         {
@@ -5013,9 +5139,18 @@
           "foldedName": "scorched rice"
         },
         {
-          "entityId": "35e1f3b8-f85d-472b-b378-803fd071eea1",
-          "bucket": "ingredients",
-          "type": "ingredient",
+          "entityId": "9d0de717-2767-4825-9e17-d803a77f42c7",
+          "bucket": "food",
+          "type": "food",
+          "span": "cơm cháy",
+          "name": "crispy rice",
+          "tier": "gazetteer-exact",
+          "foldedName": "crispy rice"
+        },
+        {
+          "entityId": "77490d5e-e33e-4f6e-b1b8-d370755faf1f",
+          "bucket": "food",
+          "type": "food",
           "span": "cơm",
           "name": "rice",
           "tier": "linked",
@@ -5027,9 +5162,9 @@
         "script": "latin",
         "requestLocale": "vi-VN",
         "detectedLocale": {
-          "tag": "es",
+          "tag": "vi-VN",
           "confidence": 1,
-          "source": "detector"
+          "source": "surface"
         },
         "denseTierUsed": false
       },
@@ -5070,8 +5205,8 @@
         "requestLocale": "vi-VN",
         "detectedLocale": {
           "tag": "vi-VN",
-          "confidence": 0.5,
-          "source": "request-prior"
+          "confidence": 1,
+          "source": "surface"
         },
         "denseTierUsed": false
       },
@@ -5139,8 +5274,8 @@
         "requestLocale": "vi-VN",
         "detectedLocale": {
           "tag": "vi-VN",
-          "confidence": 0.5,
-          "source": "request-prior"
+          "confidence": 1,
+          "source": "surface"
         },
         "denseTierUsed": false
       },
@@ -5153,18 +5288,9 @@
       "stratum": "homograph",
       "locale": "vi-VN",
       "pass": true,
-      "preservation": 1,
+      "preservation": 0.5,
       "reasons": [],
       "grounded": [
-        {
-          "entityId": "19c7f31a-64bf-42c2-b050-62077fca853e",
-          "bucket": "ingredients",
-          "type": "ingredient",
-          "span": "chanh",
-          "name": "lemon",
-          "tier": "gazetteer-exact",
-          "foldedName": "lemon"
-        },
         {
           "entityId": "2ec6c4df-4d1a-448d-bc2e-3598ab2561d5",
           "bucket": "ingredients",
@@ -5181,8 +5307,8 @@
         "requestLocale": "vi-VN",
         "detectedLocale": {
           "tag": "vi-VN",
-          "confidence": 0.5,
-          "source": "request-prior"
+          "confidence": 1,
+          "source": "surface"
         },
         "denseTierUsed": false
       },
@@ -5214,8 +5340,8 @@
         "requestLocale": "vi-VN",
         "detectedLocale": {
           "tag": "vi-VN",
-          "confidence": 0.5,
-          "source": "request-prior"
+          "confidence": 1,
+          "source": "surface"
         },
         "denseTierUsed": false
       },
@@ -5247,8 +5373,8 @@
         "requestLocale": "vi-VN",
         "detectedLocale": {
           "tag": "vi-VN",
-          "confidence": 0.5,
-          "source": "request-prior"
+          "confidence": 1,
+          "source": "surface"
         },
         "denseTierUsed": false
       },
@@ -5307,6 +5433,15 @@
           "foldedName": "pizza pie"
         },
         {
+          "entityId": "b33eb888-0acd-432b-bebd-e14d0699ec13",
+          "bucket": "food",
+          "type": "food",
+          "span": "pizza",
+          "name": "pitzas",
+          "tier": "gazetteer-exact",
+          "foldedName": "pitzas"
+        },
+        {
           "entityId": "b3a4c3e8-307f-4694-89b2-9160fcaa0436",
           "bucket": "food",
           "type": "food",
@@ -5340,10 +5475,19 @@
       "reasons": [],
       "grounded": [
         {
-          "entityId": "cd6be86b-aae0-4e62-9c8a-df3589a0e832",
-          "bucket": "restaurantAttributes",
-          "type": "restaurant_attribute",
-          "span": "quán ramen",
+          "entityId": "b01592d6-f94a-4b23-afdb-9764d21095ad",
+          "bucket": "restaurants",
+          "type": "restaurant",
+          "span": "quán",
+          "name": "Quan Sushi Grill",
+          "tier": "linked",
+          "foldedName": "quan sushi grill"
+        },
+        {
+          "entityId": "eb4a3bcc-0694-47aa-a700-d0c3e547a5d4",
+          "bucket": "food",
+          "type": "food",
+          "span": "ramen",
           "name": "ramen",
           "tier": "gazetteer-exact",
           "foldedName": "ramen"
@@ -5471,7 +5615,7 @@
         "script": "latin",
         "requestLocale": "vi-VN",
         "detectedLocale": {
-          "tag": "it",
+          "tag": "es",
           "confidence": 1,
           "source": "detector"
         },
@@ -5497,16 +5641,25 @@
           "name": "dim sum",
           "tier": "gazetteer-exact",
           "foldedName": "dim sum"
+        },
+        {
+          "entityId": "2d589779-0572-4c1b-863c-6a50a10ce679",
+          "bucket": "ingredients",
+          "type": "ingredient",
+          "span": "có",
+          "name": "romaine",
+          "tier": "linked",
+          "foldedName": "romaine"
         }
       ],
-      "unresolved": ["có", "không"],
+      "unresolved": ["không"],
       "analysis": {
         "script": "latin",
         "requestLocale": "vi-VN",
         "detectedLocale": {
-          "tag": "fr",
-          "confidence": 1,
-          "source": "detector"
+          "tag": "vi-VN",
+          "confidence": 0.5,
+          "source": "request-prior"
         },
         "denseTierUsed": true
       },
@@ -5733,19 +5886,10 @@
       "reasons": [],
       "grounded": [
         {
-          "entityId": "b01592d6-f94a-4b23-afdb-9764d21095ad",
-          "bucket": "restaurants",
-          "type": "restaurant",
-          "span": "quán",
-          "name": "Quan Sushi Grill",
-          "tier": "linked",
-          "foldedName": "quan sushi grill"
-        },
-        {
-          "entityId": "dfcea5a8-359f-410c-9ca6-85f4196ff8b2",
-          "bucket": "food",
-          "type": "food",
-          "span": "sushi",
+          "entityId": "23e4908e-1d4c-49cd-9d28-469be262998e",
+          "bucket": "restaurantAttributes",
+          "type": "restaurant_attribute",
+          "span": "quán sushi",
           "name": "sushi",
           "tier": "gazetteer-exact",
           "foldedName": "sushi"
@@ -5831,9 +5975,9 @@
         "script": "latin",
         "requestLocale": "vi-VN",
         "detectedLocale": {
-          "tag": "it",
-          "confidence": 1,
-          "source": "detector"
+          "tag": "vi-VN",
+          "confidence": 0.5,
+          "source": "request-prior"
         },
         "denseTierUsed": true
       },
@@ -5857,16 +6001,25 @@
           "name": "rooftop",
           "tier": "gazetteer-exact",
           "foldedName": "rooftop"
+        },
+        {
+          "entityId": "2d589779-0572-4c1b-863c-6a50a10ce679",
+          "bucket": "ingredients",
+          "type": "ingredient",
+          "span": "có",
+          "name": "romaine",
+          "tier": "linked",
+          "foldedName": "romaine"
         }
       ],
-      "unresolved": ["có", "không"],
+      "unresolved": ["không"],
       "analysis": {
         "script": "latin",
         "requestLocale": "vi-VN",
         "detectedLocale": {
-          "tag": "fr",
-          "confidence": 1,
-          "source": "detector"
+          "tag": "vi-VN",
+          "confidence": 0.5,
+          "source": "request-prior"
         },
         "denseTierUsed": true
       },
@@ -5883,25 +6036,16 @@
       "reasons": [],
       "grounded": [
         {
-          "entityId": "b01592d6-f94a-4b23-afdb-9764d21095ad",
-          "bucket": "restaurants",
-          "type": "restaurant",
-          "span": "quán",
-          "name": "Quan Sushi Grill",
-          "tier": "linked",
-          "foldedName": "quan sushi grill"
-        },
-        {
           "entityId": "092f9cb2-74c9-49da-92a6-3ffcf05d2245",
           "bucket": "restaurantAttributes",
           "type": "restaurant_attribute",
-          "span": "có wifi",
+          "span": "wifi",
           "name": "wifi",
           "tier": "gazetteer-exact",
           "foldedName": "wifi"
         }
       ],
-      "unresolved": [],
+      "unresolved": ["quán có"],
       "analysis": {
         "script": "latin",
         "requestLocale": "vi-VN",
@@ -5910,7 +6054,7 @@
           "confidence": 1,
           "source": "detector"
         },
-        "denseTierUsed": false
+        "denseTierUsed": true
       },
       "misGroundings": [],
       "notes": "English form of at-18."
@@ -5965,6 +6109,15 @@
           "name": "sandwich",
           "tier": "gazetteer-exact",
           "foldedName": "sandwich"
+        },
+        {
+          "entityId": "8f26ae55-e27b-465c-bac5-ade9ee064905",
+          "bucket": "food",
+          "type": "food",
+          "span": "sandwich",
+          "name": "sub sandwich",
+          "tier": "gazetteer-exact",
+          "foldedName": "sub sandwich"
         }
       ],
       "unresolved": ["muốn ăn"],
@@ -6007,18 +6160,9 @@
           "name": "pho",
           "tier": "gazetteer-exact",
           "foldedName": "pho"
-        },
-        {
-          "entityId": "69492215-88cb-4a05-8ebe-61ba12c73aaa",
-          "bucket": "ingredients",
-          "type": "ingredient",
-          "span": "ngon",
-          "name": "neon green relish",
-          "tier": "linked",
-          "foldedName": "neon green relish"
         }
       ],
-      "unresolved": [],
+      "unresolved": ["ngon"],
       "analysis": {
         "script": "latin",
         "requestLocale": "vi-VN",
@@ -6042,6 +6186,15 @@
       "reasons": [],
       "grounded": [
         {
+          "entityId": "339c1fb2-99c2-428f-93d1-5fb526cb0545",
+          "bucket": "food",
+          "type": "food",
+          "span": "phở bo",
+          "name": "beef noodle soup",
+          "tier": "gazetteer-exact",
+          "foldedName": "beef noodle soup"
+        },
+        {
           "entityId": "45ba08a7-ffc1-4394-bae8-99cca1f7db44",
           "bucket": "food",
           "type": "food",
@@ -6051,18 +6204,9 @@
           "foldedName": "beef pho"
         },
         {
-          "entityId": "08f45e9c-abf7-4db2-bbc9-d772538ca720",
+          "entityId": "ab87265a-7d1a-4334-b851-93e41c0faeff",
           "bucket": "food",
           "type": "food",
-          "span": "phở",
-          "name": "pho",
-          "tier": "linked",
-          "foldedName": "pho"
-        },
-        {
-          "entityId": "43142a71-5424-480b-a9a8-f293487cc31e",
-          "bucket": "ingredients",
-          "type": "ingredient",
           "span": "bo",
           "name": "beef",
           "tier": "linked",
@@ -6075,8 +6219,8 @@
         "requestLocale": "vi-VN",
         "detectedLocale": {
           "tag": "vi-VN",
-          "confidence": 0.5,
-          "source": "request-prior"
+          "confidence": 1,
+          "source": "surface"
         },
         "denseTierUsed": false
       },
@@ -6093,6 +6237,15 @@
       "reasons": [],
       "grounded": [
         {
+          "entityId": "339c1fb2-99c2-428f-93d1-5fb526cb0545",
+          "bucket": "food",
+          "type": "food",
+          "span": "pho bò",
+          "name": "beef noodle soup",
+          "tier": "gazetteer-exact",
+          "foldedName": "beef noodle soup"
+        },
+        {
           "entityId": "45ba08a7-ffc1-4394-bae8-99cca1f7db44",
           "bucket": "food",
           "type": "food",
@@ -6102,18 +6255,9 @@
           "foldedName": "beef pho"
         },
         {
-          "entityId": "08f45e9c-abf7-4db2-bbc9-d772538ca720",
+          "entityId": "ab87265a-7d1a-4334-b851-93e41c0faeff",
           "bucket": "food",
           "type": "food",
-          "span": "pho",
-          "name": "pho",
-          "tier": "linked",
-          "foldedName": "pho"
-        },
-        {
-          "entityId": "43142a71-5424-480b-a9a8-f293487cc31e",
-          "bucket": "ingredients",
-          "type": "ingredient",
           "span": "bò",
           "name": "beef",
           "tier": "linked",
@@ -6125,9 +6269,9 @@
         "script": "latin",
         "requestLocale": "vi-VN",
         "detectedLocale": {
-          "tag": "it",
+          "tag": "vi-VN",
           "confidence": 1,
-          "source": "detector"
+          "source": "surface"
         },
         "denseTierUsed": false
       },
@@ -6151,6 +6295,15 @@
           "name": "bun bo hue",
           "tier": "gazetteer-exact",
           "foldedName": "bun bo hue"
+        },
+        {
+          "entityId": "d47a44f8-2ddf-4903-880b-a42451c8d226",
+          "bucket": "food",
+          "type": "food",
+          "span": "bún bò hue",
+          "name": "spicy beef noodle soup",
+          "tier": "gazetteer-exact",
+          "foldedName": "spicy beef noodle soup"
         }
       ],
       "unresolved": [],
@@ -6158,9 +6311,9 @@
         "script": "latin",
         "requestLocale": "vi-VN",
         "detectedLocale": {
-          "tag": "it",
-          "confidence": 1,
-          "source": "detector"
+          "tag": "vi-VN",
+          "confidence": 0.5,
+          "source": "request-prior"
         },
         "denseTierUsed": false
       },
@@ -6172,36 +6325,36 @@
       "query": "cà phê sữa da",
       "stratum": "compound",
       "locale": "vi-VN",
-      "pass": true,
-      "preservation": 1,
-      "reasons": [],
+      "pass": false,
+      "preservation": 0,
+      "reasons": ["NOT GROUNDED: iced viet coffee"],
       "grounded": [
         {
-          "entityId": "4e02fa2c-9f05-4397-badb-bea2eb50164b",
+          "entityId": "926935db-c5d9-45f8-8618-05fb6a9fd3e9",
           "bucket": "food",
           "type": "food",
-          "span": "cà phê sữa da",
-          "name": "iced viet coffee",
-          "tier": "gazetteer-exact",
-          "foldedName": "iced viet coffee"
-        },
-        {
-          "entityId": "16d9b342-76f8-43b4-b913-d0b239d38ebd",
-          "bucket": "foodAttributes",
-          "type": "food_attribute",
-          "span": "da",
-          "name": "iced",
-          "tier": "linked",
-          "foldedName": "iced"
-        },
-        {
-          "entityId": "4b82e20d-a8a1-47f5-a3cd-feaae73841fe",
-          "bucket": "ingredients",
-          "type": "ingredient",
           "span": "cà phê",
           "name": "coffee",
-          "tier": "linked",
+          "tier": "gazetteer-exact",
           "foldedName": "coffee"
+        },
+        {
+          "entityId": "89127e73-89c8-44a1-9f97-8b4a4c702f22",
+          "bucket": "food",
+          "type": "food",
+          "span": "sữa",
+          "name": "milk",
+          "tier": "gazetteer-exact",
+          "foldedName": "milk"
+        },
+        {
+          "entityId": "17a3a5b1-9a4f-4ab5-928f-3dd1f1945176",
+          "bucket": "ingredients",
+          "type": "ingredient",
+          "span": "da",
+          "name": "skin",
+          "tier": "gazetteer-exact",
+          "foldedName": "skin"
         }
       ],
       "unresolved": [],
@@ -6209,9 +6362,9 @@
         "script": "latin",
         "requestLocale": "vi-VN",
         "detectedLocale": {
-          "tag": "pt",
+          "tag": "vi-VN",
           "confidence": 1,
-          "source": "detector"
+          "source": "surface"
         },
         "denseTierUsed": false
       },
@@ -6228,31 +6381,31 @@
       "reasons": [],
       "grounded": [
         {
-          "entityId": "4e02fa2c-9f05-4397-badb-bea2eb50164b",
+          "entityId": "926935db-c5d9-45f8-8618-05fb6a9fd3e9",
           "bucket": "food",
           "type": "food",
-          "span": "cà phe sua da",
-          "name": "iced viet coffee",
-          "tier": "gazetteer-exact",
-          "foldedName": "iced viet coffee"
-        },
-        {
-          "entityId": "16d9b342-76f8-43b4-b913-d0b239d38ebd",
-          "bucket": "foodAttributes",
-          "type": "food_attribute",
-          "span": "da",
-          "name": "iced",
-          "tier": "linked",
-          "foldedName": "iced"
-        },
-        {
-          "entityId": "4b82e20d-a8a1-47f5-a3cd-feaae73841fe",
-          "bucket": "ingredients",
-          "type": "ingredient",
           "span": "cà phe",
           "name": "coffee",
-          "tier": "linked",
+          "tier": "gazetteer-exact",
           "foldedName": "coffee"
+        },
+        {
+          "entityId": "89127e73-89c8-44a1-9f97-8b4a4c702f22",
+          "bucket": "food",
+          "type": "food",
+          "span": "sua",
+          "name": "milk",
+          "tier": "gazetteer-exact",
+          "foldedName": "milk"
+        },
+        {
+          "entityId": "17a3a5b1-9a4f-4ab5-928f-3dd1f1945176",
+          "bucket": "ingredients",
+          "type": "ingredient",
+          "span": "da",
+          "name": "skin",
+          "tier": "gazetteer-exact",
+          "foldedName": "skin"
         }
       ],
       "unresolved": [],
@@ -6261,8 +6414,8 @@
         "requestLocale": "vi-VN",
         "detectedLocale": {
           "tag": "vi-VN",
-          "confidence": 0.5,
-          "source": "request-prior"
+          "confidence": 1,
+          "source": "surface"
         },
         "denseTierUsed": false
       },
@@ -6286,6 +6439,15 @@
           "name": "spring roll",
           "tier": "gazetteer-exact",
           "foldedName": "spring roll"
+        },
+        {
+          "entityId": "67337677-e2ee-480b-9aa8-1b07354118cf",
+          "bucket": "food",
+          "type": "food",
+          "span": "cuon",
+          "name": "rolls",
+          "tier": "linked",
+          "foldedName": "rolls"
         }
       ],
       "unresolved": [],
@@ -6344,9 +6506,9 @@
         "script": "latin",
         "requestLocale": "en-US",
         "detectedLocale": {
-          "tag": "it",
-          "confidence": 1,
-          "source": "detector"
+          "tag": "en-US",
+          "confidence": 0.5,
+          "source": "request-prior"
         },
         "denseTierUsed": false
       },
@@ -6378,8 +6540,8 @@
         "requestLocale": "vi-VN",
         "detectedLocale": {
           "tag": "vi-VN",
-          "confidence": 0.5,
-          "source": "request-prior"
+          "confidence": 1,
+          "source": "surface"
         },
         "denseTierUsed": false
       },
@@ -6411,8 +6573,8 @@
         "requestLocale": "vi-VN",
         "detectedLocale": {
           "tag": "vi-VN",
-          "confidence": 0.5,
-          "source": "request-prior"
+          "confidence": 1,
+          "source": "surface"
         },
         "denseTierUsed": false
       },
@@ -6508,27 +6670,72 @@
       "query": "bun thịt nướng",
       "stratum": "compound",
       "locale": "vi-VN",
-      "pass": true,
-      "preservation": 1,
-      "reasons": [],
+      "pass": false,
+      "preservation": 0,
+      "reasons": ["NOT GROUNDED: pork vermicelli"],
       "grounded": [
+        {
+          "entityId": "38dd8008-11fd-4771-8203-7434a8040bd4",
+          "bucket": "food",
+          "type": "food",
+          "span": "bun",
+          "name": "bun",
+          "tier": "gazetteer-exact",
+          "foldedName": "bun"
+        },
         {
           "entityId": "6e666716-a419-45b8-93fd-c0a2274af7cb",
           "bucket": "food",
           "type": "food",
-          "span": "bun thịt nướng",
+          "span": "bun",
           "name": "vermicelli bowl",
           "tier": "gazetteer-exact",
           "foldedName": "vermicelli bowl"
         },
         {
-          "entityId": "eaf556f2-803a-4fcd-a309-c9a92c61416f",
+          "entityId": "e3a3aa75-60aa-4310-a06c-77a967fab87c",
           "bucket": "food",
           "type": "food",
-          "span": "bun thịt nướng",
-          "name": "pork vermicelli",
+          "span": "bun",
+          "name": "vermicelli",
           "tier": "gazetteer-exact",
-          "foldedName": "pork vermicelli"
+          "foldedName": "vermicelli"
+        },
+        {
+          "entityId": "44ab6d3b-4174-4506-a24b-3b35d2b76c6d",
+          "bucket": "food",
+          "type": "food",
+          "span": "thịt nướng",
+          "name": "grilled meat",
+          "tier": "gazetteer-exact",
+          "foldedName": "grilled meat"
+        },
+        {
+          "entityId": "c3b169ed-8b25-4c8e-8bdd-d3c700eca72c",
+          "bucket": "food",
+          "type": "food",
+          "span": "thịt nướng",
+          "name": "grilled protein",
+          "tier": "gazetteer-exact",
+          "foldedName": "grilled protein"
+        },
+        {
+          "entityId": "3b38ad58-7750-42c8-9363-0b2742f704b2",
+          "bucket": "food",
+          "type": "food",
+          "span": "thịt",
+          "name": "meat",
+          "tier": "linked",
+          "foldedName": "meat"
+        },
+        {
+          "entityId": "5e7775c8-82bc-410a-bce3-7b5d05e49249",
+          "bucket": "foodAttributes",
+          "type": "food_attribute",
+          "span": "nướng",
+          "name": "grilled",
+          "tier": "linked",
+          "foldedName": "grilled"
         }
       ],
       "unresolved": [],
@@ -6536,9 +6743,9 @@
         "script": "latin",
         "requestLocale": "vi-VN",
         "detectedLocale": {
-          "tag": "vi-VN",
-          "confidence": 0.5,
-          "source": "request-prior"
+          "tag": "es",
+          "confidence": 1,
+          "source": "surface"
         },
         "denseTierUsed": false
       },
@@ -6579,8 +6786,8 @@
         "requestLocale": "vi-VN",
         "detectedLocale": {
           "tag": "vi-VN",
-          "confidence": 0.5,
-          "source": "request-prior"
+          "confidence": 1,
+          "source": "surface"
         },
         "denseTierUsed": false
       },
@@ -6612,8 +6819,8 @@
         "requestLocale": "vi-VN",
         "detectedLocale": {
           "tag": "vi-VN",
-          "confidence": 0.5,
-          "source": "request-prior"
+          "confidence": 1,
+          "source": "surface"
         },
         "denseTierUsed": false
       },
