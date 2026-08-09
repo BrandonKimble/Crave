@@ -42,7 +42,14 @@ import {
  *  v1 = pre-gender-complete labels (implicit, DB default); v2 = the
  *  gender/plural-complete + dietary-boundary prompt. The sweep re-offers
  *  labels below this — one re-pay per bump. */
-export const VOCABULARY_PROMPT_VERSION = 3;
+export const VOCABULARY_PROMPT_VERSION = 4;
+// v4 (2026-08-09): again not a wording change — THE CLAIM UNIT BECAME THE FORM.
+// The guard adjudicated on the accent-destroying recall fold, so in Vietnamese
+// (where tone marks are phonemic) every offer collided with an unrelated word:
+// bò/bơ/bó are one folded `bo`, and the top-frequency vocabulary — bò, canh,
+// cháo, chả, nem, gỏi, cuốn, nóng — lost hearings that were never real. Those
+// surfaces are bankable now, so the pass owes every concept one re-offer. Same
+// shape as v3, one law down.
 // v3 (2026-08-06): not a wording change — the collision guard became
 // same-type-only (the `picante` ruling), so surfaces v2 offered and the old
 // guard refused are now bankable. The version is the PASS's output contract,

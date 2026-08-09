@@ -229,16 +229,51 @@ describe('surface role verdicts — proven against a live database', () => {
       status: 'deprecated',
     });
 
-    for (const role of ['both', 'recall', 'display'] as const) {
+    // A pure RECALL re-offer lifts nothing: the claim is what lost. (The row
+    // keeps whatever role it had — a recall write states nothing about the
+    // label — so what is being asserted here is the STATUS.)
+    await prisma.$transaction((tx) =>
+      addSurfaces(tx, entity, [
+        {
+          form: word,
+          locale: 'es',
+          source: 'sweep',
+          role: 'recall',
+          status: 'active',
+        },
+      ]),
+    );
+    expect((await surfacesOf(entity))[0]).toMatchObject({
+      status: 'deprecated',
+    });
+
+    // A DISPLAY-BEARING re-offer lands the LABEL and only the label (refined
+    // 2026-08-09). 'deprecated' is the memory that a RECALL claim lost, and
+    // since eviction stopped destroying labels the settled encoding of "does
+    // not ground" is role='display'. Pinning the status instead made the word
+    // unrenderable forever — the sweep's label landed invisible (display reads
+    // require status='active') AND, failing the watermark's
+    // status IN ('active','candidate'), was re-offered every night for ever.
+    // Found on 'cháo': a word two concepts had both been refused could never
+    // be shown to a Vietnamese user again.
+    for (const role of ['both', 'display'] as const) {
       await prisma.$transaction((tx) =>
         addSurfaces(tx, entity, [
           { form: word, locale: 'es', source: 'sweep', role, status: 'active' },
         ]),
       );
+      // The label is readable; the WORD is still lost, and the row says so.
       expect((await surfacesOf(entity))[0]).toMatchObject({
-        status: 'deprecated',
+        status: 'active',
+        role: 'display',
       });
     }
+
+    // It does NOT climb back by itself: the row grounds nothing while it sits
+    // at 'display' (RECALL_SURFACE_SCOPE_SQL reads role <> 'display'). Only the
+    // standing "uncontested = free to widen" rule can give the word back — the
+    // mirror-image test below — and that is a decision about a word nobody
+    // else holds, not an overturned verdict.
   });
 
   it('C: the merge fold carries ROLE, so a loser’s refused label is not laundered into a recall claim', async () => {

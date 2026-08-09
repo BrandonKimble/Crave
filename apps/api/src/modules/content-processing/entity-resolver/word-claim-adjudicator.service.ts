@@ -5,6 +5,7 @@ import { LLMService } from '../../external-integrations/llm/llm.service';
 import {
   addSurfaces,
   mintWordClaimVerdict,
+  surfaceClaimKey,
   type SurfaceSource,
 } from './entity-surface.service';
 import { canonicalFold } from './entity-identity';
@@ -34,6 +35,19 @@ import { canonicalFold } from './entity-identity';
  *   - BOTH may win (`picante` = hot sauce to an American, spicy in Spanish)
  *     — a word naming two concepts is a fact the span scanner already
  *     carries; placement resolves per query.
+ *
+ * THE CASE IS ONE WORD, NOT ONE FOLD (2026-08-09). A conflict exists only
+ * between claimants that want the IDENTICAL form (`surfaceClaimKey` — case and
+ * punctuation fold, accents do not). The recall key `canonicalFold` drops
+ * accents on purpose so 'bo' typed on a US keyboard still reaches bò, and
+ * adjudicating on it meant every hearing between two Vietnamese words was a
+ * FALSE CONFLICT: bò (beef), bơ (butter) and bó (bunch) arrived as one case,
+ * and BOTH possible outcomes — refuse the newcomer, or evict the incumbent —
+ * took a correct word→concept pairing away. Measured before the fix: 5 of 5
+ * re-heard vi refusals would have evicted a correct incumbent, and the judge
+ * flipped 60% of its own verdicts on re-ask. All of the regressions that built
+ * this guard (caldo→soup, helado→iced, picante) are identical-form collisions
+ * and are unaffected.
  *
  * The guard stays exactly as strict as before. This service is its appeal
  * court, run OFFLINE over the blocked backlog — never in a request path.
@@ -119,10 +133,13 @@ export class WordClaimAdjudicatorService {
       unjudged: 0,
     };
 
-    // One judgment per (folded word, target entity).
+    // One judgment per (word, target entity).
     const seen = new Set<string>();
     const unique = claims.filter((c) => {
-      const key = `${canonicalFold(c.form)}|${c.entityId}`;
+      // Keyed by the CLAIM unit (the word), not the recall fold: bò and bơ on
+      // one entity are two claims, and folding them together silently dropped
+      // the second one unheard.
+      const key = `${surfaceClaimKey(c.form)}|${c.entityId}`;
       if (seen.has(key)) return false;
       seen.add(key);
       return true;
@@ -134,10 +151,7 @@ export class WordClaimAdjudicatorService {
         batch.map(async (claim) => ({
           claim,
           target: await this.entityCard(claim.entityId),
-          incumbents: await this.incumbentsOf(
-            canonicalFold(claim.form),
-            claim.entityId,
-          ),
+          incumbents: await this.incumbentsOf(claim.form, claim.entityId),
         })),
       );
 
@@ -239,27 +253,41 @@ export class WordClaimAdjudicatorService {
     return rows.map((r) => r.form);
   }
 
-  /** Every OTHER active entity currently holding the word, with provenance. */
+  /**
+   * Every OTHER active entity currently holding THE SAME WORD, with provenance.
+   *
+   * THE HEARING IS PER FORM (2026-08-09). The fold still FETCHES the candidate
+   * set — it is the indexed column, and a superset of the real conflicts — but
+   * an incumbent only contests the claim when it wants the identical word,
+   * accents included (`surfaceClaimKey`). Before this the judge was handed
+   * bò/bơ/bó as one case and asked which concept owns `bo`: an unanswerable
+   * question it answered differently 60% of the time on re-ask, and whose every
+   * outcome was wrong — 5 of 5 refused vi claims would, re-heard, have evicted
+   * a CORRECT incumbent. A question that cannot be answered must not be asked.
+   */
   private async incumbentsOf(
-    folded: string,
+    form: string,
     exceptEntityId: string,
   ): Promise<Claimant[]> {
+    const folded = canonicalFold(form);
+    const claimKey = surfaceClaimKey(form);
     const rows = await this.prisma.$queryRaw<
       Array<{
         entity_id: string;
         name: string;
         type: string;
+        form: string;
         source: string | null;
         surface_id: string | null;
         is_name: boolean;
       }>
-    >`SELECT e.entity_id::text, e.name, e.type::text, NULL AS source,
-             NULL::uuid AS surface_id, TRUE AS is_name
+    >`SELECT e.entity_id::text, e.name, e.type::text, e.name AS form,
+             NULL AS source, NULL::uuid AS surface_id, TRUE AS is_name
         FROM core_entities e
        WHERE e.identity_key = ${folded} AND e.status <> 'archived'
          AND e.entity_id <> ${exceptEntityId}::uuid
       UNION ALL
-      SELECT e.entity_id::text, e.name, e.type::text, a.source,
+      SELECT e.entity_id::text, e.name, e.type::text, a.form, a.source,
              a.surface_id, FALSE
         FROM entity_surface a
         JOIN core_entities e ON e.entity_id = a.entity_id
@@ -272,6 +300,8 @@ export class WordClaimAdjudicatorService {
          AND a.entity_id <> ${exceptEntityId}::uuid`;
     const claimants: Claimant[] = [];
     for (const row of rows) {
+      // Same fold, different word (bò vs bơ) — not a conflict, no hearing.
+      if (surfaceClaimKey(row.form) !== claimKey) continue;
       claimants.push({
         entityId: row.entity_id,
         name: row.name,

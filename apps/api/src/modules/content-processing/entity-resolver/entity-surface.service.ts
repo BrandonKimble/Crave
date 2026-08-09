@@ -1,6 +1,7 @@
 import { Prisma } from '@prisma/client';
 import {
   canonicalFold,
+  diacriticFold,
   isDisplayable,
   normalizeSurface,
 } from './entity-identity';
@@ -165,6 +166,35 @@ export function mintWordClaimVerdict(): WordClaimVerdict {
 
 const EMPTY_FOLD_SET: ReadonlySet<string> = new Set<string>();
 
+/**
+ * THE CLAIM UNIT IS THE FORM, NOT THE FOLD (2026-08-09).
+ *
+ * A word-ownership claim is a claim on a WORD. `canonicalFold` — the RECALL
+ * key — deliberately destroys accents so that a US-keyboard 'bo' still reaches
+ * bò; it is a deliberately coarse retrieval key, and it was never an identity.
+ * Adjudicating on it asks an unanswerable question in every language whose
+ * accents are phonemic: bò (beef), bơ (butter/avocado) and bó (bunch) all fold
+ * to `bo`, so every hearing between two Vietnamese words was a FALSE CONFLICT
+ * where BOTH outcomes are wrong — measured: re-hearing the refused claims, 5 of
+ * 5 would now EVICT a correct incumbent, and the judge flipped 60% of its own
+ * verdicts on re-ask, which is what an unanswerable question looks like.
+ *
+ * So the guard and the judge see a conflict only when the two claimants want
+ * the SAME WORD: same letters, same accents. Case and punctuation still fold
+ * (Caldo == caldo, Phil's == Phils) because those are spellings of one word;
+ * accents are not. Every measured regression that built the strict guard is an
+ * IDENTICAL-form collision and stays blocked: caldo->soup, helado->iced,
+ * picante->hot sauce.
+ *
+ * RECALL IS UNCHANGED — still `form_folded`. Typing 'bo' still surfaces beef,
+ * butter and avocado as competing spans; that is placement's job, and it
+ * already does it (the picante precedent). This function is ONLY ever the
+ * claim/adjudication key; no read path may use it as a match key.
+ */
+export function surfaceClaimKey(form: string): string {
+  return diacriticFold(form);
+}
+
 export interface AddSurfacesOptions {
   /**
    * Forms to DEMOTE to 'deprecated' — the ontology rename's "drop the new
@@ -283,14 +313,21 @@ export async function addSurfaces(
       new Set(claimants.map((r) => canonicalFold(r.form)).filter(Boolean)),
     );
     if (foldedCandidates.length > 0) {
-      const collisions = await tx.$queryRaw<Array<{ folded: string }>>`
-        SELECT e.identity_key AS folded
+      // THE FOLD NARROWS, THE FORM DECIDES. The folded columns are the indexed
+      // ones (`identity_key`, `idx_entity_surface_form_folded`), so the fold is
+      // still how the candidate set is FETCHED — it is a superset of the real
+      // conflicts by construction (two identical forms always share a fold).
+      // The claim key is then applied app-side, where the ONE fold
+      // implementation lives (the fold law: no SQL fold expression, ever, and
+      // that applies to the accent-preserving twin as much as to canonicalFold).
+      const collisions = await tx.$queryRaw<Array<{ form: string }>>`
+        SELECT e.name AS form
           FROM core_entities e
          WHERE e.identity_key = ANY(${foldedCandidates}::text[])
            AND e.entity_id <> ${entityId}::uuid
            AND e.status <> 'archived'::entity_status
         UNION
-        SELECT ea.form_folded AS folded
+        SELECT ea.form
           FROM entity_surface ea
          WHERE ea.form_folded = ANY(${foldedCandidates}::text[])
            AND ea.entity_id <> ${entityId}::uuid
@@ -306,13 +343,24 @@ export async function addSurfaces(
       // locale, so a locale-tagged copy is noise that also asserts the English
       // name is a word in that language. Deterministic, unlike relying on the
       // model to flag a proper noun (it does not do so consistently).
-      const self = await tx.$queryRaw<Array<{ identity_key: string | null }>>`
-        SELECT identity_key FROM core_entities WHERE entity_id = ${entityId}::uuid`;
-      const ownFold = self[0]?.identity_key ?? null;
-      contested = new Set(collisions.map((c) => c.folded));
+      // FORM-SCOPED like every other claim test: "phở" is not the English name
+      // "pho" spelled again, it is the Vietnamese word, and the name arm cannot
+      // teach the accents it does not carry.
+      const self = await tx.$queryRaw<Array<{ name: string }>>`
+        SELECT name FROM core_entities WHERE entity_id = ${entityId}::uuid`;
+      const ownForm = self[0]?.name ?? null;
+      const claimed = new Set(claimants.map((r) => surfaceClaimKey(r.form)));
+      contested = new Set(
+        collisions
+          .map((c) => surfaceClaimKey(c.form))
+          .filter((key) => claimed.has(key)),
+      );
       const refused = new Set(contested);
-      if (ownFold) {
-        refused.add(ownFold);
+      if (ownForm) {
+        const ownKey = surfaceClaimKey(ownForm);
+        if (claimed.has(ownKey)) {
+          refused.add(ownKey);
+        }
       }
       if (refused.size > 0) {
         for (let i = rows.length - 1; i >= 0; i -= 1) {
@@ -321,7 +369,7 @@ export async function addSurfaces(
             INFERRED_SURFACE_SOURCES.has(row.source) &&
             claimsRecall(row.role) &&
             row.status !== 'deprecated' &&
-            refused.has(canonicalFold(row.form))
+            refused.has(surfaceClaimKey(row.form))
           ) {
             blockedForms.push(row.form);
             if (row.role === 'both') {
@@ -346,7 +394,7 @@ export async function addSurfaces(
   for (const row of rows) {
     const mayWiden =
       options.adjudicated !== undefined ||
-      (claimsRecall(row.role) && !contested.has(canonicalFold(row.form)));
+      (claimsRecall(row.role) && !contested.has(surfaceClaimKey(row.form)));
     (mayWiden ? earned : unearned).push(row);
   }
   for (const [group, mayWiden] of [
@@ -501,17 +549,34 @@ async function insertSurfaceRows(
   // earned, so it does not land, and the row goes on being both the label and
   // the memory that its claim lost.
   const roleExpr = authority.mayWiden
-    ? Prisma.sql`CASE WHEN entity_surface.role = EXCLUDED.role
+    ? Prisma.sql`CASE WHEN entity_surface.status = 'deprecated'
+                            AND EXCLUDED.role <> 'recall' THEN 'display'
+                      WHEN entity_surface.role = EXCLUDED.role
                       THEN entity_surface.role ELSE 'both' END`
-    : Prisma.sql`CASE WHEN entity_surface.role = EXCLUDED.role
+    : Prisma.sql`CASE WHEN entity_surface.status = 'deprecated'
+                            AND EXCLUDED.role <> 'recall' THEN 'display'
+                      WHEN entity_surface.role = EXCLUDED.role
                       THEN entity_surface.role
                       WHEN entity_surface.role = 'display' THEN 'display'
                       ELSE 'both' END`;
   const statusExpr = authority.adjudicated
     ? Prisma.sql`CASE WHEN EXCLUDED.role = 'recall'
                       THEN entity_surface.status ELSE EXCLUDED.status END`
-    : Prisma.sql`CASE WHEN entity_surface.status = 'deprecated'
-                      THEN 'deprecated'
+    : // A DEPRECATED ROW MAY STILL BECOME A LABEL — and only a label.
+      // 'deprecated' is the memory that a RECALL claim lost (R5-6b), and since
+      // eviction stopped destroying labels (0e439c897) the settled encoding of
+      // "this row does not ground" is role='display', not a status nobody can
+      // read. Left as-is, a word the judge refused could never afterwards be
+      // rendered: the display read requires status='active', so the sweep's
+      // label landed invisible AND — failing the watermark's
+      // status IN ('active','candidate') — was re-offered every night forever
+      // (found 2026-08-09 on `cháo`, congee vs porridge). So a write that asks
+      // for a DISPLAY role lifts the status and is PINNED to 'display' by the
+      // role expression above: the user gets the label, the word stays lost,
+      // and the memory is the role. A pure recall re-offer lifts nothing.
+      Prisma.sql`CASE WHEN entity_surface.status = 'deprecated'
+                      THEN CASE WHEN EXCLUDED.role = 'recall'
+                                THEN 'deprecated' ELSE EXCLUDED.status END
                       WHEN EXCLUDED.role = 'recall'
                       THEN entity_surface.status ELSE EXCLUDED.status END`;
   try {

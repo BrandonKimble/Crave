@@ -19,6 +19,8 @@
  * Run:
  *   npx ts-node -T scripts/sweep-entity-labels.ts                    # backlog only
  *   npx ts-node -T scripts/sweep-entity-labels.ts --locale es --limit 50 --apply
+ *   npx ts-node -T scripts/sweep-entity-labels.ts --locale vi \
+ *       --concepts "soup,spring roll,salad" --apply     # targeted, by name
  */
 import 'dotenv/config';
 import { NestFactory } from '@nestjs/core';
@@ -34,6 +36,17 @@ async function main(): Promise<void> {
   const localeIndex = argv.indexOf('--locale');
   const onlyLocale = localeIndex >= 0 ? argv[localeIndex + 1] : null;
   const apply = argv.includes('--apply');
+  // TARGETED: name the concepts. Same generator, same writer, same ledger and
+  // judge — only the selection differs (the backlog's most-referenced-first
+  // order cannot reach a generic word like 'soup' in any affordable run).
+  const conceptsIndex = argv.indexOf('--concepts');
+  const concepts =
+    conceptsIndex >= 0
+      ? argv[conceptsIndex + 1]
+          .split(',')
+          .map((name) => name.trim())
+          .filter(Boolean)
+      : undefined;
 
   const app = await NestFactory.createApplicationContext(AppModule, {
     logger: ['error', 'warn'],
@@ -48,7 +61,11 @@ async function main(): Promise<void> {
     }
     const locales = onlyLocale ? [onlyLocale] : sweep.sweepLocales();
     for (const locale of locales) {
-      const result = await sweep.sweep(locale, { limit, generator });
+      const result = await sweep.sweep(locale, {
+        limit,
+        generator,
+        entityNames: concepts,
+      });
       out(JSON.stringify(result));
     }
   } finally {

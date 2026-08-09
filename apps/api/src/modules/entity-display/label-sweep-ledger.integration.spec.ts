@@ -72,15 +72,37 @@ describe('label sweep run ledger — proven against a live database', () => {
     await prisma.$disconnect();
   });
 
-  it('an abstained-on concept is asked ONCE, not offered forever', async () => {
-    const id = await mintFood(`zzq sweep ledger ${randomUUID().slice(0, 8)}`);
+  /**
+   * THE ASSERTION IS THE WATERMARK, NOT THE BATCH WINDOW. This test used to
+   * mint a concept and look for it in `nextBatch(locale, 5000)` — which only
+   * worked while the whole backlog fitted in one batch. A routine
+   * VOCABULARY_PROMPT_VERSION bump makes every concept due again (8,781 on
+   * 2026-08-09), the freshly minted zero-reference concept sorts LAST, and the
+   * test went red for a reason that had nothing to do with the ledger. It now
+   * asks about exactly ONE named concept and reads the watermark directly, so
+   * it says the same thing at any corpus size — and it no longer writes
+   * thousands of ledger rows for concepts nobody asked about.
+   */
+  const isDue = async (locale: string, entityId: string): Promise<boolean> => {
+    const rows = await prisma.$queryRawUnsafe<Array<{ due: boolean }>>(
+      `SELECT NOT EXISTS (
+         SELECT 1 FROM knowledge_pass_runs r
+          WHERE r.pass = $1 AND r.subject_id = $2::uuid
+       ) AS due`,
+      sweepPass(locale),
+      entityId,
+    );
+    return rows[0].due;
+  };
 
-    const before = await sweep.nextBatch('es', 5000);
-    expect(before.requests.map((r) => r.entityId)).toContain(id);
+  it('an abstained-on concept is asked ONCE, not offered forever', async () => {
+    const name = `zzq sweep ledger ${randomUUID().slice(0, 8)}`;
+    const id = await mintFood(name);
+    expect(await isDue('es', id)).toBe(true);
 
     const result = await sweep.sweep('es', {
-      limit: 5000,
       generator: abstaining,
+      entityNames: [name],
     });
     expect(result.written).toBe(0); // nothing was produced...
 
@@ -92,22 +114,23 @@ describe('label sweep run ledger — proven against a live database', () => {
       id,
     );
     expect(ledger).toEqual([{ outcome: 'not_generated' }]);
-
+    expect(await isDue('es', id)).toBe(false);
+    // And the honest re-offer signal agrees: the concept has left the backlog.
     const after = await sweep.nextBatch('es', 5000);
     expect(after.requests.map((r) => r.entityId)).not.toContain(id);
   });
 
   it('a DRY RUN records nothing — an ask nobody made must not close a concept', async () => {
-    const id = await mintFood(`zzq sweep dry ${randomUUID().slice(0, 8)}`);
+    const name = `zzq sweep dry ${randomUUID().slice(0, 8)}`;
+    const id = await mintFood(name);
     await sweep.sweep('es', {
-      limit: 5000,
+      entityNames: [name],
       generator: {
         name: 'test-noop',
         dryRun: true,
         generate: () => Promise.resolve([]),
       },
     });
-    const after = await sweep.nextBatch('es', 5000);
-    expect(after.requests.map((r) => r.entityId)).toContain(id);
+    expect(await isDue('es', id)).toBe(true);
   });
 });

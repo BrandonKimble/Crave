@@ -222,18 +222,68 @@ export class LabelSweepService {
   }
 
   /**
+   * The batch for NAMED concepts — every labelled-type entity whose name
+   * matches, in any of its type rows (this corpus carries most foods as a
+   * food AND an ingredient row, and both need the word). Deliberately NOT
+   * filtered by the due watermark: naming a concept IS the decision to re-ask
+   * about it.
+   */
+  async namedBatch(
+    locale: string,
+    names: readonly string[],
+  ): Promise<SweepBatch> {
+    const rows = await this.prisma.$queryRaw<
+      Array<{ entity_id: string; name: string; type: string }>
+    >(
+      Prisma.sql`
+        SELECT e.entity_id, e.name, e.type::text AS type
+        FROM core_entities e
+        WHERE e.type::text = ANY(${LABELED_ENTITY_TYPES})
+          AND e.status = 'active'
+          AND lower(e.name) = ANY(${names.map((n) => n.toLowerCase().trim())}::text[])
+        ORDER BY e.name ASC, e.type::text ASC
+      `,
+    );
+    return {
+      locale,
+      requests: rows.map((row) => ({
+        entityId: row.entity_id,
+        name: row.name,
+        entityType: row.type,
+        locale,
+      })),
+    };
+  }
+
+  /**
    * Run one sweep pass with `generator`. With the default NoopLabelGenerator
    * this measures the backlog and writes nothing — which is the correct
    * behaviour for a mechanism whose producer has not been built yet.
    */
   async sweep(
     locale: string,
-    options: { limit?: number; generator?: LabelGenerator } = {},
+    options: {
+      limit?: number;
+      generator?: LabelGenerator;
+      /**
+       * NAME THE CONCEPTS instead of taking the head of the backlog. The
+       * backlog is ordered most-REFERENCED-first, which is the right default
+       * and a poor way to reach a GENERIC word: "soup" and "spring roll" carry
+       * few direct menu-item links even though `canh` and `nem` are among the
+       * commonest words a Vietnamese speaker will type. This asks the same
+       * question of the same generator through the same writer, ledger and
+       * adjudicator — only the SELECTION differs, so a targeted pass is never
+       * a second code path that can drift from the nightly one.
+       */
+      entityNames?: readonly string[];
+    } = {},
   ): Promise<SweepResult> {
     const limit = options.limit ?? 200;
     const generator = options.generator ?? new NoopLabelGenerator();
     const due = await this.countDue(locale);
-    const batch = await this.nextBatch(locale, limit);
+    const batch = options.entityNames?.length
+      ? await this.namedBatch(locale, options.entityNames)
+      : await this.nextBatch(locale, limit);
     const generated = batch.requests.length
       ? await generator.generate(batch.requests)
       : [];
