@@ -1,5 +1,11 @@
 /**
- * @script-class: gate
+ * @script-class: probe
+ *   (probe, not 'gate': 'gate' is the repo-root shell-script vocabulary; in
+ *   apps/api/scripts the F414 taxonomy is operational/probe/scratch, and this
+ *   is the same species as run-launch-gate — a re-runnable measurement
+ *   instrument whose value is the recorded verdict. Caught by
+ *   script-containment on b205e0012's CI run — classified to match its
+ *   own header's named counterpart.)
  *
  * CJK SEGMENTATION GATE — proves the ANALYSIS half of zh/ja/ko readiness,
  * and only that half (owner directive 2026-08-08: "re-test whenever we
