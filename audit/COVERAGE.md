@@ -4533,7 +4533,7 @@ CLEAN-PASS-1 api-core + api-search (2026-08-07, ATTEMPT 2, F8400): FRESH-EYES RE
 | apps/api/src/shared/config/validate-env.ts | api-config | REDERIVED | 1 | 78777b734561 | F2075 fail-closed boot validation of deployed secrets; spec mutation-proven. |
 
 | apps/api/scripts/backfill-entity-aliases.ts | api-scripts | UNREVIEWED    | 1 | 254150edcdf6 | Idempotent (ON CONFLICT DO NOTHING); locale 'und' not fabricated; reconcile no-op by construction. (reverted from IDEAL-VERIFIED: file changed since review, was 254150edcdf6) |
-| apps/api/scripts/backfill-label-folds.ts | api-scripts | IDEAL-VERIFIED | 1 | e529f432e470 | Idempotent; UPDATEs only fold-differing rows; canonicalFold sole impl, no fabrication. |
+| apps/api/scripts/backfill-label-folds.ts | api-scripts | DELETED | 1 | a5fbd91db (2026-08-09) | `git log --diff-filter=D` confirms deletion in a5fbd91db "merge(surfaces)!: entity_labels + entity_alias become one entity_surfa". |
 | apps/api/scripts/reproject-aliases.ts | api-scripts | UNREVIEWED    | 1 | a4e95298563b | Dry-run default; --apply required; writes only on real diff; stopCronsForScript. (reverted from IDEAL-VERIFIED: file changed since review, was a4e95298563b) |
 | apps/api/scripts/sweep-entity-labels.ts | api-scripts | IDEAL-VERIFIED | 1 | 4c755662a7ea | Dry-run=stub generator (measures only); --apply gates spend; crons stopped. |
 | apps/api/scripts/clear-coverage-gap.ts | api-scripts | IDEAL-VERIFIED | 1 | c0979b031f49 | Dry-run default, --force required, prints 'operator claim', no fabricated recovery fact. |
