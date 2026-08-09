@@ -90,8 +90,8 @@ beforeAll(async () => {
 
   const identity = identityInsertData(NAME, EntityType.restaurant);
   await prisma.$executeRaw`
-    INSERT INTO core_entities (entity_id, name, type, aliases, identity_key, identity_key_sorted)
-    VALUES (${ENTITY}::uuid, ${NAME}, 'restaurant', ARRAY[]::text[],
+    INSERT INTO core_entities (entity_id, name, type, identity_key, identity_key_sorted)
+    VALUES (${ENTITY}::uuid, ${NAME}, 'restaurant',
             ${identity.identityKey}, ${identity.identityKeySorted})
   `;
   await prisma.$executeRaw`

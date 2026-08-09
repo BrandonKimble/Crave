@@ -1,4 +1,7 @@
-import { identityInsertData } from '../content-processing/entity-resolver/entity-identity';
+import {
+  canonicalFold,
+  identityInsertData,
+} from '../content-processing/entity-resolver/entity-identity';
 import { addSurfaces } from '../content-processing/entity-resolver/entity-surface.service';
 import { BadRequestException, Injectable } from '@nestjs/common';
 import { EntityType, Prisma } from '@prisma/client';
@@ -88,7 +91,6 @@ export class PollEntitySeedService {
       data: {
         name,
         type: EntityType.food,
-        aliases: [],
         ...identityInsertData(name, EntityType.food),
       },
     });
@@ -133,7 +135,6 @@ export class PollEntitySeedService {
       data: {
         name,
         type: params.entityType,
-        aliases: [],
         ...identityInsertData(name, params.entityType),
       },
     });
@@ -394,11 +395,14 @@ export class PollEntitySeedService {
           adopted: true,
         };
       }
+      // `surfaceForms` rides along with the create payload but is NOT a
+      // column — it is stripped here and banked as rows below.
+      const { surfaceForms: createdAliases, ...entityColumns } = entityData;
       const entity = await tx.entity.create({
         data: {
-          ...entityData,
+          ...entityColumns,
           ...identityInsertData(
-            (entityData as { name: string }).name,
+            (entityColumns as { name: string }).name,
             EntityType.restaurant,
           ),
         },
@@ -416,11 +420,11 @@ export class PollEntitySeedService {
           primaryLocation: { connect: { locationId: location.locationId } },
         },
       });
-      // A1: the create wrote aliases[] inline (atomic with the row, so the
-      // name-unique index fires on THAT insert); the rows follow inside the
-      // same transaction, tagged with Google's own displayName language
-      // when it gave us one. Byte-identical projection — a no-op UPDATE.
-      const createdAliases = (entityData.aliases as string[] | undefined) ?? [];
+      // The Places-derived surfaces this entity was built from, banked as
+      // rows inside the same transaction and tagged with Google's own
+      // displayName language when it gave us one. The create used to also
+      // write them inline into core_entities.aliases[]; that column is gone
+      // (§11 item 4 / I-2), so the rows are the only store.
       if (createdAliases.length) {
         const placeLocale =
           match.place?.displayName?.languageCode?.trim() || undefined;
@@ -556,7 +560,19 @@ export class PollEntitySeedService {
         type: entityType,
         OR: [
           { name: { equals: name, mode: 'insensitive' } },
-          { aliases: { has: name } },
+          {
+            // A banked recall surface, matched on the canonical fold —
+            // the successor to `aliases: { has: name }`, which was byte
+            // equality against an unfolded array.
+            entitySurfaces: {
+              some: {
+                formFolded: canonicalFold(name),
+                status: 'active',
+                locale: 'und',
+                role: { not: 'display' },
+              },
+            },
+          },
         ],
       },
       select: { entityId: true, name: true },

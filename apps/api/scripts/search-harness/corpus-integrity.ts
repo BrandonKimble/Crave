@@ -71,13 +71,16 @@ async function main(): Promise<void> {
     const ambiguous = await q<
       { alias: string; type: string; c: number; names: string }[]
     >(`
-      SELECT lower(trim(al)) AS alias, type::text AS type,
-             COUNT(DISTINCT entity_id)::int AS c,
-             string_agg(DISTINCT name, ' | ') AS names
-      FROM core_entities, unnest(aliases) AS al
-      WHERE status = 'active'
-      GROUP BY lower(trim(al)), type
-      HAVING COUNT(DISTINCT entity_id) > 1
+      SELECT lower(trim(al)) AS alias, e.type::text AS type,
+             COUNT(DISTINCT e.entity_id)::int AS c,
+             string_agg(DISTINCT e.name, ' | ') AS names
+      FROM core_entities e
+      JOIN entity_surface s ON s.entity_id = e.entity_id
+       AND s.status = 'active' AND s.locale = 'und' AND s.role <> 'display'
+      CROSS JOIN LATERAL (SELECT s.form AS al) x
+      WHERE e.status = 'active'
+      GROUP BY lower(trim(al)), e.type
+      HAVING COUNT(DISTINCT e.entity_id) > 1
       ORDER BY c DESC`);
 
     // 4. entities with a mistyped type: a dish name typed 'restaurant' -----
@@ -107,7 +110,7 @@ async function main(): Promise<void> {
       { names_with_apostrophe: number; have_stripped_alias: number }[]
     >(`
       WITH apos AS (
-        SELECT entity_id, name, aliases,
+        SELECT entity_id, name,
                lower(replace(replace(trim(name), '’', ''), '''', '')) AS stripped
         FROM core_entities
         WHERE status = 'active' AND (name LIKE '%''%' OR name LIKE '%’%')
@@ -115,18 +118,22 @@ async function main(): Promise<void> {
       SELECT
         COUNT(*)::int AS names_with_apostrophe,
         COUNT(*) FILTER (WHERE EXISTS (
-          SELECT 1 FROM unnest(aliases) al
-          WHERE lower(replace(replace(trim(al), '’', ''), '''', '')) = stripped
-            AND lower(trim(al)) <> lower(trim(name))
+          SELECT 1 FROM entity_surface s
+          WHERE s.entity_id = apos.entity_id
+            AND s.status = 'active' AND s.locale = 'und' AND s.role <> 'display'
+            AND lower(replace(replace(trim(s.form), '’', ''), '''', '')) = stripped
+            AND lower(trim(s.form)) <> lower(trim(name))
         ))::int AS have_stripped_alias
       FROM apos`);
 
     // 6. name-copy aliases (76% per audit) — context -----------------------
     const aliasCopy = await q<{ total: number; copies: number }[]>(`
       WITH a AS (
-        SELECT lower(trim(al)) AS al, lower(trim(name)) AS nm
-        FROM core_entities, unnest(aliases) AS al
-        WHERE status = 'active'
+        SELECT lower(trim(s.form)) AS al, lower(trim(e.name)) AS nm
+        FROM core_entities e
+        JOIN entity_surface s ON s.entity_id = e.entity_id
+         AND s.status = 'active' AND s.locale = 'und' AND s.role <> 'display'
+        WHERE e.status = 'active'
       )
       SELECT COUNT(*)::int AS total,
              COUNT(*) FILTER (WHERE al = nm)::int AS copies

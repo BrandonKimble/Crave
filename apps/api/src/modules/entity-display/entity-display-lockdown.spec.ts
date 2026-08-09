@@ -204,6 +204,10 @@ const ALLOWLIST: Readonly<Record<string, { verdict: Verdict; why: string }>> = {
     verdict: 'not-user-facing',
     why: 'WRITE-time templated titles, marked title_source=template and re-rendered at read (D1)',
   },
+  'modules/restaurant-enrichment/restaurant-cuisine-extraction.service.ts': {
+    verdict: 'not-user-facing',
+    why: 'matches extracted cuisine strings against attribute names + banked recall surfaces — resolution, not display (the raw SELECT that trips the scanner arrived when core_entities.aliases[] was retired)',
+  },
   'modules/search/engine-coverage.service.ts': {
     verdict: 'not-user-facing',
     why: 'coverage/ops reads',

@@ -226,6 +226,22 @@ function createHarness(options: {
             .map((subject_id) => ({ subject_id })),
         );
       }
+      if (sql.includes('/*curated:attribute_names*/')) {
+        // The attribute name+surface read moved from entity.findMany to raw
+        // SQL when core_entities.aliases[] was retired: the surfaces now come
+        // from an entity_surface subselect. The fixture field keeps its name
+        // (`aliases`) and its meaning (the entity's und recall forms).
+        const ids = (values[0] ?? []) as string[];
+        return Promise.resolve(
+          (options.attributeEntities ?? [])
+            .filter((row) => ids.includes(row.entityId))
+            .map((row) => ({
+              entity_id: row.entityId,
+              name: row.name,
+              forms: row.aliases,
+            })),
+        );
+      }
       if (sql.includes('/*curated:taste_profile_attributes*/')) {
         return Promise.resolve(
           (options.behavioralAttributeIds ?? []).map((subject_id) => ({
@@ -235,16 +251,6 @@ function createHarness(options: {
       }
       throw new Error(`unexpected raw query: ${sql.slice(0, 80)}`);
     }),
-    entity: {
-      findMany: jest.fn(
-        ({ where }: { where: { entityId: { in: string[] } } }) =>
-          Promise.resolve(
-            (options.attributeEntities ?? []).filter((row) =>
-              where.entityId.in.includes(row.entityId),
-            ),
-          ),
-      ),
-    },
     user: {
       findMany: jest.fn(() => Promise.resolve(options.users ?? [])),
     },

@@ -1,4 +1,4 @@
-import { identityInsertData } from './entity-identity';
+import { canonicalFold, identityInsertData } from './entity-identity';
 import { addSurfaces } from './entity-surface.service';
 import { Injectable } from '@nestjs/common';
 import { Cron, CronExpression } from '@nestjs/schedule';
@@ -87,7 +87,7 @@ export class DishKnowledgeSynthesisService {
         status: EntityStatus.active,
         knowledgeSynthesizedAt: null,
       },
-      select: { entityId: true, name: true, aliases: true },
+      select: { entityId: true, name: true },
       orderBy: { createdAt: 'asc' },
       take: limit,
     });
@@ -131,15 +131,18 @@ export class DishKnowledgeSynthesisService {
           if (created) summary.ingredientEntitiesCreated += 1;
         }
 
-        // Merge established aliases (never the dish's own name); a changed
-        // alias set changes the dense doc -> mark stale for the reconciler.
+        // Established shorthand, minus the dish's own name. NOTE there is no
+        // "already banked?" filter here any more, and there does not need to
+        // be: addSurfaces is idempotent per (entity, locale, form), so a
+        // re-offer of an existing form is a no-op insert. The old
+        // hand-rolled dedupe against the loaded aliases[] array only ever
+        // duplicated that guarantee — less exactly, since it compared with
+        // `toLowerCase()` while the row's uniqueness is on the canonical
+        // fold. `aliasesAdded` therefore counts forms OFFERED, which is what
+        // this counter has always really measured.
         const dishNameLower = dish.name.trim().toLowerCase();
         const newAliases = result.aliases.filter(
-          (alias) =>
-            alias !== dishNameLower &&
-            !dish.aliases.some(
-              (existing) => existing.trim().toLowerCase() === alias,
-            ),
+          (alias) => alias !== dishNameLower,
         );
         await this.prisma.entity.update({
           where: { entityId: dish.entityId },
@@ -148,9 +151,8 @@ export class DishKnowledgeSynthesisService {
             knowledgeSynthesizedAt: new Date(),
           },
         });
-        // A1: established shorthand goes through THE projection writer.
-        // The append order ([...existing, ...new]) is exactly what the
-        // seq-ordered projection reproduces, so the array is unchanged.
+        // A1: established shorthand goes through THE surface writer, which
+        // marks the dense doc stale for the reconciler.
         // Locale UNSET ('und'): this prompt bans translation and works on
         // an English corpus, so a language tag here would be fabricated —
         // and these are SURFACES, never labels (the plan's NEVER list).
@@ -185,20 +187,34 @@ export class DishKnowledgeSynthesisService {
     name: string,
   ): Promise<{ entityId: string; created: boolean }> {
     const normalized = name.trim().toLowerCase().replace(/\s+/g, ' ');
-    // Alias-aware lookup: the collection pipeline's resolver banks losing
-    // surfaces as aliases on the winning ingredient row — a knowledge-pass
-    // surface that matches an alias must reuse that row, not mint a variant
-    // the resolver would have merged. (Ingredients stay first-class: same
-    // alias contract as every other entity type.)
-    const existing = await this.prisma.entity.findFirst({
-      where: {
-        type: EntityType.ingredient,
-        OR: [{ name: normalized }, { aliases: { has: normalized } }],
-      },
-      select: { entityId: true },
-    });
+    // Surface-aware lookup: the collection pipeline's resolver banks losing
+    // forms on the winning ingredient row — a knowledge-pass surface that
+    // matches one must reuse that row, not mint a variant the resolver would
+    // have merged. (Ingredients stay first-class: same surface contract as
+    // every other entity type.) Matched on the FOLD, both sides, so a banked
+    // "Créme Fraîche" is reachable from a synthesized "creme fraiche" — the
+    // old `aliases: { has: normalized }` was byte equality and was not.
+    const folded = canonicalFold(normalized);
+    const [existing] = await this.prisma.$queryRaw<
+      Array<{ entity_id: string }>
+    >`
+      SELECT e.entity_id
+        FROM core_entities e
+       WHERE e.type = 'ingredient'::entity_type
+         AND (
+           e.name = ${normalized}
+           OR EXISTS (
+             SELECT 1 FROM entity_surface s
+              WHERE s.entity_id = e.entity_id
+                AND s.status = 'active'
+                AND s.locale = 'und'
+                AND s.role <> 'display'
+                AND s.form_folded = ${folded}
+           )
+         )
+       LIMIT 1`;
     if (existing) {
-      return { entityId: existing.entityId, created: false };
+      return { entityId: existing.entity_id, created: false };
     }
     try {
       const created = await this.prisma.entity.create({

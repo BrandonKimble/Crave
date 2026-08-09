@@ -287,8 +287,18 @@ describe('FoodDedupeMergeService.mergeFoodPair — connection fold, mention-coll
     });
     expect(staleMention).toBeNull();
 
-    // --- Loser's name banked as an alias on the winner ---
+    // --- Loser's name banked as a SURFACE ROW on the winner ---
+    // Read from entity_surface, the one store: core_entities.aliases[] (the
+    // derived projection this used to assert on) was retired with §11 item 4.
     const loserName = `${TEST_TAG}-loser`;
-    expect(winnerEntity.aliases).toContain(loserName);
+    const winnerSurfaces = await prisma.$queryRawUnsafe<
+      Array<{ form: string }>
+    >(
+      `SELECT form FROM entity_surface
+        WHERE entity_id = $1::uuid
+          AND status = 'active' AND locale = 'und' AND role <> 'display'`,
+      winnerEntity.entityId,
+    );
+    expect(winnerSurfaces.map((r) => r.form)).toContain(loserName);
   });
 });

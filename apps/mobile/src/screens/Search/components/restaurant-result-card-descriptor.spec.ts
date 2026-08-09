@@ -3,7 +3,6 @@ import { buildRestaurantResultCardDescriptor } from './restaurant-result-card-de
 
 const buildRestaurant = (overrides: Partial<RestaurantResult> = {}): RestaurantResult => ({
   craveScore: 90,
-  restaurantAliases: [],
   restaurantId: 'r1',
   restaurantName: 'Franklin Barbecue',
   scoreSubjectId: 'r1',

@@ -150,6 +150,17 @@ export interface BatchEnrichmentSummary {
   results: RestaurantEnrichmentResult[];
 }
 
+/**
+ * A restaurant entity CREATE payload plus the surface forms that must be
+ * banked with it. `surfaceForms` is NOT a Prisma column — `core_entities.
+ * aliases[]` was retired (§11 item 4 / I-2) and surfaces live only in
+ * `entity_surface`, so the caller strips this field, inserts the row, and
+ * calls addSurfaces inside the same transaction.
+ */
+export type RestaurantCreateInput = Prisma.EntityCreateInput & {
+  surfaceForms: string[];
+};
+
 type RestaurantEntity = Entity & {
   restaurantMetadata: Prisma.JsonValue | null;
   primaryLocation?: RestaurantLocation | null;
@@ -664,7 +675,7 @@ export class RestaurantLocationEnrichmentService {
     place: GooglePlacesV1Place;
     matchMetadata: MatchMetadata;
     alias?: string | null;
-  }): Promise<Prisma.EntityCreateInput> {
+  }): Promise<RestaurantCreateInput> {
     const baseEntity = {
       name: params.name,
       restaurantMetadata: null,
@@ -711,7 +722,11 @@ export class RestaurantLocationEnrichmentService {
       type: EntityType.restaurant,
       canonicalDomain:
         this.normalizeWebsiteDomain(params.place.websiteUri) ?? undefined,
-      aliases: alias,
+      // NOT a Prisma column any more (§11 item 4 / I-2 retired
+      // core_entities.aliases[]). The caller creates the row, then banks
+      // these through addSurfaces in the SAME transaction — one store for
+      // surfaces, and the entity insert carries only entity columns.
+      surfaceForms: alias,
       restaurantAttributes: mergedRestaurantAttributes,
       generalPraiseUpvotes: 0,
     };
@@ -1322,11 +1337,10 @@ export class RestaurantLocationEnrichmentService {
   }
 
   /**
-   * A1: this no longer writes `updateData.aliases`. It returns the alias
-   * FORMS it would have written; the caller banks them through the
-   * projection writer (`bankPlacesAliases`) after the entity write lands,
-   * and the writer re-derives the array. The name/identity half is
-   * unchanged — that IS an entity-column update.
+   * A1: this writes no alias column. It returns the surface FORMS it learned;
+   * the caller banks them through the surface writer (`bankPlacesAliases`)
+   * after the entity write lands. The name/identity half is unchanged — that
+   * IS an entity-column update.
    *
    * A4 free gift: `canonicalLocale` is Google's
    * `displayName.languageCode`, which we used to discard. The localized
@@ -1383,8 +1397,14 @@ export class RestaurantLocationEnrichmentService {
       aliasSources.add(entity.name);
     }
 
+    // The entity's ALREADY-BANKED surfaces are deliberately absent from this
+    // merge. They used to be read out of core_entities.aliases[] and written
+    // straight back, which was a no-op dressed as a merge: addSurfaces is
+    // idempotent per (entity, locale, form), so re-offering a form that is
+    // already a row changes nothing. What matters is the NEW forms this
+    // enrichment learned, and those are exactly `aliasSources`.
     const aliasResult = this.aliasManagementService.mergeAliases(
-      entity.aliases ?? [],
+      [],
       [],
       Array.from(aliasSources),
     );
@@ -1397,10 +1417,6 @@ export class RestaurantLocationEnrichmentService {
         canonicalTrimmed,
         'front',
       );
-    }
-
-    if (!this.aliasListsEqual(entity.aliases ?? [], mergedAliases)) {
-      updatedFields.push('aliases');
     }
 
     // Only Google's own display name carries Google's language tag; every
@@ -1420,7 +1436,7 @@ export class RestaurantLocationEnrichmentService {
   }
 
   /** THE ONLY alias write in this service — every Places-derived surface
-   *  goes through the projection writer, which re-derives `aliases[]`. */
+   *  goes through the surface writer. */
   private async bankPlacesAliases(
     entityId: string,
     aliasForms: SurfaceInput[],
@@ -1496,40 +1512,14 @@ export class RestaurantLocationEnrichmentService {
     return [...filtered, trimmedValue];
   }
 
-  private aliasListsEqual(current: string[], next: string[]): boolean {
-    if (current.length !== next.length) {
-      return false;
-    }
-
-    const counts = new Map<string, number>();
-    for (const alias of current) {
-      counts.set(alias, (counts.get(alias) ?? 0) + 1);
-    }
-
-    for (const alias of next) {
-      const existing = counts.get(alias);
-      if (!existing) {
-        return false;
-      }
-      if (existing === 1) {
-        counts.delete(alias);
-      } else {
-        counts.set(alias, existing - 1);
-      }
-    }
-
-    return counts.size === 0;
-  }
-
+  /** The entity's own current name, as a surface candidate for a rename.
+   *  It used to also re-collect every banked alias out of
+   *  core_entities.aliases[]; those are rows already, and re-offering them
+   *  through the idempotent surface writer only ever produced no-ops. */
   private collectAliasCandidates(entity: RestaurantEntity): string[] {
     const aliases = new Set<string>();
     if (entity.name?.trim()) {
       aliases.add(entity.name.trim());
-    }
-    for (const alias of entity.aliases ?? []) {
-      if (alias && alias.trim().length) {
-        aliases.add(alias.trim());
-      }
     }
     return Array.from(aliases);
   }
@@ -2607,17 +2597,13 @@ export class RestaurantLocationEnrichmentService {
       data: {
         name: canonicalName,
         type: EntityType.restaurant_attribute,
-        // Inline on the create so the array is ATOMIC with the row (the
-        // attribute identity unique index fires on this insert); the rows
-        // follow, so provenance exists from the first instant. These are
-        // the code-declared Google attribute surfaces, not Places text —
-        // 'seed', and English by declaration, but left 'und' because the
-        // vocabulary file carries no language tag to read.
-        aliases: seedAliases,
         ...identityInsertData(canonicalName, EntityType.restaurant_attribute),
       },
       select: { entityId: true },
     });
+    // The code-declared Google attribute surfaces, not Places text — 'seed',
+    // and English by declaration, but left 'und' because the vocabulary file
+    // carries no language tag to read.
     if (seedAliases.length) {
       await this.prisma.$transaction((tx) =>
         addSurfaces(

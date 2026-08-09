@@ -1,4 +1,7 @@
-import { identityInsertData } from '../content-processing/entity-resolver/entity-identity';
+import {
+  canonicalFold,
+  identityInsertData,
+} from '../content-processing/entity-resolver/entity-identity';
 import { addSurfaces } from '../content-processing/entity-resolver/entity-surface.service';
 import { Inject, Injectable } from '@nestjs/common';
 import { EntityType, Prisma } from '@prisma/client';
@@ -323,16 +326,43 @@ export class RestaurantCuisineExtractionService {
       return [];
     }
 
-    const existingAttributes = await this.prisma.entity.findMany({
-      where: {
-        type: EntityType.restaurant_attribute,
-        OR: [
-          { name: { in: normalized } },
-          { aliases: { hasSome: normalized } },
-        ],
-      },
-      select: { entityId: true, name: true, aliases: true },
-    });
+    // Attributes reachable by NAME or by a banked recall surface. The surface
+    // half reads entity_surface's und/active/non-display slice, folded on both
+    // sides — the retired `aliases: { hasSome }` was a byte-exact array
+    // overlap, so a surface banked as "Tex-Mex" was invisible to an extracted
+    // "tex-mex".
+    const foldedProbes = Array.from(
+      new Set(normalized.map((value) => canonicalFold(value)).filter(Boolean)),
+    );
+    const existingAttributes = (
+      await this.prisma.$queryRaw<
+        Array<{ entity_id: string; name: string; forms: string[] | null }>
+      >`
+        SELECT e.entity_id, e.name,
+               (SELECT array_agg(s.form)
+                  FROM entity_surface s
+                 WHERE s.entity_id = e.entity_id
+                   AND s.status = 'active'
+                   AND s.locale = 'und'
+                   AND s.role <> 'display') AS forms
+          FROM core_entities e
+         WHERE e.type = 'restaurant_attribute'::entity_type
+           AND (
+             e.name = ANY(${normalized}::text[])
+             OR EXISTS (
+               SELECT 1 FROM entity_surface m
+                WHERE m.entity_id = e.entity_id
+                  AND m.status = 'active'
+                  AND m.locale = 'und'
+                  AND m.role <> 'display'
+                  AND m.form_folded = ANY(${foldedProbes}::text[])
+             )
+           )`
+    ).map((row) => ({
+      entityId: row.entity_id,
+      name: row.name,
+      aliases: row.forms ?? [],
+    }));
 
     const ids: string[] = [];
     for (const cuisine of normalized) {
@@ -372,10 +402,6 @@ export class RestaurantCuisineExtractionService {
         data: {
           name: cuisine,
           type: EntityType.restaurant_attribute,
-          // Inline on the create so the array is ATOMIC with the row (the
-          // unique index fires on this insert); the rows follow, so
-          // provenance exists from the first instant.
-          aliases: createAliases,
           ...identityInsertData(cuisine, EntityType.restaurant_attribute),
         },
         select: { entityId: true },

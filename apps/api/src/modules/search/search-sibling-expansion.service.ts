@@ -343,10 +343,28 @@ export class SearchSiblingExpansionService {
           JOIN core_entities b ON b.entity_id = ANY(${ids}::uuid[])
           WHERE i.type = 'ingredient'::entity_type
             AND i.status = 'active'::entity_status
+            -- FOLD-SYMMETRIC, BOTH SIDES. identity_key IS canonicalFold(name)
+            -- (app-written, never a SQL fold — the fold law), and
+            -- entity_surface.form_folded is the same function over a surface
+            -- form. So the three arms compare like with like: an ingredient
+            -- named "Créme Fraîche" now twins a food named "creme fraiche",
+            -- which lower() over the unfolded aliases[] array never did.
             AND (
-              lower(i.name) = lower(b.name)
-              OR lower(b.name) IN (SELECT lower(a) FROM unnest(i.aliases) a)
-              OR lower(i.name) IN (SELECT lower(a) FROM unnest(b.aliases) a)
+              i.identity_key = b.identity_key
+              OR EXISTS (
+                SELECT 1 FROM entity_surface s
+                 WHERE s.entity_id = i.entity_id
+                   AND s.status = 'active' AND s.locale = 'und'
+                   AND s.role <> 'display'
+                   AND s.form_folded = b.identity_key
+              )
+              OR EXISTS (
+                SELECT 1 FROM entity_surface s
+                 WHERE s.entity_id = b.entity_id
+                   AND s.status = 'active' AND s.locale = 'und'
+                   AND s.role <> 'display'
+                   AND s.form_folded = i.identity_key
+              )
             )
         `,
       );

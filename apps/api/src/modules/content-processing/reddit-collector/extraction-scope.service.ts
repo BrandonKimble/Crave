@@ -435,10 +435,9 @@ export async function finalizeMergeCompletion(
   if (canonicalId === duplicateId) {
     throw new Error(`self-merge refused: ${canonicalId}`);
   }
-  // A1: the loser's name + alias ROWS fold onto the winner through THE
-  // projection writer — provenance ('merge_fold') and each carried row's
-  // locale survive, where the old array_agg destroyed both. The legacy
-  // aliases[] array is re-derived from the rows by the same call.
+  // A1: the loser's name + surface ROWS fold onto the winner through THE
+  // surface writer — provenance ('merge_fold') and each carried row's
+  // locale survive, where the old array_agg destroyed both.
   await foldSurfacesFromMerge(tx, canonicalId, duplicateId);
   await tx.$executeRaw`
     UPDATE core_entities SET status = 'archived'

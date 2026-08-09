@@ -16,7 +16,8 @@ interface EntityEmbedRow {
   entity_id: string;
   name: string;
   type: EntityType;
-  aliases: string[];
+  /** The entity's surface forms for the doc — see the SELECT below. */
+  surfaces: string[] | null;
 }
 
 function toVectorLiteral(v: number[]): string {
@@ -94,7 +95,26 @@ export class EntityEmbeddingReconcilerService
         : '';
 
     const rows = await this.prisma.$queryRawUnsafe<EntityEmbedRow[]>(
-      `SELECT entity_id, name, type, aliases FROM core_entities
+      `SELECT e.entity_id, e.name, e.type,
+              (SELECT array_agg(s.form ORDER BY s.seq)
+                 FROM entity_surface s
+                WHERE s.entity_id = e.entity_id
+                  AND s.status = 'active'
+                  -- LOCALE: 'und' AND 'en'. The retired core_entities.
+                  -- aliases[] projection was und-only, which silently kept
+                  -- 577 explicitly-English surfaces out of the dense doc for
+                  -- no reason: the doc is an English-corpus artefact, so an
+                  -- 'en'-tagged form is exactly as much evidence for it as an
+                  -- untagged one. Other languages stay OUT — a Spanish form
+                  -- in an English document pulls the vector toward the wrong
+                  -- neighbourhood for every English query.
+                  AND s.locale IN ('und','en')
+                  -- BOTH ROLES. A display form is a word real users read this
+                  -- concept as; it makes no RECALL claim, but the dense lane
+                  -- is not a grounding claim either — it is similarity. The
+                  -- recall arms elsewhere keep their role<>'display' filter.
+               ) AS surfaces
+         FROM core_entities e
        WHERE type IN ('restaurant','food','food_attribute','restaurant_attribute','ingredient')
          AND status = 'active'
          ${reembedAll ? '' : 'AND (name_embedding IS NULL OR name_embedding_stale = true)'}
@@ -106,7 +126,7 @@ export class EntityEmbeddingReconcilerService
     for (let i = 0; i < rows.length; i += EMBED_BATCH) {
       const batch = rows.slice(i, i + EMBED_BATCH);
       const vectors = await this.embedWithRetry(
-        batch.map((r) => buildEntityDoc(r.name, r.aliases)),
+        batch.map((r) => buildEntityDoc(r.name, r.surfaces ?? [])),
       );
       await this.prisma.$transaction(
         batch.map((r, j) =>

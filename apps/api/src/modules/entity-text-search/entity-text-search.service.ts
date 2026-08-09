@@ -1472,7 +1472,7 @@ export class EntityTextSearchService {
     // The former arm 4 (the display role) is REMOVED — see the claims-registry
     // note below; labels are display-only and the alias store is the one
     // guarded surface registry.
-    // The legacy `crave_text_array_lower(aliases)` GIN arm was REMOVED here
+    // The legacy crave_text_array_lower(aliases) GIN arm was REMOVED here
     // (i18n red team, executed): it was the untyped, UNLOCALED shadow of
     // entity_surface — it re-grounded seeded es forms ('americana') for English
     // requests, the F2 class one arm over. entity_surface is a proven complete
@@ -1498,7 +1498,22 @@ export class EntityTextSearchService {
     const matchedFormsSelect = Prisma.sql`
              LOWER(e.name) AS "normName",
              e.identity_key AS "foldedName",
-             ARRAY(SELECT LOWER(a) FROM unnest(e.aliases) a) AS "normAliases",
+             -- The entity's UNTAGGED recall forms, lowered. This is the
+             -- retired core_entities.aliases[] projection read at its source:
+             -- und + active + role<>'display' is precisely the set that array
+             -- contained, so the column swap is byte-for-byte behaviour-
+             -- preserving here. Deliberately NOT restricted to the candidate
+             -- folds like rawAliases below — this set feeds the DIACRITIC
+             -- evidence, where a form that folds differently from the matched
+             -- phrase (Harry's vs harrys) can still be the accent-bearing
+             -- spelling the admission test needs.
+             ARRAY(
+               SELECT LOWER(ea.form) FROM entity_surface ea
+               WHERE ea.entity_id = e.entity_id
+                 AND ea.status = 'active'
+                 AND ea.locale = 'und'
+                 AND ea.role <> 'display'
+             ) AS "normAliases",
              ARRAY(
                SELECT ea.form_folded FROM entity_surface ea
                WHERE ea.entity_id = e.entity_id
@@ -1603,9 +1618,9 @@ export class EntityTextSearchService {
         if (candidateSet.has(alias)) matchedPhrases.add(alias);
       }
       // Every accent-bearing spelling this entity can be typed as: its own
-      // name, its untagged alias array, and the raw form of every surface that
-      // matched. `normAliases` is LOWER(a) — lowercasing preserves accents, so
-      // it is still raw evidence.
+      // name, its untagged recall forms, and the raw form of every surface
+      // that matched. normAliases is LOWER(form) — lowercasing preserves
+      // accents, so it is still raw evidence.
       const diacriticForms = new Set<string>([
         diacriticFold(row.name),
         ...row.normAliases.map((a) => diacriticFold(a)),

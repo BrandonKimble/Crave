@@ -29,15 +29,18 @@
  * Nest context boots — otherwise a 900s Redis entry from the previous run
  * would answer for the code under test.
  *
- * HOW IT ASSERTS. Every fixture declares `expect` — the IDEAL outcome, which
- * is also the post-surgery outcome — as `{ entity, tier }` (or
- * `{ entity: null, tier: 'unmatched' }`). A fixture whose CURRENT behaviour
- * differs also declares `preSurgery`; observing that value counts as
- * "pre-surgery" (printed, not failed), and observing `expect` while
- * `preSurgery` is still declared prints "FIXED — remove preSurgery". Anything
- * else is RED. So the same file is green before AND after the surgery, and the
- * diff between the two runs is mechanically the list of `preSurgery` lines
- * that turn into FIXED lines.
+ * HOW IT ASSERTS. Every fixture declares `expect` — `{ entity, tier }`, or
+ * `{ entity: null, tier: 'unmatched' }` for a mention that must ground
+ * nothing. Anything else is RED.
+ *
+ * THE RECORDED FLIP. This file first landed against the PRE-surgery code, with
+ * the ten `fold-*` fixtures declared as known-different, and it read
+ * `green=37 red=0 pre-surgery=10`. After the surgery the same file read
+ * `green=47 red=0` — all ten flipped to the right entity, and NOT ONE other
+ * fixture moved, which is exactly the claim "the fold widens matching and
+ * loosens nothing". That two-run diff is the evidence; the temporary
+ * declaration that produced it is gone, because a mechanism kept for a change
+ * that already happened is residue.
  *
  * WHAT THE FIXTURES COVER (all 47 verified against the live dev corpus in SQL
  * before being written down — names, surfaces, locales and statuses):
@@ -46,7 +49,7 @@
  *     surface (the exact tier must win);
  *   - alias tier, byte-identical surface: works today, must keep working;
  *   - alias tier, CASE/PUNCTUATION/ACCENT variant of a banked surface: the
- *     fold-only wins — `preSurgery: unmatched`, `expect: alias`;
+ *     fold-only wins, unreachable before the surgery;
  *   - near misses (one character short of a real surface, a proper prefix of
  *     one, pure gibberish): must resolve to NOTHING, before and after — the
  *     fold must widen matching, never loosen it;
@@ -94,8 +97,6 @@ interface Fixture {
   mention: string;
   /** The ideal — and post-surgery — outcome. */
   expect: Outcome;
-  /** Declared only where CURRENT (pre-surgery) behaviour differs from ideal. */
-  preSurgery?: Outcome;
   note: string;
 }
 
@@ -248,14 +249,16 @@ const FIXTURES: Fixture[] = [
 
   // ── Tier 2: FOLD-ONLY wins — the surgery's behaviour change ─────────────
   // Each of these has a banked und surface that differs from the mention ONLY
-  // by case, punctuation or accent. `aliases && ARRAY[...]` is byte-exact, so
-  // today they ground NOTHING; `form_folded` equality grounds them correctly.
+  // by case, punctuation or accent. Under the retired `aliases && ARRAY[...]`
+  // overlap (byte-exact) they ground NOTHING; on `form_folded` equality they
+  // ground correctly. All ten flipped from unmatched to the right entity when
+  // the surgery landed, and every other fixture in this file held — that run
+  // IS the evidence for the change, and these ten are now plain assertions.
   {
     id: 'fold-01',
     type: EntityType.restaurant,
     mention: 'santo taco',
     expect: { entity: 'Santo Taco SoHo', tier: 'alias' },
-    preSurgery: UNMATCHED,
     note: 'banked surface "Santo Taco" — case only',
   },
   {
@@ -263,7 +266,6 @@ const FIXTURES: Fixture[] = [
     type: EntityType.restaurant,
     mention: 'lugers',
     expect: { entity: 'Peter Luger Steak House', tier: 'alias' },
-    preSurgery: UNMATCHED,
     note: 'banked surface "Lugers" — case only',
   },
   {
@@ -271,7 +273,6 @@ const FIXTURES: Fixture[] = [
     type: EntityType.restaurant,
     mention: 'cannelle',
     expect: { entity: 'Cannelle Patisserie', tier: 'alias' },
-    preSurgery: UNMATCHED,
     note: 'banked surface "Cannelle" — case only',
   },
   {
@@ -279,7 +280,6 @@ const FIXTURES: Fixture[] = [
     type: EntityType.restaurant,
     mention: 'villabate',
     expect: { entity: 'Villabate Alba', tier: 'alias' },
-    preSurgery: UNMATCHED,
     note: 'banked surface "Villabate" — case only',
   },
   {
@@ -287,7 +287,6 @@ const FIXTURES: Fixture[] = [
     type: EntityType.restaurant,
     mention: 'joes shanghai',
     expect: { entity: "Joe's Shanghai", tier: 'alias' },
-    preSurgery: UNMATCHED,
     note: 'banked surface "Joes Shanghai" — case only',
   },
   {
@@ -295,7 +294,6 @@ const FIXTURES: Fixture[] = [
     type: EntityType.restaurant,
     mention: 'lloyds',
     expect: { entity: "Lloyd's Carrot Cake", tier: 'alias' },
-    preSurgery: UNMATCHED,
     note: 'banked surface "Lloyds" — case only',
   },
   {
@@ -303,7 +301,6 @@ const FIXTURES: Fixture[] = [
     type: EntityType.restaurant,
     mention: 'jean georges',
     expect: { entity: 'Jean-Georges', tier: 'alias' },
-    preSurgery: UNMATCHED,
     note: 'banked surface "Jean Georges" — case only (the hyphenated NAME is not reachable by the exact tier)',
   },
   {
@@ -311,7 +308,6 @@ const FIXTURES: Fixture[] = [
     type: EntityType.restaurant,
     mention: 'sarges deli',
     expect: { entity: 'Sarge’s Delicatessen & Diner', tier: 'alias' },
-    preSurgery: UNMATCHED,
     note: 'banked surface "Sarges Deli" — case only',
   },
   {
@@ -319,7 +315,6 @@ const FIXTURES: Fixture[] = [
     type: EntityType.restaurant,
     mention: 'chefs table',
     expect: { entity: "The Chef's Table at Brooklyn Fare", tier: 'alias' },
-    preSurgery: UNMATCHED,
     note: 'banked surface "Chefs Table" — case only',
   },
   {
@@ -327,7 +322,6 @@ const FIXTURES: Fixture[] = [
     type: EntityType.restaurant,
     mention: 'cathedrale restaurant',
     expect: { entity: 'Cathédrale Restaurant', tier: 'alias' },
-    preSurgery: UNMATCHED,
     note: 'banked surface "Cathédrale Restaurant" — ACCENT, the case the fold exists for',
   },
 
@@ -514,8 +508,6 @@ async function main(): Promise<void> {
 
     let green = 0;
     let red = 0;
-    let preSurgery = 0;
-    let fixed = 0;
 
     for (const fixture of FIXTURES) {
       const result = byTempId.get(fixture.id);
@@ -525,34 +517,16 @@ async function main(): Promise<void> {
       };
 
       if (sameOutcome(observed, fixture.expect)) {
-        if (fixture.preSurgery) {
-          fixed += 1;
-          out(
-            `FIXED ${fixture.id} "${fixture.mention}" -> ${render(observed)} — remove preSurgery`,
-          );
-        } else {
-          green += 1;
-        }
-        continue;
-      }
-      if (fixture.preSurgery && sameOutcome(observed, fixture.preSurgery)) {
-        preSurgery += 1;
-        out(
-          `pre-surgery ${fixture.id} "${fixture.mention}" -> ${render(observed)} (ideal ${render(fixture.expect)})`,
-        );
+        green += 1;
         continue;
       }
       red += 1;
       out(
-        `RED ${fixture.id} "${fixture.mention}" got ${render(observed)} want ${render(fixture.expect)}${
-          fixture.preSurgery ? ` or ${render(fixture.preSurgery)}` : ''
-        } — ${fixture.note}`,
+        `RED ${fixture.id} "${fixture.mention}" got ${render(observed)} want ${render(fixture.expect)} — ${fixture.note}`,
       );
     }
 
-    out(
-      `\nRESOLUTION GATE: green=${green} red=${red} pre-surgery=${preSurgery} fixed=${fixed} of ${FIXTURES.length}`,
-    );
+    out(`\nRESOLUTION GATE: green=${green} red=${red} of ${FIXTURES.length}`);
     if (red > 0) process.exitCode = 1;
   } finally {
     await app.close();

@@ -915,18 +915,30 @@ export class CuratedListBuilderService {
     if (!attrIds.length) {
       return new Map();
     }
-    const rows = await this.prisma.entity.findMany({
-      where: {
-        entityId: { in: attrIds },
-        type: 'restaurant_attribute',
-        status: 'active',
-      },
-      select: { entityId: true, name: true, aliases: true },
-    });
+    // The recipe vocabulary is matched against an attribute's name AND its
+    // banked recall surfaces ("outdoor seating" reaching a recipe that says
+    // "patio"). Surfaces come from entity_surface's und/active/non-display
+    // slice — the same set the retired core_entities.aliases[] projection
+    // carried, now read where it actually lives.
+    const rows = await this.prisma.$queryRaw<
+      Array<{ entity_id: string; name: string; forms: string[] | null }>
+    >(Prisma.sql`
+      /*curated:attribute_names*/
+      SELECT e.entity_id, e.name,
+             (SELECT array_agg(s.form)
+                FROM entity_surface s
+               WHERE s.entity_id = e.entity_id
+                 AND s.status = 'active'
+                 AND s.locale = 'und'
+                 AND s.role <> 'display') AS forms
+        FROM core_entities e
+       WHERE e.entity_id = ANY(${attrIds}::uuid[])
+         AND e.type = 'restaurant_attribute'
+         AND e.status = 'active'`);
     return new Map(
       rows.map((row) => [
-        row.entityId,
-        { name: row.name, aliases: row.aliases },
+        row.entity_id,
+        { name: row.name, aliases: row.forms ?? [] },
       ]),
     );
   }

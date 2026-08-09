@@ -41,8 +41,16 @@ JOIN core_entities n
  AND n.status = 'active'
  AND (
        lower(n.name) = lower(a.name)
-    OR lower(n.name) = ANY (SELECT lower(x) FROM unnest(a.aliases) x)
-    OR lower(a.name) = ANY (SELECT lower(x) FROM unnest(n.aliases) x)
+    OR EXISTS (SELECT 1 FROM entity_surface sa
+                WHERE sa.entity_id = a.entity_id
+                  AND sa.status = 'active' AND sa.locale = 'und'
+                  AND sa.role <> 'display'
+                  AND lower(sa.form) = lower(n.name))
+    OR EXISTS (SELECT 1 FROM entity_surface sn
+                WHERE sn.entity_id = n.entity_id
+                  AND sn.status = 'active' AND sn.locale = 'und'
+                  AND sn.role <> 'display'
+                  AND lower(sn.form) = lower(a.name))
     OR lower(n.name) = lower(a.name) || 's'
     OR lower(n.name) || 's' = lower(a.name)
     OR lower(n.name) = lower(a.name) || 'es'

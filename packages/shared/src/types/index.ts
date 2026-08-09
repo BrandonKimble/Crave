@@ -42,7 +42,6 @@ export interface Entity {
   entityId: string;
   name: string;
   type: EntityType;
-  aliases: string[];
   restaurantAttributes: string[];
   latitude?: number;
   longitude?: number;

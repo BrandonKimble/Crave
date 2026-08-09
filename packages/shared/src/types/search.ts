@@ -79,10 +79,8 @@ export interface FoodResult {
   connectionId: string;
   foodId: string;
   foodName: string;
-  foodAliases: string[];
   restaurantId: string;
   restaurantName: string;
-  restaurantAliases: string[];
   restaurantLocationId?: string;
   scoreSubjectType: 'connection';
   scoreSubjectId: string;
@@ -178,7 +176,6 @@ export interface RestaurantMatchedTag {
 export interface RestaurantResult {
   restaurantId: string;
   restaurantName: string;
-  restaurantAliases: string[];
   /**
    * Canonical ordinal rank for the current search snapshot (1-based).
    * This should be server-assigned and stable across cards + map pins.
@@ -271,7 +268,6 @@ export interface DishRestaurantLocation {
 export interface DishRestaurantData {
   restaurantId: string;
   restaurantName: string;
-  restaurantAliases: string[];
   restaurantCraveScore: number;
   priceLevel?: number | null;
   priceSymbol?: string | null;
@@ -283,7 +279,6 @@ export interface DishResult {
   connectionId: string;
   foodId: string;
   foodName: string;
-  foodAliases: string[];
   scoreSubjectType: 'connection';
   scoreSubjectId: string;
   craveScore: number;

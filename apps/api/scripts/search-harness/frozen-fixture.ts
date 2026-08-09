@@ -19,7 +19,8 @@ import {
 } from './_shared';
 
 /**
- * frozen-fixture.ts — dump all `core_entities` (id, type, name, aliases) plus
+ * frozen-fixture.ts — dump all `core_entities` (id, type, name, und recall
+ * surfaces) plus
  * region presence (§13 leg 3: geometric — a restaurant's primary location
  * inside the DEFAULT_MARKET_KEY region's catalog-place bbox, the successor to
  * the dropped `core_entity_market_presence` table) to a versioned JSON
@@ -69,10 +70,20 @@ async function main(): Promise<void> {
     const prisma = app.get(PrismaService);
 
     const entities = await prisma.$queryRawUnsafe<EntityRow[]>(
-      `SELECT entity_id, name, type, aliases
-         FROM core_entities
-        WHERE status = 'active'
-        ORDER BY type, name`,
+      // `aliases` is now the entity's UND RECALL SURFACES, read from
+      // entity_surface — the retired core_entities.aliases[] projection held
+      // exactly this set, so the fixture's meaning is unchanged and the
+      // replay harnesses that consume it need no edit.
+      `SELECT e.entity_id, e.name, e.type,
+              (SELECT array_agg(s.form)
+                  FROM entity_surface s
+                 WHERE s.entity_id = e.entity_id
+                   AND s.status = 'active'
+                   AND s.locale = 'und'
+                   AND s.role <> 'display') AS aliases
+         FROM core_entities e
+        WHERE e.status = 'active'
+        ORDER BY e.type, e.name`,
     );
 
     const regionPlace = REGION_PLACE_BY_MARKET_KEY[DEFAULT_MARKET_KEY];

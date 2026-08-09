@@ -10,6 +10,7 @@ import { AliasManagementService } from './alias-management.service';
 import { MetroAdoptionService } from './metro-adoption.service';
 import { LoggerService } from '../../../shared';
 import { EntityResolutionInput } from './entity-resolution.types';
+import { canonicalFold } from './entity-identity';
 
 /**
  * THE DECISION CORE, DIRECTLY EXERCISED.
@@ -40,6 +41,12 @@ function fakeLogger(): LoggerService {
 interface FakeEntityRow {
   entityId: string;
   name: string;
+  /**
+   * The entity's UND RECALL SURFACE FORMS (entity_surface, status=active,
+   * locale='und', role<>'display'). Named `aliases` for continuity with the
+   * fixtures written when `core_entities.aliases[]` still existed; that
+   * column is gone (§11 item 4 / I-2) and the tier reads the rows, folded.
+   */
   aliases: string[];
   /**
    * REQUIRED, and that is the point (F6622). Both tier queries send
@@ -53,9 +60,48 @@ interface FakeEntityRow {
 }
 
 /** Minimal PrismaService double: only the calls entity-resolution.service.ts
- *  actually issues (entity.findMany for exact + alias tiers). */
+ *  actually issues — `entity.findMany` for the exact tier, and `$queryRaw`
+ *  for the surface tier and the LLM judge's candidate context. */
 function fakePrisma(entities: FakeEntityRow[]) {
+  const live = () =>
+    entities.filter((e) => (e.status ?? 'active') !== 'archived');
   return {
+    /**
+     * THE SURFACE ARM, emulated at the same fidelity as the real SQL: the
+     * probe set and every stored form are compared through `canonicalFold`,
+     * because fold symmetry IS the behaviour under test. A double that
+     * compared raw strings here would pass whether or not the service folded.
+     */
+    $queryRaw: jest.fn(async (query: any) => {
+      // The service composes with `Prisma.sql`, so the double receives ONE
+      // Sql object (text + bound values), not a tagged template.
+      const sql: string = query?.strings?.join(' ') ?? String(query?.sql ?? '');
+      const values: any[] = query?.values ?? [];
+      if (
+        sql.includes('FROM core_entities e') &&
+        sql.includes('entity_surface')
+      ) {
+        const [type, foldedProbes] = values as [EntityType, string[]];
+        const probes = new Set(foldedProbes);
+        return live()
+          .filter((row) => row.type === type)
+          .filter((row) =>
+            row.aliases.some((form) => probes.has(canonicalFold(form))),
+          )
+          .map((row) => ({
+            entity_id: row.entityId,
+            name: row.name,
+            forms: row.aliases,
+          }));
+      }
+      if (sql.includes('SELECT s.entity_id')) {
+        const [ids] = values as [string[]];
+        return live()
+          .filter((row) => ids.includes(row.entityId))
+          .map((row) => ({ entity_id: row.entityId, forms: row.aliases }));
+      }
+      return [];
+    }),
     entity: {
       findMany: jest.fn(async (args: any) => {
         const where = args.where ?? {};
@@ -63,7 +109,6 @@ function fakePrisma(entities: FakeEntityRow[]) {
         const nameIn: string[] | undefined = where.name?.in?.map((n: string) =>
           n.toLowerCase().trim(),
         );
-        const aliasHasSome: string[] | undefined = where.aliases?.hasSome;
         return (
           entities
             .filter((e) => (e.status ?? 'active') !== 'archived')
@@ -79,9 +124,6 @@ function fakePrisma(entities: FakeEntityRow[]) {
             .filter((row) => {
               if (nameIn) {
                 return nameIn.includes(row.name.toLowerCase().trim());
-              }
-              if (aliasHasSome) {
-                return row.aliases.some((a) => aliasHasSome.includes(a));
               }
               return true;
             })

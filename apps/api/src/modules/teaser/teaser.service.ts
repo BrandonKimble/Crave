@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
+import { canonicalFold } from '../content-processing/entity-resolver/entity-identity';
 import { LoggerService } from '../../shared';
 import type {
   ContextOptionId,
@@ -371,6 +372,13 @@ export class TeaserService {
   /** Exact name/alias match on active food entities, expanded one category hop
    *  (derived_food_category_edges), mirroring search's expansion law. */
   private async resolveFoodIds(terms: string[]): Promise<string[]> {
+    // The surface arm compares CANONICAL FOLDS on both sides (form_folded is
+    // app-written by the one fold implementation); the name arm keeps its
+    // existing lower() semantics so this change is the surface read and
+    // nothing else.
+    const foldedTerms = Array.from(
+      new Set(terms.map((term) => canonicalFold(term)).filter(Boolean)),
+    );
     const rows = await this.prisma.$queryRaw<
       Array<{ entity_id: string }>
     >(Prisma.sql`
@@ -381,7 +389,12 @@ export class TeaserService {
         AND (
           lower(e.name) = ANY(${terms})
           OR EXISTS (
-            SELECT 1 FROM unnest(e.aliases) al WHERE lower(al) = ANY(${terms})
+            SELECT 1 FROM entity_surface s
+             WHERE s.entity_id = e.entity_id
+               AND s.status = 'active'
+               AND s.locale = 'und'
+               AND s.role <> 'display'
+               AND s.form_folded = ANY(${foldedTerms})
           )
         )
     `);

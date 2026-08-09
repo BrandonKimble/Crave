@@ -7,8 +7,8 @@ import {
 import { normalizeLocaleTag } from '../../../shared/locale';
 
 /**
- * THE ALIAS PROJECTION WRITER (multilingual plan A1) — the ONE writer of
- * `core_entities.aliases` from now on.
+ * THE SURFACE WRITER (multilingual plan A1) — the ONE writer of
+ * `entity_surface`.
  *
  * Before this, seven independent sites hand-appended to an untagged
  * `text[]`: two verbatim-copied merge folds, the ontology rename
@@ -17,21 +17,18 @@ import { normalizeLocaleTag } from '../../../shared/locale';
  * zero language tag, no folded mirror — feeding confidence-1.0 grounding
  * AND the dense embedding doc.
  *
- * The shape now: `entity_surface` ROWS are the truth (form + APP-FOLDED
- * mirror + BCP-47 locale + source + confidence + status); the array is a
- * DERIVED PROJECTION of the ACTIVE forms, in insertion (seq) order. This
- * is the identity_key precedent — one app function owns the write, the DB
- * stores and indexes. Every existing read arm (GIN overlap, the FTS
- * expression index, the trgm haystack, the per-alias unnest) keeps
- * working untouched, so nothing downstream had to change.
+ * The shape now: `entity_surface` ROWS are the ONLY truth (form + APP-FOLDED
+ * mirror + BCP-47 locale + role + source + confidence + status). This is the
+ * identity_key precedent — one app function owns the write, the DB stores and
+ * indexes.
  *
- * WHY seq ORDER and not sorted: append-style writers today produce
- * insertion order, so seq order is byte-identical to their current
- * output. The two merge folds currently emit `array_agg(DISTINCT a)`
- * (alphabetical) — same SET, different ORDER. Verified that nothing in
- * the repo reads aliases[] positionally (no `aliases[0]`, no ORDER BY
- * over an alias element), so order is unobservable; picking insertion
- * order keeps the six append sites exact rather than the two fold sites.
+ * THE DERIVED `core_entities.aliases[]` PROJECTION IS GONE (§11 item 4 / I-2,
+ * 2026-08-09). It was an untagged, unfolded, role-blind SHADOW of this table:
+ * a second copy that could only ever agree with the rows by the grace of a
+ * writer nobody could see from the read side, and whose case-sensitive array
+ * overlap silently cost real recall ("santo taco" never matched the banked
+ * surface "Santo Taco"). Every reader now asks this table directly, folded and
+ * scoped, so there is no second copy to drift and no order to preserve.
  *
  * THE FOLD LAW: form_folded is written HERE via canonicalFold and only
  * here. No SQL fold expression, no generated column, no expression index
@@ -68,9 +65,9 @@ export interface SurfaceInput {
   /** Writer's confidence in the pairing. Defaults to 1 (asserted, not inferred). */
   confidence?: number;
   /**
-   * 'active' (default) enters the projection; 'candidate' is banked but
-   * withheld from the array until judged; 'deprecated' is remembered as
-   * WRONG so query spam cannot re-propose it forever (R5-6b).
+   * 'active' (default) is live for recall and display; 'candidate' is
+   * banked but withheld until judged; 'deprecated' is remembered as WRONG so
+   * query spam cannot re-propose it forever (R5-6b).
    */
   status?: SurfaceStatus;
   /**
@@ -168,18 +165,17 @@ export function mintWordClaimVerdict(): WordClaimVerdict {
 
 export interface AddSurfacesOptions {
   /**
-   * Forms to DEMOTE to 'deprecated' before the projection is rebuilt —
-   * the ontology rename's "drop the new display name from the aliases"
-   * half. Matched on the folded form (canonicalFold), so demotion is
+   * Forms to DEMOTE to 'deprecated' — the ontology rename's "drop the new
+   * display name from the recall set" half. Matched on the folded form (canonicalFold), so demotion is
    * collation-independent. Demotion is remembered; a plain delete would let
    * the next writer re-add the same form.
    */
   deprecateForms?: string[];
   /**
-   * Mark the dense doc stale. Aliases feed the entity embedding doc, so
-   * every caller that changed the array today also set this. Default
-   * true when the projection actually changed; pass false to suppress
-   * (the create path embeds fresh anyway).
+   * Mark the dense doc stale. Surface forms feed the entity embedding doc,
+   * so every caller that adds or demotes one also sets this. Default true
+   * when the write actually changed something; pass false to suppress (the
+   * create path embeds fresh anyway).
    */
   markEmbeddingStale?: boolean;
   /** Also touch `last_updated` (the extraction banking site does). */
@@ -197,26 +193,24 @@ export interface AddSurfacesOptions {
 }
 
 /**
- * Bank surface forms on an entity and re-derive the legacy `aliases[]`
- * projection. Idempotent per (entity, locale, form).
+ * Bank surface forms on an entity. Idempotent per (entity, locale, form).
  *
- * Runs inside the caller's transaction — alias rows and the projection
- * must be atomic with whatever else the caller is doing (a merge that
- * archived the loser but lost its names would be unrecoverable).
+ * Runs inside the caller's transaction — surface rows must be atomic with
+ * whatever else the caller is doing (a merge that archived the loser but lost
+ * its names would be unrecoverable).
  *
- * @returns the projected array AND the forms the collision guard refused.
- *   The refusals are returned because they are otherwise INVISIBLE: a
- *   locale-tagged write never changes the und-only projection, so a run where
- *   the guard blocked every surface produced byte-identical output to a
- *   perfect run. A guard whose blast radius cannot be seen is a guard nobody
- *   can trust.
+ * @returns the forms the collision guard refused. The refusals are returned
+ *   because they are otherwise INVISIBLE: nothing about a blocked write shows
+ *   up in the row set, so a run where the guard blocked every surface would
+ *   look identical to a perfect one. A guard whose blast radius cannot be seen
+ *   is a guard nobody can trust.
  */
 export async function addSurfaces(
   tx: Prisma.TransactionClient,
   entityId: string,
   forms: SurfaceInput[],
   options: AddSurfacesOptions = {},
-): Promise<{ aliases: string[]; blocked: string[] }> {
+): Promise<{ blocked: string[] }> {
   const rows: Array<
     Required<Omit<SurfaceInput, 'locale' | 'description'>> & {
       locale: string;
@@ -304,8 +298,8 @@ export async function addSurfaces(
             INFERRED_SURFACE_SOURCES.has(row.source) &&
             claimsRecall(row.role) &&
             // A 'deprecated' write is the adjudicator RECORDING a lost claim
-            // (remembered-wrong, R5-6b) — it never enters the projection or
-            // grounds anything, so the guard must not block the memory.
+            // (remembered-wrong, R5-6b) — it is never active and grounds
+            // nothing, so the guard must not block the memory.
             row.status !== 'deprecated' &&
             blocked.has(canonicalFold(row.form))
           ) {
@@ -321,8 +315,9 @@ export async function addSurfaces(
     }
   }
 
+  let touched = 0;
   if (rows.length > 0) {
-    await insertSurfaceRows(tx, entityId, rows, false);
+    touched += await insertSurfaceRows(tx, entityId, rows, false);
   }
 
   // Match on the app-written `form_folded`, NOT `lower(form)`: JS
@@ -335,15 +330,53 @@ export async function addSurfaces(
     .map((form) => canonicalFold(normalizeSurface(form ?? '')))
     .filter((folded) => folded.length > 0);
   if (deprecate.length > 0) {
-    await tx.$executeRaw`
+    touched += await tx.$executeRaw`
       UPDATE entity_surface SET status = 'deprecated'
       WHERE entity_id = ${entityId}::uuid
         AND form_folded = ANY(${deprecate}::text[])
         AND status <> 'deprecated'`;
   }
 
-  const aliases = await projectAliases(tx, entityId, options);
-  return { aliases, blocked: blockedForms };
+  await markEntityTouched(tx, entityId, touched, options);
+  return { blocked: blockedForms };
+}
+
+/**
+ * The entity-level side effects of a surface write: the dense doc is now
+ * stale, and (for the banking sites that ask) `last_updated` moves.
+ *
+ * `touched` is the number of rows the write landed on — inserts plus
+ * demotions that actually demoted. Because the insert's `ON CONFLICT DO
+ * UPDATE` counts a re-offer of an existing form as affected, this errs
+ * toward re-embedding a doc that did not change; that is the cheap side of
+ * the trade, and the expensive side (a doc that silently went stale) is what
+ * the counter exists to prevent. This replaces the old "did the derived
+ * array come out different" test, which
+ * could only ever be an approximation of the same question and needed a row
+ * lock to be safe. The row lock is gone with it: with no derived array to
+ * read-then-blind-write, two concurrent writers can no longer lose each
+ * other's forms — `ON CONFLICT` makes the inserts commutative (F1's executed
+ * lost-update is structurally impossible now, not merely serialized away).
+ */
+async function markEntityTouched(
+  tx: Prisma.TransactionClient,
+  entityId: string,
+  touched: number,
+  options: Pick<AddSurfacesOptions, 'markEmbeddingStale' | 'touchLastUpdated'>,
+): Promise<void> {
+  if (touched <= 0) {
+    return;
+  }
+  const stale = options.markEmbeddingStale !== false;
+  if (!stale && options.touchLastUpdated !== true) {
+    return;
+  }
+  await tx.$executeRaw`
+    UPDATE core_entities
+    SET name_embedding_stale = CASE WHEN ${stale} THEN true ELSE name_embedding_stale END,
+        last_updated = CASE WHEN ${options.touchLastUpdated === true}
+                            THEN now() ELSE last_updated END
+    WHERE entity_id = ${entityId}::uuid`;
 }
 
 interface SurfaceRow {
@@ -383,7 +416,7 @@ async function insertSurfaceRows(
   entityId: string,
   rows: SurfaceRow[],
   forceNonDefault: boolean,
-): Promise<void> {
+): Promise<number> {
   const values = Prisma.join(
     rows.map((r) => {
       const wantsDefault =
@@ -402,7 +435,7 @@ async function insertSurfaceRows(
     }),
   );
   try {
-    await tx.$executeRaw`
+    return await tx.$executeRaw`
       INSERT INTO entity_surface
         (entity_id, form, form_folded, locale, role, source, confidence,
          status, description, is_default, rank, prompt_version)
@@ -426,89 +459,17 @@ async function insertSurfaceRows(
       error instanceof Error &&
       error.message.includes('uq_entity_surface_one_default')
     ) {
-      await insertSurfaceRows(tx, entityId, rows, true);
-      return;
+      return insertSurfaceRows(tx, entityId, rows, true);
     }
     throw error;
   }
 }
 
 /**
- * Re-derive `core_entities.aliases` from the ACTIVE rows of one entity.
- * Exported for the backfill and for any future writer that changes alias
- * STATUS without adding forms (the judge demotion path).
- */
-export async function projectAliases(
-  tx: Prisma.TransactionClient,
-  entityId: string,
-  options: Pick<
-    AddSurfacesOptions,
-    'markEmbeddingStale' | 'touchLastUpdated'
-  > = {},
-): Promise<string[]> {
-  // F1 (wave-3 red team, executed lost-update): serialize projections per
-  // entity — two concurrent addSurfaces both read rows then blind-write the
-  // array; the loser's form vanished from all four read arms. Row lock
-  // makes the second projector wait and re-read committed truth.
-  await tx.$executeRaw`SELECT 1 FROM core_entities WHERE entity_id = ${entityId}::uuid FOR UPDATE`;
-  // DISTINCT ON must order by its own key first; the outer select
-  // re-orders to seq, because the array's order is insertion order. The
-  // same FORM under two locales is ONE array element (the array is
-  // untagged by construction — that is exactly why rows exist).
-  // P0-a: ONLY UNTAGGED ('und') ROWS ENTER THE ARRAY.
-  //
-  // `core_entities.aliases[]` is the UNLOCALIZED hub of the lexical system: it
-  // feeds the recall core's six arms, the entity embedding doc, and the typo
-  // dictionary — none of which take a locale. Projecting a locale-TAGGED row
-  // into it makes that form match for every language, which is precisely the
-  // F2 bug the gazetteer already removed its legacy-array arm to fix (seeded
-  // `es` forms grounding for English requests).
-  //
-  // It also protects retrieval quality: the fuzzy arm concatenates every alias
-  // into ONE similarity haystack, so tagged multilingual forms would
-  // mechanically dilute English trigram similarity for EVERY entity and shrink
-  // the containment-coverage term. Tagged surfaces are reachable through the
-  // locale-aware gazetteer (entity_surface, locale-chained); the array stays what
-  // every legacy reader already assumes it is — an untagged bag.
-  const ordered = await tx.$queryRaw<Array<{ form: string }>>`
-    SELECT form FROM (
-      SELECT DISTINCT ON (form) form, seq
-      FROM entity_surface
-      WHERE entity_id = ${entityId}::uuid AND status = 'active'
-        AND locale = 'und'
-      ORDER BY form, seq
-    ) d ORDER BY d.seq`;
-  const aliases = ordered.map((r) => r.form);
-
-  const previous = await tx.$queryRaw<Array<{ aliases: string[] | null }>>`
-    SELECT aliases FROM core_entities WHERE entity_id = ${entityId}::uuid`;
-  // The column is nullable in the DB (Prisma's @default([]) only fills it
-  // on Prisma-issued inserts); NULL is "no aliases", same as empty.
-  const current = previous[0]?.aliases ?? [];
-  const changed =
-    !previous[0] ||
-    current.length !== aliases.length ||
-    current.some((value, index) => value !== aliases[index]);
-
-  if (changed) {
-    const stale = options.markEmbeddingStale !== false;
-    await tx.$executeRaw`
-      UPDATE core_entities
-      SET aliases = ${aliases}::varchar[],
-          name_embedding_stale = CASE WHEN ${stale} THEN true ELSE name_embedding_stale END,
-          last_updated = CASE WHEN ${options.touchLastUpdated === true}
-                              THEN now() ELSE last_updated END
-      WHERE entity_id = ${entityId}::uuid`;
-  }
-
-  return aliases;
-}
-
-/**
  * The MERGE FOLD, as one call: bank the loser's name + all of its alias
  * forms onto the winner, carrying each loser row's ORIGINAL locale and
  * provenance instead of flattening them (the array fold destroyed both).
- * Replaces the two verbatim-copied `array_agg(DISTINCT unnest(...))`
+ * Replaced the two verbatim-copied `array_agg(DISTINCT unnest(...))`
  * statements in finalizeMergeCompletion and the ontology merge.
  */
 export async function foldSurfacesFromMerge(
@@ -516,7 +477,7 @@ export async function foldSurfacesFromMerge(
   canonicalId: string,
   duplicateId: string,
   options: AddSurfacesOptions = {},
-): Promise<string[]> {
+): Promise<void> {
   // The loser's own display name becomes a surface on the winner.
   await tx.$executeRaw`
     INSERT INTO entity_surface
@@ -541,7 +502,42 @@ export async function foldSurfacesFromMerge(
     ON CONFLICT (entity_id, locale, form) DO NOTHING`;
 
   // Merge-fold carries OBSERVED surfaces (testimony), which the collision
-  // guard exempts, so there is nothing to report refusing — this keeps the
-  // simple projection return its callers already use.
-  return projectAliases(tx, canonicalId, options);
+  // guard exempts, so there is nothing to report refusing — the fold returns
+  // nothing and no caller has ever wanted more.
+  //
+  // The winner's dense doc must be re-embedded: it just gained the loser's
+  // names. `touched` is 1 unconditionally rather than a row count because the
+  // two statements above are `ON CONFLICT DO NOTHING` bulk inserts whose
+  // affected-row counts already tell us nothing useful about whether the doc
+  // changed (a re-run of an idempotent merge legitimately inserts zero), and
+  // an unnecessary re-embed is cheap while a missed one is silent staleness.
+  await markEntityTouched(tx, canonicalId, 1, options);
 }
+
+/**
+ * THE RECALL SLICE, as a SQL predicate — the successor to every
+ * `unnest(e.aliases)` arm. Alias the surface table `s`.
+ *
+ * Three predicates, and each one is load-bearing:
+ *   - `status = 'active'` — a 'candidate' form is banked but unjudged, and a
+ *     'deprecated' form is REMEMBERED AS WRONG (R5-6b). Neither grounds.
+ *   - `locale = 'und'` — these arms take no locale, so a locale-TAGGED form
+ *     matching here would ground for every language at once. That is the F2
+ *     bug the gazetteer already removed its legacy-array arm to fix; the
+ *     locale-aware lanes read `entity_surface` with a locale chain instead.
+ *   - `role <> 'display'` — a display row makes NO recall claim (it is a label,
+ *     or a recall claim the collision guard refused), so grounding on it would
+ *     resurrect exactly the claim that lost.
+ *
+ * The und slice is 100% role='recall' in the live corpus today, which is why
+ * the old array projection got away with omitting the role test. That is a
+ * data coincidence, not a law — the first und display row would have made the
+ * array ground a refused claim, silently.
+ *
+ * COMPOSE IT WITH `Prisma.sql`, never a bare `$queryRaw` tagged template:
+ * $queryRaw's own template turns every interpolation into a bind parameter,
+ * so this fragment would arrive as a parameter object instead of a predicate.
+ */
+export const RECALL_SURFACE_SCOPE_SQL = Prisma.raw(
+  `s.status = 'active' AND s.locale = 'und' AND s.role <> 'display'`,
+);

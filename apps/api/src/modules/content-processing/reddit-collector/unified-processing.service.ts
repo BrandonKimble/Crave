@@ -1742,7 +1742,6 @@ export class UnifiedProcessingService implements OnModuleInit {
               },
               select: {
                 entityId: true,
-                aliases: true,
                 name: true,
               },
             });
@@ -1769,10 +1768,9 @@ export class UnifiedProcessingService implements OnModuleInit {
                     Array<{
                       entity_id: string;
                       name: string;
-                      aliases: string[];
                     }>
                   >`
-                SELECT entity_id, name, aliases FROM core_entities
+                SELECT entity_id, name FROM core_entities
                 WHERE type = ${entityType}::entity_type
                   AND status <> 'archived'
                   AND identity_key_sorted = ${sortedKey}
@@ -1783,7 +1781,6 @@ export class UnifiedProcessingService implements OnModuleInit {
                 existing = {
                   entityId: orderMatches[0].entity_id,
                   name: orderMatches[0].name,
-                  aliases: orderMatches[0].aliases,
                 };
                 // Round-4 design note: token-multiset adoption CAN conflate
                 // genuinely-distinct dishes (chocolate milk / milk
@@ -1824,10 +1821,9 @@ export class UnifiedProcessingService implements OnModuleInit {
                       Array<{
                         entity_id: string;
                         name: string;
-                        aliases: string[];
                       }>
                     >`
-                SELECT e.entity_id, e.name, e.aliases FROM core_entities e
+                SELECT e.entity_id, e.name FROM core_entities e
                 WHERE e.type = ${entityType}::entity_type
                   AND e.status <> 'archived'
                   AND e.identity_key = ${strippedKey}
@@ -1866,10 +1862,9 @@ export class UnifiedProcessingService implements OnModuleInit {
                       Array<{
                         entity_id: string;
                         name: string;
-                        aliases: string[];
                       }>
                     >`
-                SELECT entity_id, name, aliases FROM core_entities
+                SELECT entity_id, name FROM core_entities
                 WHERE type = ${entityType}::entity_type
                   AND status <> 'archived'
                   AND identity_key = ${strippedKey}
@@ -1880,7 +1875,6 @@ export class UnifiedProcessingService implements OnModuleInit {
                 existing = {
                   entityId: strippedMatches[0].entity_id,
                   name: strippedMatches[0].name,
-                  aliases: strippedMatches[0].aliases,
                 };
               }
             }
@@ -1904,7 +1898,7 @@ export class UnifiedProcessingService implements OnModuleInit {
                       entityId: redirect.toEntityId,
                       status: { not: EntityStatus.archived },
                     },
-                    select: { entityId: true, aliases: true, name: true },
+                    select: { entityId: true, name: true },
                   });
                   // P2.2: a tombstone hop is nickname-tier evidence — a
                   // RESTAURANT redirect target outside the mention's metro
@@ -1964,7 +1958,7 @@ export class UnifiedProcessingService implements OnModuleInit {
                   // mention — same verdict, zero churn.
                   existing = await tx.entity.findFirst({
                     where: { entityId: tombstone.entityId },
-                    select: { entityId: true, aliases: true, name: true },
+                    select: { entityId: true, name: true },
                   });
                   this.logger.info(
                     'Rejected-tombstone adopt — junk verdict reused',
@@ -2011,14 +2005,10 @@ export class UnifiedProcessingService implements OnModuleInit {
                 resolution.validatedAliases &&
                 resolution.validatedAliases.length > 0
               ) {
-                // A1: extraction banking goes through THE projection
-                // writer. Same semantics as the Set-union it replaces
-                // (existing forms keep their positions, new ones append)
-                // but each banked surface now carries provenance. The
-                // writer marks the dense vector stale and touches
-                // last_updated only when the projection actually changed
-                // — the same condition the hand-rolled length check
-                // approximated. Locale is deliberately UNSET: the
+                // A1: extraction banking goes through THE surface writer,
+                // which marks the dense vector stale and touches
+                // last_updated when the write actually lands a row.
+                // Locale is deliberately UNSET: the
                 // extraction prompt does not yet emit a language on
                 // surfaces (plan A6), and a fabricated tag is worse than
                 // 'und'.
@@ -2070,7 +2060,6 @@ export class UnifiedProcessingService implements OnModuleInit {
                 // surfaces) until the ontology worker adjudicates them: merge into an
                 // existing canonical, promote to a new canonical, or reject as junk.
                 status: isAttributeType ? 'pending' : 'active',
-                aliases: Array.from(new Set(aliasSet.filter(Boolean))),
                 createdAt: new Date(),
                 lastUpdated: new Date(),
               };
@@ -2154,19 +2143,22 @@ export class UnifiedProcessingService implements OnModuleInit {
                 entityId = createdEntity.entityId;
                 createdNew = true;
 
-                // A1: the create still writes the array inline (it must be
-                // ATOMIC with the row — the unique index fires on THAT
-                // insert, inside the savepoint). The rows follow
-                // immediately so provenance exists from the entity's first
-                // instant; the projection it re-derives is byte-identical
-                // to the array just written, so this is a no-op UPDATE.
+                // The mention's own surfaces, banked as rows in the SAME
+                // transaction (inside the savepoint) so provenance exists
+                // from the entity's first instant. These used to ALSO be
+                // written inline into core_entities.aliases[] on the create;
+                // that column is retired (§11 item 4 / I-2), and the entity
+                // insert now carries only entity columns.
                 // markEmbeddingStale:false — a brand-new row has no
                 // embedding to invalidate.
-                if (entityData.aliases) {
+                const createSurfaces = Array.from(
+                  new Set(aliasSet.filter(Boolean)),
+                );
+                if (createSurfaces.length) {
                   await addSurfaces(
                     tx,
                     createdEntity.entityId,
-                    (entityData.aliases as string[]).map((alias) => ({
+                    createSurfaces.map((alias) => ({
                       form: alias,
                       source: 'extraction' as const,
                     })),

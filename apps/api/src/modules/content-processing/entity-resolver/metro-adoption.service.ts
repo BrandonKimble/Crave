@@ -1,5 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../../../prisma/prisma.service';
+import { canonicalFold } from './entity-identity';
 import { LoggerService } from '../../../shared';
 
 /**
@@ -125,7 +126,12 @@ export class MetroAdoptionService {
         AND (
           lower(e.name) = ${needle}
           OR EXISTS (
-            SELECT 1 FROM unnest(e.aliases) a WHERE lower(a) = ${needle}
+            SELECT 1 FROM entity_surface s
+             WHERE s.entity_id = e.entity_id
+               AND s.status = 'active'
+               AND s.locale = 'und'
+               AND s.role <> 'display'
+               AND s.form_folded = ${canonicalFold(surface)}
           )
         )
         AND EXISTS (

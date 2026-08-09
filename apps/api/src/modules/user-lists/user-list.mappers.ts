@@ -415,7 +415,6 @@ export class UserListMapper {
       results.push({
         restaurantId: restaurant.entityId,
         restaurantName: restaurant.name,
-        restaurantAliases: restaurant.aliases ?? [],
         scoreSubjectType: 'restaurant',
         scoreSubjectId: restaurant.entityId,
         // F604: null (not thrown) when unscored — RestaurantResult.craveScore
@@ -498,10 +497,8 @@ export class UserListMapper {
         connectionId: connection.connectionId,
         foodId: connection.foodId,
         foodName: connection.food.name,
-        foodAliases: connection.food.aliases ?? [],
         restaurantId: connection.restaurantId,
         restaurantName: connection.restaurant.name,
-        restaurantAliases: connection.restaurant.aliases ?? [],
         restaurantLocationId: primaryLocation?.locationId ?? undefined,
         scoreSubjectType: 'connection',
         scoreSubjectId: connection.connectionId,

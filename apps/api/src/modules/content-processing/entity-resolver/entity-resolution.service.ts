@@ -8,6 +8,7 @@ import { Redis } from 'ioredis';
 import { PrismaService } from '../../../prisma/prisma.service';
 import { foodNameVariants } from './food-lemma';
 import { canonicalFold } from './entity-identity';
+import { RECALL_SURFACE_SCOPE_SQL } from './entity-surface.service';
 
 import { LoggerService, CorrelationUtils } from '../../../shared';
 import { LLMService } from '../../external-integrations/llm/llm.service';
@@ -692,8 +693,25 @@ export class EntityResolutionService implements OnModuleInit {
   }
 
   /**
-   * Tier 2: Alias matching using optimized array operations
-   * Single query: WHERE aliases && ARRAY[...] AND type = $entityType
+   * TIER 2 — SURFACE MATCHING. A mention grounds at confidence 0.95 when it
+   * equals a form some pass has banked on an entity.
+   *
+   * FOLD-SYMMETRIC (§11 item 4 / I-2, 2026-08-09). This used to be
+   * `aliases: { hasSome: [...] }` — a Postgres array overlap, which is BYTE
+   * equality. So "santo taco" typed in a review did not match the banked
+   * surface "Santo Taco", "despana" did not match "Despaña", and the tier's
+   * recall depended on the casing accident of whichever pass banked the form
+   * first. The read is now `form_folded = ANY(canonicalFold(...))`: the SAME
+   * fold on both sides, written by the one app function that owns it, so case,
+   * accents and possessives stop deciding whether a mention grounds. Verified
+   * on the live corpus by scripts/search-harness/entity-resolution-gate.ts —
+   * ten fixtures flipped from unmatched to correctly grounded, zero near-miss
+   * fixtures loosened (the fold is equality, never fuzz).
+   *
+   * SCOPE: the und/active/non-display recall slice (see recallFormsSql for why
+   * each predicate is load-bearing). That is exactly the set the retired
+   * `aliases[]` projection contained, so the widening here is the FOLD and
+   * nothing else.
    */
   private async performAliasMatches(
     entities: EntityResolutionInput[],
@@ -721,25 +739,55 @@ export class EntityResolutionService implements OnModuleInit {
       }));
     }
 
-    try {
-      // Optimized alias matching query (archived excluded — same contract as
-      // the exact tier: only live entities are matchable).
-      const whereClause: Prisma.EntityWhereInput = {
-        type: entityType,
-        status: { not: EntityStatus.archived },
-        aliases: {
-          hasSome: allAliases,
-        },
-      };
+    // Fold BOTH sides with the one implementation (the fold law): the probe
+    // set here, `form_folded` in the table.
+    const foldedProbes = Array.from(
+      new Set(allAliases.map((alias) => canonicalFold(alias)).filter(Boolean)),
+    );
+    if (foldedProbes.length === 0) {
+      return entities.map((entity) => ({
+        tempId: entity.tempId,
+        entityId: null,
+        confidence: 0.0,
+        resolutionTier: 'unmatched' as const,
+        originalInput: entity,
+      }));
+    }
 
-      const matchedEntities = await this.prisma.entity.findMany({
-        where: whereClause,
-        select: {
-          entityId: true,
-          name: true,
-          aliases: true,
-        },
-      });
+    try {
+      // Archived excluded — same contract as the exact tier: only live
+      // entities are matchable. One round trip: the matching entities AND
+      // every recall form they carry, so the in-memory ranking below never
+      // needs a second query.
+      // Prisma.sql, not a bare tagged template: `RECALL_SURFACE_SCOPE_SQL` is
+      // a SQL FRAGMENT, and $queryRaw's own template turns every
+      // interpolation into a bind parameter — the fragment would arrive as a
+      // parameter object instead of a predicate.
+      const surfaceRows = await this.prisma.$queryRaw<
+        Array<{ entity_id: string; name: string; forms: string[] }>
+      >(Prisma.sql`
+        SELECT e.entity_id, e.name,
+               array_agg(s.form) AS forms
+          FROM core_entities e
+          JOIN entity_surface s ON s.entity_id = e.entity_id
+         WHERE e.type = ${entityType}::entity_type
+           AND e.status <> 'archived'::entity_status
+           AND ${RECALL_SURFACE_SCOPE_SQL}
+           AND EXISTS (
+             SELECT 1 FROM entity_surface m
+              WHERE m.entity_id = e.entity_id
+                AND m.status = 'active'
+                AND m.locale = 'und'
+                AND m.role <> 'display'
+                AND m.form_folded = ANY(${foldedProbes}::text[])
+           )
+         GROUP BY e.entity_id, e.name`);
+
+      const matchedEntities = surfaceRows.map((row) => ({
+        entityId: row.entity_id,
+        name: row.name,
+        aliases: row.forms ?? [],
+      }));
 
       return entities.map((entity) => {
         const matchedEntity = this.selectBestAliasMatch(
@@ -757,7 +805,7 @@ export class EntityResolutionService implements OnModuleInit {
         };
       });
     } catch (error) {
-      this.logger.error('Alias match query failed', {
+      this.logger.error('Surface match query failed', {
         error: error instanceof Error ? error.message : String(error),
         entityType,
         engineId: engineId ?? undefined,
@@ -828,12 +876,18 @@ export class EntityResolutionService implements OnModuleInit {
       new Set(recalls.flatMap((r) => r.candidates.map((c) => c.entityId))),
     );
     const aliasRows = candidateIds.length
-      ? await this.prisma.entity.findMany({
-          where: { entityId: { in: candidateIds } },
-          select: { entityId: true, aliases: true },
-        })
+      ? await this.prisma.$queryRaw<
+          Array<{ entity_id: string; forms: string[] }>
+        >(Prisma.sql`
+          SELECT s.entity_id, array_agg(s.form) AS forms
+            FROM entity_surface s
+           WHERE s.entity_id = ANY(${candidateIds}::uuid[])
+             AND ${RECALL_SURFACE_SCOPE_SQL}
+           GROUP BY s.entity_id`)
       : [];
-    const aliasesById = new Map(aliasRows.map((r) => [r.entityId, r.aliases]));
+    const aliasesById = new Map(
+      aliasRows.map((r) => [r.entity_id, r.forms ?? []]),
+    );
 
     // Batched judge: ~10 (term, shortlist) items per request, items delimited
     // per-index, each failing closed to 'new' independently. Cuts request count
@@ -1057,8 +1111,15 @@ export class EntityResolutionService implements OnModuleInit {
     return right.entity.name.length - left.entity.name.length;
   }
 
+  /**
+   * The in-memory half of the surface comparison. It MUST be the same fold the
+   * SQL arm used, or it would undo the tier's own match: a lowercase-only
+   * normalizer accepts "joes shanghai" against "Joes Shanghai" but rejects
+   * "despana" against "Despaña", so the DB would hand up a row that this
+   * function then silently discarded.
+   */
   private normalizeAliasValue(value: string): string {
-    return value.toLowerCase().trim();
+    return canonicalFold(value);
   }
 
   /**

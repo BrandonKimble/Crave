@@ -1,6 +1,6 @@
 import { PrismaClient } from '@prisma/client';
 import { randomUUID } from 'crypto';
-import { addSurfaces, projectAliases } from './entity-surface.service';
+import { addSurfaces } from './entity-surface.service';
 import { identityInsertData } from './entity-identity';
 
 /**
@@ -8,9 +8,11 @@ import { identityInsertData } from './entity-identity';
  * against a real database — both were added because a measured run produced a
  * real defect, so both must be able to show RED.
  *
- * P0-a: only `und` rows enter `core_entities.aliases[]`, the unlocalized hub
- *       that feeds the lexical recall core, the embedding doc and the typo
- *       dictionary.
+ * P0-a: only `und` rows enter THE RECALL SLICE — the untagged set every arm
+ *       that takes no locale reads (the resolver's surface tier, the typo
+ *       dictionary, the ingredient twin probe). Asserted directly against
+ *       that slice now: `core_entities.aliases[]`, the derived projection
+ *       this used to read, was retired (§11 item 4 / I-2).
  * P0-b: an INFERRED alias form that already names another entity (or is
  *       another entity's active alias) is refused. Observed surfaces are
  *       exempt — 7.8% of real alias rows legitimately collide.
@@ -48,7 +50,7 @@ describe('alias ingress guards — proven against a live database', () => {
     await prisma.$disconnect();
   });
 
-  it('P0-a: a locale-TAGGED alias is stored as a row but stays OUT of the array', async () => {
+  it('P0-a: a locale-TAGGED surface is stored as a row but stays OUT of the untagged recall slice', async () => {
     const id = await mintFood(`zzq guard dish ${randomUUID().slice(0, 8)}`);
     await prisma.$transaction(async (tx) => {
       await addSurfaces(tx, id, [
@@ -69,13 +71,17 @@ describe('alias ingress guards — proven against a live database', () => {
       'zzq-untagged-surface',
     ]);
 
-    const [entity] = await prisma.$queryRawUnsafe<Array<{ aliases: string[] }>>(
-      `SELECT aliases FROM core_entities WHERE entity_id = $1::uuid`,
+    // ...but only the untagged one is in the RECALL SLICE the locale-blind
+    // arms read (und + active + role<>'display').
+    const recall = await prisma.$queryRawUnsafe<Array<{ form: string }>>(
+      `SELECT form FROM entity_surface
+        WHERE entity_id = $1::uuid
+          AND status = 'active' AND locale = 'und' AND role <> 'display'`,
       id,
     );
-    // ...but only the untagged one is in the unlocalized projection.
-    expect(entity.aliases).toContain('zzq-untagged-surface');
-    expect(entity.aliases).not.toContain('zzq-tagged-surface');
+    const recallForms = recall.map((r) => r.form);
+    expect(recallForms).toContain('zzq-untagged-surface');
+    expect(recallForms).not.toContain('zzq-tagged-surface');
   });
 
   it('P0-b: an INFERRED form that already names another entity is refused', async () => {
@@ -122,13 +128,22 @@ describe('alias ingress guards — proven against a live database', () => {
     expect(forms.map((f) => f.form)).toContain(occupied);
   });
 
-  it('projectAliases stays idempotent under the und filter', async () => {
+  it('re-offering an existing form is a no-op, not a duplicate row', async () => {
+    // The idempotence that used to be asserted about the derived array is a
+    // property of the ROWS: (entity, locale, form) is unique, so a second
+    // offer of the same form changes nothing. This is what let the enrichment
+    // and knowledge passes stop hand-deduping against a loaded array.
     const id = await mintFood(`zzq idem dish ${randomUUID().slice(0, 8)}`);
     await prisma.$transaction(async (tx) => {
       await addSurfaces(tx, id, [{ form: 'zzq-idem-a', source: 'extraction' }]);
     });
-    const first = await prisma.$transaction((tx) => projectAliases(tx, id));
-    const second = await prisma.$transaction((tx) => projectAliases(tx, id));
-    expect(second).toEqual(first);
+    await prisma.$transaction(async (tx) => {
+      await addSurfaces(tx, id, [{ form: 'zzq-idem-a', source: 'extraction' }]);
+    });
+    const rows = await prisma.$queryRawUnsafe<Array<{ form: string }>>(
+      `SELECT form FROM entity_surface WHERE entity_id = $1::uuid`,
+      id,
+    );
+    expect(rows.map((r) => r.form)).toEqual(['zzq-idem-a']);
   });
 });

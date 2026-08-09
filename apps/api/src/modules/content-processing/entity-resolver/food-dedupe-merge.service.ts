@@ -381,7 +381,7 @@ export class FoodDedupeMergeService {
   }
 
   /** Full merge: pick winner by evidence, fold connections, bank the loser's
-   *  name+aliases on the winner, archive the loser. */
+   *  name+surfaces on the winner, archive the loser. */
   private async mergeFoodPair(idA: string, idB: string): Promise<void> {
     if (idA === idB) {
       return; // self-merge annihilates the ledger (round-11 D1)
@@ -393,11 +393,11 @@ export class FoodDedupeMergeService {
     const [entityA, entityB] = await Promise.all([
       this.prisma.entity.findUniqueOrThrow({
         where: { entityId: idA },
-        select: { entityId: true, name: true, aliases: true },
+        select: { entityId: true, name: true },
       }),
       this.prisma.entity.findUniqueOrThrow({
         where: { entityId: idB },
-        select: { entityId: true, name: true, aliases: true },
+        select: { entityId: true, name: true },
       }),
     ]);
     const aWins =

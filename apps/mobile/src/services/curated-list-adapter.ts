@@ -49,7 +49,6 @@ const mapCuratedItemToRestaurantResult = (item: CuratedListDetailItem): Restaura
   // Restaurant-type curated items: entityId IS the restaurant id (restaurantId null).
   restaurantId: item.restaurantId ?? item.entityId,
   restaurantName: item.label,
-  restaurantAliases: [],
   rank: item.rank,
   scoreSubjectType: 'restaurant',
   scoreSubjectId: item.restaurantId ?? item.entityId,
@@ -72,10 +71,8 @@ const mapCuratedItemToFoodResult = (
   connectionId: item.connectionId,
   foodId: item.entityId,
   foodName: item.label,
-  foodAliases: [],
   restaurantId: item.restaurantId ?? '',
   restaurantName: item.subLabel ?? '',
-  restaurantAliases: [],
   scoreSubjectType: 'connection',
   scoreSubjectId: item.connectionId,
   // Non-null by the honesty filter at the call site (score-less rows are

@@ -50,9 +50,15 @@ async function main(): Promise<void> {
     const entityRows = await prisma.$queryRawUnsafe<
       { name: string; aliases: string[] }[]
     >(
-      `SELECT name, COALESCE(aliases, '{}') AS aliases
-       FROM core_entities
-       WHERE status = 'active' AND name_embedding IS NOT NULL`,
+      `SELECT e.name,
+              COALESCE((SELECT array_agg(s.form)
+                          FROM entity_surface s
+                         WHERE s.entity_id = e.entity_id
+                           AND s.status = 'active'
+                           AND s.locale = 'und'
+                           AND s.role <> 'display'), '{}') AS aliases
+       FROM core_entities e
+       WHERE e.status = 'active' AND e.name_embedding IS NOT NULL`,
     );
     // Phase C: search history lives on the signals ledger (kind='search',
     // subject_text = the normalized query term).

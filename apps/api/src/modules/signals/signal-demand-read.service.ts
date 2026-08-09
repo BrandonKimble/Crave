@@ -731,7 +731,19 @@ export class SignalDemandReadService {
       SELECT
         e.entity_id AS restaurant_id,
         e.name,
-        e.aliases,
+        -- The entity's RECALL SURFACES (und/active/non-display), read from
+        -- entity_surface rather than the retired core_entities.aliases[]
+        -- projection. Purely a client-side placeholder-filter input here:
+        -- admission above is the NAME prefix, so this widens what the
+        -- suggestion row can be typed-through, nothing more.
+        COALESCE((
+          SELECT array_agg(sf.form)
+            FROM entity_surface sf
+           WHERE sf.entity_id = e.entity_id
+             AND sf.status = 'active'
+             AND sf.locale = 'und'
+             AND sf.role <> 'display'
+        ), ARRAY[]::varchar[]) AS aliases,
         MAX(s.occurred_at) AS last_viewed_at
       FROM signals s
       ${redirectJoinSql('s')}
@@ -742,7 +754,7 @@ export class SignalDemandReadService {
         AND s.kind = 'entity_view'
         AND s.subject_id IS NOT NULL
         AND e.name ILIKE ${`${this.escapeLike(normalizedPrefix)}%`}
-      GROUP BY e.entity_id, e.name, e.aliases
+      GROUP BY e.entity_id, e.name
       ORDER BY last_viewed_at DESC
       LIMIT ${Math.max(1, limit)}
     `;

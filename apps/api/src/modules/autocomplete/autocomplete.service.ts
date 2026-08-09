@@ -38,10 +38,10 @@ import { DEFAULT_LOCALE } from '../../shared/locale';
  *  lists): restaurant saves vs dish saves (connection → food entity). */
 interface UserListItemMatchRow {
   restaurantId: string | null;
-  restaurant: { name: string; aliases: string[] } | null;
+  restaurant: { name: string } | null;
   connection: {
     foodId: string;
-    food: { name: string; aliases: string[] };
+    food: { name: string };
   } | null;
 }
 
@@ -556,11 +556,11 @@ export class AutocompleteService {
           },
           select: {
             restaurantId: true,
-            restaurant: { select: { name: true, aliases: true } },
+            restaurant: { select: { name: true } },
             connection: {
               select: {
                 foodId: true,
-                food: { select: { name: true, aliases: true } },
+                food: { select: { name: true } },
               },
             },
           },
@@ -587,6 +587,15 @@ export class AutocompleteService {
     const prefixMatches = (name: string | undefined): boolean =>
       Boolean(name?.toLowerCase().startsWith(normalizedQuery.toLowerCase()));
 
+    // `aliases` on a favorite row is left EMPTY, and that is not a loss.
+    // Admission in this lane is `prefixMatches(name)` — the surfaces never
+    // decided whether a favorite appears — and the field's only consumer is
+    // the client's placeholder filter, which keeps a row visible while a
+    // fresh response lands. Carrying the recall surfaces here would mean one
+    // extra query per keystroke to widen a filter over at most 20 rows the
+    // user already saved by name. The recall-surface path that DOES matter
+    // (typing a surface and finding the entity at all) is the gazetteer lane
+    // above, which reads entity_surface with a locale chain.
     const favoritesById = new Map<string, AutocompleteMatchDto>();
     for (const row of favoriteRows) {
       if (
@@ -600,7 +609,7 @@ export class AutocompleteService {
           entityType: EntityType.restaurant,
           name: row.restaurant.name,
           confidence: 0.65,
-          aliases: row.restaurant.aliases ?? [],
+          aliases: [],
           matchType: 'entity',
           badges: { favorite: true },
         });
@@ -615,7 +624,7 @@ export class AutocompleteService {
           entityType: EntityType.food,
           name: row.connection.food.name,
           confidence: 0.65,
-          aliases: row.connection.food.aliases ?? [],
+          aliases: [],
           matchType: 'entity',
           badges: { favorite: true },
         });

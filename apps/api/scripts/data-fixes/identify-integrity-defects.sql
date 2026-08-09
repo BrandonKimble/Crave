@@ -63,15 +63,17 @@ ORDER BY sim DESC, a.name;
 -- REMOVES the ambiguous alias from every entity that carries it (an alias that
 -- points at multiple entities carries no disambiguating value and defeats
 -- alias-exact recall); canonical names are untouched.
-SELECT lower(trim(al))                                         AS alias,
-       type::text                                              AS type,
-       COUNT(DISTINCT entity_id)::int                          AS n_entities,
-       string_agg(DISTINCT name, ' | ' ORDER BY name)         AS entity_names,
-       string_agg(DISTINCT entity_id::text, ', ')             AS entity_ids
-FROM core_entities, unnest(aliases) AS al
-WHERE status = 'active'
-GROUP BY lower(trim(al)), type
-HAVING COUNT(DISTINCT entity_id) > 1
+SELECT lower(trim(s.form))                                     AS alias,
+       e.type::text                                            AS type,
+       COUNT(DISTINCT e.entity_id)::int                        AS n_entities,
+       string_agg(DISTINCT e.name, ' | ' ORDER BY e.name)      AS entity_names,
+       string_agg(DISTINCT e.entity_id::text, ', ')            AS entity_ids
+FROM core_entities e
+JOIN entity_surface s ON s.entity_id = e.entity_id
+ AND s.status = 'active' AND s.locale = 'und' AND s.role <> 'display'
+WHERE e.status = 'active'
+GROUP BY lower(trim(s.form)), e.type
+HAVING COUNT(DISTINCT e.entity_id) > 1
 ORDER BY n_entities DESC, alias;
 
 \echo ''

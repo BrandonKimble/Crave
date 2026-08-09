@@ -37,7 +37,6 @@ export const resolveProfilePreviewPresentationPlan = ({
     seededRestaurant: {
       restaurantId,
       restaurantName: trimmedName,
-      restaurantAliases: [],
       scoreSubjectType: 'restaurant',
       scoreSubjectId: restaurantId,
       craveScore: null,
