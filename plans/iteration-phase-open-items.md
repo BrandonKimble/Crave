@@ -9,9 +9,32 @@ it."
 
 ---
 
+## A0. STANDING LAW for everything below (owner, 2026-08-09 evening)
+
+Every piece of this — new and old — gets RED TEAMED before it counts as
+done: best approaches, abstractions, primitives, patterns, models proven,
+not assumed; nothing built on foundations that aren't ideal yet. The
+from-scratch mentality applies at every layer. A section leaves this file
+only after (a) implementation, (b) verification gates, AND (c) an
+adversarial pass that tried to refute it.
+
 ## A. Awaiting an OWNER DECISION (blocked on a word from him)
 
+0. **STEP-1 LOCK (grounding), proposed 2026-08-09 evening — awaiting yes**:
+   compound-only grounding; food-PARTS DIE entirely (measured: siblings
+   beat parts even on mexican breakfast — chilaquiles/huevos rancheros vs
+   the breakfast×mexican flood); attribute parts survive as CONSTRAINTS
+   (vegan/spicy wire dietary/attribute machinery, never fill); parts are
+   PRIMARY only when no compound grounds at all. On lock: entry #1 of a
+   new locked-decisions section here, then implementation.
 1. **The admission ladder** (the al-pastor discovery, the big one).
+   UPDATE post-eval: band 2 = DENSE ∪ JUDGED-COUSINS MINUS JUDGED REJECTS,
+   decided by measurement (7fc655383: union 20/20 coverage vs 17-18 alone,
+   precision ~0.99 everywhere; per-anchor artifact published). Band 3
+   (parts) likely DELETED per the step-1 lock above. PROVEN LIVE BUG to
+   fix with the ladder: judged rejects are NOT subtracted from today's
+   ring — chicken's top similar result is judge-rejected 'poultry';
+   318 rejected pairs survive the serving cut corpus-wide.
    Proposed and pending ratification: page fills down
    `exact + name-variants/satisfies → dense siblings (K25/R20/.75, the
    perfected cut) → decomposed-part categories → judged cousins`,
@@ -45,19 +68,31 @@ it."
 
 ## B. IN FLIGHT (agent running or committed-but-unverified)
 
-6. **Collection-locale spine, steps 3–7** (agent running, local only):
-   keyword fold-vs-outbound split (+ locale-keyed generic tokens); source
-   `language` column riding to extraction + addSurfaces; ingestion
-   resolution on the locale chain (camarones must resolve at ingestion);
-   demand-vocabulary per-term locale; **the 701-entity fork repair**
-   (dry-run report → local apply through merge machinery).
-   Steps 1–2 landed: 81c0d2751 (detector), adf03754c (asks carry locale).
+6. **Collection-locale spine** — steps 1-4 LANDED (81c0d2751, adf03754c,
+   4caa12375 keyword split, 5c7ee2e72 source language; d6031242c guards,
+   bb8357b82 corpus baselines). Steps 5-6 IN FLIGHT (locale-chain
+   ingestion read+write flipped together + per-term demand locale;
+   step-4 hazard is a gate fixture). Step 7 fork repair CANCELLED on
+   re-measurement: zero true duplicates on the prod mirror — the 929
+   flagged pairs are legitimate food↔ingredient twins and real aliases.
+   Verification owed when 5-6 land: the enumerated resolution before/after
+   diff (blast radius), and step 6's null-detection fallback must be an
+   honest 'und', never a guess.
 
 ## C. READY TO BUILD (ratified or unambiguous, not started)
 
 7. **Implement the admission ladder** the moment A1 is ratified (includes
    moving part-categories out of tier 0 + demo probe re-run on
    'tacos al pastor', gates, guard spec).
+7b. **Listwise neighborhood curation bench** (owner-suggested upgrade
+   path): same dense feeder, but ONE LLM call grades the whole ~20-candidate
+   neighborhood 0-10 through the searcher lens (real model, not flash-lite
+   pairwise binary). Bench on the same 20 anchors vs the union before any
+   corpus-wide commitment. The judge looked weak in the eval because we
+   asked a binary question pairwise on a cheap model — this is the fix
+   candidate.
+7c. **Cousin-verdict grading rederivation** (subsumed by 7b if it wins):
+   binary cousin has no closeness grade, so judged-only output can't rank.
 8. **Prompt rederivations, remaining ranked queue** (doctrine: mental-model
    first, ordered for the thought process, no non-exhaustive lists; judge v3
    + vocabulary v5 are the quality bar):
@@ -76,6 +111,25 @@ it."
     Stored-side surfaces >4 tokens for CJK await surface_token store.
 11. **vi gold notes**: hg-11 (nem) parked on generator head-noun gap (see
     9); un-park when banked.
+
+## C2. CORPUS CURATION GAP (discovered via the DB restore, 2026-08-09)
+
+The wiped local corpus carried weeks of data curation the prod corpus
+never received. Measured on the prod mirror: es gate 88.7 (was 98.7),
+vi 90.2 (was 98.8), HARD homograph gate RED in both languages (chile→
+pepper collapses the country ambiguity; giá/mì/bún collapse), resolution
+48/49, flow 16/18. This gap is REAL LAUNCH WORK: the curation recipes
+(merges, junk sweeps, homograph guards) must be re-derived as repeatable
+passes and run against the launch corpus — hand-curation that lives only
+in a dead local DB is not a mechanism. Ties into re-extraction (A4).
+
+## C3. THE SYNERGY CAPSTONE (build after spine + extraction-prompt land)
+
+One end-to-end proof: a Spanish post pushed through collect → extract →
+resolve → bank → search finds it — as a GATE, so "multilingual synergy"
+is a checked property, not a claim. Remaining seams it will catch:
+extraction prompt language handling (A4/queue), judge cross-locale
+evidence sampling (unruled), CJK stored-side surfaces (zh rollout).
 
 ## D. PRE-LAUNCH SHIP CHECKLIST (when owner declares ideal shape reached)
 
