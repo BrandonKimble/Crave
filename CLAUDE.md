@@ -412,3 +412,11 @@ reasoning — including open disagreement when his instinct seems off (he explic
 being told what he's missing); ending decisions with a clean "your call" and a fast path
 ("take all my recommendations"); wiring built things to visible surfaces (a real Settings
 button over hidden logic) so he and future agents have an entry point to reason from.
+
+## Memory: $queryRaw composition trap (2026-08-09, sibling of the backtick trap)
+
+`prisma.$queryRaw\`... ${fragment} ...\`` treats an interpolated `Prisma.Sql`
+FRAGMENT as a BIND PARAMETER (a value), silently producing wrong SQL. To
+compose fragments, call the function form: `prisma.$queryRaw(Prisma.sql\`...\`)`.
+tsc does NOT catch it; only a runtime test does. Same family as the
+backtick-ends-the-template trap above.
