@@ -420,3 +420,15 @@ FRAGMENT as a BIND PARAMETER (a value), silently producing wrong SQL. To
 compose fragments, call the function form: `prisma.$queryRaw(Prisma.sql\`...\`)`.
 tsc does NOT catch it; only a runtime test does. Same family as the
 backtick-ends-the-template trap above.
+
+## Memory: `prisma migrate dev` WIPED the local DB (2026-08-09, data-loss event)
+
+An agent working on a migration crashed mid-flight; the local corpus was
+found EMPTY (core_entities 0). `prisma migrate dev` on a DRIFTED schema
+offers a reset — and in non-interactive/agent contexts that reset RUNS,
+silently deleting every row. RULE: agents and scripts use
+`prisma migrate deploy` (never `dev`) unless a human is at the keyboard;
+author migrations with `migrate dev --create-only` + hand-review; any
+brief that includes "apply the migration" must say `deploy`. Recovery =
+`scripts/rig/refresh-local-db-from-prod.sh` (+ boot self-heal rebuilds
+the derived tables).
