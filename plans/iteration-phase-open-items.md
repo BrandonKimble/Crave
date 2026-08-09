@@ -68,16 +68,22 @@ adversarial pass that tried to refute it.
 
 ## B. IN FLIGHT (agent running or committed-but-unverified)
 
-6. **Collection-locale spine** — steps 1-4 LANDED (81c0d2751, adf03754c,
-   4caa12375 keyword split, 5c7ee2e72 source language; d6031242c guards,
-   bb8357b82 corpus baselines). Steps 5-6 IN FLIGHT (locale-chain
-   ingestion read+write flipped together + per-term demand locale;
-   step-4 hazard is a gate fixture). Step 7 fork repair CANCELLED on
-   re-measurement: zero true duplicates on the prod mirror — the 929
-   flagged pairs are legitimate food↔ingredient twins and real aliases.
-   Verification owed when 5-6 land: the enumerated resolution before/after
-   diff (blast radius), and step 6's null-detection fallback must be an
-   honest 'und', never a guess.
+6. **Collection-locale spine — COMPLETE 2026-08-09** (verified 57/58
+   resolution gate personally): 81c0d2751, adf03754c, 4caa12375, 5c7ee2e72,
+   4d839ef3c (locale-chain read+write, camarones-resolves-at-ingestion
+   proven with controls), cdf4d6aae (per-term demand locale; --locale flag
+   deleted; undecidable→und honest fallback confirmed). Fork repair
+   cancelled on re-measurement (zero true duplicates). Awaits its A0
+   red-team pass. NEW FINDINGS from the work, unfixed: (a) the addSurfaces
+   collision-guard probe is locale-blind (an es claim refusable by an
+   unrelated vi form — claim key arguably wants the locale chain); (b) no
+   es/vi generic keyword vocabulary authored (a Spanish ask still ships
+   'mejores' — conservative, but budget-wasting at scale).
+
+6b. **Conjunction loss (grounding gap, found in the lock battery)**:
+   'birria tacos and margaritas' loses the margaritas entirely — multi-item
+   asks keep only the first item. Needs its own design: parallel asks per
+   conjunct. Independent of the step-1 lock.
 
 ## C. READY TO BUILD (ratified or unambiguous, not started)
 
