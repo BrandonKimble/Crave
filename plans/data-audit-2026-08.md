@@ -1852,3 +1852,32 @@ RESULT, side by side on the corrected estimator:
   BOTH CITIES  89,901 docs  TOTAL $108.41  envelope $135.52
   (previous both-cities quote: $237.15 — the delta was dead pre-taxonomy
    traffic + foreign crons in the umbrella, not real campaign cost)
+
+## V7 SHADOW DIFF TRIAGE (2026-08-10, campaign 5edeea3c)
+
+Replay: 125/125 runs, 87,677 docs, 0 failures; actual $30.44 vs $108.41
+quote (-73% — gate line never re-fires on replay, resolution far under the
+30d window rate). Junk-class kill CONFIRMED: 4 stragglers in 2,514 new
+foods ('3/4 course menu', 'lunch special', 'lunch tasting menu', 'wagyu
+tasting menu' — kill at GC); 'buffet' correctly a venue attribute.
+
+Triage:
+- AUTO: 23 normalized-name restaurant twins merged into anchors
+  (scripts/reextract-merge-twins.ts, RestaurantEntityMergeService).
+  'bo ne' (bò né) vs 'bone' EXCLUDED — tone-mark-fold collision class.
+- AGENT-REVIEW: fuzzy band (brand shortenings 'Chipotle Mexican Grill' vs
+  'Chipotle') deferred to post-activation grounding + evidence-hierarchy
+  sweep — stronger than name-only judgment. NOTE: anchor-audit cos_distance
+  0.0000 rows include lexically different names (missing-embedding
+  artifact?) — distance column untrustworthy at 0, ledger item.
+- OWNER-DECISION (pending): 258 anchored lost-support = 55 rename-twins
+  (self-heal via grounding merge) + 203 genuine drops. Sampled drops are
+  MOSTLY correct junk-class rejections (logistics/award/promo/out-of-metro
+  lists) with a real-loss minority (bare name-drop answers e.g. "Adrienne's
+  in FiDi").
+
+Tooling findings this phase: #5 LOST SUPPORT includes entities whose docs
+were never shadowed (artifact rows possible in other runs — here all 258
+were real-shadowed); #6 activation coverage denominator counts docs with NO
+active run (gate-rejected/backlog: 2,224 of the 2,258 gap) — 97.5% floor
+failure is really 99.96% of replayable docs.
