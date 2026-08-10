@@ -33,6 +33,33 @@ L1. **GROUNDING = COMPOUND ONLY (locked 2026-08-09 evening).** The longest
     re-run the 24-query battery + all gates as the proof, guard spec
     (a decomposed food part reaching the ask set = RED).
 
+L2. **ENGLISH JOINS THE VOCABULARY SWEEP (locked 2026-08-09 night).** The
+    sweep has only ever been asked about es/vi; English surfaces come solely
+    from observation (Reddit text), which is why 'chicken over rice' was
+    missing while 'cơm gà' existed. en becomes a first-class sweep locale —
+    same v5 generator, judge, ledger. Runs as part of the language wave.
+
+L3. **COVER-LINKER (locked 2026-08-10, owner delegated).** Whole-query span
+    selection: maximize covered tokens; among max-coverage readings the
+    tie-break IS today's greedy preference — byte-identical wherever greedy
+    already achieves full coverage (identity property = the regression
+    spec). Recovers vi strand cases (bánh mì burger thực vật 3/5→5/5) and
+    is zh's structural prerequisite (川味牛肉面 class). IMPLEMENTING NOW
+    (pre-wave, per owner go 2026-08-10) — agent in flight.
+
+## SEQUENCE IN FORCE (owner-ratified 2026-08-10)
+
+① 📌04 session runs the FULL RE-EXTRACTION under its rederived prompt
+   (coordination message sent; they drive, we verify: junk classes dead,
+   restaurants untouched, gates at-or-above) ∥ cover-linker lands here.
+② LANGUAGE WAVE on the clean corpus: en (L2), es tail, vi refresh, zh
+   (needs cover-linker + Han edit-budget-0), ko — each vi-style: sweep →
+   gold corpus (INTENT-ONLY assertions, never pin decomposed parts — L1
+   lands later) → flow-gate block. Re-baseline all gates after.
+③ Resume step-by-step flow locks at STEP 2 (admission ladder) with fully
+   representative data; L1 implements with it.
+④ The full cross-app multilingual synergy red team as capstone (C3).
+
 ## A. Awaiting an OWNER DECISION (blocked on a word from him)
 
 1. **The admission ladder** (the al-pastor discovery, the big one).
