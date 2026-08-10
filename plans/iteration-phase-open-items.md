@@ -49,9 +49,25 @@ L3. **COVER-LINKER (locked 2026-08-10, owner delegated).** Whole-query span
 
 ## SEQUENCE IN FORCE (owner-ratified 2026-08-10)
 
-① 📌04 session runs the FULL RE-EXTRACTION under its rederived prompt
-   (coordination message sent; they drive, we verify: junk classes dead,
-   restaurants untouched, gates at-or-above) ∥ cover-linker lands here.
+① 📌04 re-extraction: v7 SHADOW RAN CLEAN ($30.44 actual) but DOES NOT
+   ACTIVATE — the owner's exhaustive audit (4 reviewers, all 442 mentions)
+   overturned the 12-doc sample: 161/258 anchored losses are REAL, and
+   full-corpus 1,627 entities would lose all evidence. THE MISSED CLASS:
+   short recommendation testimony (bare name-drop answers, additive list
+   answers, brief praise). v8 rederivation next (loss examples pinned as
+   gold; gold-set composition bias — long-form-only — to be fixed);
+   re-shadow ≈$30/run. Corpus stays v1-active, hands-off. The shadow
+   choreography DID ITS JOB: systematic recall regression caught before
+   activation, zero user impact. Evidence: logs/v7-lost-anchor-evidence
+   .jsonl, plans/data-audit-2026-08.md (9648c86a7).
+   META-LESSONS, both lanes: (a) SAMPLES LIE — a 12-doc sample said
+   "mostly correct"; the exhaustive read said 62% real losses. Exhaustive
+   audits before destructive verdicts. (b) A gold set biased toward one
+   input mode (long-form) ships blind to the others — the same law as the
+   gold-corpus input-mode coverage rule. (c) My own concurrence
+   rubber-stamped the sample — independent takes must re-sample
+   independently, not re-read the same 12 docs.
+   Cover-linker landed here (7df2a1d2d). ∥
 ② LANGUAGE WAVE on the clean corpus: en (L2), es tail, vi refresh, zh
    (needs cover-linker + Han edit-budget-0), ko — each vi-style: sweep →
    gold corpus (INTENT-ONLY assertions, never pin decomposed parts — L1
