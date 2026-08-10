@@ -277,7 +277,11 @@ the venue's offering, but "tasting menu" predicts nothing about what arrives —
 there is NO dish and no `food_categories`; the mention is restaurant-only,
 the praise is holistic (`general_praise: true`), and the format may ride as a
 `restaurant_attributes` entry per Step D. (Formats that PASS prediction —
-omakase, dim sum — are dishes and go through Step C normally.)
+omakase, dim sum — are FOOD and go through Step C normally: they behave like
+"breakfast", a recognizable kind — usually a FAMILY with `is_menu_item:
+false`, becoming a specific item only where Step E's sameness test holds,
+e.g. "the omakase" at one sushi-ya is a single fixed offering, while dim sum
+is always many plates.)
 
 Drop generic filler outright ("food", "meal", "dish", "the food", "restaurant",
 "place", "spot") — it names nothing orderable and describes no property.
