@@ -1881,3 +1881,24 @@ were never shadowed (artifact rows possible in other runs — here all 258
 were real-shadowed); #6 activation coverage denominator counts docs with NO
 active run (gate-rejected/backlog: 2,224 of the 2,258 gap) — 97.5% floor
 failure is really 99.96% of replayable docs.
+
+## EXHAUSTIVE 258-ANCHOR AUDIT FLIPS THE ACTIVATION CALL (2026-08-10)
+
+Owner ordered an exhaustive re-read of every source doc behind the 258
+anchored lost-support entities (my 12-doc sample had said "mostly correct
+drops" — it was wrong). Four opus reviewers read all 442 mention docs
+against the v7 doctrine. VERDICT: 161 REAL LOSSES / 62 correct drops /
+27 ambiguous (mostly Hill-Country day-trip range) / 9 name-not-visible.
+Two losses re-verified personally against shadow raw_output ("Adrienne's
+in FiDi", "e noodle is good... great soup dumplings" — both absent from
+v7 output). THE MISSED CLASS: short recommendation answers — bare
+name-drops answering an ask, additive list answers ("Bar Snack & Paradise
+Lost as well"), and brief praise lines. Full corpus scale (uncapped diff):
+1,627 active entities lose ALL evidence under v7 (505 restaurants, 632
+foods, 233 ingredients, 168+89 attributes) — the anchored 258 were just
+the user-saved tip.
+
+RULING CONSEQUENCE: v7 does NOT activate. Rederive (v8) targeting the
+recall class, pin the loss examples as gold cases, re-shadow (~$30).
+The shadow choreography did exactly its job: caught a systematic recall
+regression before any user saw it.
