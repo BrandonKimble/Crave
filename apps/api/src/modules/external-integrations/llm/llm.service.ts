@@ -2918,6 +2918,19 @@ export class LLMService implements OnModuleInit, OnModuleDestroy {
     prompt: string,
     options: LLMGenerationOptions,
   ): Promise<LLMApiResponse> {
+    // AN UNTAGGED CALL IS UNREPRESENTABLE (owner ruling 2026-08-10, estimator
+    // ideal shape). The old dead-man default ('llm.callGeminiApi' + a warning)
+    // let 8,910 pre-taxonomy calls ride an umbrella rate that inflated the
+    // re-extraction quote ~3x — a warning nobody reads is not a guard. Every
+    // internal site is tagged and generateForCaller requires a caller, so the
+    // only way to reach this throw is a NEW call site forgetting its tag —
+    // which should fail its first test run, not mis-price a campaign.
+    if (!options.usageCaller?.trim()) {
+      throw new Error(
+        'callLLMApi requires options.usageCaller (§24 caller taxonomy): every ' +
+          'Gemini call must name its prompt class so spend is attributable.',
+      );
+    }
     // §24.1 Tier 3 catastrophe backstop (demoted from work governor, §24.4
     // item 2): when the gemini.monthlySpend pool (metered from ACTUAL
     // dollars at the usage-ledger chokepoint) is spent or vendor-poisoned,
@@ -3506,7 +3519,7 @@ export class LLMService implements OnModuleInit, OnModuleDestroy {
           // "spend on thrown-away output" was unanswerable.
           outcome:
             finishReason === FinishReason.MAX_TOKENS ? 'truncated' : 'ok',
-          caller: options.usageCaller ?? 'llm.callGeminiApi',
+          caller: options.usageCaller,
         });
         const tokenLimit =
           typeof requestConfigWithTimeout.maxOutputTokens === 'number' &&
@@ -3861,7 +3874,7 @@ export class LLMService implements OnModuleInit, OnModuleDestroy {
             mode: 'interactive',
             requestCount: 1,
             outcome: 'aborted',
-            caller: options.usageCaller ?? 'llm.callGeminiApi',
+            caller: options.usageCaller,
           });
         }
         if (retry && attempt < maxRetries) {

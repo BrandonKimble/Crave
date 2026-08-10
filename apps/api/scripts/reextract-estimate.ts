@@ -22,6 +22,7 @@ import { AppModule } from '../src/app.module';
 import { PrismaService } from '../src/prisma/prisma.service';
 import { SpendCampaignService } from '../src/modules/external-integrations/shared/spend-campaign.service';
 import { stopCronsForScript } from '../src/shared/utils/stop-crons';
+import { pricedGeminiRow } from '../src/modules/external-integrations/shared/gemini-pricing';
 
 function arg(name: string): string | undefined {
   const idx = process.argv.indexOf(`--${name}`);
@@ -96,10 +97,82 @@ async function main(): Promise<void> {
         return;
       }
     }
+    // THE CALL PLAN (owner ruling 2026-08-10): a re-extraction's quote is
+    // built from CAMPAIGN-ATTRIBUTABLE rates — the callers THIS campaign
+    // actually fires, priced from their own tagged ledger rows — never the
+    // trailing umbrella (which inherited dead pre-taxonomy traffic, foreign
+    // crons, and other lanes' untagged spend; first quote came out ~3x).
+    // Extraction/gate/embedding keep their published rates (already
+    // caller-scoped and batch-priced); only the interactive line is rebuilt.
+    const REPLAY_INTERACTIVE_CALLERS = [
+      'entity-resolution.match',
+      'entity-resolution.match_batch',
+      'attribute.place',
+      'attribute.canonicalize_name',
+      'aliases.claim_judge',
+    ];
+    const WINDOW_DAYS = 30;
+    const callerRows = await prisma.$queryRaw<
+      Array<{
+        caller: string;
+        model: string;
+        input_tokens: bigint;
+        output_tokens: bigint;
+        cached_tokens: bigint;
+        calls: bigint;
+      }>
+    >`
+      SELECT caller, model,
+             sum(input_tokens)  AS input_tokens,
+             sum(output_tokens) AS output_tokens,
+             sum(cached_tokens) AS cached_tokens,
+             count(*)           AS calls
+      FROM api_usage_ledger
+      WHERE service = 'gemini'
+        AND caller = ANY(${REPLAY_INTERACTIVE_CALLERS})
+        AND created_at > now() - make_interval(days => ${WINDOW_DAYS}::int)
+      GROUP BY caller, model`;
+    const [{ count: windowDocs }] = await prisma.$queryRaw<
+      Array<{ count: bigint }>
+    >`
+      SELECT count(*) AS count FROM collection_source_documents
+      WHERE collected_at > now() - make_interval(days => ${WINDOW_DAYS}::int)`;
+    let interactiveMicros = 0;
+    const perCaller = new Map<string, number>();
+    for (const row of callerRows) {
+      const micros = pricedGeminiRow({
+        model: row.model,
+        inputTokens: Number(row.input_tokens),
+        outputTokens: Number(row.output_tokens),
+        cachedTokens: Number(row.cached_tokens),
+      });
+      interactiveMicros += micros;
+      perCaller.set(row.caller, (perCaller.get(row.caller) ?? 0) + micros);
+    }
+    const windowDocCount = Number(windowDocs);
+    const interactivePerDocMicros =
+      windowDocCount > 0 ? interactiveMicros / windowDocCount : 0;
+    console.log(
+      `Call plan (interactive, per ${WINDOW_DAYS}d window of ${windowDocCount} docs):`,
+    );
+    for (const [caller, micros] of Array.from(perCaller.entries()).sort(
+      (a, b) => b[1] - a[1],
+    )) {
+      console.log(`  ${caller.padEnd(34)} $${(micros / 1e6).toFixed(2)}`);
+    }
+    if (windowDocCount === 0 || perCaller.size === 0) {
+      throw new Error(
+        'call plan has no measured window (no docs or no tagged caller rows) — refusing to quote from nothing',
+      );
+    }
+
     const estimate = await campaigns.prepareManifestEstimate({
       name,
       docCount,
       expectedNewRestaurants: 0,
+      perDocRateOverrides: {
+        'gemini.interactive_pipeline': interactivePerDocMicros,
+      },
     });
     console.log(`Campaign: ${estimate.campaignId} (${name})`);
     console.log(`Docs: ${docCount}`);

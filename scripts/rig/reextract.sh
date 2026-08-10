@@ -11,6 +11,7 @@
 #   diff      <communities> <version>          shadow-diff + anchor-audit → review file
 #   activate  <communities> <version>          flip pointers + rebuild + GC + audit
 #   rollback  <communities> <version>          flip BACK to the pre-activation runs (real: events retained)
+#   report    <campaignId>                     quote vs envelope vs metered vs ledger actual, per caller
 #   discard   <version>                        abandon a candidate (runs+events+claims deleted, prompt retired, GC)
 #   status                                     campaigns, shadow runs, lane health
 #
@@ -102,6 +103,10 @@ case "$VERB" in
     echo "Step 2/4 (after --execute): psql \$DB -f $API/scripts/reload/gc-unsupported-entities.sql   (then -v execute=1)"
     echo "Step 3/4: activate the prompt for LIVE collection: (cd $API && npx ts-node scripts/prompt-activate.ts $VERSION) + redeploy workers"
     echo "Step 4/4: ./scripts/rig/cost-reconcile.sh"
+    ;;
+  report)
+    CAMPAIGN="${1:?campaignId required}"
+    (cd "$API" && run_node scripts/reextract-report.ts "$CAMPAIGN")
     ;;
   status)
     psql "$(db_url)" -c "SELECT version, status, left(content_hash,12) hash, created_at::date, activated_at::date FROM llm_prompts WHERE kind='collection_system' ORDER BY version;"

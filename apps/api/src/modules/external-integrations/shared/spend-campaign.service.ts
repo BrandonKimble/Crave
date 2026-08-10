@@ -58,6 +58,17 @@ export interface PrepareManifestEstimateParams {
   /** Documents the campaign will collect/process — the single driver every
    *  manifest line derives from. */
   docCount: number;
+  /** CAMPAIGN-ATTRIBUTABLE per-doc rate overrides, in LEDGER micro-USD per
+   *  document, keyed by workClass (owner ruling 2026-08-10, estimator ideal
+   *  shape). The published default rates are trailing-window UMBRELLAS — the
+   *  interactive one inherits every untagged or foreign interactive call in
+   *  the window, which inflated the first re-extraction quote ~3x with dead
+   *  pre-taxonomy traffic and other lanes' crons. A campaign type that KNOWS
+   *  its call plan (which callers fire per doc) passes the caller-scoped
+   *  rates it measured; lines without an override keep the published rate.
+   *  Overrides are still billed-dollar grossed and still hashed — the owner
+   *  approves the same manifest shape either way. */
+  perDocRateOverrides?: Partial<Record<string, number>>;
   /** Optional curve-derived override for the Places line's expected NEW
    *  restaurants. The default (docCount × measured entities_per_kilodoc)
    *  blanket-applies an early-lifecycle ratio and badly overestimates large
@@ -468,11 +479,30 @@ export class SpendCampaignService {
         unitCount * microUsdPerUnit * multiplierFor(spec.workClass),
       ),
     });
+    const overridden = (
+      spec: { workClass: string; unit: string },
+      published: number,
+    ): number => params.perDocRateOverrides?.[spec.workClass] ?? published;
     const lines: ManifestEstimateLine[] = [
-      makeLine(MANIFEST_EXTRACTION, docCount, extractionRate),
-      makeLine(MANIFEST_GATE, docCount, gateRate),
-      makeLine(MANIFEST_INTERACTIVE, docCount, interactiveRate),
-      makeLine(MANIFEST_EMBEDDING, docCount, embeddingRate),
+      makeLine(
+        MANIFEST_EXTRACTION,
+        docCount,
+        overridden(MANIFEST_EXTRACTION, extractionRate),
+      ),
+      makeLine(MANIFEST_GATE, docCount, overridden(MANIFEST_GATE, gateRate)),
+      makeLine(
+        MANIFEST_INTERACTIVE,
+        docCount,
+        overridden(MANIFEST_INTERACTIVE, interactiveRate),
+      ),
+      makeLine(
+        MANIFEST_EMBEDDING,
+        docCount,
+        overridden(MANIFEST_EMBEDDING, embeddingRate),
+      ),
+      // The Places line is ALWAYS present, even at zero — the $118 lesson is
+      // that a missing line reads as a counted line (owner item 2,
+      // 2026-08-10). expectedNewRestaurants: 0 prices it explicitly.
       makeLine(MANIFEST_PLACES, expectedEntities, placesRate),
     ];
     const totalEstimateMicros = lines.reduce(

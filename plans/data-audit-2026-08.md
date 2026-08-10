@@ -1822,3 +1822,33 @@ CERTIFICATION (final text, 22 cases x 5 repeats): candidate 22 PASS /
 every negative control, and every recovered adjudication passes. The
 verdict "better in every way" is now EARNED rather than assumed: nothing
 remains that the old prompt did better.
+
+## ESTIMATOR TO IDEAL SHAPE (2026-08-10, owner-ruled before arming)
+
+Shipped in one pass, all mutation-relevant behavior test-covered by the
+existing suites (87 llm tests green):
+1. UNTAGGED CALLS UNREPRESENTABLE: callLLMApi now THROWS without
+   usageCaller (the dead-man default + warning let 8,910 pre-taxonomy calls
+   pollute the umbrella; a warning nobody reads is not a guard). Verified
+   first: ALL blur traffic is dated 07-11→07-25 and stops at the taxonomy
+   landing — zero untagged callers exist in current code, so the guard is
+   pure prevention, no hunt needed.
+2. CAMPAIGN-ATTRIBUTABLE QUOTES: prepareManifestEstimate accepts
+   perDocRateOverrides; the re-extract estimator builds its interactive
+   line from the CALL PLAN — the five callers a replay actually fires,
+   priced from their own tagged ledger rows over the trailing window and
+   printed per-caller above the manifest. Refuses to quote from an empty
+   window. Extraction/gate/embedding keep their published (already
+   caller-scoped, batch-priced) rates. Places line always printed, even at
+   zero ($118 class stays impossible).
+3. QUOTE-vs-ACTUAL AS DX: new `reextract.sh report <campaignId>` prints
+   quote / envelope / metered / ledger-actual / DELTA + per-caller
+   breakdown — the estimator's honesty is measured every campaign.
+4. PER-COMMUNITY SCOPING: exercised as a first-class parameter (austinfood
+   alone and 'all'-expansion both work through the designed path).
+
+RESULT, side by side on the corrected estimator:
+  AUSTIN-ONLY  39,802 docs  TOTAL $48.00   envelope $60.00
+  BOTH CITIES  89,901 docs  TOTAL $108.41  envelope $135.52
+  (previous both-cities quote: $237.15 — the delta was dead pre-taxonomy
+   traffic + foreign crons in the umbrella, not real campaign cost)
