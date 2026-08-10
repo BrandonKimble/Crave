@@ -170,6 +170,14 @@ L3. **COVER-LINKER (locked 2026-08-10, owner delegated).** Whole-query span
    'batch rail' trigger for THESE call sites; extraction + embeddings
    already batched.
 
+12d. **Worker boot must not drain spend-bearing queues it didn't budget**
+   (📌04 shakedown finding #4, 2026-08-10): first worker boot after the
+   mirror restore drained a fossil Redis backlog (~1,100 grounding/cuisine
+   jobs, ~880 Places calls ≈ $25 before killed; bounded, restart free via
+   replay dedupe). DISABLE_RESTAURANT_ENRICHMENT gates new scheduling but
+   NOT draining a foreign backlog. Ideal shape: boot inspects queues and
+   refuses/pauses spend-bearing drains that no active budget owns.
+
 ## C2. CORPUS CURATION GAP (discovered via the DB restore, 2026-08-09)
 
 The wiped local corpus carried weeks of data curation the prod corpus
