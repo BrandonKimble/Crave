@@ -1895,6 +1895,39 @@
       },
       "park": false,
       "notes": "TONE MARKS ARE PHONEMIC, AND THE CLAIM UNIT IS THE FORM. 'chảy' (runny/melted — what a searcher means by gooey cheese) and 'chay' (vegetarian) are DIFFERENT WORDS that share one de-diacritized recall fold. The pre-per-form judge heard them as one case and refused gooey's claim, leaving 'chảy' completely unresolved — a real word typed with its real accents returning nothing. That verdict was hand-reverted; it is now re-heard mechanically (the judge version stamps every verdict, and a bump re-opens it). This entry is the standing proof: accented 'chảy' reaches gooey, and never the dietary word."
+    },
+    {
+      "id": "cp-38",
+      "query": "bánh mì burger thực vật",
+      "stratum": "compound",
+      "expected": {
+        "concepts": ["banh mi", "veggie burger"],
+        "mustNotResolve": []
+      },
+      "park": false,
+      "notes": "BRIDGING SEAM (cover-linker, 2026-08-10). The registry banks 'bánh mì burger' as a surface of BURGER — a span that sits ACROSS the seam between the two dishes this query names. If that bridge is selected it eats words on both sides and one of the two concepts disappears. The assertion is the INTENT only: both concepts resolve. Nothing is asserted about the decomposed parts (L1 lands later). Verified against the corpus: 'bánh mì'→banh mi (vi surface) and 'burger thực vật'→veggie burger (vi surface)."
+    },
+    {
+      "id": "cp-39",
+      "query": "bánh pizza napoletana",
+      "stratum": "compound",
+      "expected": {
+        "concepts": ["neapolitan pizza"],
+        "mustNotResolve": []
+      },
+      "park": false,
+      "notes": "BRIDGING SEAM, second shape. 'bánh pizza'→pizza and 'pizza napoletana'→neapolitan pizza overlap on the middle word, so selection must pick a whole-query reading rather than the locally longest span. The dish the user named is the Neapolitan pizza; that is what is asserted."
+    },
+    {
+      "id": "cp-40",
+      "query": "bánh taco callejero",
+      "stratum": "compound",
+      "expected": {
+        "concepts": ["taco"],
+        "mustNotResolve": []
+      },
+      "park": false,
+      "notes": "THE THIRD MEASURED STRAND CASE, RE-AUTHORED TO WHAT THE DATA SAYS (2026-08-10). It looks like a bridging case — 'bánh taco' (vi surface of taco) against 'taco callejero' (es surface of street taco) — but under a vi request the Spanish surface is never admitted, so there is no second span to select and the word 'callejero' cannot ground at all. This is a RECALL/locale fact, not a selection one: no span-selection rule can recover it. Kept as the record of that finding, asserting the concept that IS reachable."
     }
   ]
 }

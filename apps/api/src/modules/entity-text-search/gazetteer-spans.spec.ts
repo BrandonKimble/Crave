@@ -269,3 +269,147 @@ describe('admitsAtExactTier — typed accents are evidence, token by token', () 
     ).toBe(true);
   });
 });
+
+/**
+ * THE COVER LINKER (2026-08-10). Selection maximizes how much of the query a
+ * reading explains, tie-broken by exactly today's greedy. Two things must be
+ * true and both are pinned here: the IDENTITY property (wherever greedy
+ * already covered the most, the output is unchanged span-for-span) and the
+ * RECOVERY (where greedy stranded words, they come back).
+ */
+describe('span selection — the cover linker', () => {
+  /** Build the raw matches a query+registry would produce: every occurrence
+   *  of every banked phrase, at its real character offsets. */
+  const matchesFor = (query: string, banked: string[]) => {
+    const raw: ReturnType<typeof span>[] = [];
+    for (const phrase of banked) {
+      for (
+        let at = query.indexOf(phrase);
+        at >= 0;
+        at = query.indexOf(phrase, at + 1)
+      ) {
+        raw.push({
+          start: at,
+          end: at + phrase.length,
+          text: phrase,
+          entityId: `e:${phrase}`,
+          name: phrase,
+          type: EntityType.food,
+        });
+      }
+    }
+    return raw;
+  };
+
+  /** THE OLD SELECTION, verbatim: sort longest-first (ties earliest start),
+   *  accept greedily non-overlapping. The identity property is stated against
+   *  this reference, so a mutated tie-break cannot pass. */
+  const greedyReading = (raw: ReturnType<typeof matchesFor>): string[] => {
+    const keys = new Map<string, { start: number; end: number }>();
+    for (const m of raw) keys.set(`${m.start}:${m.end}`, m);
+    const ordered = [...keys.values()].sort(
+      (a, b) => b.end - b.start - (a.end - a.start) || a.start - b.start,
+    );
+    const accepted: Array<{ start: number; end: number }> = [];
+    for (const candidate of ordered) {
+      if (
+        !accepted.some(
+          (a) => candidate.start < a.end && candidate.end > a.start,
+        )
+      ) {
+        accepted.push(candidate);
+      }
+    }
+    return accepted
+      .sort((a, b) => a.start - b.start)
+      .map((a) => `${a.start}:${a.end}`);
+  };
+
+  const reading = (query: string, banked: string[]) =>
+    groupEntitySpans(matchesFor(query, banked)).map((g) => g.text);
+
+  const keyed = (query: string, banked: string[]) =>
+    groupEntitySpans(matchesFor(query, banked)).map(
+      (g) => `${g.start}:${g.end}`,
+    );
+
+  describe('THE IDENTITY PROPERTY — greedy-covering queries do not move', () => {
+    // Every one of these is a query where greedy already explains the whole
+    // string. Drawn from the 24-query battery shapes plus es/vi analogues,
+    // with 'chicken over rice' banked (the seeded overlap crux).
+    const battery: Array<[string, string[]]> = [
+      ['al pastor tacos', ['al pastor', 'tacos', 'taco']],
+      ['mac and cheese burger', ['mac and cheese', 'burger', 'cheese']],
+      ['fish and chips', ['fish and chips', 'fish', 'chips']],
+      ['buffalo chicken pizza', ['buffalo chicken', 'pizza', 'chicken']],
+      ['steak and eggs breakfast', ['steak and eggs', 'breakfast', 'steak']],
+      [
+        'halal chicken over rice',
+        ['halal', 'chicken over rice', 'chicken', 'rice'],
+      ],
+      ['tacos al pastor', ['tacos', 'al pastor', 'taco']],
+      ['tacos vegetarianos', ['tacos vegetarianos', 'tacos', 'vegetarianos']],
+      [
+        'hamburguesa con queso',
+        ['hamburguesa con queso', 'hamburguesa', 'queso'],
+      ],
+      ['banh mi chay', ['banh mi', 'chay', 'banh']],
+      ['bun bo hue', ['bun bo hue', 'bun bo', 'bun']],
+      [
+        'banh mi burger thuc vat',
+        ['banh mi', 'banh mi burger', 'burger thuc vat', 'burger', 'thuc vat'],
+      ],
+    ];
+
+    it.each(battery)('%s reads exactly as greedy read it', (query, banked) => {
+      const raw = matchesFor(query, banked);
+      const greedy = greedyReading(raw);
+      // Precondition: this entry really is one greedy covers maximally —
+      // otherwise the identity claim would be vacuous here.
+      const covered = greedy.reduce((sum, key) => {
+        const [start, end] = key.split(':').map(Number);
+        return sum + query.slice(start, end).replace(/\s+/g, '').length;
+      }, 0);
+      expect(covered).toBe(query.replace(/\s+/g, '').length);
+      expect(keyed(query, banked)).toEqual(greedy);
+    });
+  });
+
+  describe('RECOVERY — a bridging span no longer strands the words beside it', () => {
+    it('reads both dishes when the longest span sits across the seam', () => {
+      // 'burger thực vật' (veggie burger) and 'bánh mì burger' (burger) are
+      // both real banked surfaces; the seam is between them. Greedy takes the
+      // longest, 'burger thuc vat', and strands 'banh mi burger' entirely.
+      const query = 'banh mi burger thuc vat';
+      const banked = ['banh mi burger', 'burger thuc vat', 'thuc vat'];
+      expect(greedyReading(matchesFor(query, banked))).toEqual(['8:23']);
+      expect(reading(query, banked)).toEqual(['banh mi burger', 'thuc vat']);
+    });
+
+    it('recovers a stranded head word', () => {
+      const query = 'mac and cheese burger';
+      const banked = ['mac and cheese', 'cheese burger', 'mac'];
+      expect(greedyReading(matchesFor(query, banked))).toEqual(['0:14']);
+      expect(reading(query, banked)).toEqual(['mac', 'cheese burger']);
+    });
+  });
+
+  describe('ZH PREVIEW — the rule is script-neutral (no zh corpus exists yet)', () => {
+    it('chooses [style]+[dish] over the bridge that strands both', () => {
+      // 川味 (Sichuan-style) + 牛肉面 (beef noodle soup); 味牛肉 straddles the
+      // seam and is the longest-tied span, so greedy takes it and explains
+      // three of five characters.
+      const query = '川味牛肉面';
+      const banked = ['川味', '牛肉面', '味牛肉'];
+      expect(greedyReading(matchesFor(query, banked))).toEqual(['1:4']);
+      expect(reading(query, banked)).toEqual(['川味', '牛肉面']);
+    });
+
+    it('does NOT shred a compound into more spans of the same coverage', () => {
+      // The counterweight: coverage is characters, not span count, so the
+      // whole dish beats its own pieces on the tie-break.
+      const query = '牛肉面';
+      expect(reading(query, ['牛肉面', '牛肉', '面'])).toEqual(['牛肉面']);
+    });
+  });
+});

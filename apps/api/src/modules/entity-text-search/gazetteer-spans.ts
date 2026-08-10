@@ -154,6 +154,125 @@ interface RawSpanMatch extends SpanEntity {
 }
 
 /**
+ * How much of the QUERY a span explains, in characters the user actually
+ * typed (whitespace excluded).
+ *
+ * WHY NOT A TOKEN COUNT. "Cover the most tokens" is the rule in English, but
+ * a token count is a LATIN measure: Chinese is written without spaces, so
+ * every span there is exactly one "token" and coverage degenerates into a
+ * count of SPANS — which inverts the rule and shreds compounds (牛肉面 would
+ * lose to 牛肉 + 面, two spans beating one). Counting typed characters is the
+ * same judgement in a script-neutral unit: it orders '[banh mi] + [burger]'
+ * above the bridging '[mi burger]' exactly as tokens do, and it keeps 牛肉面
+ * whole. Nothing here knows which language it is looking at.
+ *
+ * Interior whitespace is excluded so a reading is never rewarded for the
+ * separators it swallows — only for the words.
+ */
+function spanCoverage(group: EntitySpanGroup): number {
+  const typed = group.text.replace(/\s+/g, '').length;
+  return typed > 0 ? typed : 1;
+}
+
+/**
+ * THE COVER LINKER (2026-08-10) — span selection reads the WHOLE query.
+ *
+ * THE DEFECT it replaces: selection was greedy — sort every grounded span
+ * longest-first and consume. Greedy is locally optimal and globally wrong
+ * whenever a long span BRIDGES two real concepts. The registry really does
+ * bank such bridges ('bánh mì burger' is a surface of BURGER, sitting across
+ * the seam of 'bánh mì | burger thực vật'): when one wins on length it eats
+ * the words on both sides of the seam and STRANDS the rest, so a query that
+ * names two dishes comes back naming one. The user asked for a vegan banh-mi
+ * burger and gets a banh mi.
+ *
+ * THE RULE: choose the non-overlapping span SET that covers the most of the
+ * query. A reading that explains the whole request beats a reading that
+ * explains a longer piece of it.
+ *
+ * WHAT IT MOVED, MEASURED (2026-08-10): nothing yet. Over the es + vi gold
+ * corpora (314 queries), the 24-query battery, and 1,500 synthetic bridging
+ * shapes built by concatenating real banked multi-word surfaces, the selected
+ * reading is IDENTICAL under greedy and under this rule — greedy already
+ * reaches maximum coverage on every one of them, largely because the locale
+ * filter removes the cross-language bridges before selection ever sees them.
+ * That is the honest result and it is the point: the identity property says
+ * this rule can only ever act where greedy was losing words, so it is safe to
+ * carry standing, and the failure mode stops depending on which surfaces the
+ * next re-extraction happens to bank.
+ *
+ * THE TIE-BREAK IS LOAD-BEARING, and it is exactly today's greedy. Among the
+ * readings of maximum coverage, prefer the one containing the longest span;
+ * among those, the earliest-starting; and so on down the reading — i.e. order
+ * each reading's spans greedy-style (longest first, ties earliest start) and
+ * take the greedy-lexicographically smallest. WHY: wherever greedy already
+ * achieved maximum coverage — which is nearly every query, every currently
+ * green gate entry included — the greedy set IS the greedy-lex-minimum among
+ * the maximum-coverage readings, so the output is byte-identical to
+ * yesterday's. This change can only move a query that greedy was LOSING
+ * tokens on. That identity is pinned by spec ('the identity property').
+ *
+ * MECHANISM: pick spans in greedy order, admitting a span only when it can
+ * still be completed to a maximum-coverage reading. `maxCoverage(lo, hi)` is
+ * a DP over the span-boundary coordinates of the free interval [lo, hi); the
+ * accepted spans cut the query into disjoint free intervals, and each
+ * interval's optimum is independent of the others, so the admission test is
+ * local: keeping the span must not lower the interval's optimum.
+ */
+function selectCoveringReading(
+  /** Every candidate group, ALREADY in greedy order (longest, then earliest). */
+  greedyOrdered: EntitySpanGroup[],
+): EntitySpanGroup[] {
+  if (greedyOrdered.length <= 1) return [...greedyOrdered];
+
+  // Coordinate compression: only span boundaries can ever matter.
+  const coords = Array.from(
+    new Set(greedyOrdered.flatMap((g) => [g.start, g.end])),
+  ).sort((a, b) => a - b);
+  const index = new Map(coords.map((c, i) => [c, i]));
+  const m = coords.length;
+  const startsAt: EntitySpanGroup[][] = Array.from({ length: m }, () => []);
+  for (const group of greedyOrdered)
+    startsAt[index.get(group.start)!].push(group);
+
+  const memo = new Map<number, number>();
+  const maxCoverage = (lo: number, hi: number): number => {
+    if (lo >= hi) return 0;
+    const key = lo * (m + 1) + hi;
+    const seen = memo.get(key);
+    if (seen !== undefined) return seen;
+    // Leaving coordinate `lo` unexplained is always allowed.
+    let best = maxCoverage(lo + 1, hi);
+    for (const group of startsAt[lo]) {
+      const end = index.get(group.end)!;
+      if (end > hi) continue;
+      const withSpan = spanCoverage(group) + maxCoverage(end, hi);
+      if (withSpan > best) best = withSpan;
+    }
+    memo.set(key, best);
+    return best;
+  };
+
+  const free: Array<[number, number]> = [[0, m - 1]];
+  const accepted: EntitySpanGroup[] = [];
+  for (const group of greedyOrdered) {
+    const lo = index.get(group.start)!;
+    const hi = index.get(group.end)!;
+    const slot = free.findIndex(
+      ([fLo, fHi]) => fLo <= lo && hi <= fHi && fLo < fHi,
+    );
+    if (slot < 0) continue; // overlaps something already accepted
+    const [fLo, fHi] = free[slot];
+    const keeping =
+      maxCoverage(fLo, lo) + spanCoverage(group) + maxCoverage(hi, fHi);
+    if (keeping !== maxCoverage(fLo, fHi)) continue; // would cost coverage
+    accepted.push(group);
+    free.splice(slot, 1, [fLo, lo], [hi, fHi]);
+  }
+  return accepted;
+}
+
+/**
  * Group raw (entity, span) matches into non-overlapping span groups.
  * Longest span wins; ties break to earliest start. All entities sharing the
  * winning span ride together — no same-span drop.
@@ -186,13 +305,7 @@ export function groupEntitySpans(rawSpans: RawSpanMatch[]): EntitySpanGroup[] {
   const groups = Array.from(byKey.values()).sort(
     (a, b) => b.end - b.start - (a.end - a.start) || a.start - b.start,
   );
-  const accepted: EntitySpanGroup[] = [];
-  for (const group of groups) {
-    const overlaps = accepted.some(
-      (a) => group.start < a.end && group.end > a.start,
-    );
-    if (!overlaps) accepted.push(group);
-  }
+  const accepted = selectCoveringReading(groups);
   accepted.sort((a, b) => a.start - b.start);
   // MAXIMAL LINKING: for each accepted group, the shorter grounded spans it
   // covers form its decomposed reading — same longest-wins greedy, scoped
