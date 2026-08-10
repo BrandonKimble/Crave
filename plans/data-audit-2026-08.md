@@ -1761,11 +1761,13 @@ buried note sometimes holds). Zero regressions.
 
 DATA disposition: the dinner/lunch/pizza-attr EVENTS ride the re-extract
 (the sanctioned repair path) — the prompt now prevents regeneration.
-archive-dish-named-attributes.ts was dry-run and its finding BANKED: DO
-NOT --apply in current form — its name-collision predicate now sweeps in
-legitimate cuisine/dietary attributes (vegan, thai, sichuan...) because
-cuisine-as-food residue still exists; applying would violate
-dietary-never-dropped. It stays as a measurement probe.
+archive-dish-named-attributes.ts was dry-run, its finding recorded, and
+the script DELETED (owner question 2026-08-09 "do we have any use for it?"
+— no): its name-collision predicate had rotted into sweeping legitimate
+cuisine/dietary attributes (vegan, thai, sichuan...) because
+cuisine-as-food residue still exists, so its only safe mode was
+"don't run me". The class is prevented at the source (prompt D.3) and
+repaired by the re-extract; the residual check is one SQL join.
 
 LESSON recorded for the pass itself: a from-scratch rewrite can LOSE
 buried rules the old prompt carried. The gold set is the regression net —

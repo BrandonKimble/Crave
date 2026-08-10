@@ -86,8 +86,13 @@ CONSTRAINT, the direction is one deliberate judgment per word:
    the durable memory — resolution reuses tombstones as sinks).
 3. Cleanup pass runs the directional adjudication over today's ~53 active
    collisions (14 food_attribute + 39 restaurant_attribute) + their food
-   twins; scripts/archive-dish-named-attributes.ts becomes the lever but
-   MUST use the directional decision, never blanket-archive one side.
+   twins. (UPDATE 2026-08-09: archive-dish-named-attributes.ts is DELETED —
+   its collision predicate had rotted into sweeping legitimate cuisine and
+   dietary attributes, one --apply from violating dietary-never-dropped.
+   The dish-type-attribute class is now prevented at the source by the
+   candidate prompt's "a dish type is never an attribute" rule and its
+   existing rows are repaired by the re-extract; any residual check is one
+   SQL join, not a script with a loaded apply arm.)
 NOTE: archiving a junk FOOD twin needs care — check connections/mentions
 attached to it (e.g. 'breakfast'-as-food may hold real banked category
 evidence that belongs on the category graph instead). Study before
