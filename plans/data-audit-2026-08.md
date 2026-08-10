@@ -1773,3 +1773,52 @@ LESSON recorded for the pass itself: a from-scratch rewrite can LOSE
 buried rules the old prompt carried. The gold set is the regression net —
 every buried-note rule that matters must have a case, which is exactly
 what D13/D14 now are.
+
+## FULL PROMPT RED TEAM: OLD vs NEW (2026-08-10, owner-directed)
+
+Method: complete line-by-line re-read of BOTH prompts, with every old rule
+dispositioned as kept / deliberately-deleted / accidentally-lost, then an
+internal-consistency pass on the new text, then certification.
+
+WHAT THE OLD PROMPT DID BETTER — the essence, boiled down: it carried years
+of edge-case ADJUDICATIONS as micro-rules. The rewrite kept the principles
+but four adjudications do not DERIVE from the principles, so they were
+silently lost (the pizza class already proved this failure mode; the sweep
+found four more):
+1. CUISINE-ASK GUARD (old 5.4): "best Indian?" must not inherit `indian`
+   as food. My D13 prediction gate was INSUFFICIENT — indian PASSES
+   prediction. Fixed: ask-reuse now requires BOTH tests (order + prediction)
+   with the three-way example (burger inherits / dinner fails prediction /
+   indian fails order). Each test catches what the other misses.
+2. SHORT-AGREEMENT ADOPTION (old 6.1): "+1"/"agreed" adopts the parent's
+   testimony. The rewrite's strict TESTIMONY TEST would drop them (the
+   writer "said nothing") — recall loss. Now explicit in A.1, ambiguous
+   referents credit nothing.
+3. SAME-PAIR DEDUPE (old 6.2): one mention per (restaurant, food) per
+   source. Restored in F.2.
+4. EMPTY-MENTION SKIP (old 6.2): no food + no attributes + no praise =
+   emit nothing. Restored in F.2.
+Plus the old 5.2.3 item-vs-family examples (babka TRUE / Levain cookies
+FALSE / "family size is a menu fact") — the doctrine survived but its best
+teaching pair had been dropped; restored under Step E's sameness bar.
+
+INTERNAL-CONSISTENCY FINDINGS on the new text (both fixed and proven):
+- OMAKASE CONTRADICTION (mine): D.3 listed omakase as an allowed venue-
+  attribute format while C.3 graduated it to a dish — adjacent bullets gave
+  contradictory instructions for one word. Resolved with ONE principle:
+  formats that FAIL prediction (tasting menu, buffet, prix fixe) may be
+  venue attributes; formats that PASS (omakase, dim sum) are food, never
+  attributes.
+- RULE-PLACEMENT REGRESSION caught by the harness: moving the format split
+  into Step D removed the plain "there is no dish" statement from Step C
+  where `food` is actually decided — D4 immediately regressed (the model
+  minted food:"tasting menu" from "our newest favorite tasting menu").
+  The rule is now ANCHORED AT THE DECISION POINT: C.1 states that a
+  prediction-failing format is not a dish even when praised by name.
+  Lesson: a rule must live where its decision is made, not one step later.
+
+CERTIFICATION (final text, 22 cases x 5 repeats): candidate 22 PASS /
+0 FLAKY / 0 FAIL; live 13 / 3 / 6. Zero regressions; every defect class,
+every negative control, and every recovered adjudication passes. The
+verdict "better in every way" is now EARNED rather than assumed: nothing
+remains that the old prompt did better.

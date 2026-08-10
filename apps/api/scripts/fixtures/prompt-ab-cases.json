@@ -426,5 +426,55 @@
       "foods": ["pizza"],
       "notAttributes": ["pizza"]
     }
+  },
+  {
+    "id": "D15-cuisine-ask-reuse",
+    "why": "Prompt red team 2026-08-10: the D13 prediction-test gate is INSUFFICIENT for cuisine asks \u2014 'indian' PASSES prediction (it predicts a kind of food) but fails the order test. The old prompt had a dedicated 5.4 guard the rewrite lost. Ask-reuse now requires BOTH tests.",
+    "posts": [
+      {
+        "id": "SRC060",
+        "title": "Best Indian around?",
+        "body": "",
+        "extract_from_post": false,
+        "comments": [
+          {
+            "id": "SRC061",
+            "body": "Ravi Kabab, hands down. Best in the area."
+          }
+        ]
+      }
+    ],
+    "expect": {
+      "restaurants": ["ravi kabab"],
+      "notFoods": ["indian"],
+      "attributes": ["indian"]
+    }
+  },
+  {
+    "id": "C7-CONTROL-plus-one-inherits",
+    "why": "Prompt red team 2026-08-10: old 6.1 let '+1'/'agreed' adopt the parent's verdict; the rewrite's strict TESTIMONY TEST would silently drop them (the writer 'said nothing') \u2014 a recall loss. A.1 now makes adoption explicit.",
+    "posts": [
+      {
+        "id": "SRC062",
+        "title": "Where should I eat this weekend?",
+        "body": "",
+        "extract_from_post": false,
+        "comments": [
+          {
+            "id": "SRC063",
+            "body": "Nixta Taqueria. Incredible spot, my favorite in Austin."
+          },
+          {
+            "id": "SRC064",
+            "body": "+1, came here to say this.",
+            "parent_id": "SRC063"
+          }
+        ]
+      }
+    ],
+    "expect": {
+      "restaurants": ["nixta"],
+      "somePraise": true
+    }
   }
 ]

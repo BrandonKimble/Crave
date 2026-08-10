@@ -84,6 +84,12 @@ The writer vouches from experience, or reports a clear consensus:
 - **Asking for feedback on an experience already had IS testimony.** "2026 NYC
   Food Trip Review — how did I do?" reports meals eaten; the question at the
   end does not undo them.
+- **A short agreement ADOPTS the parent's testimony as the writer's own.**
+  "+1", "this", "agreed", "seconded", "came here to say this" under a parent
+  that vouches for a place puts this writer's judgment behind the same
+  claims — resolve the referent by the depth-aware order and credit the same
+  restaurant (and dish, when unambiguous) from THIS source's id. An agreement
+  with an ambiguous referent credits nothing.
 
 ### A.2 What is NOT testimony (each of these fails)
 
@@ -264,6 +270,14 @@ but no orderable item — **there is no dish.** Leave `food` and
 lands as an attribute in Step D. **Never manufacture a dish** from a cuisine
 word, a style word, or the kind of place it is: a cocktail bar does not thereby
 serve a dish called "cocktail", and "great Indian place" names no food.
+
+**A format that fails the PREDICTION TEST is not a dish either, even when the
+writer praises it by name.** "It is our newest favorite tasting menu" praises
+the venue's offering, but "tasting menu" predicts nothing about what arrives —
+there is NO dish and no `food_categories`; the mention is restaurant-only,
+the praise is holistic (`general_praise: true`), and the format may ride as a
+`restaurant_attributes` entry per Step D. (Formats that PASS prediction —
+omakase, dim sum — are dishes and go through Step C normally.)
 
 Drop generic filler outright ("food", "meal", "dish", "the food", "restaurant",
 "place", "spot") — it names nothing orderable and describes no property.
@@ -457,17 +471,20 @@ Two consequences follow directly:
 - **Over-specific single-use phrases.** An attribute must be reusable across
   many dishes or places. Strip "63rd floor roof bar" to "rooftop", "basted in
   herby butter" to nothing.
-- **Menu formats are not food attributes** — but a format CAN be a restaurant
-  attribute when it characterizes the venue ("tasting menu", "omakase",
-  "buffet" describe how a place serves).
-- **A DISH TYPE is never an attribute, on either side.** "pizza", "ramen",
-  "tacos", "hot pot" name THINGS, not properties — they fail
-  describes-vs-judges from the other direction: a place doesn't HAVE pizza
-  as a quality, it SERVES pizza, and that claim belongs in `food`/
-  `food_categories` where it ranks and searches as food. A pizza place's
-  venue-side identity is its cuisine ("italian"), never the dish word.
-  ("Austin has a banging pizza scene" → the pizzas are food claims at the
-  named places; NO restaurant gets a `pizza` attribute.)
+- **Anything the PREDICTION TEST calls food is never an attribute, on either
+  side.** One split, decided by the same test that governs Step C:
+  - A format that FAILS prediction ("tasting menu", "buffet", "prix fixe" —
+    what arrives could be anything) is not food, and it CAN be a restaurant
+    attribute when it characterizes how the venue serves.
+  - A format or dish type that PASSES prediction ("omakase", "dim sum",
+    "pizza", "ramen", "tacos", "hot pot") IS food — it names a THING, not a
+    property. A place doesn't HAVE pizza as a quality, it SERVES pizza, and
+    that claim belongs in `food`/`food_categories` where it ranks and
+    searches as food. A pizza place's venue-side identity is its cuisine
+    ("italian"), never the dish word. ("Austin has a banging pizza scene" →
+    the pizzas are food claims at the named places; NO restaurant gets a
+    `pizza` attribute, and an omakase house earns `japanese`, never
+    `omakase`-as-attribute.)
 
 ### D.4 Which side does it attach to?
 
@@ -527,7 +544,11 @@ Set `is_menu_item` for each composed dish.
 - **`true`** — the source names a specific orderable item you could point to on
   a menu ("duck carnitas taco", "tuna melt sandwich", "honey butter pancakes").
   The bar: **could two diners each order "the X" here and be handed the same
-  thing?**
+  thing?** "Bread's babka" → true (a babka is one thing you walk out with);
+  "the tasting menu at Corima" → true (one fixed offering); "Levain cookies",
+  "Lady M cakes", "Raku's udon" → false (the shop makes many; the family name
+  alone was never narrowed — family size is a fact about the MENU, not the
+  sentence).
 - **`false`** — the dish is a family or class ("tacos", "pizza", "coffee"), or
   the source only names a restaurant.
 - **Restaurant-only**: no dish named and none inherited → `food` and
@@ -540,13 +561,20 @@ burger in EV?") and a reply ONLY names a restaurant while passing the TESTIMONY
 TEST, reuse the ask's target as `food`/`food_categories` with
 `is_menu_item: false`. This applies only when the reply names no dish of its
 own — a reply that restates the dish in its own words goes through the normal
-path above. **The inherited target must itself pass the PREDICTION TEST** —
-"best burger" hands down `burger`; "nice dinners on a budget", "lunch spots?",
-"date-night ideas" hand down NOTHING, because dinner and lunch predict no food
-at all: those replies are restaurant-only mentions (an occasion may become a
-`restaurant_attributes` entry per Step D, never a food). **The ask itself
-never emits.** Cuisines and dietary flags are attributes and never enter
-`food_categories`.
+path above. **The inherited target must be an ORDERABLE DISH — it must pass
+BOTH the ORDER TEST and the PREDICTION TEST**, because each catches what the
+other misses:
+
+- "best burger in EV?" → `burger` passes both → inherit it.
+- "nice dinners on a budget?", "lunch spots?" → `dinner`/`lunch` fail the
+  PREDICTION TEST (they predict no food at all) → inherit NOTHING.
+- "best Indian around?", "where for comfort food?" → `indian`/`comfort food`
+  PASS prediction (they do predict a kind of food) but FAIL the ORDER TEST —
+  a cuisine or style is not a thing you order — so they inherit NOTHING as
+  food; they ride the attribute side per Step D.
+  A reply that inherits nothing is a restaurant-only mention. **The ask itself
+  never emits.** Cuisines and dietary flags are attributes and never enter
+  `food_categories`.
 
 Never re-split a dish composed in Step C, and never invent a restaurant name —
 if the place cannot be resolved with confidence, skip the mention.
@@ -595,7 +623,11 @@ Rules:
 - **JSON only.** No markdown fences, no commentary.
 - When a property has no values, omit it or set it to `null`. Never emit empty
   strings.
-- One source may emit multiple mentions (several restaurants, several dishes).
+- One source may emit multiple mentions (several restaurants, several dishes)
+  — but never two mentions for the same (restaurant, food) pair from one
+  source: repeated references collapse into one mention.
+- A mention with no food, no attributes, and `general_praise: false` asserts
+  nothing — do not emit it.
 - Emit nothing at all for a source that failed Step A.
 
 ### F.3 Worked example
