@@ -1902,3 +1902,25 @@ RULING CONSEQUENCE: v7 does NOT activate. Rederive (v8) targeting the
 recall class, pin the loss examples as gold cases, re-shadow (~$30).
 The shadow choreography did exactly its job: caught a systematic recall
 regression before any user saw it.
+
+## V8 PROBLEM-DOC TEST (2026-08-10) — the class is broken
+
+Per owner: no full replay; the 283 real threads behind the audited losses
+ran through live vs v8 (prompt-corpus-ab --post-ids-file). Results:
+- Gold set 36/36 x3 zero flaky (live fails 11).
+- Head-to-head on identical input, v8 recovers 73/89 (82%) of the audited
+  loss restaurants the old prompt catches (raw totals misleading: the
+  harness caps threads at 25 comments, so ~70 losses never entered input).
+- Junk stays dead AND improves: 0 docs where v8 emitted and live didn't;
+  the 16 docs v8 went fully silent on are frozen-pizza-brand/grocery-
+  findability/bulk-spice/participation-roster threads where LIVE emitted
+  32 mentions of FROZEN PIZZA BRANDS as restaurants (PLACE-test junk).
+  bad-attribute defects 36 -> 4.
+- Residual 16 non-recovered: mostly the PLACE-test retail/grocery boundary
+  (World Market, Kilwins, Sayweee, meat markets) where the audit rubric
+  and doctrine disagree — flagged for owner taxonomy call, not a blind
+  spot; plus a few genuine stragglers (juquila "decent" = hedged).
+- Detector staleness: corpus-ab's NON_CATEGORY_TERMS still lists omakase
+  (contradicts the 346c97dc6 ruling) — its "format-as-food 63 omakase"
+  line against v8 is the detector wrong, not the prompt. Fix with next
+  probe touch.
