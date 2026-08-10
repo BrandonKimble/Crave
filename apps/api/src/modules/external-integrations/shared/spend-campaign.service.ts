@@ -328,6 +328,21 @@ export class SpendCampaignService {
    * when the work class has no published rate — the caller must run
    * preparePilot first (§24.2).
    */
+  /**
+   * A fresh quote for a campaign NAME supersedes any prior unapproved quote
+   * for the same name (owner ruling 2026-08-10): re-running an estimate is
+   * the normal way to correct a quote, and the stale awaiting_approval rows
+   * it used to strand made "which quote is live?" ambiguous. Only unapproved,
+   * unspent rows are eligible — anything approved or metered is history, not
+   * a stray. Marked 'superseded' (not deleted) so the quote trail survives.
+   */
+  private async supersedeUnapprovedQuotes(name: string): Promise<void> {
+    await this.prisma.spendCampaign.updateMany({
+      where: { name, state: 'awaiting_approval', spentMicros: 0 },
+      data: { state: 'superseded' },
+    });
+  }
+
   async prepareEstimate(
     params: PrepareEstimateParams,
   ): Promise<PreparedEstimate> {
@@ -349,6 +364,7 @@ export class SpendCampaignService {
       estimateMicros,
       toleranceFraction,
     });
+    await this.supersedeUnapprovedQuotes(params.name);
     const row = await this.prisma.spendCampaign.create({
       data: {
         name: params.name,
@@ -517,6 +533,7 @@ export class SpendCampaignService {
       totalEstimateMicros,
       toleranceFraction,
     });
+    await this.supersedeUnapprovedQuotes(params.name);
     const row = await this.prisma.spendCampaign.create({
       data: {
         name: params.name,

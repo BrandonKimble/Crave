@@ -108,15 +108,37 @@ function buildPrisma() {
           data,
         }: {
           where: {
-            campaignId: string;
-            state?: { in: string[] };
+            campaignId?: string;
+            name?: string;
+            state?: { in: string[] } | string;
+            spentMicros?: number;
           };
           data: Record<string, unknown>;
         }) => {
-          const existing = campaigns.get(where.campaignId);
+          // Name-scoped shape (supersedeUnapprovedQuotes): flip every
+          // matching row, mirroring Postgres updateMany.
+          if (where.campaignId === undefined && where.name !== undefined) {
+            let count = 0;
+            for (const [id, row] of campaigns) {
+              if (
+                row.name === where.name &&
+                (where.state === undefined || row.state === where.state) &&
+                (where.spentMicros === undefined ||
+                  Number(row.spentMicros ?? 0) === where.spentMicros)
+              ) {
+                campaigns.set(id, { ...row, ...data });
+                count += 1;
+              }
+            }
+            return Promise.resolve({ count });
+          }
+          const existing = campaigns.get(where.campaignId as string);
           if (
             !existing ||
-            (where.state && !where.state.in.includes(existing.state as string))
+            (where.state &&
+              !(where.state as { in: string[] }).in.includes(
+                existing.state as string,
+              ))
           ) {
             return Promise.resolve({ count: 0 });
           }
@@ -128,7 +150,7 @@ function buildPrisma() {
             updated.spentMicros =
               (existing.spentMicros as bigint) + BigInt(spentMicros.increment);
           }
-          campaigns.set(where.campaignId, updated);
+          campaigns.set(where.campaignId as string, updated);
           return Promise.resolve({ count: 1 });
         },
       ),
@@ -216,6 +238,43 @@ describe('SpendCampaignService (§24.5 Leg C)', () => {
     expect(row?.state).toBe('approved');
     expect(row?.estimateMicros).toBeNull();
     expect(row?.unitCount).toBe(50);
+  });
+
+  it('a fresh estimate supersedes prior unapproved quotes for the SAME name only — approved and differently-named rows survive (owner ruling 2026-08-10)', async () => {
+    const prisma = buildPrisma();
+    prisma._unitCosts.set('gemini.reddit_extraction::document', {
+      microUsdPerUnit: 10,
+    });
+    const service = new SpendCampaignService(
+      prisma as never,
+      stubLogger() as never,
+      buildOpsAlerts().mock,
+      buildGovernance(),
+    );
+    const mk = (name: string) =>
+      service.prepareEstimate({
+        name,
+        workClass: 'gemini.reddit_extraction',
+        unit: 'document',
+        unitCount: 100,
+      });
+    const approved = await mk('reextract:a:v7');
+    await service.approve(approved.campaignId, approved.estimateHash);
+    const stale = await mk('reextract:b:v7');
+    const other = await mk('reextract:c:v7');
+    const fresh = await mk('reextract:b:v7'); // re-quote of b
+    expect(prisma._campaigns.get(stale.campaignId)?.state).toBe('superseded');
+    expect(prisma._campaigns.get(fresh.campaignId)?.state).toBe(
+      'awaiting_approval',
+    );
+    expect(prisma._campaigns.get(approved.campaignId)?.state).toBe('approved');
+    expect(prisma._campaigns.get(other.campaignId)?.state).toBe(
+      'awaiting_approval',
+    );
+    // The superseded quote can no longer be approved — its hash is dead.
+    await expect(
+      service.approve(stale.campaignId, stale.estimateHash),
+    ).rejects.toThrow(/cannot approve from state 'superseded'/);
   });
 
   it('approve rejects a stale estimate hash', async () => {
