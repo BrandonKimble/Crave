@@ -2,7 +2,8 @@
 
 ## What you are extracting
 
-**A CLAIM is: someone who has eaten X at Y, saying something about it.**
+**A CLAIM is: someone who has eaten X at Y, saying something about it — or
+naming X as their own pick, when asked for one.**
 
 That sentence is the whole job. Four things must each be the RIGHT KIND for a
 claim to exist, and you must test each one explicitly. Text that looks right
@@ -13,8 +14,8 @@ looks like a dish, and a comparison looks like a property.
 **THE FOUR TESTS.** Learn these by name; the steps below refer to them by name.
 
 1. **THE TESTIMONY TEST** — _Has the writer eaten it?_
-   A claim is a report of experience. Planning, asking, announcing, listing,
-   and repeating what others say are not experience.
+   A claim is a report of experience. Planning, asking, announcing,
+   cataloguing a roster, and repeating what others say are not experience.
 2. **THE PLACE TEST** — _Is this claim about food prepared and served by this
    place, to eat now?_ Not goods sold packaged to take home and prepare later.
 3. **THE ORDER TEST** — _Could you say this to a server as the thing you want?_
@@ -22,6 +23,9 @@ looks like a dish, and a comparison looks like a property.
    anything about the food that arrives?_
 4. **THE STANDALONE TEST** — _Severed from the noun it modified, does this word
    still mean one definite thing?_
+5. **THE ANSWER TEST** — _Was this name offered as the writer's own pick, in
+   answer to a request for a pick?_ If yes, **the name IS the verdict** —
+   testimony is satisfied with no adjective, no verb, and no dish.
 
 A failure at any test ends the work for that claim. Test in order: they run
 cheapest-first, and each one protects the tests after it.
@@ -77,10 +81,31 @@ The writer vouches from experience, or reports a clear consensus:
 - Indirect recommendation: "worth the trip", "definitely go", "take them to
   \_\_\_", "my go-to".
 - Consensus reported: "people rave about \_\_\_", "this sub loves \_\_\_".
-- **A recommendation list ANSWERING a request** — a reply that is just names
-  ("Pho phong luu, Tan My, Fresh Bowl, Sip Pho if central") is testimony when
-  it responds to someone asking where to eat. The writer is putting their own
-  judgment behind those names.
+- **Answering a request for a pick (THE ANSWER TEST).** When the in-scope
+  post, or a parent comment, asks for a recommendation or a judgment — "where
+  should I eat", "best pizza", "favorite spot", "anywhere good for X", "what's
+  worth it", "recs for" — a reply that **names one or more places is
+  testimony, complete as written.** The writer chose those names out of
+  everything they could have said; the choice is the endorsement. This is true
+  of a single bare name with no other words at all ("Adrienne's in FiDi"), of
+  a list ("Pho phong luu, Tan My, Fresh Bowl, Sip Pho if central"), of an
+  annotated list ("Cabernet Grill for dinner / Sunset Grill for breakfast"),
+  and of a reply that ADDS names to an ongoing answer thread ("Bar Snack &
+  Paradise Lost as well"). Two conditions, both required:
+  1. **The ask requests a JUDGMENT, not a FACT.** A judgment ask asks which is
+     good or which you'd pick. A fact ask asks where to obtain, who is open,
+     who delivers — "where can I find kolaches?", "who's open Christmas Day?".
+     Answering a fact ask names places by availability, not by taste: that is
+     A.2's AVAILABILITY case and emits nothing.
+  2. **Nothing in the reply re-frames the name as neutral information or
+     disclaims it.** Hours, prices, "they sell", "never been but", "I've
+     heard" strip the pick back to information. Positive or plain annotations
+     do not ("for dinner", "if central", a neighborhood tag).
+- **A verdict has no minimum eloquence.** "is good", "is great", "is awesome",
+  "love this place", "my go-to" are complete endorsements — as complete as a
+  paragraph. A hedge is a word that qualifies DOWNWARD ("it's _fine_", "not
+  bad", "6/10", "decent for what it is"), not a word that is merely short or
+  plain. Do not require enthusiasm.
 - **Asking for feedback on an experience already had IS testimony.** "2026 NYC
   Food Trip Review — how did I do?" reports meals eaten; the question at the
   end does not undo them.
@@ -103,16 +128,26 @@ The writer vouches from experience, or reports a clear consensus:
 - **AN ANNOUNCEMENT or DIRECTORY.** Participant rosters, event line-ups,
   fundraiser lists, "these 12 spots are doing a prix fixe this week", opening
   notices, marketing. Naming many restaurants neutrally is not endorsing them.
+- **A LIST BUILT ON AN EXTERNAL CRITERION.** When the names were selected by
+  something other than the writer's taste — and the text says so — the list
+  is a directory, however long: open on a holiday ("Restaurants Open on
+  Christmas Day"), participating in an event or fundraiser, awarded or ranked
+  by someone else ("James Beard semifinalists"), on sale or promoting
+  ("Wingstop has an offer, code FREESAMMY"), in stock, or on the writer's own
+  future itinerary. The tell is a **stated selection criterion, or per-entry
+  operational annotation** (hours, ranges, addresses as a roster). Ask: _did
+  this writer's taste choose these names, or did a fact about the world?_
+  Emit nothing.
 - **AVAILABILITY or POPULARITY alone.** "X has Y", "they sell it by the pound",
   "it's always packed", "there's a location on 5th". Stating that food exists,
   or that others go, is not a verdict on it.
-  **This holds even when the availability answers the question asked.** A
+  **This holds even when the availability answers a FINDABILITY ask.** A
   "where can I find \_\_\_?" ask makes "Quack's on 43rd has them. Also Epoch
   sells them sometimes" a helpful and RESPONSIVE reply — and still not
-  testimony, because the writer said where to get the thing, never that it is
-  good. Being the answer to a findability question is not endorsement.
-  Responsiveness never substitutes for a verdict: ask what the writer SAID
-  about the food, not whether they were helpful.
+  testimony, because the writer said where to _get_ the thing, never that it
+  is good. **But when the ask requested a PICK rather than a location, naming
+  a place IS the verdict — see the ANSWER TEST in A.1.** Discriminate by what
+  the ask wanted, never by how much the reply said.
 - **HEARSAY or DESIRE.** "I've heard", "supposedly", "want to try", "never been
   but interested".
 - **A MIDDLING OR HEDGED VERDICT.** "it's fine", "solid enough", "6/10", "not
@@ -142,6 +177,11 @@ neutrally does not thereby endorse that dish.
 If nothing in this source passes the TESTIMONY TEST, **emit nothing and move
 on.** Otherwise carry forward the specific claims that passed — not the whole
 source.
+
+A source that passes the ANSWER TEST must emit **even though nothing was said
+about the food** — the pick is the claim. Silence about quality is not a
+failure of the TESTIMONY TEST; it is what an answer to a rec request normally
+looks like.
 
 ---
 
@@ -274,17 +314,50 @@ lands as an attribute in Step D. **Never manufacture a dish** from a cuisine
 word, a style word, or the kind of place it is: a cocktail bar does not thereby
 serve a dish called "cocktail", and "great Indian place" names no food.
 
-**A format that fails the PREDICTION TEST is not a dish either, even when the
-writer praises it by name.** "It is our newest favorite tasting menu" praises
-the venue's offering, but "tasting menu" predicts nothing about what arrives —
-there is NO dish and no `food_categories`; the mention is restaurant-only,
-the praise is holistic (`general_praise: true`), and the format may ride as a
-`restaurant_attributes` entry per Step D. (Formats that PASS prediction —
-omakase, dim sum — are FOOD and go through Step C normally: they behave like
-"breakfast", a recognizable kind — usually a FAMILY with `is_menu_item:
-false`, becoming a specific item only where Step E's sameness test holds,
-e.g. "the omakase" at one sushi-ya is a single fixed offering, while dim sum
-is always many plates.)
+**A format or deal that fails the PREDICTION TEST is not a dish, even when
+the writer praises it by name, and even when it carries a modifier.**
+"It is our newest favorite tasting menu" praises the venue's offering, but
+"tasting menu" predicts nothing about what arrives — there is NO dish and no
+`food_categories`; the mention is restaurant-only, the praise is holistic
+(`general_praise: true`), and the format may ride as a `restaurant_attributes`
+entry per Step D.
+
+**JUDGE THE HEAD NOUN FIRST.** Before composing anything, find the head noun
+of the food phrase — the last noun, the one the modifiers hang off. If that
+head noun is a DELIVERY WRAPPER — `menu`, `tasting menu`, `course` /
+`N-course`, `prix fixe`, `buffet`, `special`, `deal`, `combo` — the wrapper
+predicts nothing about what arrives, and **the wrapper is never the dish.** A
+modifier cannot rescue it. Ask instead what the modifier is:
+
+- **The modifier NAMES A FOOD** ("wagyu tasting menu", "nigiri special",
+  "dumpling combo"): extract THE FOOD ITSELF and throw the wrapper away —
+  `food` is `wagyu`, `nigiri`, `dumpling`, never the compound. The venue may
+  earn the BARE wrapper as a `restaurant_attributes` entry per Step D.
+- **The modifier NAMES A TIME, PRICE, COUNT, OR OCCASION** ("lunch special",
+  "3/4 course menu", "happy hour deal", "tuesday special", "lunch tasting
+  menu", "$25 combo"): the whole phrase predicts only WHEN, HOW MUCH, or HOW
+  MANY. There is no dish and no `food_categories` — leave both null.
+- **A BARE wrapper** ("the tasting menu", "their buffet"): same — no dish.
+
+**MEAL DEALS ARE VALUE TESTIMONY.** "their lunch specials are some of their
+big hits", "great weekday lunch special - 2 tacos, rice y beans, iced tea
+like $10" are genuine testimony — about PRICE and VALUE, not about an
+identifiable food. Do not read the strength of the verb as evidence that a
+food exists: "is good", "big hits", "my go-to" applied to a deal are still
+about the deal. Emit a restaurant-only mention (`general_praise: true`, food
+null, `good value` in `restaurant_attributes` where the text supports it).
+Never mint a food named "lunch special", "combo", or "daily special".
+Components listed inside a deal ("2 tacos, rice y beans") are the deal's
+contents, not this source's dish claims — do not compose a dish from them.
+
+(Formats that PASS prediction — omakase, dim sum — are FOOD and go through
+Step C normally: they behave like "breakfast", a recognizable kind — usually
+a FAMILY with `is_menu_item: false`, becoming a specific item only where Step
+E's sameness test holds, e.g. "the omakase" at one sushi-ya is a single fixed
+offering, while dim sum is always many plates. Note the asymmetry with a
+wrapper head: "salmon omakase" composes normally as a dish, because `omakase`
+predicts the food; "salmon tasting menu" redirects to `salmon`, because
+`tasting menu` does not.)
 
 Drop generic filler outright ("food", "meal", "dish", "the food", "restaurant",
 "place", "spot") — it names nothing orderable and describes no property.
@@ -305,6 +378,10 @@ Drop generic filler outright ("food", "meal", "dish", "the food", "restaurant",
      changes what arrives; keep it.
    - "breakfast taco" — a different order from "a taco"; **never** peel the
      word out (see the PREDICTION TEST in C.3).
+   - **"lunch special", "3/4 course menu"** — two diners ordering "the lunch
+     special" here ARE handed the same thing, and the phrase still names no
+     food. The sameness question decides which WORDS of a dish name to keep;
+     it never decides that a wrapper IS a dish. C.1's head-noun check governs.
    - "grilled burger" — the same order as "burger"; "grilled" is a property and
      will be handled in Step D.
 
@@ -316,10 +393,15 @@ Drop generic filler outright ("food", "meal", "dish", "the food", "restaurant",
    one modifier until it would, keeping the head noun. If you end with a lone
    ingredient, keep the broader dish instead — a lone ingredient is neither a
    dish nor a category.
-   - **A "special" / "deal" / "menu" head must still predict the food.**
-     "chicken special" and "nigiri special" predict what arrives — real orders.
-     "tuesday special", "lunch deal", "happy hour tasting menu" predict only
-     when or how much; **there is no dish.**
+   - **Appearing on a menu is NOT sufficient.** "Lunch Special", "3-Course
+     Menu", "Happy Hour Deal", "Chef's Tasting" are all printed menu headings
+     and none of them is a dish. Re-run C.1's HEAD NOUN check on the phrase
+     you just composed: if its head noun is a delivery wrapper (`menu`,
+     `course`, `special`, `deal`, `combo`, `buffet`, `prix fixe`), you have
+     composed a wrapper, not a dish — go back to C.1 and either redirect to
+     the food the modifier names ("chicken special" → `chicken`, "nigiri
+     special" → `nigiri`), or emit no dish ("tuesday special", "lunch deal",
+     "happy hour tasting menu").
 
 5. **Normalize**: lowercase; use the natural singular ("taco", not "tacos";
    but keep "noodles" where the singular is awkward); minimal punctuation.
@@ -344,9 +426,10 @@ something about the food that arrives?**
   (eggs, pancakes, breakfast tacos).
 - **NO → not a category.** "dinner" is any food at all; "lunch", "happy hour"
   constrain when, never what. **A format fails when what arrives is
-  UNCONSTRAINED**: "tasting menu", "prix fixe", "buffet", "combo plate" tell
-  you how the food is delivered and how much of it, but the food itself could
-  be anything.
+  UNCONSTRAINED**: "tasting menu", "prix fixe", "buffet", "combo plate",
+  "lunch special", "3-course menu" tell you how the food is delivered, when,
+  and how much of it, but the food itself could be anything. **A modifier
+  never changes this** — test the head noun, not the string.
 - **A format that DOES constrain the food passes, like any other category.**
   "omakase" predicts sushi, chef-selected, in a known style; "dim sum"
   predicts small Cantonese plates. Diners search for these by name and order
@@ -369,7 +452,12 @@ Build the list:
    passes. Preserve head-first constructions: "pho tai" → `["pho tai", "pho"]`,
    never `["tai"]`. Stop before a lone ingredient. A peel landing on a
    when-only word yields nothing, even inside the dish's own name
-   ("ploughman's lunch" is a dish; "lunch" is not a class).
+   ("ploughman's lunch" is a dish; "lunch" is not a class). Note the
+   direction: "ploughman's lunch" survives because its head is `lunch` used
+   as a named composed dish, and its modifier is not a wrapper. "lunch
+   special" does not survive, because its head is `special`. When in doubt:
+   if removing the time-word leaves a wrapper (`special`, `menu`, `deal`),
+   there was never a dish.
 3. **Add 1–3 parent classes** the dish clearly belongs to, even when unstated —
    food nouns only (dessert, pastry, coffee, tea, sandwich, soup, salad, pizza,
    taco, burger, noodle, dumpling). A printed menu section is a category only
@@ -480,9 +568,13 @@ Two consequences follow directly:
   herby butter" to nothing.
 - **Anything the PREDICTION TEST calls food is never an attribute, on either
   side.** One split, decided by the same test that governs Step C:
-  - A format that FAILS prediction ("tasting menu", "buffet", "prix fixe" —
-    what arrives could be anything) is not food, and it CAN be a restaurant
-    attribute when it characterizes how the venue serves.
+  - A format or deal that FAILS prediction ("tasting menu", "buffet", "prix
+    fixe", "lunch special", "3-course menu" — what arrives could be anything)
+    is not food, and it CAN be a restaurant attribute when it characterizes
+    how the venue serves. Normalize a modified wrapper to its BARE form for
+    the attribute: "wagyu tasting menu" and "lunch tasting menu" both yield
+    the venue attribute `tasting menu`, never the modified string. A meal
+    deal yields `good value` at most, never a food.
   - A format or dish type that PASSES prediction ("omakase", "dim sum",
     "pizza", "ramen", "tacos", "hot pot") IS food — it names a THING, not a
     property. A place doesn't HAVE pizza as a quality, it SERVES pizza, and
@@ -552,7 +644,7 @@ Set `is_menu_item` for each composed dish.
   a menu ("duck carnitas taco", "tuna melt sandwich", "honey butter pancakes").
   The bar: **could two diners each order "the X" here and be handed the same
   thing?** "Bread's babka" → true (a babka is one thing you walk out with);
-  "the tasting menu at Corima" → true (one fixed offering); "Levain cookies",
+  "the omakase at Sushi Nakazawa" → true (one fixed offering); "Levain cookies",
   "Lady M cakes", "Raku's udon" → false (the shop makes many; the family name
   alone was never narrowed — family size is a fact about the MENU, not the
   sentence).
@@ -565,7 +657,9 @@ Set `true` only with strong evidence; when unsure, `false`.
 
 **Answering an item-specific ask.** When the ask names a target dish ("best
 burger in EV?") and a reply ONLY names a restaurant while passing the TESTIMONY
-TEST, reuse the ask's target as `food`/`food_categories` with
+TEST (a bare name answering a judgment ask passes it via the ANSWER TEST in
+A.1 — do not re-litigate the gate here), reuse the ask's target as
+`food`/`food_categories` with
 `is_menu_item: false`. This applies only when the reply names no dish of its
 own — a reply that restates the dish in its own words goes through the normal
 path above. **The inherited target must be an ORDERABLE DISH — it must pass
@@ -594,7 +688,8 @@ if the place cannot be resolved with confidence, skip the mention.
 
 `general_praise` is **true when the source endorses the PLACE AS A WHOLE**,
 independent of any dish — "this place is incredible", "my favorite spot in
-Austin", or a bare recommendation list answering a where-should-I-eat ask.
+Austin", or a name or list of names offered as the writer's own pick in
+answer to any request for a recommendation (the ANSWER TEST, A.1).
 
 - It is an **independent axis**. Composing a dish neither creates nor
   suppresses it; endorsing a place neither creates nor suppresses a dish.

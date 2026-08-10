@@ -4541,7 +4541,7 @@ CLEAN-PASS-1 api-core + api-search (2026-08-07, ATTEMPT 2, F8400): FRESH-EYES RE
 | apps/api/scripts/header-verdict-probe.ts | api-scripts | UNREVIEWED    | 1 | 23071084551d | Read-only; real ViewportVerdictService; no writes. (reverted from IDEAL-VERIFIED: file changed since review, was 23071084551d) |
 | apps/api/scripts/occurred-at-timezone-proof.ts | api-scripts | IDEAL-VERIFIED | 1 | 8de4e5189d93 | Read-only diff harness over real services. |
 | apps/api/scripts/prompt-ab.ts | api-scripts | IDEAL-VERIFIED | 1 | 71a4d850b5cf | Read-only; LlmService one-gateway; FLAKY reported honestly. |
-| apps/api/scripts/prompt-corpus-ab.ts | api-scripts | IDEAL-VERIFIED | 1 | ea66773720d1 | Read-only; --community quote-stripped (operator-supplied, benign); errors tallied. |
+| apps/api/scripts/prompt-corpus-ab.ts | api-scripts | UNREVIEWED    | 1 | ea66773720d1 | Read-only; --community quote-stripped (operator-supplied, benign); errors tallied. (reverted from IDEAL-VERIFIED: file changed since review, was ea66773720d1) |
 | apps/api/scripts/run-concept-satisfies.ts | api-scripts | IDEAL-VERIFIED | 1 | 6f6747c45019 | Dry-run default; --apply gates writes; idempotent (rejects stored). |
 | apps/api/scripts/run-demand-vocabulary.ts | api-scripts | UNREVIEWED    | 1 | fea2abe9a061 | Dry-run default; --apply gates banking; crons stopped. (reverted from IDEAL-VERIFIED: file changed since review, was fea2abe9a061) |
 | apps/api/scripts/scanner-source.ts | api-scripts | UNREVIEWED    | 1 | 855f007a5cc4 | Pure re-export of code-only stripper. (reverted from IDEAL-VERIFIED: file changed since review, was 855f007a5cc4) |

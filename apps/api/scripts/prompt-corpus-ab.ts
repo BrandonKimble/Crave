@@ -263,11 +263,30 @@ async function main(): Promise<void> {
   const llm = app.get(LLMService);
 
   // Real posts that actually carry a discussion — a post with no comments
-  // exercises almost none of the pipeline.
-  const posts = await prisma.$queryRawUnsafe<
-    Array<{ source_id: string; title: string | null; body: string | null }>
-  >(
-    `SELECT d.source_id, d.title, d.body
+  // exercises almost none of the pipeline. --post-ids-file targets a KNOWN
+  // problem set (one source_id per line) instead of sampling: the v8 loop
+  // re-runs exactly the docs the v7 shadow audit flagged, per the owner's
+  // "test only the docs that had issues before paying for a full replay".
+  const postIdsFile = arg('post-ids-file');
+  const targetIds = postIdsFile
+    ? readFileSync(postIdsFile, 'utf-8')
+        .split('\n')
+        .map((line) => line.trim())
+        .filter(Boolean)
+    : null;
+  const posts = targetIds
+    ? await prisma.$queryRawUnsafe<
+        Array<{ source_id: string; title: string | null; body: string | null }>
+      >(
+        `SELECT d.source_id, d.title, d.body
+           FROM collection_source_documents d
+          WHERE d.source_type = 'post' AND d.source_id = ANY($1)`,
+        targetIds,
+      )
+    : await prisma.$queryRawUnsafe<
+        Array<{ source_id: string; title: string | null; body: string | null }>
+      >(
+        `SELECT d.source_id, d.title, d.body
        FROM collection_source_documents d
       WHERE d.source_type = 'post'
         ${community ? `AND d.community = '${community.replace(/'/g, '')}'` : ''}
@@ -276,7 +295,7 @@ async function main(): Promise<void> {
            WHERE c.parent_source_id = d.source_id AND c.source_type = 'comment')
       ORDER BY random()
       LIMIT ${postCount}`,
-  );
+      );
 
   const cases: Array<{ id: string; payload: unknown }> = [];
   for (const post of posts) {

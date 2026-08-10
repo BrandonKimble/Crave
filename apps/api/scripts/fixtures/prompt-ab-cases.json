@@ -476,5 +476,276 @@
       "restaurants": ["nixta"],
       "somePraise": true
     }
+  },
+  {
+    "id": "V8a-bare-namedrop-inherits",
+    "why": "v7 shadow audit 2026-08-10: 161 real losses; canonical case \u2014 a bare name answering a judgment ask IS the pick (ANSWER TEST). Real doc.",
+    "posts": [
+      {
+        "id": "SRC070",
+        "title": "Best pizza in Manhattan?",
+        "body": "",
+        "extract_from_post": false,
+        "comments": [
+          {
+            "id": "SRC071",
+            "body": "Adrienne's in FiDi"
+          }
+        ]
+      }
+    ],
+    "expect": {
+      "restaurants": ["adrienne"],
+      "foods": ["pizza"],
+      "somePraise": true
+    }
+  },
+  {
+    "id": "V8b-single-bare-name-where-eat",
+    "why": "Single bare name (not a list) answering where-should-I-eat \u2014 old prompt said 'one or more' 3x; v7's 'list' wording dropped singles.",
+    "posts": [
+      {
+        "id": "SRC072",
+        "title": "Where should I eat in Austin tonight?",
+        "body": "",
+        "extract_from_post": false,
+        "comments": [
+          {
+            "id": "SRC073",
+            "body": "Violet Crown Wine Bar & Coffee Shop!"
+          }
+        ]
+      }
+    ],
+    "expect": {
+      "restaurants": ["violet crown"],
+      "somePraise": true
+    }
+  },
+  {
+    "id": "V8c-additive-list-answer",
+    "why": "Additive answers ('X & Y as well') join an ongoing answer thread \u2014 real loss class.",
+    "posts": [
+      {
+        "id": "SRC074",
+        "title": "Best cocktail bars downtown?",
+        "body": "",
+        "extract_from_post": false,
+        "comments": [
+          {
+            "id": "SRC075",
+            "body": "Death & Co, obviously."
+          },
+          {
+            "id": "SRC076",
+            "body": "Bar Snack & Paradise Lost as well",
+            "parent_id": "SRC075"
+          }
+        ]
+      }
+    ],
+    "expect": {
+      "restaurants": ["bar snack", "paradise lost"]
+    }
+  },
+  {
+    "id": "V8d-oneline-praise",
+    "why": "'is awesome' is a complete verdict \u2014 v7's hedged-verdict suspicion bled onto short plain praise.",
+    "posts": [
+      {
+        "id": "SRC077",
+        "title": "",
+        "body": "Slick Willie's is awesome",
+        "extract_from_post": true,
+        "comments": []
+      }
+    ],
+    "expect": {
+      "restaurants": ["slick willie"],
+      "somePraise": true
+    }
+  },
+  {
+    "id": "V8e-short-praise-plus-dish",
+    "why": "Real loss doc: 'e noodle is good and great soup dumplings there too' \u2014 restaurant praise + dish claim.",
+    "posts": [
+      {
+        "id": "SRC078",
+        "title": "",
+        "body": "e noodle is good and great soup dumplings there too",
+        "extract_from_post": true,
+        "comments": []
+      }
+    ],
+    "expect": {
+      "restaurants": ["e noodle"],
+      "foods": ["soup dumpling"]
+    }
+  },
+  {
+    "id": "V8f-CONTROL-findability-ask",
+    "why": "Regression guard: fact/findability ask stays non-testimony after the ANSWER TEST widening.",
+    "posts": [
+      {
+        "id": "SRC079",
+        "title": "Where can I find kolaches around here?",
+        "body": "",
+        "extract_from_post": false,
+        "comments": [
+          {
+            "id": "SRC080",
+            "body": "Quack's on 43rd has them. Also Epoch sells them sometimes"
+          }
+        ]
+      }
+    ],
+    "expect": {
+      "emitsNothing": true
+    }
+  },
+  {
+    "id": "V8g-CONTROL-holiday-roster",
+    "why": "Regression guard: external-criterion list (open on a holiday, per-entry hours) stays dead.",
+    "posts": [
+      {
+        "id": "SRC081",
+        "title": "Asian Restaurants Open on Christmas Day",
+        "body": "New Fortune / Din Ho 11-4 / Dumpling World / Mian and Bao 11-9 / First Wok 12-8",
+        "extract_from_post": true,
+        "comments": []
+      }
+    ],
+    "expect": {
+      "emitsNothing": true
+    }
+  },
+  {
+    "id": "V8h-CONTROL-promo",
+    "why": "Regression guard: promo/coupon share stays dead.",
+    "posts": [
+      {
+        "id": "SRC082",
+        "title": "",
+        "body": "Not local, but just saw Wingstop has an offer and wanted to share - free chicken sandwich with the code FREESAMMY",
+        "extract_from_post": true,
+        "comments": []
+      }
+    ],
+    "expect": {
+      "emitsNothing": true
+    }
+  },
+  {
+    "id": "V8i-CONTROL-disclaimed-namedrop",
+    "why": "Regression guard: 'never been but' strips the pick back to information.",
+    "posts": [
+      {
+        "id": "SRC083",
+        "title": "Best burgers midtown?",
+        "body": "",
+        "extract_from_post": false,
+        "comments": [
+          {
+            "id": "SRC084",
+            "body": "Greywind at 35th and 10th. I've never been but I hear the chef is great"
+          }
+        ]
+      }
+    ],
+    "expect": {
+      "emitsNothing": true
+    }
+  },
+  {
+    "id": "V8j-course-menu-compound",
+    "why": "Format-compound forensics: '3/4 course menu' \u2014 count modifier on wrapper head; no dish. Real doc.",
+    "posts": [
+      {
+        "id": "SRC085",
+        "title": "",
+        "body": "Gabriel Kreuther's 3/4 course menu. Staff is friendly and the vibes are pretty casual even though it's 2*",
+        "extract_from_post": true,
+        "comments": []
+      }
+    ],
+    "expect": {
+      "restaurants": ["gabriel kreuther"],
+      "notFoods": ["3/4 course menu", "course menu", "menu"]
+    }
+  },
+  {
+    "id": "V8k-wagyu-redirect",
+    "why": "Predictive modifier on wrapper head redirects to the FOOD: wagyu tasting menu -> wagyu, never the compound.",
+    "posts": [
+      {
+        "id": "SRC086",
+        "title": "Best steakhouse experience?",
+        "body": "",
+        "extract_from_post": false,
+        "comments": [
+          {
+            "id": "SRC087",
+            "body": "Not a traditional steakhouse, but the wagyu tasting menu at Yakiniku Futago is one of the best meals I've had this year."
+          }
+        ]
+      }
+    ],
+    "expect": {
+      "restaurants": ["yakiniku futago"],
+      "foods": ["wagyu"],
+      "notFoods": ["wagyu tasting menu", "tasting menu"]
+    }
+  },
+  {
+    "id": "V8l-lunch-special-value",
+    "why": "Meal-deal testimony is VALUE testimony: 9/9 leaked in v7. Verb strength never mints a food named 'lunch special'.",
+    "posts": [
+      {
+        "id": "SRC088",
+        "title": "",
+        "body": "I get the lunch specials at Main Noodle House. Around $15 but portions are huge and are 2 meals for me.",
+        "extract_from_post": true,
+        "comments": []
+      }
+    ],
+    "expect": {
+      "restaurants": ["main noodle"],
+      "notFoods": ["lunch special", "lunch specials", "special"],
+      "somePraise": true
+    }
+  },
+  {
+    "id": "V8m-itemized-deal",
+    "why": "Hardest deal case: itemized contents are the deal's inventory, not dish claims. Over-correction watch: no taco mention either.",
+    "posts": [
+      {
+        "id": "SRC089",
+        "title": "",
+        "body": "Great weekday lunch special at Tacos El Rey - 2 tacos, rice y beans, iced tea like $10 til 3pm",
+        "extract_from_post": true,
+        "comments": []
+      }
+    ],
+    "expect": {
+      "restaurants": ["tacos el rey"],
+      "notFoods": ["lunch special", "taco"]
+    }
+  },
+  {
+    "id": "V8n-CONTROL-salmon-omakase",
+    "why": "Boundary control: omakase is a prediction-PASSING head \u2014 'salmon omakase' composes normally; redirect must NOT over-generalize.",
+    "posts": [
+      {
+        "id": "SRC090",
+        "title": "",
+        "body": "The salmon omakase course at Sushi Nakazawa is the one to get, worth every penny",
+        "extract_from_post": true,
+        "comments": []
+      }
+    ],
+    "expect": {
+      "restaurants": ["nakazawa"],
+      "foods": ["salmon omakase"]
+    }
   }
 ]
