@@ -155,6 +155,21 @@ L3. **COVER-LINKER (locked 2026-08-10, owner delegated).** Whole-query span
 11. **vi gold notes**: hg-11 (nem) parked on generator head-noun gap (see
     9); un-park when banked.
 
+12b. **LLM-spend taxonomy invariant** (from 📌04's batch audit): untagged
+   call sites pollute every campaign estimate (~$13/30d of unattributed
+   flash-lite with 16k-token inputs + 408 calls on an unprofiled model).
+   My lane verified tagged (concepts.satisfies, labels.vocabulary,
+   aliases.claim_judge). Fix structurally: an invariant — every LLM call
+   carries usageCaller — as a mutation-provable guard, not a per-incident
+   hunt. Find + tag the 16k flash-lite classifier and the gemini-3.5-flash
+   caller while building it.
+12c. **Batch-convert the resolution/judge loop** — measured prize ≈$6 per
+   Austin-scale campaign; deferred until the resolution loop is reworked
+   anyway (📌04's honest verdict: a two-phase restructure of an
+   advisory-lock-holding loop is not worth $6). Supersedes the old
+   'batch rail' trigger for THESE call sites; extraction + embeddings
+   already batched.
+
 ## C2. CORPUS CURATION GAP (discovered via the DB restore, 2026-08-09)
 
 The wiped local corpus carried weeks of data curation the prod corpus
