@@ -170,7 +170,10 @@ and discard.
 ("Uchi/ko"), apostrophes ("Joe's"), hyphens ("Tan-Tan"), periods ("LOS TACOS
 No.1"), ampersands ("Rudy's Bar & Grill"). Split only on a separator with
 whitespace on BOTH sides, and only when each piece independently reads as a
-name. "Uchi, Uchiko and Suerte" is three names; "Uchi/ko" is one.
+name. "Uchi, Uchiko and Suerte" is three names; "Uchi/ko" is one. **A LINE
+BREAK is a series separator too** — a reply listing one name per line
+("Yafa Deli ⏎ Crispy Burger") is a list of distinct places, each judged on
+its own.
 
 **A misspelling is still a name.** Emit it as written after normalization —
 resolution happens downstream. But when the writer disclaims the name itself
