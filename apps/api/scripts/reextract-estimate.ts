@@ -50,11 +50,29 @@ async function main(): Promise<void> {
     const prisma = app.get(PrismaService);
     const campaigns = app.get(SpendCampaignService);
 
+    // 'all' expands to every community that actually has documents — the verb
+    // list always promised `<communities|all>`, but this script used to pass
+    // the literal string into `community = ANY(['all'])` and estimate a
+    // $0.00 / 0-doc campaign (shakedown finding #3, first full-corpus run
+    // 2026-08-10). A wrong-but-plausible small estimate would have been far
+    // worse than the loud zero we got.
+    let resolvedCommunities = communities;
+    if (communities.length === 1 && communities[0].toLowerCase() === 'all') {
+      const rows = await prisma.$queryRaw<Array<{ community: string }>>`
+        SELECT DISTINCT community FROM collection_source_documents
+        WHERE community IS NOT NULL ORDER BY community`;
+      resolvedCommunities = rows.map((row) => row.community);
+      if (!resolvedCommunities.length) {
+        throw new Error('no communities found in collection_source_documents');
+      }
+      console.log(`'all' -> ${resolvedCommunities.join(', ')}`);
+    }
+
     const [{ count }] = await prisma.$queryRaw<Array<{ count: bigint }>>`
       SELECT count(*) AS count FROM collection_source_documents
-      WHERE community = ANY(${communities})`;
+      WHERE community = ANY(${resolvedCommunities})`;
     const docCount = Number(count);
-    const name = `reextract:${communities.join('+')}:v${promptVersion}`;
+    const name = `reextract:${resolvedCommunities.join('+')}:v${promptVersion}`;
 
     // APPROVE THE EXISTING ROW (round-six cost red team #8): calling
     // prepareManifestEstimate again on the --approve-estimate pass minted a
@@ -73,7 +91,7 @@ async function main(): Promise<void> {
       if (existing) {
         await campaigns.approve(existing.campaignId, approveHash);
         console.log(
-          `APPROVED existing campaign ${existing.campaignId}. Arm the shadow: ./scripts/rig/reextract.sh shadow ${communities.join(',')} ${promptVersion} ${existing.campaignId}`,
+          `APPROVED existing campaign ${existing.campaignId}. Arm the shadow: ./scripts/rig/reextract.sh shadow ${resolvedCommunities.join(',')} ${promptVersion} ${existing.campaignId}`,
         );
         return;
       }
@@ -103,7 +121,7 @@ async function main(): Promise<void> {
     }
     await campaigns.approve(estimate.campaignId, approveHash);
     console.log(
-      `APPROVED. Arm the shadow: ./scripts/rig/reextract.sh shadow ${communities.join(',')} ${promptVersion} ${estimate.campaignId}`,
+      `APPROVED. Arm the shadow: ./scripts/rig/reextract.sh shadow ${resolvedCommunities.join(',')} ${promptVersion} ${estimate.campaignId}`,
     );
   } finally {
     await app.close();
