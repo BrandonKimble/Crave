@@ -1,5 +1,9 @@
 import { applyAuditReasonPolicy } from './llm-audit-policy';
 import {
+  EntityMatchPromptMode,
+  renderEntityMatchSystemInstruction,
+} from './entity-match-prompt';
+import {
   resolveThinkingConfig,
   type GeminiThinkingConfig,
   type ThinkingContext,
@@ -791,6 +795,15 @@ export class LLMService implements OnModuleInit, OnModuleDestroy {
     );
   }
 
+  /**
+   * THE system instruction for the same-entity judge, single OR batched.
+   * Both transports render from the one .md asset — see entity-match-prompt.ts
+   * for why that stopped being true once and must not stop again.
+   */
+  private entityMatchSystemInstruction(mode: EntityMatchPromptMode): string {
+    return renderEntityMatchSystemInstruction(this.entityMatchPrompt, mode);
+  }
+
   private loadPollSubjectPrompt(): string {
     return this.loadRequiredPromptFile(
       'poll-subject-prompt.md',
@@ -1549,15 +1562,11 @@ export class LLMService implements OnModuleInit, OnModuleDestroy {
       responseMimeType: 'application/json',
       responseJsonSchema: ENTITY_MATCH_BATCH_RESPONSE_JSON_SCHEMA,
     };
-    const systemInstruction =
-      `You judge entity identity for a food-discovery database. For EACH item i, ` +
-      `decide independently whether item i's "term" names the SAME real-world ` +
-      `${input.kind === 'restaurant' ? 'restaurant' : input.kind === 'ingredient' ? 'ingredient' : 'dish'} as one of item i's own ` +
-      `candidates (spelling/plural/abbreviation/alias variants of ONE thing = match; ` +
-      `related-but-different things = new). NEVER compare a term against another ` +
-      `item's candidates. Uncertain = new. Return JSON ` +
-      `{"items":[{"index","decision","candidateId"}]} covering every input index; ` +
-      `candidateId is the matched candidate's id or null.`;
+    // ONE prompt, two transports: this used to be a hand-written inline twin
+    // of prompts/entity-match-prompt.md that had drifted (it had lost the
+    // cost-asymmetry framing). The .md is canonical for BOTH paths now; the
+    // batch envelope adds only the per-item protocol. See entity-match-prompt.ts.
+    const systemInstruction = this.entityMatchSystemInstruction('batch');
 
     try {
       const payload = input.items.map((item, index) => ({
@@ -1569,8 +1578,11 @@ export class LLMService implements OnModuleInit, OnModuleDestroy {
           ...(c.aliases?.length ? { aliases: c.aliases.slice(0, 6) } : {}),
         })),
       }));
+      // `kind` rides the PAYLOAD now. It used to be interpolated into the
+      // inline system instruction, which is why that copy had to exist at all;
+      // the canonical prompt already documents `kind` as an input field.
       const response = await this.callLLMApi(
-        JSON.stringify({ items: payload }),
+        JSON.stringify({ kind: input.kind, items: payload }),
         {
           usageCaller: 'entity-resolution.match_batch',
           generationConfig,
@@ -1775,7 +1787,7 @@ export class LLMService implements OnModuleInit, OnModuleDestroy {
     const response = await this.callLLMApi(payload, {
       usageCaller: 'entity-resolution.match',
       generationConfig,
-      systemInstruction: this.entityMatchPrompt,
+      systemInstruction: this.entityMatchSystemInstruction('single'),
       model,
       maxRetries: 1,
       // 'query' (MINIMAL thinking) — consistent with matchEntitiesBatch; the
