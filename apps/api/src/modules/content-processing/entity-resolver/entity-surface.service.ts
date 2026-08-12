@@ -264,7 +264,14 @@ export async function addSurfaces(
       continue;
     }
     const locale = normalizeLocaleTag(input.locale);
-    const dedupeKey = `${locale} ${form}`;
+    // '\0' as an ESCAPE, never a literal NUL byte in the source (2026-08-11).
+    // A separator that cannot occur in a locale tag or a surface form is the
+    // right choice — but typing the byte itself made this file BINARY to
+    // every tool that decides by content sniffing: `grep` refuses it without
+    // -a, `git diff` prints "Binary files differ" instead of the change, and
+    // a review of this line was impossible to read. The escape compiles to
+    // the identical string, so the keys are byte-identical.
+    const dedupeKey = `${locale}\0${form}`;
     if (seen.has(dedupeKey)) {
       continue;
     }

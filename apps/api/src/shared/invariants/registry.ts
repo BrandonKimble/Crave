@@ -707,6 +707,41 @@ export const INVARIANTS: readonly Invariant[] = [
     ],
   },
 
+  // ── SOURCE ───────────────────────────────────────────────────────────
+  {
+    id: 'source.files-are-text',
+    statement:
+      'No source file contains a raw NUL byte — a file a person cannot grep or diff is a file nobody reviews.',
+    incident:
+      'Two files carried a literal NUL typed into a dedupe-key template (`${locale}\\0${form}`). It compiled and ran correctly, and made both files BINARY to content sniffing: grep refused them without -a, git diff printed "Binary files differ" instead of the change, and the line could not be code-reviewed. The escape `\\0` produces the identical string. Nothing in a test run reads source as BYTES, so nothing could ever have noticed.',
+    level: 'behaviour',
+    mechanism:
+      'scripts/check-source-is-text.ts — walks src/scripts/test/prisma, reads each file as a Buffer, refuses a zero byte (and refuses to pass having scanned nothing)',
+    check: {
+      command: 'npx ts-node -T scripts/check-source-is-text.ts',
+      reads: 'the bytes of every source file, which no other gate does',
+    },
+    mutations: [
+      {
+        // The defect exactly as it occurred: a NUL inside a template literal.
+        file: SCRATCH,
+        // The NUL is written as a SOURCE ESCAPE so this file stays
+        // text; the harness writes the real byte into the probe.
+        content:
+          'export const key = (a: string, b: string) => `${a}\u0000${b}`;\n',
+      },
+    ],
+    legitimate: [
+      {
+        // The ESCAPE is the fix, not the defect — the guard must not refuse
+        // the very thing it tells people to write.
+        file: SCRATCH,
+        content:
+          'export const key = (a: string, b: string) => `${a}\\0${b}`;\n',
+      },
+    ],
+  },
+
   // ── POLLS ────────────────────────────────────────────────────────────
   {
     id: 'polls.ballot-documents-are-excluded-from-source-activity',
