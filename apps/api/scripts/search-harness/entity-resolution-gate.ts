@@ -259,39 +259,42 @@ const FIXTURES: Fixture[] = [
     expect: { entity: 'Bonjuk New York', tier: 'alias' },
     note: 'city suffix dropped',
   },
+  // al-10..al-14 and fold-05/07/10 expect tier 'exact' since f1e1770d4:
+  // the deterministic identity-key tier claims fold-equal names BEFORE the
+  // surface/alias tier — same entity, earlier (cheaper, deterministic) tier.
   {
     id: 'al-10',
     type: EntityType.restaurant,
     mention: 'miladys',
-    expect: { entity: "Milady's", tier: 'alias' },
+    expect: { entity: "Milady's", tier: 'exact' },
     note: 'possessive apostrophe dropped',
   },
   {
     id: 'al-11',
     type: EntityType.restaurant,
     mention: 'despana',
-    expect: { entity: 'Despaña', tier: 'alias' },
+    expect: { entity: 'Despaña', tier: 'exact' },
     note: 'de-accented spelling ALREADY banked verbatim as an und surface',
   },
   {
     id: 'al-12',
     type: EntityType.restaurant,
     mention: 'lysee',
-    expect: { entity: 'Lysée', tier: 'alias' },
+    expect: { entity: 'Lysée', tier: 'exact' },
     note: 'as al-11',
   },
   {
     id: 'al-13',
     type: EntityType.restaurant,
     mention: 'cesar',
-    expect: { entity: 'César', tier: 'alias' },
+    expect: { entity: 'César', tier: 'exact' },
     note: 'as al-11',
   },
   {
     id: 'al-14',
     type: EntityType.restaurant,
     mention: 'rezdora',
-    expect: { entity: 'Rezdôra', tier: 'alias' },
+    expect: { entity: 'Rezdôra', tier: 'exact' },
     note: 'as al-11 (circumflex)',
   },
 
@@ -334,7 +337,7 @@ const FIXTURES: Fixture[] = [
     id: 'fold-05',
     type: EntityType.restaurant,
     mention: 'joes shanghai',
-    expect: { entity: "Joe's Shanghai", tier: 'alias' },
+    expect: { entity: "Joe's Shanghai", tier: 'exact' },
     note: 'banked surface "Joes Shanghai" — case only',
   },
   {
@@ -348,7 +351,7 @@ const FIXTURES: Fixture[] = [
     id: 'fold-07',
     type: EntityType.restaurant,
     mention: 'jean georges',
-    expect: { entity: 'Jean-Georges', tier: 'alias' },
+    expect: { entity: 'Jean-Georges', tier: 'exact' },
     note: 'banked surface "Jean Georges" — case only (the hyphenated NAME is not reachable by the exact tier)',
   },
   {
@@ -369,7 +372,7 @@ const FIXTURES: Fixture[] = [
     id: 'fold-10',
     type: EntityType.restaurant,
     mention: 'cathedrale restaurant',
-    expect: { entity: 'Cathédrale Restaurant', tier: 'alias' },
+    expect: { entity: 'Cathédrale Restaurant', tier: 'exact' },
     note: 'banked surface "Cathédrale Restaurant" — ACCENT, the case the fold exists for',
   },
 
@@ -517,25 +520,42 @@ const FIXTURES: Fixture[] = [
   //    the language of the document it was said in. Every fixture above has
   //    NO documentLocale and therefore still reads the und-only slice — that
   //    they did not move is half the evidence for this change.
+  // THESE THREE WERE 'camarones', AND THE CORPUS TOOK THE WORD AWAY
+  // (re-grounded 2026-08-11, per this gate's own authoring law: every
+  // expectation is READ OUT OF THE DATABASE before it is written down). On
+  // 2026-08-10 extraction created a food entity literally NAMED 'camarones'
+  // — a Spanish word that became its own concept beside `shrimp`, which is a
+  // real duplicate and is flagged for the resolver-convergence lane, not
+  // repaired here. Once an entity is named X, tier 1 answers X[exact] before
+  // any locale-scoped alias tier is consulted, so all three fixtures became
+  // unfalsifiable: they can no longer show RED when the locale scope breaks,
+  // which is the only thing that makes a fixture worth having.
+  //
+  // 'acedera' is the same shape, re-read from the corpus today: an es surface
+  // of the English-named FOOD concept `sorrel`, role='both' (so it makes a
+  // real recall claim, exactly as the camarones row did), held by ONE entity,
+  // with no und or en row sharing its fold and no entity of that name. The
+  // TYPE matters and cost a round trip: `acelga` -> `swiss chard` looked
+  // identical but is an INGREDIENT, and a food-typed mention never sees it.
   {
     id: 'doc-01',
     type: EntityType.food,
-    mention: 'camarones',
+    mention: 'acedera',
     documentLocale: 'es',
-    expect: { entity: 'shrimp', tier: 'alias' },
-    note: 'es surface of "shrimp" (role=both), read out of an ES document — the whole point: a Spanish document grounds through Spanish words. RED under the und-only scope',
+    expect: { entity: 'sorrel', tier: 'alias' },
+    note: 'es surface of "sorrel" (role=both), read out of an ES document — the whole point: a Spanish document grounds through Spanish words. RED under the und-only scope',
   },
   {
     id: 'doc-02',
     type: EntityType.food,
-    mention: 'camarones',
+    mention: 'acedera',
     expect: UNMATCHED,
     note: 'THE SAME WORD with no document language — the chain is a closed set the document names, not a widening: an untagged mention still sees und only (loc-01..07 say this for every other es word)',
   },
   {
     id: 'doc-03',
     type: EntityType.food,
-    mention: 'camarones',
+    mention: 'acedera',
     documentLocale: 'en',
     expect: UNMATCHED,
     note: 'an EN document may not ground through es surfaces — localeLookupChain(en) is [en,und], and es is not in it',
@@ -635,7 +655,33 @@ async function seedScratchFixtures(prisma: PrismaService): Promise<void> {
     SCRATCH_EN_FORM,
     canonicalFold(SCRATCH_EN_FORM),
   );
+  // THE SEED OWNS THE SCRATCH ENTITY'S ROWS, ALL OF THEM (2026-08-11).
+  // `ON CONFLICT (entity_id, locale, form)` can only ever ADD — it cannot see
+  // a row of the same form under a DIFFERENT locale, and such a row makes the
+  // locale fixtures lie. It happened: the seed used to write its 'en' form
+  // with source='extraction', the extraction locale repair then correctly
+  // re-tagged that row to 'und', and the next seed inserted a fresh 'en' row
+  // beside it — so the "a vi document cannot see an en form" fixture went RED
+  // against a universal und twin the gate itself had left behind. A fixture
+  // whose premise is "this form exists ONLY in this locale" has to enforce
+  // that, not assume it.
+  await prismaExecute(
+    prisma,
+    `DELETE FROM entity_surface
+      WHERE entity_id = $1::uuid
+        AND (form, locale) NOT IN (($2, 'und'), ($3, 'und'), ($4, 'en'))`,
+    SCRATCH_ENTITY_ID,
+    SCRATCH_DISPLAY_FORM,
+    SCRATCH_FOLD_FORM,
+    SCRATCH_EN_FORM,
+  );
 }
+
+const prismaExecute = (
+  prisma: PrismaService,
+  sql: string,
+  ...params: unknown[]
+): Promise<number> => prisma.$executeRawUnsafe(sql, ...params);
 
 async function main(): Promise<void> {
   const app = await bootstrap();
