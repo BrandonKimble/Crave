@@ -86,6 +86,22 @@ export interface SweepResult {
   surfacesOffered: number;
   /** …that were actually banked. */
   surfacesBanked: number;
+  /**
+   * …that the collision guard first REFUSED and the claim judge then GAVE
+   * BACK on appeal (2026-08-12).
+   *
+   * `surfacesBanked` above is finalized inside `writeLabels`, which runs
+   * BEFORE `adjudicate(contested)`. Every surface the judge awards is banked
+   * by the adjudicator, after that number is already fixed — so the sweep
+   * was under-reporting its own output by the entire appeal docket (a
+   * measured 1.6x on the English sweep: the headline said banked=N while
+   * N*1.6 rows existed). Reported separately rather than folded into
+   * `surfacesBanked` because "won a hearing" and "landed uncontested" are
+   * different facts about the corpus, and the appeal rate is the number that
+   * says whether the vocabulary generator is proposing words other concepts
+   * already own.
+   */
+  surfacesWonOnAppeal: number;
   /** …that P0-b's collision guard REFUSED. Reported because a locale-tagged
    *  write never changes the und-only projection, so without this a run where
    *  the guard blocked everything looked identical to a perfect run. */
@@ -315,8 +331,14 @@ export class LabelSweepService {
     // an appeal. Testimony incumbents are upheld free; inferred-vs-inferred
     // conflicts get the judge; every verdict is remembered (deprecated), so
     // no claim is ever re-litigated or silently re-proposed.
+    let wonOnAppeal = 0;
     if (contested.length) {
-      await this.claimAdjudicator.adjudicate(contested);
+      const verdicts = await this.claimAdjudicator.adjudicate(contested);
+      // `banked`, not `bothUpheld + incumbentEvicted`: the adjudicator's
+      // uncontested branch counts an outcome for a claim whose target entity
+      // is gone and writes no row. Counting the write is the only tally that
+      // cannot drift from the table.
+      wonOnAppeal = verdicts.banked;
     }
     // THE ASK IS RECORDED WHATEVER CAME BACK (KL-A). Every concept in the
     // batch was put to the generator, so every one gets a run row — 'labeled'
@@ -350,6 +372,7 @@ export class LabelSweepService {
       autoApproved: generated.filter((row) => row.status === 'active').length,
       surfacesOffered: surfaceTally.offered,
       surfacesBanked: surfaceTally.banked,
+      surfacesWonOnAppeal: wonOnAppeal,
       surfacesBlocked: surfaceTally.blocked,
     };
     this.logger.log(

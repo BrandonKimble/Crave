@@ -119,6 +119,16 @@ export interface AdjudicationSummary {
   judged: number;
   /** Newcomer banked, incumbent kept (legit multi-claim). */
   bothUpheld: number;
+  /**
+   * SURFACES ACTUALLY BANKED BY THIS HEARING — counted at the `bank()` call
+   * itself, which is the only honest place. It is NOT `bothUpheld +
+   * incumbentEvicted`: the uncontested branch above increments `bothUpheld`
+   * for a claim whose target entity no longer exists (`!p.target`) and banks
+   * NOTHING. The label sweep reports its banked total from this number, so
+   * an outcome counter that overcounts by one dead entity would inflate the
+   * sweep's headline. Zero under dryRun, because nothing was written.
+   */
+  banked: number;
   /** Incumbent deprecated, newcomer banked. */
   incumbentEvicted: number;
   /** Newcomer written 'deprecated' — remembered wrong, never re-proposed. */
@@ -185,6 +195,7 @@ export class WordClaimAdjudicatorService {
       testimonyUpheld: 0,
       judged: 0,
       bothUpheld: 0,
+      banked: 0,
       incumbentEvicted: 0,
       newcomerRefused: 0,
       unjudged: 0,
@@ -221,7 +232,9 @@ export class WordClaimAdjudicatorService {
           // FALSE CONFLICT is undone: a claim refused when the hearing was
           // held on the accent-blind fold has no same-word incumbent at all,
           // so the re-hearing finds no case to answer and the word goes back.
-          if (p.target) await this.bank(p.claim, dryRun);
+          if (p.target && (await this.bank(p.claim, dryRun))) {
+            summary.banked += 1;
+          }
           summary.bothUpheld += 1;
           if (p.target) {
             summary.cases.push({
@@ -296,7 +309,9 @@ export class WordClaimAdjudicatorService {
         if (!dryRun && evictable.length) {
           await this.evictIncumbents(evictable);
         }
-        await this.bank(p.claim, dryRun);
+        if (await this.bank(p.claim, dryRun)) {
+          summary.banked += 1;
+        }
         if (evictable.length) {
           summary.incumbentEvicted += 1;
         } else {
@@ -589,9 +604,12 @@ export class WordClaimAdjudicatorService {
   }
 
   /** Bank a won claim. The guard re-checks; with the incumbent deprecated it
-   *  passes, so there is NO bypass flag — eviction IS the admission. */
-  private async bank(claim: ContestedClaim, dryRun: boolean): Promise<void> {
-    if (dryRun) return;
+   *  passes, so there is NO bypass flag — eviction IS the admission.
+   *
+   *  Returns whether a row was actually written, so callers tally what
+   *  HAPPENED rather than what an outcome counter implies. */
+  private async bank(claim: ContestedClaim, dryRun: boolean): Promise<boolean> {
+    if (dryRun) return false;
     await this.prisma.$transaction((tx) =>
       addSurfaces(
         tx,
@@ -610,6 +628,7 @@ export class WordClaimAdjudicatorService {
         { adjudicated: mintWordClaimVerdict() },
       ),
     );
+    return true;
   }
 
   /** A losing newcomer is REMEMBERED as wrong (status 'deprecated'), so no
