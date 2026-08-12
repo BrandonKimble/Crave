@@ -199,6 +199,28 @@ L3. **COVER-LINKER (locked 2026-08-10, owner delegated).** Whole-query span
    NOT draining a foreign backlog. Ideal shape: boot inspects queues and
    refuses/pauses spend-bearing drains that no active budget owns.
 
+13b. **Tier-2 alias accent veto** (⭐04 handoff, my lane, corpus-independent):
+   surface matching predates the accent-veto commits — a banked 'cơm chay'
+   can alias-claim 'cơm cháy' at 0.95. Fix = the same both-sides-accented-
+   mismatch veto in selectBestAliasMatch (forms already in hand). QUEUE
+   AFTER the spine-correction agent lands (same file territory).
+13c. **Squeeze-claim judge question** (⭐04 handoff): accent-free 'bo ne'
+   squeeze can claim a genuinely-English 'Bone' when sole owner — vi-lane
+   judge-inheritance design question, take up with the ladder/step work.
+13d. **CALIBRATION LAW for the C3 synergy audit** (owner directive via
+   ⭐04): the two convergence foot-guns (ASCII-only regex deleting a
+   language; accent-blind equality fusing tone-differing words) are the
+   calibration examples — the audit reads EVERY normalization, name regex,
+   folded-equality, LOWER()/ILIKE, and tokenizer assumption line by line,
+   runs the actual fold on real vi/zh strings, and proves each verdict.
+   Pattern-matching review is disqualified; both examples were invisible
+   to it. Also: any fold-algorithm change requires
+   refreshSortedIdentityKeys({full:true}) or stored keys drift (LAW).
+13e. **Resolution-gate fixture refresh**: ⭐04's deterministic tiers moved
+   12-13 fixtures from alias→exact attribution; current honest baseline
+   45/58. Fixture expectation updates belong to the convergence lane;
+   my agents told not to touch them.
+
 ## C2. CORPUS CURATION GAP (discovered via the DB restore, 2026-08-09)
 
 The wiped local corpus carried weeks of data curation the prod corpus
