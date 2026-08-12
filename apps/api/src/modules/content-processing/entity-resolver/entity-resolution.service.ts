@@ -7,7 +7,7 @@ import { createHash } from 'crypto';
 import { Redis } from 'ioredis';
 import { PrismaService } from '../../../prisma/prisma.service';
 import { foodNameVariants } from './food-lemma';
-import { canonicalFold } from './entity-identity';
+import { canonicalFold, diacriticFold } from './entity-identity';
 import { recallSurfaceScopeSql } from './entity-surface.service';
 
 import { LoggerService, CorrelationUtils } from '../../../shared';
@@ -464,6 +464,23 @@ export class EntityResolutionService implements OnModuleInit {
       unmatched: unmatchedAfterAlias.length,
     });
 
+    // Tier 2.5: joined-identity claim (space/join twins). Deterministic,
+    // guarded — see performJoinedIdentityMatches. Results carry tier 'alias'
+    // (a surface-identity claim at the same 0.95 confidence) and flow through
+    // the metro gate with the other alias matches below.
+    const joinedMatchResults = await this.performJoinedIdentityMatches(
+      unmatchedAfterAlias,
+      entityType,
+      engineId,
+      documentLocale,
+    );
+    const unmatchedAfterJoined = unmatchedAfterAlias.filter(
+      (entity) =>
+        !joinedMatchResults.find(
+          (r) => r.tempId === entity.tempId && r.entityId,
+        ),
+    );
+
     // Tier 3: recall (shared lexical+dense core) → LLM matcher. Only offline
     // consumers that opt in (config.useLlmMatcher) and only restaurant/food run
     // it, so the per-entity LLM latency never lands on the query-time callers
@@ -479,14 +496,14 @@ export class EntityResolutionService implements OnModuleInit {
         entityType === 'ingredient');
     const fuzzyMatchResults = useLlmMatcher
       ? await this.performLlmMatches(
-          unmatchedAfterAlias,
+          unmatchedAfterJoined,
           entityType,
           engineId,
           documentLocale,
         )
       : [];
 
-    const unmatchedAfterFuzzy = unmatchedAfterAlias.filter(
+    const unmatchedAfterFuzzy = unmatchedAfterJoined.filter(
       (entity) =>
         !fuzzyMatchResults.find(
           (r) => r.tempId === entity.tempId && r.entityId,
@@ -510,7 +527,12 @@ export class EntityResolutionService implements OnModuleInit {
     const demotedInputs =
       entityType === 'restaurant' && engineId
         ? await this.applyMetroAdoptionGate(
-            [...exactMatchResults, ...aliasMatchResults, ...fuzzyMatchResults],
+            [
+              ...exactMatchResults,
+              ...aliasMatchResults,
+              ...joinedMatchResults,
+              ...fuzzyMatchResults,
+            ],
             engineId,
           )
         : [];
@@ -554,6 +576,13 @@ export class EntityResolutionService implements OnModuleInit {
       }
     });
 
+    // Add joined-identity results (only for entities not already matched)
+    joinedMatchResults.forEach((result) => {
+      if (result.entityId && !entityResultMap.has(result.tempId)) {
+        entityResultMap.set(result.tempId, result);
+      }
+    });
+
     // Add fuzzy match results (only for entities not already matched)
     fuzzyMatchResults.forEach((result) => {
       if (result.entityId && !entityResultMap.has(result.tempId)) {
@@ -567,6 +596,7 @@ export class EntityResolutionService implements OnModuleInit {
       for (const tier of [
         exactMatchResults,
         aliasMatchResults,
+        joinedMatchResults,
         fuzzyMatchResults,
       ]) {
         for (const result of tier) {
@@ -699,6 +729,20 @@ export class EntityResolutionService implements OnModuleInit {
           new Set(entities.flatMap((e) => foodNameVariants(e.normalizedName))),
         )
       : normalizedNames;
+    // IDENTITY-KEY PROBE (2026-08-11, the v7 shadow twin class). The
+    // case-insensitive name probe is BYTE equality modulo case: "Mcdonalds"
+    // never matched "McDonald's" (apostrophe), "Alamo Springs Cafe" never
+    // matched "Alamo Springs Café" (accent) — 23 duplicate restaurants minted
+    // in one full-corpus replay for trivial spelling variants the judge then
+    // fail-closed on. `core_entities.identity_key` IS `canonicalFold(name)`,
+    // app-written on every create (identityInsertData) and indexed
+    // (idx_entities_type_identity_key) — the ONE stored identity fold — so
+    // the tier probes it with the SAME fold on the input side. Same-fold =
+    // same name modulo case/accents/apostrophes/punctuation runs; that is a
+    // deterministic identity fact, never the judge's question.
+    const foldedProbes = Array.from(
+      new Set(probeNames.map((name) => canonicalFold(name)).filter(Boolean)),
+    );
 
     try {
       // Optimized bulk query for exact matches. Archived rows are excluded:
@@ -707,10 +751,20 @@ export class EntityResolutionService implements OnModuleInit {
       const whereClause: Prisma.EntityWhereInput = {
         type: entityType,
         status: { not: EntityStatus.archived },
-        name: {
-          in: probeNames,
-          mode: 'insensitive',
-        },
+        OR: [
+          {
+            name: {
+              in: probeNames,
+              mode: 'insensitive',
+            },
+          },
+          // Names with no foldable identity (emoji-only) carry NULL identity
+          // keys and are unreachable here by construction — foldedProbes is
+          // filtered non-empty, and NULL never equals a probe.
+          ...(foldedProbes.length
+            ? [{ identityKey: { in: foldedProbes } }]
+            : []),
+        ],
       };
 
       const matchedEntities = await this.prisma.entity.findMany({
@@ -718,25 +772,47 @@ export class EntityResolutionService implements OnModuleInit {
         select: {
           entityId: true,
           name: true,
+          identityKey: true,
         },
       });
 
-      // Create lookup map for O(1) resolution
+      // Create lookup maps for O(1) resolution
       const nameToEntityMap = new Map(
         matchedEntities.map((entity) => [
           entity.name.toLowerCase().trim(),
           entity.entityId,
         ]),
       );
+      // First row wins per fold so the pick is stable within one query; the
+      // raw-spelling map above always outranks it per input, so a fold twin
+      // can never steal an input whose own spelling exists.
+      const identityToEntityMap = new Map<string, string>();
+      for (const entity of matchedEntities) {
+        if (
+          entity.identityKey &&
+          !identityToEntityMap.has(entity.identityKey)
+        ) {
+          identityToEntityMap.set(entity.identityKey, entity.entityId);
+        }
+      }
 
       return entities.map((entity) => {
         const raw = entity.normalizedName.toLowerCase().trim();
-        // Exact spelling wins; a number variant is the fallback, so an input
-        // never jumps to a plural twin when its own form exists.
+        // Exact spelling wins; the identity fold is next; a number variant is
+        // the last fallback, so an input never jumps to a plural twin when
+        // its own form exists.
         let entityId = nameToEntityMap.get(raw);
+        if (!entityId) {
+          const folded = canonicalFold(raw);
+          if (folded) {
+            entityId = identityToEntityMap.get(folded);
+          }
+        }
         if (!entityId && usesNumberVariants) {
           for (const variant of foodNameVariants(raw)) {
-            entityId = nameToEntityMap.get(variant);
+            entityId =
+              nameToEntityMap.get(variant) ??
+              identityToEntityMap.get(canonicalFold(variant));
             if (entityId) break;
           }
         }
@@ -873,6 +949,180 @@ export class EntityResolutionService implements OnModuleInit {
       });
     } catch (error) {
       this.logger.error('Surface match query failed', {
+        error: error instanceof Error ? error.message : String(error),
+        entityType,
+        engineId: engineId ?? undefined,
+        count: entities.length,
+      });
+      throw error;
+    }
+  }
+
+  /**
+   * TIER 2.5 — JOINED-IDENTITY CLAIM (2026-08-11, the space/join twin class).
+   *
+   * `canonicalFold` maps every punctuation/separator run to ONE SPACE, so
+   * spellings that JOIN or SPLIT words produce DIFFERENT folds: "Pulltab
+   * Coffee" -> `pulltab coffee` vs "Pull-tab Coffee" -> `pull tab coffee`;
+   * "ChiCha San Chen" -> `chicha san chen` vs "Chi Cha San Chen" ->
+   * `chi cha san chen`; "Honeymoon Spiritlounge" vs "Honey Moon Spirit
+   * Lounge". Neither the exact tier (identity_key) nor the surface tier
+   * (form_folded) can see through that, and in the v7 shadow replay the
+   * fail-closed judge minted duplicates for exactly these. Spacing is a
+   * spelling accident, not identity — but ERASING spaces is a lossy fold, so
+   * this tier claims only under two guards, both language-neutral:
+   *
+   *   1. NO ACCENT EVIDENCE ON EITHER SIDE. `diacriticFold(x) !==
+   *      canonicalFold(x)` is precisely "x carries an accent" (the invariant
+   *      documented on diacriticFold). Vietnamese "bò né" folds to `bo ne`
+   *      and squeezes to `bone` — a REAL collision with the English word —
+   *      and tone marks are phonemic, so an accent-bearing form never enters
+   *      a squeezed claim in either direction. It falls to the LLM judge,
+   *      exactly as before this tier existed.
+   *   2. EXACTLY ONE candidate entity shares the squeezed key. Two owners of
+   *      one squeezed key is ambiguity; ambiguity is the judge's job.
+   *
+   * The SQL side squeezes with `replace(x, ' ', '')`. That is NOT a fold
+   * expression in the sense the fold law forbids: both inputs
+   * (`identity_key`, `form_folded`) are APP-WRITTEN by canonicalFold, whose
+   * output separator is by construction a single ASCII space, and replacing
+   * a literal ASCII byte is platform-independent — no Unicode character
+   * class is evaluated in the database.
+   *
+   * Results carry tier 'alias' at 0.95: the claim is a deterministic
+   * surface-identity fact of the same species the surface tier asserts, and
+   * the metro gate must treat it as demotable (never as an exact name that
+   * can travel across the country).
+   */
+  private async performJoinedIdentityMatches(
+    entities: EntityResolutionInput[],
+    entityType: EntityType,
+    engineId: string | null,
+    documentLocale: string | null,
+  ): Promise<EntityResolutionResult[]> {
+    if (entities.length === 0) return [];
+
+    const accentFree = (value: string): boolean =>
+      diacriticFold(value) === canonicalFold(value);
+    const squeeze = (value: string): string =>
+      canonicalFold(value).replace(/ /g, '');
+
+    // Probe with the same term set the surface tier uses — but only forms
+    // that carry no accent evidence (guard 1, input side).
+    const probesByTempId = new Map<string, string[]>();
+    const allSqueezed = new Set<string>();
+    for (const entity of entities) {
+      const terms = [
+        entity.normalizedName,
+        entity.originalText,
+        ...(entity.aliases || []),
+      ].filter(
+        (term): term is string =>
+          typeof term === 'string' && term.trim().length > 0,
+      );
+      const squeezed = Array.from(
+        new Set(
+          terms
+            .filter((term) => accentFree(term))
+            .map((term) => squeeze(term))
+            .filter((key) => key.length > 0),
+        ),
+      );
+      probesByTempId.set(entity.tempId, squeezed);
+      squeezed.forEach((key) => allSqueezed.add(key));
+    }
+
+    const unmatchedFor = (
+      entity: EntityResolutionInput,
+    ): EntityResolutionResult => ({
+      tempId: entity.tempId,
+      entityId: null,
+      confidence: 0.0,
+      resolutionTier: 'unmatched',
+      originalInput: entity,
+    });
+    if (allSqueezed.size === 0) {
+      return entities.map(unmatchedFor);
+    }
+    const probeArray = Array.from(allSqueezed);
+
+    try {
+      // Two arms, one squeezed key space: the entity's own NAME (via its
+      // app-written identity_key — an entity need not have banked a surface
+      // row to be claimable by its name) and its recall surfaces (same
+      // scope predicates as the surface tier). `form` is returned so the
+      // accent guard can be applied to the exact stored spelling app-side —
+      // the fold law keeps every fold comparison in the app.
+      const rows = await this.prisma.$queryRaw<
+        Array<{ entity_id: string; name: string; form: string; key: string }>
+      >(Prisma.sql`
+        SELECT e.entity_id, e.name, e.name AS form,
+               replace(e.identity_key, ' ', '') AS key
+          FROM core_entities e
+         WHERE e.type = ${entityType}::entity_type
+           AND e.status <> 'archived'::entity_status
+           AND e.identity_key IS NOT NULL
+           AND replace(e.identity_key, ' ', '') = ANY(${probeArray}::text[])
+        UNION
+        SELECT e.entity_id, e.name, s.form,
+               replace(s.form_folded, ' ', '') AS key
+          FROM core_entities e
+          JOIN entity_surface s ON s.entity_id = e.entity_id
+         WHERE e.type = ${entityType}::entity_type
+           AND e.status <> 'archived'::entity_status
+           AND ${recallSurfaceScopeSql(documentLocale)}
+           AND replace(s.form_folded, ' ', '') = ANY(${probeArray}::text[])`);
+
+      // Per squeezed key: the distinct owning entities, and whether ANY
+      // matching stored form carries accent evidence (guard 1, stored side —
+      // one accented owner poisons the key for deterministic claiming, even
+      // if an accent-free owner also exists: the ambiguity is real).
+      const byKey = new Map<
+        string,
+        { owners: Map<string, string>; accented: boolean }
+      >();
+      for (const row of rows) {
+        let slot = byKey.get(row.key);
+        if (!slot) {
+          slot = { owners: new Map(), accented: false };
+          byKey.set(row.key, slot);
+        }
+        slot.owners.set(row.entity_id, row.name);
+        if (!accentFree(row.form)) {
+          slot.accented = true;
+        }
+      }
+
+      return entities.map((entity) => {
+        for (const key of probesByTempId.get(entity.tempId) ?? []) {
+          const slot = byKey.get(key);
+          if (!slot || slot.accented || slot.owners.size !== 1) {
+            continue; // guard failed — the judge inherits the question
+          }
+          const [entityId, name] = slot.owners.entries().next().value as [
+            string,
+            string,
+          ];
+          this.logger.info('joined_identity_claimed', {
+            entityType,
+            engineId: engineId ?? undefined,
+            term: entity.normalizedName,
+            matchedName: name,
+            squeezedKey: key,
+          });
+          return {
+            tempId: entity.tempId,
+            entityId,
+            confidence: 0.95,
+            resolutionTier: 'alias' as const,
+            matchedName: name,
+            originalInput: entity,
+          };
+        }
+        return unmatchedFor(entity);
+      });
+    } catch (error) {
+      this.logger.error('Joined-identity match query failed', {
         error: error instanceof Error ? error.message : String(error),
         entityType,
         engineId: engineId ?? undefined,
@@ -1273,12 +1523,20 @@ export class EntityResolutionService implements OnModuleInit {
         }
 
         const normalizedName = entity.normalizedName.toLowerCase().trim();
+        // The within-batch identity is the FOLD, not the raw spelling
+        // (2026-08-11): a batch carrying both "Mcdonalds" and "McDonald's"
+        // with neither in the database used to mint two primaries — the
+        // spelling-variant question the exact tier answers with identity_key
+        // was un-asked between two new entities of the same run. Emoji-only
+        // names fold to '' and fall back to the raw form (the same totality
+        // rule as entityLockKey).
+        const identityName = canonicalFold(normalizedName) || normalizedName;
         const normalizedKey =
           entityType === 'restaurant'
             ? `${entityType}:${this.normalizeEngineScope(
                 entity.engineId,
-              )}:${normalizedName}`
-            : `${entityType}:${normalizedName}`;
+              )}:${identityName}`
+            : `${entityType}:${identityName}`;
         const existingPrimary = primaryNewEntityMap.get(normalizedKey);
 
         if (existingPrimary) {
@@ -1465,8 +1723,8 @@ export class EntityResolutionService implements OnModuleInit {
         // under its number variants makes the later form find it. First
         // primary wins; never steal a key another primary already owns.
         if (entityTypeUsesNumberVariants(entityType)) {
-          for (const variant of foodNameVariants(normalizedName)) {
-            const variantKey = `${entityType}:${variant}`;
+          for (const variant of foodNameVariants(identityName)) {
+            const variantKey = `${entityType}:${canonicalFold(variant) || variant}`;
             if (!primaryNewEntityMap.has(variantKey)) {
               primaryNewEntityMap.set(variantKey, primaryResult);
             }

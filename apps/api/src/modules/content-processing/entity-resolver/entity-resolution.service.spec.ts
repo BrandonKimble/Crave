@@ -10,7 +10,7 @@ import { AliasManagementService } from './alias-management.service';
 import { MetroAdoptionService } from './metro-adoption.service';
 import { LoggerService } from '../../../shared';
 import { EntityResolutionInput } from './entity-resolution.types';
-import { canonicalFold } from './entity-identity';
+import { canonicalFold, diacriticFold } from './entity-identity';
 
 /**
  * THE DECISION CORE, DIRECTLY EXERCISED.
@@ -77,6 +77,45 @@ function fakePrisma(entities: FakeEntityRow[]) {
       // Sql object (text + bound values), not a tagged template.
       const sql: string = query?.strings?.join(' ') ?? String(query?.sql ?? '');
       const values: any[] = query?.values ?? [];
+      if (sql.includes("replace(e.identity_key, ' ', '')")) {
+        // THE JOINED-IDENTITY ARM, emulated at the same fidelity as the real
+        // SQL: both the name's identity_key (canonicalFold of the name, as
+        // identityInsertData writes it) and every recall surface's
+        // form_folded are SQUEEZED (space-removed) and matched against the
+        // probe set. Returning `form` verbatim matters: the service's accent
+        // guard runs on the stored spelling, so a double that returned
+        // pre-folded forms would blind the guard under test.
+        const type = values[0] as EntityType;
+        const arrays = values.filter((value): value is string[] =>
+          Array.isArray(value),
+        );
+        const probes = new Set(arrays[arrays.length - 1] ?? []);
+        const squeeze = (v: string) => canonicalFold(v).replace(/ /g, '');
+        const out: any[] = [];
+        for (const row of live().filter((r) => r.type === type)) {
+          const nameKey = squeeze(row.name);
+          if (nameKey && probes.has(nameKey)) {
+            out.push({
+              entity_id: row.entityId,
+              name: row.name,
+              form: row.name,
+              key: nameKey,
+            });
+          }
+          for (const form of row.aliases) {
+            const key = squeeze(form);
+            if (key && probes.has(key)) {
+              out.push({
+                entity_id: row.entityId,
+                name: row.name,
+                form,
+                key,
+              });
+            }
+          }
+        }
+        return out;
+      }
       if (
         sql.includes('FROM core_entities e') &&
         sql.includes('entity_surface')
@@ -116,9 +155,16 @@ function fakePrisma(entities: FakeEntityRow[]) {
       findMany: jest.fn(async (args: any) => {
         const where = args.where ?? {};
         const type = where.type;
-        const nameIn: string[] | undefined = where.name?.in?.map((n: string) =>
-          n.toLowerCase().trim(),
-        );
+        // The exact tier now sends OR: [name-insensitive, identityKey-fold]
+        // (the identity-key probe). The double emulates identity_key exactly
+        // as identityInsertData writes it: canonicalFold(name).
+        const orArms: any[] = Array.isArray(where.OR) ? where.OR : [where];
+        const nameIn: string[] | undefined = orArms
+          .find((arm) => arm?.name?.in)
+          ?.name.in.map((n: string) => n.toLowerCase().trim());
+        const identityIn: string[] | undefined = orArms.find(
+          (arm) => arm?.identityKey?.in,
+        )?.identityKey.in;
         return (
           entities
             .filter((e) => (e.status ?? 'active') !== 'archived')
@@ -132,14 +178,18 @@ function fakePrisma(entities: FakeEntityRow[]) {
             // to every case in this file.
             .filter((row) => type === undefined || row.type === type)
             .filter((row) => {
-              if (nameIn) {
-                return nameIn.includes(row.name.toLowerCase().trim());
+              if (nameIn || identityIn) {
+                return (
+                  (nameIn?.includes(row.name.toLowerCase().trim()) ?? false) ||
+                  (identityIn?.includes(canonicalFold(row.name)) ?? false)
+                );
               }
               return true;
             })
             .map((row) => ({
               entityId: row.entityId,
               name: row.name,
+              identityKey: canonicalFold(row.name) || null,
               aliases: row.aliases,
             }))
         );
@@ -630,7 +680,12 @@ describe('EntityResolutionService — intra-batch near-duplicate dedupe (markEnt
     expect(llmMatch).not.toHaveBeenCalled();
   });
 
-  it('CONTROL for the adversarial case above: the SAME near-duplicate pair in the SAME engine scope IS nominated and judged', async () => {
+  it('CONTROL for the adversarial case above: the SAME near-duplicate pair in the SAME engine scope collapses DETERMINISTICALLY — the within-batch key is the identity fold, so an apostrophe twin never needs the judge', async () => {
+    // Before 2026-08-11 this pair was nominated to the LLM judge; the folded
+    // creation key ("marios pizza" for both) now answers the spelling-variant
+    // question in code, the same way the exact tier's identity_key probe does
+    // against persisted entities. The judge is reserved for pairs whose FOLDS
+    // differ ("beef bulgogi"/"bulgogi beef" above).
     const llmMatch = jest.fn(async () => ({
       decision: 'match',
       candidateId: 0,
@@ -658,6 +713,271 @@ describe('EntityResolutionService — intra-batch near-duplicate dedupe (markEnt
     const second = resolutionResults.find((r) => r.tempId === 't2')!;
     expect(second.isNewEntity).toBe(false);
     expect(second.primaryTempId).toBe('t1');
-    expect(llmMatch).toHaveBeenCalledTimes(1);
+    expect(llmMatch).not.toHaveBeenCalled();
+  });
+});
+
+describe('EntityResolutionService — the v7 shadow twin classes (2026-08-10 proven defect)', () => {
+  // Each case is one twin CLASS from the 23-duplicate full-corpus replay,
+  // resolving DETERMINISTICALLY — the judge mocks in buildService default to
+  // 'new', so any green match below is proof the deterministic tiers claimed
+  // it without an LLM call.
+
+  it('APOSTROPHE-DROP: "Mcdonalds" exact-matches "McDonald\'s" via the identity_key probe', async () => {
+    const { service } = buildService({
+      entities: [
+        {
+          entityId: 'r-mcd',
+          name: "McDonald's",
+          aliases: [],
+          type: EntityType.restaurant,
+        },
+      ],
+    });
+    const { resolutionResults } = await service.resolveBatch(
+      [
+        baseInput({
+          tempId: 't1',
+          normalizedName: 'Mcdonalds',
+          entityType: EntityType.restaurant,
+        }),
+      ],
+      { ...CONFIG_NO_LLM, allowEntityCreation: false },
+    );
+    expect(resolutionResults).toHaveLength(1);
+    expect(resolutionResults[0].resolutionTier).toBe('exact');
+    expect(resolutionResults[0].entityId).toBe('r-mcd');
+  });
+
+  it('ACCENT: "Alamo Springs Cafe" exact-matches "Alamo Springs Café" via the identity_key probe', async () => {
+    const { service } = buildService({
+      entities: [
+        {
+          entityId: 'r-alamo',
+          name: 'Alamo Springs Café',
+          aliases: [],
+          type: EntityType.restaurant,
+        },
+      ],
+    });
+    const { resolutionResults } = await service.resolveBatch(
+      [
+        baseInput({
+          tempId: 't1',
+          normalizedName: 'Alamo Springs Cafe',
+          entityType: EntityType.restaurant,
+        }),
+      ],
+      { ...CONFIG_NO_LLM, allowEntityCreation: false },
+    );
+    expect(resolutionResults[0].resolutionTier).toBe('exact');
+    expect(resolutionResults[0].entityId).toBe('r-alamo');
+  });
+
+  it('PUNCTUATION-JOIN: "Pf Changs" claims "P.F. Chang\'s" via the joined-identity tier (folds differ: "pf changs" vs "p f changs")', async () => {
+    // Premise check, so the case cannot silently test the wrong tier: the
+    // folds genuinely differ, so neither the exact tier nor the surface tier
+    // can claim this — only the squeezed key can.
+    expect(canonicalFold('Pf Changs')).not.toBe(canonicalFold("P.F. Chang's"));
+    const { service } = buildService({
+      entities: [
+        {
+          entityId: 'r-pfc',
+          name: "P.F. Chang's",
+          aliases: [],
+          type: EntityType.restaurant,
+        },
+      ],
+    });
+    const { resolutionResults } = await service.resolveBatch(
+      [
+        baseInput({
+          tempId: 't1',
+          normalizedName: 'Pf Changs',
+          entityType: EntityType.restaurant,
+        }),
+      ],
+      { ...CONFIG_NO_LLM, allowEntityCreation: false },
+    );
+    expect(resolutionResults).toHaveLength(1);
+    expect(resolutionResults[0].resolutionTier).toBe('alias');
+    expect(resolutionResults[0].confidence).toBe(0.95);
+    expect(resolutionResults[0].entityId).toBe('r-pfc');
+  });
+
+  it('SPACE/JOIN: "Pulltab Coffee" and "Honeymoon Spiritlounge" claim their split-spelling anchors via the joined-identity tier', async () => {
+    const { service } = buildService({
+      entities: [
+        {
+          entityId: 'r-pulltab',
+          name: 'Pull-tab Coffee',
+          aliases: [],
+          type: EntityType.restaurant,
+        },
+        {
+          entityId: 'r-honeymoon',
+          name: 'Honey Moon Spirit Lounge',
+          aliases: [],
+          type: EntityType.restaurant,
+        },
+      ],
+    });
+    const { resolutionResults } = await service.resolveBatch(
+      [
+        baseInput({
+          tempId: 't1',
+          normalizedName: 'Pulltab Coffee',
+          entityType: EntityType.restaurant,
+        }),
+        baseInput({
+          tempId: 't2',
+          normalizedName: 'Honeymoon Spiritlounge',
+          entityType: EntityType.restaurant,
+        }),
+      ],
+      { ...CONFIG_NO_LLM, allowEntityCreation: false },
+    );
+    const first = resolutionResults.find((r) => r.tempId === 't1')!;
+    const second = resolutionResults.find((r) => r.tempId === 't2')!;
+    expect(first.entityId).toBe('r-pulltab');
+    expect(second.entityId).toBe('r-honeymoon');
+  });
+
+  it('SPLIT via a banked SURFACE: "Chi Cha San Chen" claims "ChiCha San Chen" through the surface arm of the joined-identity tier', async () => {
+    const { service } = buildService({
+      entities: [
+        {
+          entityId: 'r-chicha',
+          name: 'ChiCha San Chen',
+          aliases: ['chicha san chen'],
+          type: EntityType.restaurant,
+        },
+      ],
+    });
+    const { resolutionResults } = await service.resolveBatch(
+      [
+        baseInput({
+          tempId: 't1',
+          normalizedName: 'Chi Cha San Chen',
+          entityType: EntityType.restaurant,
+        }),
+      ],
+      { ...CONFIG_NO_LLM, allowEntityCreation: false },
+    );
+    expect(resolutionResults[0].entityId).toBe('r-chicha');
+    expect(resolutionResults[0].resolutionTier).toBe('alias');
+  });
+
+  it('VIETNAMESE TONE-MARK GUARD: "bone" must NOT auto-claim "bò né" — the squeezed keys collide but the stored form carries accent evidence', async () => {
+    // Premise check: this IS the collision — squeezed keys are identical,
+    // and the accent-evidence invariant is what tells them apart.
+    expect(canonicalFold('bò né').replace(/ /g, '')).toBe(
+      canonicalFold('bone').replace(/ /g, ''),
+    );
+    expect(diacriticFold('bò né')).not.toBe(canonicalFold('bò né'));
+    const { service, llmService } = buildService({
+      entities: [
+        {
+          entityId: 'food-bo-ne',
+          name: 'bò né',
+          aliases: [],
+          type: EntityType.food,
+        },
+      ],
+    });
+    const { resolutionResults } = await service.resolveBatch(
+      [
+        baseInput({
+          tempId: 't1',
+          normalizedName: 'bone',
+          entityType: EntityType.food,
+        }),
+      ],
+      CONFIG_NO_LLM,
+    );
+    // Not claimed by any deterministic tier — it minted a NEW entity, which
+    // is the fail-closed answer this ambiguity deserves (the LLM judge, when
+    // enabled, inherits the question; here it is off and defaults to new).
+    expect(resolutionResults[0].resolutionTier).toBe('new');
+    expect(resolutionResults[0].isNewEntity).toBe(true);
+    // And it never sneaked through the judge either.
+    expect(llmService.matchEntitiesBatch).not.toHaveBeenCalled();
+  });
+
+  it('VIETNAMESE TONE-MARK GUARD, reverse direction: accent-bearing input "bò né" never squeeze-probes, so it cannot claim an existing "bone"', async () => {
+    const { service } = buildService({
+      entities: [
+        {
+          entityId: 'food-bone',
+          name: 'bone',
+          aliases: [],
+          type: EntityType.food,
+        },
+      ],
+    });
+    const { resolutionResults } = await service.resolveBatch(
+      [
+        baseInput({
+          tempId: 't1',
+          normalizedName: 'bò né',
+          entityType: EntityType.food,
+        }),
+      ],
+      CONFIG_NO_LLM,
+    );
+    expect(resolutionResults[0].resolutionTier).toBe('new');
+    expect(resolutionResults[0].isNewEntity).toBe(true);
+  });
+
+  it('AMBIGUITY GUARD: two entities sharing one squeezed key are NEVER auto-claimed — the judge inherits the question', async () => {
+    const { service } = buildService({
+      entities: [
+        {
+          entityId: 'r-a',
+          name: 'Sun Rise Cafe',
+          aliases: [],
+          type: EntityType.restaurant,
+        },
+        {
+          entityId: 'r-b',
+          name: 'Sunrise Cafe',
+          aliases: [],
+          type: EntityType.restaurant,
+        },
+      ],
+    });
+    const { resolutionResults } = await service.resolveBatch(
+      [
+        baseInput({
+          tempId: 't1',
+          normalizedName: 'Sunrise Cafe',
+          entityType: EntityType.restaurant,
+        }),
+        baseInput({
+          tempId: 't2',
+          normalizedName: 'Sun-Rise Cafe',
+          entityType: EntityType.restaurant,
+        }),
+      ],
+      { ...CONFIG_NO_LLM, allowEntityCreation: false },
+    );
+    // t1's own spelling exists — exact tier, correctly, to r-b. t2 folds to
+    // "sun rise cafe" = r-a's identity_key, so the EXACT tier claims it; had
+    // it reached the squeezed key ("sunrisecafe", owned by BOTH rows) the
+    // joined tier would have refused. Prove the refusal directly with a probe
+    // that only the squeezed key could match:
+    const t2 = resolutionResults.find((r) => r.tempId === 't2')!;
+    expect(t2.entityId).toBe('r-a');
+    const { resolutionResults: ambiguous } = await service.resolveBatch(
+      [
+        baseInput({
+          tempId: 't3',
+          normalizedName: 'SunriseCafe', // squeeze-only: fold "sunrisecafe" matches neither identity_key
+          entityType: EntityType.restaurant,
+        }),
+      ],
+      { ...CONFIG_NO_LLM, allowEntityCreation: false },
+    );
+    expect(ambiguous).toHaveLength(0); // refused: two owners of one squeezed key
   });
 });
