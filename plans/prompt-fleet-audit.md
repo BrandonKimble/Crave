@@ -17,7 +17,8 @@ satisfies) has no version hash and no harness.
 
 ## Text verdicts vs the exemplar (collection-prompt.candidate.md)
 
-- IDEAL-ALREADY: candidate collection prompt; labels.vocabulary;
+- IDEAL-ALREADY (labels.vocabulary WITH A CAVEAT, 2026-08-12 — see the
+  ingredient-sense drift item under the queue); candidate collection prompt;
   relevance gate (near); aliases.claim_judge (near); poll-subject (good).
 - ACCRETED: live collection prompt (v8 supersedes); query-prompt.md
   (predates the rederivation; 20-item classifier list, "still feels
@@ -48,6 +49,29 @@ satisfies) has no version hash and no harness.
    stated twice, drifting).
 8. moderation/poll-subject/canonicalize/satisfies — fit-for-purpose;
    consistency touches only (add fail-direction sentences).
+
+### Observation queued 2026-08-12 — labels.vocabulary answers the
+### INGREDIENT-SENSE question with a NEIGHBOUR'S name
+
+Measured on all 812 active English default labels: 10 render a DIFFERENT
+live concept's name — `cinnamon roll` -> "cinnamon", `key lime pie` ->
+"key lime", `spring roll` -> "spring roll wrapper", `bbq` -> "bbq sauce",
+`matcha` -> "matcha powder", `gyro` -> "gyro meat", `dairy product` ->
+"dairy", `deli` -> "deli food", `lunch special meal` -> "lunch special",
+`asada` -> "carne asada". Two more of the same shape (`margarita` ->
+"margarita mix", `stew` -> "stew meat") exist but are not mechanically
+detectable, because nothing is NAMED "margarita mix".
+
+The shape is one-directional and diagnostic: asked to name a COMPOSED food
+in its ingredient sense, the generator slides to the head ingredient or to
+the material the thing is made OF. That is a prompt problem, not a data
+problem — the drifted ROWS have been deprecated
+(`apps/api/scripts/repair-drifted-en-labels.ts`, display falls back to
+`core_entities.name`) precisely so the next sweep re-asks under whatever
+text this queue lands. Nothing was hand-written in their place.
+
+For the rederivation: the missing named test is the one that separates
+A THING from WHAT IT IS MADE OF, in the direction the label reads.
 
 ## Cost-hygiene fixes (mechanical, ship before text work)
 
