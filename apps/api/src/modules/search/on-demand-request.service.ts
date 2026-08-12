@@ -3,6 +3,7 @@ import { EntityType, OnDemandReason, Prisma } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { LoggerService } from '../../shared';
 import { stripGenericTokens } from '../../shared/utils/generic-token-handling';
+import { normalizeDetectedLocaleTag } from '../../shared/locale';
 import { SignalsService } from '../signals/signals.service';
 
 export interface OnDemandRequestInput {
@@ -34,13 +35,21 @@ export interface OnDemandRequestRecordOptions {
   seenAt?: Date;
 }
 
-/** One place decides what an empty/oversized tag means, so the queue row and
- *  its paired signal can never disagree. */
+/**
+ * One place decides what an empty/malformed tag means, so the queue row and
+ * its paired signal can never disagree.
+ *
+ * This used to TRIM AND TRUNCATE only (A0 R2, 2026-08-11): any 35 characters
+ * survived, so a malformed tag landed as free text on a row that the
+ * `locale = ANY(chain)` match filter can never match — demand nobody can find,
+ * collected against at real cost. It is a BCP-47 round trip now, shared with
+ * every other locale-bearing write; `und`/unparseable means NULL, which is the
+ * honest answer for a bare one-worder.
+ */
 function normalizeDetectedLocale(
   value: string | null | undefined,
 ): string | null {
-  const tag = value?.trim();
-  return tag ? tag.slice(0, 35) : null;
+  return normalizeDetectedLocaleTag(value);
 }
 
 @Injectable()

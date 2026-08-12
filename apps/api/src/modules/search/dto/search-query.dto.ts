@@ -1,4 +1,4 @@
-import { Type } from 'class-transformer';
+import { Transform, Type } from 'class-transformer';
 import {
   ArrayNotEmpty,
   IsArray,
@@ -352,8 +352,29 @@ export class SearchQueryRequestDto {
    * undecidable, and 'en' there would be a fabricated fact on a row later
    * read as evidence.
    */
+  /**
+   * SERVER-ONLY — any inbound value is DROPPED here (A0 R2, 2026-08-11).
+   *
+   * The docblock above always said "a client value is overwritten", and on
+   * the natural-language path it is: the interpretation service assigns the
+   * fused answer unconditionally. But `POST /search/run` and `POST
+   * /search/plan` take THIS dto straight from the request body with no
+   * analyzer in front of them, so the sentence was false exactly where it
+   * mattered: a caller could post `detectedLocale: 'vi'` on an English query
+   * and mint Vietnamese demand evidence — rows that steer collection spend
+   * and vocabulary learning by claiming people ask in a language they do not.
+   *
+   * The @Transform drops the value at the class-transformer boundary, so the
+   * request is IGNORED rather than rejected (a client sending it is not
+   * committing an error, it is sending something that is not its to decide),
+   * while the validators keep the field whitelisted so `forbidNonWhitelisted`
+   * does not 400 the request instead. Internal construction is unaffected:
+   * the interpretation service builds this object directly, never through
+   * plainToInstance.
+   */
   @IsOptional()
   @IsString()
+  @Transform(() => undefined, { toClassOnly: true })
   detectedLocale?: string;
 }
 

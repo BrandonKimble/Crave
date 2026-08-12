@@ -3,6 +3,7 @@ import { Cron } from '@nestjs/schedule';
 import { EntityType } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { LoggerService } from '../../shared';
+import { normalizeDetectedLocaleTag } from '../../shared/locale';
 import { LLMService } from '../external-integrations/llm/llm.service';
 import { OnDemandRequestService } from './on-demand-request.service';
 
@@ -16,7 +17,7 @@ import { OnDemandRequestService } from './on-demand-request.service';
  * the staging zone: the SAME segmentation job the sync path performs today,
  * relocated off the hot path (per-search LLM cost → zero; llmMs disappears).
  *
- * Batch shape today: one analyzeSearchQuery call per residue inside a
+ * Batch shape today: one interpretResidue call per residue inside a
  * bounded drain pass — already async and amortized. Collapsing many
  * residues into ONE batch-priced call is a cost optimization that lands
  * with the cutover flip, not a precondition for the plumbing.
@@ -61,9 +62,10 @@ export class UnsegmentedResidueService {
         searchRequestId: input.searchRequestId ?? null,
         engineIds: input.engineIds ?? [],
         userId: input.userId ?? null,
-        detectedLocale: input.detectedLocale?.trim()
-          ? input.detectedLocale.trim().slice(0, 35)
-          : null,
+        // BCP-47 round trip, shared with every other locale-bearing write:
+        // an unparseable tag is stored as NULL rather than as free text the
+        // locale match filter can never match (A0 R2).
+        detectedLocale: normalizeDetectedLocaleTag(input.detectedLocale),
         context: (input.context ?? {}) as never,
       },
     });
@@ -130,7 +132,7 @@ export class UnsegmentedResidueService {
   ): Promise<void> {
     const ids = rows.map((r) => r.residueId);
     try {
-      const analysis = await this.llmService.analyzeSearchQuery(residueText);
+      const analysis = await this.llmService.interpretResidue(residueText);
       const typed: Array<{ term: string; entityType: EntityType }> = [
         ...analysis.restaurants.map((term) => ({
           term,

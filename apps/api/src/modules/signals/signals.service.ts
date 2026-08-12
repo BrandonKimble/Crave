@@ -2,6 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { LoggerService } from '../../shared';
+import { normalizeDetectedLocaleTag } from '../../shared/locale';
 
 /**
  * The Signals Ledger write path (geo-demand master plan §3).
@@ -423,9 +424,10 @@ export class SignalsService {
         occurredAt: input.occurredAt ?? new Date(),
         // Canonical-cased and length-bounded to the column; an empty or
         // whitespace tag is the same as no answer, and is stored as one.
-        detectedLocale: input.detectedLocale?.trim()
-          ? input.detectedLocale.trim().slice(0, 35)
-          : null,
+        // BCP-47 round trip, shared with every other locale-bearing write:
+        // an unparseable tag is stored as NULL rather than as free text the
+        // locale match filter can never match (A0 R2).
+        detectedLocale: normalizeDetectedLocaleTag(input.detectedLocale),
         meta: input.meta
           ? (this.compactMeta(input.meta) as Prisma.InputJsonValue)
           : Prisma.DbNull,

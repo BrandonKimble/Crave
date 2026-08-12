@@ -253,3 +253,65 @@ export function negotiateLocale(input: {
   }
   return DEFAULT_LOCALE;
 }
+
+/**
+ * THE DETECTED LOCALE OF AN ASK — normalized at the write ingress, and
+ * SERVER-DERIVED BY LAW.
+ *
+ * `detectedLocale` answers "what language did this query turn out to be",
+ * decided once per query by the analyzer. It is not a preference and not a
+ * client fact: it rides onto the on-demand queue row, the paired
+ * `on_demand_ask` signal, and the residue row, where it is later read as
+ * EVIDENCE about which languages people ask in — evidence that steers
+ * collection spend and vocabulary learning.
+ *
+ * Two things had to become true (red-team A0 R2, 2026-08-11):
+ *
+ *  1. A CLIENT MAY NOT SET IT. The structured `POST /search/run` DTO
+ *     whitelisted the field, so any caller could post `detectedLocale: 'vi'`
+ *     and mint Vietnamese demand evidence for an English query. The DTO now
+ *     drops any inbound value (see search-query.dto.ts).
+ *  2. WHAT THE SERVER SETS IS A REAL TAG. The old normalizer only trimmed and
+ *     truncated to 35 chars, so a malformed tag would land as free text that
+ *     the `locale = ANY(chain)` match filter silently never matches — a row
+ *     that costs money to collect against and can never be found.
+ *
+ * `und` and anything unparseable become NULL, which is an honest answer: a
+ * bare one-worder's language is genuinely undecidable, and a fabricated tag
+ * on an evidence row is worse than no tag at all.
+ */
+export function normalizeDetectedLocaleTag(
+  raw: string | null | undefined,
+): string | null {
+  const tag = normalizeLocaleTag(raw);
+  return tag === 'und' ? null : tag;
+}
+
+/**
+ * THE TAG A CLAIM ABOUT A WORD MAY BE BANKED UNDER: the base language, or
+ * nothing.
+ *
+ * LANGUAGE ONLY, NEVER A REGION (red team F8b, generalized A0 R4). The
+ * lookup chain is the only thing that ever reads a banked surface's locale:
+ * `localeLookupChain('es-MX')` is `['es-mx','es','und']` while
+ * `localeLookupChain('es')` is `['es','und']` — so a row banked as `es-MX`
+ * is reachable ONLY by another es-MX caller, and a word we paid to learn (or
+ * paid Google for) would be invisible to every other Spanish speaker and to
+ * ingestion out of an `es` document. A region is real information about the
+ * ASKER or the REQUEST; it is not information about the WORD, and these rows
+ * are claims about words. `zh-TW` is the case that made this urgent: a
+ * chain built from `zh` never reaches it.
+ *
+ * Normalization comes first, so a malformed tag becomes NOTHING rather than
+ * a base language guessed off a string split — `und` and unparseable input
+ * both return undefined, which banks as the universal `und` slice: the
+ * honest answer when nobody can say what language a form was in.
+ */
+export function bankableLanguageTag(
+  raw: string | null | undefined,
+): string | undefined {
+  const normalized = normalizeLocaleTag(raw);
+  if (normalized === 'und') return undefined;
+  const base = new Intl.Locale(normalized).language.toLowerCase();
+  return base && base !== 'und' ? base : undefined;
+}

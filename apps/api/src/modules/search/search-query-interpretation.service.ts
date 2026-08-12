@@ -11,6 +11,7 @@ import {
 import { EntityTextSearchService } from '../entity-text-search/entity-text-search.service';
 import { SurfaceLocaleIndexService } from '../entity-text-search/surface-locale-index.service';
 import { LoggerService } from '../../shared';
+import { normalizeDetectedLocaleTag } from '../../shared/locale';
 import {
   NaturalSearchRequestDto,
   QueryEntityDto,
@@ -601,8 +602,12 @@ export class SearchQueryInterpretationService {
     // query it just analyzed, so a client-supplied value is overwritten
     // rather than deferred to — and `undefined` (honestly undecidable) has
     // to be able to overwrite too.
+    // ...and it is a REAL TAG or nothing: normalizeDetectedLocaleTag is the
+    // BCP-47 round trip every locale-bearing write passes through, so an
+    // unparseable tag can never land as free text that the
+    // `locale = ANY(chain)` match filter silently never matches.
     structuredRequest.detectedLocale =
-      analysis.detectedLocale?.tag ?? undefined;
+      normalizeDetectedLocaleTag(analysis.detectedLocale?.tag) ?? undefined;
 
     // UNTYPED DEMAND FLOWS DIRECTLY (ideal-abstraction round 5): the
     // collector's unmet lane reads on_demand_ask SIGNALS, not the typed

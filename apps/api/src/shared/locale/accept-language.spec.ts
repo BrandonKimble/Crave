@@ -1,6 +1,7 @@
 import {
   canonicalizeLocaleTag,
   localeLookupChain,
+  bankableLanguageTag,
   normalizeLocaleTag,
   lookupSupported,
   negotiateLocale,
@@ -111,5 +112,39 @@ describe('normalizeLocaleTag — validate + canonicalize at the write ingress', 
     expect(normalizeLocaleTag('und')).toBe('und');
     expect(normalizeLocaleTag(null)).toBe('und');
     expect(normalizeLocaleTag('es-419')).toBe('es-419');
+  });
+});
+
+describe('bankableLanguageTag — the tag a claim about a WORD may carry', () => {
+  it('drops the region, because the lookup chain cannot reach it', () => {
+    // THE MEASURED DEFECT (A0 R4): the poll seed banked Google's raw
+    // `zh-TW`, and localeLookupChain('zh') is ['zh','und'] — it does not
+    // contain 'zh-tw'. The row we paid Google for was invisible to every
+    // Chinese reader who did not ask with that exact region.
+    expect(bankableLanguageTag('zh-TW')).toBe('zh');
+    expect(localeLookupChain('zh')).not.toContain('zh-tw');
+    expect(localeLookupChain('zh')).toContain(bankableLanguageTag('zh-TW'));
+
+    expect(bankableLanguageTag('es-MX')).toBe('es');
+    expect(bankableLanguageTag('pt-BR')).toBe('pt');
+    expect(bankableLanguageTag('en-US')).toBe('en');
+    // A script subtag goes too — 'zh' IS in localeLookupChain('zh-Hant'),
+    // so the row stays reachable from the more specific request.
+    expect(bankableLanguageTag('zh-Hant')).toBe('zh');
+    expect(localeLookupChain('zh-Hant')).toContain('zh');
+  });
+
+  it('normalizes BEFORE splitting — a malformed tag banks nothing', () => {
+    // The predecessor lowercased and split on [-_], so 'es_MX' yielded 'es':
+    // a language nobody validated, inferred from a string that is not a tag.
+    expect(bankableLanguageTag('es_MX')).toBeUndefined();
+    expect(bankableLanguageTag('not a locale')).toBeUndefined();
+    expect(bankableLanguageTag('und')).toBeUndefined();
+    expect(bankableLanguageTag('')).toBeUndefined();
+    expect(bankableLanguageTag(null)).toBeUndefined();
+    expect(bankableLanguageTag(undefined)).toBeUndefined();
+    // Casing is canonicalized, not rejected.
+    expect(bankableLanguageTag('ES')).toBe('es');
+    expect(bankableLanguageTag('  vi  ')).toBe('vi');
   });
 });
