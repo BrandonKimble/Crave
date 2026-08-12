@@ -66,8 +66,13 @@ export const RESTAURANT_PLACE_CHOOSER_RESPONSE_JSON_SCHEMA = {
       description:
         'Selected candidate ID when decision is select, otherwise null.',
     },
+    reason: {
+      type: 'string',
+      description:
+        'Audit evidence, a few words: the identity+geography facts that made this candidate the answer, or the one that is missing (e.g. "source says Austin, candidate is Dallas").',
+    },
   },
-  required: ['decision', 'candidateId'],
+  required: ['decision', 'candidateId', 'reason'],
   additionalProperties: false,
 } as const;
 

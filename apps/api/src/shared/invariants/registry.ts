@@ -471,6 +471,30 @@ export const INVARIANTS: readonly Invariant[] = [
     // columns, so a reader that forgets the resolver renders a BLANK, not a
     // name. That is a property of the database after one statement, and it is
     // proven against a real one.
+    id: 'identity.stored-keys-match-the-fold',
+    statement:
+      'Every stored identity_key equals canonicalFold(name) under the CURRENT fold algorithm (FOLD_ALGORITHM_VERSION) — a behavioral fold change cannot ship without either a corpus backfill or this check going red.',
+    incident:
+      'Multilingual ruling R5 (2026-08-12): the narrowed heal (456f74894) only re-keys NULL/recent rows, so a fold-law change (the planned tone-mark work) would strand every old key at the previous algorithm; tier-1/2.5 probes and every SQL identity join then silently miss, and nothing in the repo compared the column to the function.',
+    level: 'behaviour',
+    mechanism:
+      'scripts/check-fold-drift.ts — recomputes canonicalFold over a deterministic sample PLUS every non-ASCII-named active row (where fold revisions actually differ) and exits 1 on any divergence; entity-identity.ts FOLD_ALGORITHM_VERSION records which algorithm the corpus is keyed under.',
+    check: {
+      command: 'npx ts-node -T scripts/check-fold-drift.ts --sample=500',
+      reads: 'real stored keys in a real database against the live fold',
+    },
+    mutations: [
+      {
+        // A behavioral fold change with no backfill: canonicalFold's output
+        // moves, the stored keys do not, and the detector must see it.
+        file: 'src/modules/content-processing/entity-resolver/entity-identity.ts',
+        find: 'export function canonicalFold(name: string): string {\n  return foldWithAccentPolicy(name, true);\n}',
+        replace:
+          "export function canonicalFold(name: string): string {\n  return foldWithAccentPolicy(name, true).replace(/a/g, 'z'); // MUTATED fold\n}",
+      },
+    ],
+  },
+  {
     id: 'identity.a-deleted-person-has-no-name-in-the-database',
     statement:
       'From the moment deletion is requested, users.username/display_name/avatar_url are NULL and the originals live only in users.deleted_identity — so no read anywhere can expose a departed person’s name, whatever it does with the row.',

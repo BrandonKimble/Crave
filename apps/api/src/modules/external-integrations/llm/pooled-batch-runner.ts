@@ -3,6 +3,7 @@ import { PrismaService } from '../../../prisma/prisma.service';
 import { LoggerService } from '../../../shared';
 import { GeminiBatchService } from './gemini-batch.service';
 import { LLMService } from './llm.service';
+import { currentWorkContext } from '../shared/work-context';
 import type { GeminiGenerationConfig } from './gemini-generation-config';
 
 /**
@@ -78,10 +79,29 @@ export class PooledBatchRunner {
       });
       return { key: item.key, contents, config };
     });
+    // CAMPAIGN ATTRIBUTION RIDES WITH THE JOB (red team 2026-08-12). The sync
+    // rail is attributed AMBIENTLY: usage-ledger.service reads
+    // currentCampaignId() at record time, in the caller's own async context.
+    // A pooled batch breaks that context in two ways, and both were live:
+    //   1. The ledger row is written by whichever process reaches the job's
+    //      terminal state first — and the shared batch poll cron reaches
+    //      'submitted' jobs too. Driven there, currentCampaignId() is
+    //      undefined and the campaign's own sweep spend vanishes from its
+    //      envelope: the same "spent << envelope, never breaches" hole the
+    //      ambient context was built to close (work-context.ts, D4).
+    //   2. GeminiBatchService.submit refuses a batch belonging to a BREACHED
+    //      campaign — but only when it can see a campaignId in resumeContext.
+    //      With none, a breached campaign's sweeps kept dispatching.
+    // Stashing the ambient context on the job makes both facts durable, so
+    // attribution no longer depends on WHO polls.
+    const work = currentWorkContext();
     const jobId = await this.batch.submit({
       purpose: `pooled.${params.caller}`,
       model,
       items: submitItems,
+      resumeContext: work?.campaignId
+        ? { campaignId: work.campaignId, label: work.label }
+        : undefined,
     });
 
     const timeoutMs = params.timeoutMs ?? PooledBatchRunner.DEFAULT_TIMEOUT_MS;

@@ -39,7 +39,7 @@
   },
   {
     "id": "C2-CONTROL-trip-report-post",
-    "why": "NEGATIVE CONTROL. A POST BODY can be excellent testimony \u2014 the post-body rule I refuted would kill this.",
+    "why": "NEGATIVE CONTROL. A POST BODY can be excellent testimony — the post-body rule I refuted would kill this.",
     "posts": [
       {
         "id": "SRC004",
@@ -77,7 +77,7 @@
   },
   {
     "id": "C3-CONTROL-grocery-with-counter",
-    "why": "NEGATIVE CONTROL. JD's Supermarket really does serve tacos \u2014 a venue-class rule would wrongly kill this.",
+    "why": "NEGATIVE CONTROL. JD's Supermarket really does serve tacos — a venue-class rule would wrongly kill this.",
     "posts": [
       {
         "id": "SRC007",
@@ -144,7 +144,7 @@
   },
   {
     "id": "D5-availability-only",
-    "why": "Availability is not endorsement \u2014 the rule exists in Step 6 today but never gates eligibility.",
+    "why": "Availability is not endorsement — the rule exists in Step 6 today but never gates eligibility.",
     "posts": [
       {
         "id": "SRC013",
@@ -207,7 +207,7 @@
   },
   {
     "id": "D8-directory-roster",
-    "why": "A participant roster names many restaurants neutrally \u2014 not endorsement.",
+    "why": "A participant roster names many restaurants neutrally — not endorsement.",
     "posts": [
       {
         "id": "SRC019",
@@ -340,7 +340,7 @@
   },
   {
     "id": "C5-CONTROL-dietary",
-    "why": "NEGATIVE CONTROL. Dietary claims are NEVER dropped \u2014 hard search toggles depend on them.",
+    "why": "NEGATIVE CONTROL. Dietary claims are NEVER dropped — hard search toggles depend on them.",
     "posts": [
       {
         "id": "SRC030",
@@ -362,7 +362,7 @@
   },
   {
     "id": "C6-CONTROL-omakase-is-a-dish",
-    "why": "NEGATIVE CONTROL added after corpus round 2. The candidate listed omakase with the failing formats; the model emitted it 22x anyway and the MODEL WAS RIGHT \u2014 omakase predicts sushi, chef-selected, and diners search it by name. A format fails only when what arrives is unconstrained (tasting menu, prix fixe). This case stops a future edit from re-banning it.",
+    "why": "NEGATIVE CONTROL added after corpus round 2. The candidate listed omakase with the failing formats; the model emitted it 22x anyway and the MODEL WAS RIGHT — omakase predicts sushi, chef-selected, and diners search it by name. A format fails only when what arrives is unconstrained (tasting menu, prix fixe). This case stops a future edit from re-banning it.",
     "posts": [
       {
         "id": "SRC040",
@@ -384,7 +384,7 @@
   },
   {
     "id": "D13-occasion-ask-reuse",
-    "why": "Junk-entity rederivation 2026-08-09: food entities `dinner` (46 ev) and `lunch` (30 ev) minted through ask-reuse \u2014 the reply inherits the ask's target without the PREDICTION TEST, so a when-only ask manufactures a when-only food. Real source shape.",
+    "why": "Junk-entity rederivation 2026-08-09: food entities `dinner` (46 ev) and `lunch` (30 ev) minted through ask-reuse — the reply inherits the ask's target without the PREDICTION TEST, so a when-only ask manufactures a when-only food. Real source shape.",
     "posts": [
       {
         "id": "SRC050",
@@ -406,7 +406,7 @@
   },
   {
     "id": "D14-dish-as-restaurant-attribute",
-    "why": "Junk-entity rederivation 2026-08-09: `pizza` lives as an ACTIVE restaurant_attribute with 166 events. The live prompt's ban was a buried 2.5 note; the candidate lost it AND the word passes the STANDALONE test \u2014 a dish type names a thing, not a property. Real source shape.",
+    "why": "Junk-entity rederivation 2026-08-09: `pizza` lives as an ACTIVE restaurant_attribute with 166 events. The live prompt's ban was a buried 2.5 note; the candidate lost it AND the word passes the STANDALONE test — a dish type names a thing, not a property. Real source shape.",
     "posts": [
       {
         "id": "SRC052",
@@ -429,7 +429,7 @@
   },
   {
     "id": "D15-cuisine-ask-reuse",
-    "why": "Prompt red team 2026-08-10: the D13 prediction-test gate is INSUFFICIENT for cuisine asks \u2014 'indian' PASSES prediction (it predicts a kind of food) but fails the order test. The old prompt had a dedicated 5.4 guard the rewrite lost. Ask-reuse now requires BOTH tests.",
+    "why": "Prompt red team 2026-08-10: the D13 prediction-test gate is INSUFFICIENT for cuisine asks — 'indian' PASSES prediction (it predicts a kind of food) but fails the order test. The old prompt had a dedicated 5.4 guard the rewrite lost. Ask-reuse now requires BOTH tests.",
     "posts": [
       {
         "id": "SRC060",
@@ -452,7 +452,7 @@
   },
   {
     "id": "C7-CONTROL-plus-one-inherits",
-    "why": "Prompt red team 2026-08-10: old 6.1 let '+1'/'agreed' adopt the parent's verdict; the rewrite's strict TESTIMONY TEST would silently drop them (the writer 'said nothing') \u2014 a recall loss. A.1 now makes adoption explicit.",
+    "why": "Prompt red team 2026-08-10: old 6.1 let '+1'/'agreed' adopt the parent's verdict; the rewrite's strict TESTIMONY TEST would silently drop them (the writer 'said nothing') — a recall loss. A.1 now makes adoption explicit.",
     "posts": [
       {
         "id": "SRC062",
@@ -479,7 +479,7 @@
   },
   {
     "id": "V8a-bare-namedrop-inherits",
-    "why": "v7 shadow audit 2026-08-10: 161 real losses; canonical case \u2014 a bare name answering a judgment ask IS the pick (ANSWER TEST). Real doc.",
+    "why": "v7 shadow audit 2026-08-10: 161 real losses; canonical case — a bare name answering a judgment ask IS the pick (ANSWER TEST). Real doc.",
     "posts": [
       {
         "id": "SRC070",
@@ -502,7 +502,7 @@
   },
   {
     "id": "V8b-single-bare-name-where-eat",
-    "why": "Single bare name (not a list) answering where-should-I-eat \u2014 old prompt said 'one or more' 3x; v7's 'list' wording dropped singles.",
+    "why": "Single bare name (not a list) answering where-should-I-eat — old prompt said 'one or more' 3x; v7's 'list' wording dropped singles.",
     "posts": [
       {
         "id": "SRC072",
@@ -524,7 +524,7 @@
   },
   {
     "id": "V8c-additive-list-answer",
-    "why": "Additive answers ('X & Y as well') join an ongoing answer thread \u2014 real loss class.",
+    "why": "Additive answers ('X & Y as well') join an ongoing answer thread — real loss class.",
     "posts": [
       {
         "id": "SRC074",
@@ -550,7 +550,7 @@
   },
   {
     "id": "V8d-oneline-praise",
-    "why": "'is awesome' is a complete verdict \u2014 v7's hedged-verdict suspicion bled onto short plain praise.",
+    "why": "'is awesome' is a complete verdict — v7's hedged-verdict suspicion bled onto short plain praise.",
     "posts": [
       {
         "id": "SRC077",
@@ -567,7 +567,7 @@
   },
   {
     "id": "V8e-short-praise-plus-dish",
-    "why": "Real loss doc: 'e noodle is good and great soup dumplings there too' \u2014 restaurant praise + dish claim.",
+    "why": "Real loss doc: 'e noodle is good and great soup dumplings there too' — restaurant praise + dish claim.",
     "posts": [
       {
         "id": "SRC078",
@@ -658,7 +658,7 @@
   },
   {
     "id": "V8j-course-menu-compound",
-    "why": "Format-compound forensics: '3/4 course menu' \u2014 count modifier on wrapper head; no dish. Real doc.",
+    "why": "Format-compound forensics: '3/4 course menu' — count modifier on wrapper head; no dish. Real doc.",
     "posts": [
       {
         "id": "SRC085",
@@ -733,7 +733,7 @@
   },
   {
     "id": "V8n-CONTROL-salmon-omakase",
-    "why": "Boundary control: omakase is a prediction-PASSING head \u2014 'salmon omakase' composes normally; redirect must NOT over-generalize.",
+    "why": "Boundary control: omakase is a prediction-PASSING head — 'salmon omakase' composes normally; redirect must NOT over-generalize.",
     "posts": [
       {
         "id": "SRC090",
@@ -760,7 +760,7 @@
         "comments": [
           {
             "id": "SRC092",
-            "body": "Kilwins on the drag \u2014 their fudge is incredible, made fresh on the marble slab"
+            "body": "Kilwins on the drag — their fudge is incredible, made fresh on the marble slab"
           },
           {
             "id": "SRC093",
@@ -772,7 +772,90 @@
     "expect": {
       "restaurants": ["kilwins"],
       "foods": ["fudge"],
-      "notRestaurants": ["central market"]
+      "notRestaurants": ["central market"],
+      "notFoods": ["baking chocolate"]
+    }
+  },
+  {
+    "id": "ML1-vi-wrapper-thuc-don",
+    "why": "Multilingual ruling R6: the head-noun wrapper rule must hold in Vietnamese BEFORE the global re-extraction — 'thực đơn trưa' (lunch menu) is a venue offer, never a dish; the praise is value testimony for the place.",
+    "posts": [
+      {
+        "id": "SRC200",
+        "title": "",
+        "body": "Ghé Quán Ngon hôm qua. Thực đơn trưa của họ tầm 150k mà no cả ngày, quá đáng tiền.",
+        "extract_from_post": true,
+        "comments": []
+      }
+    ],
+    "expect": {
+      "restaurants": ["quán ngon"],
+      "notFoods": ["thực đơn trưa", "thực đơn", "menu"],
+      "somePraise": true
+    }
+  },
+  {
+    "id": "ML2-es-wrapper-menu-del-dia",
+    "why": "Multilingual ruling R6: the wrapper class in Spanish — 'menú del día' is a deal, not a dish; meal-deal praise is value testimony.",
+    "posts": [
+      {
+        "id": "SRC201",
+        "title": "",
+        "body": "El menú del día en Casa Lola sale 12 euros y está buenísimo — dos platos y postre.",
+        "extract_from_post": true,
+        "comments": []
+      }
+    ],
+    "expect": {
+      "restaurants": ["casa lola"],
+      "notFoods": ["menú del día", "menú", "menu del dia"],
+      "somePraise": true
+    }
+  },
+  {
+    "id": "ML3-vi-bare-answer",
+    "why": "Multilingual ruling R6: THE ANSWER TEST in Vietnamese — a bare name answering a judgment ask IS the pick; the restaurant name containing the dish word (Phở Lệ) must not collapse into the dish.",
+    "posts": [
+      {
+        "id": "SRC202",
+        "title": "Quán phở nào ngon nhất ở Sài Gòn?",
+        "body": "",
+        "extract_from_post": false,
+        "comments": [
+          {
+            "id": "SRC203",
+            "body": "Phở Lệ ở quận 5"
+          }
+        ]
+      }
+    ],
+    "expect": {
+      "restaurants": ["phở lệ"],
+      "foods": ["phở"],
+      "somePraise": true
+    }
+  },
+  {
+    "id": "ML4-es-bare-answer",
+    "why": "Multilingual ruling R6: THE ANSWER TEST in Spanish — a bare taquería name answering a best-of ask is the verdict.",
+    "posts": [
+      {
+        "id": "SRC204",
+        "title": "¿Dónde están los mejores tacos de la ciudad?",
+        "body": "",
+        "extract_from_post": false,
+        "comments": [
+          {
+            "id": "SRC205",
+            "body": "Taquería El Califa, sin duda"
+          }
+        ]
+      }
+    ],
+    "expect": {
+      "restaurants": ["el califa"],
+      "foods": ["taco"],
+      "somePraise": true
     }
   }
 ]

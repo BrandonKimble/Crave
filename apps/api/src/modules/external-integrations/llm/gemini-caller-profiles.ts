@@ -30,7 +30,7 @@ import type { ThinkingContext } from './gemini-thinking';
 export interface GeminiCallerProfile {
   /** Vendor model id. Omitted = the session-configured default model
    *  (llm.model / llm.queryModel), which content.extract and
-   *  query.interpret deliberately track. */
+   *  residue.interpret deliberately track. */
   model?: string;
   /** Thinking context for gemini-thinking's defaults (query = cheap
    *  classify/parse -> MINIMAL; content = extraction -> LOW). */
@@ -89,7 +89,10 @@ export const GEMINI_CALLER_PROFILES: Record<string, GeminiCallerProfile> = {
   // Session default ON PURPOSE (proven tier for extraction; see strategy
   // note above — moves only via the prompt A/B harness).
   'content.extract': { context: 'content', maxOutputTokens: MODEL_MAX_OUTPUT },
-  'query.interpret': {
+  'residue.interpret': {
+    // Unsegmented-residue drain (background cron) — the lane's only caller;
+    // renamed from 'query.interpret' 2026-08-11 when live search went
+    // gazetteer-only. Historic ledger rows keep the old caller string.
     context: 'query',
     maxOutputTokens: MODEL_MAX_OUTPUT,
     timeoutMs: INTERACTIVE_QUERY_TIMEOUT_MS,

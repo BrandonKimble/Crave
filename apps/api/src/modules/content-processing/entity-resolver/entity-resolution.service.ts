@@ -1803,12 +1803,32 @@ export class EntityResolutionService implements OnModuleInit {
         // names fold to '' and fall back to the raw form (the same totality
         // rule as entityLockKey).
         const identityName = canonicalFold(normalizedName) || normalizedName;
-        const normalizedKey =
+        const baseKey =
           entityType === 'restaurant'
             ? `${entityType}:${this.normalizeEngineScope(
                 entity.engineId,
               )}:${identityName}`
             : `${entityType}:${identityName}`;
+        // THE ACCENT VETO, AT MINT (R2, 2026-08-12): the same rule tier 1,
+        // tier 2 and tier 2.5 already enforce, from the same evidence test
+        // (isAccented — accentEvidenceFor does not apply here: both sides
+        // are unpersisted, so their own spellings ARE the only evidence). A
+        // canonical-fold hit only folds when the occupant and the newcomer
+        // do not BOTH carry disagreeing accent evidence ("cơm chay" never
+        // absorbs "cơm cháy" at creation); one-sided accents still fold
+        // (de-diacritized typing). A vetoed newcomer keys by its
+        // accent-preserving fold, so its OWN later duplicates still collapse
+        // deterministically.
+        const occupantForVeto = primaryNewEntityMap.get(baseKey);
+        const occupantName = occupantForVeto?.normalizedName ?? '';
+        const accentVetoed =
+          occupantForVeto !== undefined &&
+          isAccented(normalizedName) &&
+          isAccented(occupantName) &&
+          diacriticFold(occupantName) !== diacriticFold(normalizedName);
+        const normalizedKey = accentVetoed
+          ? `${baseKey}#${diacriticFold(normalizedName)}`
+          : baseKey;
         const existingPrimary = primaryNewEntityMap.get(normalizedKey);
 
         if (existingPrimary) {
@@ -1925,10 +1945,33 @@ export class EntityResolutionService implements OnModuleInit {
                 : entityType === 'ingredient'
                   ? 'ingredient'
                   : 'food',
-            candidates: overlayCandidates.map((c, i) => ({
-              id: i,
-              name: c.normalizedName ?? '',
-            })),
+            candidates: overlayCandidates.map((c, i) => {
+              const name = c.normalizedName ?? '';
+              // The SAME alias evidence the batch judge carries: overlay
+              // primaries are this run's unpersisted entities, so their
+              // evidence is the extraction's own aliases + original text
+              // (red team 2026-08-12 — the single judge used to see the
+              // bare name while the batch judge saw the full synonym set).
+              const aliases = [
+                ...new Set(
+                  [
+                    ...(c.originalInput.aliases ?? []),
+                    c.originalInput.originalText,
+                  ]
+                    .map((alias) => alias?.trim() ?? '')
+                    .filter(
+                      (alias) =>
+                        alias.length > 0 &&
+                        alias.toLowerCase() !== name.toLowerCase(),
+                    ),
+                ),
+              ];
+              return {
+                id: i,
+                name,
+                ...(aliases.length ? { aliases } : {}),
+              };
+            }),
           });
           const judged =
             verdict.decision === 'match' && verdict.candidateId !== null

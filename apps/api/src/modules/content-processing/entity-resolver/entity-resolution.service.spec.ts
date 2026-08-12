@@ -732,6 +732,84 @@ describe('EntityResolutionService — intra-batch near-duplicate dedupe (markEnt
     expect(second.primaryTempId).toBe('t1');
     expect(llmMatch).not.toHaveBeenCalled();
   });
+
+  it('TONE-MARK VETO AT MINT (R2): "cơm chay" and "cơm cháy" in one cold batch mint SEPARATE primaries (both accented, accent folds disagree)', async () => {
+    // Without the veto the folded creation key is "com chay" for BOTH and the
+    // second becomes a duplicate of the first at confidence 1.0 — mint-time
+    // fusion with no judge and no redirect trail. Mutation proof: neuter the
+    // veto (accentVetoed = false) and this test plus the vetoed-newcomer one
+    // below go RED while the one-sided and apostrophe controls stay green.
+    const { service } = buildService({ entities: [] });
+    const { resolutionResults } = await service.resolveBatch(
+      [
+        baseInput({
+          tempId: 't1',
+          normalizedName: 'cơm chay',
+          entityType: EntityType.food,
+        }),
+        baseInput({
+          tempId: 't2',
+          normalizedName: 'cơm cháy',
+          entityType: EntityType.food,
+        }),
+      ],
+      CONFIG_NO_LLM,
+    );
+    const first = resolutionResults.find((r) => r.tempId === 't1')!;
+    const second = resolutionResults.find((r) => r.tempId === 't2')!;
+    expect(first.isNewEntity).toBe(true);
+    expect(second.isNewEntity).toBe(true);
+    expect(second.primaryTempId).toBeUndefined();
+  });
+
+  it('ONE-SIDED accents still fold at mint: "pho" and "phở" collapse to one primary (de-diacritized typing keeps grounding)', async () => {
+    const { service } = buildService({ entities: [] });
+    const { resolutionResults } = await service.resolveBatch(
+      [
+        baseInput({
+          tempId: 't1',
+          normalizedName: 'pho',
+          entityType: EntityType.food,
+        }),
+        baseInput({
+          tempId: 't2',
+          normalizedName: 'phở',
+          entityType: EntityType.food,
+        }),
+      ],
+      CONFIG_NO_LLM,
+    );
+    expect(
+      resolutionResults.find((r) => r.tempId === 't2')!.primaryTempId,
+    ).toBe('t1');
+  });
+
+  it('a vetoed newcomer STILL dedupes its own later twins ("cơm cháy" twice after a "cơm chay" occupant)', async () => {
+    const { service } = buildService({ entities: [] });
+    const { resolutionResults } = await service.resolveBatch(
+      [
+        baseInput({
+          tempId: 't1',
+          normalizedName: 'cơm chay',
+          entityType: EntityType.food,
+        }),
+        baseInput({
+          tempId: 't2',
+          normalizedName: 'cơm cháy',
+          entityType: EntityType.food,
+        }),
+        baseInput({
+          tempId: 't3',
+          normalizedName: 'cơm cháy',
+          entityType: EntityType.food,
+        }),
+      ],
+      CONFIG_NO_LLM,
+    );
+    expect(
+      resolutionResults.find((r) => r.tempId === 't3')!.primaryTempId,
+    ).toBe('t2');
+  });
 });
 
 describe('EntityResolutionService — the v7 shadow twin classes (2026-08-10 proven defect)', () => {

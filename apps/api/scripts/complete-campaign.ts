@@ -1,12 +1,11 @@
 /**
- * @script-class: probe
- * @finding: NOT YET BANKED — record what this probe answered, or delete it.
- *
- * A banked probe's value is the RECORDED RESULT, kept so the finding stays
- * reproducible. This one has no runner and no written-down finding: the
- * F414 sweep (2026-08-02) could establish the first fact mechanically but
- * not the second, and inventing one would be worse than leaving it visible.
- * Until a finding is written here, this file is a deletion candidate.
+ * @script-class: operational
+ * @finding: BANKED 2026-08-11 — this is the reextract flow's designed
+ * campaign-closing lever, not a probe. The v7 shadow replay finished and
+ * sat in state 'running' at $30.44 spent (a still-open spend envelope with
+ * no work behind it; drift feedback never recorded) until this script
+ * closed it. The reextract skill's activate step now names this script as
+ * a mandatory close-out — see .claude/skills/reextract/SKILL.md step 5.
  */
 /**
  * Complete-Campaign Ops Script (red team 2026-07-25)

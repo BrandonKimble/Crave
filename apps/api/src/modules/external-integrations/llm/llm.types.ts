@@ -274,6 +274,15 @@ export interface LLMAttributeNameInput {
 export interface LLMEntityMatchCandidate {
   id: number;
   name: string;
+  /**
+   * Other names this candidate is known by (recall surfaces / extracted
+   * aliases). SAME evidence on BOTH transports (red team 2026-08-12): the
+   * batch path always carried these while the single path silently dropped
+   * them, so the identical (term, candidate) pair could judge differently by
+   * batch size. Each envelope states the rule: an alias counts as that
+   * candidate's name.
+   */
+  aliases?: string[];
 }
 
 export interface LLMEntityMatchInput {

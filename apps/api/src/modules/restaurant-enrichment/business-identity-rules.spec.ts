@@ -118,6 +118,31 @@ describe('brand name doctrine', () => {
     ).toBe(true);
   });
 
+  it('MULTILINGUAL (ruling R4): the ACCENT VETO — tone-differing vi brands never agree on the stripped fold', () => {
+    // canonicalFold makes both "com chay": without the veto these two
+    // different shops (vegetarian rice / scorched rice) are one brand.
+    // Mutation proof: return `true` unconditionally after the folded
+    // agreement check and this goes RED.
+    expect(restaurantNamesAgree('Cơm Chay', 'Cơm Cháy')).toBe(false);
+    // One accentless side asserts nothing — de-diacritized typing still
+    // agrees (the same one-sided rule as the resolver tiers).
+    expect(restaurantNamesAgree('bun dau', 'Bún Đậu')).toBe(true);
+    expect(restaurantNamesAgree('Bún Đậu', 'Bún Đậu Midtown')).toBe(true);
+    // Both accented and AGREEING accent forms: still one brand.
+    expect(restaurantNamesAgree('Bún Đậu', 'bún đậu')).toBe(true);
+  });
+
+  it('MULTILINGUAL (ruling R4): đ, ß and æ fold to comparable forms in the ONE fold authority', () => {
+    // đ is a base letter with a stroke — NFKD does not decompose it; the
+    // fold maps it explicitly. A drift between the JS fold and any stored
+    // key would surface here first.
+    expect(normalizeBrandName('Bún Đậu')).toBe('bun dau');
+    expect(normalizeBrandName('Straße')).toBe('strasse');
+    expect(restaurantNamesAgree('Straße', 'strasse')).toBe(true);
+    expect(normalizeBrandName('Café Æble')).toBe('cafe aeble');
+    expect(restaurantNamesAgree('Café Æble', 'cafe aeble')).toBe(true);
+  });
+
   it('agrees on identical brands and word-boundary chain prefixes only', () => {
     // Fold-law alignment: apostrophe spelling variants are ONE brand.
     expect(restaurantNamesAgree("Joe's Pizza", 'joes pizza')).toBe(true);

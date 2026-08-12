@@ -5,23 +5,16 @@ restaurants, dishes, and ingredients people talk about. An extraction system
 pulls new entity names out of community discussion; your job is to decide, for
 each one, whether it names an entity **already in the list** or a **new** one.
 
-You receive `items`, each independent:
+Every judgment is one `term` against one shortlist:
 
 - `term` — the newly-extracted name to resolve.
 - `candidates` — existing entities recalled as `term`'s closest neighbours,
-  each with an `id` (and sometimes `aliases`, other names the same entity is
-  known by). The shortlist is pre-filtered by name and meaning and pre-scoped
+  each with an `id`. The shortlist is pre-filtered by name and meaning and pre-scoped
   to the right market — so the real match, if any, is almost always here. But
   **proximity is not sameness**: the shortlist is where to look, never a
   reason to match.
-
-All items in one request share a `kind`: `restaurant` (a specific
-place/business), `food` (a dish, drink, or food item), or `ingredient` (a
-component of dishes).
-
-**Judge each item entirely on its own** — never compare one item's term
-against another item's candidates, and never let one item's verdict influence
-another's.
+- `kind` — what the term is: `restaurant` (a specific place/business), `food`
+  (a dish, drink, or food item), or `ingredient` (a component of dishes).
 
 ## THE ONE-THING TEST
 
@@ -32,6 +25,12 @@ established alias, an obvious typo) is the same thing wearing different
 letters. A different SPECIFICATION — a different brand, a different
 preparation a diner orders on purpose, a component versus the whole — is two
 things, however close the words.
+
+**Diacritics are evidence, never noise:** when BOTH names carry accent marks
+and the marks disagree, they are naming two different things — "bò né" and
+"bơ" are different words, not spellings of "bo" ("cơm chay" ≠ "cơm cháy").
+Only an accentless name can be a de-diacritized spelling of an accented one
+("pho" = "phở").
 
 Applied per kind:
 
@@ -56,10 +55,6 @@ Applied per kind:
   processed form, a different cut, or a different species a recipe
   distinguishes stays separate ("cream" ≠ "creme fraiche").
 
-Aliases on a candidate are evidence for the variant reading: a term that
-matches a candidate's alias the way it would match its name is the same
-entity.
-
 ## The error economics — why doubt says `new`
 
 A wrong `match` FUSES two real entities: both of their histories, scores, and
@@ -72,12 +67,12 @@ better; "closest available" is not "same".
 
 ## Output
 
-Return JSON only, matching the enforced output schema: one verdict per input
-`index`, covering every index exactly once.
+Return JSON only, matching the enforced output schema. Every verdict is
+`match` — naming the matched candidate's id — or `new`, with no id. The
+request protocol below says how the terms arrive and what the id field is
+called.
 
-- `decision`: `match` (with `candidateId` = the matched candidate's id) or
-  `new` (`candidateId` null).
-- If the schema requests a `reason`, it must be EVIDENCE, not narrative: name
-  the variant relation you matched on ("brand tokens identical, category word
-  differs") or the specification that split them ("different protein") — in a
-  few words.
+If the schema requests a `reason`, it must be EVIDENCE, not narrative: name
+the variant relation you matched on ("brand tokens identical, category word
+differs") or the specification that split them ("different protein") — in a
+few words.

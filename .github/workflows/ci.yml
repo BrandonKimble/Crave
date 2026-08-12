@@ -109,6 +109,16 @@ jobs:
       - name: 'Static guard: no COVERAGE row claims review of a file that changed'
         run: node scripts/coverage-staleness.mjs --check
 
+      # The evidence ledger is where every corpus claim about a restaurant
+      # lives, and its two write functions resolve entity_redirects at insert
+      # time so live evidence cannot land on a merged-away tombstone (where the
+      # projection rebuild will never see it again). That rule was prose in a
+      # header and enforced by nothing; eslint cannot hold it, because the
+      # single tree-wide no-restricted-syntax block already exempts the two
+      # files that actually write the ledger.
+      - name: 'Static guard: the event ledger has one write door'
+        run: node scripts/check-event-ledger-chokepoint.mjs
+
       # Type check FIRST (rederivation D27): CI used to die at Lint, leaving
       # type errors — including the rotted DB-integration spec — invisible.
       # One second of tsc buys the truth about compilability. (The static

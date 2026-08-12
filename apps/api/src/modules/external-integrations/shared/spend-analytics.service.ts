@@ -512,9 +512,10 @@ export class SpendAnalyticsService {
    * - gemini.embedding / document: embedding spend (caller
    *   'embedding.embed') ÷ documents collected in the window.
    * - gemini.interactive_pipeline / document: the honest UMBRELLA rate —
-   *   TOTAL non-batch, non-search gemini spend (everything interactive
-   *   except the gate, embeddings, and 'query.interpret' user-search
-   *   traffic; legacy blur-tagged 'llm.callGeminiApi' rows count here)
+   *   TOTAL non-batch gemini spend (everything interactive except the
+   *   gate, embeddings, and the residue drain ('residue.interpret', plus
+   *   its pre-rename 'query.interpret' rows) whose spend is not
+   *   per-document-driven; legacy blur-tagged 'llm.callGeminiApi' rows count here)
    *   ÷ documents collected. Per-class tagged rates refine this split as
    *   tagged data accrues, but the umbrella keeps estimates all-in today.
    * - google_places.enrichment / restaurant: total places spend (SKU-priced
@@ -605,7 +606,8 @@ export class SpendAnalyticsService {
             'gemini-batch.collection_extraction',
             'relevance-gate.judgeBatch',
             'embedding.embed',
-            'query.interpret',
+            'query.interpret', // historic rows (renamed 2026-08-11)
+            'residue.interpret',
           ],
         },
         { excludeBatchMode: true },

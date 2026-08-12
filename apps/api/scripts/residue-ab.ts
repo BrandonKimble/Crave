@@ -4,7 +4,7 @@
  * QUERY-PROMPT A/B HARNESS (prompt-fleet rederivation 2026-08-11) — the
  * prompt-ab.ts pattern applied to query understanding: run the SAME queries
  * through two query-prompt files via the PRODUCTION path
- * (LLMService.analyzeSearchQuery with a systemPromptOverride — same model,
+ * (LLMService.interpretResidue with a systemPromptOverride — same model,
  * enforced schema, config, and parser), grade both against expectations, and
  * report per-case verdicts plus a head-to-head. Read-only: no DB writes, no
  * prompt activation, caches bypassed for both variants.
@@ -186,7 +186,7 @@ async function main(): Promise<void> {
         if (!unit) return;
         const k = key(unit.testCase.id, unit.variant);
         try {
-          const analysis = (await llm.analyzeSearchQuery(
+          const analysis = (await llm.interpretResidue(
             unit.testCase.query,
             prompts[unit.variant],
           )) as unknown as Analysis;

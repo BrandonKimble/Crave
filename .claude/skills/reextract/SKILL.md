@@ -68,6 +68,13 @@ items. Design doc: plans/reextract-choreography.md. Entry point:
    anchor-audit must come back clean, then `prompt-activate.ts <version>`
    - redeploy workers so LIVE collection extracts under the new prompt,
      then `./scripts/rig/cost-reconcile.sh`.
+   - **close the spend campaign**: `scripts/complete-campaign.ts
+--campaign-id <uuid>` once the shadow queue is drained — whether the
+     candidate activates OR is rejected. A finished replay parked in
+     'running' is a still-open spend envelope with no work behind it, and
+     the drift feedback (declared vs actual) only records on completion
+     (found 2026-08-11: the v7 replay sat 'running' at $30.44 after its
+     verdict).
 6. **Global / rolling**: same flow with more communities; activate region
    by region as each community's shadow drains — activation is
    per-document, rolling is native. Disarm the REEXTRACT\_\* env vars when

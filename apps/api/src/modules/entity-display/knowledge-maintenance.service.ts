@@ -57,6 +57,19 @@ export class KnowledgeMaintenanceService {
   /** Sweep cap per locale per run — bounds one night's spend. */
   private static readonly SWEEP_LIMIT = 2000;
   private static readonly SATISFIES_LIMIT = 200;
+  /**
+   * THE RAIL'S WAITING CONTRACT: a pass never outlives the period that
+   * scheduled it. The cron above runs daily, so one day IS the budget —
+   * every locale sweep receives deadlineAt = start + this period, the
+   * generator turns it into the pooled batch runner's cancelling wait, and
+   * whatever goes unanswered stays due for the next tick. Locale sweeps are
+   * independent (per-locale ledger pass, per-locale surface rows, the
+   * collision guard's partial uniques arbitrate simultaneous writes), so
+   * they run CONCURRENTLY and share this wall-clock budget instead of
+   * queueing behind each other — one slow language can no longer starve the
+   * others out of their night.
+   */
+  private static readonly RAIL_PERIOD_MS = 24 * 60 * 60 * 1000;
 
   constructor(
     private readonly labelSweep: LabelSweepService,
@@ -98,31 +111,53 @@ export class KnowledgeMaintenanceService {
 
   private async runPass(trigger: 'cron' | 'boot' | 'manual'): Promise<void> {
     const startedAt = Date.now();
-    try {
-      for (const locale of this.labelSweep.sweepLocales()) {
-        const sweep = await this.labelSweep.sweep(locale, {
+    const deadlineAt = startedAt + KnowledgeMaintenanceService.RAIL_PERIOD_MS;
+    // CONCURRENT, ISOLATED, DEADLINED (see RAIL_PERIOD_MS). allSettled, not
+    // a loop: one locale's failure is that locale's news, never a reason
+    // the languages after it — or the satisfies pass — go unserved.
+    const locales = this.labelSweep.sweepLocales();
+    const settled = await Promise.allSettled(
+      locales.map((locale) =>
+        this.labelSweep.sweep(locale, {
           limit: KnowledgeMaintenanceService.SWEEP_LIMIT,
           generator: this.vocabulary,
-        });
+          deadlineAt,
+        }),
+      ),
+    );
+    settled.forEach((result, index) => {
+      const locale = locales[index];
+      if (result.status === 'fulfilled') {
+        const sweep = result.value;
         this.logger.log(
-          `maintenance sweep locale=${locale} due=${sweep.due} written=${sweep.written} banked=${sweep.surfacesBanked} wonOnAppeal=${sweep.surfacesWonOnAppeal} blocked=${sweep.surfacesBlocked}`,
+          `maintenance sweep locale=${locale} due=${sweep.due} written=${sweep.written} banked=${sweep.surfacesBanked} wonOnAppeal=${sweep.surfacesWonOnAppeal} blocked=${sweep.surfacesBlocked} unanswered=${sweep.unanswered}`,
+        );
+      } else {
+        this.logger.error(
+          `maintenance sweep failed locale=${locale}: ${
+            result.reason instanceof Error
+              ? result.reason.message
+              : String(result.reason)
+          }`,
         );
       }
+    });
+    try {
       const judged = await this.satisfies.run({
         limit: KnowledgeMaintenanceService.SATISFIES_LIMIT,
       });
       this.logger.log(
         `maintenance satisfies ${JSON.stringify(judged).slice(0, 200)}`,
       );
-      this.logger.log(
-        `knowledge maintenance complete trigger=${trigger} ms=${Date.now() - startedAt}`,
-      );
     } catch (error) {
       this.logger.error(
-        `knowledge maintenance failed trigger=${trigger}: ${
+        `maintenance satisfies failed trigger=${trigger}: ${
           error instanceof Error ? error.message : String(error)
         }`,
       );
     }
+    this.logger.log(
+      `knowledge maintenance complete trigger=${trigger} ms=${Date.now() - startedAt}`,
+    );
   }
 }

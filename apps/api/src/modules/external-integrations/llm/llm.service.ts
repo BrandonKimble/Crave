@@ -1,6 +1,7 @@
 import { applyAuditReasonPolicy } from './llm-audit-policy';
 import {
   EntityMatchPromptMode,
+  entityMatchCandidateWire,
   renderEntityMatchSystemInstruction,
 } from './entity-match-prompt';
 import {
@@ -182,7 +183,7 @@ interface LLMGenerationOptions {
   sourceRefs?: string[];
   /** REQUIRED distinct usage-ledger caller tag (§24 caller taxonomy,
    *  2026-07-25). Every call site must name its prompt class (e.g.
-   *  'entity-resolution.match', 'query.interpret') so per-class spend is
+   *  'entity-resolution.match', 'residue.interpret') so per-class spend is
    *  measurable. NON-OPTIONAL (F4931): the compiler now refuses a call site
    *  that omits it, so the taxonomy is a type property, not a text-scanned
    *  one. The generic 'llm.callGeminiApi' fallback remains only as a
@@ -774,7 +775,12 @@ export class LLMService implements OnModuleInit, OnModuleDestroy {
   }
 
   private loadQueryPrompt(): string {
-    return this.loadRequiredPromptFile('query-prompt.md', 'load_query_prompt');
+    // Residue interpretation (unsegmented-residue drain) — the ONLY caller.
+    // Live user search never reaches the LLM (gazetteer owns Understand).
+    return this.loadRequiredPromptFile(
+      'residue-prompt.md',
+      'load_residue_prompt',
+    );
   }
 
   private loadCuisinePrompt(): string {
@@ -945,14 +951,20 @@ export class LLMService implements OnModuleInit, OnModuleDestroy {
   }
 
   /**
-   * @param systemPromptOverride PROMPT A/B ONLY (scripts/query-ab.ts) — the
+   * Interpret unsegmented search RESIDUE into typed collection seeds.
+   * ONLY caller: UnsegmentedResidueService.drainBatch (background cron) —
+   * live user search never calls the LLM (gazetteer owns Understand). The
+   * output seeds PAID on-demand collection, not retrieval: the prompt's
+   * error economics are precision-first (residue-prompt.md).
+   *
+   * @param systemPromptOverride PROMPT A/B ONLY (scripts/residue-ab.ts) — the
    *  same seam processContent has for the collection A/B: run this exact
    *  system instruction through the production path (same model, schema,
    *  config, parser). Supplying it bypasses BOTH the query instruction
    *  cache and the result cache — neither variant may inherit the other's
    *  cached answer. Production callers never pass it.
    */
-  async analyzeSearchQuery(
+  async interpretResidue(
     query: string,
     systemPromptOverride?: string,
   ): Promise<LLMSearchQueryAnalysis> {
@@ -979,7 +991,7 @@ export class LLMService implements OnModuleInit, OnModuleDestroy {
       // read `this.llmConfig.maxTokens` — same value today, but a session
       // config change would silently diverge this one assembler from the
       // profile table that every other caller reads. The profile is the home.
-      maxOutputTokens: callerProfile('query.interpret')!.maxOutputTokens,
+      maxOutputTokens: callerProfile('residue.interpret')!.maxOutputTokens,
       responseMimeType: 'application/json',
       responseJsonSchema: SEARCH_QUERY_RESPONSE_JSON_SCHEMA,
     };
@@ -1040,7 +1052,7 @@ export class LLMService implements OnModuleInit, OnModuleDestroy {
     }
 
     const response = await this.callLLMApi(prompt, {
-      usageCaller: 'query.interpret',
+      usageCaller: 'residue.interpret',
       generationConfig: queryGenerationConfig,
       cacheName: queryCacheName,
       systemInstruction: systemPromptOverride ?? this.queryPrompt,
@@ -1662,11 +1674,7 @@ export class LLMService implements OnModuleInit, OnModuleDestroy {
       const payload = input.items.map((item, index) => ({
         index,
         term: item.term,
-        candidates: item.candidates.map((c) => ({
-          id: c.id,
-          name: c.name,
-          ...(c.aliases?.length ? { aliases: c.aliases.slice(0, 6) } : {}),
-        })),
+        candidates: item.candidates.map(entityMatchCandidateWire),
       }));
       // `kind` rides the PAYLOAD now. It used to be interpolated into the
       // inline system instruction, which is why that copy had to exist at all;
@@ -1892,7 +1900,9 @@ export class LLMService implements OnModuleInit, OnModuleDestroy {
     const payload = JSON.stringify({
       term,
       kind: input.kind,
-      candidates: input.candidates.map((c) => ({ id: c.id, name: c.name })),
+      // Alias evidence rides the single transport exactly as it rides the
+      // batch one — same wire shape, same cap (entityMatchCandidateWire).
+      candidates: input.candidates.map(entityMatchCandidateWire),
     });
     const response = await this.callLLMApi(payload, {
       usageCaller: 'entity-resolution.match',
@@ -2263,7 +2273,18 @@ export class LLMService implements OnModuleInit, OnModuleDestroy {
       topK: this.llmConfig.topK,
       candidateCount: 1,
       responseMimeType: 'application/json',
-      responseJsonSchema: RESTAURANT_PLACE_CHOOSER_RESPONSE_JSON_SCHEMA,
+      // AUDIT REASONS, and the DECISION LEDGER below (red team 2026-08-12).
+      // llm-audit-policy names the place chooser as one of the covered judge
+      // lanes and the caller profile moved it to FLASH on the argument that a
+      // wrong `select` grounds a restaurant to the WRONG Google place — a
+      // permanent, ~$0.045 mistake every downstream photo/hours/geo fact
+      // inherits, on an entity that is never deleted. Yet this lane asked for
+      // no reason and wrote no decision record: the one judgment whose
+      // mistakes are irreversible was the one nobody could review after the
+      // fact. Both halves of that are closed here.
+      responseJsonSchema: applyAuditReasonPolicy(
+        RESTAURANT_PLACE_CHOOSER_RESPONSE_JSON_SCHEMA,
+      ),
     };
 
     // Model + ceiling come from the caller profile. NOTE: this call used to
@@ -2284,13 +2305,29 @@ export class LLMService implements OnModuleInit, OnModuleDestroy {
     try {
       const parsed = JSON.parse(
         content,
-      ) as Partial<LLMRestaurantPlaceChooserDecision>;
+      ) as Partial<LLMRestaurantPlaceChooserDecision> & { reason?: unknown };
       const decision = parsed.decision === 'select' ? 'select' : 'reject';
       const candidateId =
         typeof parsed.candidateId === 'string' &&
         parsed.candidateId.trim().length
           ? parsed.candidateId.trim()
           : null;
+      const reason =
+        typeof parsed.reason === 'string' ? parsed.reason.trim() : undefined;
+      // A grounding is unreconstructible later: the candidate set comes from
+      // live Places retrieval and is gone by the time anyone asks why. Same
+      // argument the ledger already makes for entity_match merges.
+      this.decisionLedger.record({
+        kind: 'place_choice',
+        input: {
+          query: trimmedQuery,
+          sourceText: input.sourceText,
+          sourceLocale: input.sourceLocale,
+          candidates,
+        },
+        decision: { decision, candidateId, reason },
+        model: callerProfile('places.choose_candidate')!.model!,
+      });
 
       if (
         decision === 'select' &&
@@ -4751,33 +4788,6 @@ export class LLMService implements OnModuleInit, OnModuleDestroy {
       lastReset: new Date(),
       errorCount: 0,
       successRate: 100,
-    };
-  }
-
-  /**
-   * Get service health status
-   */
-  getHealthStatus() {
-    const status: 'healthy' | 'degraded' | 'unhealthy' =
-      this.performanceMetrics.successRate > 80 ? 'healthy' : 'degraded';
-
-    return {
-      service: 'llm',
-      status,
-      uptime: Date.now() - this.performanceMetrics.lastReset.getTime(),
-      metrics: {
-        requestCount: this.performanceMetrics.requestCount,
-        totalResponseTime: this.performanceMetrics.totalResponseTime,
-        averageResponseTime: this.performanceMetrics.averageResponseTime,
-        lastReset: this.performanceMetrics.lastReset,
-        errorCount: this.performanceMetrics.errorCount,
-        successRate: this.performanceMetrics.successRate,
-        rateLimitHits: 0, // LLM service doesn't track this separately
-      },
-      configuration: {
-        timeout: this.llmConfig.timeout || 30000,
-        retryOptions: this.llmConfig.retryOptions,
-      },
     };
   }
 

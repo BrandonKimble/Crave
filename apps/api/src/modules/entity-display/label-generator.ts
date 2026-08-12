@@ -63,6 +63,31 @@ export interface GeneratedLabel {
   aliases?: string[];
 }
 
+export interface GenerationOptions {
+  /**
+   * Wall-clock epoch-ms deadline the generator's WAITING must respect — the
+   * rail that scheduled the sweep owns it (its own period), and the generator
+   * translates it into its transport's bounded wait (the pooled batch
+   * runner's timeout-and-cancel). Absent = the transport's own default.
+   */
+  deadlineAt?: number;
+}
+
+/**
+ * What a generation pass actually established — labels AND the asks that
+ * never completed. The distinction is load-bearing for the KL-A watermark:
+ * an ABSTENTION (the model answered and declined) is a recorded ask that
+ * must not be re-posed; an UNANSWERED item (timeout, errored chunk, expired
+ * deadline) is an ask that never happened and MUST stay due. Flattening the
+ * two into "no label came back" would let one timed-out batch permanently
+ * mark its whole head-of-backlog as asked-and-abstained.
+ */
+export interface GenerationOutcome {
+  labels: GeneratedLabel[];
+  /** entityIds posed to the model with NO response — not abstentions. */
+  unanswered: ReadonlySet<string>;
+}
+
 export interface LabelGenerator {
   readonly name: string;
   /**
@@ -76,7 +101,8 @@ export interface LabelGenerator {
   readonly dryRun: boolean;
   generate(
     requests: readonly LabelGenerationRequest[],
-  ): Promise<GeneratedLabel[]>;
+    options?: GenerationOptions,
+  ): Promise<GenerationOutcome>;
 }
 
 /**
@@ -94,8 +120,8 @@ export class NoopLabelGenerator implements LabelGenerator {
 
   generate(
     requests: readonly LabelGenerationRequest[],
-  ): Promise<GeneratedLabel[]> {
+  ): Promise<GenerationOutcome> {
     void requests;
-    return Promise.resolve([]);
+    return Promise.resolve({ labels: [], unanswered: new Set<string>() });
   }
 }

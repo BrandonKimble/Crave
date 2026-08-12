@@ -3,6 +3,7 @@ import { Prisma, Entity, EntityType } from '@prisma/client';
 import {
   activeEntityEventCountSql,
   acquireIdentityMergeLocks,
+  activeWinnerRedirectMap,
   finalizeMergeCompletion,
   rekeyRestaurantEventsToCanonical,
   rekeyRestaurantEntityEventsToCanonical,
@@ -111,33 +112,86 @@ export class RestaurantEntityMergeService {
         entityLockKey(canonical.name, EntityType.restaurant),
         entityLockKey(duplicate.name, EntityType.restaurant),
       ]);
-      await this.mergeRestaurantEvents(
-        tx,
-        canonical.entityId,
-        duplicate.entityId,
-      );
-      await this.mergeRestaurantEntityEvents(
-        tx,
-        canonical.entityId,
-        duplicate.entityId,
-      );
-      await this.rehomeRestaurantEntityReferences(
-        tx,
-        canonical.entityId,
-        duplicate.entityId,
-      );
-      await this.mergeConnections(tx, canonical.entityId, duplicate.entityId);
-      await this.mergeLocations(tx, canonical.entityId, duplicate.entityId);
+
+      // THE CANONICAL IS RE-RESOLVED UNDER THE LOCK (2026-08-12 red team).
+      //
+      // Every caller picks its canonical by reading the database OUTSIDE this
+      // transaction — the place-id ownership pre-check reads
+      // `restaurant_locations` then `core_entities.status`, the collision
+      // handler and the same-name sweep do the same — so between that read
+      // and this transaction another merge can archive the very entity we are
+      // about to merge INTO. The result was not a crash: the merge succeeded,
+      // re-keying a live corpus onto an ARCHIVED winner and writing a
+      // redirect whose target is archived — precisely the "stranded evidence"
+      // state `activeWinnerRedirectMap` refuses to follow, so every later
+      // event write and read walks past it and the evidence is dark.
+      //
+      // The fix is not a pre-flight check (that is the same stale read, one
+      // line lower). The identity locks above are name-keyed and the racing
+      // merge holds the SAME canonical name key, so it is already serialized
+      // against us: a read taken HERE, after the locks, is authoritative for
+      // the rest of this transaction. So we take it, and resolve exactly the
+      // way the event ledger's write chokepoint does — through the
+      // active-winner redirect map — which turns the race from data damage
+      // into the correct answer: merge into whoever absorbed our canonical.
+      // ASYMMETRIC BY DESIGN. The CANONICAL side follows its redirect: "the
+      // live entity that absorbed our winner" is still the right home for
+      // this evidence, and following it is what the ledger chokepoint does.
+      // The DUPLICATE side does NOT: if the loser was itself merged away, its
+      // content already lives at some third entity, and re-targeting would
+      // drag that whole (possibly large, possibly unrelated) entity into a
+      // merge nobody judged. A stale loser means the decision is stale —
+      // refuse, and let the sweep re-judge the healed graph.
+      const winner = await activeWinnerRedirectMap(tx, [canonical.entityId]);
+      const canonicalId = winner.get(canonical.entityId) ?? canonical.entityId;
+      const duplicateId = duplicate.entityId;
+      const [canonicalRow, duplicateRow] = await Promise.all([
+        tx.entity.findUnique({
+          where: { entityId: canonicalId },
+          select: { status: true },
+        }),
+        tx.entity.findUnique({
+          where: { entityId: duplicateId },
+          select: { status: true },
+        }),
+      ]);
+      if (canonicalId === duplicateId) {
+        // The race already did this merge (the loser IS our canonical's
+        // winner). Replaying it would be a self-merge, which annihilates the
+        // ledger (round-11 fuzz D1).
+        throw new Error(
+          `merge refused: ${canonical.entityId} and ${duplicateId} both resolve to ${canonicalId} — a concurrent merge already joined them`,
+        );
+      }
+      if (!canonicalRow || canonicalRow.status === 'archived') {
+        // Archived with NO active redirect target: the winner is stranded
+        // itself. Refusing leaves the duplicate intact for the next sweep,
+        // which is recoverable; proceeding is not.
+        throw new Error(
+          `merge refused: canonical ${canonicalId} is not active under the identity lock (a concurrent merge archived it)`,
+        );
+      }
+      if (!duplicateRow || duplicateRow.status === 'archived') {
+        throw new Error(
+          `merge refused: duplicate ${duplicateId} was already merged away under the identity lock`,
+        );
+      }
+
+      await this.mergeRestaurantEvents(tx, canonicalId, duplicateId);
+      await this.mergeRestaurantEntityEvents(tx, canonicalId, duplicateId);
+      await this.rehomeRestaurantEntityReferences(tx, canonicalId, duplicateId);
+      await this.mergeConnections(tx, canonicalId, duplicateId);
+      await this.mergeLocations(tx, canonicalId, duplicateId);
 
       const updatedCanonical = await tx.entity.update({
-        where: { entityId: canonical.entityId },
+        where: { entityId: canonicalId },
         data: effectiveCanonicalUpdate,
       });
 
       // Alias bank + archive + score prune + redirect flatten: ONE
       // contract shared with the food merge (round-12 audit — the two
       // copy-pasted tails had diverged; see finalizeMergeCompletion).
-      await finalizeMergeCompletion(tx, canonical.entityId, duplicate.entityId);
+      await finalizeMergeCompletion(tx, canonicalId, duplicateId);
 
       return updatedCanonical;
     };

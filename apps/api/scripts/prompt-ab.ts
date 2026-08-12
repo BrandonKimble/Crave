@@ -79,9 +79,13 @@ type Case = {
 type Mention = Record<string, unknown>;
 
 function norm(value: string): string {
+  // Unicode-aware (multilingual ruling R6, 2026-08-12): the gold suite now
+  // carries vi/es cases, and the old ascii-only class reduced "thực đơn" to
+  // the tokens {th,c,n} — un-gradeable and false-match-prone. Identical
+  // behavior for ascii needles.
   return value
     .toLowerCase()
-    .replace(/[^a-z0-9 ]+/g, ' ')
+    .replace(/[^\p{L}\p{N} ]+/gu, ' ')
     .replace(/\s+/g, ' ')
     .trim();
 }

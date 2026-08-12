@@ -263,7 +263,9 @@ contract a name into an acronym or initialism the text does not use.
 
 Normalize:
 
-- Lowercase everything.
+- Lowercase everything — but **keep every letter as the writer spelled it,
+  diacritics included** ("Phở Lệ" → `phở lệ`, never `pho le`): accent marks
+  are identity, and stripping them fuses different names downstream.
 - Drop trailing neighborhood/borough/location suffixes ("les", "chelsea",
   "midtown", "queens"), even when the text contrasts branches — emit only the
   core brand tokens.
@@ -405,7 +407,9 @@ Drop generic filler outright ("food", "meal", "dish", "the food", "restaurant",
 
 5. **Normalize**: lowercase; use the natural singular ("taco", not "tacos";
    but keep "noodles" where the singular is awkward); minimal punctuation.
-   **Never reorder tokens** — emit the word order the source used.
+   **Never reorder tokens** — emit the word order the source used — and keep
+   every letter as the writer spelled it, diacritics included ("phở", never
+   "pho", when the source wrote the marks).
 
 **Never emit a truncated or abbreviated food token.** If a word is cut short
 ("jap" for jalapeño), write the full word or drop it. A truncated token can

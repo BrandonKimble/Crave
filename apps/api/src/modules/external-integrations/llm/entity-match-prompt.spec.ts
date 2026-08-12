@@ -2,8 +2,13 @@ import { readFileSync, writeFileSync } from 'fs';
 import { join } from 'path';
 import {
   ENTITY_MATCH_BATCH_ENVELOPE,
+  ENTITY_MATCH_SINGLE_ENVELOPE,
   renderEntityMatchSystemInstruction,
 } from './entity-match-prompt';
+import {
+  ENTITY_MATCH_RESPONSE_JSON_SCHEMA,
+  ENTITY_MATCH_BATCH_RESPONSE_JSON_SCHEMA,
+} from './prompts/llm-response-schemas';
 
 /**
  * ONE SOURCE OF TRUTH for the same-entity judgment.
@@ -20,21 +25,53 @@ const PROMPT_PATH = join(__dirname, 'prompts', 'entity-match-prompt.md');
 const canonical = (): string => readFileSync(PROMPT_PATH, 'utf-8');
 
 describe('entity match prompt', () => {
-  it('renders the single-call transport as the canonical .md, byte for byte', () => {
-    expect(renderEntityMatchSystemInstruction(canonical(), 'single')).toBe(
-      canonical(),
-    );
+  it('renders each transport as the canonical .md PLUS its own envelope, nothing else', () => {
+    for (const [mode, envelope] of [
+      ['single', ENTITY_MATCH_SINGLE_ENVELOPE],
+      ['batch', ENTITY_MATCH_BATCH_ENVELOPE],
+    ] as const) {
+      const rendered = renderEntityMatchSystemInstruction(canonical(), mode);
+      expect(rendered.startsWith(canonical().trimEnd())).toBe(true);
+      expect(rendered).toContain(envelope);
+      // The envelope is transport, not judgment: everything the model is told
+      // about WHEN two names are the same entity comes from the .md.
+      expect(rendered.replace(envelope, '').trim()).toBe(canonical().trim());
+    }
   });
 
-  it('renders the batch transport as the canonical .md PLUS envelope plumbing only', () => {
-    const batch = renderEntityMatchSystemInstruction(canonical(), 'batch');
-    expect(batch.startsWith(canonical().trimEnd())).toBe(true);
-    expect(batch).toContain(ENTITY_MATCH_BATCH_ENVELOPE);
-    // The envelope is transport, not judgment: everything the model is told
-    // about WHEN two names are the same entity comes from the .md.
-    expect(batch.replace(ENTITY_MATCH_BATCH_ENVELOPE, '').trim()).toBe(
-      canonical().trim(),
+  /**
+   * THE DEFECT THIS PINS (red team 2026-08-12): the rederived .md absorbed the
+   * BATCH protocol — "You receive `items`", "one verdict per input `index`",
+   * `candidateId`. The single lane sends `{term, kind, candidates}` and its
+   * enforced schema requires `candidate_id`, so the canonical text described a
+   * request that lane never sends and named an output key its own schema
+   * rejects. Each transport now states its own protocol, and the canonical
+   * text states neither.
+   */
+  it('each transport names the id field ITS enforced schema requires', () => {
+    expect(Object.keys(ENTITY_MATCH_RESPONSE_JSON_SCHEMA.properties)).toContain(
+      'candidate_id',
     );
+    expect(ENTITY_MATCH_SINGLE_ENVELOPE).toContain('candidate_id');
+    expect(ENTITY_MATCH_SINGLE_ENVELOPE).not.toContain('candidateId');
+
+    expect(
+      Object.keys(
+        ENTITY_MATCH_BATCH_RESPONSE_JSON_SCHEMA.properties.items.items
+          .properties,
+      ),
+    ).toContain('candidateId');
+    expect(ENTITY_MATCH_BATCH_ENVELOPE).toContain('candidateId');
+  });
+
+  it('keeps the multi-item protocol OUT of the canonical text', () => {
+    // A single-item request has no `items` array and no `index`; the .md is
+    // read by BOTH transports, so neither word may live there.
+    expect(canonical()).not.toMatch(/\bindex\b/);
+    expect(canonical()).not.toMatch(/`items`/);
+    expect(
+      renderEntityMatchSystemInstruction(canonical(), 'single'),
+    ).not.toMatch(/\bindex\b/);
   });
 
   it('MUTATION PROOF: editing the .md changes BOTH transports', () => {

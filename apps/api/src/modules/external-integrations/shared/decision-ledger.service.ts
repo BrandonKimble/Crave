@@ -4,7 +4,7 @@ import { PrismaService } from '../../../prisma/prisma.service';
 import { LoggerService } from '../../../shared';
 
 export interface DecisionRecord {
-  kind: 'moderation' | 'entity_match' | 'attribute_placement';
+  kind: 'moderation' | 'entity_match' | 'attribute_placement' | 'place_choice';
   input: unknown;
   decision: unknown;
   model: string;
@@ -19,6 +19,10 @@ export interface DecisionRecord {
  *   without the record, a bad prod merge can never be attributed or replayed.
  * - moderation: rejected user content otherwise leaves no trace; disputes
  *   need the verdict + label.
+ * - place_choice: a `select` GROUNDS a restaurant to a Google place, and a
+ *   place-grounded restaurant is never deleted — every photo, hour and
+ *   coordinate downstream inherits the choice. The candidate set came from
+ *   live Places retrieval and is gone by the time anyone asks why.
  * inputs+decision (not reasons) are the replayable primitive; the table
  * doubles as a calibration corpus accumulated from real traffic. A write
  * failure only warns — recording must never break the call.

@@ -24,7 +24,8 @@ describe('label sweep run ledger — proven against a live database', () => {
   const abstaining: LabelGenerator = {
     name: 'test-abstaining',
     dryRun: false,
-    generate: () => Promise.resolve([]),
+    generate: () =>
+      Promise.resolve({ labels: [], unanswered: new Set<string>() }),
   };
 
   const sweep = new LabelSweepService(
@@ -123,6 +124,43 @@ describe('label sweep run ledger — proven against a live database', () => {
   });
 
   /**
+   * AN UNANSWERED ASK IS NOT AN ABSTENTION (red team 2026-08-12). The pooled
+   * batch rail promises "unanswered work is re-offered on the next run" —
+   * but a run row with outcome 'not_generated' closes the watermark forever.
+   * A timed-out or deadline-expired chunk must therefore write NO row and
+   * leave the concept due. Mutation proof: replace `answeredRequests` with
+   * `batch.requests` in the sweep's ledger write and this test goes red.
+   */
+  it('an UNANSWERED concept gets no ledger row and stays due', async () => {
+    const name = `zzq sweep unans ${randomUUID().slice(0, 8)}`;
+    const id = await mintFood(name);
+    expect(await isDue('es', id)).toBe(true);
+
+    const result = await sweep.sweep('es', {
+      entityNames: [name],
+      generator: {
+        name: 'test-timed-out',
+        dryRun: false,
+        generate: (requests) =>
+          Promise.resolve({
+            labels: [],
+            unanswered: new Set(requests.map((r) => r.entityId)),
+          }),
+      },
+    });
+    expect(result.unanswered).toBe(1);
+
+    const ledger = await prisma.$queryRawUnsafe<Array<{ outcome: string }>>(
+      `SELECT outcome FROM knowledge_pass_runs
+        WHERE pass = $1 AND subject_id = $2::uuid`,
+      sweepPass('es'),
+      id,
+    );
+    expect(ledger).toEqual([]);
+    expect(await isDue('es', id)).toBe(true);
+  });
+
+  /**
    * THE SAME WATERMARK, IN ENGLISH (L2, 2026-08-11). `en` is a sweepable
    * locale now, and "sweepable" is not one boolean — it is the ledger key
    * (`label_sweep:en`), the due predicate reading it, and the batch that stops
@@ -170,7 +208,8 @@ describe('label sweep run ledger — proven against a live database', () => {
       generator: {
         name: 'test-noop',
         dryRun: true,
-        generate: () => Promise.resolve([]),
+        generate: () =>
+          Promise.resolve({ labels: [], unanswered: new Set<string>() }),
       },
     });
     expect(await isDue('es', id)).toBe(true);

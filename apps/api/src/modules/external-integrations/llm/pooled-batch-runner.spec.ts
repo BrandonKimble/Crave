@@ -6,6 +6,7 @@ import type { LLMService } from './llm.service';
 import type { GeminiBatchService } from './gemini-batch.service';
 import type { PrismaService } from '../../../prisma/prisma.service';
 import type { LoggerService } from '../../../shared';
+import { runInWorkContext } from '../shared/work-context';
 
 /**
  * POOLED BATCH RUNNER — behavior proofs for the half-price sweep bridge.
@@ -148,6 +149,49 @@ describe('PooledBatchRunner.generateMany', () => {
     expect(cancelled).toBe(true);
     expect(out.get('a')).toBe('late'); // completed items are still read
     expect(out.get('b')).toBeNull();
+  });
+
+  /**
+   * SPEND ATTRIBUTION SURVIVES THE HANDOFF (red team 2026-08-12).
+   * The sync rail is attributed ambiently at record time; a pooled batch is
+   * ledgered LATER, by whichever poller reaches the terminal state — possibly
+   * the shared batch cron, outside the sweep's async context. Unless the
+   * campaign rides ON the job, that spend leaves the campaign's envelope and
+   * a breached campaign's sweeps keep dispatching.
+   */
+  it('stashes the ambient campaign on the job so the ledger and the breach gate can see it', async () => {
+    let submitted: { resumeContext?: unknown } | undefined;
+    const runner = makeRunner({
+      drive: ['ingested'],
+      rows: [{ itemKey: 'a', response: textResponse('ok'), error: null }],
+      onSubmit: (params) => (submitted = params as { resumeContext?: unknown }),
+    });
+    await runInWorkContext(
+      { campaignId: 'camp-7', label: 'reextract:austinfood:v8' },
+      () =>
+        runner.generateMany({
+          caller: 'labels.vocabulary',
+          items: [{ key: 'a', prompt: 'p' }],
+        }),
+    );
+    expect(submitted?.resumeContext).toEqual({
+      campaignId: 'camp-7',
+      label: 'reextract:austinfood:v8',
+    });
+  });
+
+  it('carries NO resumeContext when no campaign funds the sweep', async () => {
+    let submitted: { resumeContext?: unknown } | undefined;
+    const runner = makeRunner({
+      drive: ['ingested'],
+      rows: [{ itemKey: 'a', response: textResponse('ok'), error: null }],
+      onSubmit: (params) => (submitted = params as { resumeContext?: unknown }),
+    });
+    await runner.generateMany({
+      caller: 'labels.vocabulary',
+      items: [{ key: 'a', prompt: 'p' }],
+    });
+    expect(submitted?.resumeContext).toBeUndefined();
   });
 
   it('short-circuits an empty item list without submitting', async () => {

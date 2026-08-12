@@ -3,6 +3,8 @@ import { PooledBatchRunner } from '../external-integrations/llm/pooled-batch-run
 import { LoggerService } from '../../shared';
 import {
   type GeneratedLabel,
+  type GenerationOptions,
+  type GenerationOutcome,
   type LabelGenerationRequest,
   type LabelGenerator,
 } from './label-generator';
@@ -112,19 +114,34 @@ export class VocabularyGenerator implements LabelGenerator {
 
   async generate(
     requests: readonly LabelGenerationRequest[],
-  ): Promise<GeneratedLabel[]> {
+    options?: GenerationOptions,
+  ): Promise<GenerationOutcome> {
     // POOLED BATCH, one job for the whole sweep (prompt-fleet audit
     // 2026-08-11): nobody awaits a label interactively — the sweep is
     // watermark-driven — so this lane pays batch rates (half the sync
     // price; 1,573 sync calls last 30d). An unanswered chunk yields
-    // NOTHING for those concepts — never a fabricated label — and the
-    // watermark re-offers them next run (the no-fake-estimates law,
-    // applied to text). Same semantics a failed sync batch always had.
+    // NOTHING for those concepts — never a fabricated label, and never a
+    // ledgered ask: unanswered ids are REPORTED so the sweep's KL-A
+    // watermark keeps them due (the no-fake-estimates law, applied to
+    // text). The rail's deadline arrives here as options.deadlineAt and
+    // becomes the pooled runner's bounded wait — the runner cancels the
+    // provider job at expiry, so a wedged batch can neither bill for
+    // unread work nor hold the rail past its own period.
     const chunks: Array<readonly LabelGenerationRequest[]> = [];
     for (let i = 0; i < requests.length; i += VocabularyGenerator.PER_CALL) {
       chunks.push(requests.slice(i, i + VocabularyGenerator.PER_CALL));
     }
-    if (!chunks.length) return [];
+    const unanswered = new Set<string>();
+    if (!chunks.length) return { labels: [], unanswered };
+    const remainingMs = options?.deadlineAt
+      ? options.deadlineAt - Date.now()
+      : null;
+    if (remainingMs !== null && remainingMs <= 0) {
+      // The deadline elapsed before any ask was posed: nothing was asked,
+      // so EVERYTHING is unanswered and nothing may be ledgered.
+      for (const request of requests) unanswered.add(request.entityId);
+      return { labels: [], unanswered };
+    }
     const responses = await this.pooled.generateMany({
       caller: 'labels.vocabulary',
       items: chunks.map((chunk, index) => ({
@@ -149,23 +166,25 @@ export class VocabularyGenerator implements LabelGenerator {
         // json-schema field is rejected there — collection path's lesson).
         responseJsonSchema: VOCABULARY_RESPONSE_SCHEMA,
       },
+      ...(remainingMs !== null ? { timeoutMs: remainingMs } : {}),
     });
     const out: GeneratedLabel[] = [];
     chunks.forEach((chunk, index) => {
       const text = responses.get(`chunk-${index}`);
       if (!text) {
-        this.logger.warn(
-          'Vocabulary chunk unanswered (concepts left unlabeled)',
-          {
-            locale: chunk[0]?.locale ?? null,
-            size: chunk.length,
-          },
-        );
+        // No response is NOT an abstention: these asks never completed and
+        // must stay due, so the sweep is told exactly which ids to keep
+        // out of the run ledger.
+        for (const request of chunk) unanswered.add(request.entityId);
+        this.logger.warn('Vocabulary chunk unanswered (concepts stay due)', {
+          locale: chunk[0]?.locale ?? null,
+          size: chunk.length,
+        });
         return;
       }
       out.push(...this.parseBatch(chunk, text));
     });
-    return out;
+    return { labels: out, unanswered };
   }
 
   private parseBatch(

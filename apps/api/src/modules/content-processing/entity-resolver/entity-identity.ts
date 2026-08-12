@@ -126,6 +126,28 @@ const COMBINING_DIACRITICS =
  *  map only matched precomposed codepoints, so a name typed one way twinned
  *  itself typed the other; (2) every accented letter absent from the finite
  *  hand list (pinyin carons, Czech d-caron, …) silently survived unfolded. */
+/**
+ * THE FOLD ALGORITHM VERSION (multilingual ruling R5, 2026-08-12). Every
+ * `identity_key` in the database was computed by SOME revision of the fold
+ * below — and a behavioral fold change silently strands every stored key at
+ * the old algorithm (the narrowed heal only touches NULL/recent rows; the
+ * planned tone-mark-fold work would widen the gap corpus-wide). Recording
+ * starts at 1 = the fold as of 2026-08-12.
+ *
+ * THE LAW: any change to the OUTPUT of canonicalFold/diacriticFold for any
+ * input bumps this constant, and the bump's commit must state the backfill
+ * decision ({full:true} heal or a reasoned deferral). Enforcement:
+ *  - scripts/check-fold-drift.ts recomputes the fold over a DB sample and
+ *    fails on any stored-key divergence (the invariant registry proves the
+ *    check bites by mutating the fold);
+ *  - the identity.fold-version-recorded invariant fails when the fold
+ *    implementation changes without this constant moving (hash pin).
+ * A `fold_version` column beside identity_key is authored create-only
+ * (unapplied) — see the migration README — so per-row provenance can land
+ * with the next applied migration window.
+ */
+export const FOLD_ALGORITHM_VERSION = 1;
+
 export function canonicalFold(name: string): string {
   return foldWithAccentPolicy(name, true);
 }

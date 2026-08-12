@@ -60,6 +60,7 @@ export function buildRestaurantPlaceChooserPrompt(
     '- Lower rank numbers mean Google ranked that candidate higher within that source.',
     '- Return JSON only.',
     '- If decision is reject, candidateId must be null.',
+    '- If the schema requests a reason, it must be EVIDENCE, not narrative: name the identity and geography facts that decided it ("source names the Drag location, candidate address matches"), or the one that is missing ("source says Austin, candidate is Dallas") — in a few words.',
     '',
     `Query: ${trimmedQuery}`,
     `Source text: ${sourceText}`,

@@ -24,8 +24,20 @@
  *  3. THE EVIDENCE HIERARCHY — the merge/hold verdict for a candidate pair
  *     (shared ground or shared owned domain → merge; two distinct owned
  *     domains → two businesses; else same dominant community → merge).
+ *
+ * FOLDS NEVER RUN IN SQL (multilingual ruling R4, 2026-08-12): name identity
+ * on the SQL side compares the STORED `identity_key` column — computed in JS
+ * by the one fold authority (entity-identity.ts `identityInsertData`) —
+ * never a SQL re-implementation of the fold (Postgres lower()/unaccent have
+ * different Unicode semantics for đ/ß/æ/CJK). The only predicate this file
+ * renders into SQL is the aggregator-domain regex, which is ASCII by
+ * construction. Keep it that way: a new SQL lane that needs name identity
+ * joins on identity_key.
  */
-import { canonicalFold } from '../content-processing/entity-resolver/entity-identity';
+import {
+  canonicalFold,
+  diacriticFold,
+} from '../content-processing/entity-resolver/entity-identity';
 
 /**
  * Regex FRAGMENTS (POSIX-and-JS-compatible), the single source. Note
@@ -96,9 +108,28 @@ export function normalizeBrandName(
   return normalized.length ? normalized : null;
 }
 
+/** The accent-preserving twin of normalizeBrandName — same pipeline
+ *  (diacriticFold shares canonicalFold's normalization, minus the accent
+ *  strip), same leading-"the" drop, so the veto below compares like with
+ *  like. */
+function accentBrandName(value: string | null | undefined): string | null {
+  if (!value) return null;
+  const normalized = diacriticFold(value).replace(/^the /, '');
+  return normalized.length ? normalized : null;
+}
+
 /** Two restaurants are the same brand iff their names match, or one is a
  *  word-boundary brand prefix of the other (chain branches, e.g.
- *  "joe's pizza" / "joe's pizza midtown"). */
+ *  "joe's pizza" / "joe's pizza midtown").
+ *
+ *  THE ACCENT VETO (multilingual ruling R4, 2026-08-12 — the same law the
+ *  resolver's tiers enforce): canonicalFold strips tone marks, so
+ *  "Cơm Chay" and "Cơm Cháy" — two different dishes, two different shop
+ *  names — agree on the folded form. When BOTH sides carry accent evidence
+ *  (`diacriticFold !== canonicalFold`), their accent-preserving forms must
+ *  ALSO agree, under the same equality-or-word-boundary-prefix rule. One
+ *  accentless side asserts nothing (de-diacritized typing), so "bun dau"
+ *  still agrees with "Bún Đậu". */
 export function restaurantNamesAgree(
   a: string | null | undefined,
   b: string | null | undefined,
@@ -106,8 +137,13 @@ export function restaurantNamesAgree(
   const na = normalizeBrandName(a);
   const nb = normalizeBrandName(b);
   if (!na || !nb) return false;
-  if (na === nb) return true;
-  return na.startsWith(`${nb} `) || nb.startsWith(`${na} `);
+  const agrees = (x: string, y: string): boolean =>
+    x === y || x.startsWith(`${y} `) || y.startsWith(`${x} `);
+  if (!agrees(na, nb)) return false;
+  const da = accentBrandName(a);
+  const db = accentBrandName(b);
+  const bothAccented = da !== null && db !== null && da !== na && db !== nb;
+  return bothAccented ? agrees(da, db) : true;
 }
 
 /**

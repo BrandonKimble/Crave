@@ -1,6 +1,14 @@
 /* eslint-disable @typescript-eslint/no-require-imports -- jest.isolateModules needs a
    fresh require() per case: the policy caches its answer at first read. */
-import { ENTITY_MATCH_BATCH_RESPONSE_JSON_SCHEMA } from './prompts/llm-response-schemas';
+import { readFileSync } from 'fs';
+import { join } from 'path';
+import {
+  ATTRIBUTE_PLACEMENT_RESPONSE_JSON_SCHEMA,
+  ENTITY_MATCH_BATCH_RESPONSE_JSON_SCHEMA,
+  ENTITY_MATCH_RESPONSE_JSON_SCHEMA,
+  POLL_SUBJECT_RESPONSE_JSON_SCHEMA,
+  RESTAURANT_PLACE_CHOOSER_RESPONSE_JSON_SCHEMA,
+} from './prompts/llm-response-schemas';
 
 type SchemaNode = {
   properties: Record<string, SchemaNode | Record<string, unknown>>;
@@ -74,6 +82,55 @@ describe('auditReasonsEnabled', () => {
     withPolicy({ LLM_AUDIT_REASONS: 'false' }, (policy) =>
       expect(policy.auditReasonsEnabled()).toBe(false),
     );
+  });
+});
+
+/**
+ * THE POLICY'S OWN ROSTER (red team 2026-08-12). llm-audit-policy names the
+ * covered judge lanes in prose: entity match single+batch, attribute
+ * placement, poll subject, place chooser. The place chooser had NO reason
+ * field and no policy call — the ruling was documented on a lane that never
+ * implemented it, which is exactly the drift a prose roster invites. This
+ * turns the roster into an executable one: every named lane's schema must ask
+ * for a reason, and every named lane's call site must route through the
+ * policy, or the off-switch is a lie there.
+ */
+describe('the judge lanes the policy claims to cover', () => {
+  const lanes: Array<[string, Record<string, unknown>]> = [
+    ['entity match (single)', ENTITY_MATCH_RESPONSE_JSON_SCHEMA],
+    ['attribute placement', ATTRIBUTE_PLACEMENT_RESPONSE_JSON_SCHEMA],
+    ['poll subject', POLL_SUBJECT_RESPONSE_JSON_SCHEMA],
+    ['place chooser', RESTAURANT_PLACE_CHOOSER_RESPONSE_JSON_SCHEMA],
+  ];
+
+  it.each(lanes)('%s asks for a reason, and REQUIRES it', (_name, schema) => {
+    const node = schema as unknown as {
+      properties: Record<string, unknown>;
+      required: string[];
+    };
+    expect(node.properties.reason).toBeDefined();
+    expect(node.required).toContain('reason');
+  });
+
+  it('entity match (batch) asks for a per-item reason', () => {
+    const item = itemNode(ENTITY_MATCH_BATCH_RESPONSE_JSON_SCHEMA);
+    expect(item.properties.reason).toBeDefined();
+    expect(item.required).toContain('reason');
+  });
+
+  it('every covered schema reaches the model THROUGH the policy', () => {
+    const service = readFileSync(join(__dirname, 'llm.service.ts'), 'utf-8');
+    for (const constant of [
+      'ENTITY_MATCH_RESPONSE_JSON_SCHEMA',
+      'ENTITY_MATCH_BATCH_RESPONSE_JSON_SCHEMA',
+      'ATTRIBUTE_PLACEMENT_RESPONSE_JSON_SCHEMA',
+      'POLL_SUBJECT_RESPONSE_JSON_SCHEMA',
+      'RESTAURANT_PLACE_CHOOSER_RESPONSE_JSON_SCHEMA',
+    ]) {
+      expect(service).toMatch(
+        new RegExp(`applyAuditReasonPolicy\\(\\s*${constant}`),
+      );
+    }
   });
 });
 

@@ -1,0 +1,423 @@
+[
+  {
+    "id": "real-typo-piza",
+    "why": "Real logged query (on-demand log). A typo must still reach the dish.",
+    "query": "piza",
+    "expect": {
+      "foods": {
+        "include": [["pizza"]]
+      },
+      "ingredients": {
+        "empty": true
+      }
+    }
+  },
+  {
+    "id": "real-typo-tacs",
+    "why": "Real logged query. Typo robustness on a bare dish word.",
+    "query": "tacs",
+    "expect": {
+      "foods": {
+        "include": [["taco", "tacos"]]
+      }
+    }
+  },
+  {
+    "id": "real-cuisine-only-mexican",
+    "why": "Real logged query that landed as a restaurant_attribute in prod. A bare cuisine is a restaurant search, never a food.",
+    "query": "mexican",
+    "expect": {
+      "foods": {
+        "empty": true
+      },
+      "restaurantAttributes": {
+        "include": [["mexican"]]
+      }
+    }
+  },
+  {
+    "id": "real-venue-kind-bakery",
+    "why": "Real logged query. A venue kind is a place property, not a dish.",
+    "query": "bakery",
+    "expect": {
+      "foods": {
+        "exclude": ["bakery"]
+      },
+      "restaurantAttributes": {
+        "include": [["bakery"]]
+      }
+    }
+  },
+  {
+    "id": "real-dish-birria-tacos",
+    "why": "Real logged query. Specific dish keeps its chain; the specifier is not peeled into attributes.",
+    "query": "birria tacos",
+    "expect": {
+      "foods": {
+        "include": [
+          ["birria taco", "birria tacos"],
+          ["taco", "tacos"]
+        ]
+      },
+      "foodAttributes": {
+        "exclude": ["birria"]
+      }
+    }
+  },
+  {
+    "id": "chain-spicy-tuna-roll",
+    "why": "The canonical chain case: peel to class, never to the lone ingredient.",
+    "query": "spicy tuna roll",
+    "expect": {
+      "foods": {
+        "include": [["spicy tuna roll"], ["tuna roll"]],
+        "exclude": ["tuna"]
+      },
+      "foodAttributes": {
+        "include": [["spicy"]]
+      },
+      "ingredients": {
+        "empty": true
+      }
+    }
+  },
+  {
+    "id": "chain-pho-tai",
+    "why": "Head-first construction: peel to the head noun, never emit the trailing specifier alone.",
+    "query": "pho tai",
+    "expect": {
+      "foods": {
+        "include": [["pho tai"], ["pho"]],
+        "exclude": ["tai"]
+      }
+    }
+  },
+  {
+    "id": "wrapper-lunch-specials",
+    "why": "Delivery wrapper head: a deal is not a food (collection doctrine C.1, searcher direction).",
+    "query": "best lunch specials downtown",
+    "expect": {
+      "foods": {
+        "empty": true
+      }
+    }
+  },
+  {
+    "id": "wrapper-wagyu-tasting-menu",
+    "why": "Wrapper with a food-naming modifier: extract the food, throw the wrapper away.",
+    "query": "wagyu tasting menu",
+    "expect": {
+      "foods": {
+        "include": [["wagyu"]],
+        "exclude": ["tasting menu", "wagyu tasting menu"]
+      }
+    }
+  },
+  {
+    "id": "format-omakase",
+    "why": "A format that passes the PREDICTION TEST is food.",
+    "query": "omakase",
+    "expect": {
+      "foods": {
+        "include": [["omakase"]]
+      }
+    }
+  },
+  {
+    "id": "praise-best-tacos",
+    "why": "Praise is why the diner searches, never a filter.",
+    "query": "best tacos",
+    "expect": {
+      "foods": {
+        "include": [["taco", "tacos"]]
+      },
+      "foodAttributes": {
+        "exclude": ["best"]
+      },
+      "restaurantAttributes": {
+        "exclude": ["best"]
+      }
+    }
+  },
+  {
+    "id": "ingredient-bare-burrata",
+    "why": "A bare component is an ingredient search, not a dish.",
+    "query": "burrata",
+    "expect": {
+      "foods": {
+        "empty": true
+      },
+      "ingredients": {
+        "include": [["burrata"]]
+      }
+    }
+  },
+  {
+    "id": "negation-ramen-no-egg",
+    "why": "Negation doctrine v2: literal ignore; nouns emitted as if the negation were absent.",
+    "query": "ramen no egg",
+    "expect": {
+      "foods": {
+        "include": [["ramen"]]
+      },
+      "ingredients": {
+        "include": [["egg"]]
+      },
+      "foodAttributes": {
+        "exclude": ["no egg", "egg free"]
+      }
+    }
+  },
+  {
+    "id": "dietary-gluten-free-pizza",
+    "why": "Dietary claim as attribute, dish chain intact.",
+    "query": "gluten free pizza",
+    "expect": {
+      "foods": {
+        "include": [["pizza"]]
+      },
+      "foodAttributes": {
+        "include": [["gluten free"]]
+      }
+    }
+  },
+  {
+    "id": "restaurant-anchor-joes",
+    "why": "A named place is a restaurant, not a food or attribute.",
+    "query": "what to order at joe's",
+    "expect": {
+      "restaurants": {
+        "include": [["joes", "joe's"]]
+      },
+      "foods": {
+        "empty": true
+      }
+    }
+  },
+  {
+    "id": "occasion-late-night",
+    "why": "A when-only occasion is a place property, never a food.",
+    "query": "late night eats",
+    "expect": {
+      "foods": {
+        "empty": true
+      },
+      "restaurantAttributes": {
+        "include": [["late night", "late-night", "open late"]]
+      }
+    }
+  },
+  {
+    "id": "residue-filler-es-me-gusta-el",
+    "why": "Real residue row (es). Sentence scrap: names nothing collectible; the current live prompt SEGMENTED it — the invention class this rederivation kills.",
+    "query": "me gusta el",
+    "expect": {
+      "restaurants": {
+        "empty": true
+      },
+      "foods": {
+        "empty": true
+      },
+      "foodAttributes": {
+        "empty": true
+      },
+      "restaurantAttributes": {
+        "empty": true
+      },
+      "ingredients": {
+        "empty": true
+      }
+    }
+  },
+  {
+    "id": "residue-filler-es-de-la-ciudad",
+    "why": "Real residue row (es). Prepositional scrap: nothing collectible.",
+    "query": "de la ciudad",
+    "expect": {
+      "restaurants": {
+        "empty": true
+      },
+      "foods": {
+        "empty": true
+      },
+      "foodAttributes": {
+        "empty": true
+      },
+      "restaurantAttributes": {
+        "empty": true
+      },
+      "ingredients": {
+        "empty": true
+      }
+    }
+  },
+  {
+    "id": "residue-filler-es-que-no-sea",
+    "why": "Real residue row (es). Subjunctive scrap: nothing collectible.",
+    "query": "que no sea",
+    "expect": {
+      "restaurants": {
+        "empty": true
+      },
+      "foods": {
+        "empty": true
+      },
+      "foodAttributes": {
+        "empty": true
+      },
+      "restaurantAttributes": {
+        "empty": true
+      },
+      "ingredients": {
+        "empty": true
+      }
+    }
+  },
+  {
+    "id": "residue-filler-vi-toi-muon-an",
+    "why": "Real residue row (vi). Wanting-verb phrase ('I want to eat'): names nothing.",
+    "query": "tôi muốn ăn",
+    "expect": {
+      "restaurants": {
+        "empty": true
+      },
+      "foods": {
+        "empty": true
+      },
+      "foodAttributes": {
+        "empty": true
+      },
+      "restaurantAttributes": {
+        "empty": true
+      },
+      "ingredients": {
+        "empty": true
+      }
+    }
+  },
+  {
+    "id": "residue-filler-vi-toi-muon-thu",
+    "why": "Real residue row (vi). 'I want to try': names nothing.",
+    "query": "tôi muốn thử",
+    "expect": {
+      "restaurants": {
+        "empty": true
+      },
+      "foods": {
+        "empty": true
+      },
+      "foodAttributes": {
+        "empty": true
+      },
+      "restaurantAttributes": {
+        "empty": true
+      },
+      "ingredients": {
+        "empty": true
+      }
+    }
+  },
+  {
+    "id": "residue-filler-vi-do-an-khong",
+    "why": "Real residue row (vi). 'food' + negation particle: venue/filler word, nothing collectible.",
+    "query": "đồ ăn không",
+    "expect": {
+      "restaurants": {
+        "empty": true
+      },
+      "foods": {
+        "empty": true
+      },
+      "foodAttributes": {
+        "empty": true
+      },
+      "restaurantAttributes": {
+        "empty": true
+      },
+      "ingredients": {
+        "empty": true
+      }
+    }
+  },
+  {
+    "id": "residue-logistics-open-now",
+    "why": "Real residue row (en). Pure logistics; the current live prompt SEGMENTED it.",
+    "query": "near me thats open now",
+    "expect": {
+      "restaurants": {
+        "empty": true
+      },
+      "foods": {
+        "empty": true
+      },
+      "foodAttributes": {
+        "empty": true
+      },
+      "restaurantAttributes": {
+        "empty": true
+      },
+      "ingredients": {
+        "empty": true
+      }
+    }
+  },
+  {
+    "id": "residue-logistics-game-tonight",
+    "why": "Real residue row (en). Occasion logistics with no stable place property; SEGMENTED by the live prompt.",
+    "query": "for the game tonight",
+    "expect": {
+      "restaurants": {
+        "empty": true
+      },
+      "foods": {
+        "empty": true
+      },
+      "foodAttributes": {
+        "empty": true
+      },
+      "restaurantAttributes": {
+        "empty": true
+      },
+      "ingredients": {
+        "empty": true
+      }
+    }
+  },
+  {
+    "id": "residue-cuisine-es-restaurante-griego",
+    "why": "Real residue row (es). A cuisine-of-the-place in Spanish is collectible as a place property, in the language typed.",
+    "query": "restaurante griego con",
+    "expect": {
+      "foods": {
+        "empty": true
+      },
+      "restaurantAttributes": {
+        "include": [["griego"]]
+      }
+    }
+  },
+  {
+    "id": "residue-standalone-attr-a-la-diabla",
+    "why": "Real residue row (es). A preparation style stands ALONE as a foodAttribute — the residue direction decouples foodAttributes from a non-empty foods (the property itself is the thing to learn).",
+    "query": "a la diabla",
+    "expect": {
+      "foods": {
+        "empty": true
+      },
+      "foodAttributes": {
+        "include": [["a la diabla", "diabla"]]
+      }
+    }
+  },
+  {
+    "id": "residue-diacritics-bun-dau",
+    "why": "Diacritics preserved in the language typed: 'bún' must never be emitted as ascii 'bun' (grader is Unicode-aware).",
+    "query": "bún đậu mắm tôm",
+    "expect": {
+      "foods": {
+        "include": [["bún đậu mắm tôm"]],
+        "exclude": ["bun dau mam tom", "bun"]
+      }
+    }
+  }
+]

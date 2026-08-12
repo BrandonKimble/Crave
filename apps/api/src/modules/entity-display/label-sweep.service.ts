@@ -19,6 +19,7 @@ import {
 import {
   NoopLabelGenerator,
   type GeneratedLabel,
+  type GenerationOutcome,
   type LabelGenerationRequest,
   type LabelGenerator,
 } from './label-generator';
@@ -106,6 +107,10 @@ export interface SweepResult {
    *  write never changes the und-only projection, so without this a run where
    *  the guard blocked everything looked identical to a perfect run. */
   surfacesBlocked: number;
+  /** Asks that never completed (timeout / errored chunk / expired deadline).
+   *  These get NO run-ledger row and stay due — reported so a run that hit
+   *  its deadline is distinguishable from one whose model abstained. */
+  unanswered: number;
 }
 
 @Injectable()
@@ -308,6 +313,14 @@ export class LabelSweepService {
        * a second code path that can drift from the nightly one.
        */
       entityNames?: readonly string[];
+      /**
+       * Wall-clock epoch-ms deadline for the generator's WAITING — owned by
+       * the rail that scheduled this sweep and sized to that rail's own
+       * period (a nightly pass must never outlive the night that scheduled
+       * it). Forwarded to the generator, whose transport turns it into a
+       * bounded, cancelling wait; whatever goes unanswered stays due.
+       */
+      deadlineAt?: number;
     } = {},
   ): Promise<SweepResult> {
     const limit = options.limit ?? 200;
@@ -316,9 +329,12 @@ export class LabelSweepService {
     const batch = options.entityNames?.length
       ? await this.namedBatch(locale, options.entityNames)
       : await this.nextBatch(locale, limit);
-    const generated = batch.requests.length
-      ? await generator.generate(batch.requests)
-      : [];
+    const outcome: GenerationOutcome = batch.requests.length
+      ? await generator.generate(batch.requests, {
+          deadlineAt: options.deadlineAt,
+        })
+      : { labels: [], unanswered: new Set<string>() };
+    const generated = outcome.labels;
     const surfaceTally = { offered: 0, banked: 0, blocked: 0 };
     const contested: ContestedClaim[] = [];
     const written = await this.writeLabels(
@@ -340,12 +356,20 @@ export class LabelSweepService {
       // cannot drift from the table.
       wonOnAppeal = verdicts.banked;
     }
-    // THE ASK IS RECORDED WHATEVER CAME BACK (KL-A). Every concept in the
-    // batch was put to the generator, so every one gets a run row — 'labeled'
-    // when a displayable label landed, 'not_generated' when the generator
-    // abstained or its form was undisplayable. Without the second case the
-    // abstentions are immortal and starve everything behind them.
-    if (!generator.dryRun && batch.requests.length) {
+    // THE ASK IS RECORDED WHATEVER CAME BACK (KL-A) — but only asks that
+    // COMPLETED. Every concept whose chunk got a response gets a run row:
+    // 'labeled' when a displayable label landed, 'not_generated' when the
+    // model abstained or its form was undisplayable (without that second
+    // case the abstentions are immortal and starve everything behind them).
+    // UNANSWERED ids — timeout, errored chunk, expired deadline — get NO
+    // row: that ask never happened, and ledgering it would let one
+    // timed-out batch permanently mark its whole head-of-backlog as
+    // asked-and-abstained (found 2026-08-12 composing the pooled batch
+    // rail's "unanswered work is re-offered" promise with this ledger).
+    const answeredRequests = batch.requests.filter(
+      (request) => !outcome.unanswered.has(request.entityId),
+    );
+    if (!generator.dryRun && answeredRequests.length) {
       const labeled = new Set(
         generated
           .filter((row) => isDisplayable(normalizeSurface(row.form)))
@@ -354,7 +378,7 @@ export class LabelSweepService {
       await this.prisma.$executeRaw`
         INSERT INTO knowledge_pass_runs (pass, subject_id, prompt_version, outcome)
         VALUES ${Prisma.join(
-          batch.requests.map(
+          answeredRequests.map(
             (request) =>
               Prisma.sql`(${sweepPass(locale)}, ${request.entityId}::uuid,
                           ${VOCABULARY_PROMPT_VERSION},
@@ -374,9 +398,10 @@ export class LabelSweepService {
       surfacesBanked: surfaceTally.banked,
       surfacesWonOnAppeal: wonOnAppeal,
       surfacesBlocked: surfaceTally.blocked,
+      unanswered: outcome.unanswered.size,
     };
     this.logger.log(
-      `label sweep locale=${locale} generator=${generator.name} due=${result.due} requested=${result.requested} written=${result.written}`,
+      `label sweep locale=${locale} generator=${generator.name} due=${result.due} requested=${result.requested} written=${result.written} unanswered=${result.unanswered}`,
     );
     return result;
   }

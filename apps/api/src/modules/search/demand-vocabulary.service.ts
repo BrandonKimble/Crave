@@ -1,10 +1,13 @@
 import { Injectable } from '@nestjs/common';
-import { EntityType } from '@prisma/client';
+import { EntityType, Prisma } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { AdvisoryLockService, LoggerService } from '../../shared';
 import { LLMService } from '../external-integrations/llm/llm.service';
 import { EntityTextSearchService } from '../entity-text-search/entity-text-search.service';
-import { addSurfaces } from '../content-processing/entity-resolver/entity-surface.service';
+import {
+  addSurfaces,
+  recallSurfaceScopeSql,
+} from '../content-processing/entity-resolver/entity-surface.service';
 import { canonicalFold } from '../content-processing/entity-resolver/entity-identity';
 import { bankableLanguageTag, localeLookupChain } from '../../shared/locale';
 
@@ -257,6 +260,23 @@ export class DemandVocabularyService {
       }
 
       summary.judged += 1;
+      // The SAME alias evidence the resolver's batch judge carries: each
+      // candidate's recall surfaces in the ASK's locale chain (red team
+      // 2026-08-12 — `aliases: []` here meant a Spanish term was judged
+      // against bare English names even when the entity holds the Spanish
+      // word as a surface, the exact evidence this sweep exists to use).
+      const candidateIds = candidates.map((c) => c.entityId);
+      const aliasRows = await this.prisma.$queryRaw<
+        Array<{ entity_id: string; forms: string[] }>
+      >(Prisma.sql`
+        SELECT s.entity_id, array_agg(s.form) AS forms
+          FROM entity_surface s
+         WHERE s.entity_id = ANY(${candidateIds}::uuid[])
+           AND ${recallSurfaceScopeSql(termLocale)}
+         GROUP BY s.entity_id`);
+      const aliasesById = new Map(
+        aliasRows.map((r) => [r.entity_id, r.forms ?? []]),
+      );
       let verdict: { decision: string; candidateId: number | null };
       try {
         verdict = await this.llm.matchEntity({
@@ -265,7 +285,9 @@ export class DemandVocabularyService {
           candidates: candidates.map((candidate, index) => ({
             id: index,
             name: candidate.name,
-            aliases: [],
+            aliases: (aliasesById.get(candidate.entityId) ?? []).filter(
+              (form) => form.toLowerCase() !== candidate.name.toLowerCase(),
+            ),
           })),
         });
       } catch (error) {
