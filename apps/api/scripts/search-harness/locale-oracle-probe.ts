@@ -27,6 +27,26 @@
  *       the restricted candidate set, so the code-switched query is the
  *       case that actually reproduces the leak)
  *
+ * THE DETECTOR-MODEL PROBLEM IS CLOSED (2026-08-12). `tinyld/light` carried
+ * 24 language profiles and no `vie`; restricting its candidate set to the
+ * three SUPPORTED_LOCALES did not make it abstain on Vietnamese, it handed
+ * the mass to the nearest profile it had. query-analyzer.ts now imports the
+ * full `tinyld` model and asserts, from SUPPORTED_LOCALES, that a profile
+ * exists for every language it may name. Re-measured here:
+ *   F4  es 2 -> 3, vi 7 -> 0
+ *       The one es addition is cs-02 'brunch en downtown' -> en@1.00. Two of
+ *       its three tokens are English words and the third is a preposition
+ *       both languages could be read through; the model naming it `en` is a
+ *       reading of the text, not the alphabet-mismatch artefact the vi seven
+ *       were. Both launch gates are unmoved by the swap (es 89.3%, vi 90.4%)
+ *       and cs-02 still passes its own gold assertion.
+ *   The rejected alternative, a Vietnamese diacritic pin, was measured both
+ *   ways: narrow (hook/dot-below/horn/đ) fixed 2 of 6 — 'quán có wifi' has
+ *   only acute accents — and wide (any Latin diacritic) fixed all 6 and took
+ *   es from 2 disagreements to 17 ('café', 'sandía', 'romántico' all pinned
+ *   vi). Vietnamese is distinctive in diacritic DENSITY, not in the
+ *   individual code point, so no character rule separates it from Spanish.
+ *
  * READ-ONLY. Bootstraps the real AppModule so the oracle index, the analyzer
  * and the launch corpora are exactly the ones the server runs.
  */
@@ -90,6 +110,57 @@ const QUERIES: Array<{
     requestLocale: null,
     must: 'vi or null',
     forbidden: ['en'],
+  },
+  // THE MODEL HOLE (2026-08-12). These six vi gold sentences each detected
+  // `es` at accuracy 1.00 under `tinyld/light`, which has no Vietnamese
+  // profile — high enough to OVERRULE an explicit vi prior. The first two
+  // carry ONLY acute accents, so no Vietnamese-code-point pin could reach
+  // them; they are the reason the fix had to be the model.
+  {
+    query: 'quán có wifi',
+    requestLocale: 'vi',
+    must: 'vi',
+    forbidden: ['es', 'en'],
+  },
+  {
+    query: 'tìm quán korean bbq',
+    requestLocale: 'vi',
+    must: 'vi',
+    forbidden: ['es', 'en'],
+  },
+  {
+    query: 'quán ramen gần đây',
+    requestLocale: 'vi',
+    must: 'vi',
+    forbidden: ['es', 'en'],
+  },
+  {
+    query: 'quán coffee yên tĩnh',
+    requestLocale: 'vi',
+    must: 'vi',
+    forbidden: ['es', 'en'],
+  },
+  {
+    query: 'quán sushi giá rẻ',
+    requestLocale: 'vi',
+    must: 'vi',
+    forbidden: ['es', 'en'],
+  },
+  {
+    query: 'quán pho ngon',
+    requestLocale: 'vi',
+    must: 'vi',
+    forbidden: ['es', 'en'],
+  },
+  // ...and the Spanish diacritics the rejected pin candidate would have
+  // stolen. A vi verdict on any of these is the pin regression returning.
+  { query: 'café', requestLocale: 'es-MX', must: 'es', forbidden: ['vi'] },
+  { query: 'romántico', requestLocale: 'es-MX', must: 'es', forbidden: ['vi'] },
+  {
+    query: 'cocina mediterránea',
+    requestLocale: 'es-MX',
+    must: 'es',
+    forbidden: ['vi'],
   },
   // The es control — a word the GENERATOR banked, which must keep working.
   { query: 'camarones', requestLocale: null, must: 'es', forbidden: ['en'] },

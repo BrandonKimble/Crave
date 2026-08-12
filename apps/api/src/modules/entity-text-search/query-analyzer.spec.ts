@@ -1,6 +1,7 @@
 import {
   analyzeQuery,
   denseQueryInput,
+  detectorModelGaps,
   detectScript,
   NGRAM_MAX_PHRASE_WORDS_CEILING,
   type SurfaceLocaleEvidence,
@@ -239,6 +240,60 @@ describe('query analyzer (A2 seam)', () => {
       expect(analysis.detectedLocale?.source).toBe('script');
     });
 
+    // THE MODEL MUST HAVE A PROFILE FOR EVERY LANGUAGE IT MAY NAME.
+    // `tinyld/light` had 24 profiles and no `vie`; restricting it to
+    // ['en','es','vi'] did not make it abstain on Vietnamese, it handed the
+    // mass to the nearest profile it did have. Each of these came back
+    // `es` at accuracy 1.00 — high enough to OVERRULE an explicit vi prior.
+    it.each([
+      'quán ramen gần đây',
+      'quán có wifi',
+      'tìm quán korean bbq',
+      'quán coffee yên tĩnh',
+      'quán sushi giá rẻ',
+      'quán pho ngon',
+    ])('never reads the Vietnamese sentence %p as Spanish', (query) => {
+      expect(analyzeQuery(query, 'vi').detectedLocale?.tag).toBe('vi');
+      expect(analyzeQuery(query, null).detectedLocale?.tag).toBe('vi');
+      expect(analyzeQuery(query, 'es-MX').detectedLocale?.tag).toBe('vi');
+    });
+
+    // 'quán có wifi' and 'tìm quán korean bbq' carry ONLY acute accents, so
+    // no Vietnamese-specific-code-point pin can reach them; the two below
+    // carry the marks (đ, dot-below) a pin could see. Both classes are fixed
+    // by the same thing — a model with a vi profile.
+    it.each(['phở bò', 'bún đậu mắm tôm', 'cơm tấm', 'bánh mì'])(
+      'names the Vietnamese dish %p vi with no registry help',
+      (query) => {
+        expect(analyzeQuery(query, null).detectedLocale?.tag).toBe('vi');
+      },
+    );
+
+    it('keeps Spanish diacritics Spanish (the pin candidate did not)', () => {
+      // The rejected fix — pin vi on any Latin diacritic — read every one of
+      // these as Vietnamese. es gold disagreements went 2 -> 17.
+      for (const query of [
+        'café',
+        'sandía',
+        'camarón',
+        'romántico',
+        'cocina mediterránea',
+        'sushi japonés',
+        'café con terraza',
+      ]) {
+        expect(analyzeQuery(query, 'es-MX').detectedLocale?.tag).not.toBe('vi');
+        expect(analyzeQuery(query, null).detectedLocale?.tag).not.toBe('vi');
+      }
+    });
+
+    it('has a model profile for every supported locale', () => {
+      // Derived from SUPPORTED_LOCALES, so a fourth launch language cannot
+      // ship into the hole `vi` shipped into. Mutation: asking for a locale
+      // the model has no profile for names it.
+      expect(detectorModelGaps()).toEqual([]);
+      expect(detectorModelGaps(['en', 'es', 'vi', 'haw'])).toEqual(['haw']);
+    });
+
     it('refuses the prior echo for a non-Latin script it cannot pin', () => {
       // Every SUPPORTED_LOCALE is Latin-script, so Cyrillic text is not in
       // the requester's locale whatever the phone says. Null is the honest
@@ -270,8 +325,17 @@ describe('query analyzer (A2 seam)', () => {
         crema: [{ language: 'vi', entities: 1 }],
       })[folded] ?? [];
 
-    it('names vi on the exact query the detector answers null for', () => {
-      expect(analyzeQuery('bún đậu mắm tôm', null).detectedLocale).toBeNull();
+    it('names vi on a query, and outranks the detector when they agree', () => {
+      // RE-FOUNDED 2026-08-12: this used to assert the detector answers NULL
+      // here, which was true only because `tinyld/light` had no Vietnamese
+      // profile. With a model that does, the detector names vi unaided — the
+      // oracle's job on this query is now to be the STRONGER source, not the
+      // only one. The oracle's must-have property (naming a language nothing
+      // else can) is pinned on 'camarones' and 'pan' below, which stay
+      // undecidable to any detector.
+      expect(analyzeQuery('bún đậu mắm tôm', null).detectedLocale?.tag).toBe(
+        'vi',
+      );
       expect(
         analyzeQuery('bún đậu mắm tôm', null, { surfaceLocales: oracle })
           .detectedLocale,
@@ -279,7 +343,9 @@ describe('query analyzer (A2 seam)', () => {
     });
 
     it('overrules a detector answer that is simply wrong', () => {
-      // 'cơm tấm' detects `pt` unaided. The registry holds it as `vi`.
+      // 'cơm tấm' detected `pt` under the pre-derivation candidate list and
+      // `es` under the profile-less light model. The registry holds it `vi`,
+      // and outranks whatever the model of the day says.
       expect(
         analyzeQuery('cơm tấm', null, { surfaceLocales: oracle })
           .detectedLocale,

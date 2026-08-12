@@ -1,4 +1,4 @@
-import { detectAll } from 'tinyld/light';
+import { detectAll, supportedLanguages, toISO3 } from 'tinyld';
 import {
   canonicalFold,
   diacriticFold,
@@ -282,6 +282,65 @@ const LANGUAGE_PACKS: ReadonlyMap<string, LanguagePack> = new Map(
  * stays what supported-locales.ts promises it is: a DATA change in one place.
  */
 const DETECTOR_CANDIDATES: string[] = [...SUPPORTED_LOCALES];
+
+/**
+ * NAMING A LANGUAGE THE MODEL WAS NEVER TRAINED ON IS NOT A DETECTION, IT IS
+ * A MISS SCORED AGAINST THE WRONG ALPHABET (2026-08-12).
+ *
+ * `DETECTOR_CANDIDATES` above restricts what the detector MAY answer. It said
+ * nothing about what the detector CAN answer, and the two had silently come
+ * apart: the import was `tinyld/light`, whose profile set is 24 languages and
+ * does not include `vie`. Restricting a model to a candidate it has no
+ * profile for does not make it abstain — the scorer simply hands the
+ * probability mass to the nearest profile it does have, at full confidence.
+ * Measured on the vi gold corpus, six plainly Vietnamese sentences came back
+ * `es` at accuracy 1.00 — above DETECTOR_OVERRULE_PRIOR, so they OVERRULED an
+ * explicit `vi` request prior and the system asserted that 'quán có wifi' is
+ * Spanish. It was the single largest source of wrong-language verdicts left.
+ *
+ * WHY THE FULL MODEL AND NOT A VIETNAMESE SCRIPT PIN. A diacritic pin was the
+ * attractive candidate — deterministic, list-free, the same shape as the
+ * Han/kana pins — and it was MEASURED against this, both ways:
+ *   - restricted to the marks only Vietnamese uses (hook above, dot below,
+ *     horn, đ) it fixed 2 of the 6: 'quán có wifi' and 'tìm quán korean bbq'
+ *     carry nothing but acute accents, which Spanish carries too. vi
+ *     disagreements 7 -> 5.
+ *   - widened to any Latin diacritic it fixed all 6 and DESTROYED Spanish:
+ *     es gold disagreements 2 -> 17 ('café', 'sandía', 'romántico',
+ *     'cocina mediterránea' all pinned `vi`).
+ * Vietnamese's diacritic density is distinctive in the aggregate and NOT in
+ * the individual code point, so no threshold-free character rule separates it
+ * from Spanish. The honest fix is the one that removes the cause: give the
+ * detector a model that has a profile for every language it is allowed to
+ * name. Measured with it: vi disagreements 7 -> 0, es 2 -> 3 (the one
+ * addition is 'brunch en downtown' -> `en`, a genuine reading of a query
+ * whose two content words are English), launch gates unmoved (es 89.3%,
+ * vi 90.4%), junk-word battery still 0 red, and detection is FASTER
+ * (14µs/call vs 21µs) because the restricted scorer has fewer near-ties to
+ * break. The cost is ~520KB of profile data loaded once at boot.
+ *
+ * THE COUPLING IS ASSERTED, NOT REMEMBERED. `assertDetectorModelCovers`
+ * derives the requirement from SUPPORTED_LOCALES — the same set
+ * DETECTOR_CANDIDATES comes from — so adding a fourth locale to
+ * supported-locales.ts fails loudly here if the model has no profile for it,
+ * instead of silently detecting it as its nearest neighbour at confidence 1.
+ */
+export function detectorModelGaps(
+  locales: readonly string[] = SUPPORTED_LOCALES,
+): string[] {
+  const profiles = new Set(supportedLanguages);
+  return locales.filter((locale) => !profiles.has(toISO3(locale)));
+}
+
+const MODEL_GAPS = detectorModelGaps();
+if (MODEL_GAPS.length > 0) {
+  throw new Error(
+    `Language detector has no profile for supported locale(s): ${MODEL_GAPS.join(
+      ', ',
+    )}. A restricted candidate set does not make an unprofiled language ` +
+      `abstain — it is scored as its nearest neighbour at full confidence.`,
+  );
+}
 /** Below this the detector has said nothing worth hearing. Its accuracies
  *  are small by construction on 1–3 words; this floor + the margin below
  *  were chosen to keep English queries English and are PLACEHOLDERS until
