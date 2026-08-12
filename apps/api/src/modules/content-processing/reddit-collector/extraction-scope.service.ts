@@ -332,6 +332,110 @@ export async function supersedeAndActivate(
   return losingIds;
 }
 
+/**
+ * ACTIVE-WINNER REDIRECT MAP — loser id → the live entity that absorbed it.
+ *
+ * Only pairs where the FROM side is archived and the TO side is active
+ * qualify: that is exactly the state a completed merge leaves behind
+ * (finalizeMergeCompletion archives the loser, flattens chains so one hop is
+ * always enough, and drops stale redirects FROM live winners). A redirect
+ * whose target is itself archived is stranded evidence — the tombstone sweep
+ * counts it for a human; this map deliberately does not follow it.
+ */
+export async function activeWinnerRedirectMap(
+  tx: Prisma.TransactionClient,
+  entityIds: Array<string | null | undefined>,
+): Promise<Map<string, string>> {
+  const unique = Array.from(
+    new Set(entityIds.filter((id): id is string => Boolean(id))),
+  );
+  if (!unique.length) {
+    return new Map();
+  }
+  const rows = await tx.$queryRaw<Array<{ from_id: string; to_id: string }>>`
+    SELECT r.from_entity_id AS from_id, r.to_entity_id AS to_id
+    FROM entity_redirects r
+    JOIN core_entities loser
+      ON loser.entity_id = r.from_entity_id AND loser.status = 'archived'
+    JOIN core_entities winner
+      ON winner.entity_id = r.to_entity_id AND winner.status = 'active'
+    WHERE r.from_entity_id = ANY(${unique}::uuid[])`;
+  return new Map(rows.map((row) => [row.from_id, row.to_id]));
+}
+
+/**
+ * THE EVENT-WRITE CHOKEPOINTS — redirect resolution at write time.
+ *
+ * Why (2026-08-11 convergence audit, ranked change #1): a merge rekeys both
+ * ledgers in-transaction, but a writer holding a PRE-merge resolution
+ * snapshot lands its events on the archived loser AFTER the merge commits,
+ * and the projection rebuild reads by restaurant with no redirect hop — so
+ * the evidence silently vanished until the nightly tombstone sweep found it.
+ * The invariant "no new event references a merged-away entity" is owned
+ * HERE, at the moment of insert: every id (restaurant dimension and entity
+ * dimension) resolves through the active-winner redirect map first.
+ *
+ * `skipDuplicates` closes the re-map collision for free: if the winner
+ * already heard this (run, doc, restaurant[, entity], type) claim, the
+ * re-pointed row is the same claim and is dropped, mirroring exactly what
+ * the merge rekey and the sweep do with redundant copies.
+ *
+ * The tombstone sweep remains as the CRASH-WINDOW backstop only (a merge
+ * committing between this resolution read and the insert's commit).
+ * Writers must not call tx.restaurantEvent/.restaurantEntityEvent.createMany
+ * directly — these functions are the ledger's front door.
+ */
+export async function writeRestaurantEvents(
+  tx: Prisma.TransactionClient,
+  rows: Prisma.RestaurantEventCreateManyInput[],
+): Promise<void> {
+  if (!rows.length) {
+    return;
+  }
+  const redirects = await activeWinnerRedirectMap(
+    tx,
+    rows.map((row) => row.restaurantId),
+  );
+  const resolved = redirects.size
+    ? rows.map((row) =>
+        redirects.has(row.restaurantId)
+          ? { ...row, restaurantId: redirects.get(row.restaurantId)! }
+          : row,
+      )
+    : rows;
+  await tx.restaurantEvent.createMany({
+    data: resolved,
+    skipDuplicates: true,
+  });
+}
+
+export async function writeRestaurantEntityEvents(
+  tx: Prisma.TransactionClient,
+  rows: Prisma.RestaurantEntityEventCreateManyInput[],
+): Promise<void> {
+  if (!rows.length) {
+    return;
+  }
+  const redirects = await activeWinnerRedirectMap(
+    tx,
+    rows.flatMap((row) => [row.restaurantId, row.entityId]),
+  );
+  const resolved = redirects.size
+    ? rows.map((row) => {
+        const restaurantId =
+          redirects.get(row.restaurantId) ?? row.restaurantId;
+        const entityId = redirects.get(row.entityId) ?? row.entityId;
+        return restaurantId === row.restaurantId && entityId === row.entityId
+          ? row
+          : { ...row, restaurantId, entityId };
+      })
+    : rows;
+  await tx.restaurantEntityEvent.createMany({
+    data: resolved,
+    skipDuplicates: true,
+  });
+}
+
 /** SET-BASED merge re-key (round-10 violence red team: the per-event
  *  loop paid two round-trips per event and blew the transaction budget
  *  above ~3,000 events — on prod RTT the largest restaurant was already

@@ -11,6 +11,10 @@ import {
   dominantCommunitySql,
 } from '../content-processing/reddit-collector/extraction-scope.service';
 import { entityLockKey } from '../content-processing/entity-resolver/entity-identity';
+import {
+  nonAggregatorDomainSql,
+  sameBusinessVerdict,
+} from './business-identity-rules';
 import { PrismaService } from '../../prisma/prisma.service';
 import { LoggerService } from '../../shared';
 import { ProjectionRebuildService } from '../content-processing/reddit-collector/projection-rebuild.service';
@@ -444,7 +448,10 @@ export class RestaurantEntityMergeService {
        AND lower(b.canonical_domain) = lower(a.canonical_domain)
       WHERE a.type = 'restaurant' AND a.status = 'active'
         AND a.canonical_domain IS NOT NULL
-        AND lower(a.canonical_domain) !~ '(chowbus|doordash|ubereats|grubhub|toasttab|squareup|square\\.site|clover|linktr|facebook|instagram)'
+        -- Aggregator doctrine has ONE home (business-identity-rules.ts);
+        -- this literal and the JS hierarchy below render from the same
+        -- fragment list, so they cannot drift.
+        AND ${Prisma.raw(nonAggregatorDomainSql('lower(a.canonical_domain)'))}
         AND ${Prisma.raw(activeSupportExistsSql('a.entity_id'))}
         AND ${Prisma.raw(activeSupportExistsSql('b.entity_id'))}
       LIMIT 50
@@ -519,43 +526,29 @@ export class RestaurantEntityMergeService {
       // Pair-peel: judge the two OLDEST members this run; larger groups
       // converge across nightly runs as each merge removes a member.
       const [a, b] = details;
-      // EVIDENCE HIERARCHY (Phase 3.3 — replaces the place-id-disjointness
-      // proxy, which is the EXPECTED state for legitimate chain branches):
-      // 1. same registrable domain = one operating business → merge
-      //    (aggregator domains like chowbus.com NEVER count as identity);
-      // 2. both grounded, both with their OWN distinct non-aggregator
-      //    domains → two businesses → hold;
-      // 3. otherwise (any ungrounded/domainless side): same-metro corpus
-      //    overlap → pre-enrichment duplicate → merge; disjoint metros with
-      //    zero shared evidence → hold for the enrichment-time resolver.
-      const isAggregator = (d: string | null): boolean =>
-        !!d &&
-        /chowbus|doordash|ubereats|grubhub|toasttab|squareup|square\.site|clover|linktr/.test(
-          d,
-        );
-      const domainOf = (x: { domain: string | null }): string | null =>
-        x.domain && !isAggregator(x.domain) ? x.domain.toLowerCase() : null;
-      const domainA = domainOf(a);
-      const domainB = domainOf(b);
-      const sharedPlaceId = a.place_ids.some((p) => b.place_ids.includes(p));
-      // DOMINANT community, not ANY overlap (final red team #1, executed:
-      // one stray foodnyc mention on Austin's "Gueros" satisfied the old
-      // any-overlap gate and the nightly cron archived a 38-event Austin
-      // corpus into 3-event "Gueros Brooklyn"). Same-metro identity means
-      // the two corpora LIVE in the same place, not that they ever touched.
-      const sharedDominantCommunity =
-        a.dominant_community !== null &&
-        a.dominant_community === b.dominant_community;
-      let mergeable: boolean;
-      if (sharedPlaceId || (domainA && domainB && domainA === domainB)) {
-        mergeable = true;
-      } else if (domainA && domainB) {
-        mergeable = false; // two distinct owned domains = two businesses
-      } else {
-        mergeable =
-          sharedDominantCommunity ||
-          (!a.communities.length && !b.communities.length);
-      }
+      // EVIDENCE HIERARCHY — ONE home (business-identity-rules.ts,
+      // sameBusinessVerdict): shared ground or shared owned domain → merge;
+      // two distinct owned domains → two businesses → hold; else DOMINANT-
+      // community identity (final red team #1: any-overlap cross-metro-
+      // merged Gueros into Gueros Brooklyn off one stray mention). The
+      // extraction also closed a drift hole: the old inline JS aggregator
+      // regex lacked facebook/instagram while the SQL lane above had them,
+      // so two entities that merely shared facebook.com read as one owned
+      // domain and merged.
+      const mergeable = sameBusinessVerdict(
+        {
+          placeIds: a.place_ids,
+          domain: a.domain,
+          communities: a.communities,
+          dominantCommunity: a.dominant_community,
+        },
+        {
+          placeIds: b.place_ids,
+          domain: b.domain,
+          communities: b.communities,
+          dominantCommunity: b.dominant_community,
+        },
+      );
       if (!mergeable) {
         held += 1;
         decisions.push({ name: group.name, verdict: 'hold' });

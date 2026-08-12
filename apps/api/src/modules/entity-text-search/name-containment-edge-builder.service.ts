@@ -53,9 +53,12 @@ export class NameContainmentEdgeBuilderService extends DerivedIndexJob {
    *  scan used ("sal" must not claim "salsa verde"). */
   async rebuildAll(): Promise<{ edges: number }> {
     const start = Date.now();
-    const edges = await this.prisma.$transaction(async (tx) => {
-      await tx.$executeRawUnsafe(`DELETE FROM derived_name_containment_edges`);
-      const inserted = await tx.$executeRawUnsafe(`
+    const edges = await this.prisma.$transaction(
+      async (tx) => {
+        await tx.$executeRawUnsafe(
+          `DELETE FROM derived_name_containment_edges`,
+        );
+        const inserted = await tx.$executeRawUnsafe(`
         INSERT INTO derived_name_containment_edges (base_id, variant_id, head_final)
         SELECT b.entity_id,
                v.entity_id,
@@ -69,8 +72,15 @@ export class NameContainmentEdgeBuilderService extends DerivedIndexJob {
           AND b.identity_key IS NOT NULL AND v.identity_key IS NOT NULL
           AND length(b.identity_key) >= 4
       `);
-      return inserted;
-    });
+        return inserted;
+      },
+      // Explicit budget — the "default 5s killed large rebuilds
+      // permanently-but-silently" class (round-10/round-12 law; every other
+      // full-replace rebuild in this codebase carries one). The O(foods²)
+      // self-join crossed 5s on the 17k-entity corpus once identity-key
+      // healing filled the previously-NULL keys.
+      { timeout: 15 * 60 * 1000, maxWait: 30_000 },
+    );
     this.logger.info('Name-containment edges rebuilt', {
       edges,
       ms: Date.now() - start,

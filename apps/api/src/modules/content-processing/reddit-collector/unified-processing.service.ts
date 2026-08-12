@@ -73,7 +73,11 @@ import type { ExtractionTraceContext } from './collection-evidence.service';
 import { RestaurantEnrichmentQueueService } from '../../restaurant-enrichment/restaurant-enrichment-queue.service';
 import { RestaurantSecondaryLocationExpansionQueueService } from '../../restaurant-enrichment/restaurant-secondary-location-expansion-queue.service';
 import { ProjectionRebuildService } from './projection-rebuild.service';
-import { supersedeAndActivate } from './extraction-scope.service';
+import {
+  supersedeAndActivate,
+  writeRestaurantEvents,
+  writeRestaurantEntityEvents,
+} from './extraction-scope.service';
 import { isEnvFlagEnabled } from '../../../shared/config/env-flag';
 
 // Generous ceiling so a worst-case 300-mention batch never aborts mid-write;
@@ -2895,32 +2899,21 @@ export class UnifiedProcessingService implements OnModuleInit {
     });
   }
 
+  /** Redirect-aware by construction: the extraction-scope chokepoint owns
+   *  the "no new event references a merged-away entity" invariant — a stale
+   *  resolution snapshot's ids re-point to the merge winner at insert. */
   private async recordRestaurantEvents(
     tx: PrismaTransaction,
     events: RestaurantEventRecord[],
   ): Promise<void> {
-    if (!events.length) {
-      return;
-    }
-
-    await tx.restaurantEvent.createMany({
-      data: events,
-      skipDuplicates: true,
-    });
+    await writeRestaurantEvents(tx, events);
   }
 
   private async recordRestaurantEntityEvents(
     tx: PrismaTransaction,
     events: RestaurantEntityEventRecord[],
   ): Promise<void> {
-    if (!events.length) {
-      return;
-    }
-
-    await tx.restaurantEntityEvent.createMany({
-      data: events,
-      skipDuplicates: true,
-    });
+    await writeRestaurantEntityEvents(tx, events);
   }
 
   /**

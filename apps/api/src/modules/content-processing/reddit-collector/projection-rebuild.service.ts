@@ -1012,15 +1012,28 @@ export class ProjectionRebuildService implements OnModuleInit {
    * correctness self-healing, not spend.
    */
   /**
-   * TOMBSTONE-EVENT SWEEP (async-integrity step 4, H3): every merge has an
-   * open tail — events written after the merge (from stale resolution
-   * snapshots) land on the archived loser, and the rebuild reads by
-   * restaurant with no redirect hop, so they silently vanish from the
-   * projection. Nightly: re-point events on archived entities through
-   * entity_redirects and rebuild the affected restaurants. Tombstone
-   * events with NO redirect are counted and logged — they need a human
-   * (or vocabulary) decision, never silence. Runs before the orphan
-   * repair so re-lit restaurants get rebuilt in the same night.
+   * TOMBSTONE-EVENT SWEEP — now the CRASH-WINDOW BACKSTOP, not the invariant
+   * owner (2026-08-11 convergence audit, ranked change #1).
+   *
+   * The invariant "no new event references a merged-away entity" is owned at
+   * write time by the extraction-scope chokepoints
+   * (writeRestaurantEvents / writeRestaurantEntityEvents in
+   * extraction-scope.service.ts): every insert resolves both dimensions
+   * through the active-winner redirect map first, so a stale resolution
+   * snapshot can no longer land evidence on an archived loser in steady
+   * state. What this sweep still repairs, nightly:
+   *   - the residual race window — a merge that COMMITS between a writer's
+   *     redirect-map read and its insert's commit;
+   *   - historical strandings from before the chokepoint existed;
+   *   - tombstone events with NO active-winner redirect, which are counted
+   *     and logged — they need a human (or vocabulary) decision, never
+   *     silence.
+   * Mechanism unchanged: re-point events on archived entities through
+   * entity_redirects (both dimensions + praise), delete redundant copies,
+   * rebuild the affected restaurants. Runs before the orphan repair so
+   * re-lit restaurants get rebuilt in the same night. A rising
+   * `strandedOnTombstones` / rebuild count here is now a REGRESSION signal
+   * about the chokepoint, not routine convergence.
    */
   async sweepTombstoneEvents(): Promise<void> {
     // One WINNER ROW per target identity moves (DISTINCT ON) — two archived

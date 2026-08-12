@@ -28,6 +28,10 @@ import { PrismaService } from '../../../prisma/prisma.service';
 import { LoggerService } from '../../../shared';
 import { ProjectionRebuildService } from '../../content-processing/reddit-collector/projection-rebuild.service';
 import {
+  writeRestaurantEntityEvents,
+  writeRestaurantEvents,
+} from '../../content-processing/reddit-collector/extraction-scope.service';
+import {
   POLL_SURFACE_PLATFORM,
   PollSurfaceSourceService,
   pollSurfaceHandle,
@@ -246,9 +250,12 @@ export class PollBallotMentionService {
         ordinal += 1;
         if (choice.foodId) {
           // Dish-axis choice: a direct menu-item mention (m=1) — exactly the
-          // shape the projection counts as one dish mention.
-          await tx.restaurantEntityEvent.create({
-            data: {
+          // shape the projection counts as one dish mention. Written through
+          // THE redirect-aware chokepoint: resolveBallot resolves redirects
+          // at read, but a merge landing between that read and this insert
+          // would otherwise put the vote on a tombstone.
+          await writeRestaurantEntityEvents(tx, [
+            {
               extractionRunId: run.extractionRunId,
               inputId: input.inputId,
               sourceDocumentId: voterDocument.documentId,
@@ -262,12 +269,12 @@ export class PollBallotMentionService {
               sourceUpvotes: 0,
               metadata: { pollBallot: true } as Prisma.InputJsonValue,
             },
-          });
+          ]);
         } else {
           // Restaurant-axis choice: one restaurant-level mention. The score's
           // praise read dedupes by mention_key and counts it m=1; upvotes 0.
-          await tx.restaurantEvent.create({
-            data: {
+          await writeRestaurantEvents(tx, [
+            {
               extractionRunId: run.extractionRunId,
               inputId: input.inputId,
               sourceDocumentId: voterDocument.documentId,
@@ -278,7 +285,7 @@ export class PollBallotMentionService {
               sourceUpvotes: 0,
               metadata: { pollBallot: true } as Prisma.InputJsonValue,
             },
-          });
+          ]);
         }
         await tx.sourceDocument.update({
           where: { documentId: voterDocument.documentId },

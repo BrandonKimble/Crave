@@ -218,11 +218,17 @@ async function main(): Promise<void> {
     // failures and still prints DONE, so a 60%-complete shadow looks
     // finished. Activating it yields a corpus half-extracted under each
     // prompt — and per D1 there is no way back.
-    const [{ shadowed, total }] = await prisma.$queryRaw<
-      Array<{ shadowed: bigint; total: bigint }>
+    // The denominator is REPLAYABLE docs only (those with an active
+    // extraction run) — a doc the gate rejected or that never reached
+    // extraction has nothing to replay, and counting it made a 99.96%
+    // shadow read as 97.5% (v7 campaign, 2026-08-10: 2,224 of a 2,258-doc
+    // "gap" had no active run at all). The excluded count is printed so a
+    // large unreplayable population is visible, never silent.
+    const [{ shadowed, total, unreplayable }] = await prisma.$queryRaw<
+      Array<{ shadowed: bigint; total: bigint; unreplayable: bigint }>
     >`
       SELECT
-        count(*) FILTER (WHERE EXISTS (
+        count(*) FILTER (WHERE d.active_extraction_run_id IS NOT NULL AND EXISTS (
           SELECT 1
           FROM collection_extraction_input_documents eid
           JOIN collection_extraction_inputs ei ON ei.input_id = eid.input_id
@@ -233,10 +239,14 @@ async function main(): Promise<void> {
             AND r.status = 'completed'
             AND ei.raw_output IS NOT NULL
         )) AS shadowed,
-        count(*) AS total
+        count(*) FILTER (WHERE d.active_extraction_run_id IS NOT NULL) AS total,
+        count(*) FILTER (WHERE d.active_extraction_run_id IS NULL) AS unreplayable
       FROM collection_source_documents d
       WHERE d.community = ANY(${communities})
         AND d.platform <> 'poll_surface'`;
+    console.log(
+      `Unreplayable docs excluded from coverage: ${Number(unreplayable)} (no active extraction run — gate-rejected or pre-extraction backlog)`,
+    );
     const ratio = Number(total) > 0 ? Number(shadowed) / Number(total) : 0;
     const minRatioRaw = arg('allow-partial');
     // A3: arg() returns the NEXT argv token, so `--allow-partial --execute`

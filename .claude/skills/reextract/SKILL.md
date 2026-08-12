@@ -43,10 +43,15 @@ items. Design doc: plans/reextract-choreography.md. Entry point:
    for those communities. Watch worker logs; wait for the batch queue to
    drain fully.
 4. **diff** — `diff <communities> <version>` writes the review file. Triage:
-   - **AUTO** (act yourself, no ping): exact/alias/plural twins from the
-     lexical TWIN section → merge the new entity INTO the anchor via the
-     dedupe/merge services (rehome runs automatically). Unanchored
-     lost-support rows → nothing to do (GC will take them).
+   - **AUTO** (act yourself, no ping): NOTHING to merge by hand — owner
+     ruling 2026-08-10. Shadow-minted name-variant twins (Mcdonalds vs
+     McDonald's class) are the designed job of (a) the deterministic
+     identity-key tiers at resolution (f1e1770d4), (b) the place-id
+     collision merge when post-activation enrichment grounds them, and
+     (c) the nightly convergence sweep. Manual merges duplicate the
+     machine's work and don't scale; COUNT the twins in the review file
+     and verify they drain after activation+enrichment instead.
+     Unanchored lost-support rows → nothing to do (GC will take them).
    - **AGENT-REVIEW** (judge, then act or escalate): SEMANTIC TWIN
      candidates (embedding distance) — obvious rename ("wings" vs "chicken
      wings" class) → merge into the anchor; genuinely different concept →

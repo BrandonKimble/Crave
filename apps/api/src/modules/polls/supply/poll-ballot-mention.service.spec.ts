@@ -67,8 +67,15 @@ function createHarness(options: {
       create: jest.fn().mockResolvedValue({}),
       createMany: jest.fn().mockResolvedValue({ count: 1 }),
     },
-    restaurantEvent: { create: jest.fn().mockResolvedValue({}) },
-    restaurantEntityEvent: { create: jest.fn().mockResolvedValue({}) },
+    // The mints ride THE redirect-aware chokepoints (extraction-scope
+    // writeRestaurantEvents / writeRestaurantEntityEvents): createMany with
+    // skipDuplicates, preceded by one $queryRaw redirect-map read. The mock
+    // world holds no archived losers, so the map read resolves empty.
+    restaurantEvent: { createMany: jest.fn().mockResolvedValue({ count: 1 }) },
+    restaurantEntityEvent: {
+      createMany: jest.fn().mockResolvedValue({ count: 1 }),
+    },
+    $queryRaw: jest.fn().mockResolvedValue([]),
   };
   const prisma = {
     poll: {
@@ -151,6 +158,13 @@ function createHarness(options: {
   return { service, prisma, tx, sources, projectionRebuild };
 }
 
+/** Flatten chokepoint createMany calls (each carries a one-row data array). */
+function mintedData(mockFn: jest.Mock): Record<string, unknown>[] {
+  return mockFn.mock.calls.flatMap(
+    ([args]: [{ data: Record<string, unknown>[] }]) => args.data,
+  );
+}
+
 function endorsement(
   userId: string,
   subjectId: string,
@@ -192,10 +206,8 @@ describe('PollBallotMentionService — K6 vote→mention at graduation', () => {
     });
     await service.mintForPoll(POLL_ID);
 
-    expect(tx.restaurantEvent.create).toHaveBeenCalledTimes(2);
-    const minted = tx.restaurantEvent.create.mock.calls.map(
-      ([args]: [{ data: Record<string, unknown> }]) => args.data,
-    );
+    expect(tx.restaurantEvent.createMany).toHaveBeenCalledTimes(2);
+    const minted = mintedData(tx.restaurantEvent.createMany);
     expect(minted.map((m) => m.restaurantId).sort()).toEqual([REST_A, REST_B]);
     // ONE per voter, keyed by voter — and no upvote term, ever.
     expect(new Set(minted.map((m) => m.mentionKey)).size).toBe(2);
@@ -225,11 +237,9 @@ describe('PollBallotMentionService — K6 vote→mention at graduation', () => {
     });
     await service.mintForPoll(POLL_ID);
 
-    expect(tx.restaurantEvent.create).not.toHaveBeenCalled();
-    expect(tx.restaurantEntityEvent.create).toHaveBeenCalledTimes(1);
-    const [{ data }] = tx.restaurantEntityEvent.create.mock.calls[0] as [
-      { data: Record<string, unknown> },
-    ];
+    expect(tx.restaurantEvent.createMany).not.toHaveBeenCalled();
+    expect(tx.restaurantEntityEvent.createMany).toHaveBeenCalledTimes(1);
+    const [data] = mintedData(tx.restaurantEntityEvent.createMany);
     expect(data.restaurantId).toBe(REST_A);
     expect(data.entityId).toBe(FOOD_1);
     expect(data.evidenceType).toBe('menu_item_food');
@@ -250,9 +260,7 @@ describe('PollBallotMentionService — K6 vote→mention at graduation', () => {
       redirects: [{ fromEntityId: REST_A, toEntityId: REST_B }],
     });
     await service.mintForPoll(POLL_ID);
-    const [{ data }] = tx.restaurantEvent.create.mock.calls[0] as [
-      { data: Record<string, unknown> },
-    ];
+    const [data] = mintedData(tx.restaurantEvent.createMany);
     expect(data.restaurantId).toBe(REST_B);
   });
 
@@ -271,7 +279,7 @@ describe('PollBallotMentionService — K6 vote→mention at graduation', () => {
     });
     await service.mintForPoll(POLL_ID);
     expect(prisma.$transaction).not.toHaveBeenCalled();
-    expect(tx.restaurantEvent.create).not.toHaveBeenCalled();
+    expect(tx.restaurantEvent.createMany).not.toHaveBeenCalled();
     // The early-return path runs the (idempotent) rebuild too — evidence can
     // never stay committed-but-invisible.
     expect(projectionRebuild.rebuildForRestaurants).toHaveBeenCalledWith([

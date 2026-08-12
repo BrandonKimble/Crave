@@ -44,6 +44,10 @@ import { RestaurantCuisineExtractionQueueService } from './restaurant-cuisine-ex
 import { RestaurantSecondaryLocationExpansionQueueService } from './restaurant-secondary-location-expansion-queue.service';
 import { OpsAlertsService } from '../external-integrations/shared/ops-alerts.service';
 import {
+  brandClusterPurity,
+  restaurantNamesAgree,
+} from './business-identity-rules';
+import {
   GOOGLE_BOOLEAN_ATTRIBUTE_VOCAB,
   GOOGLE_PLACE_TYPE_ATTRIBUTE_CANONICAL_NAMES,
   GOOGLE_PLACE_TYPE_ATTRIBUTE_MAP,
@@ -926,6 +930,44 @@ export class RestaurantLocationEnrichmentService {
       const best = selection.selected;
       matchSource = best.matchSource;
 
+      // FREE DUPLICATE PRE-CHECK before the paid details call (owner cost
+      // question, 2026-08-10): the chooser's candidate already carries the
+      // place id, and if ANOTHER entity of ours owns that place, the details
+      // are already in the database — fetching them again spends the
+      // expensive SKU to learn what one indexed lookup knows. Merge straight
+      // into the owner instead. Same-entity ownership falls through to the
+      // normal refresh path unchanged.
+      const preOwned = await this.prisma.restaurantLocation.findUnique({
+        where: { googlePlaceId: best.entry.candidate.placeId },
+        select: { restaurantId: true },
+      });
+      if (preOwned && preOwned.restaurantId !== entity.entityId) {
+        const canonical = await this.prisma.entity.findUnique({
+          where: { entityId: preOwned.restaurantId },
+        });
+        if (canonical && canonical.status === 'active') {
+          this.logger.info(
+            'Place already owned by another entity — merging without a details call',
+            {
+              entityId: entity.entityId,
+              canonicalId: canonical.entityId,
+              placeId: best.entry.candidate.placeId,
+            },
+          );
+          const merged =
+            await this.restaurantEntityMergeService.mergeDuplicateRestaurant({
+              canonical: canonical as never,
+              duplicate: entity,
+              canonicalUpdate: {},
+            });
+          return {
+            entityId: merged.entityId,
+            status: 'updated',
+            reason: 'place_id owned by existing entity (pre-details check)',
+          };
+        }
+      }
+
       const details = await this.googlePlacesService.getPlaceDetails(
         best.entry.candidate.placeId,
         { includeRaw: true },
@@ -1465,30 +1507,9 @@ export class RestaurantLocationEnrichmentService {
     return trimmed.length ? trimmed.toLowerCase() : null;
   }
 
-  /** Normalize a restaurant name to its comparable brand form (lowercase, punctuation
-   * stripped, leading "the" dropped) for the canonical-domain merge name gate. */
-  private normalizeBrandName(value?: string | null): string | null {
-    if (!value) return null;
-    const normalized = value
-      .toLowerCase()
-      .replace(/[^a-z0-9\s]/g, ' ')
-      .replace(/\s+/g, ' ')
-      .replace(/^the\s+/, '')
-      .trim();
-    return normalized.length ? normalized : null;
-  }
-
-  /** Two restaurants are the same brand iff their names match, or one is a word-boundary
-   * brand prefix of the other (chain branches, e.g. "joe's pizza" / "joe's pizza midtown").
-   * Used to gate the canonical-domain chain merge so unrelated restaurants that merely share
-   * a generic website (facebook.com, etc.) are NOT fused. */
-  private restaurantNamesAgree(a?: string | null, b?: string | null): boolean {
-    const na = this.normalizeBrandName(a);
-    const nb = this.normalizeBrandName(b);
-    if (!na || !nb) return false;
-    if (na === nb) return true;
-    return na.startsWith(`${nb} `) || nb.startsWith(`${na} `);
-  }
+  // normalizeBrandName / restaurantNamesAgree moved to
+  // business-identity-rules.ts — ONE home for the brand doctrine, shared
+  // with the same-name sweep's SQL and JS lanes (2026-08-11 audit change #2).
 
   private ensureAliasPresence(
     aliases: string[],
@@ -1962,18 +1983,9 @@ export class RestaurantLocationEnrichmentService {
     const incomingName =
       this.getPlaceDisplayName(params.placeDetails) ?? params.entity.name;
     const memberNames = [incomingName, ...candidates.map((c) => c.name)];
-    const brandRoot = memberNames.reduce<string | null>((shortest, name) => {
-      const normalized = this.normalizeBrandName(name);
-      if (!normalized) return shortest;
-      const shortestNormalized = this.normalizeBrandName(shortest);
-      return !shortestNormalized ||
-        normalized.length < shortestNormalized.length
-        ? name
-        : shortest;
-    }, null);
-    const brandPure =
-      brandRoot !== null &&
-      memberNames.every((name) => this.restaurantNamesAgree(brandRoot, name));
+    // ONE brand-purity rule (business-identity-rules.ts), shared with the
+    // sweep's judgment.
+    const { pure: brandPure } = brandClusterPurity(memberNames);
 
     if (!brandPure) {
       this.logger.info(
@@ -2364,10 +2376,7 @@ export class RestaurantLocationEnrichmentService {
         // name — otherwise any same-domain place drifting into the name search would be
         // absorbed as a fake "branch".
         if (
-          !this.restaurantNamesAgree(
-            canonicalName,
-            this.getPlaceDisplayName(place),
-          )
+          !restaurantNamesAgree(canonicalName, this.getPlaceDisplayName(place))
         ) {
           continue;
         }

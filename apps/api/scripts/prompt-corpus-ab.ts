@@ -56,7 +56,6 @@ const NON_CATEGORY_TERMS = new Set([
   'buffet',
   'combo plate',
   'tasting menu',
-  'omakase',
   'prix fixe',
   'special',
   'daily special',

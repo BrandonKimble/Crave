@@ -72,29 +72,65 @@ export class FoodDedupeMergeService {
     await this.run({ dryRun: false });
   }
 
-  /** identity_key_sorted is APP-WRITTEN (the lemma fold has no SQL
-   *  mirror). Creates write it inline; renames and pre-column rows heal
-   *  here nightly before the lanes that join on it run. */
-  async refreshSortedIdentityKeys(): Promise<void> {
-    // ONE HEAL, BOTH KEYS (ideal-shape pass): identity_key and
-    // identity_key_sorted are app-written from canonicalFold /
-    // entityIdentityKey — the fold has no SQL mirror by design (Postgres
-    // Unicode classes are platform-dependent). Recompute in TS for every
-    // row and write the ones that drifted (creates, renames, backfill
-    // gaps all heal here; ~17k rows nightly, cheap).
-    const rows = await this.prisma.$queryRaw<
-      Array<{
-        entityId: string;
-        name: string;
-        type: string;
-        key: string | null;
-        sorted: string | null;
-      }>
-    >`
-      SELECT entity_id AS "entityId", name, type::text AS type,
-             identity_key AS key, identity_key_sorted AS sorted
-      FROM core_entities
-    `;
+  /** Heal candidate window — see refreshSortedIdentityKeys. 7 nightly runs
+   *  cover every row in the window, so a crashed night (or six) never loses
+   *  a candidate; the window only has to exceed the cadence, not bound it. */
+  private static readonly IDENTITY_HEAL_LOOKBACK_DAYS = 7;
+
+  /** identity_key / identity_key_sorted are APP-WRITTEN (the fold has no SQL
+   *  mirror by design — Postgres Unicode classes are platform-dependent).
+   *  Creates write them inline (f1e1770d4's deterministic tiers depend on
+   *  that) and every rename path stamps last_updated (enrichment's
+   *  buildEntityUpdate and the merge's buildCanonicalMergeAugmentations both
+   *  set it), so drift can only appear on a row that was TOUCHED — which is
+   *  what the candidate window reads (2026-08-11 audit change #4: this used
+   *  to recompute the fold for EVERY row nightly, an unflagged O(corpus)
+   *  scan). NULL-keyed rows are always candidates regardless of age
+   *  (pre-column backfill gaps have no touch timestamp to trust). The full
+   *  scan survives as an explicit lever ({ full: true }) for backfills and
+   *  fold-algorithm changes — a new fold version MUST run it once. */
+  async refreshSortedIdentityKeys(
+    options: { full?: boolean } = {},
+  ): Promise<void> {
+    const cutoff = new Date(
+      Date.now() -
+        FoodDedupeMergeService.IDENTITY_HEAL_LOOKBACK_DAYS * 24 * 3600 * 1000,
+    );
+    const rows = options.full
+      ? await this.prisma.$queryRaw<
+          Array<{
+            entityId: string;
+            name: string;
+            type: string;
+            key: string | null;
+            sorted: string | null;
+          }>
+        >`
+          SELECT entity_id AS "entityId", name, type::text AS type,
+                 identity_key AS key, identity_key_sorted AS sorted
+          FROM core_entities
+        `
+      : await this.prisma.$queryRaw<
+          Array<{
+            entityId: string;
+            name: string;
+            type: string;
+            key: string | null;
+            sorted: string | null;
+          }>
+        >`
+          SELECT entity_id AS "entityId", name, type::text AS type,
+                 identity_key AS key, identity_key_sorted AS sorted
+          FROM core_entities
+          WHERE identity_key IS NULL
+             OR identity_key_sorted IS NULL
+             OR last_updated >= ${cutoff}
+             -- created_at is timestamp WITHOUT time zone holding UTC wall
+             -- clock; bind through the explicit UTC frame (same idiom as
+             -- the placeholder cleanup) so the window never depends on the
+             -- session TimeZone.
+             OR created_at >= (${cutoff}::timestamptz AT TIME ZONE 'UTC')
+        `;
     for (const row of rows) {
       const expectedKey = canonicalFold(row.name) || null;
       const expectedSorted = entityIdentityKey(row.name, row.type as never);
