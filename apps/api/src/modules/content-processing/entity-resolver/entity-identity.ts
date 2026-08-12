@@ -23,31 +23,65 @@ import { foodNameVariants } from './food-lemma';
  *   punctuation/possessives ("Phil's" == "Phils"), collapse whitespace.
  *   No token sort — restaurant word order is branding.
  */
-/** Non-decomposable Latin letters. NFKD gives EVERY accented letter a
- *  canonical decomposition (e-acute -> e + combining acute), so the fold
- *  needs no hand-maintained accent list — it strips the combining marks and
- *  the base letter falls out for free, across Latin, Greek, Cyrillic and
- *  Vietnamese alike. These few letters are the exception: they carry no
- *  combining mark to strip and NFKD leaves them whole, so they get an
- *  explicit rule. Unlike the accent list this REPLACED, the set is finite and
- *  CLOSED — there is no stream of "one more non-decomposable Latin letter"
- *  the way there is an endless stream of new accented forms. */
-const NON_DECOMPOSABLE: Record<string, string> = {
-  ß: 'ss', // ß
+/** Non-decomposable Latin letters — NFKD leaves them whole, so they need an
+ *  explicit rule where every accented letter gets one for free (e-acute -> e
+ *  + combining acute, folded by the mark strip). The set is finite and
+ *  CLOSED: there is no stream of "one more non-decomposable Latin letter" the
+ *  way there is an endless stream of new accented forms.
+ *
+ *  THE TABLE IS SPLIT BY ONE QUESTION (red team A0 R3, 2026-08-11): DOES THIS
+ *  CHARACTER CHANGE WHICH WORD THIS IS, in the language that writes it?
+ *
+ *  - A LETTER does. Vietnamese đ is the eighth letter of its alphabet, not a
+ *    decorated d: `đá` (ice/stone) and `da` (skin) are different words, and
+ *    `đầu` (head) and `dầu` (oil) are the pair that exposed this — the
+ *    keyword ledger merged them into one row, which is the exact bò/bơ defect
+ *    the accent-preserving fold exists to prevent, one table over. Same for
+ *    Polish ł (`łaska` grace vs `laska` cane), Nordic ø, Icelandic þ/ð,
+ *    Turkish dotless ı (`kırmızı`), Maltese ħ/ŧ, Sami ŋ/ĸ. These fold ONLY
+ *    where accents fold — they behave exactly like an accent, because in
+ *    their own orthographies that is what they are: a letter distinguished by
+ *    a stroke, bar or missing dot.
+ *
+ *  - A SPELLING VARIANT does not. German ß IS `ss` — Switzerland writes the
+ *    same word that way — and the ligatures æ/œ are the same word as `ae`/`oe`
+ *    (French `œuf`/`oeuf`). Folding these merges two spellings of ONE word,
+ *    which is the whole job of a fold, so they fold in BOTH directions,
+ *    accent-preserving or not.
+ *
+ *  The split costs nothing at the identity key: canonicalFold folds every
+ *  entry in both tables, byte for byte as before, so no stored identity_key
+ *  moves. What changes is diacriticFold — and there the change is a
+ *  correction: `diacriticFold(x) !== canonicalFold(x)` is meant to mean
+ *  "x carries at least one accent", and a word written with đ or ł carries
+ *  exactly that kind of evidence. */
+const NON_DECOMPOSABLE_SPELLING: Record<string, string> = {
+  ß: 'ss', // ß — Swiss German writes the same word 'ss'
   æ: 'ae', // æ
-  œ: 'oe', // œ
+  œ: 'oe', // œ — 'œuf' / 'oeuf' is one word, two spellings
+};
+
+/** Letters whose ASCII lookalike is a DIFFERENT letter of the same alphabet.
+ *  Folded by canonicalFold (the coarse key), preserved by diacriticFold. */
+const NON_DECOMPOSABLE_LETTER: Record<string, string> = {
   ø: 'o', // ø
-  đ: 'd', // đ
-  ł: 'l', // ł
+  đ: 'd', // đ — Vietnamese/Croatian: đầu (head) is not dầu (oil)
+  ł: 'l', // ł — Polish: łaska (grace) is not laska (cane)
   þ: 'th', // þ
   ð: 'd', // ð
   ħ: 'h', // ħ
   ŧ: 't', // ŧ
-  ı: 'i', // ı (dotless i)
+  ı: 'i', // ı (dotless i) — Turkish: kırmızı is not kirmizi
   ĸ: 'k', // ĸ
   ŋ: 'n', // ŋ
 };
+
+const NON_DECOMPOSABLE: Record<string, string> = {
+  ...NON_DECOMPOSABLE_SPELLING,
+  ...NON_DECOMPOSABLE_LETTER,
+};
 const NON_DECOMPOSABLE_RE = /[ßæœøđłþðħŧıĸŋ]/g;
+const NON_DECOMPOSABLE_SPELLING_RE = /[ßæœ]/g;
 
 /** The Combining Diacritical Marks blocks — Latin/Greek/Cyrillic/Vietnamese
  *  accents and the Turkish-İ dot (U+0307). DELIBERATELY EXCLUDES the CJK
@@ -140,7 +174,15 @@ function foldWithAccentPolicy(name: string, stripAccents: boolean): string {
       .replace(COMBINING_DIACRITICS, stripAccents ? '' : '$&')
       .normalize('NFC')
       .toLowerCase()
-      .replace(NON_DECOMPOSABLE_RE, (ch) => NON_DECOMPOSABLE[ch] ?? ch)
+      // A letter that changes WORD IDENTITY folds only where accents fold;
+      // a pure spelling variant (ß/æ/œ) folds in both directions. See the
+      // table split above.
+      .replace(
+        stripAccents ? NON_DECOMPOSABLE_RE : NON_DECOMPOSABLE_SPELLING_RE,
+        (ch) =>
+          (stripAccents ? NON_DECOMPOSABLE : NON_DECOMPOSABLE_SPELLING)[ch] ??
+          ch,
+      )
       .replace(/['’‘ʼ]/g, '')
       // Only TRUE separators/punctuation become one space. \p{M} is PRESERVED
       // so a Thai/Devanagari/Arabic vowel sign stays attached to its base

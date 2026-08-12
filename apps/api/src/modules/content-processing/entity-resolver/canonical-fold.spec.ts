@@ -180,6 +180,43 @@ describe('diacriticFold — canonicalFold minus exactly the accent strip', () =>
     }
   });
 
+  it('a LETTER is preserved; a SPELLING VARIANT is folded (A0 R3)', () => {
+    // THE MEASURED DEFECT. Over the 55,737 banked surface forms the keyword
+    // ledger draws from, the old table folded đ→d in BOTH folds, and exactly
+    // four ledger keys merged genuinely different words. Three were the
+    // Danish ø (smør/smor, TØRST/torst). The fourth was `Đầu` (head) and
+    // `dầu` (oil) — one ledger row, last-writer-wins, so one dish's measured
+    // harvest was recorded against the other. That is the bò/bơ defect this
+    // fold exists to prevent, one store over.
+    expect(canonicalFold('đầu')).toBe(canonicalFold('dầu'));
+    expect(diacriticFold('đầu')).not.toBe(diacriticFold('dầu'));
+    expect(diacriticFold('đá')).not.toBe(diacriticFold('da'));
+    // Every letter whose ASCII lookalike is a DIFFERENT letter of its own
+    // alphabet behaves the same way — nothing here knows what Vietnamese is.
+    expect(diacriticFold('łaska')).not.toBe(diacriticFold('laska'));
+    expect(diacriticFold('smør')).not.toBe(diacriticFold('smor'));
+    expect(diacriticFold('kırmızı')).not.toBe(diacriticFold('kirmizi'));
+
+    // ...while a true spelling variant of ONE word folds in BOTH directions:
+    // Switzerland writes 'straße' as 'strasse', and 'œuf'/'oeuf' is one word.
+    expect(diacriticFold('straße')).toBe(diacriticFold('strasse'));
+    expect(diacriticFold('œuf')).toBe(diacriticFold('oeuf'));
+    expect(diacriticFold('æble')).toBe(diacriticFold('aeble'));
+
+    // The coarse identity key is UNMOVED — it folds every entry in both
+    // tables exactly as before, which is why no stored identity_key migrates.
+    for (const [a, b] of [
+      ['đầu', 'dau'],
+      ['łaska', 'laska'],
+      ['smør', 'smor'],
+      ['kırmızı', 'kirmizi'],
+      ['straße', 'strasse'],
+      ['œuf', 'oeuf'],
+    ]) {
+      expect(canonicalFold(a)).toBe(canonicalFold(b));
+    }
+  });
+
   it('is NFC/NFD-blind, like the fold it mirrors', () => {
     expect(diacriticFold('cà phê'.normalize('NFD'))).toBe(
       diacriticFold('cà phê'.normalize('NFC')),

@@ -30,19 +30,37 @@ import { diacriticFold } from '../entity-resolver/entity-identity';
  * `surfaceClaimKey` already carries for the identical bug class one store
  * over ("the claim unit is the FORM, not the FOLD... bò is not bơ"), and
  * this function now uses the same implementation of it. Under the corrected
- * fold, 469 keys merging 942 distinct words become 4 (all of them genuine
- * spelling variants — see below), and all 31 existing rows keep
+ * fold, 469 keys merging 942 distinct words become 4 — and those 4 were not
+ * all benign either; see the correction below. All 31 existing rows keep
  * their exact key (they are accent-free ASCII, so the two folds agree on
  * them byte for byte — verified before the change, which is why no data
  * migration exists).
  *
  * WHAT IT STILL FOLDS, WRITTEN DOWN RATHER THAN SMOOTHED OVER: case,
  * whitespace, punctuation, apostrophes ("Phil's Ice House" -> 'phils ice
- * house'), and the shared fold's non-decomposable table (ß->ss, ø->o,
- * đ->d). The last one is a fold of a LETTER, not of a tone, so it cannot
- * produce the bò/bơ class — measured over the same 55,458 forms it merges
- * exactly 4 keys, every one a real spelling variant (smør/smor, tørst/torst).
- * The alternative is a second fold implementation living beside the first,
+ * house'), and the shared fold's SPELLING-VARIANT table (ß->ss, æ->ae,
+ * œ->oe) — Switzerland writes 'straße' as 'strasse' and 'œuf'/'oeuf' is one
+ * word, so those merge two spellings of ONE thing, which is a fold's job.
+ *
+ * THE PREVIOUS SENTENCE HERE WAS WRONG, AND THE MEASUREMENT PROVED IT (A0
+ * R3, 2026-08-11). It claimed the non-decomposable table "is a fold of a
+ * LETTER, not of a tone, so it cannot produce the bò/bơ class", and that the
+ * 4 keys it merged were "every one a real spelling variant (smør/smor,
+ * tørst/torst)". It named three and mis-described the fourth: over the same
+ * corpus (55,737 distinct forms today) the fourth was `Đầu` (head) and
+ * `dầu` (oil), merged into one ledger row whose harvest snapshot is
+ * last-writer-wins — one dish measured on another dish's evidence, which is
+ * EXACTLY the bò/bơ class the sentence said it could not produce.
+ *
+ * The fold was fixed rather than the description. Vietnamese đ is the eighth
+ * letter of its alphabet, not a decorated d, and the same is true of Polish
+ * ł, Nordic ø, Turkish dotless ı and the rest: their ASCII lookalike is a
+ * DIFFERENT letter of the same alphabet, so they now fold only where accents
+ * fold. Re-measured after the change: those 4 keys split into 8, and every
+ * remaining collision is a case, whitespace or apostrophe variant — the fold
+ * doing its job. The identity key is unmoved (canonicalFold still folds all
+ * of them), so no stored row migrates. There is still only ONE fold
+ * implementation; the alternative is a second one living beside the first,
  * and two folds drift.
  *
  * STILL NOT A QUERY. This is an IDENTITY, and the diacritic-preserving text

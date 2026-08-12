@@ -102,15 +102,15 @@ describe('keyword attempt ledger — identity is a fold, the query is not', () =
     const call: UpsertCall = upsert.mock.calls[0][0];
     // The row is KEYED by the fold ...
     expect(call.where.engineName_normalizedTerm.normalizedTerm).toBe(
-      // ACCENTS SURVIVE; 'đ' folds to 'd'. That second half is the shared
-      // fold's non-decomposable table (ß->ss, ø->o, đ->d) — the same table
-      // `surfaceClaimKey` adjudicates entity words with. It is a fold of a
-      // LETTER, not of a tone, so it cannot produce the bò/bơ class, and
-      // measured over the corpus it merges exactly 4 keys, all of them
-      // genuine spelling variants (smør/smor, tørst/torst). Written down
-      // rather than smoothed over: the alternative is a second fold
-      // implementation, and two folds drift.
-      'bún dậu mắm tôm',
+      // ACCENTS SURVIVE — AND SO DOES 'đ'. This assertion used to read
+      // 'bún dậu mắm tôm', pinning the claim that folding đ→d "cannot
+      // produce the bò/bơ class". It could and it did: measured over the
+      // banked corpus, that fold merged `Đầu` (head) with `dầu` (oil) into
+      // one ledger row whose harvest snapshot is last-writer-wins (A0 R3).
+      // đ is the eighth letter of the Vietnamese alphabet, not a decorated
+      // d, so the shared fold now folds it only where accents fold. There
+      // is still ONE fold implementation — two folds drift.
+      'bún đậu mắm tôm',
     );
     // ... and REMEMBERS the query, on create and on update alike, so the
     // refresh lane has something true to re-send.
