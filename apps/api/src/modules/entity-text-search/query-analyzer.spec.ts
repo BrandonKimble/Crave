@@ -351,6 +351,55 @@ describe('query analyzer (A2 seam)', () => {
           ?.source,
       ).toBe('surface');
     });
+
+    it('refuses a hit the fold only reached by deleting an INVISIBLE (A0 R7)', () => {
+      // The dangerous half of the same defect: the fold DELETES format
+      // controls outright, so each of these folds to exactly 'pan' — a
+      // confidence-1.0 language claim for a string that is not the banked
+      // word, with nothing on screen to explain it. Pasteboards and LLM
+      // extraction inject these, and a crafted query can aim one at any
+      // banked word.
+      const invisibles: Array<[string, string]> = [
+        ['zero-width space', '\u200B'],
+        ['zero-width joiner', '\u200D'],
+        ['zero-width non-joiner', '\u200C'],
+        ['byte order mark', '\uFEFF'],
+        ['soft hyphen', '\u00AD'],
+        ['arabic letter mark', '\u061C'],
+        ['left-to-right override', '\u202D'],
+        ['private use', '\uE000'],
+        ['control (NUL)', '\u0000'],
+      ];
+      for (const [label, ch] of invisibles) {
+        const middle = analyzeQuery(`pa${ch}n`, null, {
+          surfaceLocales: oracle,
+        }).detectedLocale;
+        const trailing = analyzeQuery(`pan${ch}`, null, {
+          surfaceLocales: oracle,
+        }).detectedLocale;
+        expect([label, middle?.source]).not.toEqual([label, 'surface']);
+        expect([label, trailing?.source]).not.toEqual([label, 'surface']);
+      }
+    });
+
+    it('...but NBSP and fullwidth stay admitted, because they are spelling', () => {
+      // NBSP is whitespace: the fold collapses it to a space exactly as it
+      // collapses a plain one, so the folded key is what a normal space
+      // would have produced. Fullwidth forms are LETTERS that NFKD maps to
+      // their plain letter by design — refusing them would refuse a whole
+      // legitimate input method.
+      expect(
+        analyzeQuery('camarones\u00A0fritos', null, { surfaceLocales: oracle })
+          .detectedLocale?.source,
+      ).toBe(
+        analyzeQuery('camarones fritos', null, { surfaceLocales: oracle })
+          .detectedLocale?.source,
+      );
+      expect(
+        analyzeQuery('ｃａｍａｒｏｎｅｓ', null, { surfaceLocales: oracle })
+          .detectedLocale,
+      ).toEqual({ tag: 'es', confidence: 1, source: 'surface' });
+    });
   });
 
   // ── A0 red team F9/F13: the script gate binds the detector too ─────────

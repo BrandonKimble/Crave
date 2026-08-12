@@ -427,9 +427,27 @@ function scriptAdmitsLatinLanguage(script: QueryScript): boolean {
  * emoji are not spelling — they are things the user added — so the line is
  * drawn at `\p{S}` plus the pictographic extension, not at `\p{P}`.
  *
+ * INVISIBLES ARE CONTENT TOO, and they are the dangerous half (A0 R7,
+ * 2026-08-11). The fold DELETES every format control outright — ZWSP, ZWJ,
+ * ZWNJ, the BOM, the soft hyphen, U+061C — so `ta<ZWSP>co` folds to exactly
+ * `taco` and the oracle returns a confidence-1.0 language claim for a string
+ * the user did not type. Worse than the emoji case, because there is nothing
+ * on screen to explain it: LLM extraction and pasteboards inject these, and a
+ * hand-crafted query could aim one at any banked word. `\p{C}` covers the
+ * whole family (Cc control, Cf format, Cn unassigned, Co private-use, Cs
+ * surrogate) in one primitive rather than a codepoint list that rots.
+ *
+ * WHAT STAYS ADMITTED, AND WHY. NBSP (U+00A0) and the other Zs spaces are
+ * WHITESPACE — the fold collapses them to a space exactly as it collapses a
+ * plain one, so the folded key is the same string a normal space would give:
+ * that is spelling, not added content. Fullwidth and other compatibility
+ * forms are LETTERS, and NFKD maps them to their plain letter by design
+ * (fullwidth ramen IS ramen); refusing them would refuse a whole legitimate
+ * input method. Punctuation stays admitted for the reason stated above.
+ *
  * The empty fold needs no special case: '🌮' folds to '' and matches nothing.
  */
-const FOLD_DISCARDS_CONTENT = /\p{S}|\p{Extended_Pictographic}/u;
+const FOLD_DISCARDS_CONTENT = /\p{S}|\p{Extended_Pictographic}|\p{C}/u;
 
 function foldPreservesContent(text: string): boolean {
   return !FOLD_DISCARDS_CONTENT.test(text);
