@@ -119,22 +119,24 @@ L3. **COVER-LINKER (locked 2026-08-10, owner delegated).** Whole-query span
 
 ## B. IN FLIGHT (agent running or committed-but-unverified)
 
-6. **Collection-locale spine — A0 RED TEAM FAILED IT (2026-08-10); correction in flight.**
-   The red team refuted the spine's core write assumption with executed
-   proof: tagging extraction surfaces with the SOURCE'S configured language
-   treats reader-context as word-identity — 'bún đậu mắm tôm' banked as
-   ENGLISH (verified personally), ~10.6k extraction-'en' rows minted, ~5.1k
-   entities now en-only (invisible to every non-en chain), and the detector
-   oracle reads the wrong tags back as conf-1.0 truth (junk one-row flips:
-   'cat'→vi, 'crema'→vi; prior-echo feedback loop). CORRECTED PRINCIPLE
-   (doctrine): source language = READER CONTEXT (read-chain only); word
-   language comes only from generator/judge provenance; extraction observes
-   'und'. Fix agent running: write-flip revert + data repair + oracle
-   trust-provenance hardening + low_result/refresh locale lanes + ledger
-   key collision + sweep lock + onboarding --language. What SURVIVED the
-   red team: the read-side locale chain (camarones win intact, no
-   mis-merge direction), resolution cache scoping, re-language invariant,
-   script pins. Steps 1-4 commits stand; A0 re-runs after the correction.
+6. **Collection-locale spine — CORRECTED, all 8 red-team findings fixed
+   (2026-08-10/11; verified personally: 0 mis-tagged extraction rows,
+   'bún đậu mắm tôm' detection clean, tsc clean, resolution 58/58).**
+   Commits: 73a3b7228 (write-flip revert), 43ab586cf (10,670-row repair),
+   d6c220b05 (oracle trust-provenance: junk one-row flips dead, weak-
+   detector null), 05f117586 (feedback cut + sweep lock), 8a22f2f11
+   (low_result + ledger locale lanes), 069ab02d3 (ledger fold: 469
+   collision groups → 4, all genuine variants), 80ccab973 (--language
+   required at onboarding), + my 58/58 fixture rulings (ex-02 canonical
+   singular; loc-05 names are locale-unscoped). DOCTRINE STANDS: source
+   language = reader context; word language = generator/judge provenance
+   only. RESIDUALS ledgered: (a) tinyld has NO usable vi model — 6 vi
+   gold sentences detect es@1.0; detector-model ticket, largest remaining
+   wrong-verdict source; (b) camarones/shrimp DUPLICATE ENTITY minted by
+   extraction 08-10 — flagged to convergence lane; (c) sweep run-tally
+   under-reports banked surfaces ~1.6× (cosmetic, DB is truth). A0 status:
+   correction validated against the red team's own probes; the corrected
+   spine's fresh adversarial pass folds into the C3 capstone.
 
 6b. **Conjunction "gap" RECLASSIFIED (2026-08-09 evening)**: retested with
    clean examples — 'tacos and pizza' / 'wings and beer' ground BOTH sides
