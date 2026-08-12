@@ -52,7 +52,19 @@ import {
  *  v1 = pre-gender-complete labels (implicit, DB default); v2 = the
  *  gender/plural-complete + dietary-boundary prompt. The sweep re-offers
  *  labels below this — one re-pay per bump. */
-export const VOCABULARY_PROMPT_VERSION = 5;
+export const VOCABULARY_PROMPT_VERSION = 6;
+// v6 (2026-08-12): THE COMPLETENESS DEFINITION GREW THE CASE IT WAS MISSING —
+// the BARE HEAD NOUN. v5 defined completeness as every word a speaker really
+// types and then enumerated the axes it expected them to vary along: gender,
+// number, region. Every one of those is an INFLECTION of a whole name, and
+// the case that matters most in Vietnamese is a SHORTENING of one: v5 returns
+// 'thịt bò' for beef and never 'bò', 'thịt gà' and never 'gà' — while 'bò' is
+// what a speaker actually types. This is not a new rule bolted on; it is the
+// same definition ("the words they really type") applied to a word that is
+// shorter than the name rather than a variant form of it, and it is bounded
+// by the BOUNDARY test that was already there — the short form is in only if
+// it names THIS concept alone. The missing-vocabulary crisis was exactly
+// these words, so the omission was the expensive kind.
 // v5 (2026-08-09): THE PROMPT REDERIVED — the pass stopped curating and
 // started enumerating. v4 was a task statement followed by six HARD RULES
 // accreted one measured failure at a time (caldo, the dietary boundary, the
@@ -284,6 +296,16 @@ export function buildVocabularyPrompt(
     `  nothing.`,
     `- List every FORM of each word a speaker would type: gender variants,`,
     `  singular and plural, and regional variants.`,
+    `- Speakers type the SHORT form as readily as the full one. When part of`,
+    `  a name names this concept BY ITSELF — the word they would type alone`,
+    `  into a search box and still be understood to mean this — that short`,
+    `  form is one of the words they really type and belongs in the set. What`,
+    `  makes a short form the SAME concept is that it keeps the`,
+    `  DISTINGUISHING word and drops only a generic one: for beef, the word`,
+    `  for the animal standing alone, with the word for "meat" dropped. Drop`,
+    `  the distinguishing word instead and what is left is a BROADER concept,`,
+    `  which the boundary below already excludes — "grilled meat" does not`,
+    `  name grilled pork.`,
     `- Write each word the way the locale properly writes it, accents and all.`,
     `  The app matches accent-insensitively on its own, so a de-accented`,
     `  respelling is not another word and does not belong in the list.`,
