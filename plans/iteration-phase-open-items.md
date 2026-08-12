@@ -134,9 +134,18 @@ L3. **COVER-LINKER (locked 2026-08-10, owner delegated).** Whole-query span
    gold sentences detect es@1.0; detector-model ticket, largest remaining
    wrong-verdict source; (b) camarones/shrimp DUPLICATE ENTITY minted by
    extraction 08-10 — flagged to convergence lane; (c) sweep run-tally
-   under-reports banked surfaces ~1.6× (cosmetic, DB is truth). A0 status:
-   correction validated against the red team's own probes; the corrected
-   spine's fresh adversarial pass folds into the C3 capstone.
+   under-reports banked surfaces ~1.6× (cosmetic, DB is truth). A0 RE-RUN (2026-08-11): core HELD (write revert
+   total, read chain strict-superset, repair complete, oracle list sound,
+   F1-F13 stay closed) but the correction's OWN machinery failed — R1
+   BLOCKING: pooled advisory locks strand 25/25 under load, silently
+   killing the demand lane (idiom copied from places-promotion = LAYER
+   defect); R2 client-settable detectedLocale on /search/run; R3 ledger
+   fold merges đầu/dầu (survivor list mis-described); R4 poll-seed tags
+   all aliases with Places languageCode unnormalized; R5 --language
+   unvalidated; R6 repair may have dropped judge stamps (unfalsifiable,
+   honesty note owed); R7 fold admits control/PUA chars as exact. FIX
+   AGENT IN FLIGHT (withAdvisoryLock layer helper + all seven). A0 exits
+   only after the fixes survive re-probe.
 
 6b. **Conjunction "gap" RECLASSIFIED (2026-08-09 evening)**: retested with
    clean examples — 'tacos and pizza' / 'wings and beer' ground BOTH sides
