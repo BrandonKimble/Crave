@@ -40,16 +40,33 @@ import { stopCronsForScript } from '../src/shared/utils/stop-crons';
 type ParsedArgs = {
   subreddit: string;
   locationName: string | null;
+  /**
+   * THE SOURCE'S LANGUAGE — required, with no default (red team F12).
+   *
+   * The column carries a default of 'en' so pre-migration rows keep meaning
+   * what they always meant. Onboarding is the OPPOSITE situation: it is the
+   * exact moment a human decides to start collecting from a community, and
+   * therefore the one moment anybody actually knows what language it is in.
+   * Letting the default answer for them turns a decision into a silent
+   * assumption — and this value is real: it is the reader context that
+   * decides which slices of the registry ingestion may ground a word out of
+   * this source through (localeLookupChain), so onboarding a Saigon
+   * subreddit as 'en' quietly makes its Vietnamese vocabulary ungroundable.
+   * Two communities exist today and both are genuinely English; the third
+   * one is the one this argument exists for.
+   */
+  language: string;
   overwrite: boolean;
 };
 
 const parseArgs = (): ParsedArgs => {
   const args = process.argv.slice(2);
   const usage =
-    'Usage: yarn ts-node apps/api/scripts/onboard-subreddit.ts <subreddit> [--location-name <name>] [--overwrite]';
+    'Usage: yarn ts-node apps/api/scripts/onboard-subreddit.ts <subreddit> --language <bcp47> [--location-name <name>] [--overwrite]';
 
   const positionals: string[] = [];
   let locationName: string | null = null;
+  let language: string | null = null;
   let overwrite = false;
 
   for (let index = 0; index < args.length; index += 1) {
@@ -70,6 +87,18 @@ const parseArgs = (): ParsedArgs => {
       }
       continue;
     }
+    if (arg === '--language' || arg.startsWith('--language=')) {
+      if (arg.includes('=')) {
+        language = arg.split('=').slice(1).join('=').trim();
+      } else {
+        language = args[index + 1]?.trim() ?? '';
+        index += 1;
+      }
+      if (!language) {
+        throw new Error('language must be a non-empty BCP 47 tag.');
+      }
+      continue;
+    }
     positionals.push(arg);
   }
 
@@ -78,7 +107,18 @@ const parseArgs = (): ParsedArgs => {
     throw new Error(`Subreddit name is required.\n${usage}`);
   }
 
-  return { subreddit, locationName, overwrite };
+  if (!language) {
+    throw new Error(
+      `--language is required (BCP 47, e.g. "en", "vi", "es-MX").\n` +
+        `It is the SOURCE'S DECLARED LANGUAGE: reader context that decides which\n` +
+        `registry slices ingestion may ground a word out of this community\n` +
+        `through. There is no correct default for a community nobody has looked\n` +
+        `at, and the column's own 'en' default exists for legacy rows, not for\n` +
+        `this decision.\n${usage}`,
+    );
+  }
+
+  return { subreddit, locationName, language, overwrite };
 };
 
 async function onboardSubreddit() {
@@ -88,7 +128,7 @@ async function onboardSubreddit() {
   let app;
 
   try {
-    const { subreddit, locationName, overwrite } = parseArgs();
+    const { subreddit, locationName, language, overwrite } = parseArgs();
 
     console.log('\n🏗️  Initializing NestJS application...');
     app = await NestFactory.createApplicationContext(AppModule, {
@@ -104,7 +144,7 @@ async function onboardSubreddit() {
       where: {
         communityName: { equals: subreddit, mode: 'insensitive' },
       },
-      select: { communityName: true, locationName: true },
+      select: { communityName: true, locationName: true, language: true },
     });
     const exactMatch = existingRows.find(
       (row) => row.communityName === subreddit,
@@ -122,6 +162,13 @@ async function onboardSubreddit() {
       if (locationName && (!onlyMissing || !existingRow.locationName?.trim())) {
         updateData.locationName = locationName.trim();
       }
+      // Re-languaging an existing community is a real operation and it is
+      // NOT retroactive: documents carry their own copy of the language
+      // stamped at collection time, so words already banked keep being read
+      // the way they were read when they were collected.
+      if (!onlyMissing || !existingRow.language?.trim()) {
+        updateData.language = language;
+      }
       if (Object.keys(updateData).length > 0) {
         await prisma.collectionCommunity.update({
           where: { communityName: existingRow.communityName },
@@ -134,6 +181,9 @@ async function onboardSubreddit() {
       const createData: Prisma.CollectionCommunityCreateInput = {
         communityName: subreddit,
         isActive: true,
+        // STATED BY THE OPERATOR, never defaulted at onboarding — see the
+        // ParsedArgs docblock.
+        language,
       };
       if (locationName) {
         createData.locationName = locationName.trim();
