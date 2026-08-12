@@ -10,11 +10,22 @@
  *   JUDGE produce language-knowledge; only their rows carry language tags.
  *
  * RESULT, 2026-08-11, live dev corpus (before -> after the correction):
- *   F1  'bún đậu mắm tôm'   surface/en@1.0  -> detector/vi     (never `en`)
- *   F2  extraction rows tagged with a language  10,670 -> 0
- *   F3  junk-word flips ('cat','pan','crema')   3/3 -> 0/3
- *   F4  gold-corpus locale disagreements        es 25, vi 3 -> es 0, vi 0
- *   F9  'тако' from an es-MX phone              es@0.11 -> null
+ *   F1  'bún đậu mắm tôm'  en@1.00 (surface) -> null    (never `en` again)
+ *       'phở bò'           es@0.20 (detector) -> vi@1.00 (surface)
+ *       'camarones'        null -> es@1.00 (surface)
+ *   F2  extraction rows carrying a language   10,670 -> 0
+ *   F3  'cat' vi@1.00, 'pan' es@1.00, 'crema' vi@1.00 (each one generator
+ *       row beating an explicit en-US prior) -> all three en-US@0.50
+ *   F4  gold-corpus locale disagreements     es 2 -> 2, vi 8 -> 7
+ *       (the members changed completely; what remains is NOT this oracle —
+ *       'tacos with cheese' really is English text in the es corpus, 'tuna'
+ *       is banked by two English entities and is a word in both languages,
+ *       and all six vi ones are tinyld answering `es` at accuracy 1.0 for
+ *       plainly Vietnamese sentences, which is a detector-MODEL problem)
+ *   F9  'тако tacos' from an es-MX phone      es@0.11 (detector) -> null
+ *       (bare 'тако' was already null — tinyld ranks nothing for it under
+ *       the restricted candidate set, so the code-switched query is the
+ *       case that actually reproduces the leak)
  *
  * READ-ONLY. Bootstraps the real AppModule so the oracle index, the analyzer
  * and the launch corpora are exactly the ones the server runs.
@@ -116,6 +127,14 @@ const QUERIES: Array<{
     forbidden: ['es', 'vi'],
   },
   // F9 — a Cyrillic query may not be forced through a Latin-only detector.
+  // The code-switched form is the one that reproduces: tinyld ranks
+  // 'тако tacos' es@0.11, and bare 'тако' ranks nothing at all.
+  {
+    query: 'тако tacos',
+    requestLocale: 'es-MX',
+    must: 'null',
+    forbidden: ['es', 'en', 'vi'],
+  },
   {
     query: 'тако',
     requestLocale: 'es-MX',
