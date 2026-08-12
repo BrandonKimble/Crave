@@ -1,4 +1,5 @@
 import { PrismaClient } from '@prisma/client';
+import { AdvisoryLockService } from '../../shared/advisory-lock/advisory-lock.service';
 import { DemandVocabularyService } from './demand-vocabulary.service';
 import { canonicalFold } from '../content-processing/entity-resolver/entity-identity';
 
@@ -54,6 +55,7 @@ function buildService(): DemandVocabularyService {
     prisma as never,
     llm,
     entityTextSearch,
+    new AdvisoryLockService(),
     LOG,
   );
 }

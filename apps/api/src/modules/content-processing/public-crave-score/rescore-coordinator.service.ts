@@ -11,7 +11,7 @@
 import { Injectable, OnModuleInit } from '@nestjs/common';
 import { Cron, CronExpression } from '@nestjs/schedule';
 import { PrismaService } from '../../../prisma/prisma.service';
-import { LoggerService } from '../../../shared';
+import { AdvisoryLockService, LoggerService } from '../../../shared';
 import { PublicCraveScoreService } from './public-crave-score.service';
 
 /** Advisory lock key for the global rescore (single writer across replicas). */
@@ -26,6 +26,7 @@ export class RescoreCoordinatorService implements OnModuleInit {
     private readonly prisma: PrismaService,
     private readonly loggerService: LoggerService,
     private readonly craveScore: PublicCraveScoreService,
+    private readonly advisoryLock: AdvisoryLockService,
   ) {}
 
   onModuleInit(): void {
@@ -63,12 +64,19 @@ export class RescoreCoordinatorService implements OnModuleInit {
     if (!state?.dirty) {
       return 'clean';
     }
-    const lock = await this.prisma.$queryRaw<Array<{ locked: boolean }>>`
-      SELECT pg_try_advisory_lock(${RESCORE_ADVISORY_LOCK_KEY}) AS locked
-    `;
-    if (!lock[0]?.locked) {
-      return 'locked'; // Another replica owns the rebuild.
-    }
+    // Single writer across replicas, on a DEDICATED session: a lock taken
+    // and released over the shared POOL releases nothing (different backend)
+    // and strands, after which every replica reports 'locked' forever and the
+    // dirty flag never clears. See shared/advisory-lock.
+    const outcome = await this.advisoryLock.withAdvisoryLock(
+      RESCORE_ADVISORY_LOCK_KEY,
+      () => this.rebuild(),
+    );
+    return outcome.acquired ? outcome.result : 'locked';
+  }
+
+  /** The rebuild itself — runs only while the advisory lock is held. */
+  private async rebuild(): Promise<'rebuilt' | 'failed'> {
     try {
       // Clear the flag BEFORE the rebuild: marks arriving DURING the rebuild
       // re-dirty the row and the next tick catches them — no lost updates.
@@ -98,11 +106,6 @@ export class RescoreCoordinatorService implements OnModuleInit {
             : { message: String(error) },
       });
       return 'failed';
-    } finally {
-      await this.prisma
-        .$queryRaw`SELECT pg_advisory_unlock(${RESCORE_ADVISORY_LOCK_KEY})`.catch(
-        () => undefined,
-      );
     }
   }
 }

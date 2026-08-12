@@ -8,7 +8,14 @@
  */
 import type { PlaceGeometryPromotion } from '@prisma/client';
 
-import { PlacesPromotionService } from './places-promotion.service';
+import {
+  PlacesPromotionService,
+  PROMOTION_DRAIN_ADVISORY_LOCK_KEY,
+} from './places-promotion.service';
+import {
+  grantingAdvisoryLock,
+  heldAdvisoryLock,
+} from '../../shared/testing/advisory-lock-doubles';
 
 const PLACE_ID = '00000000-0000-4000-8000-000000000001';
 const PLACE_ID_2 = '00000000-0000-4000-8000-000000000002';
@@ -120,7 +127,8 @@ function makeHarness(options: {
   hasGeometryAlready?: boolean;
   resolveGeometryId?: jest.Mock;
   fetchPolygon?: jest.Mock;
-  /** Wave-6 item 1b: pg_try_advisory_lock outcome (default acquired). */
+  /** Wave-6 item 1b: does this process win the cross-process drain lock?
+   *  (default yes). The lock itself lives in AdvisoryLockService now. */
   lockAcquired?: boolean;
   /** §24 Task 3: optional campaign-envelope mock (isDispatchable/recordSpend). */
   spendCampaigns?: { isDispatchable: jest.Mock; recordSpend: jest.Mock };
@@ -137,12 +145,6 @@ function makeHarness(options: {
     }),
     $queryRaw: jest.fn().mockImplementation((query: any) => {
       const sql: string = query.sql ?? '';
-      if (sql.includes('pg_try_advisory_lock')) {
-        return Promise.resolve([{ locked: options.lockAcquired ?? true }]);
-      }
-      if (sql.includes('pg_advisory_unlock')) {
-        return Promise.resolve([{ unlocked: true }]);
-      }
       if (sql.includes('FROM place_geometry_promotions')) {
         return Promise.resolve(options.queueRows ?? []);
       }
@@ -214,13 +216,18 @@ function makeHarness(options: {
       options.fetchPolygon ??
       answeringPolygon({ kind: 'ok', geojson: POLYGON_GEOJSON }),
   };
+  const advisoryLock =
+    (options.lockAcquired ?? true)
+      ? grantingAdvisoryLock()
+      : heldAdvisoryLock();
   const service = new PlacesPromotionService(
     prisma as never,
     probe as never,
+    advisoryLock,
     logger,
     options.spendCampaigns as never,
   );
-  return { service, prisma, probe, executeRawCalls };
+  return { service, prisma, probe, executeRawCalls, advisoryLock };
 }
 
 describe('PlacesPromotionService — §2 earned-moment queue', () => {
@@ -736,47 +743,43 @@ describe('PlacesPromotionService — §2 earned-moment queue', () => {
   });
 
   describe('cross-process drain lock (wave-6 item 1b)', () => {
-    it('skips the whole pass when pg_try_advisory_lock is not acquired — no reads, no draws', async () => {
+    it('skips the whole pass when another process holds the drain lock — no reads, no draws', async () => {
       const fetchPolygon = jest.fn();
       const resolveGeometryId = jest.fn();
-      const { service, prisma } = makeHarness({
+      const harness = makeHarness({
         queueRows: [makeQueueRow()],
         lockAcquired: false,
         fetchPolygon,
         resolveGeometryId,
       });
+      const { service, prisma, advisoryLock } = harness;
       await service.drainQueue(new Date('2026-07-20T00:00:00Z'));
-      // Only the lock probe ran — the due read never happened.
+      // The lock was asked for, on the drain's key — and nothing else ran:
+      // the due read never happened.
+      expect(advisoryLock.keys).toEqual([PROMOTION_DRAIN_ADVISORY_LOCK_KEY]);
       const sqls = prisma.$queryRaw.mock.calls.map((call: any[]) =>
         String(call[0].sql ?? ''),
-      );
-      expect(sqls.some((sql) => sql.includes('pg_try_advisory_lock'))).toBe(
-        true,
       );
       expect(sqls.some((sql) => sql.includes('ORDER BY enqueued_at'))).toBe(
         false,
       );
       expect(fetchPolygon).not.toHaveBeenCalled();
       expect(resolveGeometryId).not.toHaveBeenCalled();
-      // A losing lock never unlocks (it holds nothing to release).
-      expect(sqls.some((sql) => sql.includes('pg_advisory_unlock'))).toBe(
-        false,
-      );
     });
 
-    it('releases the advisory lock in finally — even when the vendor throws mid-pass', async () => {
+    it("takes the drain key through the shared lock helper — release is the helper's guarantee, on its own session", async () => {
       const fetchPolygon = erroringPolygon(new Error('vendor down'));
-      const { service, prisma } = makeHarness({
+      const { service, advisoryLock } = makeHarness({
         queueRows: [makeQueueRow({ providerBoundaryId: 'geo-cached' })],
         fetchPolygon,
       });
       // The transport throw records the attempt and ends the pass ('stop'),
-      // so drainQueue resolves; the unlock must still have been issued.
+      // so drainQueue resolves. This service no longer issues its own
+      // lock/unlock SQL at all: acquire-and-release-on-one-session is the
+      // helper's invariant (advisory-lock.integration.spec.ts proves it
+      // against a live database, including the crash path).
       await service.drainQueue(new Date('2026-07-20T00:00:00Z'));
-      const sqls = prisma.$queryRaw.mock.calls.map((call: any[]) =>
-        String(call[0].sql ?? ''),
-      );
-      expect(sqls.some((sql) => sql.includes('pg_advisory_unlock'))).toBe(true);
+      expect(advisoryLock.keys).toEqual([PROMOTION_DRAIN_ADVISORY_LOCK_KEY]);
     });
   });
 

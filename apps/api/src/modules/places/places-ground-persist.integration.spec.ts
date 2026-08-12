@@ -1,4 +1,5 @@
 import { PrismaClient } from '@prisma/client';
+import { AdvisoryLockService } from '../../shared/advisory-lock/advisory-lock.service';
 import { PlacesPromotionService } from './places-promotion.service';
 
 /**
@@ -131,6 +132,7 @@ beforeAll(async () => {
       fetchPolygon: jest.fn(),
       lookupLevelEntity: jest.fn(),
     } as never,
+    new AdvisoryLockService(),
     logger,
     undefined as never,
   );

@@ -1,4 +1,5 @@
 import { PrismaClient } from '@prisma/client';
+import { AdvisoryLockService } from '../../shared/advisory-lock/advisory-lock.service';
 import { KnowledgeMaintenanceService } from './knowledge-maintenance.service';
 
 /**
@@ -27,7 +28,9 @@ describe('knowledge maintenance advisory lock — proven against a live database
     sweep as never,
     {} as never,
     satisfies as never,
-    prisma as never,
+    // THE REAL LOCK SERVICE — the whole point of this spec is that the lock
+    // is a real cross-process fact, so it must be the real mechanism.
+    new AdvisoryLockService(),
   );
 
   afterAll(async () => {

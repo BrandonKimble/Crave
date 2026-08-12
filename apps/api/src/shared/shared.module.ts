@@ -6,6 +6,7 @@ import { WinstonLoggerService } from './logging/winston-logger.service';
 import { LoggingInterceptor } from './logging/logging.interceptor';
 import { GlobalExceptionFilter } from './filters/global-exception.filter';
 import { TextSanitizerService } from './sanitization/text-sanitizer.service';
+import { AdvisoryLockService } from './advisory-lock/advisory-lock.service';
 
 /**
  * Global shared module providing common utilities across the application
@@ -20,6 +21,10 @@ import { TextSanitizerService } from './sanitization/text-sanitizer.service';
     // Winston logger service - direct implementation
     WinstonLoggerService,
     TextSanitizerService,
+    // The ONE way to hold a pg advisory lock (see advisory-lock.service.ts):
+    // global because the four single-runner lanes that need it live in four
+    // different feature modules.
+    AdvisoryLockService,
     // Provide WinstonLoggerService as LoggerService for backward compatibility
     {
       provide: LoggerService,
@@ -48,6 +53,7 @@ import { TextSanitizerService } from './sanitization/text-sanitizer.service';
     LoggerService, // Export both for compatibility
     ConfigModule, // Also export ConfigModule since many services need it
     TextSanitizerService,
+    AdvisoryLockService,
   ],
 })
 export class SharedModule {}

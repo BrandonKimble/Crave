@@ -1,7 +1,7 @@
 import { Injectable } from '@nestjs/common';
-import { EntityType, Prisma } from '@prisma/client';
+import { EntityType } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
-import { LoggerService } from '../../shared';
+import { AdvisoryLockService, LoggerService } from '../../shared';
 import { LLMService } from '../external-integrations/llm/llm.service';
 import { EntityTextSearchService } from '../entity-text-search/entity-text-search.service';
 import { addSurfaces } from '../content-processing/entity-resolver/entity-surface.service';
@@ -102,6 +102,7 @@ export class DemandVocabularyService {
     private readonly prisma: PrismaService,
     private readonly llm: LLMService,
     private readonly entityTextSearch: EntityTextSearchService,
+    private readonly advisoryLock: AdvisoryLockService,
     loggerService: LoggerService,
   ) {
     this.logger = loggerService.setContext('DemandVocabularyService');
@@ -110,33 +111,20 @@ export class DemandVocabularyService {
   async run(
     options: { limit?: number; dryRun?: boolean } = {},
   ): Promise<DemandVocabularySummary> {
-    const lock = await this.prisma.$queryRaw<Array<{ locked: boolean }>>(
-      Prisma.sql`SELECT pg_try_advisory_lock(${DEMAND_VOCABULARY_ADVISORY_LOCK_KEY}) AS locked`,
+    // The lock is taken on a DEDICATED session (AdvisoryLockService) — a
+    // pooled acquire/release pair strands the lock and disables this lane
+    // permanently, which is exactly what it used to do. See R1 there.
+    const outcome = await this.advisoryLock.withAdvisoryLock(
+      DEMAND_VOCABULARY_ADVISORY_LOCK_KEY,
+      () => this.sweep(options),
     );
-    if (!lock[0]?.locked) {
+    if (!outcome.acquired) {
       this.logger.info(
         'Demand vocabulary sweep skipped (another process is sweeping)',
       );
       return EMPTY_SUMMARY();
     }
-    try {
-      return await this.sweep(options);
-    } finally {
-      // Best-effort release; a pooled connection MAY not be the acquiring
-      // session (the promotion drain carries the same caveat). An unreleased
-      // lock self-heals when its connection closes; warn so a stuck sweep is
-      // attributable rather than silent.
-      const unlocked = await this.prisma
-        .$queryRaw<
-          Array<{ unlocked: boolean }>
-        >(Prisma.sql`SELECT pg_advisory_unlock(${DEMAND_VOCABULARY_ADVISORY_LOCK_KEY}) AS unlocked`)
-        .catch(() => null);
-      if (!unlocked?.[0]?.unlocked) {
-        this.logger.warn(
-          'Demand vocabulary advisory unlock did not release (pooled-session mismatch; lock clears when its connection closes)',
-        );
-      }
-    }
+    return outcome.result;
   }
 
   private async sweep(options: {

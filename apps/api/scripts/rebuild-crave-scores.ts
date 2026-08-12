@@ -1,6 +1,7 @@
 import 'dotenv/config';
 import { PrismaClient } from '@prisma/client';
 import { PublicCraveScoreService } from '../src/modules/content-processing/public-crave-score/public-crave-score.service';
+import { AdvisoryLockService } from '../src/shared/advisory-lock/advisory-lock.service';
 import { RescoreCoordinatorService } from '../src/modules/content-processing/public-crave-score/rescore-coordinator.service';
 import { LoggerService } from '../src/shared/logging/logger.interface';
 
@@ -37,6 +38,7 @@ async function main(): Promise<void> {
       prisma as never,
       consoleLogger as never,
       scorer,
+      new AdvisoryLockService(),
     );
     coordinator.onModuleInit();
     await coordinator.markDirty('manual rebuild-crave-scores script');

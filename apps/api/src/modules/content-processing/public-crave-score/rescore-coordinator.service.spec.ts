@@ -1,4 +1,8 @@
 import { RescoreCoordinatorService } from './rescore-coordinator.service';
+import {
+  grantingAdvisoryLock,
+  heldAdvisoryLock,
+} from '../../../shared/testing/advisory-lock-doubles';
 
 /**
  * §12.6 singleton-rescorer specs: collection marks dirty; ONE advisory-locked
@@ -13,13 +17,9 @@ function build(options: { dirty?: boolean; locked?: boolean } = {}) {
     rescoreState: {
       findUnique: jest.fn().mockResolvedValue({ dirty: options.dirty ?? true }),
     },
-    $queryRaw: jest.fn((strings: TemplateStringsArray) => {
-      const sql = strings.join('?');
-      if (sql.includes('pg_try_advisory_lock')) {
-        return Promise.resolve([{ locked: options.locked !== true }]);
-      }
-      return Promise.resolve([]);
-    }),
+    // The coordinator issues NO lock SQL of its own any more — the shared
+    // helper owns the lock, on its own dedicated session.
+    $queryRaw: jest.fn(() => Promise.resolve([])),
     $executeRaw: jest.fn((strings: TemplateStringsArray) => {
       executed.push(strings.join('?'));
       return Promise.resolve(1);
@@ -40,6 +40,7 @@ function build(options: { dirty?: boolean; locked?: boolean } = {}) {
     prisma as never,
     logger as never,
     craveScore as never,
+    options.locked === true ? heldAdvisoryLock() : grantingAdvisoryLock(),
   );
   service.onModuleInit();
   return { service, prisma, craveScore, logger, executed };

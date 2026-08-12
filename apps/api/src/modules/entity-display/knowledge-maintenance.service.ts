@@ -1,7 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { Cron, CronExpression } from '@nestjs/schedule';
-import { Prisma } from '@prisma/client';
-import { PrismaService } from '../../prisma/prisma.service';
+import { AdvisoryLockService } from '../../shared/advisory-lock/advisory-lock.service';
 import { isEnvFlagEnabled } from '../../shared/config/env-flag';
 import { LabelSweepService } from './label-sweep.service';
 import { VocabularyGenerator } from './vocabulary-generator';
@@ -63,7 +62,7 @@ export class KnowledgeMaintenanceService {
     private readonly labelSweep: LabelSweepService,
     private readonly vocabulary: VocabularyGenerator,
     private readonly satisfies: ConceptSatisfiesService,
-    private readonly prisma: PrismaService,
+    private readonly advisoryLock: AdvisoryLockService,
   ) {}
 
   onModuleInit(): void {
@@ -81,18 +80,23 @@ export class KnowledgeMaintenanceService {
   }
 
   async runOnce(trigger: 'cron' | 'boot' | 'manual'): Promise<void> {
-    // CROSS-PROCESS single runner. The loser skips this pass entirely; every
-    // pass in the rail is watermark-driven, so the next tick simply picks up
-    // whatever the winner did not reach — there is nothing to queue.
-    const lock = await this.prisma.$queryRaw<Array<{ locked: boolean }>>(
-      Prisma.sql`SELECT pg_try_advisory_lock(${KNOWLEDGE_MAINTENANCE_ADVISORY_LOCK_KEY}) AS locked`,
+    // CROSS-PROCESS single runner, on a DEDICATED session. The loser skips
+    // this pass entirely; every pass in the rail is watermark-driven, so the
+    // next tick simply picks up whatever the winner did not reach — there is
+    // nothing to queue. (The lock used to be taken and released through the
+    // shared connection POOL, which released nothing and stranded the rail.)
+    const outcome = await this.advisoryLock.withAdvisoryLock(
+      KNOWLEDGE_MAINTENANCE_ADVISORY_LOCK_KEY,
+      () => this.runPass(trigger),
     );
-    if (!lock[0]?.locked) {
+    if (!outcome.acquired) {
       this.logger.log(
         `knowledge maintenance skipped trigger=${trigger} (another process holds the rail)`,
       );
-      return;
     }
+  }
+
+  private async runPass(trigger: 'cron' | 'boot' | 'manual'): Promise<void> {
     const startedAt = Date.now();
     try {
       for (const locale of this.labelSweep.sweepLocales()) {
@@ -101,7 +105,7 @@ export class KnowledgeMaintenanceService {
           generator: this.vocabulary,
         });
         this.logger.log(
-          `maintenance sweep locale=${locale} due=${sweep.due} written=${sweep.written} banked=${sweep.surfacesBanked} blocked=${sweep.surfacesBlocked}`,
+          `maintenance sweep locale=${locale} due=${sweep.due} written=${sweep.written} banked=${sweep.surfacesBanked} wonOnAppeal=${sweep.surfacesWonOnAppeal} blocked=${sweep.surfacesBlocked}`,
         );
       }
       const judged = await this.satisfies.run({
@@ -119,21 +123,6 @@ export class KnowledgeMaintenanceService {
           error instanceof Error ? error.message : String(error)
         }`,
       );
-    } finally {
-      // Best-effort release; a pooled connection MAY not be the acquiring
-      // session (same caveat as the promotion drain). An unreleased lock
-      // self-heals when the connection closes; log so a stuck rail is
-      // attributable rather than mysterious.
-      const released = await this.prisma
-        .$queryRaw<
-          Array<{ unlocked: boolean }>
-        >(Prisma.sql`SELECT pg_advisory_unlock(${KNOWLEDGE_MAINTENANCE_ADVISORY_LOCK_KEY}) AS unlocked`)
-        .catch(() => [{ unlocked: false }]);
-      if (!released[0]?.unlocked) {
-        this.logger.warn(
-          'knowledge maintenance advisory lock not released by this session',
-        );
-      }
     }
   }
 }

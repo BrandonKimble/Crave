@@ -45,7 +45,7 @@ import { Inject, Injectable, Optional } from '@nestjs/common';
 import { Cron, CronExpression } from '@nestjs/schedule';
 import { PlaceGeometryPromotion, Prisma } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
-import { LoggerService } from '../../shared';
+import { AdvisoryLockService, LoggerService } from '../../shared';
 import {
   PolygonFetchResult,
   TOMTOM_CHAIN_PROBE,
@@ -105,6 +105,7 @@ export class PlacesPromotionService {
   constructor(
     private readonly prisma: PrismaService,
     @Inject(TOMTOM_CHAIN_PROBE) private readonly probe: TomtomChainProbe,
+    private readonly advisoryLock: AdvisoryLockService,
     loggerService: LoggerService,
     // §24 Task 3: SpendCampaignService is @Global (SharedServicesModule) —
     // every real app graph has it. Optional so unit-test harnesses that
@@ -202,39 +203,19 @@ export class PlacesPromotionService {
     }
     this.draining = true;
     try {
-      // CROSS-PROCESS single drainer: pg_try_advisory_lock (session-scoped;
-      // same shipped pattern as rescore-coordinator). Two processes (the
-      // worker's cron + any script/second dyno) can never drain — and spend
-      // the governed vendor pools — concurrently; the loser simply skips
-      // this pass (the queue is the lateness buffer, next tick retries).
-      const lock = await this.prisma.$queryRaw<Array<{ locked: boolean }>>(
-        Prisma.sql`
-          SELECT pg_try_advisory_lock(${PROMOTION_DRAIN_ADVISORY_LOCK_KEY}) AS locked
-        `,
+      // CROSS-PROCESS single drainer. Two processes (the worker's cron + any
+      // script/second dyno) can never drain — and spend the governed vendor
+      // pools — concurrently; the loser simply skips this pass (the queue is
+      // the lateness buffer, next tick retries). The lock lives on a
+      // DEDICATED session (AdvisoryLockService): taken through the shared
+      // pool, the release landed on a different connection and stranded the
+      // lock, which permanently disabled the drain.
+      const outcome = await this.advisoryLock.withAdvisoryLock(
+        PROMOTION_DRAIN_ADVISORY_LOCK_KEY,
+        () => this.drainPass(now),
       );
-      if (!lock[0]?.locked) {
+      if (!outcome.acquired) {
         this.logger.info('Promotion drain skipped (another process drains)');
-        return;
-      }
-      try {
-        await this.drainPass(now);
-      } finally {
-        // Best-effort release; a pooled connection MAY not be the acquiring
-        // session (rescore-coordinator has the same caveat). An unreleased
-        // lock self-heals when the connection closes; warn so a stuck drain
-        // is attributable.
-        const unlocked = await this.prisma
-          .$queryRaw<Array<{ unlocked: boolean }>>(
-            Prisma.sql`
-              SELECT pg_advisory_unlock(${PROMOTION_DRAIN_ADVISORY_LOCK_KEY}) AS unlocked
-            `,
-          )
-          .catch(() => null);
-        if (!unlocked?.[0]?.unlocked) {
-          this.logger.warn(
-            'Promotion drain advisory unlock did not release (pooled-session mismatch; lock clears when its connection closes)',
-          );
-        }
       }
     } finally {
       this.draining = false;
@@ -249,15 +230,16 @@ export class PlacesPromotionService {
    * never drawn concurrently; if either is held, the newborn simply waits
    * for the hourly sweep — the queue is the lateness buffer. Never throws.
    */
-  // NO CROSS-PROCESS ADVISORY LOCK HERE (red-team 2026-08-01, BLOCKER): the
-  // drain's lock is session-scoped but acquired/released over a CONNECTION
-  // POOL, so a mismatched release leaks it until that connection closes —
-  // and taking it PER BIRTH (on the api process, from every settle) made a
-  // rare leak likely, which would silently starve every drain in every
-  // process forever. A single targeted row needs no cross-process mutex
-  // anyway: the governed pool is the spend gate, `promoted_at IS NULL`
-  // bounds duplication to at most one wasted draw on a genuine race, and
-  // the in-process latch still prevents fighting this process's own sweep.
+  // NO CROSS-PROCESS ADVISORY LOCK HERE. The original 2026-08-01 reason —
+  // the pooled acquire/release leaked the lock, so taking it per birth made
+  // a permanent drain-starving leak likely — IS FIXED (R1, 2026-08-11: the
+  // lock now lives on a dedicated session and cannot strand). The decision
+  // stands on its own remaining merits: a single targeted row needs no
+  // cross-process mutex — the governed pool is the spend gate,
+  // `promoted_at IS NULL` bounds duplication to at most one wasted draw on a
+  // genuine race, and the in-process latch still prevents fighting this
+  // process's own sweep. What a lock WOULD add here is a dedicated
+  // connection opened on the hot birth path, per settle, for one row.
   private async promoteNewborn(placeId: string): Promise<void> {
     if (this.draining) {
       // The hourly sweep owns this tick; its unfiltered WHERE picks the

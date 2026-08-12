@@ -181,6 +181,12 @@ export default tseslint.config(
       // THE TomTom vendor door, and the config layer that holds its key.
       'src/modules/places/tomtom-chain-probe.adapter.ts',
       'src/config/configuration.ts',
+      // THE ONE OWNER of pg advisory locks, and the two specs that must
+      // hold a lock from a SECOND session to prove the mechanism is a real
+      // cross-process fact. Nothing else may spell the lock functions.
+      'src/shared/advisory-lock/advisory-lock.service.ts',
+      'src/shared/advisory-lock/advisory-lock.integration.spec.ts',
+      'src/modules/entity-display/knowledge-maintenance-lock.integration.spec.ts',
       // The invariant registry holds forbidden patterns AS DATA — its
       // mutations are the defects the rules must reject, spelled out so the
       // harness can plant them. Linting the crime-scene photos as crimes
@@ -362,6 +368,28 @@ export default tseslint.config(
             "VariableDeclarator[init.object.name='process'][init.property.name='env'][id.type='Identifier']",
           message:
             'Aliasing process.env hides which variables are read from it. Call resolveAppEnv()/normalizeAppEnv() from shared/config/app-env, or read the specific variable inline.',
+        },
+        {
+          // A SESSION LOCK MUST NOT MEET A CONNECTION POOL. pg advisory locks
+          // belong to the backend that took them; taken through the pooled
+          // PrismaService the release lands on a different connection and
+          // frees nothing, and Prisma never closes a pooled connection — so
+          // the lock strands for the life of the process and the lane it
+          // guards is dead, reporting zeros. Measured 25/25 failed
+          // round-trips under 8-way pool traffic (A0 R1, 2026-08-11).
+          //
+          // SCOPED TO THE SESSION-LOCK FUNCTIONS ONLY. `pg_advisory_xact_lock`
+          // is deliberately NOT matched: a transactional lock releases at
+          // COMMIT/ROLLBACK and cannot be stranded at all, which is the better
+          // shape wherever the guarded work fits inside a transaction. Two
+          // sites already use it correctly (the per-poll leaderboard rebuild
+          // and the demand-aggregate day slice) and flagging them would be a
+          // false positive — and a rule with false positives gets disabled
+          // rather than obeyed.
+          selector:
+            'Literal[value=/pg_(try_)?advisory_(un)?lock/], TemplateElement[value.raw=/pg_(try_)?advisory_(un)?lock/]',
+          message:
+            'Advisory locks are session-scoped and the shared Prisma client is POOLED — an acquire/release pair across it strands the lock and permanently disables the lane. Use AdvisoryLockService.withAdvisoryLock(key, fn) from shared/advisory-lock, which holds a dedicated single connection for the lock\u0027s lifetime.',
         },
         {
           // A dynamic import is an import; no-restricted-imports cannot see it.

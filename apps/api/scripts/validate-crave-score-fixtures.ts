@@ -8,6 +8,7 @@ import 'dotenv/config';
 import { PrismaClient } from '@prisma/client';
 import { writeFileSync } from 'fs';
 import { join } from 'path';
+import { AdvisoryLockService } from '../src/shared/advisory-lock/advisory-lock.service';
 import { RescoreCoordinatorService } from '../src/modules/content-processing/public-crave-score/rescore-coordinator.service';
 import {
   PublicCraveScoreService,
@@ -733,6 +734,7 @@ async function runDbSmokeCheck(): Promise<void> {
     prisma as never,
     noopLogger as never,
     scorer,
+    new AdvisoryLockService(),
   );
   coordinator.onModuleInit();
   await coordinator.markDirty('validate-crave-score-fixtures --with-db');
