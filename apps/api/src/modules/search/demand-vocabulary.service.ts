@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import { EntityType } from '@prisma/client';
+import { EntityType, Prisma } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { LoggerService } from '../../shared';
 import { LLMService } from '../external-integrations/llm/llm.service';
@@ -45,6 +45,29 @@ import { localeLookupChain } from '../../shared/locale';
  * names a different concept is refused.
  */
 
+/**
+ * pg advisory-lock key for the demand-vocabulary sweep — SINGLE SWEEPER
+ * ACROSS PROCESSES. Same convention as PROMOTION_DRAIN_ADVISORY_LOCK_KEY
+ * (0x706f6c79 'poly') and RESCORE_ADVISORY_LOCK_KEY (0x63726176 'crav');
+ * this one spells 'vocb'.
+ *
+ * WHY IT IS NEEDED (red team F8). This sweep reads the unmet-ask ledger,
+ * computes a known-set in APPLICATION MEMORY (the fold law: 'do we already
+ * know this word' cannot be asked in SQL), and then spends an LLM judge call
+ * per surviving term. Two sweepers — the worker's cron and an operator
+ * running scripts/run-demand-vocabulary.ts, which is exactly how this is
+ * used — read the same ledger, build the same known-set BEFORE either has
+ * banked anything, and both pay for the same judgement on every term. The
+ * known-set is a read-then-write window that no unique constraint closes:
+ * `addSurfaces` makes the WRITE idempotent, so nothing is corrupted, but the
+ * SPEND is not idempotent at all and that is the whole cost of this lane.
+ * The loser skips the pass; the ledger is durable and the next tick retries.
+ *
+ * Not a product number — what changes it: a key collision with another
+ * advisory-locked job, never tuning.
+ */
+export const DEMAND_VOCABULARY_ADVISORY_LOCK_KEY = 0x766f6362; // 'vocb'
+
 /** Terms asked at least this many times before we spend a judge call. */
 const MIN_ASKS = 1;
 
@@ -60,6 +83,16 @@ export interface DemandVocabularySummary {
   refused: number;
   leftAsDemand: number;
 }
+
+/** A sweep that did not run reports zeros — never a partial-looking summary
+ *  that a caller could mistake for "there was nothing to learn". */
+const EMPTY_SUMMARY = (): DemandVocabularySummary => ({
+  termsConsidered: 0,
+  judged: 0,
+  learned: 0,
+  refused: 0,
+  leftAsDemand: 0,
+});
 
 @Injectable()
 export class DemandVocabularyService {
@@ -77,6 +110,39 @@ export class DemandVocabularyService {
   async run(
     options: { limit?: number; dryRun?: boolean } = {},
   ): Promise<DemandVocabularySummary> {
+    const lock = await this.prisma.$queryRaw<Array<{ locked: boolean }>>(
+      Prisma.sql`SELECT pg_try_advisory_lock(${DEMAND_VOCABULARY_ADVISORY_LOCK_KEY}) AS locked`,
+    );
+    if (!lock[0]?.locked) {
+      this.logger.info(
+        'Demand vocabulary sweep skipped (another process is sweeping)',
+      );
+      return EMPTY_SUMMARY();
+    }
+    try {
+      return await this.sweep(options);
+    } finally {
+      // Best-effort release; a pooled connection MAY not be the acquiring
+      // session (the promotion drain carries the same caveat). An unreleased
+      // lock self-heals when its connection closes; warn so a stuck sweep is
+      // attributable rather than silent.
+      const unlocked = await this.prisma
+        .$queryRaw<
+          Array<{ unlocked: boolean }>
+        >(Prisma.sql`SELECT pg_advisory_unlock(${DEMAND_VOCABULARY_ADVISORY_LOCK_KEY}) AS unlocked`)
+        .catch(() => null);
+      if (!unlocked?.[0]?.unlocked) {
+        this.logger.warn(
+          'Demand vocabulary advisory unlock did not release (pooled-session mismatch; lock clears when its connection closes)',
+        );
+      }
+    }
+  }
+
+  private async sweep(options: {
+    limit?: number;
+    dryRun?: boolean;
+  }): Promise<DemandVocabularySummary> {
     const limit = options.limit ?? 100;
     const dryRun = options.dryRun ?? false;
     const summary: DemandVocabularySummary = {
@@ -250,7 +316,20 @@ export class DemandVocabularyService {
                 // (an undecidable one-worder) banks 'und' — the universal
                 // slice every language's chain ends in, which is the honest
                 // answer when nobody can say what language a word was in.
-                locale: termLocale ?? undefined,
+                //
+                // LANGUAGE ONLY, NEVER A REGION (red team F8b). An 'es-MX'
+                // ask banks 'es'. The reason is the lookup chain, which is
+                // the only thing that ever reads this tag:
+                // localeLookupChain('es-MX') is ['es-mx','es','und'] and
+                // localeLookupChain('es') is ['es','und'] — so a row banked
+                // 'es-MX' is reachable ONLY by another es-MX caller, and the
+                // word we just paid a judge call to learn would be invisible
+                // to every other Spanish speaker and to ingestion out of an
+                // 'es' document. A region is real information about the
+                // ASKER; it is not information about the WORD, and this row
+                // is a claim about a word. (The generator's rows are the
+                // same shape for the same reason.)
+                locale: bankableLocale(termLocale),
                 source: 'query_banking' as const,
               },
             ],
@@ -265,7 +344,7 @@ export class DemandVocabularyService {
       summary.learned += 1;
       this.logger.info('Demand term learned as vocabulary', {
         term,
-        locale: termLocale ?? 'und',
+        locale: bankableLocale(termLocale) ?? 'und',
         entity: matched.name,
         asks: Number(row.asks),
         dryRun,
@@ -278,4 +357,15 @@ export class DemandVocabularyService {
     });
     return summary;
   }
+}
+
+/**
+ * The tag a demand term may be BANKED under: the base language, or nothing.
+ * See the banking site for why the region is dropped (F8b) — a region names
+ * the asker, and the lookup chain would make an 'es-MX' row unreachable to
+ * every other Spanish speaker.
+ */
+function bankableLocale(detected: string | null): string | undefined {
+  const base = detected?.trim().toLowerCase().split(/[-_]/)[0];
+  return base && base !== 'und' ? base : undefined;
 }
