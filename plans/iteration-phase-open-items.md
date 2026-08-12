@@ -217,11 +217,10 @@ L3. **COVER-LINKER (locked 2026-08-10, owner delegated).** Whole-query span
    NOT draining a foreign backlog. Ideal shape: boot inspects queues and
    refuses/pauses spend-bearing drains that no active budget owns.
 
-13b. **Tier-2 alias accent veto** (⭐04 handoff, my lane, corpus-independent):
-   surface matching predates the accent-veto commits — a banked 'cơm chay'
-   can alias-claim 'cơm cháy' at 0.95. Fix = the same both-sides-accented-
-   mismatch veto in selectBestAliasMatch (forms already in hand). QUEUE
-   AFTER the spine-correction agent lands (same file territory).
+13b. **DONE (13b31da2c)** — tier-2 accent veto: one shared
+   accentEvidenceFor across both tiers; 52 claims changed, all 52
+   hand-reviewed (đậu no longer claims oil, bò kho no longer claims
+   beef jerky); gate 64/64. The accent chain is closed end to end.
 13c. **Squeeze-claim judge question** (⭐04 handoff): accent-free 'bo ne'
    squeeze can claim a genuinely-English 'Bone' when sole owner — vi-lane
    judge-inheritance design question, take up with the ladder/step work.
@@ -239,7 +238,11 @@ L3. **COVER-LINKER (locked 2026-08-10, owner delegated).** Whole-query span
    45/58. Fixture expectation updates belong to the convergence lane;
    my agents told not to touch them.
 
-13f. **Surface retraction lane (my half of the 326-collision plan;
+13f. **DONE-PENDING-RUN (814257c9c)** — retraction machinery built and
+   seeded-proven (retain hearings work single-claimant; circular-evidence
+   bug found by execution and fixed — the claimant card listed the judged
+   word as its own proof). feed-retraction-candidates.ts stays DRY-RUN
+   until post-v8 dedupe per the joint sequencing. Original spec: surface retraction lane (my half of the 326-collision plan;
    cross-ruled with ⭐04 2026-08-12)**: mis-banked surfaces are wrong
    word→concept claims — retraction = the EXISTING claims machinery
    (judge + deprecate-with-memory), extended to hear SINGLE-CLAIMANT
