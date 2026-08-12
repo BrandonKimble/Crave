@@ -707,19 +707,58 @@ export const INVARIANTS: readonly Invariant[] = [
     ],
   },
 
+  // ── CONCURRENCY ──────────────────────────────────────────────────────
+  {
+    id: 'concurrency.a-session-lock-never-meets-a-pool',
+    statement:
+      "pg_try_advisory_lock / pg_advisory_unlock are spellable only inside AdvisoryLockService, which holds one dedicated connection for the lock's lifetime. (pg_advisory_xact_lock is unrestricted — a transactional lock cannot strand.)",
+    incident:
+      'Four single-runner lanes (demand vocabulary, the polygon promotion drain, the knowledge rail, the global rescore) took their advisory lock through the POOLED PrismaService: the release landed on a different backend and freed nothing. Measured 25/25 failed round-trips under 8-way pool traffic. Prisma never closes a pooled connection, so the "it self-heals when the connection closes" comment each site carried was false — the lock stranded for the life of the process, every later pass lost the try-lock, and run() returned its EMPTY_SUMMARY zeros forever, which reads exactly like "there was nothing to do".',
+    level: 'lint',
+    mechanism: 'eslint.config.mjs — the session-advisory-lock selector',
+    check: {
+      command: `npx eslint ${SCRATCH}`,
+      reads: 'the advisory-lock selector',
+    },
+    mutations: [
+      {
+        // The defect exactly as it occurred, in a template literal...
+        file: SCRATCH,
+        content:
+          'export const sql = (k: number) => `SELECT pg_try_advisory_lock(${k})`;\n',
+      },
+      {
+        // ...and as a plain string, which the TemplateElement half misses.
+        file: SCRATCH,
+        content: "export const sql = 'SELECT pg_advisory_unlock(1)';\n",
+      },
+    ],
+    legitimate: [
+      {
+        // THE TRANSACTIONAL LOCK IS THE OTHER RIGHT ANSWER, and two live
+        // sites use it. A rule that flagged it would be telling people to
+        // replace a strand-proof mechanism with a merely careful one.
+        file: SCRATCH,
+        content:
+          "export const sql = 'SELECT pg_advisory_xact_lock(hashtext($1))';\n",
+      },
+    ],
+  },
+
   // ── SOURCE ───────────────────────────────────────────────────────────
   {
     id: 'source.files-are-text',
     statement:
-      'No source file contains a raw NUL byte — a file a person cannot grep or diff is a file nobody reviews.',
+      'No file a person can review — every tracked or not-yet-added file in the REPOSITORY, minus a short denylist of formats that are binary by definition — contains a raw NUL byte. A file a person cannot grep or diff is a file nobody reviews.',
     incident:
       'Two files carried a literal NUL typed into a dedupe-key template (`${locale}\\0${form}`). It compiled and ran correctly, and made both files BINARY to content sniffing: grep refused them without -a, git diff printed "Binary files differ" instead of the change, and the line could not be code-reviewed. The escape `\\0` produces the identical string. Nothing in a test run reads source as BYTES, so nothing could ever have noticed.',
     level: 'behaviour',
     mechanism:
-      'scripts/check-source-is-text.ts — walks src/scripts/test/prisma, reads each file as a Buffer, refuses a zero byte (and refuses to pass having scanned nothing)',
+      'scripts/check-source-is-text.ts — enumerates the repository with `git ls-files --cached --others --exclude-standard`, reads each file as a Buffer and refuses a zero byte (and refuses to pass having scanned nothing). SCOPE, stated exactly, because it used to be narrower than the name (F-infra, 2026-08-11): it walked four directories under apps/api and matched eleven extensions, so a NUL in a .sh, a .txt, the mobile app or the repo-root scripts passed by never being looked at. Scope is now the whole repo by DENYLIST — the ONLY exclusions are git-ignored paths (node_modules, dist, build output) and the BINARY_EXTENSIONS list in the script (images, fonts, archives, media, key material). A new language or config format is covered the day it is committed. Measured 3,257 files in 0.7s.',
     check: {
       command: 'npx ts-node -T scripts/check-source-is-text.ts',
-      reads: 'the bytes of every source file, which no other gate does',
+      reads:
+        'the bytes of every reviewable file in the repo, which no other gate does',
     },
     mutations: [
       {
@@ -729,6 +768,14 @@ export const INVARIANTS: readonly Invariant[] = [
         // text; the harness writes the real byte into the probe.
         content:
           'export const key = (a: string, b: string) => `${a}\u0000${b}`;\n',
+      },
+      {
+        // THE SCOPE ITSELF, proven: a shell script at the REPO ROOT — outside
+        // apps/api, with an extension the old scanner never matched. Before
+        // the repo-wide rewrite this mutation passed, which is the whole
+        // finding.
+        file: '../../scripts/invariant-probe-nul.sh',
+        content: 'echo "a\u0000b"\n',
       },
     ],
     legitimate: [
