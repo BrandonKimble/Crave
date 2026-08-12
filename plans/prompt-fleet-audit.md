@@ -96,3 +96,20 @@ A THING from WHAT IT IS MADE OF, in the direction the label reads.
   to all judge prompts.
 - The prompt-ab.ts harness shape (real docs + must/must-not + --repeat
   flake detection) ports directly to query, entity-match, chooser.
+
+## 326-collision plan — FINAL (cross-session rulings folded in, 2026-08-12)
+
+Provenance established by ⭐05 (queried rows): the mis-banked-surface class
+came from the 2026-08-09 v4-era VOCABULARY SWEEP, not extraction; their
+spine fix closed a different tap. Three plan-shaping facts: (a) some
+collisions are CORRECT and judge-v3-UPHELD (bún→vermicelli) — retraction
+candidates must exclude judge-stamped rows or settled law re-litigates;
+(b) the truly wrong rows (bánh cuộn→wrap) are v4-era UNSTAMPED; (c) the
+still-open hole is that ONLY CONTESTED claims get hearings — an uncontested
+wrong surface never gets heard. LANE SPLIT: ⭐05 owns retraction (their
+claims registry + rehear machinery, extended to hear single-claimant
+suspicious rows; refusal memory exists there via status+judge_version);
+this lane owns entity merges — refusal ledger, food+ingredient widening,
+squeeze-key lane. SEQUENCE (⭐05 preference, pending owner ratification):
+v8 activation → dedupe + retraction → language wave (sweep a deduped
+entity set so fresh vocabulary isn't churned through post-hoc merges).
