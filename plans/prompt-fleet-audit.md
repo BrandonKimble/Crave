@@ -113,3 +113,22 @@ this lane owns entity merges — refusal ledger, food+ingredient widening,
 squeeze-key lane. SEQUENCE (⭐05 preference, pending owner ratification):
 v8 activation → dedupe + retraction → language wave (sweep a deduped
 entity set so fresh vocabulary isn't churned through post-hoc merges).
+
+## MASTER SEQUENCE (owner mandate 2026-08-12) — no deferrals, ideal shapes only
+
+P1 (v8 batches cooking): compile+verify red-team fixes; design calls ideal
+(concurrent locale sweeps w/ period-sized deadlines; alias evidence to the
+single judge); prompt-queue backlog (chooser, dish-knowledge, cuisine,
+attribute-placement, ingredient-sense label test); dedupe groundwork
+(refusal ledger, ingredient widening) staged for post-v8.
+P2: WIDENING RED-TEAM LOOP — lens 1 = phase-1 work; lens 2 = every path
+outward from touched code + RETROSPECTIVE MULTILINGUAL-COORDINATION AUDIT
+(every change in this arc: should it have gone through the multilingual
+lens, did it, rehash+rederive with ⭐05 where not); widen until a full pass
+finds nothing serious. Termination = quiet pass, not a count.
+P3 (v8 drained): exhaustive DATA red team — raw mentions vs v8 output vs
+expected, both directions (loss + junk), anomalies grounded in real text;
+quote-vs-actual (first live test of replay-prior estimation); owner
+decisions; activation; GC; enrichment backfill.
+P4: dedupe (mine) + retraction (⭐05) per ratified lane split → language
+wave handed to ⭐05, who audits those runs (calibration law applies).
