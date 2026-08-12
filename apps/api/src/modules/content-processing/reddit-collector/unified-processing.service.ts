@@ -1079,9 +1079,12 @@ export class UnifiedProcessingService implements OnModuleInit {
     try {
       for (const mention of llmOutput.mentions) {
         this.sanitizeMention(mention);
-        // THE LANGUAGE THE MENTION WAS SAID IN, carried onto every entity it
-        // produces: it scopes the surface slice resolution may ground
-        // through, and it is the locale the banking sites tag new forms with.
+        // THE LANGUAGE THE SOURCE IS CONFIGURED IN, carried onto every entity
+        // this mention produces. It is READER CONTEXT and nothing else: it
+        // scopes the surface slice resolution may ground THROUGH (an es
+        // document reaches es words and the und corpus, never vi's). It is
+        // NOT the tag the banking sites write — extraction observes a string
+        // without knowing its language, and its rows stay 'und'.
         const documentLocale = this.mentionDocumentLocale(
           mention,
           documentLocaleById,
@@ -1681,12 +1684,25 @@ export class UnifiedProcessingService implements OnModuleInit {
                 // Banking it makes the next occurrence a free lexical hit.
                 // Source 'extraction': a real person wrote this word about this
                 // thing, so it is TESTIMONY and correctly exempt from P0-b's
-                // collision guard. TAGGED with the language of the document it
-                // was read out of (the community's declaration, stamped on the
-                // row at collection time) — a fact we configured, not a guess.
-                // The read half moved with it: the recall scope is now
-                // localeLookupChain(documentLocale), so an 'en' form banked
-                // here is visible to every en document AND the und corpus.
+                // collision guard.
+                //
+                // UNTAGGED ('und'), AND THAT IS THE PRINCIPLE, NOT A GAP.
+                // A source's configured language is READER CONTEXT — it decides
+                // which registry slices this resolution CONSULTS (see
+                // documentLocale on the resolution input, which still scopes
+                // every recall read below). It is never WORD IDENTITY.
+                // Extraction observes a string in a document; it does not know
+                // what language the string is in. r/austinfood is configured
+                // English and is full of `birria`, `phở`, `bánh mì` and
+                // `camarones` — tagging those `en` because the SUBREDDIT is
+                // English asserts a fact about a word from a fact about its
+                // container, and the assertion then feeds back as ground truth:
+                // 10,670 rows minted that way made 'bún đậu mắm tôm' detect as
+                // ENGLISH at confidence 1.0, and 'cat'/'pan'/'crema' flip to
+                // vi/es/vi against an explicit en-US request prior.
+                // Only the vocabulary GENERATOR (asked a per-language question:
+                // "what is this called in Spanish?") and the JUDGE produce
+                // language-KNOWLEDGE. Only their rows may carry a language tag.
                 //
                 // The id is taken from tempIdToEntityIdMap, NEVER from
                 // resolution.entityId: the time-of-use revalidation above
@@ -1713,8 +1729,6 @@ export class UnifiedProcessingService implements OnModuleInit {
                       revalidatedId,
                       surfaces.map((surface) => ({
                         form: surface,
-                        locale:
-                          resolution.originalInput?.documentLocale ?? undefined,
                         source: 'extraction' as const,
                       })),
                       { touchLastUpdated: true },
@@ -2089,18 +2103,20 @@ export class UnifiedProcessingService implements OnModuleInit {
                 // A1: extraction banking goes through THE surface writer,
                 // which marks the dense vector stale and touches
                 // last_updated when the write actually lands a row.
-                // Locale is the DOCUMENT'S, not the prompt's: the extraction
-                // prompt still emits no per-surface language, and inventing
-                // one would be the fabrication the old comment refused. The
-                // document's language is configuration we already hold, so
-                // the form is tagged with the language it was written in.
+                // UNTAGGED ('und'). The document's language is READER CONTEXT
+                // — it decides which surface slice this resolution consults
+                // (documentLocale, still passed on every read) — and never
+                // word identity. An English subreddit is full of `birria` and
+                // `phở`; the container's configured language says nothing
+                // about the word, and asserting otherwise is what taught the
+                // detector that Vietnamese is English. Language-KNOWLEDGE has
+                // exactly two producers, the vocabulary generator and the
+                // judge, and neither of them is here.
                 await addSurfaces(
                   tx,
                   entityId,
                   resolution.validatedAliases.map((alias) => ({
                     form: alias,
-                    locale:
-                      resolution.originalInput?.documentLocale ?? undefined,
                     source: 'extraction' as const,
                   })),
                   { touchLastUpdated: true },
@@ -2235,6 +2251,10 @@ export class UnifiedProcessingService implements OnModuleInit {
                 // insert now carries only entity columns.
                 // markEmbeddingStale:false — a brand-new row has no
                 // embedding to invalidate.
+                // UNTAGGED ('und'), like the other two extraction sites: the
+                // document's declared language is the slice we READ through,
+                // never a claim about what language the word we just heard is
+                // in.
                 const createSurfaces = Array.from(
                   new Set(aliasSet.filter(Boolean)),
                 );
@@ -2244,8 +2264,6 @@ export class UnifiedProcessingService implements OnModuleInit {
                     createdEntity.entityId,
                     createSurfaces.map((alias) => ({
                       form: alias,
-                      locale:
-                        resolution.originalInput?.documentLocale ?? undefined,
                       source: 'extraction' as const,
                     })),
                     { markEmbeddingStale: false },

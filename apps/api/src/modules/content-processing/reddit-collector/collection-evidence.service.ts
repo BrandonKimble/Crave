@@ -848,8 +848,22 @@ export class CollectionEvidenceService implements OnModuleInit {
    *
    * The community row is the ONLY authority here — nothing sniffs the text.
    * A source's language is something we CONFIGURE when we decide to collect
-   * from it, not something we infer per document, and keeping it that way is
-   * what makes the resulting surface tag a fact rather than a guess.
+   * from it, not something we infer per document.
+   *
+   * WHAT THIS LANGUAGE IS FOR, EXACTLY (corrected 2026-08-11). It is READER
+   * CONTEXT: it decides which slices of the registry ingestion CONSULTS when
+   * it tries to ground a word out of this document (localeLookupChain — an es
+   * document reaches es surfaces and the universal und corpus, never vi's).
+   * It is NOT word identity, and it never becomes the tag on a surface the
+   * extraction sites bank. r/austinfood is configured `en` and is full of
+   * `birria`, `phở` and `camarones`; stamping those `en` because their
+   * CONTAINER is English asserts a fact about a word from a fact about the
+   * room it was said in. That flip ran for one day and minted 10,670 rows
+   * that then fed the language detector as ground truth, which is how
+   * 'bún đậu mắm tôm' came to detect as English at confidence 1.0.
+   * Language-KNOWLEDGE has exactly two producers — the vocabulary generator,
+   * which is ASKED a per-language question, and the judge, which settles a
+   * word claim. Only their rows carry a language tag.
    *
    * An unknown or absent community falls back to the column's own default
    * ('en') rather than inventing a tag: the two paths that can reach here

@@ -135,11 +135,18 @@ const SCRATCH_DISPLAY_FORM = 'zzgate refused word';
 const SCRATCH_FOLD_FORM = 'zzgate creme brulee';
 const SCRATCH_FOLD_MENTION = 'zzgate crème brûlée';
 /**
- * en + active + role='recall' — a form banked EXACTLY as the extraction
- * banking sites now bank one, out of an English document. It must be visible
- * to an English document's grounding; a corpus row cannot prove this because
- * the corpus has no 'en' surfaces yet (locales are und/es/vi only), so the
- * hazard step 5 exists to close would be unfalsifiable without this seed.
+ * en + active + role='recall' — a form banked EXACTLY as the VOCABULARY
+ * GENERATOR banks one: the answer to a per-language question ("what is this
+ * called in English?"), which is the only kind of writer allowed to put a
+ * language on a row. It must be visible to an English document's grounding
+ * and invisible to a Vietnamese one — that is the locale-chain READ, and the
+ * read is what these two fixtures certify.
+ *
+ * IT WAS SEEDED source='extraction' FOR ONE DAY, and that was the write flip
+ * this gate briefly certified: extraction observes a string without knowing
+ * its language, so it tags nothing (see the three banking sites in
+ * unified-processing.service.ts). The fixture keeps its job — an 'en' row is
+ * reachable by en and not by vi — under a writer that can actually mint one.
  */
 const SCRATCH_EN_FORM = 'zzgate freshly banked word';
 
@@ -571,7 +578,7 @@ const FIXTURES: Fixture[] = [
     mention: SCRATCH_EN_FORM,
     documentLocale: 'en',
     expect: { entity: SCRATCH_NAME, tier: 'alias' },
-    note: "THE STEP-4 HAZARD, AS A FIXTURE: a form banked 'en' by the extraction sites must stay visible to English grounding. Under the und-only scope this is RED — which is exactly why the write flip could not land before the read flip",
+    note: "THE LOCALE-CHAIN READ, AS A FIXTURE: a form the vocabulary generator banked 'en' must be visible to an English document's grounding. Under the old und-only scope this is RED — the chain is what makes a language-tagged row reachable at all",
   },
   {
     id: 'doc-09',
@@ -579,7 +586,7 @@ const FIXTURES: Fixture[] = [
     mention: SCRATCH_EN_FORM,
     documentLocale: 'vi',
     expect: UNMATCHED,
-    note: "and the freshly-banked 'en' form is NOT global: a vi document does not see it (chain [vi,und]) — the tag means something",
+    note: "and the generator's 'en' form is NOT global: a vi document does not see it (chain [vi,und]) — the tag means something, which is precisely why only a writer that KNOWS the language may write one",
   },
 ];
 
@@ -617,7 +624,7 @@ async function seedScratchFixtures(prisma: PrismaService): Promise<void> {
        (entity_id, form, form_folded, locale, role, source, confidence, status)
      VALUES ($1::uuid, $2, $3, 'und', 'display', 'sweep', 1, 'active'),
             ($1::uuid, $4, $5, 'und', 'recall',  'sweep', 1, 'active'),
-            ($1::uuid, $6, $7, 'en',  'recall',  'extraction', 1, 'active')
+            ($1::uuid, $6, $7, 'en',  'recall',  'vocabulary', 1, 'active')
      ON CONFLICT (entity_id, locale, form) DO UPDATE
        SET role = EXCLUDED.role, status = EXCLUDED.status`,
     SCRATCH_ENTITY_ID,
