@@ -119,6 +119,22 @@ export interface DetectedLocale {
 }
 
 /**
+ * ONE LANGUAGE, AND HOW MUCH OF THE REGISTRY SAYS SO.
+ *
+ * `entities` is the count of DISTINCT entities that bank this exact folded
+ * text in that language — not the row count. Two rows on one entity (a label
+ * and its search surface) are ONE writer answering ONE question; two
+ * different entities are two independent assertions, and the difference is
+ * exactly what "how sure is the registry" means here.
+ */
+export interface SurfaceLocaleEvidence {
+  /** Base language subtag. Never 'und' — see the index. */
+  language: string;
+  /** Distinct entities banking this fold in `language`. Always ≥ 1. */
+  entities: number;
+}
+
+/**
  * THE REGISTRY-SURFACE ORACLE — the primary short-string language signal.
  *
  * A sentence-trained n-gram detector is the WRONG instrument for a 1–3 word
@@ -130,17 +146,32 @@ export interface DetectedLocale {
  * `vi` surface of broken rice. That is DIRECT EVIDENCE about the language of
  * the text, from our own registry, and it beats every statistical prior.
  *
- * The oracle answers ONE question — "which locales is this exact folded text
- * banked under?" — and is SYNCHRONOUS by contract, because analyzeQuery runs
- * once per query on the hot path and must not become async. Its implementation
- * is a warm in-memory index (SurfaceLocaleIndexService); a caller with no
- * index simply passes nothing and the detector behaves as before.
+ * WHICH ROWS MAY SPEAK (2026-08-11, A0 red team F3/F4). Only rows written by
+ * a producer of language-KNOWLEDGE: the vocabulary GENERATOR, which was asked
+ * a per-language question ("what is this called in Spanish?"), and the JUDGE,
+ * which settled a word claim. Rows written by a producer that merely OBSERVED
+ * a string — extraction, and the demand-banking lane that banks a search term
+ * under whatever language the search was detected in — carry no knowledge
+ * about language and must never reach this index. The second one is the
+ * dangerous one: it closes a loop where a mis-detection banks a row, and the
+ * row then becomes the ground truth that justifies the same mis-detection
+ * forever. Enforced at the index (SurfaceLocaleIndexService), which is the
+ * only place that can see a row's provenance.
+ *
+ * The oracle answers ONE question — "which language is this exact folded text
+ * banked under, and by how many entities?" — and is SYNCHRONOUS by contract,
+ * because analyzeQuery runs once per query on the hot path and must not
+ * become async. Its implementation is a warm in-memory index
+ * (SurfaceLocaleIndexService); a caller with no index simply passes nothing
+ * and the detector behaves as before.
  *
  * It is SELF-LIMITING to short strings without needing a token threshold: the
  * lookup is an EXACT match on the whole text, and a whole sentence is not a
  * banked surface. No arbitrary "≤ N words" constant is required or wanted.
  */
-export type SurfaceLocaleOracle = (foldedText: string) => readonly string[];
+export type SurfaceLocaleOracle = (
+  foldedText: string,
+) => readonly SurfaceLocaleEvidence[];
 
 export interface NegationCue {
   /** The folded cue word. */
@@ -354,35 +385,63 @@ const SCRIPT_PINNED_LANGUAGE: Partial<Record<QueryScript, string>> = {
 };
 
 /**
- * MAY the request locale be echoed as this text's language?
+ * MAY ANYTHING BUT THE SCRIPT TABLE NAME THIS TEXT'S LANGUAGE?
  *
- * Only when the SCRIPT does not contradict it. Every SUPPORTED_LOCALE is
- * written in Latin script — that is a fact about the set, not a list kept
- * beside it: none of `SUPPORTED_LOCALES` appears among SCRIPT_PINNED_LANGUAGE's
- * values, and a language pinned to no non-Latin script is a Latin-script
- * language. So a query in a script that is not Latin cannot be in the
- * requester's locale, and echoing the prior there fabricates a tag.
+ * Only for Latin script. Every SUPPORTED_LOCALE is written in Latin — that is
+ * a fact about the set, not a list kept beside it: none of SUPPORTED_LOCALES
+ * appears among SCRIPT_PINNED_LANGUAGE's values, and a language pinned to no
+ * non-Latin script is a Latin-script language. So for text in any other
+ * script, neither the requester's locale nor the n-gram detector (whose
+ * candidate set IS SUPPORTED_LOCALES) can name an answer that could be right;
+ * both would be fabricating a tag.
  *
- * `other` (letters of a script the table does not enumerate) is treated as
- * non-Latin for the same reason: it is definitionally NOT Latin. Text with no
- * letters at all also reports 'latin' from detectScript and is unaffected.
+ * This used to be `scriptAdmitsRequestPrior`, applied inside two of the
+ * detector arms and not the third — which is how a Cyrillic query came back
+ * `es` at accuracy 0.11 (F9). It is ONE gate now, spent once, before the
+ * detector runs at all.
+ *
+ * `other` (letters of a script the table does not enumerate) is non-Latin for
+ * the same reason: it is definitionally NOT Latin. Text with no letters at
+ * all reports 'latin' from detectScript and is unaffected — the detector
+ * simply finds nothing decisive in it.
  */
-function scriptAdmitsRequestPrior(
-  script: QueryScript,
-  requestBase: string,
-): boolean {
-  const pinned = SCRIPT_PINNED_LANGUAGE[script];
-  if (pinned) return pinned === requestBase;
+function scriptAdmitsLatinLanguage(script: QueryScript): boolean {
   return script === 'latin';
+}
+
+/**
+ * SYMBOLS AND PICTOGRAPHS ARE CONTENT THE FOLD THROWS AWAY (red team F3).
+ *
+ * The surface oracle is an EXACT WHOLE-TEXT lookup, and that is the entire
+ * source of its authority: someone banked this exact word under this exact
+ * language. But the lookup key is `canonicalFold`, which turns every
+ * non-letter/digit run into a space — so 'pan 🌮' folds to 'pan' and comes
+ * back as a confidence-1.0 claim about a string nobody ever banked. The user
+ * typed something more than the word; the match is not exact, and dressing it
+ * up as direct evidence is the same error as the write flip, one layer over.
+ *
+ * PUNCTUATION IS NOT CONTENT, and is deliberately still admitted. "Phil's",
+ * "tex-mex", "St. Marks", "banh mi & pho" are SPELLINGS of the words they
+ * contain, and folding them is the fold doing its job (that is why the
+ * apostrophe strip and the separator collapse exist at all). Symbols and
+ * emoji are not spelling — they are things the user added — so the line is
+ * drawn at `\p{S}` plus the pictographic extension, not at `\p{P}`.
+ *
+ * The empty fold needs no special case: '🌮' folds to '' and matches nothing.
+ */
+const FOLD_DISCARDS_CONTENT = /\p{S}|\p{Extended_Pictographic}/u;
+
+function foldPreservesContent(text: string): boolean {
+  return !FOLD_DISCARDS_CONTENT.test(text);
 }
 
 /**
  * SOFT prior fusion. Order:
  *  1. non-Latin script that pins a language 1:1 → that language (hard).
- *  2. an EXACT registry-surface hit → that surface's locale (direct evidence).
- *  3. a STRONG detector answer → the detector.
- *  4. the request locale, when the script admits it and the detector is weak
- *     or agrees → prior.
+ *  2. an EXACT registry-surface hit, from rows that KNOW a language and with
+ *     enough weight to contradict a stated prior → that language.
+ *  3. a STRONG detector answer, and only for Latin-script text → the detector.
+ *  4. the request locale, when the detector is weak or agrees → prior.
  *  5. nothing (null) — the honest answer, not a guess.
  * Detected tag and request locale are recorded SEPARATELY (R5-5/A10): a
  * Spanish-locale phone types English constantly, and a fabricated tag
@@ -408,17 +467,49 @@ export function fuseLocale(
   // proves nothing about which one was meant, so the oracle abstains and the
   // detector and prior below get their normal turn. `und` is universal, not a
   // language, and never votes.
-  if (surfaceLocales) {
+  if (surfaceLocales && foldPreservesContent(text)) {
     const folded = canonicalFold(text);
-    const languages = new Set<string>();
+    const byLanguage = new Map<string, number>();
     if (folded) {
-      for (const locale of surfaceLocales(folded)) {
-        const base = baseLanguage(locale);
-        if (base && base !== 'und') languages.add(base);
+      for (const evidence of surfaceLocales(folded)) {
+        const base = baseLanguage(evidence.language);
+        if (base && base !== 'und') {
+          byLanguage.set(
+            base,
+            (byLanguage.get(base) ?? 0) + Math.max(1, evidence.entities),
+          );
+        }
       }
     }
-    if (languages.size === 1) {
-      const [only] = languages;
+    // ONE ROW IS ONE OPINION, NOT GROUND TRUTH (red team F3, measured).
+    // A single entity banking this fold in one language is one writer's
+    // answer to one question. That is ample evidence when nobody has said
+    // anything better — but it is NOT enough to contradict a person who
+    // STATED what language they are searching in. Measured on the live
+    // corpus, every one of these is a lone generator row overruling an
+    // explicit en-US prior at confidence 1.0:
+    //   'cat'   -> vi   (cắt/cát, one Vietnamese label)
+    //   'pan'   -> es   (bread, one Spanish label)
+    //   'crema' -> vi   (one Vietnamese label)
+    //   'pie'   -> en   (one English label; it flipped an es-corpus query)
+    // Each is also a perfectly ordinary word in the requester's language,
+    // which is precisely why one row on the other side cannot settle it.
+    // The words that SHOULD beat the phone setting are unaffected because
+    // the registry says them more than once: 'camarones' (2 entities),
+    // 'lengua' (3), 'phở bò' (2). 'cơm tấm' is banked in both es and vi and
+    // abstains on ambiguity, as it already did.
+    const requestBaseForSurface = baseLanguage(requestLocale);
+    if (byLanguage.size === 1) {
+      const [[only, entities]] = [...byLanguage];
+      const contradictsStatedPrior =
+        requestBaseForSurface != null && requestBaseForSurface !== only;
+      if (contradictsStatedPrior && entities < 2) {
+        // Fall through: the detector and the prior get their normal turn.
+        // Deliberately not a weakened 'surface' verdict — the DetectedLocale
+        // contract says a source names WHERE the tag came from, and half of
+        // one row is not where anything came from.
+        return fuseWithoutSurface(text, script, requestLocale);
+      }
       // REGION IS INHERITED FROM THE REQUEST, NEVER INVENTED (R5-5, and the
       // DetectedLocale contract). A surface row is tagged with a base
       // language; when that language is the requester's, their FULL tag is
@@ -433,7 +524,40 @@ export function fuseLocale(
     }
   }
 
+  return fuseWithoutSurface(text, script, requestLocale);
+}
+
+/**
+ * The detector + request-prior half, with no registry evidence in play. Its
+ * own function because the surface branch above has two exits into it: no
+ * usable hit, and a hit too thin to contradict a stated prior.
+ */
+function fuseWithoutSurface(
+  text: string,
+  script: QueryScript,
+  requestLocale: string | null,
+): DetectedLocale | null {
   const requestBase = baseLanguage(requestLocale);
+
+  // THE DETECTOR MAY ONLY SPEAK ABOUT TEXT IT COULD BE RIGHT ABOUT (F9/F13).
+  // `DETECTOR_CANDIDATES` is `SUPPORTED_LOCALES`, and every locale in that set
+  // is written in LATIN SCRIPT — the same fact `scriptAdmitsLatinLanguage`
+  // states. So for text in any other script, no candidate the detector is
+  // allowed to name can possibly be the answer, and whatever it returns is an
+  // artefact of scoring the wrong alphabet. Measured: 'тако tacos' from an
+  // es-MX phone came back `es` at accuracy 0.11 — the script gate correctly
+  // BLOCKED the request-prior echo, and then the verdict fell through to the
+  // bare `decisive` arm at the bottom and was returned anyway. A gate that
+  // stops the prior and not the model is not a gate; a script we cannot name
+  // a language for is `null`, full stop.
+  //
+  // Pinned scripts never reach here (fuseLocale returns their language as a
+  // hard gate), and letterless text reports 'latin' from detectScript, where
+  // the detector simply finds nothing decisive.
+  if (!scriptAdmitsLatinLanguage(script)) {
+    return null;
+  }
+
   let ranked: Array<{ lang: string; accuracy: number }> = [];
   try {
     ranked = detectAll(text, { only: DETECTOR_CANDIDATES }) as Array<{
@@ -462,22 +586,22 @@ export function fuseLocale(
   // gain — the agreement instead RAISES THE CONFIDENCE of the prior, which is
   // what the prior branch below already records. Region is inherited from the
   // request, never invented (R5-5).
+  // The per-arm script test both of these used to carry is GONE, not
+  // dropped: the script gate at the top of this function is the same test,
+  // applied once and to the detector as well. Everything below runs only for
+  // Latin-script text, where the prior is admissible by construction.
   const overrulesPrior =
     decisive &&
     top.accuracy >= DETECTOR_STRONG_ACCURACY &&
     (requestBase == null ||
-      !scriptAdmitsRequestPrior(script, requestBase) ||
       (top.lang !== requestBase && top.accuracy >= DETECTOR_OVERRULE_PRIOR));
   if (overrulesPrior) {
     return { tag: top.lang, confidence: top.accuracy, source: 'detector' };
   }
-  if (requestBase && scriptAdmitsRequestPrior(script, requestBase)) {
+  if (requestBase) {
     // The prior wins over a weak detector — including when the detector's
     // weak answer disagrees. This is the documented resolution for
-    // near-undecidable LATIN-SCRIPT input, NOT a detector failure — and
-    // "Latin-script" is now enforced rather than assumed (see
-    // scriptAdmitsRequestPrior): the echo used to fire for ANY unpinned
-    // script, which is how a Han query came back `es-MX`.
+    // near-undecidable LATIN-SCRIPT input, NOT a detector failure.
     return {
       tag: requestLocale ?? requestBase,
       confidence: decisive && top.lang === requestBase ? top.accuracy : 0.5,

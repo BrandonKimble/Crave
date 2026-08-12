@@ -2,7 +2,10 @@ import { Injectable, OnModuleInit } from '@nestjs/common';
 import { Cron } from '@nestjs/schedule';
 import { PrismaService } from '../../prisma/prisma.service';
 import { LoggerService } from '../../shared';
-import type { SurfaceLocaleOracle } from './query-analyzer';
+import type {
+  SurfaceLocaleEvidence,
+  SurfaceLocaleOracle,
+} from './query-analyzer';
 
 /**
  * THE REGISTRY-SURFACE LANGUAGE INDEX — folded surface text → the locales it
@@ -25,6 +28,25 @@ import type { SurfaceLocaleOracle } from './query-analyzer';
  * recall surfaces, which is a few MB of strings.
  *
  * WHAT IS INDEXED, AND WHY ONLY THAT:
+ *  - A PROVENANCE THAT KNOWS A LANGUAGE (see LANGUAGE_KNOWLEDGE_SOURCES).
+ *    This is the one that had to be added (A0 red team F3/F4, 2026-08-11).
+ *    A locale column says which language a row is FILED under; it does not by
+ *    itself say that anyone ever KNEW. Two producers know: the vocabulary
+ *    GENERATOR, which was asked a per-language question ("what is this called
+ *    in Spanish?"), and the JUDGE, which settled a word claim. Everything else
+ *    is a filing decision made by a writer that only OBSERVED a string.
+ *    Two of those were feeding this index:
+ *      - `extraction`, which tagged 10,670 forms with the configured language
+ *        of the SUBREDDIT they were read out of. 'bún đậu mắm tôm' detected
+ *        `en` at confidence 1.0 off the back of it.
+ *      - `query_banking`, which is the LOOP. That lane banks a demand term
+ *        under the locale the SEARCH WAS DETECTED IN — so a mis-detection
+ *        writes a row, the row enters this index, and the index then reports
+ *        that mis-detection as ground truth for every later search of the
+ *        same word, forever. It is excluded on principle and not on measured
+ *        damage: there is no amount of damage at which a feedback loop
+ *        becomes an oracle, and the corpus happening to hold zero such rows
+ *        today is not a reason to leave the door open.
  *  - `status = 'active'` — a deprecated surface is a word we deliberately
  *    stopped honouring; it must not name a language either.
  *  - `role <> 'display'` — a display-only row is a REFUSED recall claim
@@ -44,11 +66,39 @@ import type { SurfaceLocaleOracle } from './query-analyzer';
  * that cannot do the job. A never-loaded index answers nothing, which is
  * exactly the pre-existing behaviour.
  */
+/**
+ * THE PRODUCERS OF LANGUAGE-KNOWLEDGE — the only provenances whose locale
+ * column is an ANSWER rather than a filing decision.
+ *
+ * 'vocabulary' is the generator's declared search surfaces; 'sweep', 'seed',
+ * 'manual' and 'synthesis' are the four provenances `LabelSweepService.
+ * writeLabels` writes labels under — all of them the output of a prompt that
+ * NAMED a language, or (for 'manual') of a human who did. A judge-settled row
+ * qualifies through `claim_judge_version`, not through its source: the
+ * adjudicator preserves each claim's original provenance when it writes the
+ * verdict, so the stamp is the only thing that records that a hearing
+ * happened.
+ *
+ * Deliberately NOT here: 'extraction' and 'query_banking' (see the class
+ * comment), and every provenance that carries a form from somewhere else
+ * without re-deciding its language — 'legacy', 'merge_fold',
+ * 'ontology_rename', 'places', 'cuisine', 'knowledge_synthesis'. The last is
+ * the closest call: it IS a model asserting a word, but it is asked about a
+ * DISH, not about a language, and it writes 'und' for exactly that reason.
+ */
+const LANGUAGE_KNOWLEDGE_SOURCES = [
+  'vocabulary',
+  'sweep',
+  'seed',
+  'manual',
+  'synthesis',
+];
+
 @Injectable()
 export class SurfaceLocaleIndexService implements OnModuleInit {
   private readonly logger: LoggerService;
-  /** folded form → the distinct locales banked under it. */
-  private index = new Map<string, string[]>();
+  /** folded form → per-language evidence (see SurfaceLocaleEvidence). */
+  private index = new Map<string, SurfaceLocaleEvidence[]>();
   private loadedAt: Date | null = null;
   private refreshInFlight = false;
 
@@ -90,19 +140,35 @@ export class SurfaceLocaleIndexService implements OnModuleInit {
     if (this.refreshInFlight) return { forms: this.index.size };
     this.refreshInFlight = true;
     try {
+      // ENTITIES, NOT ROWS. A label and its search surface are two rows on
+      // ONE entity — one writer's one answer — and counting them as two would
+      // let a single generator response clear the "more than one entity says
+      // so" bar the analyzer applies before contradicting a stated prior.
+      // The base language is taken here (split on '-') so the analyzer never
+      // has to re-derive it: 'es-MX' and 'es' are one language's evidence.
       const rows = await this.prisma.$queryRaw<
-        Array<{ form_folded: string; locales: string[] }>
+        Array<{ form_folded: string; language: string; entities: bigint }>
       >`
-        SELECT s.form_folded, array_agg(DISTINCT lower(s.locale)) AS locales
+        SELECT s.form_folded,
+               split_part(lower(s.locale), '-', 1) AS language,
+               count(DISTINCT s.entity_id)::bigint AS entities
           FROM entity_surface s
          WHERE s.status = 'active'
            AND s.role <> 'display'
            AND lower(s.locale) <> 'und'
            AND s.form_folded <> ''
-         GROUP BY s.form_folded`;
-      const next = new Map<string, string[]>();
+           AND (s.source = ANY(${LANGUAGE_KNOWLEDGE_SOURCES}::text[])
+                OR s.claim_judge_version IS NOT NULL)
+         GROUP BY 1, 2`;
+      const next = new Map<string, SurfaceLocaleEvidence[]>();
       for (const row of rows) {
-        next.set(row.form_folded, row.locales);
+        const evidence: SurfaceLocaleEvidence = {
+          language: row.language,
+          entities: Number(row.entities),
+        };
+        const bucket = next.get(row.form_folded);
+        if (bucket) bucket.push(evidence);
+        else next.set(row.form_folded, [evidence]);
       }
       this.index = next;
       this.loadedAt = new Date();
@@ -131,4 +197,4 @@ export class SurfaceLocaleIndexService implements OnModuleInit {
   }
 }
 
-const EMPTY: readonly string[] = Object.freeze([]);
+const EMPTY: readonly SurfaceLocaleEvidence[] = Object.freeze([]);

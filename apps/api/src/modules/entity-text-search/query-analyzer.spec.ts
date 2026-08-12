@@ -3,6 +3,7 @@ import {
   denseQueryInput,
   detectScript,
   NGRAM_MAX_PHRASE_WORDS_CEILING,
+  type SurfaceLocaleEvidence,
 } from './query-analyzer';
 import { canonicalFold } from '../content-processing/entity-resolver/entity-identity';
 
@@ -248,15 +249,25 @@ describe('query analyzer (A2 seam)', () => {
 
   describe('the registry-surface oracle is the short-string signal', () => {
     // A fake index standing in for SurfaceLocaleIndexService: folded form →
-    // the locales the concept graph banks it under. These four rows are real
-    // — they are what the live corpus holds for these words.
-    const oracle = (folded: string): string[] =>
+    // the per-language evidence the concept graph holds. Every entry is real
+    // — the languages AND the entity counts are what the live corpus holds
+    // for these words (measured 2026-08-11).
+    const oracle = (folded: string): SurfaceLocaleEvidence[] =>
       ({
-        'bun dau mam tom': ['vi'],
-        'com tam': ['vi'],
-        camarones: ['es'],
+        'bun dau mam tom': [{ language: 'vi', entities: 2 }],
+        'com tam': [{ language: 'vi', entities: 3 }],
+        camarones: [{ language: 'es', entities: 2 }],
         // A word banked under BOTH launch languages — the ambiguous case.
-        tostada: ['es', 'vi'],
+        tostada: [
+          { language: 'es', entities: 2 },
+          { language: 'vi', entities: 1 },
+        ],
+        // ONE entity, one language: real evidence, but not enough to
+        // contradict someone who stated what language they are searching in.
+        // These three are the live corpus's own junk words (F3).
+        cat: [{ language: 'vi', entities: 1 }],
+        pan: [{ language: 'es', entities: 1 }],
+        crema: [{ language: 'vi', entities: 1 }],
       })[folded] ?? [];
 
     it('names vi on the exact query the detector answers null for', () => {
@@ -293,6 +304,77 @@ describe('query analyzer (A2 seam)', () => {
 
     it('is inert for callers that pass no oracle', () => {
       expect(analyzeQuery('camarones', null).detectedLocale).toBeNull();
+    });
+
+    // ── A0 red team F3: one row is one opinion ──────────────────────────
+    it('lets a LONE entity name the language when nobody stated one', () => {
+      // With no prior there is nothing better than one writer's answer, and
+      // the honest alternative (null) is strictly worse information.
+      expect(
+        analyzeQuery('pan', null, { surfaceLocales: oracle }).detectedLocale,
+      ).toEqual({ tag: 'es', confidence: 1, source: 'surface' });
+    });
+
+    it('does NOT let a lone entity overrule a STATED request prior', () => {
+      // Measured before this rule: 'cat' -> vi@1.00, 'pan' -> es@1.00,
+      // 'crema' -> vi@1.00, each from ONE generator row, each against an
+      // explicit en-US phone. All three are ordinary English words.
+      for (const word of ['cat', 'pan', 'crema']) {
+        const detected = analyzeQuery(word, 'en-US', {
+          surfaceLocales: oracle,
+        }).detectedLocale;
+        expect(detected?.source).not.toBe('surface');
+        expect(detected?.tag).toBe('en-US');
+      }
+    });
+
+    it('DOES overrule a stated prior when more than one entity says so', () => {
+      // The leg that must not move: this is the whole reason the oracle
+      // exists (a Spanish word typed on an English phone is still Spanish).
+      expect(
+        analyzeQuery('camarones', 'en-US', { surfaceLocales: oracle })
+          .detectedLocale,
+      ).toEqual({ tag: 'es', confidence: 1, source: 'surface' });
+    });
+
+    it('refuses a hit the fold only reached by deleting an emoji', () => {
+      // canonicalFold('pan 🌮') === 'pan', so the index answers — but the
+      // user did not type the banked word, and an EXACT lookup is the whole
+      // basis of the oracle's authority.
+      const decorated = analyzeQuery('pan 🌮', null, {
+        surfaceLocales: oracle,
+      }).detectedLocale;
+      expect(decorated?.source).not.toBe('surface');
+      // Punctuation is SPELLING, not content, and still folds through.
+      expect(
+        analyzeQuery('pan.', null, { surfaceLocales: oracle }).detectedLocale
+          ?.source,
+      ).toBe('surface');
+    });
+  });
+
+  // ── A0 red team F9/F13: the script gate binds the detector too ─────────
+  describe('the detector may not answer for a script it cannot name', () => {
+    it('returns null for Cyrillic even when the model is decisive', () => {
+      // Measured: tinyld ranks 'тако tacos' es@0.11 with en/es/vi as the
+      // candidate set. The script gate blocked the request-prior echo and
+      // the verdict fell through to the bare decisive arm anyway.
+      expect(analyzeQuery('тако tacos', 'es-MX').detectedLocale).toBeNull();
+      expect(analyzeQuery('тако tacos', null).detectedLocale).toBeNull();
+    });
+
+    it('still pins the scripts that DO name a language', () => {
+      expect(analyzeQuery('麻辣牛肉面', 'es-MX').detectedLocale).toEqual({
+        tag: 'zh',
+        confidence: 1,
+        source: 'script',
+      });
+    });
+
+    it('leaves Latin-script detection exactly as it was', () => {
+      expect(analyzeQuery('tacos with cheese', null).detectedLocale?.tag).toBe(
+        'en',
+      );
     });
   });
 
