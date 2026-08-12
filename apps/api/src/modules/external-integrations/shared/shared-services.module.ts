@@ -10,6 +10,7 @@ import { OpsAlertsService } from './ops-alerts.service';
 import { ReconciliationMultiplierService } from './reconciliation-multiplier.service';
 import { SpendExpectationMonitorService } from './spend-expectation-monitor.service';
 import { VendorQuotaWatcherService } from './vendor-quota-watcher.service';
+import { BootSpendGuardAlertService } from '../../../shared/queues/boot-spend-guard-alert.service';
 
 /**
  * Shared services module for external integrations
@@ -33,6 +34,9 @@ import { VendorQuotaWatcherService } from './vendor-quota-watcher.service';
     // and inert outside a scheduler runtime.
     SpendExpectationMonitorService,
     VendorQuotaWatcherService,
+    // The SCREAM half of the worker-boot spend guard. Lives here because it
+    // needs OpsAlertsService; the guard itself runs pre-Nest in main.ts.
+    BootSpendGuardAlertService,
   ],
   exports: [
     ReconciliationMultiplierService,
@@ -43,6 +47,7 @@ import { VendorQuotaWatcherService } from './vendor-quota-watcher.service';
     OpsAlertsService,
     SpendExpectationMonitorService,
     VendorQuotaWatcherService,
+    BootSpendGuardAlertService,
   ],
 })
 export class SharedServicesModule {}

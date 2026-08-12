@@ -103,8 +103,19 @@ import { AppModule } from './app.module';
 import { createValidationPipeConfig } from './shared';
 import { RequestLocaleInterceptor } from './shared/locale';
 import fastifyRawBody from 'fastify-raw-body';
+import { runWorkerBootSpendGuard } from './shared/queues/bull-queue-backlog.adapter';
 
 async function bootstrap() {
+  // THE WORKER-BOOT SPEND GUARD, and why it is the FIRST thing in bootstrap.
+  // `@nestjs/bull` starts consuming queues during module init, so this is the
+  // last moment at which "measured the backlog before spending a cent" is
+  // provable rather than a race. A fossil backlog on a spend-bearing queue
+  // (jobs enqueued before this process existed) gets the queue paused; the
+  // critical ops alert is emitted by BootSpendGuardAlertService once Nest —
+  // and therefore Prisma and Resend — is up. See
+  // src/shared/queues/worker-boot-spend-guard.ts for the $25 incident.
+  await runWorkerBootSpendGuard();
+
   // Create with Fastify adapter. trustProxy: 1 = trust EXACTLY ONE proxy hop
   // (Railway's LB appends the real client IP as the LAST X-Forwarded-For
   // entry). `true` would trust the whole client-writable XFF chain, letting

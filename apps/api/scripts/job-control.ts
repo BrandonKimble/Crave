@@ -17,8 +17,13 @@
 
 import 'dotenv/config';
 import Redis from 'ioredis';
+import Bull from 'bull';
 import { resolveAppEnv, bullPrefixFor } from '../src/shared/config/app-env';
 import { isEnvFlagEnabled } from '../src/shared/config/env-flag';
+import {
+  QUEUE_SPEND_CLASSIFICATION,
+  SPEND_BEARING_QUEUE_NAMES,
+} from '../src/shared/queues/queue-spend-classification';
 
 function resolveLlmRateLimiterPrefix(): string {
   const explicit = process.env.LLM_RATE_LIMIT_PREFIX;
@@ -31,7 +36,10 @@ function resolveLlmRateLimiterPrefix(): string {
 async function jobControl() {
   const command = process.argv[2];
 
-  if (!command || !['status', 'clear', 'enable', 'disable'].includes(command)) {
+  if (
+    !command ||
+    !['status', 'clear', 'enable', 'disable', 'resume'].includes(command)
+  ) {
     console.log('📋 JOB CONTROL SCRIPT');
     console.log('====================\n');
     console.log('Usage: npx ts-node scripts/job-control.ts <command>\n');
@@ -43,6 +51,18 @@ async function jobControl() {
     );
     console.log(
       '  disable  - Disable background jobs (set COLLECTION_JOBS_ENABLED=false)',
+    );
+    console.log(
+      '  resume <queue> - Resume a queue the WORKER-BOOT SPEND GUARD paused',
+    );
+    console.log(
+      '                   (the guard freezes a spend-bearing queue whose backlog',
+    );
+    console.log(
+      '                    predates the worker boot; resuming SPENDS that backlog)',
+    );
+    console.log(
+      `\n  Spend-bearing queues: ${SPEND_BEARING_QUEUE_NAMES.join(', ')}`,
     );
     return;
   }
@@ -65,6 +85,9 @@ async function jobControl() {
         break;
       case 'disable':
         await toggleJobs(false);
+        break;
+      case 'resume':
+        await resumeQueue(process.argv[3]);
         break;
     }
   } finally {
@@ -317,6 +340,58 @@ async function clearJobs(redis: Redis) {
 
   console.log('✅ All background jobs and rate limiter data cleared');
   console.log('   Safe to run tests without quota consumption');
+}
+
+/**
+ * THE ONE SWITCH that ends a worker-boot spend-guard pause.
+ *
+ * The guard (src/shared/queues/worker-boot-spend-guard.ts) pauses a
+ * spend-bearing queue whose backlog predates the worker's boot, because
+ * draining it spends vendor money on work nobody asked for today — the $25
+ * fossil-Places incident. Resuming is therefore a DELIBERATE budget decision,
+ * which is exactly why it is a human command and not a flag or a timeout.
+ *
+ * If the backlog is NOT worth paying for, run `clear` instead.
+ */
+async function resumeQueue(queueName: string | undefined) {
+  const name = queueName?.trim();
+  if (!name || !QUEUE_SPEND_CLASSIFICATION[name]) {
+    console.log('Usage: npx ts-node scripts/job-control.ts resume <queue>');
+    console.log(
+      `Known queues: ${Object.keys(QUEUE_SPEND_CLASSIFICATION).join(', ')}`,
+    );
+    process.exitCode = 1;
+    return;
+  }
+
+  const queue = new Bull(name, {
+    redis: {
+      host: process.env.REDIS_HOST || 'localhost',
+      port: parseInt(process.env.REDIS_PORT || '6379', 10),
+      password: process.env.REDIS_PASSWORD,
+      db: parseInt(process.env.REDIS_DB || '0', 10),
+    },
+    prefix: bullPrefixFor(resolveAppEnv()),
+  });
+  try {
+    const wasPaused = await queue.isPaused();
+    if (!wasPaused) {
+      console.log(`✅ '${name}' is not paused — nothing to resume.`);
+      return;
+    }
+    // While globally paused, Bull holds jobs in the `paused` list — the
+    // count that matters here is what RESUMING will actually spend.
+    const pending = await queue.getJobCountByTypes(['paused', 'waiting']);
+    console.log(
+      `▶️  Resuming '${name}' (${QUEUE_SPEND_CLASSIFICATION[name].spend}) — ` +
+        `${pending} jobs will now drain.`,
+    );
+    console.log(`   Spends: ${QUEUE_SPEND_CLASSIFICATION[name].why}`);
+    await queue.resume(false);
+    console.log('✅ Resumed.');
+  } finally {
+    await queue.close();
+  }
 }
 
 async function toggleJobs(enable: boolean) {
