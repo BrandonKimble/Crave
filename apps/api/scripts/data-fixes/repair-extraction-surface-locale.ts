@@ -35,6 +35,28 @@
  * lost). So the stronger status and role are kept by keeping the und row and
  * dropping its language-tagged twin. Measured: 93 of 10,670.
  *
+ * WHAT THE DELETE MAY HAVE COST, SAID PLAINLY (A0 R6, 2026-08-11). The
+ * paragraph above argues the und row is the merged result "byte-for-byte",
+ * and for role, status, source and confidence that is exactly right. There is
+ * ONE column it is not right about: `claim_judge_version`. The word-claim
+ * judge stamps that column on whatever surface row it settled or evicted,
+ * WITHOUT regard to source — so a flipped extraction row could have carried a
+ * verdict stamp that its und twin did not, and those 93 deletes would have
+ * taken the stamp with them. The effect is bounded and self-healing rather
+ * than silent corruption: a claim with no stamp is re-offered by
+ * `staleVerdictClaims` and re-judged, so at most 93 claims were re-heard at
+ * one LLM call each.
+ *
+ * IT CANNOT BE CHECKED NOW, AND THAT IS THE FINDING. There is no verdict
+ * ledger — the stamp lives only on the row it stamps — so nothing recorded
+ * which of the 93 carried one, and the rows are gone. This note exists
+ * because "we cannot know" is a fact worth writing down, and because it is
+ * the reason the two remaining fold paths (the addSurfaces conflict clause
+ * and foldSurfacesFromMerge) now preserve the stamp in BOTH directions by
+ * GREATEST, pinned by judge-stamp-survives-folds.integration.spec.ts. A
+ * future repair that must delete a row should either carry the stamp forward
+ * onto the survivor or record what it dropped.
+ *
  * IDEMPOTENT: re-running finds nothing to do. REPORT-THEN-APPLY: it prints
  * the full before/after picture and changes nothing without `--apply`.
  *

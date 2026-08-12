@@ -628,10 +628,16 @@ async function insertSurfaceRows(
         prompt_version = GREATEST(entity_surface.prompt_version,
                                   EXCLUDED.prompt_version),
         -- The stamp records WHO last settled this claim. Only a verdict
-        -- carries one, so an ordinary re-offer leaves the existing stamp
-        -- alone (COALESCE) rather than erasing the hearing's memory.
-        claim_judge_version = COALESCE(EXCLUDED.claim_judge_version,
-                                       entity_surface.claim_judge_version),
+        -- carries one, so an ordinary re-offer must leave the existing stamp
+        -- alone rather than erasing the hearing's memory. GREATEST, not
+        -- COALESCE (A0 R6): Postgres GREATEST ignores NULL arguments, so it
+        -- does everything COALESCE did AND is monotone in the other
+        -- direction too — a re-offer carrying an OLDER judge version (a
+        -- replay, a re-hearing running behind a bump) can no longer walk the
+        -- stamp backwards and make a settled claim look unheard, which is
+        -- what staleVerdictClaims reads to decide who pays for a hearing.
+        claim_judge_version = GREATEST(entity_surface.claim_judge_version,
+                                       EXCLUDED.claim_judge_version),
         updated_at = now()
       RETURNING form, role`);
   } catch (error) {
@@ -682,13 +688,29 @@ export async function foldSurfacesFromMerge(
   // recall surface, and a merge — which decides nothing about word ownership
   // — silently overturned a verdict. A carried row is the SAME row on a new
   // owner; it earns nothing by moving.
+  //
+  // THE VERSION STAMPS RIDE ALONG (A0 R6). They were omitted, so a carried
+  // row landed on the winner with claim_judge_version NULL — indistinguishable
+  // from a claim no judge has ever heard. `staleVerdictClaims` re-offers
+  // exactly those, so a merge silently re-opened (and re-paid for) every
+  // settled claim the loser held. On CONFLICT the two stamps are the one
+  // thing that updates, by GREATEST: the winner's own row keeps its role,
+  // status and provenance (a carried row earns nothing by moving), but a
+  // hearing that HAS happened is a fact about the word, and the newer of the
+  // two memories is the true one.
   await tx.$executeRaw`
     INSERT INTO entity_surface
-      (entity_id, form, form_folded, locale, role, source, confidence, status)
-    SELECT ${canonicalId}::uuid, a.form, a.form_folded, a.locale, a.role, a.source, a.confidence, a.status
+      (entity_id, form, form_folded, locale, role, source, confidence, status,
+       prompt_version, claim_judge_version)
+    SELECT ${canonicalId}::uuid, a.form, a.form_folded, a.locale, a.role, a.source, a.confidence, a.status,
+           a.prompt_version, a.claim_judge_version
     FROM entity_surface a
     WHERE a.entity_id = ${duplicateId}::uuid
-    ON CONFLICT (entity_id, locale, form) DO NOTHING`;
+    ON CONFLICT (entity_id, locale, form) DO UPDATE SET
+      prompt_version = GREATEST(entity_surface.prompt_version,
+                                EXCLUDED.prompt_version),
+      claim_judge_version = GREATEST(entity_surface.claim_judge_version,
+                                     EXCLUDED.claim_judge_version)`;
 
   // Merge-fold carries OBSERVED surfaces (testimony), which the collision
   // guard exempts, so there is nothing to report refusing — the fold returns
