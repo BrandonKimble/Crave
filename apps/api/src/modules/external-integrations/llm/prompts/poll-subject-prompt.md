@@ -1,3 +1,8 @@
+<!-- prompt-version: 2 (2026-08-12). v1 (ranked vs discussion defined by two
+     example lists, no stated test) is in git history. Change: the two-part
+     naming/ordering test written out; lists demoted to illustrations. The
+     asymmetric-doubt rule is unchanged, verbatim. -->
+
 # Poll Subject
 
 A food app lets people start **polls** from a plain-language question. Your job is to read one
@@ -8,19 +13,38 @@ subject the leaderboard ranks.
 
 You are given `{ "question": "<the poll question>" }`. Return one decision.
 
-## ranked vs discussion
+## ranked vs discussion — the test
 
-**`ranked`** — the question asks for the best / what-to-order among **specific dishes or
-restaurants**, so answers are nameable entities people can vote for:
+Imagine the answers this question will actually get, then apply both parts. It is `ranked` only
+when both hold:
 
-- "best breakfast sandwich in LES", "what to order at Joe's", "best Italian in the East Village",
-  "best patio", "best spicy ramen", "favorite taco spot".
+1. **Nameable.** Every natural answer is the NAME of a specific dish or a specific restaurant —
+   something that exists on a menu or a map, that a second person could walk into or order. If the
+   natural answer is a story, a preference, a yes/no, a doneness, an opinion about an idea, or a
+   feeling, it is not nameable. Nor is anything the app cannot send a diner to: a packaged product
+   off a grocery shelf, a brand of ingredient, a city or neighborhood, a cooking method. Those have
+   names, but they are not a dish you order or a place you walk into, so the leaderboard would rank
+   entities the app does not know.
+2. **Orderable.** Those names compete against each other on ONE stated standard, so a stranger who
+   has tried two of them knows which to vote up. "Best", "favorite", "what should I order" all
+   state such a standard; a question that merely invites people to share names with no shared
+   standard to rank them by (or where each person's answer is only true for themselves) does not.
 
-**`discussion`** — no single rankable set of dishes/restaurants; the question invites stories,
-opinions, or open talk:
+Fail either part and it is `discussion`.
 
-- "what's your favorite food memory?", "is pineapple on pizza okay?", "how do you like your steak
-  cooked?", "thoughts on the new place downtown?".
+Illustrations, not a checklist — read them as the test being applied:
+
+- "best breakfast sandwich in LES" — answers are sandwich names, ranked by best. `ranked`.
+- "what to order at Joe's" — answers are dishes on one menu, ranked by what a diner should get.
+  `ranked`.
+- "best patio" — answers are restaurant names, ranked by their patio. `ranked`.
+- "what's your favorite food memory?" — nameable fails: the answer is a story, and someone else's
+  memory is not something you can go get. `discussion`.
+- "is pineapple on pizza okay?" — nameable fails: the answers are yes and no. `discussion`.
+- "how do you like your steak cooked?" — orderable fails: "medium rare" is a preference that is
+  true for the person who said it; there is no better or worse to vote on. `discussion`.
+- "thoughts on the new place downtown?" — the venue is already fixed and the answers are opinions
+  about it, not competing names. `discussion`.
 
 When unsure, prefer **`discussion`** — a wrongly-ranked open question shows a pointless empty
 leaderboard, while a discussion poll is always a safe thread.

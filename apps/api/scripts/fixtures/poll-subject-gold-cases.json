@@ -1,0 +1,125 @@
+[
+  {
+    "id": "best-breakfast-sandwich-les",
+    "why": "ranked: nameable dishes + one standard; axis dish/category/market",
+    "text": "best breakfast sandwich in LES",
+    "expect": {
+      "mode": "ranked",
+      "targetType": "dish",
+      "constraintKind": "category",
+      "constraintValue": "breakfast sandwich",
+      "marketHint": "LES"
+    }
+  },
+  {
+    "id": "what-to-order-at-joes",
+    "why": "ranked: dishes on one menu; anchor extraction",
+    "text": "what to order at Joe's",
+    "expect": { "mode": "ranked", "targetType": "dish", "anchor": "Joe's" }
+  },
+  {
+    "id": "best-italian-east-village",
+    "why": "ranked: restaurants by cuisine",
+    "text": "best Italian in the East Village",
+    "expect": {
+      "mode": "ranked",
+      "targetType": "restaurant",
+      "constraintKind": "cuisine",
+      "constraintValue": "italian"
+    }
+  },
+  {
+    "id": "best-patio",
+    "why": "ranked: restaurants by a restaurant attribute",
+    "text": "best patio",
+    "expect": {
+      "mode": "ranked",
+      "targetType": "restaurant",
+      "constraintKind": "restaurant_attribute",
+      "constraintValue": "patio"
+    }
+  },
+  {
+    "id": "best-spicy-ramen",
+    "why": "ranked: category is the stronger anchor over the dish attribute",
+    "text": "best spicy ramen",
+    "expect": {
+      "mode": "ranked",
+      "targetType": "dish",
+      "constraintKind": "category",
+      "constraintValue": "ramen"
+    }
+  },
+  {
+    "id": "favorite-taco-spot",
+    "why": "ranked: 'favorite' also states a standard over named places",
+    "text": "favorite taco spot",
+    "expect": { "mode": "ranked", "targetType": "restaurant" }
+  },
+  {
+    "id": "food-memory",
+    "why": "discussion: nameable fails — the answer is a story",
+    "text": "what's your favorite food memory?",
+    "expect": { "mode": "discussion" }
+  },
+  {
+    "id": "pineapple-pizza",
+    "why": "discussion: nameable fails — the answers are yes and no",
+    "text": "is pineapple on pizza okay?",
+    "expect": { "mode": "discussion" }
+  },
+  {
+    "id": "steak-doneness",
+    "why": "discussion: orderable fails — a preference true only for its speaker",
+    "text": "how do you like your steak cooked?",
+    "expect": { "mode": "discussion" }
+  },
+  {
+    "id": "thoughts-new-place",
+    "why": "discussion: venue fixed, answers are opinions not competing names",
+    "text": "thoughts on the new place downtown?",
+    "expect": { "mode": "discussion" }
+  },
+  {
+    "id": "nameable-but-not-orderable",
+    "why": "BOUNDARY, discussion side: names with no shared standard to rank by",
+    "text": "where did everyone eat last weekend?",
+    "expect": { "mode": "discussion" }
+  },
+  {
+    "id": "orderable-but-not-nameable",
+    "why": "BOUNDARY, discussion side: a clear standard over things that are not dishes or places",
+    "text": "what's the best way to reheat leftover pizza?",
+    "expect": { "mode": "discussion" }
+  },
+  {
+    "id": "boundary-ranked-implicit-standard",
+    "why": "BOUNDARY, ranked side: 'never disappoints' states a standard over dish names",
+    "text": "which dish at a Thai place never disappoints?",
+    "expect": { "mode": "ranked", "targetType": "dish" }
+  },
+  {
+    "id": "boundary-ranked-recommendation-phrasing",
+    "why": "BOUNDARY, ranked side: recommendation phrasing, still names + standard",
+    "text": "where should I take a date for dinner in Williamsburg?",
+    "expect": { "mode": "ranked", "targetType": "restaurant" }
+  },
+  {
+    "id": "grocery-brand-not-nameable",
+    "why": "THE case v1 fails (ranked 0/3) and v2 fixes (discussion 3/3): a shelf product has a name but is not a dish you order or a place you walk into, so a leaderboard would rank entities the app cannot ground",
+    "text": "best brand of oat milk?",
+    "expect": { "mode": "discussion" }
+  },
+  {
+    "id": "same-ingredient-ordered-at-a-place",
+    "why": "The other side of that line: the same ingredient, asked as something you order somewhere, stays ranked",
+    "text": "best iced oat latte in Brooklyn?",
+    "expect": { "mode": "ranked" }
+  },
+  {
+    "id": "opinion-about-an-idea",
+    "why": "discussion: an argument about a practice, no nameable answers",
+    "text": "should restaurants charge for tap water?",
+    "expect": { "mode": "discussion" }
+  }
+]
