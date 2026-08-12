@@ -149,6 +149,16 @@ const SCRATCH_FOLD_MENTION = 'zzgate crème brûlée';
  * reachable by en and not by vi — under a writer that can actually mint one.
  */
 const SCRATCH_EN_FORM = 'zzgate freshly banked word';
+/**
+ * vi + active + role='recall', banked WITH its accents — the entity SAYING it
+ * holds this spelling in this language. It is the other side of the tier-2
+ * accent veto: an accented mention the entity can answer must still ground,
+ * and its de-accented twin must still ground too (an unaccented input asserts
+ * nothing). Seeded because the veto has two outcomes and a rule that could
+ * only ever refuse would be a recall cliff, not a fix.
+ */
+const SCRATCH_ACCENT_FORM = 'zzgate bánh scratch';
+const SCRATCH_ACCENT_PLAIN = 'zzgate banh scratch';
 
 const FIXTURES: Fixture[] = [
   // ── Tier 1: exact name ──────────────────────────────────────────────────
@@ -439,8 +449,8 @@ const FIXTURES: Fixture[] = [
     id: 'fold-11',
     type: EntityType.food,
     mention: SCRATCH_FOLD_MENTION,
-    expect: { entity: SCRATCH_NAME, tier: 'alias' },
-    note: 'the user TYPES the accents, the surface is banked without them — the fold is the only thing that matches them, so lower()-ing the probe REDs this',
+    expect: UNMATCHED,
+    note: 'THE ACCENT DOCTRINE SUPERSEDED THIS FIXTURE, and the flip is the whole point (2026-08-12). It used to expect the scratch concept: the user types the accents, the surface is banked without them, and only the fold could match. But that is EXACTLY the shape of "bún" reaching the English bread `bun` — an accented input landing on a spelling the entity cannot prove it holds — and the tier cannot tell a French dish typed properly from a Vietnamese word that is not this concept. So it refuses, at BOTH tiers, and the mention goes to the judge. Its de-accented twin still matches (fold-10 types "cathedrale" against the banked "Cathédrale" and stays green), which is the half of the fold this doctrine deliberately keeps: an unaccented input asserts nothing',
   },
 
   // ── Locale scope: es surfaces must not ground an untagged mention ───────
@@ -623,16 +633,32 @@ const FIXTURES: Fixture[] = [
     type: EntityType.ingredient,
     mention: 'bún',
     documentLocale: 'vi',
-    expect: { entity: 'bun', tier: 'alias' },
-    note: 'THE HEADLINE DEFECT, HALF-FIXED — AND THE FIXTURE SAYS SO. Vietnamese "bún" (rice vermicelli) exact-claimed the ENGLISH bread `bun` at confidence 1.0 because canonicalFold("bún") === "bun". `bun` holds no vi surface spelled bún, so TIER 1 now refuses — `tier: alias`, not `exact`, is the whole assertion here, and it goes RED the moment the accent-evidence rule stops firing. THE RESIDUE, MEASURED NOT GUESSED: tier 2 reads `form_folded`, which is canonicalFold and therefore accent-BLIND, so it re-claims the same wrong entity one tier down at 0.95. Same defect class, different tier; fixing it means teaching the surface read the same evidence test, which is its own change with its own sweep',
+    expect: { entity: 'noodle', tier: 'alias' },
+    note: 'THE HEADLINE DEFECT, NOW REFUSED AT BOTH TIERS (2026-08-12) — and the fixture pins the RIGHT answer, not merely the absence of the wrong one. Vietnamese "bún" (rice vermicelli) exact-claimed the ENGLISH bread `bun` at 1.0 because canonicalFold("bún") === "bun"; tier 1 refused it once the accent-evidence rule fired, and tier 2 handed it straight back at 0.95 because `form_folded` IS canonicalFold and is therefore accent-blind. Both arms now ask the same question, so the `bun` ingredient — which banks no vi surface spelled bún — cannot claim it at ANY tier. What DOES claim it is an ingredient that banks "bún" as a vi recall surface, i.e. one that proves it holds the spelling: `noodle`, the shortest such name (rice vermicelli and vermicelli also hold it; the comparator is a total order, so the pick is stable). The mention grounds on Vietnamese vermicelli instead of English bread — which is the entire point of the doctrine',
+  },
+  {
+    id: 'acc-05',
+    type: EntityType.food,
+    mention: SCRATCH_ACCENT_FORM,
+    documentLocale: 'vi',
+    expect: { entity: SCRATCH_NAME, tier: 'alias' },
+    note: 'THE TIER-2 VETO MUST ADMIT AS WELL AS REFUSE. The scratch concept banks this accented form as a vi recall surface, so the accented mention is a spelling the entity ANSWERS and the 0.95 claim stands. Without this fixture the veto could be replaced by "refuse every accented surface match" and the gate would not notice — a rule that only ever refuses is a recall cliff',
+  },
+  {
+    id: 'acc-06',
+    type: EntityType.food,
+    mention: SCRATCH_ACCENT_PLAIN,
+    documentLocale: 'vi',
+    expect: { entity: SCRATCH_NAME, tier: 'alias' },
+    note: 'and the de-accented twin of acc-05 still grounds: an UNACCENTED input asserts nothing (de-diacritized typing is how most people type Vietnamese on a US keyboard), so the fold rules and the accented surface is reachable. This is the half of the surface fold the doctrine deliberately keeps, and it goes RED the moment the veto starts reading unaccented probes as evidence',
   },
   {
     id: 'acc-02',
     type: EntityType.ingredient,
     mention: 'bơ',
     documentLocale: 'vi',
-    expect: { entity: 'bo', tier: 'alias' },
-    note: 'the pair the diacriticFold doctrine names by name: "bò" (beef) and "bơ" (butter/avocado) share the fold `bo` with the ingredient literally NAMED "bo", which banks no vi surface spelling either of them. Tier 1 refuses — again `alias`, not `exact` — and again the accent-blind `form_folded` read hands it back at 0.95. Two fixtures, one residue, deliberately left visible rather than papered over',
+    expect: UNMATCHED,
+    note: 'the pair the diacriticFold doctrine names by name: "bò" (beef) and "bơ" (butter/avocado) share the fold `bo` with the ingredient literally NAMED "bo", which banks no vi surface spelling either of them. Refused at tier 1, and now — this is the change — refused at tier 2 as well: NO ingredient proves it holds "bơ" (the corpus banks that spelling on the FOOD `butter`, a different type), so the mention grounds NOTHING and falls to the judge, which is the honest outcome for "we do not know that these are the same word". Grounding it on `bo` at 0.95 was the residue acc-01/02 were written to record; the record now says refused at BOTH tiers',
   },
   {
     id: 'acc-03',
@@ -686,7 +712,8 @@ async function seedScratchFixtures(prisma: PrismaService): Promise<void> {
        (entity_id, form, form_folded, locale, role, source, confidence, status)
      VALUES ($1::uuid, $2, $3, 'und', 'display', 'sweep', 1, 'active'),
             ($1::uuid, $4, $5, 'und', 'recall',  'sweep', 1, 'active'),
-            ($1::uuid, $6, $7, 'en',  'recall',  'vocabulary', 1, 'active')
+            ($1::uuid, $6, $7, 'en',  'recall',  'vocabulary', 1, 'active'),
+            ($1::uuid, $8, $9, 'vi',  'recall',  'vocabulary', 1, 'active')
      ON CONFLICT (entity_id, locale, form) DO UPDATE
        SET role = EXCLUDED.role, status = EXCLUDED.status`,
     SCRATCH_ENTITY_ID,
@@ -696,6 +723,8 @@ async function seedScratchFixtures(prisma: PrismaService): Promise<void> {
     canonicalFold(SCRATCH_FOLD_FORM),
     SCRATCH_EN_FORM,
     canonicalFold(SCRATCH_EN_FORM),
+    SCRATCH_ACCENT_FORM,
+    canonicalFold(SCRATCH_ACCENT_FORM),
   );
   // THE SEED OWNS THE SCRATCH ENTITY'S ROWS, ALL OF THEM (2026-08-11).
   // `ON CONFLICT (entity_id, locale, form)` can only ever ADD — it cannot see
@@ -711,11 +740,13 @@ async function seedScratchFixtures(prisma: PrismaService): Promise<void> {
     prisma,
     `DELETE FROM entity_surface
       WHERE entity_id = $1::uuid
-        AND (form, locale) NOT IN (($2, 'und'), ($3, 'und'), ($4, 'en'))`,
+        AND (form, locale) NOT IN
+            (($2, 'und'), ($3, 'und'), ($4, 'en'), ($5, 'vi'))`,
     SCRATCH_ENTITY_ID,
     SCRATCH_DISPLAY_FORM,
     SCRATCH_FOLD_FORM,
     SCRATCH_EN_FORM,
+    SCRATCH_ACCENT_FORM,
   );
 }
 

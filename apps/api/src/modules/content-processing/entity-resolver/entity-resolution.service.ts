@@ -26,6 +26,19 @@ import {
   ResolutionPerformanceMetrics,
 } from './entity-resolution.types';
 
+/**
+ * Does this spelling ASSERT anything about accents? `canonicalFold` strips
+ * diacritics and `diacriticFold` keeps them, so the two folds disagree exactly
+ * when the text carries an accent that survives folding. An input that carries
+ * one is EVIDENCE about which word was meant; an unaccented input asserts
+ * nothing (de-diacritized typing is how most people type Vietnamese on a US
+ * keyboard). Both accent-evidence tiers turn on this one question, so it is one
+ * function.
+ */
+function isAccented(text: string): boolean {
+  return diacriticFold(text) !== canonicalFold(text);
+}
+
 interface EntityResolutionCachePayload {
   entityId: string | null;
   confidence: number;
@@ -865,9 +878,6 @@ export class EntityResolutionService implements OnModuleInit {
       // recall claim; here the row is not being grounded on, it is being read
       // as spelling testimony for a claim the identity fold already made.
       // Deprecated rows are remembered-as-wrong and are excluded.
-      const accented = (text: string): boolean =>
-        diacriticFold(text) !== canonicalFold(text);
-
       // Which (owner, input) pairs need evidence? Collected before any query
       // so the lookup is ONE round trip, and skipped entirely — the common,
       // all-ASCII case — when no probe carries an accent.
@@ -875,44 +885,24 @@ export class EntityResolutionService implements OnModuleInit {
         const raw = entity.normalizedName.toLowerCase().trim();
         return usesNumberVariants ? [raw, ...foodNameVariants(raw)] : [raw];
       };
-      const evidenceNeeded = new Map<string, Set<string>>();
+      const ownersNeedingEvidence = new Set<string>();
       for (const entity of entities) {
         for (const probe of foldProbesFor(entity)) {
-          if (!accented(probe)) continue;
+          if (!isAccented(probe)) continue;
           const owner = identityToEntityMap.get(canonicalFold(probe));
           if (!owner) continue;
-          const inputDia = diacriticFold(probe);
-          if (diacriticFold(owner.name) === inputDia) continue;
-          const forms = evidenceNeeded.get(owner.entityId) ?? new Set<string>();
-          forms.add(inputDia);
-          evidenceNeeded.set(owner.entityId, forms);
+          if (diacriticFold(owner.name) === diacriticFold(probe)) continue;
+          ownersNeedingEvidence.add(owner.entityId);
         }
       }
 
-      // `entityId|diacriticFold(form)` for every accented spelling an owner
-      // can prove it holds in this document's locale chain.
-      const accentEvidence = new Set<string>();
-      if (evidenceNeeded.size > 0) {
-        // Prisma.sql, not a bare $queryRaw template: the locale-chain scope is
-        // a SQL FRAGMENT, and $queryRaw's own template would bind it as a
-        // parameter instead of splicing a predicate.
-        const evidenceRows = await this.prisma.$queryRaw<
-          Array<{ entity_id: string; form: string }>
-        >(Prisma.sql`
-          SELECT s.entity_id, s.form
-            FROM entity_surface s
-           WHERE s.entity_id = ANY(${Array.from(evidenceNeeded.keys())}::uuid[])
-             AND s.status = 'active'
-             AND LOWER(s.locale) = ANY(${localeLookupChain(
-               documentLocale,
-             )}::text[])`);
-        for (const row of evidenceRows) {
-          accentEvidence.add(`${row.entity_id}|${diacriticFold(row.form)}`);
-        }
-      }
+      const accentEvidence = await this.accentEvidenceFor(
+        Array.from(ownersNeedingEvidence),
+        documentLocale,
+      );
 
       const accentCompatible = (input: string, stored: string): boolean => {
-        if (!accented(input)) return true;
+        if (!isAccented(input)) return true;
         const inputDia = diacriticFold(input);
         return diacriticFold(stored) === inputDia;
       };
@@ -960,6 +950,51 @@ export class EntityResolutionService implements OnModuleInit {
       });
       throw error;
     }
+  }
+
+  /**
+   * WHICH ACCENTED SPELLINGS CAN THESE ENTITIES PROVE THEY HOLD — the one
+   * implementation of the accent-evidence read, shared by BOTH tiers that ask
+   * the question (tier 1's identity fold, tier 2's surface fold). Returns
+   * `entityId|diacriticFold(form)` for every active surface the entity carries
+   * in this document's locale chain.
+   *
+   * DISPLAY ROWS COUNT AS EVIDENCE HERE, unlike the recall slice. A display row
+   * is the entity's LABEL in that language — 'chả lụa' is the vi label of the
+   * entity named 'cha lua' — and a label is the entity asserting its own
+   * accented spelling. The recall slice excludes display rows because grounding
+   * ON one would resurrect a refused recall claim; here the row is not being
+   * grounded on, it is being read as spelling testimony for a claim the fold
+   * already made. Deprecated rows are remembered-as-wrong and are excluded.
+   *
+   * Names stay locale-UNSCOPED (loc-05): the chain scopes the EVIDENCE
+   * consulted, never which names or surfaces are probeable. One extra query,
+   * and only when some probe carries an accent — the caller passes an empty
+   * list in the common all-ASCII case and no query is issued at all.
+   */
+  private async accentEvidenceFor(
+    entityIds: string[],
+    documentLocale: string | null,
+  ): Promise<Set<string>> {
+    const evidence = new Set<string>();
+    if (entityIds.length === 0) return evidence;
+    // Prisma.sql, not a bare $queryRaw template: the locale chain is bound
+    // inside a composed fragment, and $queryRaw's own template would bind a
+    // fragment as a parameter instead of splicing a predicate.
+    const rows = await this.prisma.$queryRaw<
+      Array<{ entity_id: string; form: string }>
+    >(Prisma.sql`
+      SELECT s.entity_id, s.form
+        FROM entity_surface s
+       WHERE s.entity_id = ANY(${entityIds}::uuid[])
+         AND s.status = 'active'
+         AND LOWER(s.locale) = ANY(${localeLookupChain(
+           documentLocale,
+         )}::text[])`);
+    for (const row of rows) {
+      evidence.add(`${row.entity_id}|${diacriticFold(row.form)}`);
+    }
+    return evidence;
   }
 
   /**
@@ -1058,10 +1093,84 @@ export class EntityResolutionService implements OnModuleInit {
         aliases: row.forms ?? [],
       }));
 
+      // ACCENT EVIDENCE ON THE SURFACE FOLD (2026-08-12) — the same rule tier 1
+      // got, one tier down, because the hole was the same hole.
+      //
+      // `form_folded` IS canonicalFold, so this tier is accent-BLIND by
+      // construction: the moment tier 1 refused "bún" the surface read handed
+      // it straight back to the English bread `bun` at 0.95, and the acc-01/02
+      // fixtures recorded exactly that residue. A guard that only moves a wrong
+      // claim from confidence 1.0 to confidence 0.95 has not refused anything.
+      //
+      // THE RULE, identical in shape and in language-neutrality: an ACCENTED
+      // INPUT IS EVIDENCE, and the entity must answer it. When the input
+      // carries accents, a candidate may only be claimed through a surface
+      // whose accents AGREE (diacriticFold equality) — or, failing that, by
+      // proving it holds that accented spelling somewhere in the document's
+      // locale chain (`accentEvidenceFor`, display rows included). An
+      // unaccented input asserts nothing, so the fold still rules there and
+      // de-diacritized typing is untouched: "pho" still reaches the banked
+      // "phở".
+      //
+      // A REFUSED CANDIDATE IS NOT A REFUSED MENTION. Only this candidate's
+      // claim dies; another candidate that DOES agree on accents still wins the
+      // mention, and if none does the mention falls through to the judge/new
+      // exactly as an unmatched surface always has. Nothing is silently
+      // claimed, nothing is silently dropped.
+      const aliasProbesOf = (entity: EntityResolutionInput): string[] =>
+        [entity.normalizedName, entity.originalText, ...(entity.aliases ?? [])]
+          .filter((term): term is string => typeof term === 'string')
+          .map((term) => term.trim())
+          .filter((term) => term.length > 0);
+
+      const foldsAgreeingOnAccents = (
+        candidate: { aliases: string[] },
+        term: string,
+      ): boolean => {
+        const folded = canonicalFold(term);
+        const dia = diacriticFold(term);
+        return candidate.aliases.some(
+          (form) =>
+            canonicalFold(form) === folded && diacriticFold(form) === dia,
+        );
+      };
+
+      const candidatesNeedingEvidence = new Set<string>();
+      for (const entity of entities) {
+        for (const term of aliasProbesOf(entity)) {
+          if (!isAccented(term)) continue;
+          const folded = canonicalFold(term);
+          for (const candidate of matchedEntities) {
+            // Only candidates this term could actually claim, and only those
+            // whose own matching forms do NOT already agree on accents — the
+            // agreeing ones are proven by the rows we already hold.
+            const overlaps = candidate.aliases.some(
+              (form) => canonicalFold(form) === folded,
+            );
+            if (!overlaps) continue;
+            if (foldsAgreeingOnAccents(candidate, term)) continue;
+            candidatesNeedingEvidence.add(candidate.entityId);
+          }
+        }
+      }
+      const accentEvidence = await this.accentEvidenceFor(
+        Array.from(candidatesNeedingEvidence),
+        documentLocale,
+      );
+
+      const accentAdmits = (
+        candidate: { entityId: string; aliases: string[] },
+        term: string,
+      ): boolean =>
+        !isAccented(term) ||
+        foldsAgreeingOnAccents(candidate, term) ||
+        accentEvidence.has(`${candidate.entityId}|${diacriticFold(term)}`);
+
       return entities.map((entity) => {
         const matchedEntity = this.selectBestAliasMatch(
           entity,
           matchedEntities,
+          accentAdmits,
         );
 
         return {
@@ -1441,9 +1550,19 @@ export class EntityResolutionService implements OnModuleInit {
     return results;
   }
 
+  /**
+   * `accentAdmits` is the accent-evidence veto (see performAliasMatches): it
+   * answers, per (candidate, typed term), whether an ACCENTED term is one this
+   * candidate may be claimed by. It is required, not optional — a default
+   * "always admit" would let a new call site re-open the hole silently.
+   */
   private selectBestAliasMatch(
     inputEntity: EntityResolutionInput,
     candidateEntities: { entityId: string; name: string; aliases: string[] }[],
+    accentAdmits: (
+      candidate: { entityId: string; aliases: string[] },
+      term: string,
+    ) => boolean,
   ): { entityId: string; name: string; aliases: string[] } | null {
     const searchTerms = [
       inputEntity.normalizedName,
@@ -1461,6 +1580,10 @@ export class EntityResolutionService implements OnModuleInit {
     const normalizedSearchTerms = Array.from(
       new Set(searchTerms.map((term) => this.normalizeAliasValue(term))),
     );
+    // The RAW spellings, deduped — the veto reads accents, which the fold has
+    // already destroyed, so the overlap test below has to run on what was
+    // actually typed.
+    const rawSearchTerms = Array.from(new Set(searchTerms));
 
     let bestCandidate: {
       entity: { entityId: string; name: string; aliases: string[] };
@@ -1476,8 +1599,15 @@ export class EntityResolutionService implements OnModuleInit {
         .map((alias) => this.normalizeAliasValue(alias))
         .filter((alias) => alias.length > 0);
 
-      const hasAliasOverlap = normalizedSearchTerms.some((searchTerm) =>
-        normalizedCandidateAliases.includes(searchTerm),
+      // THE OVERLAP IS WHAT MAKES THE CLAIM, so the veto belongs here: a term
+      // whose accents this candidate cannot answer is not an overlap at all.
+      // Every other signal below (name similarity, containment) only ORDERS
+      // candidates that already have one, so a vetoed candidate never competes.
+      const hasAliasOverlap = rawSearchTerms.some(
+        (searchTerm) =>
+          normalizedCandidateAliases.includes(
+            this.normalizeAliasValue(searchTerm),
+          ) && accentAdmits(candidate, searchTerm),
       );
 
       if (!hasAliasOverlap) {
@@ -1538,14 +1668,14 @@ export class EntityResolutionService implements OnModuleInit {
       candidateNameContainsSearch: boolean;
       bestNameSimilarity: number;
       bestAliasSimilarity: number;
-      entity: { name: string };
+      entity: { entityId: string; name: string };
     },
     right: {
       exactNameMatch: boolean;
       candidateNameContainsSearch: boolean;
       bestNameSimilarity: number;
       bestAliasSimilarity: number;
-      entity: { name: string };
+      entity: { entityId: string; name: string };
     },
   ): number {
     if (left.exactNameMatch !== right.exactNameMatch) {
@@ -1563,7 +1693,23 @@ export class EntityResolutionService implements OnModuleInit {
       return left.bestAliasSimilarity > right.bestAliasSimilarity ? 1 : -1;
     }
 
-    return right.entity.name.length - left.entity.name.length;
+    // SHORTEST NAME WINS — the most specific concept that carries the word,
+    // rather than a longer dish that merely contains it.
+    if (left.entity.name.length !== right.entity.name.length) {
+      return right.entity.name.length - left.entity.name.length;
+    }
+    // AND THE LAST TIE-BREAK IS TOTAL (2026-08-12, the same red team that
+    // ordered the tier-1 fold owners). Two candidates equal on every signal
+    // used to be settled by whichever row the query returned first — and the
+    // surface query carries no ORDER BY, so "first" was heap and plan order.
+    // A mention would then ground on a different twin from run to run and
+    // split one concept's evidence across both. Name, then entityId: both are
+    // stable, and together they are a total order, so every run of every
+    // process picks the same candidate until a merge removes one.
+    if (left.entity.name !== right.entity.name) {
+      return left.entity.name < right.entity.name ? 1 : -1;
+    }
+    return left.entity.entityId < right.entity.entityId ? 1 : -1;
   }
 
   /**

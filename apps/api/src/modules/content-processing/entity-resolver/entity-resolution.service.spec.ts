@@ -911,6 +911,72 @@ describe('EntityResolutionService — the v7 shadow twin classes (2026-08-10 pro
     expect(resolutionResults[0].entityId).toBe('a-cafe');
   });
 
+  it('ACCENT EVIDENCE AT TIER 2 (2026-08-12): the SURFACE fold refuses "bún" for the English bread too — and the concept that banks the Vietnamese spelling gets it instead', async () => {
+    // The residue the tier-1 fixtures recorded: `form_folded` IS canonicalFold,
+    // so refusing at tier 1 only moved the wrong claim from confidence 1.0 to
+    // 0.95. Both entities are surface candidates for the same folded probe —
+    // only one of them can spell it.
+    expect(canonicalFold('bún')).toBe(canonicalFold('bun'));
+    const { service } = buildService({
+      entities: [
+        {
+          entityId: 'i-bun',
+          name: 'english bread bun',
+          aliases: ['bun'], // the de-accented twin only
+          type: EntityType.ingredient,
+        },
+        {
+          entityId: 'i-vermicelli',
+          name: 'vermicelli',
+          aliases: ['bún'], // the entity that says it holds the spelling
+          type: EntityType.ingredient,
+        },
+      ],
+    });
+    const { resolutionResults } = await service.resolveBatch(
+      [
+        baseInput({
+          tempId: 't1',
+          normalizedName: 'bún',
+          entityType: EntityType.ingredient,
+          documentLocale: 'vi',
+        }),
+      ],
+      { ...CONFIG_NO_LLM, allowEntityCreation: false },
+    );
+    expect(resolutionResults[0].resolutionTier).toBe('alias');
+    expect(resolutionResults[0].entityId).toBe('i-vermicelli');
+  });
+
+  it('ACCENT EVIDENCE AT TIER 2, THE UNACCENTED CONTROL: "bun" typed without accents still reaches the accented surface — an unaccented input asserts nothing', async () => {
+    // De-diacritized typing is how most people type Vietnamese on a US
+    // keyboard. The veto reads the INPUT's accents, so this probe is decided
+    // by the fold exactly as before, and the tier keeps the recall it earned.
+    const { service } = buildService({
+      entities: [
+        {
+          entityId: 'i-vermicelli',
+          name: 'vermicelli',
+          aliases: ['bún'],
+          type: EntityType.ingredient,
+        },
+      ],
+    });
+    const { resolutionResults } = await service.resolveBatch(
+      [
+        baseInput({
+          tempId: 't1',
+          normalizedName: 'bun',
+          entityType: EntityType.ingredient,
+          documentLocale: 'vi',
+        }),
+      ],
+      { ...CONFIG_NO_LLM, allowEntityCreation: false },
+    );
+    expect(resolutionResults[0].resolutionTier).toBe('alias');
+    expect(resolutionResults[0].entityId).toBe('i-vermicelli');
+  });
+
   it('PUNCTUATION-JOIN: "Pf Changs" claims "P.F. Chang\'s" via the joined-identity tier (folds differ: "pf changs" vs "p f changs")', async () => {
     // Premise check, so the case cannot silently test the wrong tier: the
     // folds genuinely differ, so neither the exact tier nor the surface tier
