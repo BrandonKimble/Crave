@@ -774,6 +774,64 @@ describe('EntityResolutionService — the v7 shadow twin classes (2026-08-10 pro
     expect(resolutionResults[0].entityId).toBe('r-alamo');
   });
 
+  it('TONE-MARK VETO (2026-08-11 multilingual audit): "cơm cháy" must NOT exact-claim "Cơm Chay" — both sides carry accents and their accent-preserving folds disagree (different Vietnamese words, one canonical fold)', async () => {
+    // Premise: one shared canonical fold, two different diacritic folds —
+    // exactly the pair the diacriticFold doctrine names (vegetarian rice vs
+    // scorched rice).
+    expect(canonicalFold('cơm cháy')).toBe(canonicalFold('Cơm Chay'));
+    expect(diacriticFold('cơm cháy')).not.toBe(diacriticFold('Cơm Chay'));
+    const { service } = buildService({
+      entities: [
+        {
+          entityId: 'f-comchay',
+          name: 'Cơm Chay',
+          aliases: [],
+          type: EntityType.food,
+        },
+      ],
+    });
+    const { resolutionResults } = await service.resolveBatch(
+      [
+        baseInput({
+          tempId: 't1',
+          normalizedName: 'cơm cháy',
+          entityType: EntityType.food,
+        }),
+      ],
+      { ...CONFIG_NO_LLM, allowEntityCreation: false },
+    );
+    // With creation disabled and no tier match, an unmatched result is
+    // DROPPED from the output — emptiness here means no tier claimed the
+    // tone-differing twin (the CONTROL below proves the same fixture shape
+    // resolves when the accent evidence agrees).
+    expect(resolutionResults).toHaveLength(0);
+  });
+
+  it('CONTROL: accentless "pho" still exact-claims "Phở" — de-diacritized typing carries no accent evidence, so the folded key rules', async () => {
+    const { service } = buildService({
+      entities: [
+        {
+          entityId: 'f-pho',
+          name: 'Phở',
+          aliases: [],
+          type: EntityType.food,
+        },
+      ],
+    });
+    const { resolutionResults } = await service.resolveBatch(
+      [
+        baseInput({
+          tempId: 't1',
+          normalizedName: 'pho',
+          entityType: EntityType.food,
+        }),
+      ],
+      { ...CONFIG_NO_LLM, allowEntityCreation: false },
+    );
+    expect(resolutionResults[0].resolutionTier).toBe('exact');
+    expect(resolutionResults[0].entityId).toBe('f-pho');
+  });
+
   it('PUNCTUATION-JOIN: "Pf Changs" claims "P.F. Chang\'s" via the joined-identity tier (folds differ: "pf changs" vs "p f changs")', async () => {
     // Premise check, so the case cannot silently test the wrong tier: the
     // folds genuinely differ, so neither the exact tier nor the surface tier

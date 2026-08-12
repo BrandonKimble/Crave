@@ -84,13 +84,43 @@ describe('aggregator domain doctrine — one source, two renderings', () => {
 });
 
 describe('brand name doctrine', () => {
-  it('normalizes to the comparable brand form', () => {
-    expect(normalizeBrandName("The Joe's Pizza!")).toBe('joe s pizza');
+  it('normalizes to the comparable brand form via THE canonical fold', () => {
+    // Apostrophes STRIP (entity-identity fold law: Phil's == Phils) — the old
+    // inline regex turned them into a space and forked from the identity
+    // doctrine.
+    expect(normalizeBrandName("The Joe's Pizza!")).toBe('joes pizza');
     expect(normalizeBrandName('   ')).toBeNull();
   });
 
+  it('MULTILINGUAL: accented letters fold to base letters instead of vanishing', () => {
+    // Old regex deleted ơ/ở entirely: "Bò Né" -> "b n". RED under the old
+    // implementation.
+    expect(normalizeBrandName('Phở Bò')).toBe('pho bo');
+    // Two distinct tone-differing Vietnamese brands must NOT agree on an
+    // accent-stripped residue of deleted letters.
+    expect(restaurantNamesAgree('Bò Né', 'Bà Nà')).toBe(false);
+  });
+
+  it('MULTILINGUAL: CJK names carry brand identity (old regex nulled them)', () => {
+    expect(normalizeBrandName('三峡人家')).toBe('三峡人家');
+    expect(restaurantNamesAgree('三峡人家', '三峡人家')).toBe(true);
+    expect(restaurantNamesAgree('三峡人家', '老四川')).toBe(false);
+    // A CJK-named chain sharing an owned domain can now be brand-pure.
+    expect(brandClusterPurity(['三峡人家', '三峡人家 Midtown']).pure).toBe(
+      true,
+    );
+    // Mixed-script: the parenthetical form is a suffix-extension, not a clash.
+    expect(
+      restaurantNamesAgree(
+        'House of Three Gorges',
+        'House of Three Gorges (三峡人家)',
+      ),
+    ).toBe(true);
+  });
+
   it('agrees on identical brands and word-boundary chain prefixes only', () => {
-    expect(restaurantNamesAgree("Joe's Pizza", 'joes pizza')).toBe(false);
+    // Fold-law alignment: apostrophe spelling variants are ONE brand.
+    expect(restaurantNamesAgree("Joe's Pizza", 'joes pizza')).toBe(true);
     expect(restaurantNamesAgree("Joe's Pizza", "Joe's Pizza Midtown")).toBe(
       true,
     );

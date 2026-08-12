@@ -785,16 +785,49 @@ export class EntityResolutionService implements OnModuleInit {
       );
       // First row wins per fold so the pick is stable within one query; the
       // raw-spelling map above always outranks it per input, so a fold twin
-      // can never steal an input whose own spelling exists.
-      const identityToEntityMap = new Map<string, string>();
+      // can never steal an input whose own spelling exists. The stored NAME
+      // rides along for the accent-evidence check below.
+      const identityToEntityMap = new Map<
+        string,
+        { entityId: string; name: string }
+      >();
       for (const entity of matchedEntities) {
         if (
           entity.identityKey &&
           !identityToEntityMap.has(entity.identityKey)
         ) {
-          identityToEntityMap.set(entity.identityKey, entity.entityId);
+          identityToEntityMap.set(entity.identityKey, {
+            entityId: entity.entityId,
+            name: entity.name,
+          });
         }
       }
+      // ACCENT EVIDENCE ON THE FOLD ARM (2026-08-11 multilingual audit).
+      // canonicalFold strips accents, and on Vietnamese accents are PHONEMIC:
+      // "cơm chay" (vegetarian rice) and "cơm cháy" (scorched rice) share one
+      // fold, as do "bò" (beef) and "bơ" (butter) — the exact pairs the
+      // diacriticFold doctrine names (entity-identity.ts). When BOTH the
+      // input and the stored name carry accents and their accent-PRESERVING
+      // folds disagree, the two spellings are different words and the claim
+      // is refused (it falls to the later tiers/judge, as before the
+      // identity-key probe existed). One-sided accents stay claimable: an
+      // accentless input is de-diacritized typing with no evidence, and an
+      // accentless stored name asserts none — the folded key rules, so
+      // "cafe" == "Café" and "pho" == "Phở" keep working.
+      const accentCompatible = (input: string, stored: string): boolean => {
+        const inputDia = diacriticFold(input);
+        const storedDia = diacriticFold(stored);
+        const inputAccented = inputDia !== canonicalFold(input);
+        const storedAccented = storedDia !== canonicalFold(stored);
+        return !(inputAccented && storedAccented && inputDia !== storedDia);
+      };
+      const claimByFold = (probe: string): string | undefined => {
+        const folded = canonicalFold(probe);
+        if (!folded) return undefined;
+        const owner = identityToEntityMap.get(folded);
+        if (!owner) return undefined;
+        return accentCompatible(probe, owner.name) ? owner.entityId : undefined;
+      };
 
       return entities.map((entity) => {
         const raw = entity.normalizedName.toLowerCase().trim();
@@ -803,16 +836,11 @@ export class EntityResolutionService implements OnModuleInit {
         // its own form exists.
         let entityId = nameToEntityMap.get(raw);
         if (!entityId) {
-          const folded = canonicalFold(raw);
-          if (folded) {
-            entityId = identityToEntityMap.get(folded);
-          }
+          entityId = claimByFold(raw);
         }
         if (!entityId && usesNumberVariants) {
           for (const variant of foodNameVariants(raw)) {
-            entityId =
-              nameToEntityMap.get(variant) ??
-              identityToEntityMap.get(canonicalFold(variant));
+            entityId = nameToEntityMap.get(variant) ?? claimByFold(variant);
             if (entityId) break;
           }
         }

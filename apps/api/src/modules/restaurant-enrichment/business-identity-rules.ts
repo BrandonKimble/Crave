@@ -25,6 +25,7 @@
  *     (shared ground or shared owned domain → merge; two distinct owned
  *     domains → two businesses; else same dominant community → merge).
  */
+import { canonicalFold } from '../content-processing/entity-resolver/entity-identity';
 
 /**
  * Regex FRAGMENTS (POSIX-and-JS-compatible), the single source. Note
@@ -74,18 +75,24 @@ export function identityDomain(
   return isAggregatorDomain(lowered) ? null : lowered;
 }
 
-/** Normalize a restaurant name to its comparable brand form (lowercase,
- *  punctuation stripped, leading "the" dropped). */
+/** Normalize a restaurant name to its comparable brand form: THE canonical
+ *  fold (the one identity authority — lowercase, accents folded, punctuation
+ *  collapsed, apostrophes stripped per entity-identity.ts), then the leading
+ *  "the" dropped.
+ *
+ *  MULTILINGUAL (2026-08-11 audit): the previous inline `[^a-z0-9\s]` regex
+ *  DELETED every non-ASCII letter, so Vietnamese tone-marked letters vanished
+ *  ("Bò Né" -> "b n" — two distinct tone-differing names could wrongly AGREE
+ *  on the residue) and every all-CJK name normalized to null (so
+ *  brandClusterPurity could never trust a domain shared by a CJK-named
+ *  chain). canonicalFold keeps letters of every script and folds accents to
+ *  base letters ("Phở" -> "pho", "三峡人家" -> "三峡人家"), which is the
+ *  conservative, non-colliding side. */
 export function normalizeBrandName(
   value: string | null | undefined,
 ): string | null {
   if (!value) return null;
-  const normalized = value
-    .toLowerCase()
-    .replace(/[^a-z0-9\s]/g, ' ')
-    .replace(/\s+/g, ' ')
-    .replace(/^the\s+/, '')
-    .trim();
+  const normalized = canonicalFold(value).replace(/^the /, '');
   return normalized.length ? normalized : null;
 }
 
