@@ -119,17 +119,22 @@ L3. **COVER-LINKER (locked 2026-08-10, owner delegated).** Whole-query span
 
 ## B. IN FLIGHT (agent running or committed-but-unverified)
 
-6. **Collection-locale spine — COMPLETE 2026-08-09** (verified 57/58
-   resolution gate personally): 81c0d2751, adf03754c, 4caa12375, 5c7ee2e72,
-   4d839ef3c (locale-chain read+write, camarones-resolves-at-ingestion
-   proven with controls), cdf4d6aae (per-term demand locale; --locale flag
-   deleted; undecidable→und honest fallback confirmed). Fork repair
-   cancelled on re-measurement (zero true duplicates). Awaits its A0
-   red-team pass. NEW FINDINGS from the work, unfixed: (a) the addSurfaces
-   collision-guard probe is locale-blind (an es claim refusable by an
-   unrelated vi form — claim key arguably wants the locale chain); (b) no
-   es/vi generic keyword vocabulary authored (a Spanish ask still ships
-   'mejores' — conservative, but budget-wasting at scale).
+6. **Collection-locale spine — A0 RED TEAM FAILED IT (2026-08-10); correction in flight.**
+   The red team refuted the spine's core write assumption with executed
+   proof: tagging extraction surfaces with the SOURCE'S configured language
+   treats reader-context as word-identity — 'bún đậu mắm tôm' banked as
+   ENGLISH (verified personally), ~10.6k extraction-'en' rows minted, ~5.1k
+   entities now en-only (invisible to every non-en chain), and the detector
+   oracle reads the wrong tags back as conf-1.0 truth (junk one-row flips:
+   'cat'→vi, 'crema'→vi; prior-echo feedback loop). CORRECTED PRINCIPLE
+   (doctrine): source language = READER CONTEXT (read-chain only); word
+   language comes only from generator/judge provenance; extraction observes
+   'und'. Fix agent running: write-flip revert + data repair + oracle
+   trust-provenance hardening + low_result/refresh locale lanes + ledger
+   key collision + sweep lock + onboarding --language. What SURVIVED the
+   red team: the read-side locale chain (camarones win intact, no
+   mis-merge direction), resolution cache scoping, re-language invariant,
+   script pins. Steps 1-4 commits stand; A0 re-runs after the correction.
 
 6b. **Conjunction "gap" RECLASSIFIED (2026-08-09 evening)**: retested with
    clean examples — 'tacos and pizza' / 'wings and beer' ground BOTH sides
