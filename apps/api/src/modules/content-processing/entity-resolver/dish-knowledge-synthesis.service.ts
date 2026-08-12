@@ -6,6 +6,7 @@ import { EntityStatus, EntityType } from '@prisma/client';
 import { PrismaService } from '../../../prisma/prisma.service';
 import { LoggerService } from '../../../shared';
 import { LLMService } from '../../external-integrations/llm/llm.service';
+import { PooledBatchRunner } from '../../external-integrations/llm/pooled-batch-runner';
 import { isEnvFlagEnabled } from '../../../shared/config/env-flag';
 
 export interface DishKnowledgeSummary {
@@ -41,6 +42,7 @@ export class DishKnowledgeSynthesisService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly llmService: LLMService,
+    private readonly pooled: PooledBatchRunner,
     loggerService: LoggerService,
   ) {
     this.logger = loggerService.setContext('DishKnowledgeSynthesisService');
@@ -95,18 +97,66 @@ export class DishKnowledgeSynthesisService {
       return summary;
     }
 
+    // POOLED BATCH, one job for the whole pass (prompt-fleet audit
+    // 2026-08-11): this lane was the fleet's biggest output-token spender
+    // (7.06M output tokens / 30d in the ledger) running sync where nobody
+    // waits — the nightly cron and the manual script both tolerate batch
+    // latency, at half the price. Assembly and parsing are the SAME parts
+    // the sync synthesizeDishKnowledgeBatch uses (llm.service.ts), so the
+    // two paths cannot drift. An unanswered chunk leaves its dishes
+    // unstamped (knowledgeSynthesizedAt stays null) and the next pass
+    // re-offers them — never fabricated knowledge.
+    const chunks: Array<typeof dishes> = [];
     for (
       let offset = 0;
       offset < dishes.length;
       offset += DishKnowledgeSynthesisService.DISHES_PER_CALL
     ) {
-      const batch = dishes.slice(
-        offset,
-        offset + DishKnowledgeSynthesisService.DISHES_PER_CALL,
+      chunks.push(
+        dishes.slice(
+          offset,
+          offset + DishKnowledgeSynthesisService.DISHES_PER_CALL,
+        ),
       );
-      const knowledge = await this.llmService.synthesizeDishKnowledgeBatch(
-        batch.map((dish) => ({ name: dish.name })),
-      );
+    }
+    const firstParts = this.llmService.dishKnowledgeRequestParts([]);
+    const responses = await this.pooled.generateMany({
+      caller: 'dish.knowledge_synthesize',
+      items: chunks.map((batch, index) => ({
+        key: `chunk-${index}`,
+        prompt: this.llmService.dishKnowledgeRequestParts(
+          batch.map((dish) => ({ name: dish.name })),
+        ).prompt,
+      })),
+      systemInstruction: firstParts.systemInstruction,
+      generationConfig: firstParts.generationConfig,
+    });
+
+    for (let chunkIndex = 0; chunkIndex < chunks.length; chunkIndex += 1) {
+      const batch = chunks[chunkIndex];
+      const text = responses.get(`chunk-${chunkIndex}`);
+      if (!text) {
+        this.logger.warn(
+          'Dish knowledge chunk unanswered (dishes left unstamped, re-offered next pass)',
+          { size: batch.length },
+        );
+        continue;
+      }
+      let knowledge: { ingredients: string[]; aliases: string[] }[];
+      try {
+        knowledge = this.llmService.parseDishKnowledgeResponse(
+          text,
+          batch.length,
+        );
+      } catch (error) {
+        this.logger.warn('Dish knowledge chunk unparseable (left unstamped)', {
+          size: batch.length,
+          error: {
+            message: error instanceof Error ? error.message : String(error),
+          },
+        });
+        continue;
+      }
 
       for (let i = 0; i < batch.length; i += 1) {
         const dish = batch[i];

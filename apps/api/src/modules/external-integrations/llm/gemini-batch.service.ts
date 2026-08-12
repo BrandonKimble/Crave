@@ -379,6 +379,51 @@ export class GeminiBatchService implements OnModuleDestroy {
     }
   }
 
+  /**
+   * ONE step of the job's lifecycle, driven by an AWAITING caller instead of
+   * the 5-minute cron (prompt-fleet audit 2026-08-11, cost fix 1: pooled
+   * batch pricing for non-interactive sweeps). The cron only runs on worker
+   * runtimes with crons enabled — a sweep awaiting its own pooled job must
+   * be able to advance it from any process. Every transition this calls is
+   * the SAME lease-guarded machinery the cron uses, so a concurrent cron
+   * tick is harmless: whoever claims the lease wins, the other no-ops.
+   * Returns the job's status after the step.
+   */
+  async driveOnce(jobId: string): Promise<string> {
+    const job = await this.prisma.llmBatchJob.findUniqueOrThrow({
+      where: { jobId },
+      select: {
+        status: true,
+        providerJobName: true,
+        purpose: true,
+        model: true,
+      },
+    });
+    try {
+      if (job.status === 'pending' || job.status === 'submitting') {
+        await this.resumeSubmit(jobId, job.purpose, job.model);
+      } else if (job.status === 'submitted' && job.providerJobName) {
+        await this.pollOne(jobId, job.providerJobName, job.purpose);
+      } else if (job.status === 'succeeded' || job.status === 'ingesting') {
+        await this.ingest(jobId, job.purpose);
+      }
+    } catch (error) {
+      // The job is durable; a failed step is retried on the next drive tick
+      // (or by the cron). Surface, don't throw — the awaiter's loop owns
+      // timeout policy.
+      this.logger.warn('driveOnce step failed (will retry)', {
+        jobId,
+        status: job.status,
+        error: { message: buildCauseChain(error) },
+      });
+    }
+    const refreshed = await this.prisma.llmBatchJob.findUniqueOrThrow({
+      where: { jobId },
+      select: { status: true },
+    });
+    return refreshed.status;
+  }
+
   async cancel(jobId: string): Promise<void> {
     const job = await this.prisma.llmBatchJob.findUnique({
       where: { jobId },
@@ -671,7 +716,16 @@ export class GeminiBatchService implements OnModuleDestroy {
   }
 
   private async ingest(jobId: string, purpose: string): Promise<void> {
-    const ingestor = this.ingestors.get(purpose);
+    // POOLED purposes ('pooled.<caller>') have no ingestor by design: their
+    // results are read from llm_batch_job_items by the awaiting
+    // PooledBatchRunner, and the job's only remaining lifecycle need is the
+    // succeeded->ingested flip so the awaiter (and the stale-job sweep) can
+    // tell "results ready" from "still owed work".
+    const ingestor =
+      this.ingestors.get(purpose) ??
+      (purpose.startsWith('pooled.')
+        ? (): Promise<void> => Promise.resolve()
+        : undefined);
     if (!ingestor) {
       this.logger.warn('No ingestor registered for batch purpose', {
         jobId,

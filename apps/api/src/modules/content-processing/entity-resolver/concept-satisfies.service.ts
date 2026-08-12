@@ -350,7 +350,13 @@ export class ConceptSatisfiesService {
       caller: 'concepts.satisfies',
       prompt: buildSatisfiesPrompt(anchorName, batch),
       generationConfig: {
-        temperature: 0.1,
+        // ZERO, not 0.1 (2026-08-11) — the vocabulary pass's measured lesson
+        // applied to its sibling: this lane CLASSIFIES a fixed candidate list
+        // into three verdicts. Nothing here improves with sampling variety,
+        // and verdicts are persisted per prompt version — a flip between
+        // identical re-asks is pure noise in entity_satisfies. At 0 the
+        // vocabulary pass went from 3/20 flips to identical 5 runs straight.
+        temperature: 0,
         responseMimeType: 'application/json',
         // responseJsonSchema (NOT responseSchema): the latter is Gemini's
         // TYPED Schema field and expects OBJECT/STRING, so a raw JSON Schema

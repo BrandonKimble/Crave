@@ -5,6 +5,7 @@ import { GeminiContextCacheRegistry } from './gemini-context-cache.registry';
 import { LLMService } from './llm.service';
 import { PromptRegistryService } from './prompt-registry.service';
 import { GeminiBatchService } from './gemini-batch.service';
+import { PooledBatchRunner } from './pooled-batch-runner';
 import { EmbeddingService } from './embedding.service';
 import { LLMChunkingService } from './llm-chunking.service';
 import { LLMConcurrentProcessingService } from './llm-concurrent-processing.service';
@@ -28,6 +29,7 @@ import { PrismaModule } from '../../../prisma/prisma.module';
     LLMService,
     PromptRegistryService,
     GeminiBatchService,
+    PooledBatchRunner,
     EmbeddingService,
     LLMChunkingService,
     LLMConcurrentProcessingService,
@@ -38,6 +40,7 @@ import { PrismaModule } from '../../../prisma/prisma.module';
     LLMService,
     PromptRegistryService,
     GeminiBatchService,
+    PooledBatchRunner,
     EmbeddingService,
     LLMChunkingService,
     LLMConcurrentProcessingService,

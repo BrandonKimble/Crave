@@ -65,8 +65,29 @@ const FLASH = 'gemini-3-flash-preview';
 const FLASH_LITE = 'gemini-3.1-flash-lite-preview';
 const MODEL_MAX_OUTPUT = 65536;
 
+/**
+ * MODEL-TIER STRATEGY (owner-ordered, prompt-fleet rederivation 2026-08-11).
+ * A caller's model is a DECISION recorded here, never an inheritance:
+ *
+ * - EXTRACTION stays on the session default (the proven older flash tier) —
+ *   empirically best at collection extraction; the prompt A/B harness is the
+ *   only instrument allowed to move it.
+ * - JUDGMENT lanes whose mistakes are expensive and whose volume is not
+ *   (entity merges, word ownership, Places grounding, dish knowledge) run
+ *   the smarter FLASH tier. The delta at their volumes is single-digit
+ *   dollars/month; one wrong merge or one wrong grounding costs more.
+ * - MECHANICAL classification (a fixed label set, no world reconciliation)
+ *   stays FLASH_LITE — a smarter model buys nothing on an enum.
+ *
+ * Every switch is MEASURABLE, not asserted: the ledger's caller column is
+ * the cost before/after, and the decision ledger records `model` on every
+ * entity-match / attribute-placement / moderation decision, so a quality
+ * regression after a tier change is a queryable diff, not a vibe.
+ */
 export const GEMINI_CALLER_PROFILES: Record<string, GeminiCallerProfile> = {
   // ---- collection / extraction ----
+  // Session default ON PURPOSE (proven tier for extraction; see strategy
+  // note above — moves only via the prompt A/B harness).
   'content.extract': { context: 'content', maxOutputTokens: MODEL_MAX_OUTPUT },
   'query.interpret': {
     context: 'query',
@@ -84,7 +105,11 @@ export const GEMINI_CALLER_PROFILES: Record<string, GeminiCallerProfile> = {
     context: 'query',
     maxOutputTokens: MODEL_MAX_OUTPUT,
   },
-  // ---- classify / judge tier (flash-lite) ----
+  // ---- mechanical classification tier (flash-lite, DELIBERATE) ----
+  // These map text onto a fixed label set (cuisine names, allow/block,
+  // ranked/discussion, hub/not, keep/drop, a verbatim pick from a list).
+  // No world reconciliation, no destructive merge — the smarter tier buys
+  // nothing on an enum (tier strategy 2026-08-11).
   'cuisine.extract': {
     model: FLASH_LITE,
     context: 'query',
@@ -112,8 +137,16 @@ export const GEMINI_CALLER_PROFILES: Record<string, GeminiCallerProfile> = {
     context: 'query',
     maxOutputTokens: MODEL_MAX_OUTPUT,
   },
+  // JUDGMENT, not mechanical (tier strategy 2026-08-11): a wrong `select`
+  // grounds a restaurant to the WRONG Google place — grounding is ~$0.045
+  // a location, place-grounded restaurants are never deleted, and every
+  // downstream photo/hours/geo fact inherits the error. 8,872 reqs/30d at
+  // ~930 in-tokens each ≈ 8.3M in-tokens: the LITE→FLASH delta is ~$2/mo
+  // against that failure mode. Chooser decisions are staged (reject =
+  // retrieve more), so quality shifts show up as select/reject rate per
+  // caller in the ledger.
   'places.choose_candidate': {
-    model: FLASH_LITE,
+    model: FLASH,
     context: 'query',
     maxOutputTokens: MODEL_MAX_OUTPUT,
     timeoutMs: INTERACTIVE_QUERY_TIMEOUT_MS,
@@ -124,7 +157,14 @@ export const GEMINI_CALLER_PROFILES: Record<string, GeminiCallerProfile> = {
     context: 'query',
     maxOutputTokens: MODEL_MAX_OUTPUT,
   },
+  // JUDGMENT + generative world knowledge (tier strategy 2026-08-11): an
+  // invented ingredient misleads a dietary-constrained diner and a bad
+  // alias fuses two dishes in search. Was implicit session-default; now an
+  // EXPLICIT flash pin so a session-model change cannot silently retier it.
+  // Volume is the sweep watermark (497 calls/30d), and the lane now rides
+  // the pooled batch path at half price (dish-knowledge-synthesis.service).
   'dish.knowledge_synthesize': {
+    model: FLASH,
     context: 'query',
     maxOutputTokens: MODEL_MAX_OUTPUT,
   },
@@ -157,9 +197,14 @@ export const GEMINI_CALLER_PROFILES: Record<string, GeminiCallerProfile> = {
   // THE WORD-CLAIM ADJUDICATOR (claims registry, concept-graph §9.9). Runs
   // ONLY on contested surfaces — an inferred claim colliding with another
   // inferred claim — so volume is the conflict backlog, not the corpus.
-  // Same stable-classification tier as the vocabulary pass.
+  // FLASH, not LITE (tier strategy 2026-08-11): this is a persisted RULING
+  // that takes a search word away from a concept — cross-locale nuance
+  // (bò/bơ, near-synonym vs containment) is exactly where the smarter tier
+  // earns its keep, and at 757 reqs/30d (~1M in-tokens) the delta is
+  // pennies. Verdict rows carry `reason`, so a tier regression is auditable
+  // against the persisted record.
   'aliases.claim_judge': {
-    model: FLASH_LITE,
+    model: FLASH,
     context: 'query',
     maxOutputTokens: MODEL_MAX_OUTPUT,
   },

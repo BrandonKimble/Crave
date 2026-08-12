@@ -5,24 +5,38 @@ import {
 /**
  * Audit-reason policy for LLM output schemas.
  *
- * Many judge/classifier calls ask the model for a short `reason` alongside its
- * decision. Those reasons exist ONLY for auditing and prompt tuning — nothing
- * downstream branches on them — but they cost output tokens on every call.
- * Policy: reasons ON in dev (auditability), OFF in prod (cost), overridable
- * either way with LLM_AUDIT_REASONS=true|false.
+ * Many judge/classifier calls ask the model for a short `reason` alongside
+ * its decision. Nothing downstream branches on them; they exist for auditing
+ * and prompt tuning.
  *
- * NOT covered by this policy:
- * - SEMANTIC reasons the product consumes (moderation's rejection label
- *   shown to users) — always required.
- * - PERSISTED audit reasons on irreversible decisions (the relevance gate's
- *   verdict reasons, stored per post in collection_relevance_verdicts) —
- *   always on, in prod too: ~$0.08/city buys a permanent record of why
- *   signal was excluded, and every gate bug found so far was found by
- *   reading them.
- * The policy covers only EPHEMERAL reasons that would be paid for and
- * discarded (entity match, attribute placement, poll subject).
+ * POLICY (owner-ordered rederivation 2026-08-11): **always ON, everywhere,
+ * for every JUDGE lane** — overridable off with LLM_AUDIT_REASONS=false as
+ * the emergency lever. The old dev-on/prod-off split optimized the wrong
+ * side of an asymmetry:
+ *
+ * - THE COST IS NOISE, measured at real volumes. The lanes this policy
+ *   covers (entity match single+batch, attribute placement, poll subject,
+ *   place chooser) total ~40k judgments/30d in the ledger. A ≤12-word
+ *   evidence reason is ~15 output tokens, so always-on costs ~0.6M output
+ *   tokens/month — under a dollar at flash rates, and half that wherever a
+ *   lane rides batch pricing. (The whole fleet's judged output for 30d was
+ *   ~2M tokens on these lanes.)
+ * - THE VALUE IS PROVEN, not hoped: every relevance-gate bug so far was
+ *   found by reading its persisted reasons, and the prompt rederivation
+ *   campaign grades candidates against WHY the judge decided, which a
+ *   prod-silent fleet cannot answer after the fact.
+ * - Reasons follow the "evidence, not narrative" rule (quote the ask, name
+ *   the rule), which keeps them short AND machine-checkable.
+ *
+ * Deliberately NOT given reasons: high-volume mechanical lanes where the
+ * gold harness is the debugging surface (collection extraction mentions,
+ * embeddings, vocabulary labels) — their schemas simply carry no reason
+ * field, so this policy never touches them.
+ *
+ * Also outside this policy (always required regardless of the flag):
+ * - SEMANTIC reasons the product consumes (moderation's rejection label).
+ * - PERSISTED audit reasons on irreversible decisions (relevance gate).
  */
-import { isProdEnv, resolveAppEnv } from '../../../shared/config/app-env';
 
 let cached: boolean | null = null;
 
@@ -31,9 +45,9 @@ export function auditReasonsEnabled(): boolean {
   const explicit = process.env.LLM_AUDIT_REASONS;
   if (isEnvFlagEnabled(explicit)) cached = true;
   else if (isEnvFlagExplicitlyDisabled(explicit)) cached = false;
-  // ONE resolver (red team 2026-08-02). This read APP_ENV only, so a
-  // process relying on the NODE_ENV fallback was treated as non-prod.
-  else cached = !isProdEnv(resolveAppEnv());
+  // Default ON in every environment (2026-08-11; was dev-only). The env
+  // flag remains the loud, deliberate off-switch.
+  else cached = true;
   return cached;
 }
 

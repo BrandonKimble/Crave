@@ -23,6 +23,15 @@ import { LLMService } from '../external-integrations/llm/llm.service';
  * broken is-food gate must never block a legitimate photo; a broken safety
  * moderator must never publish an unvetted one.
  */
+/** Enforced verdict shape for the is-food gate. Exported for the spec. */
+export const IS_FOOD_RESPONSE_JSON_SCHEMA = {
+  type: 'object',
+  properties: {
+    answer: { type: 'string', enum: ['YES', 'NO'] },
+  },
+  required: ['answer'],
+} as const;
+
 @Injectable()
 export class PhotoVisionService {
   private readonly logger: LoggerService;
@@ -59,8 +68,7 @@ export class PhotoVisionService {
         caller: 'photos.is_food',
         prompt:
           'Is this image plausibly related to food, drink, a dish, ' +
-          'a menu, or the inside/outside of a restaurant? Answer ' +
-          'with exactly YES or NO.',
+          'a menu, or the inside/outside of a restaurant?',
         mediaParts: [
           {
             inlineData: {
@@ -70,11 +78,23 @@ export class PhotoVisionService {
             },
           },
         ],
-        generationConfig: { temperature: 0 },
+        // ENFORCED shape (prompt-fleet audit 2026-08-11): this was the last
+        // parse-and-pray call site — free text graded by startsWith('NO'),
+        // so any preamble ("I think NO...") silently read as YES. The enum
+        // schema makes a non-verdict unrepresentable at the decode layer;
+        // the catch below stays the ONLY fail-open (infra, not parsing).
+        generationConfig: {
+          temperature: 0,
+          responseMimeType: 'application/json',
+          responseJsonSchema: IS_FOOD_RESPONSE_JSON_SCHEMA,
+        },
         maxRetries: 0,
       });
-      const text = raw.trim().toUpperCase();
-      return !text.startsWith('NO');
+      const parsed = JSON.parse(raw) as { answer?: unknown };
+      if (parsed.answer !== 'YES' && parsed.answer !== 'NO') {
+        throw new Error(`is-food verdict missing from response: ${raw}`);
+      }
+      return parsed.answer === 'YES';
     } catch (error) {
       this.logger.warn('is-food classification failed — fail open', {
         error: {

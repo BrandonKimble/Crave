@@ -1,83 +1,83 @@
-# Entity Match
+# Entity Match — is this the SAME real-world thing?
 
-A diner-facing food app keeps a canonical list of **entities** — the real restaurants and
-dishes people talk about. An extraction system has just pulled a new entity name out of a
-Reddit discussion. Your job is to decide whether it names the **same real-world entity** as
-one already in the list, or a new one.
+A diner-facing food app keeps a canonical list of **entities** — the real
+restaurants, dishes, and ingredients people talk about. An extraction system
+pulls new entity names out of community discussion; your job is to decide, for
+each one, whether it names an entity **already in the list** or a **new** one.
 
-You are given:
+You receive `items`, each independent:
 
-- `term` — the newly-extracted entity name to resolve.
-- `kind` — what it is: `restaurant` (a specific place/business) or `food` (a dish, drink, or
-  food item).
-- `candidates` — the existing entities that are the closest matches to `term`, each with an
-  `id`. This is a pre-filtered shortlist by name and meaning, so the real match (if any) is
-  almost always here — but proximity is not sameness. Judge each on its merits.
+- `term` — the newly-extracted name to resolve.
+- `candidates` — existing entities recalled as `term`'s closest neighbours,
+  each with an `id` (and sometimes `aliases`, other names the same entity is
+  known by). The shortlist is pre-filtered by name and meaning and pre-scoped
+  to the right market — so the real match, if any, is almost always here. But
+  **proximity is not sameness**: the shortlist is where to look, never a
+  reason to match.
 
-The shortlist has already been scoped to the right market, so two candidates that share a
-name are NOT here because of location — assume same-market when judging restaurants.
+All items in one request share a `kind`: `restaurant` (a specific
+place/business), `food` (a dish, drink, or food item), or `ingredient` (a
+component of dishes).
 
-Return one decision:
+**Judge each item entirely on its own** — never compare one item's term
+against another item's candidates, and never let one item's verdict influence
+another's.
 
-- `match` + the `id` of the candidate that is the **same entity** as `term`.
-- `new` — `term` is a real entity but **none** of the candidates is the same one.
+## THE ONE-THING TEST
 
-## What "same entity" means
+**Would a diner treat the two names as one and the same thing — or as two
+options to choose between?** Every verdict is this single question. A name
+VARIANT (spelling, spacing, punctuation, abbreviation, word order, an
+established alias, an obvious typo) is the same thing wearing different
+letters. A different SPECIFICATION — a different brand, a different
+preparation a diner orders on purpose, a component versus the whole — is two
+things, however close the words.
 
-Two names are the same entity when they refer to the **same thing in the real world** — a
-diner would consider them one and the same, not two options to choose between.
+Applied per kind:
 
-### Restaurants (`kind = restaurant`)
-
-**Match** — the same business under a name variant:
-
-- Spelling / spacing / punctuation: `Shake Shack` = `Shakeshack` = `Shake-Shack`;
-  `Joe's Pizza` = `Joes Pizza`.
-- Abbreviations and obvious typos of the same name: `McDonalds` = `McD's`; `Chipotle` =
-  `Chiptole`.
-- The same brand with a generic descriptor added or dropped: `Joe's Pizza` =
-  `Joe's Pizzeria` = `Joe's Pizza & Pasta`; `Tacos El Rey` = `El Rey Tacos`. The distinctive
-  brand token(s) are the same; the difference is only a category word (pizza, pizzeria, cafe,
-  grill, kitchen, restaurant) or word order.
-- A common short form people actually use for that place: `Halal Guys` = `The Halal Guys`.
-
-**Keep separate** (`new`) — a genuinely different business:
-
-- Different brand tokens, even if the category matches: `Joe's Pizza` ≠ `Tony's Pizza`;
-  `Lucali` ≠ `Roberta's`.
-- A different concept from the same owner or a sub-brand that operates as its own place,
-  unless a candidate clearly IS that place.
-- When the distinctive name differs at all and it is not plainly a typo/spelling variant,
-  prefer `new`. Two different restaurants must never be merged.
-
-### Dishes (`kind = food`)
-
-**Match** — the same dish under a name variant:
-
-- Spelling / phrasing / abbreviation: `bacon egg and cheese` = `bacon, egg & cheese` = `BEC`;
-  `spaghetti and meatballs` = `spaghetti & meatballs`.
-- Different words for the same dish: `soup dumplings` = `xiao long bao`; `fried chicken
-sandwich` = `fried chicken sando`.
-- A modifier that does not change which dish it is: `cheese pizza` ≈ `pizza` only when the
-  shortlist has no more specific match — but a real sub-type is its own dish (below).
-
-**Keep separate** (`new`) — a different dish:
-
-- A distinct preparation or sub-type a diner orders on purpose: `margherita pizza` ≠
-  `pepperoni pizza`; `pork ramen` ≠ `chicken ramen`; `spicy tuna roll` ≠ `california roll`.
-- A component vs the dish: `pizza dough` ≠ `pizza`; `marinara` ≠ `spaghetti`.
-- A broader category when the shortlist already has the specific dish, or vice versa, when a
+- **Restaurants.** The distinctive BRAND TOKENS decide. The same brand with a
+  generic category word added, dropped, or reordered is one business
+  ("Joe's Pizza" = "Joe's Pizzeria" = "Joe's Pizza & Pasta"; "Tacos El Rey" =
+  "El Rey Tacos"; "Halal Guys" = "The Halal Guys"; "McD's" = "McDonalds").
+  Different brand tokens are different businesses even in the same category
+  ("Joe's Pizza" ≠ "Tony's Pizza"). A sub-brand or sibling concept that
+  operates as its own place stays separate unless a candidate clearly IS it.
+- **Foods.** Same dish under a different name = match, including established
+  cross-language and shorthand names ("soup dumplings" = "xiao long bao",
+  "BEC" = "bacon egg and cheese", "fried chicken sando" = "fried chicken
+  sandwich"). A distinct preparation or sub-type a diner orders on purpose is
+  its own dish ("margherita pizza" ≠ "pepperoni pizza"; "pork ramen" ≠
+  "chicken ramen"; "spicy tuna roll" ≠ "california roll"). A component is
+  never the dish ("pizza dough" ≠ "pizza"; "marinara" ≠ "spaghetti"). A
+  broader category never matches a specific dish in either direction when a
   diner would not accept one for the other.
+- **Ingredients.** Culinary synonyms and spelling variants of one ingredient
+  match ("cilantro" = "coriander leaf", "scallion" = "green onion"). A
+  processed form, a different cut, or a different species a recipe
+  distinguishes stays separate ("cream" ≠ "creme fraiche").
 
-## How to decide
+Aliases on a candidate are evidence for the variant reading: a term that
+matches a candidate's alias the way it would match its name is the same
+entity.
 
-For each candidate, ask: would treating `term` and the candidate as one entity be **correct**
-— same place, same dish — not merely similar? Merge only on a confident yes. A wrong merge
-fuses two real entities and is far costlier than a spurious new one, so when the distinctive
-name differs and it is not an obvious variant, choose `new`.
+## The error economics — why doubt says `new`
+
+A wrong `match` FUSES two real entities: both of their histories, scores, and
+mentions collapse into one record, and nothing downstream can tell them apart
+again. A wrong `new` merely mints a spurious twin that later evidence can
+merge. The costly mistake is the merge — so a verdict of `match` requires a
+confident yes to the ONE-THING TEST, and **any unresolved doubt is `new`**.
+Do not stretch a near-miss into a match because the shortlist offered nothing
+better; "closest available" is not "same".
 
 ## Output
 
-Return JSON only, matching the enforced output schema. `candidate_id` is the
-matched candidate's id for `match`, otherwise null. If the schema requests a
-`reason`, keep it to a short justification.
+Return JSON only, matching the enforced output schema: one verdict per input
+`index`, covering every index exactly once.
+
+- `decision`: `match` (with `candidateId` = the matched candidate's id) or
+  `new` (`candidateId` null).
+- If the schema requests a `reason`, it must be EVIDENCE, not narrative: name
+  the variant relation you matched on ("brand tokens identical, category word
+  differs") or the specification that split them ("different protein") — in a
+  few words.

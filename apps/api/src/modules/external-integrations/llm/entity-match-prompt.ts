@@ -40,7 +40,9 @@ which count as that candidate's names when you judge sameness.
 
 Return \`{"items": [{"index", "decision", "candidateId"}]}\` covering every input
 index, where \`decision\` is \`match\` or \`new\`, and \`candidateId\` is the matched
-candidate's id for \`match\` and null otherwise.`;
+candidate's id for \`match\` and null otherwise. If the enforced output schema
+also requests a per-item \`reason\`, include it — the canonical prompt's
+evidence rule applies to each item.`;
 
 /**
  * Render the system instruction for a transport. `canonical` is the verbatim

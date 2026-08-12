@@ -60,8 +60,11 @@ describe('entity match prompt', () => {
     // "uncertain = new" but never said WHY a wrong merge is the costly
     // direction. Both transports carry it now because there is one text.
     for (const mode of ['single', 'batch'] as const) {
+      // Phrase updated with the rederived .md (2026-08-11): the asymmetry
+      // now reads "a wrong new merely mints a spurious twin that later
+      // evidence can merge" under "The error economics — why doubt says new".
       expect(renderEntityMatchSystemInstruction(canonical(), mode)).toMatch(
-        /costlier than a spurious new one/,
+        /spurious twin that later evidence can\s+merge/,
       );
     }
   });

@@ -377,8 +377,13 @@ export const ENTITY_MATCH_BATCH_RESPONSE_JSON_SCHEMA = {
           index: { type: 'integer' },
           decision: { type: 'string', enum: ['match', 'new'] },
           candidateId: { type: ['integer', 'null'] },
+          reason: {
+            type: 'string',
+            description:
+              'Audit evidence, a few words: the variant relation matched on, or the specification that split them',
+          },
         },
-        required: ['index', 'decision', 'candidateId'],
+        required: ['index', 'decision', 'candidateId', 'reason'],
       },
     },
   },

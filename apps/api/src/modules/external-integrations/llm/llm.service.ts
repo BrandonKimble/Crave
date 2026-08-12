@@ -241,6 +241,8 @@ export class LLMService implements OnModuleInit, OnModuleDestroy {
   private attributePlacementPrompt!: string;
   private entityMatchPrompt!: string;
   private pollSubjectPrompt!: string;
+  private dishKnowledgePrompt!: string;
+  private attributeNamePrompt!: string;
   private queryInstructionCache: GeminiCacheEntry | null = null;
   private queryModel!: string;
   private thoughtDebugEntries: {
@@ -416,6 +418,14 @@ export class LLMService implements OnModuleInit, OnModuleDestroy {
     this.attributePlacementPrompt = this.loadAttributePlacementPrompt();
     this.entityMatchPrompt = this.loadEntityMatchPrompt();
     this.pollSubjectPrompt = this.loadPollSubjectPrompt();
+    this.dishKnowledgePrompt = this.loadRequiredPromptFile(
+      'dish-knowledge-prompt.md',
+      'load_dish_knowledge_prompt',
+    );
+    this.attributeNamePrompt = this.loadRequiredPromptFile(
+      'attribute-name-prompt.md',
+      'load_attribute_name_prompt',
+    );
     this.validateConfig();
 
     this.logger.info('Gemini LLM service initialized with @google/genai', {
@@ -934,8 +944,21 @@ export class LLMService implements OnModuleInit, OnModuleDestroy {
     }
   }
 
-  async analyzeSearchQuery(query: string): Promise<LLMSearchQueryAnalysis> {
-    const queryCacheName = await this.getQueryCacheName();
+  /**
+   * @param systemPromptOverride PROMPT A/B ONLY (scripts/query-ab.ts) — the
+   *  same seam processContent has for the collection A/B: run this exact
+   *  system instruction through the production path (same model, schema,
+   *  config, parser). Supplying it bypasses BOTH the query instruction
+   *  cache and the result cache — neither variant may inherit the other's
+   *  cached answer. Production callers never pass it.
+   */
+  async analyzeSearchQuery(
+    query: string,
+    systemPromptOverride?: string,
+  ): Promise<LLMSearchQueryAnalysis> {
+    const queryCacheName = systemPromptOverride
+      ? null
+      : await this.getQueryCacheName();
     const usingQueryCache = Boolean(queryCacheName);
     this.logger.info('Analyzing search query through Gemini', {
       correlationId: CorrelationUtils.getCorrelationId(),
@@ -952,7 +975,11 @@ export class LLMService implements OnModuleInit, OnModuleDestroy {
       topP: this.llmConfig.topP,
       topK: this.llmConfig.topK,
       candidateCount: 1,
-      maxOutputTokens: this.llmConfig.maxTokens || 65536,
+      // Ceiling from THE caller profile (prompt-fleet audit 2026-08-11): this
+      // read `this.llmConfig.maxTokens` — same value today, but a session
+      // config change would silently diverge this one assembler from the
+      // profile table that every other caller reads. The profile is the home.
+      maxOutputTokens: callerProfile('query.interpret')!.maxOutputTokens,
       responseMimeType: 'application/json',
       responseJsonSchema: SEARCH_QUERY_RESPONSE_JSON_SCHEMA,
     };
@@ -967,10 +994,9 @@ export class LLMService implements OnModuleInit, OnModuleDestroy {
       queryGenerationConfig.thinkingConfig = queryThinkingConfig;
     }
 
-    const cacheKeyResult = this.buildSearchQueryCacheKey(
-      query,
-      queryGenerationConfig,
-    );
+    const cacheKeyResult = systemPromptOverride
+      ? null
+      : this.buildSearchQueryCacheKey(query, queryGenerationConfig);
     if (cacheKeyResult) {
       const memoryHit = this.getMemoryCachedSearchQueryAnalysis(
         cacheKeyResult.key,
@@ -1017,7 +1043,7 @@ export class LLMService implements OnModuleInit, OnModuleDestroy {
       usageCaller: 'query.interpret',
       generationConfig: queryGenerationConfig,
       cacheName: queryCacheName,
-      systemInstruction: this.queryPrompt,
+      systemInstruction: systemPromptOverride ?? this.queryPrompt,
       model: this.queryModel,
       maxRetries: 0,
       thinkingContext: 'query',
@@ -1222,6 +1248,68 @@ export class LLMService implements OnModuleInit, OnModuleDestroy {
    */
   parseCollectionBatchResponse(response: unknown): LLMOutputStructure {
     return this.parseResponse(response as LLMApiResponse);
+  }
+
+  /** The caller's effective model — profile first, session default second.
+   *  Public for the pooled batch path, which must submit under the SAME
+   *  model the sync path would have used. */
+  modelForCaller(caller: string): string {
+    return callerProfile(caller)?.model ?? this.llmConfig.model;
+  }
+
+  /**
+   * GENERIC batch-mode request assembler (prompt-fleet audit 2026-08-11):
+   * the exact contents + config a sync generateForCaller call would send,
+   * shaped for the Batch API. One assembler, fed by the caller profile —
+   * a pooled request cannot forget the ceiling, the thinking level, or the
+   * schema conversion, because it never writes them.
+   *
+   * Differences from the sync path, both batch-backend facts:
+   * - responseJsonSchema is converted to the TYPED responseSchema form (the
+   *   batch backend rejects the json-schema field — proven by the collection
+   *   path's slice tests, llm.service.ts buildCollectionBatchRequest).
+   * - the system instruction rides inline. The collection prompt needs an
+   *   explicit cache because it is ~17k tokens; every pooled sweep prompt is
+   *   under ~1.5k, where cache storage would cost more than it saves.
+   */
+  buildCallerBatchRequest(params: {
+    caller: string;
+    prompt: string;
+    systemInstruction?: string;
+    generationConfig?: GeminiGenerationConfig;
+  }): { contents: string; config: Record<string, unknown> } {
+    const profile = callerProfile(params.caller);
+    const model = this.modelForCaller(params.caller);
+    const gc = params.generationConfig ?? {};
+    const config: Record<string, unknown> = {
+      temperature: gc.temperature ?? this.llmConfig.temperature,
+      topP: gc.topP ?? this.llmConfig.topP,
+      topK: gc.topK ?? this.llmConfig.topK,
+      candidateCount: 1,
+      maxOutputTokens:
+        gc.maxOutputTokens ??
+        profile?.maxOutputTokens ??
+        this.llmConfig.maxTokens,
+    };
+    if (gc.responseMimeType) {
+      config.responseMimeType = gc.responseMimeType;
+    }
+    if (gc.responseJsonSchema) {
+      config.responseSchema = jsonSchemaToTypedSchema(gc.responseJsonSchema);
+    }
+    if (params.systemInstruction) {
+      config.systemInstruction = params.systemInstruction;
+    }
+    const thinking = this.getThinkingConfig(
+      model,
+      profile?.context ?? 'query',
+      undefined,
+      params.caller,
+    );
+    if (thinking) {
+      config.thinkingConfig = thinking;
+    }
+    return { contents: params.prompt, config };
   }
 
   getSystemPrompt(): string {
@@ -1560,7 +1648,9 @@ export class LLMService implements OnModuleInit, OnModuleDestroy {
       // Output ceiling: profile-supplied; see the OUTPUT CEILING POLICY in
       // gemini-caller-profiles.ts (do not lower without replaying that lesson).
       responseMimeType: 'application/json',
-      responseJsonSchema: ENTITY_MATCH_BATCH_RESPONSE_JSON_SCHEMA,
+      responseJsonSchema: applyAuditReasonPolicy(
+        ENTITY_MATCH_BATCH_RESPONSE_JSON_SCHEMA,
+      ),
     };
     // ONE prompt, two transports: this used to be a hand-written inline twin
     // of prompts/entity-match-prompt.md that had drifted (it had lost the
@@ -1601,6 +1691,7 @@ export class LLMService implements OnModuleInit, OnModuleDestroy {
           index?: unknown;
           decision?: unknown;
           candidateId?: unknown;
+          reason?: unknown;
         }[];
       };
       const results = failClosed.map(
@@ -1608,6 +1699,7 @@ export class LLMService implements OnModuleInit, OnModuleDestroy {
           ({ ...r }) as {
             decision: 'match' | 'new';
             candidateId: number | null;
+            reason?: string;
           },
       );
       for (const item of parsed.items ?? []) {
@@ -1619,9 +1711,13 @@ export class LLMService implements OnModuleInit, OnModuleDestroy {
           item.decision === 'match' &&
           cid !== null &&
           input.items[idx].candidates.some((c) => c.id === cid);
+        const reason =
+          typeof item.reason === 'string' && item.reason.trim()
+            ? item.reason.trim()
+            : undefined;
         results[idx] = valid
-          ? { decision: 'match', candidateId: cid }
-          : { decision: 'new', candidateId: null };
+          ? { decision: 'match', candidateId: cid, ...(reason && { reason }) }
+          : { decision: 'new', candidateId: null, ...(reason && { reason }) };
       }
       for (let i = 0; i < input.items.length; i += 1) {
         this.decisionLedger.record({
@@ -1670,74 +1766,18 @@ export class LLMService implements OnModuleInit, OnModuleDestroy {
     }));
     if (!dishes.length) return [];
 
-    const generationConfig: GeminiGenerationConfig = {
-      temperature: 0,
-      topP: this.llmConfig.topP,
-      topK: this.llmConfig.topK,
-      candidateCount: 1,
-      responseMimeType: 'application/json',
-      responseJsonSchema: DISH_KNOWLEDGE_RESPONSE_JSON_SCHEMA,
-    };
-    const systemInstruction =
-      `You are a culinary knowledge base for a food-discovery app. For EACH dish ` +
-      `name, return: (1) "ingredients" — the canonical/typical core ingredients of ` +
-      `the dish AS NAMED, from world knowledge (assume the standard preparation; ` +
-      `identity words in the name govern: "vegan al pastor taco" has no pork, ` +
-      `"white pizza" has no tomato sauce). 3-8 core items, singular lowercase, no ` +
-      `seasonings-level noise (salt, oil). Empty when the name is too ambiguous to ` +
-      `have canonical contents ("combo plate", "seasonal salad"). (2) "aliases" — ` +
-      `ESTABLISHED shorthand or co-names for exactly this dish ("bec" for bacon ` +
-      `egg and cheese, "army stew" for budae jjigae). An alias must point to ` +
-      `nothing but this dish anywhere in the food world ("marg" fails: margarita); ` +
-      `never invent, shorten, pluralize, or translate yourself. Empty is the ` +
-      `expected default. Return {"dishes":[{"index","ingredients","aliases"}]} ` +
-      `covering every input index.`;
+    const parts = this.dishKnowledgeRequestParts(dishes);
 
     try {
-      const payload = dishes.map((dish, index) => ({ index, name: dish.name }));
-      const response = await this.callLLMApi(
-        JSON.stringify({ dishes: payload }),
-        {
-          usageCaller: 'dish.knowledge_synthesize',
-          generationConfig,
-          systemInstruction,
-          model: this.llmConfig.model,
-          maxRetries: 1,
-          thinkingContext: 'query',
-        },
-      );
+      const response = await this.callLLMApi(parts.prompt, {
+        usageCaller: 'dish.knowledge_synthesize',
+        generationConfig: parts.generationConfig,
+        systemInstruction: parts.systemInstruction,
+        maxRetries: 1,
+        thinkingContext: 'query',
+      });
       const content = this.extractTextContent(response, 'dish_knowledge');
-      const start = content.indexOf('{');
-      const parsed = JSON.parse(
-        start >= 0 ? content.slice(start) : content,
-      ) as {
-        dishes?: {
-          index?: unknown;
-          ingredients?: unknown;
-          aliases?: unknown;
-        }[];
-      };
-      const results = empty.map((r) => ({ ...r }));
-      for (const item of parsed.dishes ?? []) {
-        const idx = typeof item.index === 'number' ? item.index : -1;
-        if (idx < 0 || idx >= results.length) continue;
-        const clean = (values: unknown): string[] =>
-          Array.isArray(values)
-            ? Array.from(
-                new Set(
-                  values
-                    .filter((v): v is string => typeof v === 'string')
-                    .map((v) => v.trim().toLowerCase())
-                    .filter((v) => v.length > 1),
-                ),
-              )
-            : [];
-        results[idx] = {
-          ingredients: clean(item.ingredients).slice(0, 10),
-          aliases: clean(item.aliases).slice(0, 4),
-        };
-      }
-      return results;
+      return this.parseDishKnowledgeResponse(content, dishes.length);
     } catch (error) {
       this.logger.warn('synthesizeDishKnowledgeBatch failed; returning empty', {
         dishes: dishes.length,
@@ -1748,6 +1788,76 @@ export class LLMService implements OnModuleInit, OnModuleDestroy {
       });
       return empty;
     }
+  }
+
+  /**
+   * Request parts for ONE dish-knowledge chunk — the single assembly both
+   * the sync path above and the pooled batch sweep
+   * (dish-knowledge-synthesis.service.ts) use, so the two paths cannot
+   * drift on prompt, schema, or config. Prompt body:
+   * prompts/dish-knowledge-prompt.md (promoted from an inline string,
+   * prompt-fleet audit 2026-08-11).
+   */
+  dishKnowledgeRequestParts(dishes: { name: string }[]): {
+    prompt: string;
+    systemInstruction: string;
+    generationConfig: GeminiGenerationConfig;
+  } {
+    return {
+      prompt: JSON.stringify({
+        dishes: dishes.map((dish, index) => ({ index, name: dish.name })),
+      }),
+      systemInstruction: this.dishKnowledgePrompt,
+      generationConfig: {
+        temperature: 0,
+        topP: this.llmConfig.topP,
+        topK: this.llmConfig.topK,
+        candidateCount: 1,
+        responseMimeType: 'application/json',
+        responseJsonSchema: DISH_KNOWLEDGE_RESPONSE_JSON_SCHEMA,
+      },
+    };
+  }
+
+  /** Decode one dish-knowledge response text into per-index results.
+   *  Absent/invalid indexes fail closed to empty — never fabricated
+   *  knowledge. Shared by the sync and pooled batch paths. */
+  parseDishKnowledgeResponse(
+    content: string,
+    count: number,
+  ): { ingredients: string[]; aliases: string[] }[] {
+    const results = Array.from({ length: count }, () => ({
+      ingredients: [] as string[],
+      aliases: [] as string[],
+    }));
+    const start = content.indexOf('{');
+    const parsed = JSON.parse(start >= 0 ? content.slice(start) : content) as {
+      dishes?: {
+        index?: unknown;
+        ingredients?: unknown;
+        aliases?: unknown;
+      }[];
+    };
+    for (const item of parsed.dishes ?? []) {
+      const idx = typeof item.index === 'number' ? item.index : -1;
+      if (idx < 0 || idx >= results.length) continue;
+      const clean = (values: unknown): string[] =>
+        Array.isArray(values)
+          ? Array.from(
+              new Set(
+                values
+                  .filter((v): v is string => typeof v === 'string')
+                  .map((v) => v.trim().toLowerCase())
+                  .filter((v) => v.length > 1),
+              ),
+            )
+          : [];
+      results[idx] = {
+        ingredients: clean(item.ingredients).slice(0, 10),
+        aliases: clean(item.aliases).slice(0, 4),
+      };
+    }
+    return results;
   }
 
   async matchEntity(input: LLMEntityMatchInput): Promise<LLMEntityMatchResult> {
@@ -2018,19 +2128,22 @@ export class LLMService implements OnModuleInit, OnModuleDestroy {
       generationConfig.thinkingConfig = thinkingConfig;
     }
 
-    const systemInstruction = `These terms are synonyms for one ${
-      input.kind === 'food_attribute' ? 'dish' : 'restaurant'
-    } attribute in a food-discovery app. Pick the single clearest consumer-facing label a diner would expect to see as a filter — conventional phrasing over slang, clear over clever, concise over verbose. Return JSON {"name": <one of the terms, copied verbatim>}.`;
+    // Prompt promoted to prompts/attribute-name-prompt.md (kind-generic —
+    // `kind` rides the payload; prompt-fleet audit 2026-08-11).
+    const systemInstruction = this.attributeNamePrompt;
 
     try {
-      const response = await this.callLLMApi(JSON.stringify({ terms: names }), {
-        usageCaller: 'attribute.canonicalize_name',
-        generationConfig,
-        systemInstruction,
-        model,
-        maxRetries: 0,
-        thinkingContext: 'query',
-      });
+      const response = await this.callLLMApi(
+        JSON.stringify({ kind: input.kind, terms: names }),
+        {
+          usageCaller: 'attribute.canonicalize_name',
+          generationConfig,
+          systemInstruction,
+          model,
+          maxRetries: 0,
+          thinkingContext: 'query',
+        },
+      );
       const content = this.extractTextContent(response, 'choose_attr_name');
       const start = content.indexOf('{');
       const parsed = JSON.parse(
@@ -2082,16 +2195,13 @@ export class LLMService implements OnModuleInit, OnModuleDestroy {
       responseMimeType: 'application/json',
       responseJsonSchema: CUISINE_HUB_CLASSIFY_RESPONSE_JSON_SCHEMA,
     };
-    const systemInstruction =
-      'You classify food-entity names in a dish database. Each name has the shape ' +
-      '"{X} food/meal/dish(es)". Decide per name: after removing the filler noun, is X a ' +
-      'CUISINE, NATIONALITY, or REGIONAL-CUISINE adjective (then isCuisineHub=true — e.g. ' +
-      '"vietnamese food", "indian meal", "sichuanese food")? Or is X a style, meal period, ' +
-      'dining format, ingredient, or descriptor that makes the WHOLE name an orderable ' +
-      'category a diner could ask for (then isCuisineHub=false — e.g. "comfort food", ' +
-      '"breakfast food", "street food", "soul food", "egg dish", "side dish", "family meal", ' +
-      '"8 course meal", "prepared food")? Return JSON {"verdicts":[{"name","isCuisineHub"}]} ' +
-      'covering EVERY input name verbatim.';
+    // Promoted to prompts/cuisine-hub-prompt.md (prompt-fleet audit
+    // 2026-08-11) — loaded lazily: a one-shot migration prompt has no
+    // business in the boot path of every runtime.
+    const systemInstruction = this.loadRequiredPromptFile(
+      'cuisine-hub-prompt.md',
+      'load_cuisine_hub_prompt',
+    );
 
     const response = await this.callLLMApi(JSON.stringify({ names: cleaned }), {
       usageCaller: 'cuisine.classify_hubs',

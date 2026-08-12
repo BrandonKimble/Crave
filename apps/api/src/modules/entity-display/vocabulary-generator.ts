@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import { LLMService } from '../external-integrations/llm/llm.service';
+import { PooledBatchRunner } from '../external-integrations/llm/pooled-batch-runner';
 import { LoggerService } from '../../shared';
 import {
   type GeneratedLabel,
@@ -92,7 +92,7 @@ export class VocabularyGenerator implements LabelGenerator {
   private readonly logger: LoggerService;
 
   constructor(
-    private readonly llm: LLMService,
+    private readonly pooled: PooledBatchRunner,
     loggerService: LoggerService,
   ) {
     this.logger = loggerService.setContext('VocabularyGenerator');
@@ -101,34 +101,24 @@ export class VocabularyGenerator implements LabelGenerator {
   async generate(
     requests: readonly LabelGenerationRequest[],
   ): Promise<GeneratedLabel[]> {
-    const out: GeneratedLabel[] = [];
+    // POOLED BATCH, one job for the whole sweep (prompt-fleet audit
+    // 2026-08-11): nobody awaits a label interactively — the sweep is
+    // watermark-driven — so this lane pays batch rates (half the sync
+    // price; 1,573 sync calls last 30d). An unanswered chunk yields
+    // NOTHING for those concepts — never a fabricated label — and the
+    // watermark re-offers them next run (the no-fake-estimates law,
+    // applied to text). Same semantics a failed sync batch always had.
+    const chunks: Array<readonly LabelGenerationRequest[]> = [];
     for (let i = 0; i < requests.length; i += VocabularyGenerator.PER_CALL) {
-      const batch = requests.slice(i, i + VocabularyGenerator.PER_CALL);
-      try {
-        out.push(...(await this.generateBatch(batch)));
-      } catch (error) {
-        // A failed batch produces NOTHING for those concepts — never a
-        // fabricated label. They stay unlabeled and the watermark re-offers
-        // them next run (the no-fake-estimates law, applied to text).
-        this.logger.warn('Vocabulary batch failed (concepts left unlabeled)', {
-          locale: batch[0]?.locale ?? null,
-          size: batch.length,
-          error: {
-            message: error instanceof Error ? error.message : String(error),
-          },
-        });
-      }
+      chunks.push(requests.slice(i, i + VocabularyGenerator.PER_CALL));
     }
-    return out;
-  }
-
-  private async generateBatch(
-    batch: readonly LabelGenerationRequest[],
-  ): Promise<GeneratedLabel[]> {
-    const locale = batch[0].locale;
-    const text = await this.llm.generateForCaller({
+    if (!chunks.length) return [];
+    const responses = await this.pooled.generateMany({
       caller: 'labels.vocabulary',
-      prompt: buildVocabularyPrompt(batch),
+      items: chunks.map((chunk, index) => ({
+        key: `chunk-${index}`,
+        prompt: buildVocabularyPrompt(chunk),
+      })),
       generationConfig: {
         // ZERO, NOT 0.2 (2026-08-09). This pass ENUMERATES a set that either
         // is or is not what speakers say — there is nothing here that a
@@ -142,13 +132,35 @@ export class VocabularyGenerator implements LabelGenerator {
         // draw that no longer varies.
         temperature: 0,
         responseMimeType: 'application/json',
-        // responseJsonSchema, NOT responseSchema: the latter is Gemini's TYPED
-        // Schema field (OBJECT/STRING) and silently ignores a raw JSON Schema,
-        // so the "enforced" shape would not have been enforced at all.
+        // Raw JSON Schema here; the pooled runner's assembler converts it to
+        // the TYPED responseSchema form the batch backend enforces (the
+        // json-schema field is rejected there — collection path's lesson).
         responseJsonSchema: VOCABULARY_RESPONSE_SCHEMA,
       },
     });
+    const out: GeneratedLabel[] = [];
+    chunks.forEach((chunk, index) => {
+      const text = responses.get(`chunk-${index}`);
+      if (!text) {
+        this.logger.warn(
+          'Vocabulary chunk unanswered (concepts left unlabeled)',
+          {
+            locale: chunk[0]?.locale ?? null,
+            size: chunk.length,
+          },
+        );
+        return;
+      }
+      out.push(...this.parseBatch(chunk, text));
+    });
+    return out;
+  }
 
+  private parseBatch(
+    batch: readonly LabelGenerationRequest[],
+    text: string,
+  ): GeneratedLabel[] {
+    const locale = batch[0].locale;
     const parsed = parseVocabularyResponse(text);
     const results: GeneratedLabel[] = [];
     batch.forEach((request, index) => {
