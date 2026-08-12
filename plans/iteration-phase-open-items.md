@@ -143,9 +143,16 @@ L3. **COVER-LINKER (locked 2026-08-10, owner delegated).** Whole-query span
    fold merges đầu/dầu (survivor list mis-described); R4 poll-seed tags
    all aliases with Places languageCode unnormalized; R5 --language
    unvalidated; R6 repair may have dropped judge stamps (unfalsifiable,
-   honesty note owed); R7 fold admits control/PUA chars as exact. FIX
-   AGENT IN FLIGHT (withAdvisoryLock layer helper + all seven). A0 exits
-   only after the fixes survive re-probe.
+   honesty note owed); R7 fold admits control/PUA chars as exact. ALL SEVEN FIXED
+   (639e8ad45 lock layer — dedicated-session helper, 25/25 clean under
+   pool pressure, crash-path proven, new mutation-proven invariant;
+   595b5f8ef locale sealed at API boundary; 4a49fbc9f fold ruling —
+   letters vs decorations, đầu/dầu split; 7d3019436 poll-seed tags;
+   861acc85f --language validated; 78abf709c judge-stamp preservation;
+   32fa7da58 invisibles expelled). Re-run's probes re-executed green;
+   resolution 62/62; verified personally (lock spec 4/4, helper adopted
+   at both named sites). **A0 SATISFIED for the spine** — the final
+   system-wide adversarial pass remains C3's job.
 
 6b. **Conjunction "gap" RECLASSIFIED (2026-08-09 evening)**: retested with
    clean examples — 'tacos and pizza' / 'wings and beer' ground BOTH sides
