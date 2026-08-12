@@ -46,17 +46,27 @@ export class EntityDisplayService {
    * not `es`). So the fallback chain is computed against the locales that
    * actually exist for these entities.
    *
-   * English is deliberately never queried: `name` IS the English label
-   * (plan: "English labels are implicit until then"), so an `en` request
-   * costs zero queries — the hottest path in the product stays exactly as
-   * fast as it is today.
+   * ENGLISH IS NO LONGER SKIPPED (L2, 2026-08-11). It used to be: `name` IS
+   * the English label, so an `en` request cost zero queries. That shortcut
+   * was also a WALL — while it stood, no English label row could ever be
+   * read, so nothing could ever be gained by writing one, so the vocabulary
+   * sweep had no reason to be asked about English, so English had no
+   * mechanism for learning the words its speakers actually use. Removing the
+   * special case is what makes `en` a locale like any other, top to bottom;
+   * the price is one indexed batch query on the hottest read path, the same
+   * one every other locale already pays.
+   *
+   * NOTHING CHANGES FOR A CONCEPT WITH NO `en` ROW: the query returns nothing
+   * and `displayLabel` floors to `entity.name`, exactly as before. The
+   * canonical name is still the answer — it just stops being the ONLY
+   * possible answer.
    */
   async loadLabels(
     entityIds: readonly string[],
     locale: string,
   ): Promise<LabelIndex> {
     const empty: LabelIndex = new Map<string, string>();
-    if (!entityIds.length || this.isImplicitEnglish(locale)) {
+    if (!entityIds.length) {
       return empty;
     }
     const ids = [...new Set(entityIds)];
@@ -133,18 +143,18 @@ export class EntityDisplayService {
    * THE DISPLAY FUNCTION. Pure, synchronous, total: it always returns a
    * string a human can read.
    *
-   * The `labels` index is optional so that an English request — and every
-   * caller that has not yet been given a locale — is a no-op call with the
-   * same signature. There is no second code path for "the English case".
+   * The `labels` index is optional so that every caller that has not yet
+   * been given a locale is a no-op call with the same signature. There is no
+   * second code path for "the English case" — and as of L2 there is no
+   * English case: the reading order below is ONE order for every locale,
+   * `en` included. A caller that passes no index gets `entity.name`, which is
+   * the same floor it always got.
    */
   displayLabel(
     entity: DisplayableEntity,
     locale: string,
     labels?: LabelIndex,
   ): string {
-    if (this.isImplicitEnglish(locale)) {
-      return entity.name;
-    }
     const label = labels?.get(entity.entityId);
     // F8: totality — an empty/whitespace label row must never blank a
     // concept; the canonical name is always the floor.
@@ -209,14 +219,9 @@ export class EntityDisplayService {
     }));
   }
 
-  /**
-   * English needs no rows: `core_entities.name` IS the English label. Stated
-   * once, here, so no caller re-derives it (and so the day English STOPS
-   * being implicit, one function changes).
-   */
-  private isImplicitEnglish(locale: string): boolean {
-    return this.primarySubtag(locale) === DEFAULT_LOCALE;
-  }
+  // `isImplicitEnglish` lived here and said: "the day English STOPS being
+  // implicit, one function changes". That day was 2026-08-11 (L2), and it was
+  // one function — this one, deleted. English is a locale.
 
   private primarySubtag(locale: string): string {
     return (locale || DEFAULT_LOCALE).split('-')[0].toLowerCase();

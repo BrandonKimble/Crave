@@ -54,11 +54,13 @@ describe('label sweep run ledger — proven against a live database', () => {
     // including the real ones that happened to be due. Nobody actually asked
     // about those, so the ledger rows this test wrote are removed and the
     // corpus is left exactly as found.
-    await prisma.$executeRawUnsafe(
-      `DELETE FROM knowledge_pass_runs WHERE pass = $1 AND ran_at >= $2`,
-      sweepPass('es'),
-      startedAt,
-    );
+    for (const locale of ['es', 'en']) {
+      await prisma.$executeRawUnsafe(
+        `DELETE FROM knowledge_pass_runs WHERE pass = $1 AND ran_at >= $2`,
+        sweepPass(locale),
+        startedAt,
+      );
+    }
     if (made.length) {
       await prisma.$executeRawUnsafe(
         `DELETE FROM entity_surface WHERE entity_id = ANY($1::uuid[])`,
@@ -118,6 +120,46 @@ describe('label sweep run ledger — proven against a live database', () => {
     // And the honest re-offer signal agrees: the concept has left the backlog.
     const after = await sweep.nextBatch('es', 5000);
     expect(after.requests.map((r) => r.entityId)).not.toContain(id);
+  });
+
+  /**
+   * THE SAME WATERMARK, IN ENGLISH (L2, 2026-08-11). `en` is a sweepable
+   * locale now, and "sweepable" is not one boolean — it is the ledger key
+   * (`label_sweep:en`), the due predicate reading it, and the batch that stops
+   * offering a concept once it has been asked. If any of those quietly
+   * answered for a different locale the en sweep would either re-pay forever
+   * or never run at all, and the money is real.
+   */
+  it('English keeps its OWN ledger, and es cannot answer for it', async () => {
+    const name = `zzq sweep en ${randomUUID().slice(0, 8)}`;
+    const id = await mintFood(name);
+    expect(await isDue('en', id)).toBe(true);
+
+    await sweep.sweep('en', { generator: abstaining, entityNames: [name] });
+
+    const ledger = await prisma.$queryRawUnsafe<Array<{ outcome: string }>>(
+      `SELECT outcome FROM knowledge_pass_runs
+        WHERE pass = $1 AND subject_id = $2::uuid`,
+      sweepPass('en'),
+      id,
+    );
+    expect(ledger).toEqual([{ outcome: 'not_generated' }]);
+    expect(await isDue('en', id)).toBe(false);
+    // ...and the Spanish sweep is untouched: two locales asking different
+    // questions about one concept must not close each other's backlog.
+    expect(await isDue('es', id)).toBe(true);
+
+    const after = await sweep.nextBatch('en', 5000);
+    expect(after.requests.map((r) => r.entityId)).not.toContain(id);
+  });
+
+  it('a fresh English concept is DUE — the en backlog is a real number', async () => {
+    // countDue for en used to be unaskable (the sweep filtered English out of
+    // its own locale list). It must now answer, and answer about en.
+    const name = `zzq sweep en due ${randomUUID().slice(0, 8)}`;
+    const id = await mintFood(name);
+    expect(await sweep.countDue('en')).toBeGreaterThan(0);
+    expect(await isDue('en', id)).toBe(true);
   });
 
   it('a DRY RUN records nothing — an ask nobody made must not close a concept', async () => {

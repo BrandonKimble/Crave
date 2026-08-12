@@ -4,7 +4,6 @@ import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import {
   SUPPORTED_LOCALES,
-  DEFAULT_LOCALE,
   localeLookupChain,
   normalizeLocaleTag,
 } from '../../shared/locale';
@@ -102,11 +101,28 @@ export class LabelSweepService {
     private readonly claimAdjudicator: WordClaimAdjudicatorService,
   ) {}
 
-  /** The locales a sweep is responsible for: every active one except English. */
+  /**
+   * The locales a sweep is responsible for: EVERY active one, English
+   * included (L2, 2026-08-11).
+   *
+   * English used to be excluded on the reasoning that `core_entities.name` is
+   * already the English label — true, and irrelevant to what this pass is
+   * actually worth. The label is the half a user READS; the half that moved
+   * the launch gate from 77.3% to 96.7% was the SEARCH SURFACES, and English
+   * speakers type words the canonical name does not contain just as Spanish
+   * ones do. The corpus calls a dish "chicken and rice"; a New Yorker types
+   * "chicken over rice" and reaches nothing. There was no mechanism that
+   * could ever produce that word, because the one pass that enumerates how
+   * speakers name a concept was structurally forbidden from being asked about
+   * the language most of them speak.
+   *
+   * Nothing else needed changing for this to be true: the pass is
+   * parameterized by locale end to end — the prompt, the ledger key
+   * (`label_sweep:en`), the watermark's lookup chain, the surface writer's
+   * locale tag. English was excluded by this one filter, not by any law.
+   */
   sweepLocales(): string[] {
-    return SUPPORTED_LOCALES.filter(
-      (locale) => locale.split('-')[0] !== DEFAULT_LOCALE,
-    );
+    return [...SUPPORTED_LOCALES];
   }
 
   /**
