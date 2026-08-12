@@ -2030,12 +2030,32 @@ model OnDemandRequestUser {
 
 model KeywordAttemptHistory {
   engineName          String                 @map("engine_name") @db.VarChar(255)
-  /// THE LEDGER IDENTITY — the folded key. Two spellings of one query are one
-  /// ledger row, which is the whole reason a fold exists here. It is the PK
-  /// half and the dedupe key, and it is NOT a query: the fold strips combining
-  /// marks, so 'bún đậu mắm tôm' folds to 'bun đau mam tom' — a string that is
-  /// neither Vietnamese nor ASCII and matches nothing on any search vendor.
+  /// THE LEDGER IDENTITY — the folded key. Two SPELLINGS of one query are one
+  /// ledger row (case, whitespace, punctuation), which is the whole reason a
+  /// fold exists here. It is NOT a query: the diacritic-preserving text that
+  /// actually goes to the vendor is `term`, below.
+  ///
+  /// IT NO LONGER STRIPS ACCENTS (F7, 2026-08-11). It used to, and that made
+  /// bò | bo | bơ one row with one harvest snapshot, last-writer-wins —
+  /// measured, 469 keys swallowing 942 distinct words. Accents are not
+  /// spelling, they are the word (`surfaceClaimKey` carries the same ruling
+  /// for entity_surface). See keyword-term-normalization.ts.
   normalizedTerm      String                 @map("normalized_term") @db.VarChar(255)
+  /// THE LANGUAGE THIS TERM WAS ASKED IN, when the ask decided one. Null =
+  /// honestly undecidable, or a term that is one of OUR canonical entity
+  /// names rather than a person's words.
+  ///
+  /// The refresh slice re-runs terms straight out of this ledger, minutes to
+  /// days after the ask, with no request in scope — so a locale not recorded
+  /// here is lost, and `stripGenericTokens` then judges the term against the
+  /// English generic list by default. That is not cosmetic: 'top' is an
+  /// English filler word and a real Vietnamese one, and a term judged
+  /// generic-only is DELETED from the cycle.
+  ///
+  /// Nullable with NO default, for the same reason `signals.detected_locale`
+  /// is: an undetectable language is genuinely unknown, and 'en' would be a
+  /// fabricated fact on a row later read as evidence.
+  locale              String?                @db.VarChar(35)
   /// THE QUERY — the diacritic-preserving text actually sent to the vendor.
   /// The refresh lane re-runs terms straight out of this ledger, and it used
   /// to re-run `normalized_term`: every re-searched foreign-language term went

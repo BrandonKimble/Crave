@@ -587,6 +587,22 @@ export class SearchQueryInterpretationService {
     const groupedEntities = this.groupResolvedEntities(allResults);
     const structuredRequest = this.buildSearchRequest(request, groupedEntities);
     structuredRequest.searchRequestId ??= uuid();
+    // THE ONE PLACE THE FUSED LOCALE IS DECIDED, CARRIED FORWARD (F5).
+    // analyzeQuery runs once per query by contract (A5), and the two ask
+    // lanes below already stamp `analysis.detectedLocale` on what they
+    // record. The LOW-RESULT lane records its asks much later, in
+    // search.service, with no analysis in scope — so a Vietnamese ask
+    // arrived at collection indistinguishable from an English one, and the
+    // keyword lane then judged it by an English stop-list. Stamping it on
+    // the structured request is how a decision made here reaches a writer
+    // three files away without re-running the detector or widening a
+    // signature through four call layers.
+    // A plain assignment, not `??=`: this is the SERVER's answer about the
+    // query it just analyzed, so a client-supplied value is overwritten
+    // rather than deferred to — and `undefined` (honestly undecidable) has
+    // to be able to overwrite too.
+    structuredRequest.detectedLocale =
+      analysis.detectedLocale?.tag ?? undefined;
 
     // UNTYPED DEMAND FLOWS DIRECTLY (ideal-abstraction round 5): the
     // collector's unmet lane reads on_demand_ask SIGNALS, not the typed

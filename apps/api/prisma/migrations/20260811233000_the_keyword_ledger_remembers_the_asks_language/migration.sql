@@ -1,0 +1,26 @@
+-- THE KEYWORD ATTEMPT LEDGER LEARNS THE LANGUAGE OF THE ASK (red team F5).
+--
+-- The refresh slice re-runs terms straight out of this ledger, minutes to
+-- days after the ask and with no request in scope. Whatever language the
+-- person searched in is gone by then, so `stripGenericTokens` fell back to
+-- its default vocabulary — English — for every term in the table. That is
+-- not cosmetic: 'top' is an English filler word AND a real Vietnamese one,
+-- and a term judged generic-only is DELETED from the collection cycle. A
+-- Vietnamese ask could therefore be thrown away, permanently, on the
+-- strength of a word list it was never subject to.
+--
+-- NULLABLE, NO DEFAULT — deliberately, and for the same reason
+-- signals.detected_locale carries none: an undetectable language is
+-- genuinely unknown, and 'en' would be a fabricated fact on a row that is
+-- later read as evidence about what a person wanted. The 31 existing rows
+-- keep NULL, which reads as "nobody recorded one" and resolves to the
+-- stripper's own default exactly as today — so this migration changes no
+-- behaviour on its own.
+--
+-- NOT IN THE PRIMARY KEY. Locale is an ATTRIBUTE of an attempt, not a
+-- dimension of it: 'camarones' searched off a Spanish ask and an English one
+-- is ONE query against ONE vendor with ONE harvest snapshot, and splitting
+-- the row would double the budget and halve the measured yield of each half.
+-- (The same call, and the same reasoning, as adf03754c one table over.)
+ALTER TABLE "collection_keyword_attempt_history"
+  ADD COLUMN IF NOT EXISTS "locale" VARCHAR(35);

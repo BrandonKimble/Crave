@@ -2954,6 +2954,16 @@ export class SearchService {
           reason,
           entityId,
           engineIds,
+          // THE LANGUAGE THE ASK WAS MADE IN (F5). The other two ask lanes
+          // have carried this since adf03754c; this one was scoped out of
+          // that commit as "a contested file" and has been writing NULL
+          // ever since. It is not cosmetic — `detectedLocale` is what
+          // decides whether the keyword lane strips this term's tokens
+          // against an English stop-list, and 'top' is an English filler
+          // word and a real Vietnamese one. A NULL here is read as "und",
+          // which resolves to English, so the omission was silently an
+          // ENGLISH ASSERTION about every foreign ask that ran low.
+          detectedLocale: request.detectedLocale ?? null,
           metadata: entity.originalText
             ? { originalText: entity.originalText }
             : undefined,

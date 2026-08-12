@@ -57,10 +57,11 @@ export class KeywordAttemptHistoryService {
     /** §11 attempt-ledger key: (engine, term). */
     engineId?: string;
     /**
-     * THE LEDGER IDENTITY — the fold. Dedupes two spellings of one query into
-     * one row. NOT a query: the fold strips combining marks, so
-     * 'bún đậu mắm tôm' folds to 'bun đau mam tom', which is neither
-     * Vietnamese nor ASCII and matches nothing on any vendor.
+     * THE LEDGER IDENTITY — the fold. Dedupes two SPELLINGS of one query
+     * (case, whitespace, punctuation) into one row. It no longer strips
+     * accents: bò and bơ are different words, not spellings, and merging them
+     * gave one harvest snapshot to both, last-writer-wins (F7). Still not a
+     * query — `term` below is the string that goes on the wire.
      */
     normalizedTerm: string;
     /**
@@ -70,6 +71,19 @@ export class KeywordAttemptHistoryService {
      * foreign-language term back out mangled in perpetuity.
      */
     term: string;
+    /**
+     * THE LANGUAGE THE ASK WAS MADE IN. Recorded because the refresh slice
+     * re-reads this table minutes-to-days later with no request in scope —
+     * a locale not written here is lost, and the generic-token stripper then
+     * judges the term in English by default ('top' is an English filler word
+     * and a real Vietnamese one; a generic-only term is DELETED).
+     *
+     * SILENCE NEVER ERASES A DECIDED ANSWER (the same rule the ask ledger
+     * carries): an attempt that arrives with no locale — the refresh lane
+     * re-running a term, an undecidable one-worder — leaves whatever was
+     * recorded alone rather than blanking it.
+     */
+    locale?: string | null;
     outcome: KeywordAttemptOutcome;
     /** The query's full yield (success/no_results harvests only). */
     resultCount?: number;
@@ -88,6 +102,9 @@ export class KeywordAttemptHistoryService {
     // whitespace is meaningless. It is never folded — that is the whole point
     // of it being a second column.
     const term = params.term.trim();
+    // Normalized like every other locale in the system, and EMPTY MEANS
+    // ABSENT — an empty string would be a tag nothing can look up.
+    const locale = params.locale?.trim() || null;
 
     if (!engineName.length || !normalizedTerm.length || !term.length) {
       return;
@@ -123,6 +140,7 @@ export class KeywordAttemptHistoryService {
           engineId: params.engineId ?? null,
           normalizedTerm,
           term,
+          locale,
           lastAttemptAt: attemptedAt,
           lastOutcome: params.outcome,
           ...harvestFields,
@@ -137,6 +155,11 @@ export class KeywordAttemptHistoryService {
           // fold until the first real attempt under a properly-spelled term
           // replaces it with the true query.
           term,
+          // SILENCE NEVER ERASES A DECIDED ANSWER. A refresh re-run carries
+          // no locale (there is no request in scope) and must not blank the
+          // one the original ask established — which is exactly the row the
+          // refresh lane will read next time.
+          ...(locale ? { locale } : {}),
           lastAttemptAt: attemptedAt,
           lastOutcome: params.outcome,
           ...harvestFields,

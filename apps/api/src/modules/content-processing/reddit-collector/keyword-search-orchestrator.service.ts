@@ -493,6 +493,13 @@ export class KeywordSearchOrchestratorService {
             // fold but must remember the query, or the refresh lane re-sends
             // a mangled string forever.
             term: entry.term,
+            // THE LANGUAGE THE ASK WAS MADE IN, banked with the attempt so
+            // the refresh slice can strip this term's generic tokens in its
+            // OWN language when it re-reads the row days later, with no
+            // request in scope. The unmet slice carries it from the signals
+            // ledger; every other slice's terms are our canonical entity
+            // names, which is what `locale` reports for them.
+            locale: entry.input.locale ?? null,
             outcome: attemptOutcome,
             // Harvest snapshot for the derived eligibility clamp. The
             // count is the query's FULL yield (posts + comments — NOTE:

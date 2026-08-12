@@ -328,6 +328,33 @@ export class SearchQueryRequestDto {
   @ValidateNested()
   @Type(() => SearchSubmissionContextDto)
   submissionContext?: SearchSubmissionContextDto;
+
+  /**
+   * THE FUSED LOCALE — script gate + registry surfaces + the prior above,
+   * decided ONCE per query by `analyzeQuery` and stamped onto the structured
+   * request by the interpretation service. Server-derived: a client value is
+   * overwritten, which is why it is not part of the request contract in any
+   * meaningful sense.
+   *
+   * It exists because the low-result demand lane needs it (F5).
+   * `NaturalSearchRequestDto.locale` is what the PHONE said; this is what
+   * the QUERY turned out to be, and they are different facts — an es-MX
+   * phone typing 'cơm tấm' is typing Vietnamese. This structured request
+   * carries no request-locale of its own, which is exactly why the fused
+   * answer has to ride here or be lost.
+   * Every other lane that records an ask already carries the
+   * fused value (the residue lane and the direct untyped ask, since
+   * adf03754c); the low-result lane was the one that did not, so a Vietnamese
+   * ask reached collection indistinguishable from an English one and the
+   * keyword lane spent its budget stripping English filler words out of it.
+   *
+   * NULL IS AN ANSWER, not a gap: a bare one-worder is genuinely
+   * undecidable, and 'en' there would be a fabricated fact on a row later
+   * read as evidence.
+   */
+  @IsOptional()
+  @IsString()
+  detectedLocale?: string;
 }
 
 export class SearchCacheAttributionDto {

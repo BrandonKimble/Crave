@@ -208,15 +208,25 @@ export interface KeywordTermCandidate {
   term: string;
   normalizedTerm: string;
   /**
-   * The language this term was ASKED in, when the ledger decided one
-   * (`signals.detected_locale`, unmet slice only). GENERICNESS IS A CLAIM
-   * ABOUT A LANGUAGE: 'top' is a filler word in English and a real word in
+   * The language this term was ASKED in. GENERICNESS IS A CLAIM ABOUT A
+   * LANGUAGE: 'top' is a filler word in English and a real word in
    * Vietnamese, so stripping a term's tokens without knowing its language
-   * either mangles a foreign ask or lets an English filler through.
+   * either mangles a foreign ask or lets an English filler through — and a
+   * term judged generic-only is DELETED from the cycle, not merely trimmed.
    *
-   * null = undecidable, or a slice whose terms are OUR canonical entity
-   * names (demand/explore/refresh), which are English by construction — the
-   * stripper's own default.
+   * EVERY SLICE ANSWERS THIS NOW (F5, 2026-08-11). It used to be "unmet
+   * only", with the other three left null and a comment explaining that null
+   * meant English-by-construction — which is a fact stated in a comment
+   * where the code needed it as a value:
+   *   - unmet   — the asker's own language, from `signals.detected_locale`.
+   *   - demand / explore — one of OUR canonical entity names, English by
+   *     construction (the non-English vocabulary lives in entity_surface).
+   *   - refresh — read back off the attempt ledger's own `locale` column,
+   *     which exists precisely because this slice re-runs a term days later
+   *     with no request in scope.
+   *
+   * null now means what it should: nobody ever recorded one. It still
+   * resolves to the stripper's default.
    */
   locale?: string | null;
   slice: KeywordSlice;
@@ -341,6 +351,9 @@ export class KeywordSliceSelectionService {
       demand: territoryDemand.map((row) => ({
         term: row.entityName,
         normalizedTerm: '',
+        // Our canonical entity name, English by construction — see the
+        // explore loader below for why this is stated rather than left null.
+        locale: 'en',
         slice: 'demand' as const,
         score: row.demandScore,
         entityType: row.entityType as EntityType,
@@ -1119,6 +1132,13 @@ export class KeywordSliceSelectionService {
       return {
         term: row.entityName,
         normalizedTerm: '',
+        // STATED, NOT LEFT NULL. An explore candidate is one of OUR canonical
+        // entity names, and those are English by construction — the whole
+        // non-English vocabulary lives in entity_surface, never in
+        // core_entities.name. Saying 'en' out loud is the difference between
+        // "we know this is English" and "nobody looked", which is exactly the
+        // distinction this whole correction is about.
+        locale: 'en',
         slice: 'explore' as const,
         score: 0,
         entityType: row.entityType as EntityType,
@@ -1165,6 +1185,14 @@ export class KeywordSliceSelectionService {
         // the term was barren. Identity keys the row; `term` is what we ask.
         term: row.term,
         normalizedTerm: row.normalizedTerm,
+        // THE ASK'S OWN LANGUAGE, read back off the ledger row (F5). This
+        // slice re-runs a term days after somebody asked for it, with no
+        // request anywhere in scope, so this column is the ONLY thing that
+        // can tell `stripGenericTokens` which language to judge it in — and
+        // judging a Vietnamese term by the English generic list DELETES it
+        // from the cycle ('top'). Null means nobody recorded one, which
+        // resolves to the stripper's default exactly as before.
+        locale: row.locale,
         slice: 'refresh',
         score: stalenessScore,
         origin: {
