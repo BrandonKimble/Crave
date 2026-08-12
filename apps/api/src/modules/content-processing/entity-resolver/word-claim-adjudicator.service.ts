@@ -110,6 +110,20 @@ export interface ContestedClaim {
   /** The entity trying to claim it. */
   entityId: string;
   source: SurfaceSource;
+  /**
+   * WHICH QUESTION THIS HEARING ANSWERS (2026-08-12). The default, 'grant', is
+   * every caller that existed before: "may this concept TAKE this word?" —
+   * and if nothing contests it there is nothing to decide, so it is banked
+   * without paying for a judge. 'retain' is the retraction feed: "this
+   * concept ALREADY HOLDS this word — should it?" That question is real even
+   * with no rival, and it is the only reason a mis-bank nobody contests can
+   * ever be corrected. The intent is stated by the CALLER rather than
+   * inferred from the row, because the two questions have opposite cheap
+   * answers and a hearing costs a real LLM call: silently re-reading every
+   * already-banked re-offer as a retraction would bill the nightly sweep for
+   * questions nobody asked.
+   */
+  hearing?: 'grant' | 'retain';
 }
 
 export interface AdjudicationSummary {
@@ -133,6 +147,14 @@ export interface AdjudicationSummary {
   incumbentEvicted: number;
   /** Newcomer written 'deprecated' — remembered wrong, never re-proposed. */
   newcomerRefused: number;
+  /**
+   * A claim the entity ALREADY HELD, taken back — the retraction outcome
+   * (2026-08-12). Counted apart from `newcomerRefused` because the two are
+   * different events in the corpus: a refusal keeps a wrong word OUT, a
+   * retraction takes a wrong word that has been grounding mentions at 0.95
+   * AWAY. Only the second one changes what a searcher sees today.
+   */
+  claimsRetracted: number;
   /** Judge unavailable/failed — left blocked, re-offered next run. */
   unjudged: number;
   /** Every hearing that reached a verdict, with the judge's stated reason. */
@@ -166,7 +188,11 @@ export interface JudgedCase {
   locale: string;
   entityId: string;
   targetName: string;
-  outcome: 'bothUpheld' | 'incumbentEvicted' | 'newcomerRefused';
+  outcome:
+    | 'bothUpheld'
+    | 'incumbentEvicted'
+    | 'newcomerRefused'
+    | 'claimRetracted';
   /** Incumbents this hearing kept / took the word from, as "name[type]". */
   upheld: string[];
   evicted: string[];
@@ -198,6 +224,7 @@ export class WordClaimAdjudicatorService {
       banked: 0,
       incumbentEvicted: 0,
       newcomerRefused: 0,
+      claimsRetracted: 0,
       unjudged: 0,
       cases: [],
     };
@@ -219,15 +246,26 @@ export class WordClaimAdjudicatorService {
       const prepared = await Promise.all(
         batch.map(async (claim) => ({
           claim,
-          target: await this.entityCard(claim.entityId),
+          target: await this.entityCard(claim.entityId, claim.form),
           incumbents: await this.incumbentsOf(claim.form, claim.entityId),
+          // Only a RETAIN hearing reads the held row: a grant hearing has the
+          // same cheap answer it always had.
+          held:
+            claim.hearing === 'retain' ? await this.heldClaimOf(claim) : null,
         })),
       );
 
       const judgeable: typeof prepared = [];
       for (const p of prepared) {
         summary.considered += 1;
-        if (!p.target || p.incumbents.length === 0) {
+        if (p.claim.hearing === 'retain' && !p.held) {
+          // The row moved between selection and hearing (merged, evicted,
+          // already retracted). A retain hearing may never BANK — it was
+          // asked to review a claim, not to create one — so it simply has
+          // nothing to review.
+          continue;
+        }
+        if (!p.target || (p.incumbents.length === 0 && !p.held)) {
           // Nothing contests it anymore — bank directly. This is also how a
           // FALSE CONFLICT is undone: a claim refused when the hearing was
           // held on the accent-blind fold has no same-word incumbent at all,
@@ -250,6 +288,29 @@ export class WordClaimAdjudicatorService {
           }
           continue;
         }
+        // THE SINGLE-CLAIMANT HEARING (2026-08-12) — why the branch above is
+        // now conditioned on `held`.
+        //
+        // "Nothing contests it, so bank it" is the right answer for a claim
+        // being PROPOSED. It is the wrong answer, and was the wrong answer
+        // forever, for a claim the entity ALREADY HOLDS: there is nothing to
+        // bank, so the shortcut decided nothing, and a wrong surface with no
+        // rival was never heard at all. `bánh cuộn` sat on `wrap` grounding
+        // Vietnamese mentions at 0.95 with no other concept claiming the word,
+        // so no hearing could ever be convened for it — the judge only met
+        // CONTESTS, and a mis-bank is not a contest, it is one claimant who
+        // should not have the word.
+        //
+        // So a held claim is heard on its own. The question does not change:
+        // the v3 prompt asks, per claimant, "would a speaker of this locale
+        // typing this word be satisfied by THIS concept?" — a question about
+        // ONE pairing, which an empty incumbent list does not affect (the
+        // model answers `a_owns_word` and an empty `incumbents_own_word`).
+        // The ANSWER is what differs: a NO here does not refuse a newcomer, it
+        // RETRACTS a word the corpus is actively grounding on, and a YES
+        // stamps the row with the rule that upheld it so no later feed pays to
+        // ask again.
+        //
         // TESTIMONY MAKES AN INCUMBENT UNEVICTABLE — it does NOT bar a
         // co-claim. `cafe` the venue type owns the string as its NAME, and
         // "café" is STILL the Spanish word for coffee: the newcomer's own
@@ -287,14 +348,25 @@ export class WordClaimAdjudicatorService {
         summary.judged += 1;
         const label = (c: Claimant) => `${c.name}[${c.type}]`;
         if (!verdict.target) {
-          await this.refuse(p.claim, dryRun);
-          summary.newcomerRefused += 1;
+          // A NO MEANS TWO DIFFERENT THINGS, and the row decides which.
+          // For a claim the entity does NOT hold, it is a refusal: remember
+          // the word as wrong so no sweep re-proposes it. For a claim it DOES
+          // hold, it is a RETRACTION: the word is grounding mentions right
+          // now, and the same encoding eviction uses takes it back — the word
+          // dies, the label lives.
+          if (p.held) {
+            await this.retract(p.held, dryRun);
+            summary.claimsRetracted += 1;
+          } else {
+            await this.refuse(p.claim, dryRun);
+            summary.newcomerRefused += 1;
+          }
           summary.cases.push({
             form: p.claim.form,
             locale: p.claim.locale,
             entityId: p.claim.entityId,
             targetName: p.target ? label(p.target) : p.claim.entityId,
-            outcome: 'newcomerRefused',
+            outcome: p.held ? 'claimRetracted' : 'newcomerRefused',
             upheld: p.incumbents.map(label),
             evicted: [],
             reason: verdict.reason,
@@ -341,7 +413,10 @@ export class WordClaimAdjudicatorService {
     return summary;
   }
 
-  private async entityCard(entityId: string): Promise<Claimant | null> {
+  private async entityCard(
+    entityId: string,
+    form: string,
+  ): Promise<Claimant | null> {
     const rows = await this.prisma.$queryRaw<
       Array<{ entity_id: string; name: string; type: string }>
     >`SELECT entity_id::text, name, type::text FROM core_entities
@@ -352,22 +427,44 @@ export class WordClaimAdjudicatorService {
       entityId: row.entity_id,
       name: row.name,
       type: row.type,
-      context: await this.sampleSurfaces(row.entity_id),
+      context: await this.sampleSurfaces(row.entity_id, form),
       testimony: false,
       aliasId: null,
       adjacency: null,
     };
   }
 
-  private async sampleSurfaces(entityId: string): Promise<string[]> {
+  /**
+   * The claimant's context — "what else do people call this concept" — for the
+   * judge to see what it actually IS (v1's bare name+type mis-voted
+   * picante/café).
+   *
+   * THE WORD UNDER JUDGMENT IS NEVER ITS OWN EVIDENCE (2026-08-12). When the
+   * claim is one the entity already HOLDS — every retraction hearing — that
+   * row is in this sample, so the card read "…also known as: <the word>" and
+   * the judge answered, verbatim, "the word is explicitly listed as a name for
+   * the claimant concept in the provided data". That is the claim restated as
+   * proof of itself: a retraction hearing could never reach NO, no matter how
+   * wrong the pairing. Excluding it costs a contested hearing nothing (an
+   * incumbent's holding of the word is already stated by its being an
+   * incumbent) and is what makes the single-claimant question answerable.
+   */
+  private async sampleSurfaces(
+    entityId: string,
+    exceptForm: string,
+  ): Promise<string[]> {
     const rows = await this.prisma.$queryRaw<Array<{ form: string }>>`
       SELECT form FROM entity_surface
        WHERE entity_id = ${entityId}::uuid AND status = 'active'
          -- Recall surfaces only: this is "what do people CALL it", the
          -- judge's context for what the concept actually is.
          AND role <> 'display'
-       ORDER BY created_at ASC LIMIT 3`;
-    return rows.map((r) => r.form);
+       ORDER BY created_at ASC LIMIT 4`;
+    const under = surfaceClaimKey(exceptForm);
+    return rows
+      .filter((r) => surfaceClaimKey(r.form) !== under)
+      .slice(0, 3)
+      .map((r) => r.form);
   }
 
   /**
@@ -423,13 +520,45 @@ export class WordClaimAdjudicatorService {
         entityId: row.entity_id,
         name: row.name,
         type: row.type,
-        context: await this.sampleSurfaces(row.entity_id),
+        context: await this.sampleSurfaces(row.entity_id, form),
         testimony: row.is_name || TESTIMONY_SOURCES.has(row.source ?? ''),
         aliasId: row.surface_id,
         adjacency: await this.adjacencyOf(exceptEntityId, row.entity_id),
       });
     }
     return claimants;
+  }
+
+  /**
+   * IS THIS CLAIM ALREADY BANKED — the one fact that turns a hearing from
+   * "should this word be granted?" into "should this word be taken back?".
+   *
+   * A row qualifies only if it is what a mis-bank actually is: ACTIVE, making
+   * a RECALL claim (role='display' holds nothing — its claim was refused or
+   * never made, so there is nothing to retract), on THIS entity, in the
+   * claim's own locale, and spelled the IDENTICAL word. The fold fetches, the
+   * claim key decides — the same two-step every other claim test in this file
+   * uses, because `bò` and `bơ` share a fold and retracting one on the
+   * strength of the other is the very false-conflict the v3 hearing exists to
+   * stop.
+   */
+  private async heldClaimOf(
+    claim: ContestedClaim,
+  ): Promise<{ surfaceId: string; form: string; role: string } | null> {
+    const rows = await this.prisma.$queryRaw<
+      Array<{ surface_id: string; form: string; role: string }>
+    >`SELECT surface_id::text, form, role::text
+        FROM entity_surface
+       WHERE entity_id = ${claim.entityId}::uuid
+         AND locale = ${claim.locale}
+         AND form_folded = ${canonicalFold(claim.form)}
+         AND status = 'active'
+         AND role <> 'display'`;
+    const claimKey = surfaceClaimKey(claim.form);
+    const row = rows.find((r) => surfaceClaimKey(r.form) === claimKey);
+    return row
+      ? { surfaceId: row.surface_id, form: row.form, role: row.role }
+      : null;
   }
 
   private async judge(
@@ -669,9 +798,34 @@ export class WordClaimAdjudicatorService {
    * nightly pass re-offers it. Only a fresh hearing can give the word back.
    */
   private async evictIncumbents(incumbents: Claimant[]): Promise<void> {
-    const ids = incumbents
-      .map((inc) => inc.aliasId)
-      .filter((id): id is string => id !== null);
+    await this.takeTheWord(
+      incumbents
+        .map((inc) => inc.aliasId)
+        .filter((id): id is string => id !== null),
+    );
+  }
+
+  /**
+   * RETRACTION IS EVICTION WITHOUT A RIVAL (2026-08-12).
+   *
+   * A mis-banked surface is a wrong word→concept claim, and the corpus already
+   * knows exactly how to take a word away from a concept: `takeTheWord` — the
+   * encoding eviction has used since 0e439c897. Retraction is not new
+   * machinery, it is the SAME verdict reached in a hearing that has one
+   * claimant instead of two, so it writes the same rows and leaves the same
+   * memory: the word stops grounding, the label survives if the row was one,
+   * and the stamp records WHICH rule took it, so a future version bump
+   * re-opens this retraction the way it re-opens any other verdict.
+   */
+  private async retract(
+    held: { surfaceId: string },
+    dryRun: boolean,
+  ): Promise<void> {
+    if (dryRun) return;
+    await this.takeTheWord([held.surfaceId]);
+  }
+
+  private async takeTheWord(ids: string[]): Promise<void> {
     if (!ids.length) return;
     await this.prisma.$executeRaw`
       UPDATE entity_surface

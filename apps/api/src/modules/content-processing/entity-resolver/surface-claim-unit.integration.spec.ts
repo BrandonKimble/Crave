@@ -335,4 +335,129 @@ describe('the claim unit is the FORM, not the fold', () => {
       status: 'active',
     });
   });
+
+  /**
+   * THE SINGLE-CLAIMANT HEARING — a mis-banked word with NO rival.
+   *
+   * Before 2026-08-12 this claim could not be heard at all: with no incumbent
+   * the adjudicator took the "uncontested → bank" shortcut, which is the right
+   * answer for a claim being PROPOSED and decides nothing for one the entity
+   * already HOLDS. So a wrong surface nobody contested went on grounding
+   * mentions at 0.95 forever (`bánh cuộn` on `wrap`). Executed against the
+   * pre-fix code this test is RED twice over: the judge is never called, and
+   * the row stays active.
+   */
+  it('hears a held claim with NO competing claimant, and a NO RETRACTS it with the rule version stamped', async () => {
+    const word = `zzq lonely ${randomUUID().slice(0, 8)}`;
+    const owner = await mintFood(`zzq owner ${randomUUID().slice(0, 8)}`);
+    await prisma.$transaction((tx) =>
+      addSurfaces(tx, owner, [
+        { form: word, locale: 'vi', source: 'vocabulary', role: 'recall' },
+      ]),
+    );
+    // The premise: nothing contests this word, and it is banked and grounding.
+    expect((await surfacesOf(owner))[0]).toMatchObject({
+      role: 'recall',
+      status: 'active',
+    });
+
+    const refusingJudge = {
+      generateForCaller: jest.fn().mockResolvedValue(
+        JSON.stringify({
+          items: [
+            {
+              n: 1,
+              a_owns_word: false,
+              incumbents_own_word: [],
+              reason: 'a speaker typing this word does not want this concept',
+            },
+          ],
+        }),
+      ),
+    };
+    const summary = await adjudicatorWith(refusingJudge).adjudicate([
+      {
+        form: word,
+        locale: 'vi',
+        entityId: owner,
+        source: 'vocabulary',
+        hearing: 'retain',
+      },
+    ]);
+
+    // A HEARING HAPPENED — the shortcut no longer swallows it.
+    expect(refusingJudge.generateForCaller).toHaveBeenCalledTimes(1);
+    // THE WORD UNDER JUDGMENT IS NOT ITS OWN EVIDENCE: the claimant card must
+    // not list the very form being judged as "also known as", or the judge
+    // reads the claim back as proof of itself and a retraction can never
+    // reach NO (observed verbatim on the first seeded run).
+    const [[call]] = refusingJudge.generateForCaller.mock.calls as Array<
+      [{ prompt: string }]
+    >;
+    expect(call.prompt).not.toContain(`also known as: ${word}`);
+    // And the verdict is a RETRACTION, not a refusal — different event,
+    // different counter, and the row is the memory of it.
+    expect(summary.claimsRetracted).toBe(1);
+    expect(summary.newcomerRefused).toBe(0);
+    expect(summary.cases[0].outcome).toBe('claimRetracted');
+    expect((await surfacesOf(owner))[0]).toMatchObject({
+      role: 'recall',
+      status: 'deprecated',
+    });
+    const [stamped] = await prisma.$queryRawUnsafe<
+      Array<{ claim_judge_version: number }>
+    >(
+      `SELECT claim_judge_version FROM entity_surface
+        WHERE entity_id = $1::uuid AND form = $2`,
+      owner,
+      word,
+    );
+    expect(stamped.claim_judge_version).toBe(CLAIM_JUDGE_PROMPT_VERSION);
+  });
+
+  /** The other side: a held claim the judge UPHOLDS keeps its word and is
+   *  stamped, so no later feed pays to ask the same question again. */
+  it('a held claim the judge upholds stays active and carries the stamp', async () => {
+    const word = `zzq upheld ${randomUUID().slice(0, 8)}`;
+    const owner = await mintFood(`zzq keeper ${randomUUID().slice(0, 8)}`);
+    await prisma.$transaction((tx) =>
+      addSurfaces(tx, owner, [
+        { form: word, locale: 'vi', source: 'vocabulary', role: 'recall' },
+      ]),
+    );
+    const upholdingJudge = {
+      generateForCaller: jest.fn().mockResolvedValue(
+        JSON.stringify({
+          items: [
+            {
+              n: 1,
+              a_owns_word: true,
+              incumbents_own_word: [],
+              reason: 'this is what speakers call it',
+            },
+          ],
+        }),
+      ),
+    };
+    const summary = await adjudicatorWith(upholdingJudge).adjudicate([
+      {
+        form: word,
+        locale: 'vi',
+        entityId: owner,
+        source: 'vocabulary',
+        hearing: 'retain',
+      },
+    ]);
+    expect(summary.claimsRetracted).toBe(0);
+    const [row] = await prisma.$queryRawUnsafe<
+      Array<{ status: string; role: string; claim_judge_version: number }>
+    >(
+      `SELECT status::text, role::text, claim_judge_version FROM entity_surface
+        WHERE entity_id = $1::uuid AND form = $2`,
+      owner,
+      word,
+    );
+    expect(row).toMatchObject({ status: 'active', role: 'recall' });
+    expect(row.claim_judge_version).toBe(CLAIM_JUDGE_PROMPT_VERSION);
+  });
 });
