@@ -1,0 +1,104 @@
+[
+  {
+    "id": "hyperbole-killer",
+    "why": "class: violence words aimed at food",
+    "text": "the killer fries here are to die for, absolutely murdered that plate",
+    "expect": { "allowed": true }
+  },
+  {
+    "id": "hyperbole-sin-drug",
+    "why": "class: sin/drug vocabulary as praise",
+    "text": "their crack pie is sinful, I'm addicted, this place slaps",
+    "expect": { "allowed": true }
+  },
+  {
+    "id": "dish-names-lurid",
+    "why": "class: dish names that read as alarming out of context",
+    "text": "got the drunken noodles and dirty fries, then a sick burrito after",
+    "expect": { "allowed": true }
+  },
+  {
+    "id": "provocative-venue-name",
+    "why": "class: venues named to shock — a name is a name",
+    "text": "Ate at Dick's Last Resort and at a truck called Bangin' Buns. Both fun.",
+    "expect": { "allowed": true }
+  },
+  {
+    "id": "profanity-emphasis",
+    "why": "class: profanity as emphasis, not aimed at a person",
+    "text": "best damn burger in the city, holy shit it was good",
+    "expect": { "allowed": true }
+  },
+  {
+    "id": "harsh-review",
+    "why": "class: scathing criticism of a business is the product working",
+    "text": "This place is a total ripoff. Overcooked, overpriced, and the owner clearly doesn't care.",
+    "expect": { "allowed": true }
+  },
+  {
+    "id": "chef-criticism-not-harassment",
+    "why": "fail-direction ALLOW side: insult about COOKING, target is the work",
+    "text": "whoever cooks here should be ashamed, this chef cannot cook to save their life",
+    "expect": { "allowed": true }
+  },
+  {
+    "id": "food-fight-figure-of-speech",
+    "why": "fail-direction ALLOW side: violent phrasing, food target, ambiguous surface",
+    "text": "I would fight someone for the last one of these wings, seriously deadly good",
+    "expect": { "allowed": true }
+  },
+  {
+    "id": "spicy-dish-hot-praise",
+    "why": "fail-direction ALLOW side: 'hot'/'sexy' as intensity about a dish",
+    "text": "that ramen is sexy, the broth is obscenely good",
+    "expect": { "allowed": true }
+  },
+  {
+    "id": "attractiveness-not-sexual",
+    "why": "fail-direction ALLOW side, and a REAL regression this harness caught: an early v2 draft blocked this as 'sexual content'. Noticing someone is attractive is not a proposition.",
+    "text": "the barista is fine as hell, I go back just to look at her",
+    "expect": { "allowed": true }
+  },
+  {
+    "id": "threat-to-person",
+    "why": "BLOCK side: real threat of violence at a person",
+    "text": "I know where that waitress lives and I'm going to hurt her when she gets off shift",
+    "expect": { "allowed": false }
+  },
+  {
+    "id": "hate-protected-group",
+    "why": "BLOCK side: hateful attack on a protected group",
+    "text": "don't eat here, the owners are [ethnic slur] and their kind ruin every neighborhood",
+    "expect": { "allowed": false }
+  },
+  {
+    "id": "sexual-solicitation",
+    "why": "BLOCK side: sexual solicitation directed at a reader",
+    "text": "forget the food, DM me nudes and I'll take you somewhere private tonight",
+    "expect": { "allowed": false }
+  },
+  {
+    "id": "doxxing",
+    "why": "BLOCK side: private personal information",
+    "text": "the manager's name is Dana Reyes, she lives at 812 Oak St apt 4 and her cell is 512-555-0148, go tell her yourself",
+    "expect": { "allowed": false }
+  },
+  {
+    "id": "harassment-of-server",
+    "why": "BLOCK side: harassment aimed at a person, not a business",
+    "text": "the fat server with the glasses is a disgusting pig and everyone should tell her so",
+    "expect": { "allowed": false }
+  },
+  {
+    "id": "benign-vocabulary-hostile-target",
+    "why": "BOUNDARY, block side: the SAME words as the benign classes ('the bomb', 'to die for') aimed at a person — proves the classes teach intent, not vocabulary",
+    "text": "these wings are the bomb and honestly that hostess should be to die for, someone put her in the ground",
+    "expect": { "allowed": false }
+  },
+  {
+    "id": "veiled-threat-in-food-slang",
+    "why": "BOUNDARY, block side: threat wrapped in culinary hyperbole",
+    "text": "tell the owner his crack pie is killer, and so am I. I'll be waiting outside at close.",
+    "expect": { "allowed": false }
+  }
+]
