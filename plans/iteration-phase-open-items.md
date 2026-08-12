@@ -251,6 +251,15 @@ L3. **COVER-LINKER (locked 2026-08-10, owner delegated).** Whole-query span
    sweep, not extraction. SEQUENCE: v8 activation → ⭐04 dedupe + this
    retraction → language wave (so sweeps land on a deduped corpus).
 
+13g. **Generator flip-rate re-baseline before the wave**: v5's banked ~0%
+   word-set flip does NOT reproduce under the current model (v5 itself
+   flips 22-26% on multi-word concepts; head nouns stable; measured twice
+   during the v6 work, f412a92a6). Not a v6 regression — v6 sits inside
+   v5's own noise. Before the wave's sweeps run: re-measure flip rate
+   under the wave's actual model and decide whether temp-0 (proven 0%
+   in the v5 rederivation) or consensus is warranted for multi-word
+   concepts. The wave must not inherit a stale stability assumption.
+
 ## C2. CORPUS CURATION GAP (discovered via the DB restore, 2026-08-09)
 
 The wiped local corpus carried weeks of data curation the prod corpus
