@@ -25,6 +25,7 @@
  */
 
 import * as dotenv from 'dotenv';
+import { normalizeLocaleTag } from '../src/shared/locale';
 import * as path from 'path';
 
 // Load API environment variables (same file the API uses)
@@ -58,6 +59,11 @@ type ParsedArgs = {
   language: string;
   overwrite: boolean;
 };
+
+/** What a valid --language looks like, said once so both rejections agree. */
+const LANGUAGE_HELP =
+  'Valid: a BCP 47 language tag — "en", "vi", "es", "es-MX", "pt-BR", "zh-Hant". ' +
+  'Hyphens, never underscores; no spaces; not a language NAME ("Vietnamese").';
 
 const parseArgs = (): ParsedArgs => {
   const args = process.argv.slice(2);
@@ -95,8 +101,27 @@ const parseArgs = (): ParsedArgs => {
         index += 1;
       }
       if (!language) {
-        throw new Error('language must be a non-empty BCP 47 tag.');
+        throw new Error(
+          `language must be a non-empty BCP 47 tag.\n${LANGUAGE_HELP}`,
+        );
       }
+      // VALIDATED, NOT JUST NON-EMPTY (A0 R5, 2026-08-11). This accepted
+      // literally any string, and the value is not decoration: it becomes the
+      // community's reader context, and `localeLookupChain` is what reads it.
+      // A typo'd or underscored tag ('es_MX', 'Vietnamese', 'vi ') yields a
+      // chain of ['<garbage>','und'] — so ingestion out of that community can
+      // ground words through the UNIVERSAL slice only, and every Vietnamese
+      // surface in the registry stays invisible to it. Nothing would have
+      // failed; the community would simply have collected badly, forever.
+      const normalized = normalizeLocaleTag(language);
+      if (normalized === 'und') {
+        throw new Error(
+          `--language "${language}" is not a BCP 47 tag.\n${LANGUAGE_HELP}`,
+        );
+      }
+      // 'EN' -> 'en', 'pt-br' -> 'pt-BR': one canonical spelling reaches the
+      // column, so two onboardings of the same language cannot disagree.
+      language = normalized;
       continue;
     }
     positionals.push(arg);
