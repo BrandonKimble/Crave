@@ -173,16 +173,6 @@ export interface EnrichedLLMMention extends LLMMentionBase {
 }
 
 /**
- * LLM Entity Reference type
- */
-export interface LLMEntityRef {
-  name: string;
-}
-
-/**
- * LLM Source type
- */
-/**
  * Gemini API response structure
  */
 export interface LLMApiResponse {
