@@ -35,8 +35,15 @@ async function main(): Promise<void> {
   try {
     const builder = app.get(EntitySiblingEdgeBuilderService);
     out('Rebuilding sibling edges…');
-    const { anchors, edges } = await builder.rebuildAll();
-    out(`Done: ${anchors} anchors → ${edges} edges.`);
+    // runNow(), not the builder's own rebuild: a manual rebuild gets the SAME
+    // law as the cron — disable flag, in-flight guard, and the zero-output
+    // critical alert. null = the guard declined (flag off / already running).
+    const result = await builder.runNow();
+    if (!result) {
+      out('Skipped: the rebuild guard declined (disable flag or in-flight).');
+      return;
+    }
+    out(`Done: ${result.input} anchors → ${result.output} edges.`);
   } finally {
     await app.close();
   }

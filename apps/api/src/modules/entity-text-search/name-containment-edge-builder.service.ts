@@ -51,7 +51,7 @@ export class NameContainmentEdgeBuilderService extends DerivedIndexJob {
    *  the FINAL token(s) (the variant IS-A base); otherwise it merely
    *  mentions it. Minimum 4 folded chars on the base — same floor the live
    *  scan used ("sal" must not claim "salsa verde"). */
-  async rebuildAll(): Promise<{ edges: number }> {
+  protected async rebuildAll(): Promise<{ edges: number }> {
     const start = Date.now();
     const edges = await this.prisma.$transaction(
       async (tx) => {

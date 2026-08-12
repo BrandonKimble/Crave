@@ -138,7 +138,7 @@ beforeAll(async () => {
     // gate that cannot show red.
     { emit: jest.fn() } as never,
     stubLogger() as never,
-  ).rebuildAll();
+  ).runNow();
 });
 
 afterAll(async () => {

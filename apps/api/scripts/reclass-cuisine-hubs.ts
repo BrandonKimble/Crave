@@ -97,8 +97,15 @@ async function main(): Promise<void> {
       // De-pollute the derived graphs: sibling edges (hub neighbors vanish) and
       // category edges (hub ids can appear as categories on connections).
       const builder = app.get(EntitySiblingEdgeBuilderService);
-      const { anchors, edges } = await builder.rebuildAll();
-      out(`Sibling edges rebuilt: ${anchors} anchors → ${edges} edges.`);
+      // runNow() so this operator rebuild carries the derived-index law
+      // (disable flag, in-flight guard, zero-output critical alert) instead of
+      // reaching around it.
+      const rebuilt = await builder.runNow();
+      out(
+        rebuilt
+          ? `Sibling edges rebuilt: ${rebuilt.input} anchors → ${rebuilt.output} edges.`
+          : 'Sibling edge rebuild SKIPPED by its guard (disable flag or in-flight).',
+      );
       const purged = await prisma.$executeRawUnsafe(
         `DELETE FROM derived_food_category_edges
          WHERE category_id = ANY($1::uuid[]) OR food_id = ANY($1::uuid[])`,

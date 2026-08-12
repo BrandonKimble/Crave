@@ -66,7 +66,9 @@ export class EntitySiblingEdgeBuilderService extends DerivedIndexJob {
     this.logger = loggerService.setContext('EntitySiblingEdgeBuilderService');
   }
 
-  async rebuildAll(): Promise<{ anchors: number; edges: number }> {
+  /** The work itself. PROTECTED by law — drive it with runNow(), which adds
+   *  the disable-flag check, the in-flight guard and the zero-output alert. */
+  protected async rebuildAll(): Promise<{ anchors: number; edges: number }> {
     const started = Date.now();
     const anchors = await this.prisma.$queryRaw<AnchorRow[]>(Prisma.sql`
       SELECT entity_id, name_embedding::text AS emb
