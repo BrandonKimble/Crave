@@ -1,0 +1,134 @@
+[
+  {
+    "id": "skeptical-venue-post",
+    "why": "KEEP: negative venue posts are recommendation magnets (principle 2)",
+    "post": {
+      "title": "Hey so homeslice pizza is like not good…?",
+      "body": "Am I crazy? Went twice and both times it was fine at best. What am I missing."
+    },
+    "expect": { "keep": true }
+  },
+  {
+    "id": "bare-venue-name",
+    "why": "KEEP: bare venue/dish title is a food thread (principle 3)",
+    "post": { "title": "Comedor", "body": "" },
+    "expect": { "keep": true }
+  },
+  {
+    "id": "market-closure-ask",
+    "why": "KEEP: closure ask; replies name alternatives",
+    "post": {
+      "title": "Hana World Market has closed its doors, anybody know what's up?",
+      "body": "Drove by today and it was shuttered."
+    },
+    "expect": { "keep": true }
+  },
+  {
+    "id": "catering-ask",
+    "why": "KEEP: venue recommendations are the whole thread",
+    "post": {
+      "title": "Catering recommendations wedding reception for 50 guests",
+      "body": "Looking for something not too formal, budget is flexible."
+    },
+    "expect": { "keep": true }
+  },
+  {
+    "id": "drink-only-ask",
+    "why": "KEEP: drink-only venues are in scope (principle 4)",
+    "post": {
+      "title": "Looking for a cool dive bar near south congress",
+      "body": ""
+    },
+    "expect": { "keep": true }
+  },
+  {
+    "id": "itinerary-with-food-ask",
+    "why": "BOUNDARY keep-side: food ASK buried deep in an itinerary body",
+    "post": {
+      "title": "14 days in Japan in November — critique my plan",
+      "body": "Day 1 land at Haneda, train to Shinjuku, check into hotel. Day 2 Meiji shrine then Harajuku, evening in Shibuya. Day 3 day trip to Nikko, back late. Day 4 teamLab then Odaiba. Day 5 shinkansen to Kyoto, Fushimi Inari early. Day 6 Arashiyama and the monkey park. Day 7 Nara day trip. Day 8 Osaka, castle and Umeda. We are open to restaurant recommendations anywhere along this route — we want to eat well and would love any ramen or okonomiyaki spots you rate. Day 9 Himeji. Day 10 back to Tokyo."
+    },
+    "expect": { "keep": true }
+  },
+  {
+    "id": "trip-report",
+    "why": "KEEP: trip reports recount where the author ate (principle 6)",
+    "post": {
+      "title": "Just got back from 5 days in Austin — trip report",
+      "body": "Long post. Flights were smooth, stayed downtown, walked a lot. Weather was perfect."
+    },
+    "expect": { "keep": true }
+  },
+  {
+    "id": "meal-schedule-no-ask",
+    "why": "BOUNDARY drop-side: meals SCHEDULED, nothing asked about food (principle 5)",
+    "post": {
+      "title": "Osaka 3 day plan, does the pacing work?",
+      "body": "Day 1: arrive 11am, drop bags, Dotonbori street food stop, Umeda Sky at sunset. Dinner at Ichiran. Day 2: Osaka castle morning, Shinsekai afternoon, kushikatsu for dinner. Day 3: Kaiyukan aquarium then fly out at 7pm. Mainly want to know if the transit times between these are realistic and if three days is too rushed."
+    },
+    "expect": { "keep": false }
+  },
+  {
+    "id": "logistics-itinerary",
+    "why": "DROP: no food content at all",
+    "post": {
+      "title": "Critique my itinerary",
+      "body": "Trains from Tokyo to Kyoto to Hiroshima, JR pass math, hotel near which station?"
+    },
+    "expect": { "keep": false }
+  },
+  {
+    "id": "industry-news",
+    "why": "DROP: food-adjacent industry news, no venue-seeking (principle 7)",
+    "post": {
+      "title": "Workers at three Austin restaurants say paychecks bounced",
+      "body": "Reporting from the Statesman on wage complaints filed last month."
+    },
+    "expect": { "keep": false }
+  },
+  {
+    "id": "home-cooking-meetup",
+    "why": "DROP: home recipe project, no venue recommendations",
+    "post": {
+      "title": "Cinnamon Rolls Taste Tester Meetup",
+      "body": "I have been perfecting my own recipe at home and want volunteers to taste test my batches."
+    },
+    "expect": { "keep": false }
+  },
+  {
+    "id": "policy-post",
+    "why": "DROP: food policy/fees, no ask about where to eat",
+    "post": {
+      "title": "Restaurant charging bag fee for to go orders",
+      "body": "Is this legal? Feels like nickel and diming."
+    },
+    "expect": { "keep": false }
+  },
+  {
+    "id": "daily-megathread",
+    "why": "DROP: recurring general-chat megathread (principle 8)",
+    "post": {
+      "title": "/r/Atlanta Random Daily Discussion",
+      "body": "Talk about whatever you want here."
+    },
+    "expect": { "keep": false }
+  },
+  {
+    "id": "service-anecdote",
+    "why": "BOUNDARY drop-side: a venue is named but nothing about food is asked",
+    "post": {
+      "title": "Strange interaction at P Terrys",
+      "body": "Guy in the drive through lane yelled at the speaker for five minutes. Anyone else seen this?"
+    },
+    "expect": { "keep": false }
+  },
+  {
+    "id": "grocery-item-hunt",
+    "why": "BOUNDARY keep-side: item hunt gets store/venue answers (principle 4)",
+    "post": {
+      "title": "Where can I find fresh masa in town?",
+      "body": "Preferably somewhere that grinds it same day."
+    },
+    "expect": { "keep": true }
+  }
+]

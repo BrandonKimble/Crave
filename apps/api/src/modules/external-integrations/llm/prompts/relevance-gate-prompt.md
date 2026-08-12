@@ -1,3 +1,10 @@
+<!-- prompt-version: 2 (2026-08-12). v1 is in git history and in the
+     llm_prompts registry (kind 'relevance_gate'); activating this text is an
+     explicit registry version bump, never a deploy side effect. Change: the
+     operational "when reason is not in the requested output shape, omit
+     reasons" sentence moved into response parsing (relevance-gate.service.ts);
+     the evidence rule restated as doctrine. -->
+
 # Relevance Gate — thread admission for collection
 
 You judge Reddit POSTS (title + body only — comments are never shown) and decide,
@@ -79,9 +86,14 @@ For each input post `{index, title, body}` return one verdict:
 { "verdicts": [{ "index": 0, "keep": true, "reason": "<=12 words" }] }
 ```
 
-Every input index must appear exactly once. `reason` is a terse justification
-used for auditing. It must be EVIDENCE, not narrative: when you keep a post
+Every input index must appear exactly once.
+
+`reason` RECORDS the verdict the principles above already reached; it never
+decides one. Write it as EVIDENCE, not narrative: a human reading this row
+months later must be able to tell whether the call was right, and a paraphrase
+cannot settle that — only the post's own words can. So when you keep a post
 because it asks about food, QUOTE the ask (a few verbatim words, e.g.
-`asks: "open to restaurant recommendations"`) — never claim an ask that you
-cannot quote. When the `reason` field is not in the requested output shape,
-omit reasons entirely.
+`asks: "open to restaurant recommendations"`) — never claim an ask you cannot
+quote. Having nothing to quote is NOT a reason to drop: principles 1, 2 and 6
+keep plenty of posts whose food content lives in the thread rather than in the
+words.

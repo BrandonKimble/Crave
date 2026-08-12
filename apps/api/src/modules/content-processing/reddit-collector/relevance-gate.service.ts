@@ -39,6 +39,26 @@ const PACK_TOKEN_BUDGET = 20000;
 const PACK_MAX_POSTS = 25;
 
 /**
+ * Reason-shape handling lives HERE, not in the prompt (2026-08-12 prompt
+ * rederivation). The prompt used to carry an operational sentence — "when the
+ * `reason` field is not in the requested output shape, omit reasons entirely"
+ * — a leftover from the reasons-off era, when this service appended a lean
+ * output shape to the system instruction. Instructing a model on how to cope
+ * with a shape WE control spends tokens teaching it our plumbing and cannot be
+ * enforced anyway; the parser can simply accept whatever comes back.
+ *
+ * A reason is kept only when it is a non-empty string. Anything else — absent,
+ * null, a number, an object the model wrapped it in — becomes `undefined`,
+ * which persists as NULL (the verdict itself is never affected: a malformed
+ * reason must never change keep/drop).
+ */
+export function normalizeVerdictReason(value: unknown): string | undefined {
+  if (typeof value !== 'string') return undefined;
+  const trimmed = value.trim();
+  return trimmed.length > 0 ? trimmed : undefined;
+}
+
+/**
  * Universal thread-admission gate (plans/archive-prefilter-pipeline.md):
  * judges each post's TITLE+BODY with a cheap model — "would this thread
  * plausibly name venues or dishes worth eating/drinking at?" — so the
@@ -272,7 +292,7 @@ export class RelevanceGateService implements OnModuleInit {
         if (verdict.index >= 0 && verdict.index < posts.length) {
           out[verdict.index] = {
             keep: Boolean(verdict.keep),
-            reason: verdict.reason,
+            reason: normalizeVerdictReason(verdict.reason),
           };
         }
       }
