@@ -232,6 +232,18 @@ L3. **COVER-LINKER (locked 2026-08-10, owner delegated).** Whole-query span
    45/58. Fixture expectation updates belong to the convergence lane;
    my agents told not to touch them.
 
+13f. **Surface retraction lane (my half of the 326-collision plan;
+   cross-ruled with ⭐04 2026-08-12)**: mis-banked surfaces are wrong
+   word→concept claims — retraction = the EXISTING claims machinery
+   (judge + deprecate-with-memory), extended to hear SINGLE-CLAIMANT
+   suspicious rows (the named hole: uncontested claims skip the judge
+   forever — bánh cuộn sits wrongly on 'wrap' unstamped). Candidate feed
+   = ⭐04's surface-vs-name collision probe, EXCLUDING judge-upheld rows
+   (several 'collisions' are settled near-synonym law, e.g. bún→
+   vermicelli is CORRECT). Provenance verified: the tap was the v4-era
+   sweep, not extraction. SEQUENCE: v8 activation → ⭐04 dedupe + this
+   retraction → language wave (so sweeps land on a deduped corpus).
+
 ## C2. CORPUS CURATION GAP (discovered via the DB restore, 2026-08-09)
 
 The wiped local corpus carried weeks of data curation the prod corpus
