@@ -150,8 +150,71 @@ async function main(): Promise<void> {
       perCaller.set(row.caller, (perCaller.get(row.caller) ?? 0) + micros);
     }
     const windowDocCount = Number(windowDocs);
-    const interactivePerDocMicros =
+    const trailingInteractivePerDoc =
       windowDocCount > 0 ? interactiveMicros / windowDocCount : 0;
+
+    // REPLAY-PRIOR RATES (owner ruling 2026-08-12): a replay's best predictor
+    // is the LAST COMPLETED replay's campaign-scoped actuals, not the trailing
+    // window (which is polluted by non-replay traffic and modeled the gate as
+    // if it re-fires — replays REUSE gate verdicts, so that line is $0 real).
+    // The v7 campaign quoted $108 and cost $30 for exactly these two reasons.
+    // When a completed reextract campaign exists, its per-doc actuals override
+    // every gemini line; the gate line is pinned $0 with the reason printed.
+    const priorRows = await prisma.$queryRaw<
+      Array<{
+        caller: string;
+        model: string | null;
+        input_tokens: bigint;
+        output_tokens: bigint;
+        cached_tokens: bigint;
+        docs: bigint | null;
+      }>
+    >`
+      WITH last_replay AS (
+        SELECT campaign_id, unit_count FROM spend_campaigns
+        WHERE name LIKE 'reextract:%' AND state = 'completed'
+        ORDER BY completed_at DESC NULLS LAST LIMIT 1)
+      SELECT l.caller, l.model,
+             sum(l.input_tokens) AS input_tokens,
+             sum(l.output_tokens) AS output_tokens,
+             sum(l.cached_tokens) AS cached_tokens,
+             (SELECT unit_count FROM last_replay) AS docs
+      FROM api_usage_ledger l JOIN last_replay r ON l.campaign_id = r.campaign_id
+      WHERE l.service = 'gemini' GROUP BY l.caller, l.model`;
+    let interactivePerDocMicros = trailingInteractivePerDoc;
+    let replayPriorOverrides: Record<string, number> | null = null;
+    if (priorRows.length && Number(priorRows[0].docs ?? 0) > 0) {
+      const priorDocs = Number(priorRows[0].docs);
+      const byClass = { extraction: 0, interactive: 0, embedding: 0 };
+      for (const row of priorRows) {
+        const micros = pricedGeminiRow({
+          model: row.model,
+          inputTokens: Number(row.input_tokens),
+          outputTokens: Number(row.output_tokens),
+          cachedTokens: Number(row.cached_tokens),
+        });
+        if (row.caller.includes('collection_extraction'))
+          byClass.extraction += micros;
+        else if (row.caller.startsWith('embedding'))
+          byClass.embedding += micros;
+        else byClass.interactive += micros;
+      }
+      interactivePerDocMicros = byClass.interactive / priorDocs;
+      replayPriorOverrides = {
+        'gemini.reddit_extraction': byClass.extraction / priorDocs,
+        // Replays REUSE relevance-gate verdicts — this line is REAL $0, not
+        // missing (printed explicitly, the $118-lesson discipline).
+        'gemini.relevance_gate': 0,
+        'gemini.interactive_pipeline': interactivePerDocMicros,
+        'gemini.embedding': byClass.embedding / priorDocs,
+      };
+      console.log(
+        `REPLAY-PRIOR rates: last completed replay campaign, ${priorDocs} docs ` +
+          `(extraction $${(byClass.extraction / 1e6).toFixed(2)}, interactive $${(byClass.interactive / 1e6).toFixed(2)}, ` +
+          `embedding $${(byClass.embedding / 1e6).toFixed(2)}; gate $0 — replays reuse verdicts). ` +
+          `Trailing-window interactive would have been $${((trailingInteractivePerDoc * docCount) / 1e6).toFixed(2)}.`,
+      );
+    }
     console.log(
       `Call plan (interactive, per ${WINDOW_DAYS}d window of ${windowDocCount} docs):`,
     );
@@ -170,7 +233,7 @@ async function main(): Promise<void> {
       name,
       docCount,
       expectedNewRestaurants: 0,
-      perDocRateOverrides: {
+      perDocRateOverrides: replayPriorOverrides ?? {
         'gemini.interactive_pipeline': interactivePerDocMicros,
       },
     });
