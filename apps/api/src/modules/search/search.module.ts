@@ -20,8 +20,7 @@ import { SearchQueryInterpretationService } from './search-query-interpretation.
 import { SearchOrchestrationService } from './search-orchestration.service';
 import { OnDemandRequestService } from './on-demand-request.service';
 import { EngineCoverageService } from './engine-coverage.service';
-import { OnDemandPlaceholderCleanupService } from './on-demand-placeholder-cleanup.service';
-import { OnDemandRequestUsersCleanupService } from './on-demand-request-users-cleanup.service';
+import { OnDemandCleanupService } from './on-demand-cleanup.service';
 import { SearchQuerySuggestionService } from './search-query-suggestion.service';
 import { SearchPopularityService } from './search-popularity.service';
 import { RestaurantStatusService } from './restaurant-status.service';
@@ -59,8 +58,7 @@ import { OpenIntervalsBuilderService } from './open-intervals-builder.service';
     OnDemandRequestService,
     EngineCoverageService,
     SearchOrchestrationService,
-    OnDemandPlaceholderCleanupService,
-    OnDemandRequestUsersCleanupService,
+    OnDemandCleanupService,
     SearchQuerySuggestionService,
     SearchPopularityService,
     RestaurantStatusService,

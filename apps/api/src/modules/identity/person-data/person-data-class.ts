@@ -1311,7 +1311,7 @@ export const COLUMN_COVERAGE: readonly ColumnCoverageEntry[] = [
     column: 'term',
     coverage: 'not_person',
     basis:
-      'Aggregated demand across askers; the per-person edge is a DIFFERENT table (collection_on_demand_request_users), which is declared `delete_row` on erasure AND pruned at 90 days by OnDemandRequestUsersCleanupService, which then recomputes distinct_user_count. So the term outlives every link to who asked it. Owner ruling 2026-08-07 (Q7). HONEST GAP: there is no k-anonymity FLOOR — a term asked once still exists as a term; what does not exist is any way to attribute it.',
+      'Aggregated demand across askers; the per-person edge is a DIFFERENT table (collection_on_demand_request_users), which is declared `delete_row` on erasure AND pruned at 90 days by OnDemandCleanupService (its request-users step), which then recomputes distinct_user_count. So the term outlives every link to who asked it. Owner ruling 2026-08-07 (Q7). HONEST GAP: there is no k-anonymity FLOOR — a term asked once still exists as a term; what does not exist is any way to attribute it.',
   },
   {
     table: 'demand_scoring_candidates',
