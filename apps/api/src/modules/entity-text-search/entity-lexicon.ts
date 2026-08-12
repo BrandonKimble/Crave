@@ -90,7 +90,26 @@ export function deletionVariants(word: string, maxDeletes: number): string[] {
 }
 
 /** Damerau-Levenshtein (optimal string alignment): substitution, insertion,
- *  deletion, and ADJACENT TRANSPOSITION each cost 1. */
+ *  deletion, and ADJACENT TRANSPOSITION each cost 1.
+ *
+ *  THE ONE PLACE IN THIS FILE THAT COUNTS UTF-16 CODE UNITS, not code points
+ *  — `a.length` and `a[i]` are code-unit operations, so an astral character
+ *  is two cells of the matrix and two "edits". Stated rather than fixed
+ *  because it cannot currently be reached: the only caller
+ *  (`fetchLexiconEditRows`) compares a probe against a delete-dictionary
+ *  word, and both sides pass through `editBudgetForToken`, which returns 0
+ *  for any token carrying a morphemic script — which is where this corpus's
+ *  astral characters live (rare CJK ideographs like 𠮷). A budget of 0 means
+ *  the lane never runs.
+ *
+ *  WHAT WOULD MAKE IT REAL: any caller that measures distance WITHOUT the
+ *  budget gate, or a future budget that admits an astral-bearing script
+ *  (emoji in names, historic scripts, mathematical alphanumerics). Then a
+ *  one-character slip in an astral word reads as distance 2 and is silently
+ *  refused by a budget of 1. The fix is `Array.from` on both inputs, which
+ *  is what every other length in this file already does — it is not done now
+ *  because an unreachable allocation on the hot shortlist loop buys
+ *  nothing. */
 export function damerauLevenshtein(a: string, b: string): number {
   const m = a.length;
   const n = b.length;

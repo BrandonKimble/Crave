@@ -168,6 +168,16 @@ interface RawSpanMatch extends SpanEntity {
  *
  * Interior whitespace is excluded so a reading is never rewarded for the
  * separators it swallows — only for the words.
+ *
+ * `.length` HERE IS UTF-16 CODE UNITS, not the code points the doctrine
+ * above is written in. It is cosmetic today for a reason worth stating: this
+ * number is only ever COMPARED between candidate readings of the SAME query,
+ * so an astral character that counts 2 instead of 1 inflates every span that
+ * contains it equally, and the ordering — which is the whole output — does
+ * not move. It stops being cosmetic the moment a coverage figure is compared
+ * ACROSS queries or against an absolute threshold (a "covered enough of the
+ * query" gate), at which point a query written in astral characters scores
+ * double. `Array.from(...).length` is the fix if that day comes.
  */
 function spanCoverage(group: EntitySpanGroup): number {
   const typed = group.text.replace(/\s+/g, '').length;

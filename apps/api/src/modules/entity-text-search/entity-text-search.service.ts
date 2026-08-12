@@ -1052,9 +1052,14 @@ export class EntityTextSearchService {
       .map((term) => ({ term, budget: editBudgetForToken(term) }))
       .filter((p) => {
         // The budget already refuses a morphemic-script term (a Han
-        // "typo" is a different word); this is the plain length band.
-        const len = codePointLength(p.term);
-        return p.budget > 0 && len >= 3 && len <= 64;
+        // "typo" is a different word) AND everything shorter than 3 code
+        // points — `editBudgetForToken` returns 0 for `len <= 2`, so
+        // `budget > 0` IS the lower band and a `len >= 3` beside it could
+        // never change an outcome. Only the UPPER bound is a real filter,
+        // and it is the one this lane owns: the delete dictionary is built
+        // from `lexiconWords`, which caps at 64, so a longer probe can
+        // match nothing and only costs variants to generate.
+        return p.budget > 0 && codePointLength(p.term) <= 64;
       });
     if (!probes.length) return out;
 

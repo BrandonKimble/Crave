@@ -208,7 +208,7 @@ export interface QueryAnalysis {
  * closed word list, not morphology — a pack with only cues is honest data,
  * not speculative machinery.
  */
-export interface LanguagePack {
+interface LanguagePack {
   /** Base language subtag. */
   language: string;
   /** Closed negation-cue list, folded. */
@@ -227,7 +227,7 @@ const pack = (language: string, cues: string[]): LanguagePack => ({
  *  embedded context rather than a dropped span — the old "FAILS CLOSED
  *  (drops a span)" cost died with the cue machinery. Still kept small and
  *  high-precision: not extended with "hold the", "free of", "-less". */
-export const LANGUAGE_PACKS: ReadonlyMap<string, LanguagePack> = new Map(
+const LANGUAGE_PACKS: ReadonlyMap<string, LanguagePack> = new Map(
   [
     pack('en', ['no', 'without', 'not', 'non']),
     pack('es', ['sin', 'no']),
@@ -447,7 +447,7 @@ function foldPreservesContent(text: string): boolean {
  * Spanish-locale phone types English constantly, and a fabricated tag
  * would poison both languages' retrieval with no rollback.
  */
-export function fuseLocale(
+function fuseLocale(
   text: string,
   script: QueryScript,
   requestLocale: string | null,
@@ -676,7 +676,7 @@ const CJK_RUN_SCRIPT = (ch: string): 'han' | 'kana' | null =>
  *  kanji+kana compound — most Japanese dish and shop names — was unmatchable
  *  at exactly the span that identifies it. The invariant this restores:
  *  every n-gram's folded text equals canonicalFold of its own raw slice. */
-export function segmentToken(raw: string, start: number): QueryToken[] {
+function segmentToken(raw: string, start: number): QueryToken[] {
   const chars = Array.from(raw);
   if (!chars.some((ch) => CJK_RUN_SCRIPT(ch) !== null)) {
     return [
@@ -731,7 +731,7 @@ export interface AnalyzeOptions {
   surfaceLocales?: SurfaceLocaleOracle;
 }
 
-export const QUERY_ANALYZER_MAX_TOKENS = 48;
+const QUERY_ANALYZER_MAX_TOKENS = 48;
 
 /** THE pipeline. One call per query (A5): language detection must never
  *  run per residue probe — the probe budget is 24 and per-probe detection
