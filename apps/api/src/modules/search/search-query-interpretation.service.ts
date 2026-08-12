@@ -108,7 +108,7 @@ import type {
 import { foodNameVariants } from '../content-processing/entity-resolver/food-lemma';
 import {
   damerauLevenshtein,
-  editBudgetForLength,
+  editBudgetForToken,
 } from '../entity-text-search/entity-lexicon';
 import { canonicalFold } from '../content-processing/entity-resolver/entity-identity';
 import { EngineCoverageService } from './engine-coverage.service';
@@ -714,13 +714,10 @@ export class SearchQueryInterpretationService {
     // (bare probe, then staging).
     if (!leftover) return false;
     // AUDIT H7: ONE budget authority and ONE metric. The inline ternary was
-    // the third copy of editBudgetForLength, and plain Levenshtein rejected
+    // the third copy of the budget rule, and plain Levenshtein rejected
     // transpositions the recall lane's Damerau verification accepts — the
     // guard and the lane now speak the same distance.
-    return (
-      damerauLevenshtein(leftover, residue) <=
-      editBudgetForLength(residue.length)
-    );
+    return damerauLevenshtein(leftover, residue) <= editBudgetForToken(residue);
   }
 
   /**

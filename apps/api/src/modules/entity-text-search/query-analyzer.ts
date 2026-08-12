@@ -276,6 +276,40 @@ const SCRIPT_RANGES: Array<[QueryScript, RegExp]> = [
   ['latin', /\p{Script=Latin}/u],
 ];
 
+/**
+ * THE SCRIPTS WHOSE ATOMIC UNIT IS NOT A LETTER.
+ *
+ * Han, kana and hangul all write one *sound-or-sense* per character rather
+ * than one phoneme: 牛肉面 is three morphemes, ラーメン is four moras, 비빔밥
+ * is three syllable blocks. Every Latin-calibrated character-edit heuristic
+ * in this codebase assumes the opposite — that one character is a fraction of
+ * a word, so removing one leaves a misspelling of the same word. Here
+ * removing one leaves a DIFFERENT WORD: 牛肉面 (beef noodle soup) minus a
+ * character is 牛肉 (beef) or 肉面 (meat noodles), both real and both other
+ * dishes. So anything that spends an "edit" on these scripts is not
+ * recovering a typo, it is silently substituting a neighbouring concept.
+ *
+ * Declared HERE because SCRIPT_RANGES is the one script table in the
+ * codebase, and a second copy of "which scripts are these" is exactly the
+ * drift this table exists to prevent. Membership-tested rather than
+ * `detectScript(...) === 'cjk'`: detectScript returns the FIRST match and a
+ * mixed token ("тако 牛肉面") must still be recognised as carrying a morphemic
+ * script, not shadowed by whichever script sorts earlier.
+ */
+const MORPHEMIC_SCRIPTS: ReadonlySet<QueryScript> = new Set<QueryScript>([
+  'cjk',
+  'kana',
+  'hangul',
+]);
+
+/** True when ANY character of `text` belongs to a script whose unit is a
+ *  morpheme or syllable rather than a letter. */
+export function hasMorphemicScript(text: string): boolean {
+  return SCRIPT_RANGES.some(
+    ([script, re]) => MORPHEMIC_SCRIPTS.has(script) && re.test(text),
+  );
+}
+
 /** HARD GATE: Unicode ranges, ~100% reliable, zero ML. The first
  *  non-Latin script present wins (a code-switched "тако tacos" is treated
  *  as Cyrillic — the non-Latin evidence is the actionable half). */

@@ -114,8 +114,9 @@ export interface RecallCandidate {
 
 import {
   damerauLevenshtein,
+  codePointLength,
   deletionVariants,
-  editBudgetForLength,
+  editBudgetForToken,
 } from './entity-lexicon';
 import {
   admitsAtExactTier,
@@ -1048,8 +1049,13 @@ export class EntityTextSearchService {
   }): Promise<Map<string, EntitySearchRow[]>> {
     const out = new Map<string, EntitySearchRow[]>();
     const probes = options.terms
-      .map((term) => ({ term, budget: editBudgetForLength(term.length) }))
-      .filter((p) => p.budget > 0 && p.term.length >= 3 && p.term.length <= 64);
+      .map((term) => ({ term, budget: editBudgetForToken(term) }))
+      .filter((p) => {
+        // The budget already refuses a morphemic-script term (a Han
+        // "typo" is a different word); this is the plain length band.
+        const len = codePointLength(p.term);
+        return p.budget > 0 && len >= 3 && len <= 64;
+      });
     if (!probes.length) return out;
 
     const allVariants = new Set<string>();
