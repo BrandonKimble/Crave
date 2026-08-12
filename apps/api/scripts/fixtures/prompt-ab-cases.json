@@ -747,5 +747,32 @@
       "restaurants": ["nakazawa"],
       "foods": ["salmon omakase"]
     }
+  },
+  {
+    "id": "V8o-CONTROL-prepared-counter-retail",
+    "why": "Owner boundary ruling 2026-08-10: the PLACE test admits PREPARED-to-eat food from retail (fudge/ice-cream/deli-counter class) and rejects goods-to-take-home from the same kind of venue. One case pins BOTH sides of the line so neither direction drifts.",
+    "posts": [
+      {
+        "id": "SRC091",
+        "title": "Sweet tooth spots?",
+        "body": "",
+        "extract_from_post": false,
+        "comments": [
+          {
+            "id": "SRC092",
+            "body": "Kilwins on the drag \u2014 their fudge is incredible, made fresh on the marble slab"
+          },
+          {
+            "id": "SRC093",
+            "body": "Central Market sells great baking chocolate if you want to make your own"
+          }
+        ]
+      }
+    ],
+    "expect": {
+      "restaurants": ["kilwins"],
+      "foods": ["fudge"],
+      "notRestaurants": ["central market"]
+    }
   }
 ]
