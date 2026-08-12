@@ -34,6 +34,7 @@ import {
 } from '../external-integrations/google-places/google-places.service';
 import { LLMService } from '../external-integrations/llm/llm.service';
 import { LoggerService } from '../../shared';
+import { bankableLanguageTag } from '../../shared/locale';
 import { AliasManagementService } from '../content-processing/entity-resolver/alias-management.service';
 import {
   PublicCraveScoreService,
@@ -1465,7 +1466,13 @@ export class RestaurantLocationEnrichmentService {
     // other form here is a pre-existing untagged surface or a merged
     // duplicate's name, and inventing a tag for those would poison both
     // languages' retrieval with no rollback.
-    const locale = canonicalLocale?.trim() || undefined;
+    //
+    // LANGUAGE ONLY, NEVER A REGION (A0 R4): Google answers `zh-TW` and
+    // `pt-BR`, and a row banked under a regioned tag is reachable only by a
+    // caller with the same region — the chain built from `zh` never reaches
+    // `zh-tw`, so the one trustworthy free tag we get was hiding the surface
+    // it described. bankableLanguageTag is the shared normalize-then-base.
+    const locale = bankableLanguageTag(canonicalLocale);
     const aliasForms: SurfaceInput[] = mergedAliases.map((form) => ({
       form,
       source: 'places' as const,

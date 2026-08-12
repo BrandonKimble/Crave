@@ -420,21 +420,39 @@ export class PollEntitySeedService {
           primaryLocation: { connect: { locationId: location.locationId } },
         },
       });
-      // The Places-derived surfaces this entity was built from, banked as
-      // rows inside the same transaction and tagged with Google's own
-      // displayName language when it gave us one. The create used to also
-      // write them inline into core_entities.aliases[]; that column is gone
-      // (§11 item 4 / I-2), so the rows are the only store.
+      // The surfaces this entity was built from, banked as rows inside the
+      // same transaction. The create used to also write them inline into
+      // core_entities.aliases[]; that column is gone (§11 item 4 / I-2), so
+      // the rows are the only store.
+      //
+      // THEY CARRY NO LANGUAGE TAG, and that is the correction (A0 R4,
+      // 2026-08-11). This used to stamp Google's `displayName.languageCode`
+      // onto EVERY form, raw. Two things were wrong with that, and the
+      // enrichment service already states the law both violate:
+      //
+      //  1. GOOGLE'S TAG DESCRIBES GOOGLE'S DISPLAY NAME, nothing else. The
+      //     forms banked here are by construction NOT that name — the create
+      //     input drops any alias equal to the display name — so every tagged
+      //     row asserted a language about text Google never said. The alias
+      //     is usually what a POLL CREATOR typed, in whatever language they
+      //     type in; a Taipei restaurant made a user's English nickname a
+      //     Chinese surface.
+      //  2. THE TAG WAS UNNORMALIZED, so `zh-TW` landed verbatim, and the
+      //     lookup chain built from `zh` never reaches a `zh-tw` row: the
+      //     surface was invisible to every Chinese reader (F8b, one store
+      //     over). `bankableLanguageTag` is the shared answer to that.
+      //
+      // Untagged means `und` — the universal slice every language's chain
+      // ends in, which is the honest tag for "we do not know what language
+      // this person typed". Google's display name is not banked here at all,
+      // per the standing ruling that a NAME is not a SURFACE.
       if (createdAliases.length) {
-        const placeLocale =
-          match.place?.displayName?.languageCode?.trim() || undefined;
         await addSurfaces(
           tx,
           entity.entityId,
           createdAliases.map((form) => ({
             form,
             source: 'places' as const,
-            ...(placeLocale ? { locale: placeLocale } : {}),
           })),
           { markEmbeddingStale: false },
         );

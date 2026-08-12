@@ -6,7 +6,7 @@ import { LLMService } from '../external-integrations/llm/llm.service';
 import { EntityTextSearchService } from '../entity-text-search/entity-text-search.service';
 import { addSurfaces } from '../content-processing/entity-resolver/entity-surface.service';
 import { canonicalFold } from '../content-processing/entity-resolver/entity-identity';
-import { localeLookupChain } from '../../shared/locale';
+import { bankableLanguageTag, localeLookupChain } from '../../shared/locale';
 
 /**
  * DEMAND → VOCABULARY (concept-graph plan, build step 6).
@@ -354,6 +354,10 @@ export class DemandVocabularyService {
  * every other Spanish speaker.
  */
 function bankableLocale(detected: string | null): string | undefined {
-  const base = detected?.trim().toLowerCase().split(/[-_]/)[0];
-  return base && base !== 'und' ? base : undefined;
+  // One implementation, shared with every other site that banks a claim
+  // about a WORD (A0 R4). The local string-split version also accepted
+  // malformed input: 'es_MX' split to 'es' and banked a language nobody had
+  // validated. The shared helper normalizes first, so a tag that is not a
+  // tag banks as 'und'.
+  return bankableLanguageTag(detected);
 }
