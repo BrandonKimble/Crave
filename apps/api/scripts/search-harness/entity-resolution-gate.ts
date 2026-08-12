@@ -163,8 +163,8 @@ const FIXTURES: Fixture[] = [
     id: 'ex-02',
     type: EntityType.food,
     mention: 'tacos',
-    expect: { entity: 'tacos', tier: 'exact' },
-    note: 'the plural is its own entity here; exact spelling wins over the number variant',
+    expect: { entity: 'taco', tier: 'exact' },
+    note: 'RULED 2026-08-10 (search lane): the deterministic identity-key tier lands on the CANONICAL SINGULAR — taco/tacos are one concept and the singular is canonical per the plural-residue doctrine; the old expectation pinned a duplicate-row accident, not a behavior',
   },
   {
     id: 'ex-03',
@@ -497,8 +497,8 @@ const FIXTURES: Fixture[] = [
     id: 'loc-05',
     type: EntityType.food,
     mention: 'picante',
-    expect: UNMATCHED,
-    note: 'es surface of "hot sauce", status=deprecated — inert on BOTH axes',
+    expect: { entity: 'picante', tier: 'exact' },
+    note: "RULED 2026-08-10 (search lane): tier-1 NAME claims are locale-UNSCOPED — an entity NAMED picante is claimable from any document, because a name is source-faithful and universal; locale chains scope LEARNED SURFACES, never a concept's own name (scoping names would recreate the F2 narrowing disease). The deprecated es SURFACE of hot-sauce stays inert — this claim rides the NAME. C3 audit adversarially re-probes this ruling.",
   },
   {
     id: 'loc-06',
