@@ -608,6 +608,48 @@ const FIXTURES: Fixture[] = [
     expect: UNMATCHED,
     note: "and the generator's 'en' form is NOT global: a vi document does not see it (chain [vi,und]) — the tag means something, which is precisely why only a writer that KNOWS the language may write one",
   },
+
+  // ── ACCENT EVIDENCE ON THE TIER-1 FOLD (2026-08-12) ─────────────────────
+  //    The identity fold strips accents, so an accented mention lands on the
+  //    de-accented English name that shares its fold. The guard that was
+  //    supposed to stop that refused only when BOTH sides carried accents —
+  //    and our names are de-accented by construction, so it never fired
+  //    (a 31,516-row locale-tagged surface sweep: ZERO both-accented
+  //    refusals, 11 live wrong claims at confidence 1.0). The rule now asks
+  //    the entity to PROVE it holds the accented spelling, in the document's
+  //    own locale chain. These fixtures pin it from both sides.
+  {
+    id: 'acc-01',
+    type: EntityType.ingredient,
+    mention: 'bún',
+    documentLocale: 'vi',
+    expect: { entity: 'bun', tier: 'alias' },
+    note: 'THE HEADLINE DEFECT, HALF-FIXED — AND THE FIXTURE SAYS SO. Vietnamese "bún" (rice vermicelli) exact-claimed the ENGLISH bread `bun` at confidence 1.0 because canonicalFold("bún") === "bun". `bun` holds no vi surface spelled bún, so TIER 1 now refuses — `tier: alias`, not `exact`, is the whole assertion here, and it goes RED the moment the accent-evidence rule stops firing. THE RESIDUE, MEASURED NOT GUESSED: tier 2 reads `form_folded`, which is canonicalFold and therefore accent-BLIND, so it re-claims the same wrong entity one tier down at 0.95. Same defect class, different tier; fixing it means teaching the surface read the same evidence test, which is its own change with its own sweep',
+  },
+  {
+    id: 'acc-02',
+    type: EntityType.ingredient,
+    mention: 'bơ',
+    documentLocale: 'vi',
+    expect: { entity: 'bo', tier: 'alias' },
+    note: 'the pair the diacriticFold doctrine names by name: "bò" (beef) and "bơ" (butter/avocado) share the fold `bo` with the ingredient literally NAMED "bo", which banks no vi surface spelling either of them. Tier 1 refuses — again `alias`, not `exact` — and again the accent-blind `form_folded` read hands it back at 0.95. Two fixtures, one residue, deliberately left visible rather than papered over',
+  },
+  {
+    id: 'acc-03',
+    type: EntityType.restaurant_attribute,
+    mention: 'café',
+    documentLocale: 'en',
+    expect: { entity: 'cafe', tier: 'exact' },
+    note: 'THE OTHER SIDE: the rule must not refuse an accent the entity OWNS. The `cafe` attribute banks "café" as an en recall surface, so the accented input is evidence the entity answers — tier 1 keeps the claim. A rule that only ever refuses would be a recall cliff, not a fix',
+  },
+  {
+    id: 'acc-04',
+    type: EntityType.food,
+    mention: 'phở',
+    documentLocale: 'vi',
+    expect: { entity: 'pho', tier: 'exact' },
+    note: 'the same admission in Vietnamese: `pho` banks "phở" (vi, role=both), so the accented spelling is proven and the tier-1 claim stands. Its de-accented twin "pho" is fixture exact-* above and is untouched — an unaccented input asserts nothing, so the folded key rules and de-diacritized typing keeps working',
+  },
 ];
 
 function sameOutcome(observed: Outcome, expected: Outcome): boolean {

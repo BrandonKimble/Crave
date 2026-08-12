@@ -143,6 +143,23 @@ function fakePrisma(entities: FakeEntityRow[]) {
             forms: row.aliases,
           }));
       }
+      if (sql.includes('SELECT s.entity_id, s.form')) {
+        // THE ACCENT-EVIDENCE ARM. The tier-1 fold refuses an accented input
+        // unless the owner PROVES it holds that spelling; this read is the
+        // proof. Forms are returned VERBATIM — the service folds them itself
+        // with `diacriticFold`, so a double that returned pre-folded forms
+        // would blind the very test under test. Role is not filtered here,
+        // matching the real query: a display row is the entity's LABEL in
+        // that language, which is spelling testimony, not a recall claim.
+        const [ids] = values as [string[]];
+        const out: any[] = [];
+        for (const row of live().filter((r) => ids.includes(r.entityId))) {
+          for (const form of row.aliases) {
+            out.push({ entity_id: row.entityId, form });
+          }
+        }
+        return out;
+      }
       if (sql.includes('SELECT s.entity_id')) {
         const [ids] = values as [string[]];
         return live()
@@ -830,6 +847,68 @@ describe('EntityResolutionService — the v7 shadow twin classes (2026-08-10 pro
     );
     expect(resolutionResults[0].resolutionTier).toBe('exact');
     expect(resolutionResults[0].entityId).toBe('f-pho');
+  });
+
+  it('ACCENT EVIDENCE (2026-08-12): accented "bún" does NOT exact-claim the de-accented English name "bun" — the entity banks no surface spelled that way', async () => {
+    // The defect this rule exists for, and the reason the ORIGINAL guard was
+    // inert: it refused only when BOTH sides carried accents, and our names
+    // are de-accented English by construction, so `storedAccented` was false
+    // for exactly the words it was written for. The premise, asserted so the
+    // case cannot silently test something else:
+    expect(canonicalFold('bún')).toBe(canonicalFold('bun'));
+    expect(diacriticFold('bun')).toBe(canonicalFold('bun')); // stored: unaccented
+    const { service } = buildService({
+      entities: [
+        {
+          entityId: 'i-bun',
+          name: 'bun',
+          // its surfaces spell no accented twin
+          aliases: ['bread roll', 'buns'],
+          type: EntityType.ingredient,
+        },
+      ],
+    });
+    const { resolutionResults } = await service.resolveBatch(
+      [
+        baseInput({
+          tempId: 't1',
+          normalizedName: 'bún',
+          entityType: EntityType.ingredient,
+          documentLocale: 'vi',
+        }),
+      ],
+      { ...CONFIG_NO_LLM, allowEntityCreation: false },
+    );
+    expect(resolutionResults).toHaveLength(0);
+  });
+
+  it('ACCENT EVIDENCE, THE ADMITTING SIDE: accented "café" DOES exact-claim the de-accented name "cafe", because the entity banks "café" as a surface', async () => {
+    // A rule that only ever refuses is a recall cliff. The evidence the
+    // entity itself holds is what separates the two cases — nothing here
+    // knows what Vietnamese or French is.
+    const { service } = buildService({
+      entities: [
+        {
+          entityId: 'a-cafe',
+          name: 'cafe',
+          aliases: ['café', 'cafes'],
+          type: EntityType.restaurant_attribute,
+        },
+      ],
+    });
+    const { resolutionResults } = await service.resolveBatch(
+      [
+        baseInput({
+          tempId: 't1',
+          normalizedName: 'café',
+          entityType: EntityType.restaurant_attribute,
+          documentLocale: 'en',
+        }),
+      ],
+      { ...CONFIG_NO_LLM, allowEntityCreation: false },
+    );
+    expect(resolutionResults[0].resolutionTier).toBe('exact');
+    expect(resolutionResults[0].entityId).toBe('a-cafe');
   });
 
   it('PUNCTUATION-JOIN: "Pf Changs" claims "P.F. Chang\'s" via the joined-identity tier (folds differ: "pf changs" vs "p f changs")', async () => {

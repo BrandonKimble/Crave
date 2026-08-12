@@ -11,6 +11,7 @@ import { canonicalFold, diacriticFold } from './entity-identity';
 import { recallSurfaceScopeSql } from './entity-surface.service';
 
 import { LoggerService, CorrelationUtils } from '../../../shared';
+import { localeLookupChain } from '../../../shared/locale/accept-language';
 import { LLMService } from '../../external-integrations/llm/llm.service';
 import {
   EntityTextSearchService,
@@ -428,6 +429,7 @@ export class EntityResolutionService implements OnModuleInit {
       entities,
       entityType,
       engineId,
+      documentLocale,
     );
     const unmatchedAfterExact = entities.filter(
       (entity) =>
@@ -705,6 +707,7 @@ export class EntityResolutionService implements OnModuleInit {
     entities: EntityResolutionInput[],
     entityType: EntityType,
     engineId: string | null,
+    documentLocale: string | null,
   ): Promise<EntityResolutionResult[]> {
     if (entities.length === 0) return [];
 
@@ -783,15 +786,29 @@ export class EntityResolutionService implements OnModuleInit {
           entity.entityId,
         ]),
       );
-      // First row wins per fold so the pick is stable within one query; the
-      // raw-spelling map above always outranks it per input, so a fold twin
-      // can never steal an input whose own spelling exists. The stored NAME
-      // rides along for the accent-evidence check below.
+      // ONE owner per fold, picked in a TOTAL ORDER (2026-08-12 red team).
+      // This used to keep whichever row came back first — but `findMany`
+      // carries no `orderBy`, so "first" was whatever plan and heap order the
+      // database happened to produce, and the corpus really does hold live
+      // fold collisions (11 measured: "Alamo Springs Café"/"Alamo Springs
+      // Cafe", "Texsueño"/"Texsueno", "Valentina’s"/"Valentinas" …). An
+      // unordered pick means the SAME mention grounds on a different twin
+      // from run to run and splits one restaurant's evidence across both — a
+      // resolver whose answer depends on physical row order is not
+      // deterministic, and determinism is this tier's whole claim over the
+      // judge. Sorting by entityId is arbitrary but TOTAL and STABLE: uuids
+      // do not change, so every run of every process picks the same owner
+      // until a merge removes one. The raw-spelling map above still outranks
+      // this per input, so a fold twin can never steal an input whose own
+      // spelling exists. The stored NAME rides along for the accent-evidence
+      // check below.
       const identityToEntityMap = new Map<
         string,
         { entityId: string; name: string }
       >();
-      for (const entity of matchedEntities) {
+      for (const entity of [...matchedEntities].sort((a, b) =>
+        a.entityId < b.entityId ? -1 : a.entityId > b.entityId ? 1 : 0,
+      )) {
         if (
           entity.identityKey &&
           !identityToEntityMap.has(entity.identityKey)
@@ -802,31 +819,112 @@ export class EntityResolutionService implements OnModuleInit {
           });
         }
       }
-      // ACCENT EVIDENCE ON THE FOLD ARM (2026-08-11 multilingual audit).
+      // ACCENT EVIDENCE ON THE FOLD ARM (2026-08-11 multilingual audit;
+      // REFINED 2026-08-12 after the red team executed it).
+      //
       // canonicalFold strips accents, and on Vietnamese accents are PHONEMIC:
       // "cơm chay" (vegetarian rice) and "cơm cháy" (scorched rice) share one
-      // fold, as do "bò" (beef) and "bơ" (butter) — the exact pairs the
-      // diacriticFold doctrine names (entity-identity.ts). When BOTH the
-      // input and the stored name carry accents and their accent-PRESERVING
-      // folds disagree, the two spellings are different words and the claim
-      // is refused (it falls to the later tiers/judge, as before the
-      // identity-key probe existed). One-sided accents stay claimable: an
-      // accentless input is de-diacritized typing with no evidence, and an
-      // accentless stored name asserts none — the folded key rules, so
-      // "cafe" == "Café" and "pho" == "Phở" keep working.
+      // fold, as do "bò" (beef) and "bơ" (butter/avocado) — the exact pairs
+      // the diacriticFold doctrine names (entity-identity.ts).
+      //
+      // THE ORIGINAL RULE COULD NOT FIRE. It refused only when BOTH sides
+      // carried accents. But our entity NAMES are the English-corpus,
+      // de-accented spellings ('bun', 'bo', 'bap', 'banh cuon'), so
+      // `storedAccented` is false for exactly the words the rule was written
+      // for, and the guard never triggered: a full 31,516-row locale-tagged
+      // surface sweep found ZERO both-accented refusals and 11 live wrong
+      // claims sailing through at confidence 1.0 — Vietnamese "bún"
+      // (vermicelli) claiming the English bread "bun", "bơ" (butter) claiming
+      // "bo", "bắp" (corn) claiming "bap", "bánh cuộn" (wrap) claiming the
+      // different-toned "bánh cuốn".
+      //
+      // THE RULE THAT DOES FIRE, and needs no list of languages or words: an
+      // ACCENTED INPUT IS EVIDENCE, and the entity must answer it. When the
+      // input carries accents and the stored name's accent-preserving fold
+      // disagrees, the tier claims only if the entity HOLDS that accented
+      // spelling — some active surface, in the document's own locale chain,
+      // whose diacriticFold equals the input's. That is the entity saying "I
+      // am also called this, in this language", in its own banked data.
+      //   - "Café" in an en document still claims the `cafe` attribute: it
+      //     banks 'café' as an en surface.
+      //   - "phở" in a vi document still claims `pho`: it banks 'phở' (vi).
+      //   - "bún" in a vi document does NOT claim `bun`, whose only vi
+      //     surfaces are 'bánh mì burger' and 'vỏ bánh burger'. It falls to
+      //     tier 2/the judge, exactly as before the identity-key probe.
+      // An UNACCENTED input asserts nothing (de-diacritized typing is how
+      // most people type Vietnamese on a US keyboard), so the folded key
+      // rules there and "pho" == "Phở" is untouched. Names stay
+      // locale-UNSCOPED (loc-05): the locale chain scopes the EVIDENCE we
+      // consult, never which names are probeable.
+      //
+      // DISPLAY ROWS COUNT AS EVIDENCE HERE, unlike the recall slice. A
+      // display row is the entity's LABEL in that language — 'chả lụa' is
+      // the vi label of the entity named 'cha lua' — and a label is the
+      // entity asserting its own accented spelling. The recall slice excludes
+      // display rows because grounding ON one would resurrect a refused
+      // recall claim; here the row is not being grounded on, it is being read
+      // as spelling testimony for a claim the identity fold already made.
+      // Deprecated rows are remembered-as-wrong and are excluded.
+      const accented = (text: string): boolean =>
+        diacriticFold(text) !== canonicalFold(text);
+
+      // Which (owner, input) pairs need evidence? Collected before any query
+      // so the lookup is ONE round trip, and skipped entirely — the common,
+      // all-ASCII case — when no probe carries an accent.
+      const foldProbesFor = (entity: EntityResolutionInput): string[] => {
+        const raw = entity.normalizedName.toLowerCase().trim();
+        return usesNumberVariants ? [raw, ...foodNameVariants(raw)] : [raw];
+      };
+      const evidenceNeeded = new Map<string, Set<string>>();
+      for (const entity of entities) {
+        for (const probe of foldProbesFor(entity)) {
+          if (!accented(probe)) continue;
+          const owner = identityToEntityMap.get(canonicalFold(probe));
+          if (!owner) continue;
+          const inputDia = diacriticFold(probe);
+          if (diacriticFold(owner.name) === inputDia) continue;
+          const forms = evidenceNeeded.get(owner.entityId) ?? new Set<string>();
+          forms.add(inputDia);
+          evidenceNeeded.set(owner.entityId, forms);
+        }
+      }
+
+      // `entityId|diacriticFold(form)` for every accented spelling an owner
+      // can prove it holds in this document's locale chain.
+      const accentEvidence = new Set<string>();
+      if (evidenceNeeded.size > 0) {
+        // Prisma.sql, not a bare $queryRaw template: the locale-chain scope is
+        // a SQL FRAGMENT, and $queryRaw's own template would bind it as a
+        // parameter instead of splicing a predicate.
+        const evidenceRows = await this.prisma.$queryRaw<
+          Array<{ entity_id: string; form: string }>
+        >(Prisma.sql`
+          SELECT s.entity_id, s.form
+            FROM entity_surface s
+           WHERE s.entity_id = ANY(${Array.from(evidenceNeeded.keys())}::uuid[])
+             AND s.status = 'active'
+             AND LOWER(s.locale) = ANY(${localeLookupChain(
+               documentLocale,
+             )}::text[])`);
+        for (const row of evidenceRows) {
+          accentEvidence.add(`${row.entity_id}|${diacriticFold(row.form)}`);
+        }
+      }
+
       const accentCompatible = (input: string, stored: string): boolean => {
+        if (!accented(input)) return true;
         const inputDia = diacriticFold(input);
-        const storedDia = diacriticFold(stored);
-        const inputAccented = inputDia !== canonicalFold(input);
-        const storedAccented = storedDia !== canonicalFold(stored);
-        return !(inputAccented && storedAccented && inputDia !== storedDia);
+        return diacriticFold(stored) === inputDia;
       };
       const claimByFold = (probe: string): string | undefined => {
         const folded = canonicalFold(probe);
         if (!folded) return undefined;
         const owner = identityToEntityMap.get(folded);
         if (!owner) return undefined;
-        return accentCompatible(probe, owner.name) ? owner.entityId : undefined;
+        if (accentCompatible(probe, owner.name)) return owner.entityId;
+        return accentEvidence.has(`${owner.entityId}|${diacriticFold(probe)}`)
+          ? owner.entityId
+          : undefined;
       };
 
       return entities.map((entity) => {
