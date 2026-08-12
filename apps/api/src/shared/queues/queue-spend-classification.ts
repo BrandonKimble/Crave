@@ -95,8 +95,6 @@ export const QUEUE_SPEND_CLASSIFICATION: Readonly<
   },
 });
 
-export type KnownQueueName = keyof typeof QUEUE_SPEND_CLASSIFICATION;
-
 /** The queues a boot-time drain would charge us for. */
 export const SPEND_BEARING_QUEUE_NAMES: readonly string[] = Object.freeze(
   Object.entries(QUEUE_SPEND_CLASSIFICATION)
