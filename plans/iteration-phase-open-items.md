@@ -263,6 +263,54 @@ L3. **COVER-LINKER (locked 2026-08-10, owner delegated).** Whole-query span
    in the v5 rederivation) or consensus is warranted for multi-word
    concepts. The wave must not inherit a stale stability assumption.
 
+## C4. COVERAGE-TRUTH FINDINGS (instrument 5e599c609, 2026-08-12; verified)
+
+The instrument is real: 29 queries en/es/vi, exhaustive pagination, ground
+truth derived from the DATA (never the search code), every diff chased to a
+named arm, mutation-proven RED (bounds/tier0/pages=1 all detected). Baseline:
+75.1% coverage, 600 misses all attributed, 59 leaks, 0 unexplained.
+Findings, triaged:
+
+- **C4a THE "BEST" ANNIHILATION (new, severe, VERIFIED personally in DB):**
+  restaurant entity `b92af0ed…` named "Best", active recall surface `best`,
+  ONE location with NULL lat/lng + no place id (ungrounded ghost → legally
+  deletable). Every "best X" query grounds it as a restaurant hard-AND →
+  ZERO results for the most common natural search prefix. Two-part fix, no
+  patch: (1) the ghost dies in the sequenced reground/dedupe step; (2) the
+  CLASS — restaurant recall surfaces are word-claims in another lane and
+  never face a judge — folds into the hearing abstraction as a
+  restaurant-name lane (a generic-word surface like "best" loses a hearing
+  it was never given). Also: an unreachable restaurant (no geocode) should
+  not be groundable at all — admission predicate for the gazetteer build.
+- **C4b judged-reject re-admitted** ('taqueria' for 'tacos al pastor'
+  despite an explicit judge NO): the known rejects-not-subtracted bug; dies
+  with the A1 ladder (band 2 = DENSE ∪ COUSINS MINUS REJECTS). Ladder-bound.
+- **C4c decomposed-parts hard-AND** (birria tacos 4.5%, al pastor 26.7%):
+  exactly the L1 lock (compound-only grounding), implementation deferred to
+  step 2 by owner ruling. Evidence now quantified.
+- **C4d compound absent → unigram shatter** ('chili cheese dog' → chili +
+  cheese + dog): Understand-side; L1 + wave vocabulary (compound minting)
+  cover it; add as wave gold case.
+- **C4e honest-empty control FAILED**: 'zorblatt quinlex pudding' serves 20
+  puddings — unknown tokens silently dropped, no "no results for X" honesty.
+  Needs a ruling on unknown-token semantics (drop vs constrain vs honest
+  empty). Step-2 design input.
+- **C4f containment ≥4-char floor blinds short names** ('pho' gets no
+  containment edges to 'pho sandwich' etc.): the floor exists so 'sal'
+  can't claim 'salsa'; ideal shape is token-boundary semantics (whole-token
+  match already enforced — revisit whether the char floor is needed at all
+  for multi-char folded tokens; vi/zh short names make this worse). Wave-
+  adjacent; decide at step 2.
+- **C4g plan-expansion leaks** (camarones +16 look-alikes; 'phony negroni'
+  for pho): lexical widening past the concept graph — admission-design,
+  ladder-bound (band structure replaces free lexical expansion).
+- Healthy: dietary walls exact; price/open-late filters correct (169
+  "misses" on cheap-sushi are the filter working).
+
+Instrument is now a standing gate: run `coverage-truth.ts` after ladder/L1
+and after each wave locale; coverage must not regress from the baseline
+artifact without an attributed reason.
+
 ## ARCH VERDICT (2026-08-12 red team; the owner's patches-vs-foundations question)
 
 NOT a week of patching — commits deleted machinery and measured claims. But
