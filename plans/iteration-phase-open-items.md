@@ -263,6 +263,30 @@ L3. **COVER-LINKER (locked 2026-08-10, owner delegated).** Whole-query span
    in the v5 rederivation) or consensus is warranted for multi-word
    concepts. The wave must not inherit a stale stability assumption.
 
+## ARCH VERDICT (2026-08-12 red team; the owner's patches-vs-foundations question)
+
+NOT a week of patching — commits deleted machinery and measured claims. But
+the week's failure PATTERN is named: A CORRECT LAW, INSTANTIATED PER CALL
+SITE INSTEAD OF ONCE IN THE DATA MODEL. Two foundations wrong:
+- H5 THE HEARING (fix first): claim→guard→judge→versioned-verdict→memory
+  exists 4 ways; dedupe-merge lane has NO verdict memory (irreversible
+  merges nightly, rejects re-rolled forever — verified; flagged URGENT to
+  convergence lane) and a version bump re-opens losses only (wrong YES is
+  permanent). Unification = one Verdict table + one due-predicate;
+  knowledge_pass_runs is 80% of it. Proposed to ⭐04, awaiting ack; my
+  lanes adopt first as reference impl once shape agreed.
+- H1 THE FOLD KEY: accents-are-evidence enforced at 6 sites, ALREADY
+  DRIFTED ('phở bo' admits in search, refused at resolver — live recall
+  loss; port in flight). Foundation fix = store diacritic key as COLUMN
+  beside the fold (deletes all vetoes); not urgent (4 benign collisions
+  today) but before vi/zh corpus doubles.
+Sound: locale model (adoption residues in flight), admission ladder
+(forced by the owner's own rulings; gate-predicate duplication noted),
+guard taxonomy (3 kinds; 12 root scanners unregistered — adoption in
+flight). Clusters: version-stamp-per-store (H5 root); fold-version stamp
+incomplete + schema.prisma absence (flagged ⭐04); display path
+un-rederived (in flight).
+
 ## C2. CORPUS CURATION GAP (discovered via the DB restore, 2026-08-09)
 
 The wiped local corpus carried weeks of data curation the prod corpus
