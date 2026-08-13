@@ -252,3 +252,15 @@ predicate (theirs to pick up).
    adopt in the dedupe window.
 5. Docket-population trap: my four lanes' claim keys are not locale-
    enumerated — not exposed to the und-docket class, by construction.
+
+## INTAKE 2026-08-13b: second shadow-banking witness + romanization landed
+
+Second, STRONGER shadow-surface witness: shadow banked accented 'bơ'
+(und/extraction 01:29) onto the junk 'bo' entity — typed bơ now
+exact-grounds junk through shadow-written data (their acc-02 red,
+65/66). Strengthens PENDING-STATUS-UNTIL-ACTIVATION for the docketed
+ruling: shadow surfaces going live bank WRONG accent claims, not just
+homograph flips. Romanization endgame landed their side (110bd999f);
+one HELD_FOR_RULING for owner: coctel→es re-tag costs 21 groundings
+(ca-phe trade class). normalizeCuisineName delete-not-fold bug FIXED
+(Niçoise→nicoise not nioise; canonicalFold, verified on built output).

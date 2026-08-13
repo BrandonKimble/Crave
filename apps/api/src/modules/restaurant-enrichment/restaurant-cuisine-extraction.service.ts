@@ -290,10 +290,12 @@ export class RestaurantCuisineExtractionService {
   }
 
   private normalizeCuisineName(value: string): string | null {
-    const ascii = value
-      .trim()
-      .toLowerCase()
-      .replace(/[^\x20-\x7e]/g, '');
+    // FOLD, never delete (2026-08-13, same defect class as the
+    // normalizeBrandName fix): the old /[^\x20-\x7e]/ strip DELETED
+    // non-ASCII letters — Niçoise→"nioise", Café→"caf" — banking corrupted
+    // forms as surfaces AND entity names. canonicalFold is the one
+    // identity authority (accents fold to base letters; CJK survives).
+    const ascii = canonicalFold(value.trim()) ?? '';
     if (!ascii) {
       return null;
     }
