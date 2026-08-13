@@ -95,6 +95,15 @@ read it and delete any drop of the following.**
   and is fully Prisma-modeled, so no Class 1 entry remains for `places`'
   provider identity — do not re-add this bullet;
 - the `curated_lists` NULLS-NOT-DISTINCT unique;
+- `idx_claim_verdicts_unexecuted` on `claim_verdicts` — the PARTIAL index
+  (`WHERE executed_at IS NULL`) that IS the resume queue for
+  decided-but-unexecuted verdicts. Prisma cannot express the predicate, so it
+  reports the index as removed; dropping it turns the crash-resume scan into a
+  full-table read of every verdict ever reached;
+- the `claim_verdicts_reason_stated` CHECK — the write-layer law that a verdict
+  states its ground (H5 amendment (d)). Prisma models no CHECK constraints, so
+  every drift-diff will offer to drop it, and dropping it silently permits the
+  unauditable verdict the constraint exists to refuse;
 - `place_geometries.geometry` — a PostGIS type, plus its GiST index. Prisma has
   no geometry type, so it reports the COLUMN ITSELF as removed;
 - the `signals` primary key, which must be `(signal_id, occurred_at)` because

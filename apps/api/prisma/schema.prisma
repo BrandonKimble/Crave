@@ -38,6 +38,11 @@ model Entity {
   /// sorted; others: = identityKey). The food twin probes and dedupe
   /// lanes join on this. Write it ONLY via identityInsertData().
   identityKeySorted                   String?                       @map("identity_key_sorted")
+  /// FOLD_ALGORITHM_VERSION that computed the identity keys (create-only
+  /// migration 20260812090000). Present in schema BEFORE the migration
+  /// applies — schema-absent columns are exactly what migrate-dev diffs
+  /// into a DROP.
+  foldVersion                         Int                           @default(1) @map("fold_version") @db.SmallInt
   canonicalDomain                     String?                       @map("canonical_domain") @db.VarChar(255)
   /// KNOWLEDGE TIER (food entities only): synthesized canonical ingredient
   /// entity ids ("al pastor taco" -> pork, pineapple, ...). World knowledge,
@@ -2983,6 +2988,45 @@ model KnowledgePassRun {
   @@id([pass, subjectId, promptVersion])
   @@index([pass, ranAt], map: "idx_knowledge_pass_runs_ran_at")
   @@map("knowledge_pass_runs")
+}
+
+/// THE HEARING LEDGER (architecture red team H5, 2026-08-12): one row per
+/// (lane, claim_key, rule_version) — the decision a judge reached about ONE
+/// claim under ONE version of its rule.
+///
+/// It replaces the per-row stamp (`entity_surface.claim_judge_version`),
+/// whose memory was asymmetric: losses left a losing row to remember them,
+/// while a GRANT wrote an ordinary active row indistinguishable from an
+/// unjudged one — so a wrong YES was permanent. Keyed by the claim, both
+/// outcomes are one shape and "no verdict at the current rule_version"
+/// re-opens grants and losses alike.
+///
+/// `claimKey` is canonicalized by the LANE's adapter (ClaimLaneAdapter),
+/// never by this table: word claims key on (locale, claim-key form, entity),
+/// a dedupe lane on the sorted entity pair. `subject` carries whatever the
+/// lane needs to RESUME the effect, because `executedAt` is the crash seam —
+/// the verdict commits first and the corpus mutation follows, so a decided
+/// row with no `executedAt` is work to finish, not a hearing to pay for
+/// again.
+model ClaimVerdict {
+  lane            String    @db.VarChar(32)
+  claimKey        String    @map("claim_key")
+  ruleVersion     Int       @map("rule_version")
+  outcome         String    @db.VarChar(32)
+  /// MANDATORY, and non-empty at the database (amendment (d)): the judge
+  /// states the rule that decided the case, and a verdict whose ground was
+  /// dropped cannot be audited.
+  reason          String
+  /// Short content hash of the rule text that decided it — catches a prompt
+  /// edited without a version bump, which `ruleVersion` alone cannot see.
+  ruleFingerprint String?   @map("rule_fingerprint") @db.VarChar(16)
+  subject         Json      @default("{}")
+  decidedAt       DateTime  @default(now()) @map("decided_at") @db.Timestamptz(6)
+  executedAt      DateTime? @map("executed_at") @db.Timestamptz(6)
+
+  @@id([lane, claimKey, ruleVersion])
+  @@index([lane, claimKey], map: "idx_claim_verdicts_lane_claim")
+  @@map("claim_verdicts")
 }
 
 /// RUNG 2, MATERIALIZED (KL-D): head-final name containment on the FOLDED
