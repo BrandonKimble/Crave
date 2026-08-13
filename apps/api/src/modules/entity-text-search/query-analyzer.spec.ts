@@ -26,15 +26,17 @@ describe('query analyzer (A2 seam)', () => {
       );
     });
 
-    it('keeps the CURLY apostrophe inside one token (N1)', () => {
-      // Before N1 the tokenizer split "Harry’s" into "harry" + "s", so the
-      // restaurant could never be reached by its own name.
-      expect(
-        analyzeQuery('Harry’s bagels', null).tokens.map((t) => t.raw),
-      ).toEqual(['Harry’s', 'bagels']);
+    it('reaches a possessive name by its own name (N1)', () => {
+      // Before N1 the tokenizer split "Harry’s" into "harry" + "s" AND
+      // re-joined them with a space, so the restaurant could never be reached
+      // by its own name. N1 fixed that by welding the apostrophe into the
+      // token class; the F4/F5 gap classifier fixed it properly, by asking
+      // `foldDeletesEntirely` — so the tokens DO split again and re-join with
+      // nothing, which is what the fold does to the string. The property N1
+      // protects is this assertion, not the token count.
       expect(
         analyzeQuery('Harry’s bagels', null)
-          .ngrams(2)
+          .ngrams(3)
           .map((n) => n.folded),
       ).toContain('harrys bagels');
     });
@@ -193,6 +195,63 @@ describe('query analyzer (A2 seam)', () => {
           .ngrams(4)
           .map((n) => n.folded),
       ).not.toContain('牛肉面');
+    });
+
+    it('classifies every gap by ONE rule — invisible, whitespace, visible (F4/F5)', () => {
+      // THE DEFECT PAIR this pins, both directions, both executed:
+      //   珍珠<ZWSP>奶茶 LOST the compound — a ZWSP is \p{Cf}, not \s, so the
+      //     whitespace rule never saw it, even though the fold DELETES it.
+      //   珍珠-奶茶 KEPT the compound — for no reason but that '-' happened to
+      //     be welded into the old tokenizer's character class, so the run
+      //     never split at all. A mark the typist chose read as nothing.
+      // The ideographic comma answered correctly and identically to neither.
+      const folds = (q: string) =>
+        analyzeQuery(q, null)
+          .ngrams(4)
+          .map((n) => n.folded);
+
+      // INVISIBLE ⇒ nothing between them, exactly as the fold will have it.
+      expect(folds('珍珠​奶茶')).toContain('珍珠奶茶');
+      expect(canonicalFold('珍珠​奶茶')).toBe('珍珠奶茶');
+      // WHITESPACE between morphemic CJK ⇒ nothing (the one exception).
+      expect(folds('珍珠 奶茶')).toContain('珍珠奶茶');
+      // VISIBLE punctuation ⇒ hard, and the hyphen and the ideographic comma
+      // now answer the SAME way, which is the whole point of one classifier.
+      expect(folds('珍珠-奶茶')).not.toContain('珍珠奶茶');
+      expect(folds('珍珠、奶茶')).not.toContain('珍珠奶茶');
+      expect(folds('珍珠「」奶茶')).not.toContain('珍珠奶茶');
+    });
+
+    it('re-joins an apostrophe gap with nothing, from the fold’s own rule', () => {
+      // "Harry's" used to survive because the apostrophe was inside the token
+      // class; it survives now because `foldDeletesEntirely` says the fold
+      // deletes it — the same statement, made once, in entity-identity.
+      for (const q of ["Harry's", 'Harry’s']) {
+        const analysis = analyzeQuery(q, null);
+        expect(analysis.tokens.map((t) => t.separator)).toEqual([' ', '']);
+        expect(analysis.ngrams(2).map((n) => n.folded)).toContain('harrys');
+      }
+    });
+
+    it('keeps every n-gram fold equal to canonicalFold of its own raw slice', () => {
+      // The invariant the classifier restores BY CONSTRUCTION: both sides now
+      // ask the same function about the same characters. The documented
+      // exception is whitespace inside a morphemic CJK run, which is why the
+      // spaced boba case is not in this list.
+      for (const q of [
+        "Harry's",
+        'tex-mex',
+        'st. marks',
+        'banh mi & pho',
+        '珍珠​奶茶',
+        '麻辣3号',
+        '豚骨ラーメン',
+        'phở bò',
+      ]) {
+        for (const ngram of analyzeQuery(q, null).ngrams(6)) {
+          expect(ngram.folded).toBe(canonicalFold(ngram.raw));
+        }
+      }
     });
 
     it('leaves LATIN byte-identical to its prior output', () => {

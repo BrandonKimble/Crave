@@ -148,6 +148,57 @@ const COMBINING_DIACRITICS =
  */
 export const FOLD_ALGORITHM_VERSION = 1;
 
+/**
+ * THE CHARACTERS THE FOLD DELETES OUTRIGHT — it neither keeps them nor turns
+ * them into a separator, so they are INVISIBLE TO IDENTITY in the strongest
+ * sense: `ta<ZWSP>co` and `taco` are one string, `Phil's` and `Phils` are one
+ * string. Two families, one property:
+ *
+ *  - INVISIBLE MODIFIERS that carry no identity — format controls (\p{Cf}:
+ *    ZWSP, ZWJ, ZWNJ, the BOM, U+061C), the soft hyphen, and the VARIATION
+ *    SELECTORS (U+FE00–FE0F and the astral supplement; category Mn, so the
+ *    mark-PRESERVING step would otherwise keep them and a trailing emoji VS16
+ *    would change a name's identity). Deleted, not spaced: the old fold's
+ *    punctuation arm turned a stray ZWSP inside "ta<ZWSP>co" into a space and
+ *    minted "ta co" as a twin no lock or index could see (LLM extraction and
+ *    pasteboards inject these).
+ *  - APOSTROPHES, straight and curly. "Phil's" and "Phils" are one name.
+ *
+ * EXPORTED because the QUERY TOKENIZER has to agree with it (2026-08-13).
+ * `query-analyzer` cuts the query at every non-letter/digit and then asks, per
+ * gap, how the two sides re-join — and the honest answer for a gap made only
+ * of these characters is "with nothing between them", because that is exactly
+ * what the fold will do. Re-stating the set there produced the F4/F5 defect
+ * pair: `harry's` re-joined correctly only because the apostrophe was welded
+ * into the tokenizer's own character class, while `珍珠<ZWSP>奶茶` lost its
+ * compound because a ZWSP is not `\s` and no rule there had ever heard of
+ * \p{Cf}. One definition, both readers.
+ */
+/** THE INVISIBLES. Applied BEFORE the accent policy, because a format control
+ *  sitting between a letter and its combining mark would otherwise block the
+ *  recomposition the policy depends on. */
+const FOLD_DELETED_INVISIBLE_RE =
+  // eslint-disable-next-line no-misleading-character-class -- deliberate
+  /[\p{Cf}­︀-️\u{E0100}-\u{E01EF}]/gu;
+
+/** THE APOSTROPHES. Applied AFTER NFKD, which is load-bearing: the fullwidth
+ *  apostrophe U+FF07 only BECOMES U+0027 under compatibility decomposition,
+ *  and a strip that ran before it would leave the fullwidth form to fall
+ *  through to the separator arm and mint "phil s". */
+const FOLD_DELETED_APOSTROPHE_RE = /['’‘ʼ]/g;
+
+/** Is every character of `text` one the fold deletes outright — either family?
+ *  True of the EMPTY string, which is the adjacency case and re-joins with
+ *  nothing by the same logic. */
+export function foldDeletesEntirely(text: string): boolean {
+  return (
+    text
+      .normalize('NFKD')
+      .replace(FOLD_DELETED_INVISIBLE_RE, '')
+      .replace(FOLD_DELETED_APOSTROPHE_RE, '') === ''
+  );
+}
+
 export function canonicalFold(name: string): string {
   return foldWithAccentPolicy(name, true);
 }
@@ -187,8 +238,7 @@ function foldWithAccentPolicy(name: string, stripAccents: boolean): string {
       // old fold's punctuation arm turned a stray ZWSP inside "ta<ZWSP>co" into
       // a space, minting "ta co" as a twin of "taco" that no lock or index
       // could see (LLM extraction and pasteboards inject these).
-      // eslint-disable-next-line no-misleading-character-class -- deliberate
-      .replace(/[\p{Cf}\u00AD\uFE00-\uFE0F\u{E0100}-\u{E01EF}]/gu, '')
+      .replace(FOLD_DELETED_INVISIBLE_RE, '')
       // Strip Latin/Greek/Cyrillic/Vietnamese ACCENTS only (é==e). NOT CJK
       // voicing, NOT Arabic harakat, NOT Thai/Devanagari vowel signs — those
       // live outside these blocks and are handled by the mark-preserving
@@ -205,7 +255,7 @@ function foldWithAccentPolicy(name: string, stripAccents: boolean): string {
           (stripAccents ? NON_DECOMPOSABLE : NON_DECOMPOSABLE_SPELLING)[ch] ??
           ch,
       )
-      .replace(/['’‘ʼ]/g, '')
+      .replace(FOLD_DELETED_APOSTROPHE_RE, '')
       // Only TRUE separators/punctuation become one space. \p{M} is PRESERVED
       // so a Thai/Devanagari/Arabic vowel sign stays attached to its base
       // letter — the old `[^\p{L}\p{N}]+` shredded "ผัดไทย" into "ผ ดไทย" and
@@ -319,10 +369,23 @@ export function entityLockKey(name: string, type: EntityType): string {
 export function identityInsertData(
   name: string,
   type: EntityType,
-): { identityKey: string | null; identityKeySorted: string | null } {
+): {
+  identityKey: string | null;
+  identityKeySorted: string | null;
+  foldVersion: number;
+} {
   return {
     identityKey: canonicalFold(name) || null,
     identityKeySorted: entityIdentityKey(name, type),
+    // THE ROW SAYS WHICH FOLD SPELLED IT (D-census, 2026-08-13). The column
+    // has existed since 20260812090000 and every row carried the DEFAULT,
+    // which is a fact about the migration rather than about the row: a key
+    // written after a fold bump would still have claimed version 1, so the
+    // drift the column exists to expose would have been invisible in exactly
+    // the rows that had it. Stamped HERE because this is the one helper the
+    // keys themselves come from — a create path that writes a key without
+    // going through it is the same class of bug the helper was made to end.
+    foldVersion: FOLD_ALGORITHM_VERSION,
   };
 }
 

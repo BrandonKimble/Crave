@@ -2,6 +2,7 @@ import { detectAll, supportedLanguages, toISO3 } from 'tinyld';
 import {
   canonicalFold,
   diacriticFold,
+  foldDeletesEntirely,
 } from '../content-processing/entity-resolver/entity-identity';
 import { SUPPORTED_LOCALES } from '../../shared/locale/supported-locales';
 
@@ -696,9 +697,56 @@ function fuseWithoutSurface(
   return null;
 }
 
-/** Tokenizer char class — CURLY APOSTROPHE ADDED (N1): "Harry’s" tokenized
- *  as "harry" + "s" before this, so its own name could never match. */
-const TOKEN_RE = /[\p{L}\p{N}][\p{L}\p{N}'’‘ʼ&.-]*/gu;
+/**
+ * THE TOKENIZER CUTS AT EVERY NON-LETTER/DIGIT, AND ONE FUNCTION DECIDES WHAT
+ * EACH CUT MEANS (red team F4/F5, executed 2026-08-13).
+ *
+ * WHAT THIS REPLACES: a token class of `\p{L}\p{N}` PLUS the four marks
+ * `'’‘ʼ`, `&`, `.` and `-` (written out rather than quoted as a regex on
+ * purpose — a `*` followed by a `/` inside a block comment ENDS the comment,
+ * and the parser then reports a nonsense error several lines further down) —
+ * a class that
+ * WELDED four punctuation marks into the token so they would survive to be
+ * folded. That is a separator policy hidden inside a character class, and it
+ * disagreed with the only other separator policy in the file (whitespace
+ * between CJK neighbours) in both directions at once:
+ *
+ *   珍珠<ZWSP>奶茶  LOST the compound. A ZWSP is `\p{Cf}`, not `\s`, so the
+ *                   whitespace rule never looked at it — even though the fold
+ *                   DELETES it and the two halves are one word by identity.
+ *   珍珠-奶茶       SOFT-JOINED and ground the compound, purely because `-`
+ *                   happened to be inside the class, so the run never split
+ *                   and `segmentToken` re-joined it with ''. A visible mark
+ *                   the typist chose was treated as nothing.
+ *   珍珠、奶茶      stayed hard, correctly — the ideographic comma is not in
+ *                   the class. Same KIND of mark as the hyphen, opposite
+ *                   answer, and nothing anywhere said why.
+ *
+ * THE RULE NOW, stated once and asked of every gap (`separatorAcross`):
+ *  - a gap the FOLD DELETES (apostrophes, format controls, soft hyphen,
+ *    variation selectors) re-joins with NOTHING, because that is precisely
+ *    what the fold will do to it — this is what keeps "Harry’s" one word, and
+ *    it is now the SAME statement, imported from `entity-identity`, rather
+ *    than a re-listing that could drift (it had);
+ *  - WHITESPACE between two morphemic CJK characters re-joins with nothing —
+ *    the unspaced-script ruling below, unchanged;
+ *  - everything else — any VISIBLE punctuation, and whitespace anywhere else
+ *    — is a hard boundary and re-joins with a space, which is exactly what
+ *    the fold turns it into.
+ *
+ * The invariant is stronger than before, not weaker: for every gap except the
+ * deliberate CJK-whitespace exception, an n-gram's folded text is once again
+ * `canonicalFold` of its own raw slice, and now BY CONSTRUCTION — both sides
+ * ask the same function about the same characters.
+ *
+ * \p{M} JOINED THE TOKEN CLASS, and it is a fix, not a widening: the fold
+ * PRESERVES marks (`[^\p{L}\p{N}\p{M}]+` is its separator arm) so a Thai or
+ * Devanagari vowel sign is part of its word, and NFD input — which iOS
+ * pasteboards and the macOS filesystem deliver — writes every Latin accent as
+ * a combining mark too. The old class excluded them, so decomposed 'phở' cut
+ * into 'pho' + a stranded mark.
+ */
+const TOKEN_RE = /[\p{L}\p{N}][\p{L}\p{N}\p{M}]*/gu;
 
 /**
  * UNSPACED-SCRIPT SEGMENTATION (M6, near-term shape).
@@ -759,7 +807,7 @@ const CJK_RUN_SCRIPT = (ch: string): 'han' | 'kana' | null =>
  *  at exactly the span that identifies it. The invariant this restores:
  *  every n-gram's folded text equals canonicalFold of its own raw slice, for
  *  every query that contains no whitespace inside a morphemic run (see
- *  `softSeparatorBetween`, which deliberately admits the one exception).
+ *  `separatorAcross`, which deliberately admits the one exception).
  *
  *  `joinsToPrevious` is how this token's FIRST piece joins to whatever was
  *  emitted before it. */
@@ -850,25 +898,43 @@ function segmentToken(
  * is what this corrects; the offset contract — the one downstream consumers
  * actually read — is unchanged.
  */
-function softSeparatorBetween(
+/**
+ * THE ONE GAP CLASSIFIER. Given the two tokens a cut separated and the raw
+ * characters between them, how does the second re-join the first? See the
+ * TOKEN_RE docblock for the three-line rule and the defect pair it replaces.
+ */
+function separatorAcross(
   previousToken: QueryToken | undefined,
   nextRaw: string,
   gap: string,
 ): ' ' | '' {
-  // WHITESPACE ONLY. TOKEN_RE also cuts at PUNCTUATION, and punctuation in
-  // these scripts is a deliberate mark — 牛肉、面 enumerates two things, and
-  // 「珍珠」奶茶 quotes one. The typist did not put those there by accident, so
-  // they stay hard boundaries; the ruling above is about the space, which is
-  // the mark the script has no convention for.
-  if (!previousToken || !/^\s+$/u.test(gap)) return ' ';
-  const previousChars = Array.from(previousToken.raw);
-  const lastOfPrevious = previousChars[previousChars.length - 1];
-  const firstOfNext = Array.from(nextRaw)[0];
-  if (!lastOfPrevious || !firstOfNext) return ' ';
-  return CJK_RUN_SCRIPT(lastOfPrevious) !== null &&
-    CJK_RUN_SCRIPT(firstOfNext) !== null
-    ? ''
-    : ' ';
+  if (!previousToken) return ' ';
+  // 1. THE FOLD DELETES IT ⇒ nothing is between these tokens, for identity.
+  // Apostrophes ("Harry’s"), format controls (a pasted ZWSP), the soft hyphen,
+  // variation selectors — and the empty gap, which is the same statement.
+  if (foldDeletesEntirely(gap)) return '';
+  // 2. WHITESPACE BETWEEN TWO MORPHEMIC CJK CHARACTERS ⇒ nothing, per the
+  // ruling above. Whitespace ANYWHERE ELSE is a real word boundary: 'pho 牛肉'
+  // keeps its space, because Latin is spaced by convention and joining across
+  // it would fabricate a compound nobody typed.
+  if (/^\s+$/u.test(gap)) {
+    const previousChars = Array.from(previousToken.raw);
+    const lastOfPrevious = previousChars[previousChars.length - 1];
+    const firstOfNext = Array.from(nextRaw)[0];
+    if (!lastOfPrevious || !firstOfNext) return ' ';
+    return CJK_RUN_SCRIPT(lastOfPrevious) !== null &&
+      CJK_RUN_SCRIPT(firstOfNext) !== null
+      ? ''
+      : ' ';
+  }
+  // 3. VISIBLE PUNCTUATION ⇒ a hard boundary, in every script. 牛肉、面
+  // enumerates two things, 「珍珠」奶茶 quotes one, and 'tex-mex' is two words
+  // to the fold. The typist chose the mark; the fold turns it into a space and
+  // so does this. A gap that MIXES a visible mark with whitespace or an
+  // invisible ("st. marks", "banh mi & pho") lands here on the strength of the
+  // visible one, which is the whole reason this is a classifier and not a set
+  // of independent tests.
+  return ' ';
 }
 
 export interface AnalyzeOptions {
@@ -903,7 +969,7 @@ export function analyzeQuery(
     for (const token of segmentToken(
       match[0],
       match.index,
-      softSeparatorBetween(
+      separatorAcross(
         tokens[tokens.length - 1],
         match[0],
         raw.slice(tokens[tokens.length - 1]?.end ?? 0, match.index),
