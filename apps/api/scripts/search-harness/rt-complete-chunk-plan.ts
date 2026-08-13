@@ -209,7 +209,7 @@ async function main() {
     console.log(
       `  actual activation   : [${(cap.ids ?? []).map((d: string) => d.slice(0, 8)).join(', ')}]`,
     );
-    const ok = cap.ids?.length === 1 && cap.ids[0] === good!.documentId;
+    const ok = cap.ids?.length === 1 && cap.ids[0] === good.documentId;
     console.log(
       '  ',
       ok

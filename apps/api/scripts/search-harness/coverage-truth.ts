@@ -42,6 +42,10 @@ import * as path from 'path';
 import { Prisma } from '@prisma/client';
 import { bootstrap, out } from './_shared';
 import { PrismaService } from '../../src/prisma/prisma.service';
+import {
+  redirectJoinSql,
+  resolvedSubjectSql,
+} from '../../src/modules/signals/subject-identity';
 import { SearchService } from '../../src/modules/search/search.service';
 import { SearchQueryInterpretationService } from '../../src/modules/search/search-query-interpretation.service';
 import type {
@@ -287,10 +291,10 @@ async function deriveConceptSets(
         GROUP BY n.variant_id`),
       // 4. judged satisfies / cousin / reject, redirect-followed
       prisma.$queryRaw<{ id: string; relation: string }[]>(Prisma.sql`
-        SELECT COALESCE(rd.to_entity_id, s.to_entity_id) AS id, s.relation
+        SELECT ${resolvedSubjectSql('s', 'rd', 'to_entity_id')} AS id, s.relation
         FROM entity_satisfies s
-        LEFT JOIN entity_redirects rd ON rd.from_entity_id = s.to_entity_id
-        JOIN core_entities t ON t.entity_id = COALESCE(rd.to_entity_id, s.to_entity_id)
+        ${redirectJoinSql('s', 'rd', 'to_entity_id')}
+        JOIN core_entities t ON t.entity_id = ${resolvedSubjectSql('s', 'rd', 'to_entity_id')}
           AND t.type = 'food'::entity_type AND t.status = 'active'::entity_status
         WHERE s.from_entity_id = ANY(${a}::uuid[])`),
       // 5. dense sibling ring, at the shipped cut (part anchors included below)
@@ -582,10 +586,8 @@ async function serveToExhaustion(
       restaurants: res.metadata.totalRestaurantResults ?? 0,
     };
     if (page === 1) {
-      const am = res.metadata.analysisMetadata as
-        | Record<string, unknown>
-        | undefined;
-      expansionFired = Boolean(am && (am as any).idExpansion);
+      const am = res.metadata.analysisMetadata;
+      expansionFired = Boolean(am?.idExpansion);
     }
     const d = res.dishes ?? [];
     const r = res.restaurants ?? [];
@@ -870,6 +872,10 @@ async function main(): Promise<void> {
           ? 1
           : (mustAppear.length - missing.length) / mustAppear.length;
 
+      const leakCount = served.dishes.size
+        ? Array.from(leakReasons).reduce((n, [, v]) => n + v, 0)
+        : 0;
+
       const row: CaseResult = {
         query: c.q,
         viewport: c.view,
@@ -898,9 +904,7 @@ async function main(): Promise<void> {
         missing: missing.length,
         missReasons: Object.fromEntries(missReasons),
         missSamples,
-        leaks: served.dishes.size
-          ? Array.from(leakReasons).reduce((n, [, v]) => n + v, 0)
-          : 0,
+        leaks: leakCount,
         leakReasons: Object.fromEntries(leakReasons),
         leakSamples: leaks,
         judgedRejectsServed: rejectsServed.length,
@@ -917,7 +921,7 @@ async function main(): Promise<void> {
       out(
         `${c.q.padEnd(30)} [${c.view}] cov=${(coverage * 100).toFixed(1)}% ` +
           `must=${mustAppear.length} miss=${missing.length} served=${served.dishes.size} ` +
-          `leak=${row.leaks} ${shattered ? 'SHATTERED' : ''}`,
+          `leak=${leakCount} ${shattered ? 'SHATTERED' : ''}`,
       );
       for (const [reason, n] of missReasons)
         out(`      miss  ${String(n).padStart(4)}  ${reason}`);

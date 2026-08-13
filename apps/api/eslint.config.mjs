@@ -6,16 +6,7 @@ import tseslint from 'typescript-eslint';
 
 export default tseslint.config(
   {
-    ignores: [
-      'eslint.config.mjs',
-      'test/**/*.d.ts',
-      // Deliberately outside tsconfig's `include` (throwaway red-team
-      // harnesses, run ad hoc with ts-node). Linting them yields only
-      // "not found by the project service" parse errors. ESLint's view of
-      // the tree has to match the compiler's, or extending the lint glob to
-      // scripts/ turns CI red on files nothing type-checks either.
-      'scripts/search-harness/**',
-    ],
+    ignores: ['eslint.config.mjs', 'test/**/*.d.ts'],
   },
   eslint.configs.recommended,
   ...tseslint.configs.recommendedTypeChecked,
@@ -202,6 +193,20 @@ export default tseslint.config(
       // harness can plant them. Linting the crime-scene photos as crimes
       // would force every mutation string to be obfuscated.
       'src/shared/invariants/registry.ts',
+      // CRIME-SCENE PHOTOS, same standing as the invariant registry above.
+      // These two red-team probes exist to prove the activation and ballot
+      // lanes behave, and to do that they must PLANT the fixture by hand: a
+      // synthetic extraction run, a poll_surface document carrying
+      // active_extraction_run_id, and a teardown that deletes those rows
+      // again. Both call the REAL ExtractionScopeService for the behaviour
+      // under test — the raw SQL is setup and cleanup, on a database
+      // requireNonProdDatabase() has already refused to run against in prod.
+      // Note the cleanup deletes are run-INCLUDING (`WHERE extraction_run_id
+      // IN (…)`), the opposite of the run-EXCLUDING supersede the selector is
+      // written to catch; it matches them only because it keys on the DELETE's
+      // table, which is the coarseness the rule accepts elsewhere.
+      'scripts/search-harness/rt-activation-scope.ts',
+      'scripts/search-harness/rt-ballot-lane.ts',
     ],
     rules: {
       // FIVE SELECTORS, BECAUSE THE FIRST ONE HAD FOUR HOLES.

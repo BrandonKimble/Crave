@@ -306,7 +306,7 @@ async function main(): Promise<void> {
       const forbidden = (flow.mustNotInclude ?? []).filter((e) => has(e));
       let labelFail = false;
       if (flow.localizedLabel && flow.mustInclude?.length) {
-        const expected = flow.mustInclude![0];
+        const expected = flow.mustInclude[0];
         const target = folded.find(
           (row) =>
             row.fold === canonicalFold(expected.name) &&
