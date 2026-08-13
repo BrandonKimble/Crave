@@ -169,9 +169,33 @@ export interface Invariant {
   readonly legitimate?: readonly Mutation[];
 }
 
+/**
+ * THE PROBE PATHS ARE PER-RUN, NOT SHARED (2026-08-12).
+ *
+ * Every create-mutation writes a scratch file into the WORKING TREE — the real
+ * one, the same tree several fleet sessions are editing at this moment. When
+ * that path was a constant, two `yarn invariants` runs overlapping by a second
+ * produced pure fiction in BOTH: run B's create-mutation hit run A's file and
+ * reported "already exists — a create-mutation must not clobber a real file",
+ * while run A's baseline saw B's deliberately-defective probe and reported
+ * "the check fails on the CLEAN tree". Two red runs, no defect, and the
+ * failure text pointed at the code instead of the collision.
+ *
+ * A run tag makes the probes private to the process that writes them. It is
+ * not a lock — nothing here can stop a concurrent run's probe from being
+ * visible to a whole-project `tsc` — but it removes the entire class of false
+ * red that comes from two runs owning the SAME path, and it makes an
+ * abandoned probe attributable to the run that leaked it.
+ */
+const RUN_TAG = `${process.pid}-${Date.now().toString(36)}`;
+
 /** A scratch path used by create-mutations. Never committed; the harness
  *  removes it. Inside src/ so the lint config and tsconfig both see it. */
-const SCRATCH = 'src/invariant-probe.ts';
+const SCRATCH = `src/invariant-probe.${RUN_TAG}.ts`;
+/** The repo-ROOT probes — same rule, outside apps/api, where the scanners
+ *  that only ever looked at apps/api had to be proven to reach. */
+const SCRATCH_NUL_SH = `../../scripts/invariant-probe-nul.${RUN_TAG}.sh`;
+const SCRATCH_UNDECLARED_MJS = `../../scripts/invariant-probe-undeclared.${RUN_TAG}.mjs`;
 
 export const INVARIANTS: readonly Invariant[] = [
   // ── SPEND ────────────────────────────────────────────────────────────
@@ -832,7 +856,7 @@ export const INVARIANTS: readonly Invariant[] = [
         // apps/api, with an extension the old scanner never matched. Before
         // the repo-wide rewrite this mutation passed, which is the whole
         // finding.
-        file: '../../scripts/invariant-probe-nul.sh',
+        file: SCRATCH_NUL_SH,
         content: 'echo "a\u0000b"\n',
       },
     ],
@@ -1023,7 +1047,7 @@ export const INVARIANTS: readonly Invariant[] = [
       {
         // A new script that declares nothing — the shape every dead cluster in
         // this repo started as.
-        file: '../../scripts/invariant-probe-undeclared.mjs',
+        file: SCRATCH_UNDECLARED_MJS,
         content: "console.log('a script that says nothing about itself');\n",
       },
     ],
@@ -1079,6 +1103,71 @@ export const INVARIANTS: readonly Invariant[] = [
       },
     ],
   },
+
+  // ── CAMPAIGN ATTRIBUTION / IDENTITY MERGES (2026-08-12) ─────────────
+  {
+    id: 'campaign.attribution-crosses-every-queue-boundary',
+    statement:
+      'Every async boundary campaign spend crosses (BullMQ queues, the pooled batch rail) captures the ambient WorkContext into the payload and re-establishes it on the far side; a new InjectQueue user must be classified before it ships.',
+    incident:
+      'ALS dies at durable boundaries and each miss was a real metering hole: the enrichment queue (F352), the batch poll cron (D4 — only ~7% of the Austin manifest metered), the attribute-ontology queue. Each was found by a red team, not by a gate; the convention lived only as per-file comments.',
+    level: 'lint',
+    mechanism:
+      'scripts/check-workcontext-boundaries.ts — declared producer/consumer pairs must keep both halves (capture + runInWorkContext), and any unclassified InjectQueue file fails until a human declares it campaign-bearing or reviewed.',
+    check: {
+      command: 'npx ts-node -T scripts/check-workcontext-boundaries.ts',
+      reads: 'the real source of every boundary half',
+    },
+    mutations: [
+      {
+        // The exact historical defect: the producer enqueues without stashing
+        // the ambient campaign — spend on the far side meters unattributed.
+        file: 'src/modules/attribute-ontology/attribute-ontology-queue.service.ts',
+        find: '{ type, campaignId: currentCampaignId() },',
+        replace: '{ type },',
+      },
+    ],
+  },
+  {
+    id: 'identity.merge-group-sites-carry-the-accent-veto',
+    statement:
+      'Every identity_key-grouped MERGE (GROUP BY identity_key, or a sorted-key pair-join) runs the whole-string accent veto over each proposed group before acting.',
+    incident:
+      "Multilingual ruling R4: canonicalFold strips tone marks, so 'Cơm Chay' and 'Cơm Cháy' — two different shops — share one folded key; an unvetoed merge lane fuses them. The law lived as a comment on accentsAgreeUnbanked ('every identity_key-grouped MERGE') enforced by nothing — the third merge lane written would not have known.",
+    level: 'lint',
+    mechanism:
+      'scripts/check-identity-join-veto.ts — any src file whose SQL merge-groups the identity key must also name a veto function (accentsAgreeUnbanked/accentAdmits/accentVetoed/restaurantNamesAgree). Search-recall lookups (parameter equality) are deliberately out of scope.',
+    check: {
+      command: 'npx ts-node -T scripts/check-identity-join-veto.ts',
+      reads: 'the real merge-lane sources',
+    },
+    mutations: [
+      {
+        file: SCRATCH,
+        content:
+          '// probe: an identity_key-grouped merge with NO accent veto\n' +
+          'export const mergeSql = `SELECT identity_key, count(*) FROM core_entities GROUP BY identity_key`;\n',
+      },
+    ],
+    legitimate: [
+      {
+        file: SCRATCH,
+        content:
+          '// probe: a merge-group that DOES carry the veto reference\n' +
+          '// uses accentsAgreeUnbanked over each proposed group\n' +
+          'export const mergeSql = `SELECT identity_key, count(*) FROM core_entities GROUP BY identity_key`;\n',
+      },
+    ],
+  },
 ];
 
 export const SCRATCH_FILE = SCRATCH;
+
+/** Every path this run may write a probe to — the harness sweeps these on the
+ *  way out, so a crash mid-mutation cannot leave one behind for a human to
+ *  find and wonder about. */
+export const RUN_PROBE_FILES: readonly string[] = [
+  SCRATCH,
+  SCRATCH_NUL_SH,
+  SCRATCH_UNDECLARED_MJS,
+];
