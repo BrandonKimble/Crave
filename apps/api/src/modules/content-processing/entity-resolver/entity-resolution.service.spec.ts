@@ -328,6 +328,14 @@ function buildService(opts: {
     entityTextSearch,
     fakeLogger(),
     metroAdoption,
+    // A ledger with nothing remembered and a swallowing pen — these unit
+    // tests drive resolution logic; the memory itself is proven against a
+    // real database in entity-match-hearing.integration.spec.ts.
+    {
+      decidedVerdicts: jest.fn(() => Promise.resolve(new Map())),
+      record: jest.fn(() => Promise.resolve(undefined)),
+      markExecuted: jest.fn(() => Promise.resolve(undefined)),
+    } as never,
   );
   service.onModuleInit();
   return { service, prisma, llmService, metroAdoption };

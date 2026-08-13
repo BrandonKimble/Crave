@@ -193,6 +193,40 @@ export class ClaimVerdictLedgerService {
     return new Set(rows.map((row) => row.claim_key));
   }
 
+  /**
+   * The decided verdicts THEMSELVES for these claims at the rule and fold in
+   * force — `decidedKeys` with the outcome attached (2026-08-13, built for
+   * the resolution-match and place-grounding lanes).
+   *
+   * Those lanes cannot act on bare membership: a remembered 'match' resolves
+   * the term to its candidate on the spot, while a remembered 'new' merely
+   * removes that candidate from the docket — the SAME set-membership answer
+   * orders two different behaviours, so the caller has to see what was
+   * decided, not only that something was. Same `=` version discipline as
+   * `decidedKeys`, for the same rollback reason.
+   */
+  async decidedVerdicts(
+    lane: string,
+    ruleVersion: number,
+    foldVersion: number,
+    claimKeys: readonly string[],
+  ): Promise<Map<string, { outcome: string; reason: string }>> {
+    if (!claimKeys.length) return new Map();
+    const rows = await this.prisma.$queryRaw<
+      Array<{ claim_key: string; outcome: string; reason: string }>
+    >`
+      SELECT claim_key, outcome, reason FROM claim_verdicts
+       WHERE lane = ${lane} AND rule_version = ${ruleVersion}
+         AND fold_version = ${foldVersion}
+         AND claim_key = ANY(${[...claimKeys]}::text[])`;
+    return new Map(
+      rows.map((row) => [
+        row.claim_key,
+        { outcome: row.outcome, reason: row.reason },
+      ]),
+    );
+  }
+
   /** Every verdict this lane has recorded for one claim, newest rule first —
    *  the audit read: what was decided, under which rule, and why. */
   async historyOf(

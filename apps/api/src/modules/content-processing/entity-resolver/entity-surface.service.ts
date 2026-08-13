@@ -781,8 +781,11 @@ async function insertSurfaceRows(
         -- does everything COALESCE did AND is monotone in the other
         -- direction too — a re-offer carrying an OLDER judge version (a
         -- replay, a re-hearing running behind a bump) can no longer walk the
-        -- stamp backwards and make a settled claim look unheard, which is
-        -- what staleVerdictClaims reads to decide who pays for a hearing.
+        -- stamp backwards and make a settled claim look unheard. (The stamp's
+        -- selection reader, staleVerdictClaims, is gone — the adjudicator's
+        -- dueClaims consults the hearing ledger instead — but the stamp still
+        -- feeds surface-locale-index's qualification, so its monotonicity
+        -- still matters.)
         claim_judge_version = GREATEST(entity_surface.claim_judge_version,
                                        EXCLUDED.claim_judge_version),
         updated_at = now()
@@ -838,9 +841,12 @@ export async function foldSurfacesFromMerge(
   //
   // THE VERSION STAMPS RIDE ALONG (A0 R6). They were omitted, so a carried
   // row landed on the winner with claim_judge_version NULL — indistinguishable
-  // from a claim no judge has ever heard. `staleVerdictClaims` re-offers
-  // exactly those, so a merge silently re-opened (and re-paid for) every
-  // settled claim the loser held. On CONFLICT the two stamps are the one
+  // from a claim no judge has ever heard. The stamp-reading selection of that
+  // era (`staleVerdictClaims`, since replaced by the adjudicator's
+  // ledger-backed `dueClaims`) re-offered exactly those, so a merge silently
+  // re-opened (and re-paid for) every settled claim the loser held; the
+  // stamp still qualifies surfaces for surface-locale-index, so it still
+  // carries. On CONFLICT the two stamps are the one
   // thing that updates, by GREATEST: the winner's own row keeps its role,
   // status and provenance (a carried row earns nothing by moving), but a
   // hearing that HAS happened is a fact about the word, and the newer of the

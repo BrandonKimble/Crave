@@ -25,6 +25,16 @@ import {
   type RecallCandidate,
 } from '../../entity-text-search/entity-text-search.service';
 import { AliasManagementService } from './alias-management.service';
+import { ClaimVerdictLedgerService } from './claim-verdict-ledger.service';
+import {
+  ENTITY_MATCH_LANE,
+  entityMatchLane,
+  type EntityMatchClaim,
+} from './entity-match-lane';
+import {
+  ENTITY_DEDUPE_RULE_FINGERPRINT,
+  ENTITY_DEDUPE_RULE_VERSION,
+} from './entity-dedupe-rule';
 import {
   EntityResolutionInput,
   EntityResolutionResult,
@@ -125,6 +135,7 @@ export class EntityResolutionService implements OnModuleInit {
     private readonly entityTextSearch: EntityTextSearchService,
     @Inject(LoggerService) private readonly loggerService: LoggerService,
     private readonly metroAdoption: MetroAdoptionService,
+    private readonly claimLedger: ClaimVerdictLedgerService,
   ) {}
 
   onModuleInit(): void {
@@ -1552,18 +1563,89 @@ export class EntityResolutionService implements OnModuleInit {
       aliasRows.map((r) => [r.entity_id, r.forms ?? []]),
     );
 
+    // THE HEARING LEDGER'S MEMORY, before any judge is paid (2026-08-13).
+    // Every (term, candidate) pair the shortlist proposes is a claim the
+    // entity-match lane may have ALREADY decided at the rule version in force
+    // (the same canonical entity-match rule the dedupe lane fingerprints —
+    // both transports render prompts/entity-match-prompt.md, so
+    // ENTITY_DEDUPE_RULE_VERSION is this judge's rule version too, not a
+    // borrowed number). A remembered 'match' resolves on the spot; a
+    // remembered 'new' strikes that candidate from the docket — and a term
+    // whose whole shortlist is struck never reaches the LLM at all, which is
+    // the point: this fail-closed judge re-rolled its expensive "no"s on
+    // every re-mention forever.
+    const pairClaim = (term: string, candidateEntityId: string) =>
+      ({ kind, term, candidateEntityId }) satisfies EntityMatchClaim;
+    const judgeable = recalls.filter((r) => r.candidates.length > 0);
+    const remembered = await this.claimLedger.decidedVerdicts(
+      ENTITY_MATCH_LANE,
+      ENTITY_DEDUPE_RULE_VERSION,
+      entityMatchLane.keyFoldVersion,
+      judgeable.flatMap((r) =>
+        r.candidates.map((c) =>
+          entityMatchLane.canonicalClaimKey(pairClaim(r.term, c.entityId)),
+        ),
+      ),
+    );
+    const priorOf = (
+      term: string,
+      candidateEntityId: string,
+    ): { outcome: string; reason: string } | undefined =>
+      remembered.get(
+        entityMatchLane.canonicalClaimKey(pairClaim(term, candidateEntityId)),
+      );
+
+    const resolvedFromMemory = new Map<string, RecallCandidate>();
+    const stillDue: Array<{
+      entity: EntityResolutionInput;
+      term: string;
+      candidates: RecallCandidate[];
+      /** The shortlist actually shown to the judge — remembered-'new'
+       *  candidates struck; indexes into THIS array come back as ids. */
+      shown: RecallCandidate[];
+    }> = [];
+    for (const r of judgeable) {
+      const rememberedMatch = r.candidates.find(
+        (c) => priorOf(r.term, c.entityId)?.outcome === 'match',
+      );
+      if (rememberedMatch) {
+        resolvedFromMemory.set(r.entity.tempId, rememberedMatch);
+        this.logger.info('entity_match_verdict_remembered', {
+          entityType,
+          term: r.term,
+          matchedEntityId: rememberedMatch.entityId,
+          outcome: 'match',
+        });
+        continue;
+      }
+      const shown = r.candidates.filter(
+        (c) => priorOf(r.term, c.entityId)?.outcome !== 'new',
+      );
+      if (!shown.length) {
+        // Every candidate carries a judged 'new' — the whole question is
+        // settled and the term falls through to creation without a hearing.
+        this.logger.info('entity_match_verdict_remembered', {
+          entityType,
+          term: r.term,
+          outcome: 'new',
+          struckCandidates: r.candidates.length,
+        });
+        continue;
+      }
+      stillDue.push({ ...r, shown });
+    }
+
     // Batched judge: ~10 (term, shortlist) items per request, items delimited
     // per-index, each failing closed to 'new' independently. Cuts request count
     // ~10x under the reservation-based rate budget (archive-load critical).
-    const judgeable = recalls.filter((r) => r.candidates.length > 0);
     const BATCH = 10;
-    const chunks: (typeof judgeable)[] = [];
-    for (let i = 0; i < judgeable.length; i += BATCH) {
-      chunks.push(judgeable.slice(i, i + BATCH));
+    const chunks: (typeof stillDue)[] = [];
+    for (let i = 0; i < stillDue.length; i += BATCH) {
+      chunks.push(stillDue.slice(i, i + BATCH));
     }
     const verdictByTempId = new Map<
       string,
-      { decision: 'match' | 'new'; candidateId: number | null }
+      { decision: 'match' | 'new'; candidate: RecallCandidate | null }
     >();
     // 4 concurrent judge requests: uncalibrated rate-limit-friendly bound;
     // total judge latency = ceil(chunks/4) round-trips, any small value works.
@@ -1572,29 +1654,45 @@ export class EntityResolutionService implements OnModuleInit {
         kind,
         items: chunk.map((r) => ({
           term: r.term,
-          candidates: r.candidates.map((c, i) => ({
+          candidates: r.shown.map((c, i) => ({
             id: i,
             name: c.name,
             aliases: aliasesById.get(c.entityId) ?? undefined,
           })),
         })),
       });
-      chunk.forEach((r, i) =>
-        verdictByTempId.set(r.entity.tempId, verdicts[i]),
-      );
+      for (let i = 0; i < chunk.length; i += 1) {
+        const r = chunk[i];
+        const verdict = verdicts[i];
+        const matched =
+          verdict &&
+          verdict.decision === 'match' &&
+          verdict.candidateId !== null
+            ? (r.shown[verdict.candidateId] ?? null)
+            : null;
+        verdictByTempId.set(r.entity.tempId, {
+          decision: matched ? 'match' : 'new',
+          candidate: matched,
+        });
+        await this.recordEntityMatchVerdicts(r.term, r.shown, {
+          matched,
+          reason: verdict?.reason?.trim() ?? '',
+          kind,
+        });
+      }
     });
 
     return recalls.map(({ entity, candidates }) => {
-      const verdict = verdictByTempId.get(entity.tempId);
+      const matched =
+        resolvedFromMemory.get(entity.tempId) ??
+        verdictByTempId.get(entity.tempId)?.candidate ??
+        null;
       if (
-        !verdict ||
-        verdict.decision !== 'match' ||
-        verdict.candidateId === null ||
-        !candidates[verdict.candidateId]
+        !matched ||
+        !candidates.some((c) => c.entityId === matched.entityId)
       ) {
         return unmatchedFor(entity);
       }
-      const matched = candidates[verdict.candidateId];
       return {
         tempId: entity.tempId,
         entityId: matched.entityId,
@@ -1604,6 +1702,76 @@ export class EntityResolutionService implements OnModuleInit {
         originalInput: entity,
       };
     });
+  }
+
+  /**
+   * BANK WHAT THE JUDGE SAID — the entity-match lane's verdict memory
+   * (hearing-ledger adoption, 2026-08-13).
+   *
+   * VERDICT-MEMORY-ONLY, deliberately, and here is the argument against the
+   * wave-1 contracts rather than around them: the wave-1 shape stores an
+   * ABSOLUTE effect so a crash between verdict and effect can be resumed.
+   * This lane's "effect" is the RESOLUTION RESULT ITSELF — a value the caller
+   * consumes synchronously in the same pass (the mention resolves to the
+   * candidate, or falls through to creation) — and the caller's own pipeline
+   * owns everything durable that follows. There is no corpus mutation this
+   * lane orders, so there is nothing a resume could replay: a crash before
+   * the caller consumed the verdict re-runs the whole resolution, which now
+   * finds the verdict REMEMBERED and re-derives the same result without
+   * paying the judge — that re-read IS this lane's resume path. `executed_at`
+   * is therefore stamped at record time (the effect demonstrably happened:
+   * the verdict was handed to the caller), exactly as the pre-ledger backfill
+   * stamps rows whose effect already exists, so `pendingExecution` can never
+   * hand this lane's subjects to a replayer that has nothing to do.
+   *
+   * WHAT IS RECORDED, per amendment (d): only verdicts with a stated ground.
+   * matchEntitiesBatch fails CLOSED to a reasonless 'new', so an outage
+   * records nothing and the question stays open — the same doctrine as the
+   * dedupe lane.
+   *   - decision 'match' on candidate X: ONE verdict, (term, X) = 'match'.
+   *     The other shown candidates were not ruled on — the judge picked the
+   *     best answer, it did not assert the rest are strangers — so they stay
+   *     unheard.
+   *   - decision 'new': the judge looked at EVERY shown candidate and said
+   *     "none of these" — one 'new' verdict per shown pair, which is what
+   *     lets a fully-judged shortlist skip the LLM next time.
+   */
+  private async recordEntityMatchVerdicts(
+    term: string,
+    shown: readonly RecallCandidate[],
+    verdict: {
+      matched: RecallCandidate | null;
+      reason: string;
+      kind: EntityMatchClaim['kind'];
+    },
+  ): Promise<void> {
+    if (!verdict.reason) return;
+    const judged = verdict.matched ? [verdict.matched] : shown;
+    const outcome = verdict.matched ? 'match' : 'new';
+    for (const candidate of judged) {
+      const claim: EntityMatchClaim = {
+        kind: verdict.kind,
+        term,
+        candidateEntityId: candidate.entityId,
+      };
+      const claimKey = entityMatchLane.canonicalClaimKey(claim);
+      await this.claimLedger.record({
+        lane: ENTITY_MATCH_LANE,
+        claimKey,
+        ruleVersion: ENTITY_DEDUPE_RULE_VERSION,
+        foldVersion: entityMatchLane.keyFoldVersion,
+        outcome,
+        reason: verdict.reason,
+        ruleFingerprint: ENTITY_DEDUPE_RULE_FINGERPRINT,
+        subject: { ...claim, candidateName: candidate.name, outcome },
+      });
+      await this.claimLedger.markExecuted(
+        ENTITY_MATCH_LANE,
+        claimKey,
+        ENTITY_DEDUPE_RULE_VERSION,
+        entityMatchLane.keyFoldVersion,
+      );
+    }
   }
 
   /** Damerau-free bounded Levenshtein: returns the distance if ≤ budget, else

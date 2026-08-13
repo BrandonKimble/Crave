@@ -2342,7 +2342,7 @@ export class LLMService implements OnModuleInit, OnModuleDestroy {
           candidateId,
           candidateCount: candidates.length,
         });
-        return { decision, candidateId };
+        return { decision, candidateId, ...(reason && { reason }) };
       }
 
       this.logger.debug('Restaurant place chooser rejected candidates', {
@@ -2355,6 +2355,7 @@ export class LLMService implements OnModuleInit, OnModuleDestroy {
       return {
         decision,
         candidateId: decision === 'select' ? candidateId : null,
+        ...(reason && { reason }),
       };
     } catch (error) {
       this.logger.warn('Failed to parse restaurant place chooser response', {

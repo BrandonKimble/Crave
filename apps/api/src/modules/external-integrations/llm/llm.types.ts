@@ -330,6 +330,12 @@ export interface LLMRestaurantPlaceChooserInput {
 export interface LLMRestaurantPlaceChooserDecision {
   decision: 'select' | 'reject';
   candidateId?: string | null;
+  /** The judge's stated ground, when the model returned one. The grounding
+   *  hearing ledger requires it — a reasonless verdict is not recorded (H5
+   *  amendment (d)) — and the fail-closed paths (no candidates, parse error)
+   *  deliberately carry none, so an outage can never mint a remembered
+   *  rejection. */
+  reason?: string;
 }
 
 export type LLMUsageMetadata = NonNullable<LLMApiResponse['usageMetadata']>;

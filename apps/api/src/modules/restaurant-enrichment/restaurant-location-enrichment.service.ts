@@ -48,6 +48,16 @@ import {
   brandClusterPurity,
   restaurantNamesAgree,
 } from './business-identity-rules';
+import { ClaimVerdictLedgerService } from '../content-processing/entity-resolver/claim-verdict-ledger.service';
+import {
+  PLACE_GROUNDING_LANE,
+  placeGroundingLane,
+  type PlaceGroundingClaim,
+} from './place-grounding-lane';
+import {
+  PLACE_GROUNDING_RULE_FINGERPRINT,
+  PLACE_GROUNDING_RULE_VERSION,
+} from './place-grounding-rule';
 import {
   GOOGLE_BOOLEAN_ATTRIBUTE_VOCAB,
   GOOGLE_PLACE_TYPE_ATTRIBUTE_CANONICAL_NAMES,
@@ -220,10 +230,59 @@ type CandidateSelectionResult = {
     entry: RankedCandidate;
     matchSource: CandidateSelectionSource;
     score?: number;
+    /** The chooser's stated ground for this select — carried to the hearing
+     *  ledger, which refuses reasonless verdicts (H5 amendment (d)). Absent
+     *  on a selection remembered FROM the ledger (the stored verdict already
+     *  holds the original ground). */
+    chooserReason?: string;
   };
   adjudicationTrail: CandidateSelectionTrailEntry[];
   strategy: 'gemini_staged';
 };
+
+/**
+ * WHAT A GROUNDING VERDICT STORES — the ABSOLUTE effect, per the wave-1
+ * contract (claim-hearing-ledger): the location row's full computed target
+ * state at decision time, so a crash-resume replays stored bytes and a
+ * replay of an already-obeyed verdict touches nothing.
+ */
+export interface PlaceGroundingVerdictSubject {
+  kind: 'grounding' | 'rejection';
+  restaurantId: string;
+  restaurantName: string | null;
+  /** Grounding only: the chosen (post-redirect) place id. */
+  placeId?: string;
+  /** Rejection only: the exact candidate set the chooser declined. */
+  candidatePlaceIds?: string[];
+  /**
+   * Grounding only: the ABSOLUTE target state of the restaurant_locations
+   * row (scalar columns; timestamps excluded — they are bookkeeping, not
+   * decision). NULL when the grounding was completed by a MERGE (the place
+   * already lives on a canonical entity's row): the merge is the effect, and
+   * replaying a location write against the merged-away duplicate would undo
+   * a decision this lane never made.
+   */
+  location: {
+    googlePlaceId: string;
+    latitude: number | null;
+    longitude: number | null;
+    address: string | null;
+    city: string | null;
+    region: string | null;
+    country: string | null;
+    postalCode: string | null;
+    phoneNumber: string | null;
+    websiteUrl: string | null;
+    websiteDomain: string | null;
+    hours: unknown;
+    utcOffsetMinutes: number | null;
+    timeZone: string | null;
+    businessStatus: string | null;
+    movedPlaceId: string | null;
+  } | null;
+  /** Grounding-by-merge only: the canonical entity the place belongs to. */
+  mergedInto?: string;
+}
 
 type CandidateStageEvaluation = {
   selection: CandidateSelectionResult;
@@ -269,6 +328,7 @@ export class RestaurantLocationEnrichmentService {
     private readonly secondaryLocationExpansionQueue: RestaurantSecondaryLocationExpansionQueueService,
     private readonly configService: ConfigService,
     private readonly opsAlerts: OpsAlertsService,
+    private readonly claimLedger: ClaimVerdictLedgerService,
     @Inject(LoggerService) loggerService: LoggerService,
   ) {
     this.logger = loggerService.setContext(
@@ -780,6 +840,12 @@ export class RestaurantLocationEnrichmentService {
       };
     }
 
+    // FINISH WHAT WAS ALREADY DECIDED FIRST (wave-1 contract): a verdict
+    // commits before its effect, so a process that died between them left a
+    // grounding the corpus has not obeyed. Those are replayed from their
+    // STORED subjects — no judge, no Places call — before any new docket.
+    await this.resumePendingGroundingEffects();
+
     let latestDetails: GooglePlacesV1PlaceDetailsResponse | null = null;
     let latestMatchMetadata: MatchMetadata | null = null;
     let combinedUpdateData: Prisma.EntityUpdateInput | null = null;
@@ -961,6 +1027,23 @@ export class RestaurantLocationEnrichmentService {
               duplicate: entity,
               canonicalUpdate: {},
             });
+          // The chooser's select IS a grounding verdict even when the effect
+          // is a merge: record it with a NULL location target (the place row
+          // already lives on the canonical entity — the merge is the whole
+          // effect, already executed here), so a re-enrichment of anything
+          // that resurrects this question finds it answered.
+          if (!options.dryRun) {
+            await this.recordGroundingSelection({
+              entity,
+              placeId: best.entry.candidate.placeId,
+              reason:
+                best.chooserReason ??
+                'place_id owned by existing entity (pre-details check)',
+              location: null,
+              mergedInto: merged.entityId,
+              executed: true,
+            });
+          }
           return {
             entityId: merged.entityId,
             status: 'updated',
@@ -1123,6 +1206,22 @@ export class RestaurantLocationEnrichmentService {
         };
       }
 
+      // VERDICT BEFORE EFFECT (wave-1 contract). The chooser's select is one
+      // of the two most expensive irreversible judgments in the repo; it is
+      // committed to the hearing ledger — with the ABSOLUTE location target
+      // state as its subject — before a single row moves, so a crash
+      // anywhere in the effect below leaves a decided, resumable grounding
+      // instead of a paid verdict that evaporated.
+      await this.recordGroundingSelection({
+        entity,
+        placeId: resolvedPlaceDetails.id!,
+        reason:
+          best.chooserReason ??
+          'remembered selection (hearing ledger) — original ground on the prior verdict',
+        location: this.groundingLocationTarget(locationUpsert.create),
+        executed: false,
+      });
+
       const googleAttributeDefinitions =
         this.extractGoogleRestaurantAttributeDefinitions(resolvedPlaceDetails);
       googleRestaurantAttributeIds =
@@ -1163,51 +1262,36 @@ export class RestaurantLocationEnrichmentService {
       );
 
       try {
-        await this.prisma.$transaction(
-          async (tx) => {
-            const location = await this.upsertPrimaryLocation({
-              tx,
-              restaurantId: entity.entityId,
-              placeDetails,
-              locationUpsert,
-              targetLocation,
-            });
-
-            await tx.restaurantLocation.updateMany({
-              where: {
-                restaurantId: entity.entityId,
-                locationId: { not: location.locationId },
-              },
-              data: { isPrimary: false },
-            });
-
-            await tx.entity.update({
-              where: { entityId: entity.entityId },
-              data: {
-                ...combinedUpdateData,
-                primaryLocation: {
-                  connect: { locationId: location.locationId },
-                },
-              },
-            });
-          },
-          {
-            timeout: this.transactionTimeoutMs,
-            maxWait: this.transactionMaxWaitMs,
-          },
-        );
+        await this.executeGroundingTransaction({
+          entity,
+          placeDetails,
+          locationUpsert,
+          targetLocation,
+          combinedUpdateData,
+        });
       } catch (error) {
         if (this.isGooglePlaceConflict(error)) {
-          return this.handleGooglePlaceCollision({
+          const collision = await this.handleGooglePlaceCollision({
             entity,
             details,
             matchMetadata,
             score: best.score,
             googleRestaurantAttributeIds,
           });
+          // The grounding completed THROUGH THE MERGE: the place row now
+          // lives (correctly) on the canonical entity, so the recorded
+          // effect is finished — leaving it pending would hand the resume
+          // path a location write against a merged-away duplicate (which
+          // applyGroundingEffect refuses, but a finished hearing should not
+          // sit in the pending queue at all).
+          await this.markGroundingExecuted(
+            entity.entityId,
+            resolvedPlaceDetails.id!,
+          );
+          return collision;
         }
         if (this.isEntityNameConflict(error) && combinedUpdateData) {
-          return this.handleEntityNameConflict({
+          const conflict = await this.handleEntityNameConflict({
             entity,
             canonicalName: targetNameForUpdate,
             details,
@@ -1215,9 +1299,21 @@ export class RestaurantLocationEnrichmentService {
             score: best.score,
             googleRestaurantAttributeIds,
           });
+          // Same argument as the place-collision arm above: the merge is the
+          // effect, and it has run.
+          await this.markGroundingExecuted(
+            entity.entityId,
+            resolvedPlaceDetails.id!,
+          );
+          return conflict;
         }
         throw error;
       }
+      // THE EFFECT RAN — only now is the hearing finished.
+      await this.markGroundingExecuted(
+        entity.entityId,
+        resolvedPlaceDetails.id!,
+      );
 
       // A1: the alias half of the entity update lands here, through THE
       // projection writer, once the row itself is committed (the name and
@@ -2750,11 +2846,7 @@ export class RestaurantLocationEnrichmentService {
   }
 
   private finalizeSelectedCandidate(params: {
-    selected?: {
-      entry: RankedCandidate;
-      matchSource: CandidateSelectionSource;
-      score?: number;
-    };
+    selected?: CandidateSelectionResult['selected'];
     adjudicationTrail: CandidateSelectionTrailEntry[];
     strategy: CandidateSelectionResult['strategy'];
     extras?: Partial<CandidateSelectionTrailEntry>;
@@ -2812,6 +2904,91 @@ export class RestaurantLocationEnrichmentService {
       };
     }
 
+    // THE HEARING LEDGER'S MEMORY, before the judge is paid (2026-08-13).
+    // Two remembered shapes short-circuit the LLM at the rule version in
+    // force: a 'selected' verdict on any (restaurant, candidate place) pair
+    // in this set re-selects that candidate — the question was answered, and
+    // re-asking is how a re-enrichment used to re-roll a permanent judgment —
+    // and a 'rejected' verdict on this EXACT candidate set re-declines it
+    // without a hearing. A different set is a different question and is
+    // heard fresh.
+    const setClaim: PlaceGroundingClaim = {
+      kind: 'rejection',
+      restaurantId: params.entity.entityId,
+      candidatePlaceIds: chooserCandidates.map(
+        (candidate) => candidate.entry.candidate.placeId,
+      ),
+    };
+    const pairClaimOf = (placeId: string): PlaceGroundingClaim => ({
+      kind: 'grounding',
+      restaurantId: params.entity.entityId,
+      placeId,
+    });
+    const rememberedVerdicts = await this.claimLedger.decidedVerdicts(
+      PLACE_GROUNDING_LANE,
+      PLACE_GROUNDING_RULE_VERSION,
+      placeGroundingLane.keyFoldVersion,
+      [
+        placeGroundingLane.canonicalClaimKey(setClaim),
+        ...chooserCandidates.map((candidate) =>
+          placeGroundingLane.canonicalClaimKey(
+            pairClaimOf(candidate.entry.candidate.placeId),
+          ),
+        ),
+      ],
+    );
+    const rememberedSelection = chooserCandidates.find(
+      (candidate) =>
+        rememberedVerdicts.get(
+          placeGroundingLane.canonicalClaimKey(
+            pairClaimOf(candidate.entry.candidate.placeId),
+          ),
+        )?.outcome === 'selected',
+    );
+    if (rememberedSelection) {
+      adjudicationTrail.push({
+        placeId: rememberedSelection.entry.candidate.placeId,
+        candidateName:
+          rememberedSelection.entry.candidate.mainText ||
+          rememberedSelection.entry.candidate.description.split(',')[0] ||
+          rememberedSelection.entry.candidate.description,
+        source: rememberedSelection.matchSource,
+        sameBusiness: true,
+        reason: 'remembered selection (hearing ledger) — no judge paid',
+        autocompleteRank: rememberedSelection.autocompleteRank,
+        searchTextRank: rememberedSelection.searchTextRank,
+      });
+      return {
+        selection: this.finalizeSelectedCandidate({
+          selected: {
+            entry: rememberedSelection.entry,
+            matchSource: rememberedSelection.matchSource,
+            score: rememberedSelection.entry.score,
+          },
+          adjudicationTrail,
+          strategy,
+        }),
+      };
+    }
+    const rememberedRejection = rememberedVerdicts.get(
+      placeGroundingLane.canonicalClaimKey(setClaim),
+    );
+    if (rememberedRejection?.outcome === 'rejected') {
+      adjudicationTrail.push({
+        placeId: 'reject',
+        candidateName: 'no candidate selected',
+        source: 'autocomplete',
+        sameBusiness: false,
+        reason: `remembered rejection (hearing ledger) — ${rememberedRejection.reason}`,
+      });
+      return {
+        selection: {
+          adjudicationTrail,
+          strategy,
+        },
+      };
+    }
+
     try {
       const decision = await this.llmService.chooseRestaurantPlaceCandidate({
         query: params.entity.name,
@@ -2835,6 +3012,21 @@ export class RestaurantLocationEnrichmentService {
       });
 
       if (decision.decision !== 'select' || !decision.candidateId) {
+        // A REJECTION IS A RULING ABOUT THIS SET — remember it, so the next
+        // enrichment attempt that retrieves the identical candidates does
+        // not pay to hear the same 'no' again. Verdict-memory-only: a
+        // rejection orders no corpus change, so the row itself is the whole
+        // effect and `executed_at` stamps at record (the dedupe lane's
+        // 'hold' doctrine). Reasonless rejections — the fail-closed paths —
+        // are NOT recorded (amendment (d)): an outage is not a ruling.
+        const rejectionReason = decision.reason?.trim() ?? '';
+        if (decision.decision !== 'select' && rejectionReason) {
+          await this.recordGroundingRejection(
+            params.entity,
+            setClaim,
+            rejectionReason,
+          );
+        }
         adjudicationTrail.push({
           placeId: 'reject',
           candidateName: 'no candidate selected',
@@ -2892,6 +3084,7 @@ export class RestaurantLocationEnrichmentService {
             entry: chosen.entry,
             matchSource: chosen.matchSource,
             score: chosen.entry.score,
+            chooserReason: decision.reason?.trim() || undefined,
           },
           adjudicationTrail,
           strategy,
@@ -3586,6 +3779,343 @@ export class RestaurantLocationEnrichmentService {
     });
 
     return location;
+  }
+
+  /**
+   * THE LIVE GROUNDING EFFECT — the transaction that writes the place id.
+   * Extracted to a protected seam (the dedupe lane's `applyDedupeEffect`
+   * pattern) so a test can kill the effect between the verdict and the
+   * write and prove the hearing survives the crash.
+   */
+  protected async executeGroundingTransaction(params: {
+    entity: RestaurantEntity;
+    placeDetails: GooglePlacesV1Place;
+    locationUpsert: {
+      create: Prisma.RestaurantLocationUncheckedCreateInput;
+      update: Prisma.RestaurantLocationUncheckedUpdateInput;
+    };
+    targetLocation?: RestaurantLocation | null;
+    combinedUpdateData: Prisma.EntityUpdateInput;
+  }): Promise<void> {
+    const { entity, placeDetails, locationUpsert, targetLocation } = params;
+    await this.prisma.$transaction(
+      async (tx) => {
+        const location = await this.upsertPrimaryLocation({
+          tx,
+          restaurantId: entity.entityId,
+          placeDetails,
+          locationUpsert,
+          targetLocation,
+        });
+
+        await tx.restaurantLocation.updateMany({
+          where: {
+            restaurantId: entity.entityId,
+            locationId: { not: location.locationId },
+          },
+          data: { isPrimary: false },
+        });
+
+        await tx.entity.update({
+          where: { entityId: entity.entityId },
+          data: {
+            ...params.combinedUpdateData,
+            primaryLocation: {
+              connect: { locationId: location.locationId },
+            },
+          },
+        });
+      },
+      {
+        timeout: this.transactionTimeoutMs,
+        maxWait: this.transactionMaxWaitMs,
+      },
+    );
+  }
+
+  /**
+   * THE ABSOLUTE TARGET STATE a grounding verdict stores — computed ONCE, at
+   * decision time, from the same upsert input the live effect writes. What
+   * is stored is what was decided; a replay writes these bytes, never a
+   * re-derivation over a corpus that has since moved (wave-1 contract).
+   * Timestamps (`lastPolledAt`, `updatedAt`) are bookkeeping, not decision,
+   * and stay out of the subject.
+   */
+  private groundingLocationTarget(
+    create: Prisma.RestaurantLocationUncheckedCreateInput,
+  ): NonNullable<PlaceGroundingVerdictSubject['location']> {
+    const asString = (value: unknown): string | null =>
+      typeof value === 'string' ? value : null;
+    const asNumber = (value: unknown): number | null =>
+      typeof value === 'number' ? value : null;
+    return {
+      googlePlaceId: asString(create.googlePlaceId) ?? '',
+      latitude: asNumber(create.latitude),
+      longitude: asNumber(create.longitude),
+      address: asString(create.address),
+      city: asString(create.city),
+      region: asString(create.region),
+      country: asString(create.country),
+      postalCode: asString(create.postalCode),
+      phoneNumber: asString(create.phoneNumber),
+      websiteUrl: asString(create.websiteUrl),
+      websiteDomain: asString(create.websiteDomain),
+      hours:
+        create.hours === Prisma.DbNull || create.hours === undefined
+          ? null
+          : (create.hours as unknown),
+      utcOffsetMinutes: asNumber(create.utcOffsetMinutes),
+      timeZone: asString(create.timeZone),
+      businessStatus: asString(create.businessStatus),
+      movedPlaceId: asString(create.movedPlaceId),
+    };
+  }
+
+  /** Commit a grounding select to the ledger (verdict BEFORE effect). When
+   *  `executed` is true the effect already happened in the same breath (the
+   *  pre-details merge), so the hearing closes immediately. */
+  private async recordGroundingSelection(params: {
+    entity: RestaurantEntity;
+    placeId: string;
+    reason: string;
+    location: PlaceGroundingVerdictSubject['location'];
+    mergedInto?: string;
+    executed: boolean;
+  }): Promise<void> {
+    const claim: PlaceGroundingClaim = {
+      kind: 'grounding',
+      restaurantId: params.entity.entityId,
+      placeId: params.placeId,
+    };
+    const subject: PlaceGroundingVerdictSubject = {
+      kind: 'grounding',
+      restaurantId: params.entity.entityId,
+      restaurantName: params.entity.name ?? null,
+      placeId: params.placeId,
+      location: params.location,
+      ...(params.mergedInto ? { mergedInto: params.mergedInto } : {}),
+    };
+    await this.claimLedger.record<PlaceGroundingVerdictSubject>({
+      lane: PLACE_GROUNDING_LANE,
+      claimKey: placeGroundingLane.canonicalClaimKey(claim),
+      ruleVersion: PLACE_GROUNDING_RULE_VERSION,
+      foldVersion: placeGroundingLane.keyFoldVersion,
+      outcome: 'selected',
+      reason: params.reason,
+      ruleFingerprint: PLACE_GROUNDING_RULE_FINGERPRINT,
+      subject,
+    });
+    if (params.executed) {
+      await this.markGroundingExecuted(params.entity.entityId, params.placeId);
+    }
+  }
+
+  /** A chooser rejection of one exact candidate set. The row itself is the
+   *  whole effect (nothing to replay), so it closes at record — the dedupe
+   *  lane's 'hold' doctrine. */
+  private async recordGroundingRejection(
+    entity: RestaurantEntity,
+    setClaim: PlaceGroundingClaim,
+    reason: string,
+  ): Promise<void> {
+    const claimKey = placeGroundingLane.canonicalClaimKey(setClaim);
+    const subject: PlaceGroundingVerdictSubject = {
+      kind: 'rejection',
+      restaurantId: entity.entityId,
+      restaurantName: entity.name ?? null,
+      candidatePlaceIds:
+        setClaim.kind === 'rejection' ? setClaim.candidatePlaceIds : [],
+      location: null,
+    };
+    await this.claimLedger.record<PlaceGroundingVerdictSubject>({
+      lane: PLACE_GROUNDING_LANE,
+      claimKey,
+      ruleVersion: PLACE_GROUNDING_RULE_VERSION,
+      foldVersion: placeGroundingLane.keyFoldVersion,
+      outcome: 'rejected',
+      reason,
+      ruleFingerprint: PLACE_GROUNDING_RULE_FINGERPRINT,
+      subject,
+    });
+    await this.claimLedger.markExecuted(
+      PLACE_GROUNDING_LANE,
+      claimKey,
+      PLACE_GROUNDING_RULE_VERSION,
+      placeGroundingLane.keyFoldVersion,
+    );
+  }
+
+  private async markGroundingExecuted(
+    restaurantId: string,
+    placeId: string,
+  ): Promise<void> {
+    await this.claimLedger.markExecuted(
+      PLACE_GROUNDING_LANE,
+      placeGroundingLane.canonicalClaimKey({
+        kind: 'grounding',
+        restaurantId,
+        placeId,
+      }),
+      PLACE_GROUNDING_RULE_VERSION,
+      placeGroundingLane.keyFoldVersion,
+    );
+  }
+
+  /**
+   * THE ONE PLACE A RESUMED GROUNDING TOUCHES THE CORPUS. Replays the STORED
+   * absolute target — never a recomputation, never a Places call.
+   * Overridable so a test can kill the effect mid-hearing and prove the
+   * verdict survives (the dedupe/satisfies pattern).
+   *
+   * Refusals, each of which means the stored effect is superseded and the
+   * honest move is to touch nothing:
+   *   - a NULL location target (a rejection, or a grounding completed by a
+   *     merge) orders no write by construction;
+   *   - the restaurant is gone or no longer active — merged away or
+   *     archived since the verdict; replaying would resurrect a row on a
+   *     corpse;
+   *   - the place row belongs to ANOTHER restaurant — the collision path
+   *     merged this grounding into a canonical entity after the verdict was
+   *     recorded, and stealing the row back would undo a decision this lane
+   *     never made.
+   *
+   * IDEMPOTENT TO THE BYTE: when the row already states the stored target
+   * (and is the connected primary), NOTHING is written — no `updated_at`
+   * move, no no-op UPDATE — so "did this run twice?" stays answerable from
+   * the row (the wave-1 IS DISTINCT FROM doctrine, applied app-side because
+   * the comparison spans two tables).
+   */
+  protected async applyGroundingEffect(
+    subject: PlaceGroundingVerdictSubject,
+  ): Promise<boolean> {
+    if (subject.kind !== 'grounding' || !subject.location?.googlePlaceId) {
+      return false;
+    }
+    const target = subject.location;
+    const entity = await this.prisma.entity.findUnique({
+      where: { entityId: subject.restaurantId },
+      select: { entityId: true, status: true, primaryLocationId: true },
+    });
+    if (!entity || entity.status !== EntityStatus.active) {
+      this.logger.warn('Grounding replay skipped — restaurant gone', {
+        restaurantId: subject.restaurantId,
+        placeId: target.googlePlaceId,
+      });
+      return false;
+    }
+    const existing = await this.prisma.restaurantLocation.findUnique({
+      where: { googlePlaceId: target.googlePlaceId },
+    });
+    if (existing && existing.restaurantId !== subject.restaurantId) {
+      this.logger.warn(
+        'Grounding replay skipped — place owned by another restaurant (superseded by a merge)',
+        {
+          restaurantId: subject.restaurantId,
+          ownerId: existing.restaurantId,
+          placeId: target.googlePlaceId,
+        },
+      );
+      return false;
+    }
+    const alreadySays =
+      existing !== null &&
+      existing.isPrimary &&
+      entity.primaryLocationId === existing.locationId &&
+      this.toNumberValue(existing.latitude) === target.latitude &&
+      this.toNumberValue(existing.longitude) === target.longitude &&
+      existing.address === target.address &&
+      existing.city === target.city &&
+      existing.region === target.region &&
+      existing.country === target.country &&
+      existing.postalCode === target.postalCode &&
+      existing.phoneNumber === target.phoneNumber &&
+      existing.websiteUrl === target.websiteUrl &&
+      existing.websiteDomain === target.websiteDomain &&
+      existing.utcOffsetMinutes === target.utcOffsetMinutes &&
+      existing.timeZone === target.timeZone &&
+      existing.businessStatus === target.businessStatus &&
+      existing.movedPlaceId === target.movedPlaceId &&
+      JSON.stringify(existing.hours ?? null) ===
+        JSON.stringify(target.hours ?? null);
+    if (alreadySays) {
+      return false;
+    }
+    const data = {
+      restaurantId: subject.restaurantId,
+      googlePlaceId: target.googlePlaceId,
+      latitude: target.latitude,
+      longitude: target.longitude,
+      address: target.address,
+      city: target.city,
+      region: target.region,
+      country: target.country,
+      postalCode: target.postalCode,
+      phoneNumber: target.phoneNumber,
+      websiteUrl: target.websiteUrl,
+      websiteDomain: target.websiteDomain,
+      hours:
+        target.hours === null
+          ? Prisma.DbNull
+          : (target.hours as Prisma.InputJsonValue),
+      utcOffsetMinutes: target.utcOffsetMinutes,
+      timeZone: target.timeZone,
+      businessStatus: target.businessStatus,
+      movedPlaceId: target.movedPlaceId,
+      isPrimary: true,
+      updatedAt: new Date(),
+    };
+    await this.prisma.$transaction(async (tx) => {
+      const location = await tx.restaurantLocation.upsert({
+        where: { googlePlaceId: target.googlePlaceId },
+        update: data as Prisma.RestaurantLocationUncheckedUpdateInput,
+        create: data as Prisma.RestaurantLocationUncheckedCreateInput,
+      });
+      await tx.restaurantLocation.updateMany({
+        where: {
+          restaurantId: subject.restaurantId,
+          locationId: { not: location.locationId },
+        },
+        data: { isPrimary: false },
+      });
+      await tx.entity.update({
+        where: { entityId: subject.restaurantId },
+        data: {
+          primaryLocation: { connect: { locationId: location.locationId } },
+        },
+      });
+    });
+    return true;
+  }
+
+  /**
+   * DECIDED BUT NOT EXECUTED — replay the STORED grounding, never recompute.
+   * A crash between the chooser's verdict and the location write leaves the
+   * answer paid for and durable; this finishes it without a judge and
+   * without a Places call. Returns how many verdicts it completed.
+   */
+  async resumePendingGroundingEffects(limit = 100): Promise<number> {
+    const pending =
+      await this.claimLedger.pendingExecution<PlaceGroundingVerdictSubject>(
+        PLACE_GROUNDING_LANE,
+        limit,
+      );
+    let resumed = 0;
+    for (const verdict of pending) {
+      await this.applyGroundingEffect(verdict.subject);
+      await this.claimLedger.markExecuted(
+        PLACE_GROUNDING_LANE,
+        verdict.claimKey,
+        verdict.ruleVersion,
+        verdict.foldVersion,
+      );
+      resumed += 1;
+    }
+    if (resumed) {
+      this.logger.info('Resumed decided-but-unexecuted grounding verdicts', {
+        resumed,
+      });
+    }
+    return resumed;
   }
 
   private mergeRestaurantMetadata(
