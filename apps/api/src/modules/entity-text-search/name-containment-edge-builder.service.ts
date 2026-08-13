@@ -49,8 +49,29 @@ export class NameContainmentEdgeBuilderService extends DerivedIndexJob {
   /** Full replace: every active-food pair where base's folded name appears
    *  as whole word(s) inside variant's folded name. head_final = the base is
    *  the FINAL token(s) (the variant IS-A base); otherwise it merely
-   *  mentions it. Minimum 4 folded chars on the base — same floor the live
-   *  scan used ("sal" must not claim "salsa verde"). */
+   *  mentions it.
+   *
+   *  THE 4-CHARACTER FLOOR IS GONE (B-F6 red team A, executed 2026-08-13).
+   *  It was inherited from the live scan with the note '"sal" must not claim
+   *  "salsa verde"' — and the JOIN below already makes that impossible: it
+   *  pads BOTH sides with spaces and matches ' sal ' inside ' salsa verde ',
+   *  which is false. The floor was a length guard standing in front of a
+   *  word-boundary rule that had already won the argument, and it was not
+   *  free — it suppressed 856 REAL edges, all of them core vocabulary whose
+   *  whole problem is that the word is short:
+   *    pie 109 (103 head-final: 'apple pie' IS-A pie)  egg 100   tea 97
+   *    ice 97   bun 58   bbq 45   dip 30   fry 28   ham 27   dog 25
+   *    pho 15 ('beef pho' IS-A pho — the variant widening that made this
+   *            table exist, switched off for the dish the corpus is full of)
+   *    bao, blt, sub, mac, lox, dal, bap, uni, don ...
+   *  Every edge in the removed set was eyeballed base by base; the join's
+   *  token-boundary rule is doing the work the floor was credited with.
+   *
+   *  ONE ODDITY, STATED AND LEFT: the food entity literally named '2' picks
+   *  up 3 edges ('2 meat platter', 'duck for 2'). That is a corpus problem —
+   *  a numeral is not a dish — and the honest fix is upstream at whatever
+   *  minted it, not a length floor here that would take 856 real edges with
+   *  it. */
   protected async rebuildAll(): Promise<{ edges: number }> {
     const start = Date.now();
     const edges = await this.prisma.$transaction(
@@ -70,7 +91,6 @@ export class NameContainmentEdgeBuilderService extends DerivedIndexJob {
         WHERE b.type = 'food'::entity_type AND b.status = 'active'::entity_status
           AND v.type = 'food'::entity_type AND v.status = 'active'::entity_status
           AND b.identity_key IS NOT NULL AND v.identity_key IS NOT NULL
-          AND length(b.identity_key) >= 4
       `);
         return inserted;
       },
