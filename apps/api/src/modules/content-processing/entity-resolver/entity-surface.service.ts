@@ -2,7 +2,6 @@ import { Prisma } from '@prisma/client';
 import {
   canonicalFold,
   diacriticFold,
-  isAccented,
   isDisplayable,
   normalizeSurface,
 } from './entity-identity';
@@ -99,7 +98,66 @@ export interface SurfaceInput {
    * every other writer leaves it NULL, which reads as "never heard".
    */
   claimJudgeVersion?: number | null;
+  /**
+   * How this form came to exist — see {@link SurfaceOrigin}. Defaults to
+   * 'authored', which is the safe arm: an authored form banks at the language
+   * its writer claims.
+   */
+  surfaceOrigin?: SurfaceOrigin;
 }
+
+/**
+ * WHERE A FORM CAME FROM — the one thing about a surface that only its WRITER
+ * can know (2026-08-13, replacing an inference that ran backwards).
+ *
+ * 'authored'            — somebody really spells it this way: an LLM enumerating
+ *                         a language's words, a human, a user's typed query, a
+ *                         form copied verbatim off another row. Its `locale` is
+ *                         a CLAIM its writer made, and this door believes it.
+ * 'stripped-convenience'— the CODE mechanically produced this spelling from
+ *                         another form by removing its accents. Nobody spells
+ *                         it this way in any language, so it banks at 'und' —
+ *                         the universal bucket, reachable from every language's
+ *                         lookup chain and asserting nothing about any of them
+ *                         (the ruling in the schema and `localeLookupChain`,
+ *                         00fbb33cd). The declared locale is IGNORED, not
+ *                         defaulted: a synthesized respelling has no language
+ *                         to claim, so there is nothing for a caller to get
+ *                         right or wrong.
+ *
+ * WHY THIS IS DECLARED AND NOT DERIVED. The predicate that used to live here
+ * (`isRomanizationOfMarkedSibling`) asked the pair of rows: an accent-free form
+ * offered under a language, sitting beside an accented spelling of the same
+ * folded word on the same concept, was read as the romanization OF that
+ * spelling. The measurement that settled it (wave-2) checked all 16 rows the
+ * rule's own `is_default` exemption was protecting and found the rule pointed
+ * the WRONG WAY on every one: es `pudin`/`daiquiri`/`bisque`/`sake`/`shochu`,
+ * en `crepe`/`etouffee`/`cafe`/`banh mi`, vi `kunefe`/`tom yum` are the
+ * BORROWING language's own standard spelling. The sweep banks that plain label;
+ * the generator separately banks the accented source spelling as a recall row;
+ * the predicate then reads the label as a romanization of the recall row and
+ * strips the tag off the very word the language actually writes.
+ *
+ * The direction of provenance is simply NOT IN THE PAIR. `cafe`+`café` and
+ * `thit`+`thịt` are the same shape and opposite facts — English writes `cafe`,
+ * Vietnamese never writes `thit` — and no amount of looking at the two rows can
+ * tell them apart, because the difference is a fact about the language's
+ * orthography, not about the rows. Only the writer that produced the form knows
+ * whether it authored a spelling or stripped one, so the writer says so. Three
+ * live re-tags were reverted on exactly this evidence (coctel→es, jalapenos→en,
+ * cafe→en).
+ *
+ * NOTHING IN THE APP DECLARES 'stripped-convenience' TODAY, and that is the
+ * measured truth rather than an oversight: an exhaustive sweep of every
+ * `addSurfaces` caller, every raw `entity_surface` insert in src/, scripts/ and
+ * migrations, and every banking prompt found no writer that synthesizes a
+ * de-accented respelling — the vocabulary prompt explicitly forbids one ("a
+ * de-accented respelling is not another word and does not belong in the list").
+ * The arm exists because the door is where the question belongs: a writer that
+ * starts synthesizing forms has one honest thing to say and one place to say
+ * it, instead of a reader downstream guessing at direction again.
+ */
+export type SurfaceOrigin = 'authored' | 'stripped-convenience';
 
 export type SurfaceRole = 'display' | 'recall' | 'both';
 
@@ -202,56 +260,6 @@ export function surfaceClaimKey(form: string): string {
   return diacriticFold(form);
 }
 
-/**
- * THE ROMANIZATION RULE — a language tag is a CLAIM, and this is the one
- * claim nobody makes (2026-08-12).
- *
- * `locale='vi'` on a surface asserts: *somebody spells it this way, in
- * Vietnamese*. `locale='und'` is the universal bucket — the de-accented
- * convenience spelling a US keyboard produces, reachable from every language
- * and asserting nothing about any of them (the ruling written into the schema
- * and `localeLookupChain`, 00fbb33cd). A ROMANIZATION belongs in the second
- * bucket and was landing in the first: the vocabulary pass banked 'thit',
- * 'vit', 'buoi' as `vi`, next to the very rows they are the stripped spelling
- * OF.
- *
- * WHY IT COSTS SOMETHING RATHER THAN BEING A TIDINESS POINT. The exact-tier
- * admission rule (`admitsAtExactTier`) reads a language-tagged accent-free
- * form as a WORD THE USER SPELLED IN FULL — that is the whole
- * `bankedPlainForms` discriminator, the thing that stops 'cơm chay'
- * (vegetarian rice) matching 'cơm cháy' (scorched rice) through a shared
- * second token. Fed a romanization, the same rule concludes that a person who
- * typed 'vit' meant a complete vi word and refuses them 'vịt' (duck). The
- * discriminator is only as honest as the tags it reads.
- *
- * THE PREDICATE, in one sentence: **a form that carries no accent evidence,
- * offered under a language, whose own concept already spells that same folded
- * word WITH accents in that same language, is the romanization of that
- * spelling — not a second word.** Both halves are load-bearing:
- *  - no accent evidence (`!isAccented`) — an accented form is by definition
- *    somebody's spelling;
- *  - a MARKED SIBLING on the same concept in the same language — without one,
- *    a plain vi form is a genuine unaccented vi word ('banh mi' has a marked
- *    sibling; 'chay' does not, and must keep its tag or the discriminator it
- *    powers goes inert).
- *
- * Language-neutral and list-free, like every rule it is built from: it falls
- * out of `isAccented` + `canonicalFold` and knows nothing about Vietnamese.
- */
-export function isRomanizationOfMarkedSibling(
-  form: string,
-  /** Every form the SAME concept holds in the SAME language. */
-  siblingFormsInSameLanguage: Iterable<string>,
-): boolean {
-  if (isAccented(form)) return false;
-  const folded = canonicalFold(form);
-  if (!folded) return false;
-  for (const sibling of siblingFormsInSameLanguage) {
-    if (canonicalFold(sibling) === folded && isAccented(sibling)) return true;
-  }
-  return false;
-}
-
 export interface AddSurfacesOptions {
   /**
    * Forms to DEMOTE to 'deprecated' — the ontology rename's "drop the new
@@ -301,7 +309,12 @@ export async function addSurfaces(
   options: AddSurfacesOptions = {},
 ): Promise<{ blocked: string[] }> {
   const rows: Array<
-    Required<Omit<SurfaceInput, 'locale' | 'description'>> & {
+    // `surfaceOrigin` is SPENT above, not carried: it is a fact about how the
+    // caller made the string, and the only thing it decides — which locale the
+    // row lands at — is already decided by the time a row exists. Keeping it
+    // on the row would invite a second reader downstream to re-litigate the
+    // question the writer already answered.
+    Required<Omit<SurfaceInput, 'locale' | 'description' | 'surfaceOrigin'>> & {
       locale: string;
       description: string | null;
     }
@@ -342,7 +355,16 @@ export async function addSurfaces(
     // recall arm must not move when that happens. It is written as one
     // expression rather than a branch with two identical arms, because a
     // branch that cannot differ is a lie about what the code does today.
-    const locale = bankableLanguageTag(input.locale) ?? 'und';
+    //
+    // A 'stripped-convenience' form skips all of that: the code SYNTHESIZED
+    // the spelling by removing accents, so there is no language to base and
+    // no claim to honour — it banks at 'und' unconditionally. See
+    // {@link SurfaceOrigin} for why this is the writer's declaration and not
+    // something this door can work out from the rows.
+    const locale =
+      (input.surfaceOrigin ?? 'authored') === 'stripped-convenience'
+        ? 'und'
+        : (bankableLanguageTag(input.locale) ?? 'und');
     // '\0' as an ESCAPE, never a literal NUL byte in the source (2026-08-11).
     // A separator that cannot occur in a locale tag or a surface form is the
     // right choice — but typing the byte itself made this file BINARY to
@@ -368,74 +390,6 @@ export async function addSurfaces(
       promptVersion: input.promptVersion ?? 1,
       claimJudgeVersion: input.claimJudgeVersion ?? null,
     });
-  }
-
-  // THE ROMANIZATION INGRESS. Applied HERE, once, because this function is
-  // the ONE writer of entity_surface — the vocabulary sweep, the judge's
-  // grant path and every alias import all arrive through it, so a rule
-  // stated here is a rule they all obey and none of them can restate
-  // differently (the two-rules-that-disagree failure the admission rule
-  // itself was just rescued from). It runs BEFORE the collision guard on
-  // purpose: the guard's probe is language-blind, but a form's locale
-  // decides which row it lands on, and a claim must be adjudicated at the
-  // address it will actually occupy.
-  //
-  // A row ELECTED AS THE LOCALE'S DEFAULT LABEL is exempt. Re-tagging it to
-  // 'und' would leave that language with no default label at all — a
-  // silently unlabelled locale is a worse lie than an over-claimed tag, and
-  // choosing the language's label is the sweep's decision, not this rule's.
-  const plainOffers = rows.filter(
-    (row) => row.locale !== 'und' && !row.isDefault && !isAccented(row.form),
-  );
-  if (plainOffers.length > 0) {
-    const folds = Array.from(
-      new Set(
-        plainOffers.map((row) => canonicalFold(row.form)).filter(Boolean),
-      ),
-    );
-    const locales = Array.from(new Set(plainOffers.map((row) => row.locale)));
-    // The concept's OWN spellings in those languages. The batch's own rows
-    // count as siblings too: a sweep that offers 'thịt bò' and 'thit bo' in
-    // the same call must resolve them against each other, not against
-    // whatever happened to be committed first.
-    const banked = await tx.$queryRaw<Array<{ form: string; locale: string }>>`
-      SELECT form, LOWER(locale) AS locale
-        FROM entity_surface
-       WHERE entity_id = ${entityId}::uuid
-         AND form_folded = ANY(${folds}::text[])
-         AND LOWER(locale) = ANY(${locales}::text[])`;
-    const siblingsByLocale = new Map<string, string[]>();
-    for (const row of [...rows, ...banked]) {
-      if (row.locale === 'und') continue;
-      const held = siblingsByLocale.get(row.locale);
-      if (held) held.push(row.form);
-      else siblingsByLocale.set(row.locale, [row.form]);
-    }
-    for (const row of plainOffers) {
-      if (
-        isRomanizationOfMarkedSibling(
-          row.form,
-          siblingsByLocale.get(row.locale) ?? [],
-        )
-      ) {
-        row.locale = 'und';
-      }
-    }
-    // RE-DEDUPE. A re-tag can land two rows of this batch on the same
-    // (entity, locale, form) — and Postgres refuses an ON CONFLICT DO UPDATE
-    // that would touch one row twice ("cannot affect row a second time"),
-    // which would turn an honest tag into a failed write.
-    // The FIRST offer of a form survives, exactly as the build loop above
-    // decided — the caller's order is its ranking.
-    const kept = new Set<string>();
-    for (let i = 0; i < rows.length; ) {
-      const key = `${rows[i].locale}\0${rows[i].form}`;
-      if (kept.has(key)) rows.splice(i, 1);
-      else {
-        kept.add(key);
-        i += 1;
-      }
-    }
   }
 
   // P0-b COLLISION GUARD — inferred forms only (see INFERRED_SURFACE_SOURCES).
