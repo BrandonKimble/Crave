@@ -1,5 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
+import { identityScope } from '../../shared/locale';
 import {
   redirectJoinSql,
   resolvedSubjectSql,
@@ -386,15 +387,13 @@ export class SearchSiblingExpansionService {
               OR EXISTS (
                 SELECT 1 FROM entity_surface s
                  WHERE s.entity_id = i.entity_id
-                   AND s.status = 'active' AND s.locale = 'und'
-                   AND s.role <> 'display'
+                   AND ${identityScope('s')}
                    AND s.form_folded = b.identity_key
               )
               OR EXISTS (
                 SELECT 1 FROM entity_surface s
                  WHERE s.entity_id = b.entity_id
-                   AND s.status = 'active' AND s.locale = 'und'
-                   AND s.role <> 'display'
+                   AND ${identityScope('s')}
                    AND s.form_folded = i.identity_key
               )
             )

@@ -7,6 +7,7 @@ import { BadRequestException, Injectable } from '@nestjs/common';
 import { EntityType, Prisma } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { LoggerService } from '../../shared';
+import { identityScopeWhere } from '../../shared/locale';
 import { AliasManagementService } from '../content-processing/entity-resolver/alias-management.service';
 import { RestaurantCuisineExtractionQueueService } from '../restaurant-enrichment/restaurant-cuisine-extraction-queue.service';
 import { RestaurantLocationEnrichmentService } from '../restaurant-enrichment/restaurant-location-enrichment.service';
@@ -585,9 +586,7 @@ export class PollEntitySeedService {
             entitySurfaces: {
               some: {
                 formFolded: canonicalFold(name),
-                status: 'active',
-                locale: 'und',
-                role: { not: 'display' },
+                ...identityScopeWhere(),
               },
             },
           },

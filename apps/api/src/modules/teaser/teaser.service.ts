@@ -1,5 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
+import { identityScope } from '../../shared/locale';
 import { PrismaService } from '../../prisma/prisma.service';
 import { canonicalFold } from '../content-processing/entity-resolver/entity-identity';
 import { LoggerService } from '../../shared';
@@ -391,9 +392,7 @@ export class TeaserService {
           OR EXISTS (
             SELECT 1 FROM entity_surface s
              WHERE s.entity_id = e.entity_id
-               AND s.status = 'active'
-               AND s.locale = 'und'
-               AND s.role <> 'display'
+               AND ${identityScope('s')}
                AND s.form_folded = ANY(${foldedTerms})
           )
         )

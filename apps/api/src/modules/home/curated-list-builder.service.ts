@@ -24,6 +24,7 @@ import { isEnvFlagExplicitlyDisabled } from '../../shared/config/env-flag';
 import { Injectable } from '@nestjs/common';
 import { Cron, CronExpression } from '@nestjs/schedule';
 import { Prisma } from '@prisma/client';
+import { recallScope } from '../../shared/locale';
 import { parseOnboardingAnswers } from '@crave-search/shared';
 import { activeRestaurantEventCountSql } from '../content-processing/reddit-collector/extraction-scope.service';
 import { PrismaService } from '../../prisma/prisma.service';
@@ -917,9 +918,18 @@ export class CuratedListBuilderService {
     }
     // The recipe vocabulary is matched against an attribute's name AND its
     // banked recall surfaces ("outdoor seating" reaching a recipe that says
-    // "patio"). Surfaces come from entity_surface's und/active/non-display
-    // slice — the same set the retired core_entities.aliases[] projection
-    // carried, now read where it actually lives.
+    // "patio").
+    //
+    // SCOPE = recall in ENGLISH, through the locale read door. English is not
+    // a default here, it is the language of the thing being matched:
+    // CONTEXT_RECIPES.attributeNames is an authored English vocabulary
+    // ('date night', 'kid friendly', 'power lunch'), so the forms that can
+    // possibly match it are the attribute's English and universal ones.
+    // `recallScope('en')` is the chain ['en','und'] — it keeps every row the
+    // old hard-coded `locale = 'und'` read AND adds the 254 English recall
+    // surfaces that were banked and then never consulted. It does NOT admit
+    // the es/vi rows, which could only ever be noise against an English word
+    // list.
     const rows = await this.prisma.$queryRaw<
       Array<{ entity_id: string; name: string; forms: string[] | null }>
     >(Prisma.sql`
@@ -928,9 +938,7 @@ export class CuratedListBuilderService {
              (SELECT array_agg(s.form)
                 FROM entity_surface s
                WHERE s.entity_id = e.entity_id
-                 AND s.status = 'active'
-                 AND s.locale = 'und'
-                 AND s.role <> 'display') AS forms
+                 AND ${recallScope('en', 's')}) AS forms
         FROM core_entities e
        WHERE e.entity_id = ANY(${attrIds}::uuid[])
          AND e.type = 'restaurant_attribute'

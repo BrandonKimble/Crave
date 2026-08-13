@@ -1,5 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
+import { identityScope } from '../../shared/locale';
 import { DietaryConstraintRegistry } from './dietary-constraints';
 import { activeRestaurantEventExistsSql } from '../content-processing/reddit-collector/extraction-scope.service';
 import { EntityScope, FilterClause, QueryPlan } from './dto/search-query.dto';
@@ -1985,15 +1986,13 @@ location_aggregates AS (
           OR EXISTS (
             SELECT 1 FROM entity_surface s
              WHERE s.entity_id = f.entity_id
-               AND s.status = 'active' AND s.locale = 'und'
-               AND s.role <> 'display'
+               AND ${identityScope('s')}
                AND s.form_folded = i.identity_key
           )
           OR EXISTS (
             SELECT 1 FROM entity_surface s
              WHERE s.entity_id = i.entity_id
-               AND s.status = 'active' AND s.locale = 'und'
-               AND s.role <> 'display'
+               AND ${identityScope('s')}
                AND s.form_folded = f.identity_key
           )
         )

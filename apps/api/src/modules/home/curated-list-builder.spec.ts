@@ -230,8 +230,20 @@ function createHarness(options: {
         // The attribute name+surface read moved from entity.findMany to raw
         // SQL when core_entities.aliases[] was retired: the surfaces now come
         // from an entity_surface subselect. The fixture field keeps its name
-        // (`aliases`) and its meaning (the entity's und recall forms).
-        const ids = (values[0] ?? []) as string[];
+        // (`aliases`) and its meaning (the entity's recall forms).
+        //
+        // POSITION-FREE READ of the bound values, for the same reason the
+        // entity-resolution double states it: the surface scope is a COMPOSED
+        // fragment (`recallScope`) that binds its own locale chain, and the
+        // subselect it sits in is emitted BEFORE the id array. Reading
+        // `values[0]` silently took the chain (['en','und']) as the id list,
+        // every attribute filtered out, and two unrelated recipe laws went
+        // red with an empty array — a break a double should not be able to
+        // have. The ids are the LAST bound array.
+        const arrays = values.filter((value): value is string[] =>
+          Array.isArray(value),
+        );
+        const ids = arrays[arrays.length - 1] ?? [];
         return Promise.resolve(
           (options.attributeEntities ?? [])
             .filter((row) => ids.includes(row.entityId))

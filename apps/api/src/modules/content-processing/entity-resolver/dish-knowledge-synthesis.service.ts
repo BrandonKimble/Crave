@@ -3,6 +3,7 @@ import { addSurfaces } from './entity-surface.service';
 import { Injectable } from '@nestjs/common';
 import { Cron, CronExpression } from '@nestjs/schedule';
 import { EntityStatus, EntityType } from '@prisma/client';
+import { identityScope } from '../../../shared/locale';
 import { PrismaService } from '../../../prisma/prisma.service';
 import { LoggerService } from '../../../shared';
 import { LLMService } from '../../external-integrations/llm/llm.service';
@@ -296,9 +297,7 @@ export class DishKnowledgeSynthesisService {
            OR EXISTS (
              SELECT 1 FROM entity_surface s
               WHERE s.entity_id = e.entity_id
-                AND s.status = 'active'
-                AND s.locale = 'und'
-                AND s.role <> 'display'
+                AND ${identityScope('s')}
                 AND s.form_folded = ${folded}
            )
          )

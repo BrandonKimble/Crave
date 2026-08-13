@@ -1,5 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
+import { recallScope } from '../../shared/locale';
 import { PrismaService } from '../../prisma/prisma.service';
 import { LoggerService } from '../../shared';
 import type { SignalKind } from './signals.service';
@@ -739,18 +740,26 @@ export class SignalDemandReadService {
       SELECT
         e.entity_id AS restaurant_id,
         e.name,
-        -- The entity's RECALL SURFACES (und/active/non-display), read from
-        -- entity_surface rather than the retired core_entities.aliases[]
-        -- projection. Purely a client-side placeholder-filter input here:
-        -- admission above is the NAME prefix, so this widens what the
-        -- suggestion row can be typed-through, nothing more.
+        -- The entity's RECALL SURFACES, read through the locale read door
+        -- rather than a hand-written predicate. Purely a client-side
+        -- placeholder-filter input here: admission above is the NAME prefix,
+        -- so this widens what the suggestion row can be typed-through.
+        --
+        -- SCOPE = recall, and the locale is NULL because this lane genuinely
+        -- has none: viewedRestaurantNameMatches(userId, prefix, limit) is
+        -- called without one. recallScope(null) is the chain ['und'], so
+        -- this is byte-identical to the predicate it replaces — the door is
+        -- adopted without INVENTING a locale the caller never had. Nothing is
+        -- lost today either way: restaurant recall surfaces are 100% 'und' in
+        -- the corpus (16,132 rows, zero in any language), because a
+        -- restaurant name is a proper noun nobody banks a translation of.
+        -- Threading the request locale down from autocomplete is the honest
+        -- fix IF a localized restaurant alias ever exists; it does not yet.
         COALESCE((
           SELECT array_agg(sf.form)
             FROM entity_surface sf
            WHERE sf.entity_id = e.entity_id
-             AND sf.status = 'active'
-             AND sf.locale = 'und'
-             AND sf.role <> 'display'
+             AND ${recallScope(null, 'sf')}
         ), ARRAY[]::varchar[]) AS aliases,
         MAX(s.occurred_at) AS last_viewed_at
       FROM signals s

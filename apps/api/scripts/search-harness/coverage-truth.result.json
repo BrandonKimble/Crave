@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-08-13T01:46:23.554Z",
+  "generatedAt": "2026-08-13T05:31:58.729Z",
   "pageSize": 25,
   "maxPages": 60,
   "mutation": null,
@@ -12,8 +12,8 @@
   "corpus": {
     "mustAppear": 2303,
     "missing": 766,
-    "served": 2891,
-    "leaks": 363,
+    "served": 2897,
+    "leaks": 369,
     "judgedRejectsServed": 3,
     "coverage": 0.667390360399479
   },
@@ -30,13 +30,13 @@
       "dietaryWallActive": false,
       "served": {
         "expansionFired": false,
-        "pages": 18,
+        "pages": 19,
         "exhausted": true,
-        "dishes": 419,
-        "restaurants": 306,
+        "dishes": 426,
+        "restaurants": 309,
         "reportedTotals": {
-          "dishes": 419,
-          "restaurants": 306
+          "dishes": 426,
+          "restaurants": 309
         }
       },
       "truth": {
@@ -48,9 +48,48 @@
       "missing": 0,
       "missReasons": {},
       "missSamples": [],
-      "leaks": 0,
-      "leakReasons": {},
-      "leakSamples": [],
+      "leaks": 7,
+      "leakReasons": {
+        "UNRELATED-CONCEPT (no arm explains it)": 6,
+        "lexical-expansion arm (name look-alike)": 1
+      },
+      "leakSamples": [
+        {
+          "connectionId": "cdbaff04-91d8-422d-bc06-c22caa3c0b48",
+          "food": "pad ka prow",
+          "reason": "UNRELATED-CONCEPT (no arm explains it)"
+        },
+        {
+          "connectionId": "04b4cc66-b7c8-4bb8-b04e-45f59b75c8d0",
+          "food": "aguachile",
+          "reason": "lexical-expansion arm (name look-alike)"
+        },
+        {
+          "connectionId": "b550a48b-731a-4e2b-b6a1-73379a3acc70",
+          "food": "papaya salad",
+          "reason": "UNRELATED-CONCEPT (no arm explains it)"
+        },
+        {
+          "connectionId": "2efeb1a3-6c10-4b96-8daf-ac970ea562c6",
+          "food": "papaya salad",
+          "reason": "UNRELATED-CONCEPT (no arm explains it)"
+        },
+        {
+          "connectionId": "ba498208-e713-4510-a66e-f09a82ca6256",
+          "food": "roja salsa",
+          "reason": "UNRELATED-CONCEPT (no arm explains it)"
+        },
+        {
+          "connectionId": "6e4badc7-1645-48af-8267-b6d86dd3e625",
+          "food": "papaya salad",
+          "reason": "UNRELATED-CONCEPT (no arm explains it)"
+        },
+        {
+          "connectionId": "d0cc6b6b-4f61-426e-b436-742054e0671f",
+          "food": "papaya salad",
+          "reason": "UNRELATED-CONCEPT (no arm explains it)"
+        }
+      ],
       "judgedRejectsServed": 0,
       "judgedRejectSamples": [],
       "expectEmpty": false,
@@ -1433,11 +1472,11 @@
         "expansionFired": true,
         "pages": 3,
         "exhausted": true,
-        "dishes": 49,
-        "restaurants": 48,
+        "dishes": 48,
+        "restaurants": 47,
         "reportedTotals": {
-          "dishes": 49,
-          "restaurants": 48
+          "dishes": 48,
+          "restaurants": 47
         }
       },
       "truth": {
@@ -1449,9 +1488,9 @@
       "missing": 0,
       "missReasons": {},
       "missSamples": [],
-      "leaks": 37,
+      "leaks": 36,
       "leakReasons": {
-        "plan-expansion arm (lexical/attribute widening past the graph)": 36,
+        "plan-expansion arm (lexical/attribute widening past the graph)": 35,
         "lexical-expansion arm (name look-alike)": 1
       },
       "leakSamples": [
