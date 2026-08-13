@@ -393,8 +393,16 @@ SITE INSTEAD OF ONCE IN THE DATA MODEL. Two foundations wrong:
   today) but before vi/zh corpus doubles.
 Sound: locale model (adoption residues in flight), admission ladder
 (forced by the owner's own rulings; gate-predicate duplication noted),
-guard taxonomy (3 kinds; 12 root scanners unregistered — adoption in
-flight). Clusters: version-stamp-per-store (H5 root); fold-version stamp
+guard taxonomy — **H4 ADOPTION LANDED 2026-08-12** (83bb224cf scanRepo +
+5 ports, a3fa6a2ab fixture fix, 93cc3b283 seven registry entries; registry
+25→32, proofs 56, each proven RED; three-kinds doctrine written in the
+registry doc). scanRepo found a real blind spot in ALL 11 hand-rolled
+enumerations: `git ls-files` without --others = untracked-but-shipping
+files invisible to every scanner (now covered, 2 call sites opt out with
+stated reasons). Residuals: coverage-staleness RED at HEAD needs a human
+IDEAL-VERIFIED ruling on query-prompt.md (⭐04's file — notified);
+invariants.ts restore path can clobber a concurrent lane's edit
+(extension sent to the in-flight harness agent, with C6b). Clusters: version-stamp-per-store (H5 root); fold-version stamp
 incomplete + schema.prisma absence (flagged ⭐04); display path
 un-rederived (in flight).
 
