@@ -277,8 +277,26 @@ describe('concept display is routed through ONE function (N10 lockdown)', () => 
     );
     expect(service).toContain('displayLabel(');
     expect(service).toContain('entitySurface.findMany');
-    // The DISPLAY predicate: recall-only surfaces are never rendered.
-    expect(service).toContain("role: { not: 'recall' }");
+
+    // The DISPLAY predicate: recall-only surfaces are never rendered, and
+    // labels are scoped by the ONE locale chain.
+    //
+    // The gate follows the MECHANISM, not a spelling. This used to assert the
+    // literal `role: { not: 'recall' }` in this service — which passed for as
+    // long as the predicate was hand-written here, i.e. for exactly as long
+    // as the defect it was meant to prevent (a second locale semantics living
+    // in this file) was present. The predicate now lives in the locale read
+    // door, so the gate asserts BOTH halves of the real invariant: this
+    // service reads through the door, and the door still excludes recall
+    // rows. Break either half and this goes red; a hand-rolled predicate
+    // reappearing here fails the door assertion.
+    expect(service).toContain('displayScopeWhere(locale)');
+    const door = readFileSync(
+      join(SRC, 'shared/locale/surface-scope.ts'),
+      'utf-8',
+    );
+    expect(door).toContain("role: { not: 'recall' }");
+    expect(door).toContain('localeLookupChain');
 
     const otherReaders = walk(SRC)
       .filter((file) => !file.includes('entity-display'))

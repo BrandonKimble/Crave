@@ -2,8 +2,9 @@ import { Injectable, Logger } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import {
   SUPPORTED_LOCALES,
-  lookupSupported,
-  primaryLanguageSubtag,
+  displayScopeWhere,
+  localeChainRank,
+  localeLookupChain,
 } from '../../shared/locale';
 import type {
   DisplayableEntity,
@@ -71,18 +72,27 @@ export class EntityDisplayService {
     }
     const ids = [...new Set(entityIds)];
     try {
+      // THE DISPLAY SCOPE, from the locale read door — not a locale
+      // semantics of this file's own.
+      //
+      // What was here before was a PREFIX BAND (`locale startsWith 'es'`)
+      // plus a second RFC-4647 Lookup over whatever locales came back. It was
+      // a third locale semantics in a codebase that has exactly one, and its
+      // defect was structural rather than incidental: NO PREFIX BAND CAN EVER
+      // CONTAIN 'und'. A label banked universal — the honest tag for a form
+      // nobody can assign a language to — was unreachable from every request
+      // that could exist, so writing one was writing into a void.
+      //
+      // `displayScopeWhere` is `role <> 'recall'` (a recall row is a corpus
+      // surface nobody should be shown — "ctm" for tikka masala) over the ONE
+      // chain: 'es' -> ['es','und'], 'es-MX' -> ['es-mx','es-419','es','und'].
+      // Still one round trip, still every regional row in it, and now the
+      // universal row is the last resort instead of no resort.
+      const chain = localeLookupChain(locale);
       const rows = await this.prisma.entitySurface.findMany({
         where: {
           entityId: { in: ids },
-          status: 'active',
-          // THE DISPLAY PREDICATE (surface merge, §11-2). One table holds
-          // display and recall forms now; a role='recall' row is a corpus
-          // surface nobody should ever be shown ("ctm" for tikka masala).
-          role: { not: 'recall' },
-          // Prefix band: 'es' pulls 'es', 'es-MX', 'es-419' in one query, and
-          // the per-entity fallback below picks the best of them. Two round
-          // trips to discover a regional row would be one too many.
-          locale: { startsWith: this.primarySubtag(locale) },
+          ...displayScopeWhere(locale),
         },
         select: {
           entityId: true,
@@ -106,22 +116,25 @@ export class EntityDisplayService {
       }
       const index = new Map<string, string>();
       for (const [entityId, candidates] of byEntity) {
-        const available = [...new Set(candidates.map((row) => row.locale))];
-        const matched = lookupSupported(locale, available);
-        if (!matched) {
-          continue;
-        }
-        // Ranked within the matched locale: is_default wins, then rank, then
-        // the form itself so the choice is deterministic across requests (a
-        // display string that flickers between reads is a bug report).
-        const best = candidates
-          .filter((row) => row.locale === matched)
-          .sort(
-            (a, b) =>
-              Number(b.isDefault) - Number(a.isDefault) ||
-              a.rank - b.rank ||
-              a.form.localeCompare(b.form),
-          )[0];
+        // ONE sort, three keys, in the order the question asks them:
+        //   1. CHAIN RANK — how specific this row's locale is for this
+        //      request. This is what the second Lookup used to compute, now
+        //      read off the chain that already selected the rows. It also
+        //      gives 'und' a POSITION (last) rather than no position: a
+        //      universal label loses to any real language match and wins over
+        //      nothing at all.
+        //   2. is_default, then 3. rank — the ranking WITHIN one locale.
+        // The form itself is the final tiebreak so the choice is
+        // deterministic across requests (a display string that flickers
+        // between reads is a bug report).
+        const best = [...candidates].sort(
+          (a, b) =>
+            localeChainRank(chain, a.locale) -
+              localeChainRank(chain, b.locale) ||
+            Number(b.isDefault) - Number(a.isDefault) ||
+            a.rank - b.rank ||
+            a.form.localeCompare(b.form),
+        )[0];
         if (best) {
           index.set(entityId, best.form);
         }
@@ -224,10 +237,6 @@ export class EntityDisplayService {
   // one function — this one, deleted. English is a locale.
 
   /** The locale module owns this rule — see `primaryLanguageSubtag`. */
-  private primarySubtag(locale: string): string {
-    return primaryLanguageSubtag(locale);
-  }
-
   /** The active locale set, for the sweep and the seeder. */
   static activeLocales(): readonly string[] {
     return SUPPORTED_LOCALES;
