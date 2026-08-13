@@ -268,7 +268,7 @@ export const COLLECTION_RESPONSE_JSON_SCHEMA = {
           ),
           restaurant_attributes: withDescription(
             { ...NULLABLE_STRING_ARRAY_SCHEMA },
-            'Restaurant-scoped attributes: ambiance, features, service model, cuisine when applied to restaurant',
+            'Restaurant-scoped attributes stated by THIS source (ambiance, features, service model, price) plus cuisine inferred from this source dish name; never from the ask, a parent comment, or world knowledge of the venue',
           ),
           food: withDescription(
             { ...NULLABLE_STRING_SCHEMA },
@@ -276,7 +276,7 @@ export const COLLECTION_RESPONSE_JSON_SCHEMA = {
           ),
           food_categories: withDescription(
             { ...NULLABLE_STRING_ARRAY_SCHEMA },
-            'Hierarchical decomposition: parent categories, ingredient categories, related food terms',
+            'Broader orderable dish classes the food rolls up into (what arrives, most specific first); NEVER a cuisine (chinese, italian), meal period, or delivery wrapper - cuisines belong in the attribute arrays',
           ),
           ingredients: withDescription(
             { ...NULLABLE_STRING_ARRAY_SCHEMA },

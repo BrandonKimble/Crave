@@ -541,8 +541,17 @@ Build the list:
    if removing the time-word leaves a wrapper (`special`, `menu`, `deal`),
    there was never a dish.
 3. **Add 1–3 parent classes** the dish clearly belongs to, even when unstated —
-   food nouns only (dessert, pastry, coffee, tea, sandwich, soup, salad, pizza,
-   taco, burger, noodle, dumpling). A printed menu section is a category only
+   **dish shapes that each pass the ORDER TEST** (dessert, pastry, coffee, tea,
+   sandwich, soup, salad, pizza, taco, burger, noodle, dumpling). A category
+   says WHAT ARRIVES, never where it is from: **a cuisine is NEVER a parent
+   class.** The pull is strongest exactly where the dish is most
+   tradition-bound — the salient parent of "mapo tofu" in your head is
+   "chinese food", and it is wrong here. Say "I'll have the \_\_\_" of every
+   entry before it lands: "taco", "soup", "dessert" order something;
+   "chinese", "italian", "japanese" name a tradition, an axis whose home is
+   the attribute sides (D.4) — "mapo tofu" → `["mapo tofu", "tofu"]`, with
+   `chinese` in `food_attributes`/`restaurant_attributes` and never in
+   `food_categories`. A printed menu section is a category only
    when the heading predicts the food: "Desserts", "Sides", "Tacos" do;
    "Happy Hour", "Chef's Tasting" do not.
    - **Run the ORDER TEST on the PARTS of the dish name, not just the whole.**
@@ -587,6 +596,16 @@ expected output for most mentions.
 
 Only now, with the order-name settled, look at what remains. Every leftover
 modifier must clear two bars to become an attribute.
+
+**Attributes are PREDICATES, and predicates come only from THIS source's own
+words.** Surrounding context — the ask, parent comments, siblings — resolves
+the SUBJECTS of a claim (which place, which dish; Steps B and E); it never
+supplies what is CLAIMED about them. Before any word enters an attribute
+array, point to the words of this source that state it — or, for a cuisine
+alone, to the dish name this source composed (D.4). The ask's words, a
+parent's words, the venue's own name, and your knowledge of the venue are
+not this source's words. **An empty attribute array is the normal output for
+a bare-name pick.**
 
 ### D.1 Does it describe, or does it judge?
 
@@ -680,15 +699,45 @@ Scope follows **what the property describes**, not where the word sits.
   service model ("counter service", "fine dining"), operational ("BYOB",
   "takeout", "reservations required"), group fit ("family-friendly"), price and
   value ("cheap", "good value", "expensive"), accessibility. **Price talk about
-  a specific dish is still a place-level signal.**
-- **A CUISINE ATTACHES ON BOTH SIDES, ALWAYS** — it is a property of the dish
-  AND of the place, never either/or. **Infer it from the dish's identity even
-  when unstated**: "chicken tikka masala" → `indian` in `food_attributes` on
+  a specific dish is still a place-level signal.** A venue TYPE ("bakery",
+  "food truck", "sushi bar", "cocktail bar") is a place property ONLY when
+  this source's own text calls the place that — never because the ask did,
+  and never because the dish implies it (a cake claim does not make the
+  venue a `bakery`).
+- **A CUISINE ATTACHES ON BOTH SIDES, ALWAYS — and its ONLY inference base is
+  the dish THIS source composed.** A cuisine is a property of the dish AND of
+  the place, never either/or. **Infer it from the dish's identity even when
+  unstated**: "chicken tikka masala" → `indian` in `food_attributes` on
   that dish AND in `restaurant_attributes`. This holds when the dish's cuisine
   differs from the venue's: tacos at a Korean spot give the dish `mexican` and
   add `mexican` to the restaurant's attributes **in addition to** `korean`.
   Use ONE canonical spelling per cuisine — `mexican`, never "mex",
   "mexican food", or "tex-mex-ish".
+
+  That dish-name inference is the SINGLE licensed inference in this step, it
+  runs on the dish's name **as this source said it** — nothing else — and it
+  yields a CUISINE only, never a venue type: "funfetti cake" licenses no
+  `bakery`, "sushi" licenses `japanese`, never `sushi bar`. The
+  thread may tell you WHO is being discussed (Step B); only this source's own
+  words tell you WHAT is claimed about them. **When this source composed no
+  dish, there is nothing to infer from**: a restaurant-only mention carries a
+  cuisine (or any attribute) only when this source's own text states one.
+  These are NOT inference bases, ever:
+  - **Your world knowledge of the venue.** A bare list — "Momoya soho, La
+    dong, shuka" — carries NO cuisines, however well you recognize the
+    restaurants. The same off-limits rule as B.3's names: emission records
+    what was OBSERVED.
+  - **The venue's own name.** "1618 Asian Fusion" states no cuisine claim,
+    just as "Birria-Landia" names no birria dish (C.1).
+  - **The ASK.** Its cuisine, price, and venue-type words ("Mexican
+    restaurant vibe", "cheap", "bakeries") describe what the ASKER wants. A
+    bare-name pick answers the ask without asserting its constraints — the
+    pick says "go here", not "this place is mexican/cheap/a bakery".
+  - **A parent or sibling comment.** "ilili is fire" under a parent praising
+    ilili's "beautiful Mediterranean mezzes" inherits the REFERENT ilili and
+    nothing more — never the parent's `mediterranean`, dishes, or verdicts.
+    Those are the parent source's claims and emit from the parent's id only.
+
 - **DIETARY LIFESTYLE CLAIMS ARE NEVER DROPPED.** Whenever a source asserts
   vegan / vegetarian / gluten free / halal / kosher about a dish or venue —
   including softer phrasings ("celiac-friendly", "plant-based", "GF options") —
@@ -711,10 +760,13 @@ Scope follows **what the property describes**, not where the word sits.
   phrasing when a standard one exists.
 - Attach an attribute **only to the mention whose text supports it.** An
   attribute stated for one dish or one restaurant never attaches to another.
-- **Final gate**: before emitting ANY term, re-run D.1 and D.2. If it judges
-  quality, fails the STANDALONE TEST, or is a bare ingredient or filler, drop
-  it. **It is correct to emit an empty attribute array for a glowing comment
-  whose only modifiers were praise.**
+- **Final gate**: before emitting ANY term, re-run D.1 and D.2, then point to
+  its source: the words of THIS source that state it, or the dish name that
+  licenses a cuisine. A term whose only support is the ask's wording, a
+  parent's wording, or your own knowledge of the venue does not pass. If it
+  judges quality, fails the STANDALONE TEST, is a bare ingredient or filler,
+  or has no in-source support, drop it. **It is correct to emit an empty
+  attribute array for a glowing comment whose only modifiers were praise.**
 
 ---
 
@@ -759,11 +811,15 @@ other misses:
   PREDICTION TEST (they predict no food at all) → inherit NOTHING.
 - "best Indian around?", "where for comfort food?" → `indian`/`comfort food`
   PASS prediction (they do predict a kind of food) but FAIL the ORDER TEST —
-  a cuisine or style is not a thing you order — so they inherit NOTHING as
-  food; they ride the attribute side per Step D.
+  a cuisine or style is not a thing you order — so they inherit NOTHING at
+  all: not as food, and not as attributes either. Inheritance fills the
+  SUBJECT slots of a claim (which place, which dish — "best burger" does
+  hand its replies `burger`); it never supplies PREDICATES. The ask's
+  cuisine, style, price, and venue-type words are the ASKER's; Step D
+  attaches only what THIS reply's own text states, so a bare-name reply to
+  a cuisine or style ask is a restaurant-only mention with EMPTY attributes.
   A reply that inherits nothing is a restaurant-only mention. **The ask itself
-  never emits.** Cuisines and dietary flags are attributes and never enter
-  `food_categories`.
+  never emits.** Cuisines and dietary flags never enter `food_categories`.
 
 Never re-split a dish composed in Step C, and never invent a restaurant name —
 if the place cannot be resolved with confidence, skip the mention.

@@ -429,7 +429,7 @@
   },
   {
     "id": "D15-cuisine-ask-reuse",
-    "why": "Prompt red team 2026-08-10: the D13 prediction-test gate is INSUFFICIENT for cuisine asks — 'indian' PASSES prediction (it predicts a kind of food) but fails the order test. The old prompt had a dedicated 5.4 guard the rewrite lost. Ask-reuse now requires BOTH tests.",
+    "why": "Prompt red team 2026-08-10: 'indian' PASSES prediction but fails the order test — never inherited as food. RE-LITIGATED 2026-08-12 (remaining-classes drain): the old expectation ALSO required attributes:['indian'] per the 'rides the attribute side' doctrine; that is the ask-borrowing noise class (43 docs in the 330-doc blind audit — 'cheap'/'irish'/'mexican' read off the ask). New doctrine: context fills subject slots only; predicates come from this source's own words. 'Ravi Kabab, hands down' states no cuisine — no attribute.",
     "posts": [
       {
         "id": "SRC060",
@@ -447,7 +447,7 @@
     "expect": {
       "restaurants": ["ravi kabab"],
       "notFoods": ["indian"],
-      "attributes": ["indian"]
+      "notAttributes": ["indian"]
     }
   },
   {
@@ -1275,6 +1275,297 @@
     "expect": {
       "restaurants": ["cuantos tacos"],
       "foods": ["suadero taco"]
+    }
+  },
+  {
+    "id": "G59-borrow-parent-identity-only",
+    "why": "Remaining-classes drain (real doc fb729751): thread inheritance carries IDENTITY only. \"ilili is fire. great choice.\" adopts the parent referent ilili but must NOT borrow the parent's \"beautiful Mediterranean mezzes\" — mediterranean is the PARENT source's claim (keep side: it emits from SRC005).",
+    "posts": [
+      {
+        "id": "SRC001",
+        "title": "Weirdly specific—NoMad-ish takeout that is still good cold after a party?",
+        "body": "Bear with me! I’m an out of towner who comes in every December for a work holiday party in NoMad. It’s always on a Thursday and because I’m involved in setup I can’t have a “real” sit down dinner before the party, so the past couple years I’ve gone to Stretch Pizza on Park Ave for lunch then taken half the pizza back to my hotel (which has a mini fridge but NO microwave) to eat cold pizza when I get back at 2am after the party and am starving and need to soak up the booze in my body 😂\n\nWell today I just saw the news that Stretch is closing at the end of July!! I am really bummed out. It was so cozy there and I really enjoyed the pizza both hot and cold. Do yall have recommendations for places to fill the role for me that Stretch is vacating in that area? \n\nThere is a LOT to do the day of the party so I am mostly limited to places I can quickly walk near NoMad. Because I’m so limited in the time I am there, it would be nice if it wasn’t just a super greasy $2 pizza joint or a convenience store sandwich lol. Doesn’t even have to be pizza at all! Just anything that’s still good as cold leftovers and involves some form of carb that won’t be an hour or more long meal time out of a busy day. I find that a lot of places in this neighborhood are closed on Thursday nights by the time I get out of the party (and tbh, I’m too buzzed and tired to sit down somewhere even if something was open). \n\nI don’t get to travel much so it is nice when I can make the most out of my NYC trip every year and get to enjoy fun restaurants and cafes instead of just national chain crap.",
+        "extract_from_post": true,
+        "comments": [
+          {
+            "id": "SRC005",
+            "body": "Hit up Eataly for literally any Italian prepared food. Or Ilili for beautiful Mediterranean mezzes and dips. There a bunch of take out sushi places: Kazunori or Bondi, those are great cold/room temp",
+            "parent_id": "SRC001"
+          },
+          {
+            "id": "SRC006",
+            "body": "I have an Eataly where I live but Ilili sounds interesting and I am def bookmarking! Thank you!",
+            "parent_id": "SRC005"
+          },
+          {
+            "id": "SRC007",
+            "body": "ilili is fire. great choice.",
+            "parent_id": "SRC006"
+          }
+        ]
+      }
+    ],
+    "expect": {
+      "perSource": [
+        {
+          "source": "SRC007",
+          "restaurants": ["ilili"],
+          "somePraise": true,
+          "notAttributes": ["mediterranean", "lebanese", "mezze"]
+        },
+        {
+          "source": "SRC005",
+          "restaurants": ["ilili"],
+          "attributes": ["mediterranean"]
+        }
+      ]
+    }
+  },
+  {
+    "id": "G60-borrow-ask-cuisine",
+    "why": "Real doc 2d82c2c9: a bare-name pick (\"Chavelas in crown heights will do it\") answering \"Urgently Need this Mexican Restaurant Vibe\" asserts GO HERE, not \"this place is mexican\" — the ask's cuisine never rides onto the reply's attributes.",
+    "posts": [
+      {
+        "id": "SRC001",
+        "title": "Urgently Need this Mexican Restaurant Vibe!!!!!!!!!!!",
+        "body": "I’m looking for a VERY SPECIFIC type of Mexican restaurant that’s common in suburban west coast towns but which I’ve never encountered in NYC.\n\nIt needs:  \n\\- Complimentary chips and salsa on the table  \n\\- Margaritas on the menu  \nMOST IMPORTANT!!!!!  \n\\- When you order a meal, it comes with on a huge platter of rice and beans!!!!!!!\n\nI will travel to any borough for this!!!!",
+        "extract_from_post": true,
+        "comments": [
+          {
+            "id": "SRC237",
+            "body": "Chavelas in crown heights will do it ",
+            "parent_id": "SRC001"
+          }
+        ]
+      }
+    ],
+    "expect": {
+      "perSource": [
+        {
+          "source": "SRC237",
+          "restaurants": ["chavelas"],
+          "somePraise": true,
+          "notAttributes": ["mexican"]
+        }
+      ]
+    }
+  },
+  {
+    "id": "G61-borrow-world-knowledge",
+    "why": "Real doc 8cc8d2d3: bare 3-name list \"Momoya soho, La dong, shuka\" — the writer stated NO cuisines; japanese/sushi/middle eastern are world knowledge of the venues, off-limits like B.3 names. Keep side: all three emit as picks (momoya loses the \"soho\" suffix).",
+    "posts": [
+      {
+        "id": "SRC001",
+        "title": "What are your top 3 most frequented restaurants in NYC that are not in your neighborhood?",
+        "body": "I am just wondering what are the restaurants that you go to repetitively that require effort on your part and aren't just \"this is good but it's on my way home from work so I eat there once a week.\" If you are inclined, add your usual order as well!",
+        "extract_from_post": true,
+        "comments": [
+          {
+            "id": "SRC077",
+            "body": "Momoya soho, La dong, shuka",
+            "parent_id": "SRC001"
+          }
+        ]
+      }
+    ],
+    "expect": {
+      "restaurants": ["momoya", "la dong", "shuka"],
+      "somePraise": true,
+      "notAttributes": ["japanese", "sushi", "middle eastern", "mediterranean"]
+    }
+  },
+  {
+    "id": "G62-borrow-ask-venue-type",
+    "why": "Real doc 21746933: conditional rec of the funfetti cake at Milk Bar. Pins the sibling-borrow reject: 'moist' is a CHILD comment's question, never this source's claim. RULING 2026-08-12: 'bakery' was originally pinned too (the ask's word), but a reply answering 'what bakeries/cakes' ENTAILS its pick is a bakery — a defensible reading the fleet consistently takes at LOW thinking (survived 4 independent prompt/schema counters); per the defensible-ambiguity standard it is not pinned. Do not re-add 'bakery' without a fleet capable of holding it.",
+    "posts": [
+      {
+        "id": "SRC001",
+        "title": "What are some bakeries/cakes that you would describe as \"too sweet\"?",
+        "body": "I see so many bakeries and reviews for cakes where part of the praise is that the cake \"wasn't too sweet\" which kinda breaks my heart because I am a person with a monster sweet tooth. I eat honey out of the jar sometimes. I add lots of sugar to tomato sauce....you get the idea. I'm addicted to sugar. \n\nMy birthday is coming up and I'm looking for a cake that will knock my socks off in sweetness. Preferably one I could customize. Either in Brooklyn or Manhattan. I love chocolate (milk, not dark), banana flavors, any kind of cream, etc. \n\nFlavors I dont like is coconut and anything bitter. Very open to suggestions!\n\nThere is no such thing as too sweet for me. ",
+        "extract_from_post": true,
+        "comments": [
+          {
+            "id": "SRC002",
+            "body": "Milk bar is way too sweet",
+            "parent_id": "SRC001"
+          },
+          {
+            "id": "SRC003",
+            "body": "Truly. If nothing is ever sweet enough for you, you’ll probably enjoy the funfetti cake from Milk Bar.",
+            "parent_id": "SRC002"
+          },
+          {
+            "id": "SRC004",
+            "body": "Is it moist?",
+            "parent_id": "SRC003"
+          }
+        ]
+      }
+    ],
+    "expect": {
+      "perSource": [
+        {
+          "source": "SRC003",
+          "restaurants": ["milk bar"],
+          "foods": ["funfetti cake"],
+          "notAttributes": ["moist"]
+        }
+      ]
+    }
+  },
+  {
+    "id": "G63-cuisine-not-category",
+    "why": "Real doc 8b3a5a32 (NYC trip report): categories say WHAT ARRIVES, cuisine says WHERE FROM. mapo tofu keeps dish-shaped categories; chinese/italian land on the attribute sides (keep) and never in food_categories (reject).",
+    "posts": [
+      {
+        "id": "SRC001",
+        "title": "Following up - my 2 nights in NYC",
+        "body": "My girlfriend and I made it to our reservations and tried some delicious food.\n\nFirst stop was Szechuan Mountain House - our top spot of our two night stay. The MaPo Tofu was the most incredible dish over the course of our visit. In all we ordered the Swimg Pork Belly, Mapo Tofu and Yibin Style Ran Noodles. Amazing flavour and a manageable heat level from the tofu dish 9.8 / 10 in our book. Didn't expect the noodles or the pork belly to be served cold - but both were quite nice. Noodles were 9.3, and we thought the pork belly was a resounding 7.0.\n\nNext stop was Mom's just off of times Square. Breakfast was HEAVY, but it fueled us up for our ~20,000 steps on Saturday. Chicken and bacon waffles were great (I rated it 8.5) and she enjoyed the mac and cheese pancakes (gave it a solid 8.0) the breakfast cocktails were both nice.\n\nVirgil's was our stop for lunch. Not fantastic but could have been worse. Sweet Chili smoked chicken wings were the best thing of the afternoon there earning a 7.2. She ordered the Big Boss Bird sandwich and gave it a 5.0 - just an adequate chicken sandwich. I tried a daily special, the Texas Dip Sandwich was brisket and cheese with coleslaw and Au Jus to dip, it was okay, I gave it a 6.2. Nothing spectacular but not bad. \n\nBad Roman was for dinner. Atmosphere was really quite nice, I can see what makes it an influencer favorite. The Spicy Gem Cesar was solid enough earning a 7.9 from us. My main was an order of the porchetta ribs (7.3) and Spicy Brussel Sprouts (those were my most liked item at a 8.4). She wasnt astounded by the short rib pappardelle and gave it a 5.5 (the pasta was clumping together and that ruined it for her. \n\nThanks for all your feedback on my previous post. We had a lovely time in the city - and now we know that if we do return, Tofu is on the menu. Both of us can't recommend SMH enough. Thank you New York for showing us a good time!",
+        "extract_from_post": true,
+        "comments": []
+      }
+    ],
+    "expect": {
+      "restaurants": ["szechuan mountain house"],
+      "foods": ["mapo tofu"],
+      "notFoods": ["chinese", "italian"],
+      "attributes": ["chinese"]
+    }
+  },
+  {
+    "id": "G64-referent-default-noname",
+    "why": "Real doc ad9e75ec: a reply with NO name and no pronoun (\"Build your own... you won't leave disappointed\") testifies about the thread's subject — grandparent's Milky Way Shakes. Reject side: the intermediate parent is hearsay/desire and emits nothing.",
+    "posts": [
+      {
+        "id": "SRC001",
+        "title": "Best milkshakes in Austin?",
+        "body": "There used to be a place on Burnet that made awesome shakes but they sadly went out of business in 2020. What other places around town have a good variety of shakes?",
+        "extract_from_post": true,
+        "comments": [
+          {
+            "id": "SRC002",
+            "body": "Milky Way Shakes and it’s not even close",
+            "parent_id": "SRC001"
+          },
+          {
+            "id": "SRC010",
+            "body": "Heard a lot of good things about Milky Way Shakes, I’ll have to take some friends there soon! Wish their menu was bigger! Only comment so far 😅",
+            "parent_id": "SRC002"
+          },
+          {
+            "id": "SRC011",
+            "body": "Build your own.\n\nPersonally go with a double Oreo/ brownie on vanilla. You won’t leave disappointed",
+            "parent_id": "SRC010"
+          }
+        ]
+      }
+    ],
+    "expect": {
+      "perSource": [
+        {
+          "source": "SRC011",
+          "restaurants": ["milky way shakes"]
+        },
+        {
+          "source": "SRC010",
+          "emitsNothing": true
+        }
+      ]
+    }
+  },
+  {
+    "id": "G65-referent-elided-venue",
+    "why": "Real doc 201f8d48: \"recently went and spent around 99... it was such a great meal imo\" — went WHERE is elided; the venue is the parent's Intero and the praise emits from THIS source.",
+    "posts": [
+      {
+        "id": "SRC001",
+        "title": "Looking for a classy yet affordable dinner",
+        "body": "Let me explain. I'm married in my 40's, my best girlfriend is in her mid 60's and single. She wants to get 'dressed up' and go out somewhere nice to have some good food and cocktails. She's out of the social loop a bit and kind of on old school gal. Anything I suggest will be too loud, too young and I just want her to have a special night out on the town.( Her suggestions  were Perrys, Eddie V, Truelucks,) Help!",
+        "extract_from_post": true,
+        "comments": [
+          {
+            "id": "SRC014",
+            "body": "Intero is the answer. \n\nSUPER nice, best Italian in town hands down. I think this is the best value dinner in Austin for how nice this place is. You're looking at about $120-$150 for dinner with 2 depending on how much you want to drink. If you dont drink you can get out of there for less than $100.  I've paid $250 for worse food and not as nice of an experience as Intro multiple times. You will leave full, with very eclectic and  well thought out pasta dishes, and incredibly tasty and unique pizza options.\n\nSave room for the brown butter cake dessert, it is the best dessert in the whole city and this is a hill im dying on.",
+            "parent_id": "SRC001"
+          },
+          {
+            "id": "SRC030",
+            "body": "recently went and spent around 99 for 3 apps and 2 pastas (we don’t drink) and ended the meal with complimentary truffles! it was such a great meal imo. I see spots charging 75-80 pp for course menus with even less food and i think we got the better deal. Plus if you tell them it’s your first time i feel like they give you free apps and desserts.",
+            "parent_id": "SRC014"
+          }
+        ]
+      }
+    ],
+    "expect": {
+      "perSource": [
+        {
+          "source": "SRC030",
+          "restaurants": ["intero"],
+          "somePraise": true
+        }
+      ]
+    }
+  },
+  {
+    "id": "G66-praise-steering",
+    "why": "Real doc 6e513f18: 'Real New Yorkers go to ACME for their lox' is steering — a ranked recommendation, not neutral popularity (A.2's 'others go' is neutral fact; steering ranks the place against a named alternative and tells the reader what to do). Keep: acme + lox from SRC104. Reject: SRC104 pans the cafe ('also an overpriced tourist trap') — no russ mention from it. NOTE 2026-08-12: an earlier keep-side sub-pin required SRC103 to emit the cafe rec; dropped — SRC103 is gray (its rec is sandwiched between tourist-trap language and a child that pans the cafe) and both prompt generations decline it consistently.",
+    "posts": [
+      {
+        "id": "SRC001",
+        "title": "Please revise my list - Travelling to NYC for 2.5 days ",
+        "body": "I will be flying from Canada to NYC and staying 2 night and 2.5 days (arrive early morning and fly back 7PM on final day). I will be staying very close to Rockefeller centre.   \nHere is a little list I have put together by mostly going through r/FoodNYC, but I reckon I will have to eliminate some of it because there just isn't enough time. I wanted your help in filling out the (???) in terms what items should I go for and what places I should forego :/ . Then I can start making reservations :) - I will most likely be myself in NYC.\n\nSince I live in Asia (HK), I haven't included any Asian restaurants. However, I have heard a lot about **Atomix**.  \nI did want to have Birria Tacos, but I'm not sure if Birria Landia is worth the distance. \n\nBREAKFAST  \nRuss &amp; Daughter - Bagel  \nBarney's Greengrass - Smoked Salmon/ Latkes  \nClinton Street Baking Company - Pancakes   \n  \nLUNCH/ BITES  \nKatz Deli - Pastrami on Rye + Egg Cream   \nGray's Papaya - Hot Dog + Pina Colada/ Papaya Drink  \nL’Industrie, Scarr's, John's of Bleecker- Slice   \nLos Tacos No. 1 - Carne Asada, Adobada  \nGalaghers Steakhouse - Lunch Special \n\nDINNER  \nAdel's Famous - Gyro Plate/ Chicken over Rice   \nPasta Eater - ???  \nKeen's Steakhouse  \nDelmonicos   \n  \nDESSERTS  \nMagnolia Bakery - Banana Pudding (Avoid Cupcake?)  \nDame - Sticky Toffee Pudding   \n  \nCOOKIES (I plan to take some back in airtight container + vacuum sealed bag)  \nJanie's, Levain, Funny Face Bakery, Culture Espresso, Maman\n\n*Is it okay if I just tip 10-15% everywhere? what about takeaways?* ",
+        "extract_from_post": true,
+        "comments": [
+          {
+            "id": "SRC103",
+            "body": "I would recommend the russ and daughter cafe that is around the corner over the og store—which seemed like an overpriced tourist trap 😮",
+            "parent_id": "SRC001"
+          },
+          {
+            "id": "SRC104",
+            "body": "The cafe is also an overpriced tourist trap. Real New Yorkers go to ACME for their lox.",
+            "parent_id": "SRC103"
+          }
+        ]
+      }
+    ],
+    "expect": {
+      "perSource": [
+        {
+          "source": "SRC104",
+          "restaurants": ["acme"],
+          "foods": ["lox"],
+          "notRestaurants": ["russ"]
+        }
+      ]
+    }
+  },
+  {
+    "id": "G67-praise-expertise",
+    "why": "Real doc 08a0a27a: praise carried by craft analysis, no verdict adjective needed beyond \"great\" — \"Radio Bakery nails the fat-acid ratio... the bread actually holds up\" endorses the sandwich.",
+    "posts": [
+      {
+        "id": "SRC001",
+        "title": "CMV: The Turkey &amp; Marinated Kale Sandwich from Radio Bakery is the best sandwich in NYC",
+        "body": "Just walked 30 minutes mid day in UV Index 8 weather as a pasty pale person for this sandwich. I cannot imagine another sandwich I would do that for, however am open to hearing yours if you disagree ",
+        "extract_from_post": true,
+        "comments": [
+          {
+            "id": "SRC085",
+            "body": "it's a great sandwich but the real secret is the structural integrity. too many spots stack high-moisture ingredients without considering the bread's strength and you get a soggy blowout. Radio Bakery nails the fat-acid ratio with the marinated kale and the bread actually holds up from the first bite to the last",
+            "parent_id": "SRC001"
+          }
+        ]
+      }
+    ],
+    "expect": {
+      "perSource": [
+        {
+          "source": "SRC085",
+          "restaurants": ["radio bakery"],
+          "foods": ["sandwich"]
+        }
+      ]
     }
   }
 ]

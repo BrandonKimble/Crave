@@ -80,6 +80,12 @@ type Case = {
     /** Every general_praise:true mention must be restaurant-only (food null)
      *  — the F.1 one-carrier invariant (v8 audit class 5). */
     praiseOnlyRestaurantOnly?: boolean;
+    /** Per-source expectations (remaining-classes drain, 2026-08-12): a real
+     *  thread's OTHER comments may legitimately emit the very thing the
+     *  TARGET source must not (e.g. a parent that praises a place its child
+     *  merely inherits). Each entry grades ONLY the mentions whose source_id
+     *  matches, with the same sub-fields as the top level. */
+    perSource?: Array<{ source: string } & Omit<Case['expect'], 'perSource'>>;
   };
 };
 
@@ -125,8 +131,21 @@ function grade(
   testCase: Case,
   mentions: Mention[],
 ): { pass: boolean; failures: string[] } {
+  const failures = gradeExpect(testCase.expect, mentions);
+  for (const per of testCase.expect.perSource ?? []) {
+    const subset = mentions.filter((m) => m.source_id === per.source);
+    failures.push(
+      ...gradeExpect(per, subset).map((f) => `[${per.source}] ${f}`),
+    );
+  }
+  return { pass: failures.length === 0, failures };
+}
+
+function gradeExpect(
+  expect: Omit<Case['expect'], 'perSource'>,
+  mentions: Mention[],
+): string[] {
   const failures: string[] = [];
-  const expect = testCase.expect;
 
   const restaurants = mentions.map((m) =>
     typeof m.restaurant === 'string' ? m.restaurant : '',
@@ -191,7 +210,7 @@ function grade(
   ) {
     failures.push('general_praise:true on a mention that carries a dish');
   }
-  return { pass: failures.length === 0, failures };
+  return failures;
 }
 
 /**
