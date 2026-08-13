@@ -369,13 +369,23 @@ re-pointed 9 — all losses one shape, PARITY with the query side since
 NOT a week of patching — commits deleted machinery and measured claims. But
 the week's failure PATTERN is named: A CORRECT LAW, INSTANTIATED PER CALL
 SITE INSTEAD OF ONCE IN THE DATA MODEL. Two foundations wrong:
-- H5 THE HEARING (fix first): claim→guard→judge→versioned-verdict→memory
-  exists 4 ways; dedupe-merge lane has NO verdict memory (irreversible
-  merges nightly, rejects re-rolled forever — verified; flagged URGENT to
-  convergence lane) and a version bump re-opens losses only (wrong YES is
-  permanent). Unification = one Verdict table + one due-predicate;
-  knowledge_pass_runs is 80% of it. Proposed to ⭐04, awaiting ack; my
-  lanes adopt first as reference impl once shape agreed.
+- H5 THE HEARING — **REFERENCE IMPLEMENTATION LANDED 2026-08-12**
+  (329bb9955, 83bb224cf*, 7b4b40da4, ffac59737, 2af257ddb, a7068c47b;
+  verified personally: claim_verdicts 4,452 rows / 0 unexecuted / 0 empty
+  reasons; resolution 66/66; invariants exit 0 in clean worktree).
+  ⭐04 ACKed with 4 amendments, ALL BUILT: per-lane canonicalClaimKey
+  (abstract on ClaimLaneAdapter); drain-as-spend-event
+  (ClaimRehearingBudgetService, cap 200, measured-rate quote +
+  --approve-drain hash, NoMeasuredHearingRateError — never a seeded rate);
+  verdict-then-effect via settle() with stored-subject replay
+  (crash seam mutation-proven); reason mandatory at write layer + DB
+  CHECK. Rule version = prompt-asset fingerprint vs append-only release
+  ledger (no hand constants). staleVerdictClaims DELETED → symmetric
+  dueClaims (wrong-YES-is-permanent dead; `=` not `>=`). 4,450 stamped
+  surfaces backfilled; claim_judge_version dual-written w/ ledgered
+  retirement note. REMAINING: ⭐04's dedupe + satisfies adapters (dedupe
+  lane un-gates when theirs lands — notified with the consume-surface);
+  restaurant-name lane (C4a) later; both stub adapters compile.
 - H1 THE FOLD KEY: accents-are-evidence enforced at 6 sites, ALREADY
   DRIFTED ('phở bo' admits in search, refused at resolver — live recall
   loss; port in flight). Foundation fix = store diacritic key as COLUMN
