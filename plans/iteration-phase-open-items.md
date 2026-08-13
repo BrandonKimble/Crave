@@ -361,7 +361,28 @@ ruling written once. 58,538-probe A/B sweep: gained 0 / lost 2,051 /
 re-pointed 9 — all losses one shape, PARITY with the query side since
 08-09, not a new defect.
 
-- **C6a WRITE-INGRESS DEFECT (the ranking open item from the sweep):**
+- **C6a RESOLVED (bddf5d934; backfill APPLIED by me: 176 re-tags + 24
+  und-folds).** ONE write door confirmed (addSurfaces); predicate
+  isRomanizationOfMarkedSibling (accentless form + marked same-fold
+  sibling on same concept+language = romanization → 'und'), default-label
+  exempt. True count was 200, not 2,740 — most accentless rows are
+  genuine words. v6 prompt already carries the clause; no bump (avoids a
+  corpus-wide re-pay for a cosmetic case). 58,538-probe A/B: 0 admission
+  changes — pure tag honesty. NEW FINDING → C6d. Post-apply gate re-run
+  BLOCKED by a foreign lane's patchCache invariant throw (see C6e);
+  re-verify gates once that lane commits.
+- **C6d locale ATTRIBUTION defect (extraction territory, flagged ⭐04):**
+  English restaurant-dish names banked under locale='vi' ('colorado
+  club', 'Java Special', 'top dog') — sweep tags output rows with the
+  target locale regardless of the name's actual language. ⭐04 notified;
+  wave/v8 prompt or banking-path fix on their side.
+- **C6e harness concurrency FIXED (74696967c)**: per-run probe paths +
+  verified restore (refuses to clobber a concurrent edit, proven under a
+  real race) + tmpdir run lock. Two concurrent runs identical 32/56.
+  Pre-existing red not mine: spend.every-gemini-surface-is-classified
+  bites on patchCache (⭐04's in-flight campaign lane; notified — it
+  throws at import and blocks harness runs until classified).
+- **(superseded original C6a text below)**
   the vocabulary generator banks de-accented romanizations under a
   LANGUAGE tag (vi rows like 'thit', 'vit', 'buoi' — 2,740 fully
   accentless active vi rows by my count; ~10.9k per-token by the agent's).
