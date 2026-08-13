@@ -81,9 +81,23 @@ describe('keyword candidates strip generic tokens IN THEIR OWN LANGUAGE', () => 
     ]);
   });
 
-  it('an UNDECIDABLE language reads as English — the untagged corpus, unchanged', () => {
+  it('an UNDECIDABLE language gets NO stop list — not the English one', () => {
+    // Corrected 2026-08-13. A null locale used to read as English here. It is
+    // the same defect this file's other cases already guard in the tagged
+    // direction ('top' survives a vi ask), reached by the untagged path: the
+    // detector routinely cannot decide a one-worder's language, and under the
+    // old default that undecidable term was judged — and, when every token
+    // was English-generic, DISCARDED — on the strength of a word list it was
+    // never subject to. Undetermined now means unjudged.
     expect(filter(unmet('best tacos', null)).map((c) => c.term)).toEqual([
-      'tacos',
+      'best tacos',
     ]);
+  });
+
+  it('an undecidable one-worder that is English-generic SURVIVES the cycle', () => {
+    // The case that can show RED: under the old English default 'best' is
+    // rank-generic AND all-generic, so isGenericOnly discarded the candidate
+    // and the ask never reached collection at all.
+    expect(filter(unmet('top', null)).map((c) => c.term)).toEqual(['top']);
   });
 });

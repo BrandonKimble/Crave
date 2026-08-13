@@ -96,15 +96,38 @@ const GENERIC_VOCABULARY_BY_LOCALE: ReadonlyMap<string, GenericVocabulary> =
 /**
  * Resolve the generic vocabulary for a locale through the standard lookup
  * chain, so 'en-GB' and 'en-US' reach the English entry the same way every
- * other locale-scoped read in the codebase does. `null`/`undefined`/`'und'`
- * resolve to English: that is the untagged English-by-construction corpus.
+ * other locale-scoped read in the codebase does.
+ *
+ * 'und' / null / undefined GET NO VOCABULARY — they do NOT get English
+ * (corrected 2026-08-13; the "untagged corpus is English-by-construction"
+ * reading is retired here, as it was on `localeLookupChain` and
+ * `entity_surface.locale`).
+ *
+ * 'und' MEANS UNIVERSAL: the honest tag for a string nobody can assign a
+ * language to. A universal tag entitles a term to NO language's stop list,
+ * because "we could not tell what language this was" is not evidence that it
+ * was English — and this module's own rule is that genericness may only be
+ * asserted for a language whose vocabulary we hold. Returning the English
+ * list for an undetermined term was the module header's OVER-STRIPPING
+ * failure, reached by the one path the header did not close: a Vietnamese
+ * one-worder whose language the detector cannot decide arrives here as null,
+ * was judged against the English list, and a term that is entirely
+ * English-generic ('top', 'best') is discarded outright — `isGenericOnly`
+ * makes the keyword lane drop it and the on-demand lane sanitize it to ''.
+ *
+ * Nothing is lost for real English: an English request carries 'en' (or
+ * 'en-US'), reaches the chain, and strips exactly as before. What changes is
+ * that a term nobody could identify is no longer silently prosecuted under
+ * English law. The chain already ends in 'und', and this map holds no 'und'
+ * entry — so the loop below returns null for it without a special case, which
+ * is why the early return could simply go rather than be inverted.
  */
 function resolveGenericVocabulary(
   locale: string | null | undefined,
 ): GenericVocabulary | null {
   const normalized = typeof locale === 'string' ? locale.trim() : '';
-  if (!normalized.length || normalized.toLowerCase() === 'und') {
-    return ENGLISH_GENERIC_VOCABULARY;
+  if (!normalized.length) {
+    return null;
   }
 
   for (const tag of localeLookupChain(normalized)) {

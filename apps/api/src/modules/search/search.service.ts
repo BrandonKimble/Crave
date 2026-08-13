@@ -2383,7 +2383,17 @@ export class SearchService {
         }
 
         const rawTerm = entity.originalText ?? entity.normalizedName ?? '';
-        const stripped = stripGenericTokens(rawTerm);
+        // The ask's OWN language judges its genericness — the same doctrine
+        // `on-demand-request.sanitizeTerm` states. This used to pass no
+        // locale, which reached the English list by default; that default is
+        // gone, so the locale has to be the real one. `detectedLocale` is
+        // server-derived (the DTO refuses a client value), and when it is
+        // absent the term is simply not judged generic — the conservative
+        // direction for a ranking input.
+        const stripped = stripGenericTokens(
+          rawTerm,
+          request.detectedLocale ?? null,
+        );
         if (stripped.isGenericOnly) {
           continue;
         }

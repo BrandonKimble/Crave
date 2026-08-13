@@ -15,14 +15,46 @@
 import { stripGenericTokens } from './generic-token-handling';
 
 describe('stripGenericTokens — locale-keyed genericness', () => {
-  describe('English (and the untagged corpus, which is English)', () => {
-    it.each([undefined, null, 'und', 'en', 'en-US'])(
+  describe('English', () => {
+    it.each(['en', 'en-US'])(
       'strips rank/location modifiers for locale %s',
       (locale) => {
         expect(stripGenericTokens('best tacos', locale).text).toBe('tacos');
       },
     );
+  });
 
+  describe('an UNDETERMINED language gets NO vocabulary — not English', () => {
+    // Corrected 2026-08-13. These three inputs used to resolve to the English
+    // list on the reading that "the untagged corpus is English by
+    // construction". That reading is retired everywhere else already
+    // (localeLookupChain, entity_surface.locale): 'und' means UNIVERSAL — the
+    // honest tag for a string nobody could assign a language to — and a
+    // universal tag entitles a term to NO language's stop list. "We could not
+    // tell what language this was" is not evidence that it was English.
+    it.each([undefined, null, 'und'])(
+      'leaves the string whole for locale %s',
+      (locale) => {
+        expect(stripGenericTokens('best tacos', locale).text).toBe(
+          'best tacos',
+        );
+      },
+    );
+
+    it('never returns the generic-only verdict for an undetermined term', () => {
+      // THE DESTRUCTIVE DIRECTION, and the reason this matters. isGenericOnly
+      // makes callers DISCARD the term outright — the keyword lane drops it,
+      // the on-demand lane sanitizes it to ''. A Vietnamese one-worder whose
+      // language the detector cannot decide arrives here as null; under the
+      // old default it was prosecuted under English law and deleted.
+      expect(stripGenericTokens('best restaurants', null).isGenericOnly).toBe(
+        false,
+      );
+      expect(stripGenericTokens('top', null).isGenericOnly).toBe(false);
+    });
+  });
+
+  describe('English, continued', () => {
     it('judges an all-generic English string generic-only', () => {
       // Rank modifier + generic object and nothing else: there is no dish here
       // to go collect, so the caller is told to discard it.
