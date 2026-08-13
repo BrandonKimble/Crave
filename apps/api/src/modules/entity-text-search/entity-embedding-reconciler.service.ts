@@ -1,8 +1,9 @@
 import { isEnvFlagExplicitlyDisabled } from '../../shared/config/env-flag';
 import { Injectable, OnApplicationBootstrap } from '@nestjs/common';
 import { Cron, CronExpression } from '@nestjs/schedule';
-import { EntityType } from '@prisma/client';
+import { EntityType, Prisma } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
+import { recallScope } from '../../shared/locale/surface-scope';
 import { LoggerService } from '../../shared';
 import { EmbeddingService } from '../external-integrations/llm/embedding.service';
 import { buildEntityDoc } from './entity-doc';
@@ -94,33 +95,36 @@ export class EntityEmbeddingReconcilerService
         ? `LIMIT ${Math.floor(maxRows)}`
         : '';
 
-    const rows = await this.prisma.$queryRawUnsafe<EntityEmbedRow[]>(
-      `SELECT e.entity_id, e.name, e.type,
+    // THE QUESTION THIS READ ASKS: "may an ENGLISH document ground through
+    // this form?" — the dense doc is an English-corpus artefact, so the forms
+    // that belong in it are exactly the recall slice an `en` request sees.
+    // That is `recallScope('en')`, whose chain is ['en','und']: the same two
+    // locales this arm used to hand-roll as `locale IN ('und','en')`, which
+    // was a half-written lookup chain rather than a fifth semantics. Other
+    // languages stay OUT for the reason they always did — a Spanish form in
+    // an English document pulls the vector toward the wrong neighbourhood for
+    // every English query — and now they stay out BY THE CHAIN.
+    //
+    // ADOPTING THE DOOR ALSO DROPS `display` ROWS, which this arm used to
+    // keep on the grounds that similarity is not a grounding claim. The door's
+    // law wins: a `display` row is either a pure label or a recall claim the
+    // collision guard REFUSED, and feeding a refused claim into the vector
+    // teaches the dense lane the thing the registry just rejected. Measured
+    // cost on the live corpus: 1 row of 36,227, on 1 entity — there is not a
+    // single `en` display row, and the `und` slice holds exactly one.
+    const rows = await this.prisma.$queryRaw<EntityEmbedRow[]>(Prisma.sql`
+      SELECT e.entity_id, e.name, e.type,
               (SELECT array_agg(s.form ORDER BY s.seq)
                  FROM entity_surface s
                 WHERE s.entity_id = e.entity_id
-                  AND s.status = 'active'
-                  -- LOCALE: 'und' AND 'en'. The retired core_entities.
-                  -- aliases[] projection was und-only, which silently kept
-                  -- 577 explicitly-English surfaces out of the dense doc for
-                  -- no reason: the doc is an English-corpus artefact, so an
-                  -- 'en'-tagged form is exactly as much evidence for it as an
-                  -- untagged one. Other languages stay OUT — a Spanish form
-                  -- in an English document pulls the vector toward the wrong
-                  -- neighbourhood for every English query.
-                  AND s.locale IN ('und','en')
-                  -- BOTH ROLES. A display form is a word real users read this
-                  -- concept as; it makes no RECALL claim, but the dense lane
-                  -- is not a grounding claim either — it is similarity. The
-                  -- recall arms elsewhere keep their role<>'display' filter.
+                  AND ${recallScope('en', 's')}
                ) AS surfaces
          FROM core_entities e
        WHERE type IN ('restaurant','food','food_attribute','restaurant_attribute','ingredient')
          AND status = 'active'
-         ${reembedAll ? '' : 'AND (name_embedding IS NULL OR name_embedding_stale = true)'}
+         ${Prisma.raw(reembedAll ? '' : 'AND (name_embedding IS NULL OR name_embedding_stale = true)')}
        ORDER BY entity_id
-       ${limitClause}`,
-    );
+       ${Prisma.raw(limitClause)}`);
 
     let embedded = 0;
     for (let i = 0; i < rows.length; i += EMBED_BATCH) {

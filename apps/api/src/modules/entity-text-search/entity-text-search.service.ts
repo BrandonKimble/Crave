@@ -3,7 +3,7 @@ import { EntityType, Prisma } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { descendantPlaceIds } from '../places/place-dag-read';
 import { LoggerService } from '../../shared';
-import { localeLookupChain } from '../../shared/locale';
+import { localeLookupChain, recallScope } from '../../shared/locale';
 import {
   canonicalFold,
   diacriticFold,
@@ -1596,12 +1596,23 @@ export class EntityTextSearchService {
              -- evidence, where a form that folds differently from the matched
              -- phrase (Harry's vs harrys) can still be the accent-bearing
              -- spelling the admission test needs.
+             --
+             -- THE QUESTION THIS ARM ASKS: "which of this entity's forms
+             -- belong to NO language at all?" — the door's recall slice asked
+             -- with no locale, recallScope(null), whose chain is exactly
+             -- ['und'] (byte-identical to the hand-rolled predicate it
+             -- replaces: 34,822 rows either way on the live corpus). The
+             -- universality is LOAD-BEARING and must not be widened to the
+             -- request's chain: these forms are spent below as
+             -- nativeSpellings, i.e. as spellings ANY requester may be
+             -- lenient about, which is true of the fold's own home bucket and
+             -- of nothing else. A language-tagged form reaches the same loop
+             -- through rawAliases, where lenientLocales decides whether its
+             -- language is one this reader may skip accents in.
              ARRAY(
                SELECT LOWER(ea.form) FROM entity_surface ea
                WHERE ea.entity_id = e.entity_id
-                 AND ea.status = 'active'
-                 AND ea.locale = 'und'
-                 AND ea.role <> 'display'
+                 AND ${recallScope(null, 'ea')}
              ) AS "normAliases",
              ARRAY(
                SELECT ea.form_folded FROM entity_surface ea
