@@ -550,6 +550,27 @@ item-5 site 3 (⭐04's restaurant-enrichment, analysis handed over:
 write (shadow isolation question flagged); autocomplete 24/26 reds
 pre-existing/corpus.
 
+ROMANIZATION ENDGAME LANDED (110bd999f) — CAMPAIGN CLOSED. Inference +
+is_default exemption + refuted retag script DELETED; writer-declares
+surfaceOrigin ('stripped-convenience' banks und unconditionally; measured:
+NO caller synthesizes stripped forms today — vocab prompt forbids it; arm
+documented as declaration point, not dressed as live). Split of the 176
+applied movers: 52 vi legit (obligatory tone marks), 4 en wrong movers
+REVERTED with verdict-key migration (destination made a parameter — the
+hardcoded und would have re-created the orphan on reverse), 119 es kept
+(mostly genuine: salmón/sándwich require the tilde). My generator-recall-
+sibling discriminator REFUTED (misclassified 2 of its own 3 test cases) —
+orthography is writer knowledge, which is the finding. A/B: 0 changed
+claims/58,451. Mutation proofs both arms RED. acc-02 red = SECOND
+shadow-banking witness (shadow banked accented 'bơ' onto the junk 'bo'
+ingredient 01:29 — wrong accent claim on a junk entity via live shadow
+write; ⭐04 docketed, gate green again post-ruling/quarantine).
+NEW for ⭐04: normalizeCuisineName DELETES non-ASCII (Niçoise→'nioise',
+Café→'caf', banked as surfaces AND names) — flagged.
+NEW OWNER DECISION (5): coctel→es — honest Spanish tag costs 21 groundings
+(accentless typers lose 'coctel de camarones'); the ca-phe trade class;
+parked in HELD_FOR_RULING in the endgame commit.
+
 READ DOOR (fix wave 4 — red team C): write side has one door and held;
 READ side has none — 9 hard-coded locale='und' identity probes (74 twins
 invisible), display's parallel chain can never read und (limonada-not-
