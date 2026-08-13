@@ -1713,27 +1713,89 @@ export class EntityTextSearchService {
     // named "good taco" grounding at confidence 1.0) is structurally gone.
 
     /**
-     * THE LANGUAGES THIS QUERY MAY BE TYPED LAZILY IN.
+     * THE LANGUAGES THIS QUERY MAY BE TYPED LAZILY IN — STATED, NEVER GUESSED.
      *
-     * Accent-leniency needs a prior (see the leniency note in the scan loop),
-     * and there are exactly two honest sources for it, both already computed:
+     * WHAT THIS DELETES (red team A, executed 2026-08-13). This set used to be
+     * a UNION: the requester's locale chain ∪ the ANALYZER'S OWN LANGUAGE
+     * VERDICT. The second half handed the deciding vote to a reader chain the
+     * analyzer had itself invented, from evidence the fold manufactured, and
+     * it is the sole cause of the witness the leniency split was built to fix
+     * reappearing by another door:
      *
-     *  - THE READER. Someone searching in their own language is the person
-     *    the fold's accent-stripping was built for — 'cafe' for 'café'.
-     *  - THE TEXT. The analyzer names the language of the words themselves,
-     *    from the script gate or the registry-surface oracle. A person typing
-     *    'phở bo' is typing Vietnamese half-accented whatever their phone
-     *    says, and that is a fact about the WORDS, not about them — which is
-     *    why it is admissible under the ruling above and why a locale-less
-     *    request does not lose leniency it should have.
+     *   'banh mi de arroz'@es-MX → the n-gram detector called the whole phrase
+     *   `vi`, `vi` re-entered the lenient set, and the Spanish preposition
+     *   'de' ground GOAT through the fold shadow of the Vietnamese 'dê' —
+     *   exactly the grounding 'pastel de arroz'@es-MX was fixed to refuse.
      *
-     * Their union, chained. Everything outside it is a language nobody in
-     * this query is writing in, so its spellings are matched literally.
+     *   'pastel de arroz'@null → with no stated prior at all, the surface
+     *   oracle's `entities < 2` guard does not even fire (it only ever fires
+     *   against a STATED prior), so a locale-less query could manufacture its
+     *   own language evidence out of an accent-stripped lookup and then spend
+     *   it on leniency. With the analyzer out of this set the chain is
+     *   `['und']` and there is nothing to manufacture.
+     *
+     * WHY THE REQUEST HALF STAYS, AND THE MEASUREMENT THAT DECIDED IT. The
+     * red team's ruling was to delete the whole set and run the strict arm
+     * universally. EXECUTED, that costs the entire Vietnamese partial- and
+     * zero-accenting stratum: the vi gold gate falls 90.42 → 86.23 overall
+     * (constraint preservation 86.25 → 76.25) with seven reds — sn-25
+     * 'ca phe', pa-01 'phở bo', pa-02 'pho bò', pa-05 'cà phe sua da', pa-08
+     * 'ẩm thực Hy Lap', pa-09 'chỉ nhận tiền mat', pa-10 'cơm tam'. sn-25 is
+     * the one that settles it: 'ca phe' is typed with NO accents anywhere and
+     * must still reach the vi surface 'cà phê', which is byte-for-byte the
+     * same shape as 'de' reaching 'dê'. A Vietnamese reader must get one and
+     * not the other, so NO reader-free rule — and no rule keyed on the query's
+     * own accent evidence, which both queries lack — can separate them. The
+     * separator that does exist is the one the requester supplied.
+     *
+     * WHAT REPLACES THE ANALYZER HALF: THE QUERY'S OWN ACCENT EVIDENCE. The
+     * old comment was right that THE TEXT may name its own language — a
+     * person typing 'phở bo' is typing Vietnamese whatever their phone says,
+     * and that is a fact about the WORDS. What was wrong is WHICH text
+     * evidence counted. The analyzer's verdict is reached through
+     * `canonicalFold`, i.e. through the accent-STRIPPED reading, so 'banh mi
+     * de arroz' could be called Vietnamese by an n-gram model with no accent
+     * anywhere in it — and the language claim so obtained was then spent
+     * excusing an accent the user never typed. That is circular: the fold
+     * manufactures the evidence that licenses the fold.
+     *
+     * So the text half is kept and NARROWED TO EVIDENCE THE FOLD CANNOT
+     * MANUFACTURE — a span the user typed WITH ACCENTS whose accent-preserving
+     * spelling is exactly a surface banked in that language. 'phở' in
+     * 'phở bo' is such a span, so `vi` is lenient for that query from ANY
+     * phone; 'banh mi de arroz' contains no accent at all, so nothing in it
+     * can name a language, and 'de' → 'dê' is refused. A language verdict
+     * whose only evidence is an accent-stripped fold abstains, by
+     * construction rather than by threshold.
+     *
+     * WHAT REMAINS OPEN, STATED. 'pastel de arroz'@vi-VN still grounds GOAT:
+     * a vi reader typing Spanish gets vi leniency, and that is the same
+     * mechanism sn-25 depends on. It is a PLACEMENT problem now (a
+     * gap-filling connective between two fully-grounded concepts), not an
+     * identity one, and the honest fix lives in the cover linker rather than
+     * here — refusing it at this layer costs the seven reds above.
      */
-    const lenientLocales = new Set([
-      ...localeLookupChain(analysis.requestLocale),
-      ...localeLookupChain(analysis.detectedLocale?.tag ?? null),
-    ]);
+    const lenientLocales = new Set(localeLookupChain(analysis.requestLocale));
+    for (const row of rows) {
+      for (const tagged of row.rawAliases) {
+        const tab = tagged.indexOf('\t');
+        if (tab < 0) continue;
+        const language = tagged.slice(0, tab);
+        if (language === 'und' || lenientLocales.has(language)) continue;
+        const form = tagged.slice(tab + 1);
+        const accented = diacriticFold(form);
+        const folded = canonicalFold(form);
+        // No accent in the SURFACE ⇒ matching it proves nothing about accents
+        // and so licenses no leniency; the strict arm admits it unchanged.
+        if (accented === folded) continue;
+        for (const span of candidateSpans.get(folded) ?? []) {
+          if (span.diacritic === accented) {
+            lenientLocales.add(language);
+            break;
+          }
+        }
+      }
+    }
     const candidateSet = new Set(candidates);
     // THE ACCENT-COMPLETE INDEX, KEYED BY LANGUAGE (see langTaggedForms).
     // Every accent-free string the registry banks as a surface OF A NAMED
@@ -1840,12 +1902,15 @@ export class EntityTextSearchService {
       // which belong to no language and are the fold's own home) keep the
       // full per-token leniency the vi partial-accenting stratum depends on.
       //
+      // THE PRIOR IS THE STATED ONE ONLY — see `lenientLocales` above for the
+      // analyzer-verdict half that was deleted, the executed witness that
+      // deleted it, and the vi-gate measurement that kept the request half.
+      //
       // NOTHING HERE KNOWS ABOUT SCRIPT, and Han is the proof: 牛肉面 carries
       // no accents, so its accent-preserving fold IS its canonical fold and
       // it agrees exactly for every requester on earth. The battery's es-MX
       // witness passes through the strict arm, not an exemption.
       // └──────────────────────────────────────────────────────────────────┘
-      const readerLocales = lenientLocales;
       const nativeSpellings: SurfaceSpelling[] = [
         row.name,
         ...row.normAliases,
@@ -1856,7 +1921,7 @@ export class EntityTextSearchService {
         if (tab < 0) continue;
         const language = tagged.slice(0, tab);
         const spelling = spellingOf(tagged.slice(tab + 1));
-        if (readerLocales.has(language)) nativeSpellings.push(spelling);
+        if (lenientLocales.has(language)) nativeSpellings.push(spelling);
         else foreignSpellings.push(spelling);
       }
       const bankedPlainForms = bankedPlainFormsFor(row.entityId);

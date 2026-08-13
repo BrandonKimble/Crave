@@ -1,5 +1,5 @@
 {
-  "ranAt": "2026-08-12T06:08:08.115Z",
+  "ranAt": "2026-08-13T05:22:03.602Z",
   "lang": "es",
   "corpusVersion": 1,
   "scoreboard": {
@@ -12,9 +12,7 @@
       "chile→chili[gazetteer-exact]",
       "ave→averna amaro[linked]"
     ],
-    "homographMisGroundingsExact": [
-      "chile→chili[gazetteer-exact]"
-    ]
+    "homographMisGroundingsExact": ["chile→chili[gazetteer-exact]"]
   },
   "results": [
     {
@@ -1416,9 +1414,7 @@
       "locale": "es-US",
       "pass": false,
       "preservation": 0.5,
-      "reasons": [
-        "NOT GROUNDED: tacos"
-      ],
+      "reasons": ["NOT GROUNDED: tacos"],
       "grounded": [
         {
           "entityId": "e01829f2-0a43-4ee9-ad75-857284eda918",
@@ -1508,9 +1504,7 @@
           "foldedName": "pizza"
         }
       ],
-      "unresolved": [
-        "cerca"
-      ],
+      "unresolved": ["cerca"],
       "analysis": {
         "script": "latin",
         "requestLocale": "es-US",
@@ -1552,9 +1546,7 @@
           "foldedName": "mexican"
         }
       ],
-      "unresolved": [
-        "barata"
-      ],
+      "unresolved": ["barata"],
       "analysis": {
         "script": "latin",
         "requestLocale": "es-US",
@@ -1617,9 +1609,7 @@
       "locale": "es-US",
       "pass": false,
       "preservation": 0.5,
-      "reasons": [
-        "NOT GROUNDED: tacos"
-      ],
+      "reasons": ["NOT GROUNDED: tacos"],
       "grounded": [
         {
           "entityId": "d5deecd4-a9b8-4875-8dba-495bb50f8306",
@@ -1763,9 +1753,7 @@
       "locale": "es-US",
       "pass": false,
       "preservation": 0.5,
-      "reasons": [
-        "NOT GROUNDED: vegetarian"
-      ],
+      "reasons": ["NOT GROUNDED: vegetarian"],
       "grounded": [
         {
           "entityId": "f8fa5dd1-8043-469d-bbb5-6af5ef8e819c",
@@ -2425,9 +2413,7 @@
           "foldedName": "not too busy"
         }
       ],
-      "unresolved": [
-        "restaurante"
-      ],
+      "unresolved": ["restaurante"],
       "analysis": {
         "script": "latin",
         "requestLocale": "es-US",
@@ -2631,9 +2617,7 @@
           "foldedName": "korean"
         }
       ],
-      "unresolved": [
-        "barata"
-      ],
+      "unresolved": ["barata"],
       "analysis": {
         "script": "latin",
         "requestLocale": "es-US",
@@ -2705,9 +2689,7 @@
       "locale": "es-US",
       "pass": false,
       "preservation": 0.5,
-      "reasons": [
-        "NOT GROUNDED: tacos"
-      ],
+      "reasons": ["NOT GROUNDED: tacos"],
       "grounded": [
         {
           "entityId": "18f5fa4d-51d0-4a50-a998-966bd12f76b9",
@@ -3013,9 +2995,7 @@
       "locale": "es-US",
       "pass": false,
       "preservation": 0,
-      "reasons": [
-        "head not grounded: missing tacos"
-      ],
+      "reasons": ["head not grounded: missing tacos"],
       "grounded": [
         {
           "entityId": "18f5fa4d-51d0-4a50-a998-966bd12f76b9",
@@ -3067,6 +3047,15 @@
           "name": "pizza pie",
           "tier": "gazetteer-exact",
           "foldedName": "pizza pie"
+        },
+        {
+          "entityId": "b33eb888-0acd-432b-bebd-e14d0699ec13",
+          "bucket": "food",
+          "type": "food",
+          "span": "pizza",
+          "name": "pitzas",
+          "tier": "gazetteer-exact",
+          "foldedName": "pitzas"
         },
         {
           "entityId": "b3a4c3e8-307f-4694-89b2-9160fcaa0436",
@@ -3240,6 +3229,15 @@
           "foldedName": "pizza pie"
         },
         {
+          "entityId": "b33eb888-0acd-432b-bebd-e14d0699ec13",
+          "bucket": "food",
+          "type": "food",
+          "span": "pizza",
+          "name": "pitzas",
+          "tier": "gazetteer-exact",
+          "foldedName": "pitzas"
+        },
+        {
           "entityId": "b3a4c3e8-307f-4694-89b2-9160fcaa0436",
           "bucket": "food",
           "type": "food",
@@ -3339,9 +3337,7 @@
       "locale": "es-US",
       "pass": false,
       "preservation": 0,
-      "reasons": [
-        "head not grounded: missing tacos"
-      ],
+      "reasons": ["head not grounded: missing tacos"],
       "grounded": [
         {
           "entityId": "18f5fa4d-51d0-4a50-a998-966bd12f76b9",
@@ -3623,9 +3619,7 @@
       "locale": "es-US",
       "pass": false,
       "preservation": 0,
-      "reasons": [
-        "head not grounded: missing tacos"
-      ],
+      "reasons": ["head not grounded: missing tacos"],
       "grounded": [
         {
           "entityId": "18f5fa4d-51d0-4a50-a998-966bd12f76b9",
@@ -3748,6 +3742,15 @@
           "foldedName": "pizza pie"
         },
         {
+          "entityId": "b33eb888-0acd-432b-bebd-e14d0699ec13",
+          "bucket": "food",
+          "type": "food",
+          "span": "pizza",
+          "name": "pitzas",
+          "tier": "gazetteer-exact",
+          "foldedName": "pitzas"
+        },
+        {
           "entityId": "b3a4c3e8-307f-4694-89b2-9160fcaa0436",
           "bucket": "food",
           "type": "food",
@@ -3766,9 +3769,7 @@
           "foldedName": "vegetarian"
         }
       ],
-      "unresolved": [
-        "no"
-      ],
+      "unresolved": ["no"],
       "analysis": {
         "script": "latin",
         "requestLocale": "es-US",
@@ -4515,9 +4516,7 @@
       "locale": "es-US",
       "pass": false,
       "preservation": 1,
-      "reasons": [
-        "TYPE MISS (grounded, not as an attribute): mexican"
-      ],
+      "reasons": ["TYPE MISS (grounded, not as an attribute): mexican"],
       "grounded": [
         {
           "entityId": "645a6bdc-cb24-4404-89db-27579cc27a33",
@@ -4583,9 +4582,7 @@
       "locale": "es-US",
       "pass": false,
       "preservation": 1,
-      "reasons": [
-        "TYPE MISS (grounded, not as an attribute): italian"
-      ],
+      "reasons": ["TYPE MISS (grounded, not as an attribute): italian"],
       "grounded": [
         {
           "entityId": "5ac2a9cf-156a-4917-98f8-de3cd4031f85",
@@ -4618,9 +4615,7 @@
       "locale": "es-US",
       "pass": false,
       "preservation": 1,
-      "reasons": [
-        "TYPE MISS (grounded, not as an attribute): thai"
-      ],
+      "reasons": ["TYPE MISS (grounded, not as an attribute): thai"],
       "grounded": [
         {
           "entityId": "50866eb6-cd19-45bf-969f-16061dd85244",
@@ -4731,9 +4726,7 @@
           "foldedName": "rooftop"
         }
       ],
-      "unresolved": [
-        "en la"
-      ],
+      "unresolved": ["en la"],
       "analysis": {
         "script": "latin",
         "requestLocale": "es-US",
@@ -4893,9 +4886,7 @@
         "detectedLocale": null,
         "denseTierUsed": true
       },
-      "misGroundings": [
-        "tako[linked]"
-      ],
+      "misGroundings": ["tako[linked]"],
       "notes": "KNOWN-RED SEED, cross-script. Russian 'тако' embedded NEAREST to the Japanese dish 'tako' (octopus) at the adversarial set's HIGHEST confidence — a wrong answer outscoring right ones. SAFE = park. Locale is deliberately ru-RU on this entry."
     },
     {
@@ -4970,24 +4961,13 @@
       "stratum": "homograph",
       "locale": "es-US",
       "pass": false,
-      "preservation": 1,
-      "reasons": [
-        "MIS-GROUNDED (outside allowed set): chili[gazetteer-exact]"
-      ],
+      "preservation": 0,
+      "reasons": ["MIS-GROUNDED (outside allowed set): chili[gazetteer-exact]"],
       "grounded": [
         {
-          "entityId": "0cd03ab5-9737-4f69-b7cb-2bc13cd65399",
-          "bucket": "ingredients",
-          "type": "ingredient",
-          "span": "chile",
-          "name": "chile",
-          "tier": "gazetteer-exact",
-          "foldedName": "chile"
-        },
-        {
-          "entityId": "bbbdc25b-a6c5-4bd4-b4c3-f1f1b3ad41be",
-          "bucket": "ingredients",
-          "type": "ingredient",
+          "entityId": "5546be91-c8a2-4d69-aa4a-e645ce6fbda8",
+          "bucket": "food",
+          "type": "food",
           "span": "chile",
           "name": "chili",
           "tier": "gazetteer-exact",
@@ -5005,9 +4985,7 @@
         },
         "denseTierUsed": false
       },
-      "misGroundings": [
-        "chili[gazetteer-exact]"
-      ],
+      "misGroundings": ["chili[gazetteer-exact]"],
       "notes": "Pepper vs. the country. The corpus holds 'chilean sea bass' — a country-shaped capture would be the failure."
     },
     {
@@ -5380,9 +5358,7 @@
       "locale": "es-US",
       "pass": false,
       "preservation": 0,
-      "reasons": [
-        "MIS-GROUNDED (outside allowed set): averna amaro[linked]"
-      ],
+      "reasons": ["MIS-GROUNDED (outside allowed set): averna amaro[linked]"],
       "grounded": [
         {
           "entityId": "d1bc44e8-3897-4b90-b586-49b6ae2a26ee",
@@ -5405,9 +5381,7 @@
         },
         "denseTierUsed": true
       },
-      "misGroundings": [
-        "averna amaro[linked]"
-      ],
+      "misGroundings": ["averna amaro[linked]"],
       "notes": "es 'ave' = bird/poultry; en 'Ave' = Avenue, which appears in thousands of address strings and restaurant names. SAFE = park."
     },
     {
@@ -5501,13 +5475,9 @@
       "locale": "es-US",
       "pass": true,
       "preservation": 0,
-      "reasons": [
-        "clean park (safe)"
-      ],
+      "reasons": ["clean park (safe)"],
       "grounded": [],
-      "unresolved": [
-        "tinto"
-      ],
+      "unresolved": ["tinto"],
       "analysis": {
         "script": "latin",
         "requestLocale": "es-US",
@@ -5528,9 +5498,7 @@
       "locale": "es-US",
       "pass": false,
       "preservation": 0,
-      "reasons": [
-        "NOT GROUNDED: breakfast tacos"
-      ],
+      "reasons": ["NOT GROUNDED: breakfast tacos"],
       "grounded": [
         {
           "entityId": "c62e8da3-1995-42b6-8029-f236701c3cd8",
@@ -5560,9 +5528,7 @@
           "foldedName": "breakfast"
         }
       ],
-      "unresolved": [
-        "quiero"
-      ],
+      "unresolved": ["quiero"],
       "analysis": {
         "script": "latin",
         "requestLocale": "es-US",
@@ -5595,9 +5561,7 @@
           "foldedName": "brunch"
         }
       ],
-      "unresolved": [
-        "en downtown"
-      ],
+      "unresolved": ["en downtown"],
       "analysis": {
         "script": "latin",
         "requestLocale": "es-US",
@@ -5630,10 +5594,7 @@
           "foldedName": "ramen"
         }
       ],
-      "unresolved": [
-        "busco",
-        "cerca"
-      ],
+      "unresolved": ["busco", "cerca"],
       "analysis": {
         "script": "latin",
         "requestLocale": "es-US",
@@ -5684,9 +5645,7 @@
           "foldedName": "affordable"
         }
       ],
-      "unresolved": [
-        "quiero"
-      ],
+      "unresolved": ["quiero"],
       "analysis": {
         "script": "latin",
         "requestLocale": "es-US",
@@ -5719,10 +5678,7 @@
           "foldedName": "pho"
         }
       ],
-      "unresolved": [
-        "el mejor",
-        "de la ciudad"
-      ],
+      "unresolved": ["el mejor", "de la ciudad"],
       "analysis": {
         "script": "latin",
         "requestLocale": "es-US",
@@ -5755,9 +5711,7 @@
           "foldedName": "dim sum"
         }
       ],
-      "unresolved": [
-        "dónde hay"
-      ],
+      "unresolved": ["dónde hay"],
       "analysis": {
         "script": "latin",
         "requestLocale": "es-US",
@@ -5778,9 +5732,7 @@
       "locale": "es-US",
       "pass": false,
       "preservation": 0.5,
-      "reasons": [
-        "NOT GROUNDED: tacos"
-      ],
+      "reasons": ["NOT GROUNDED: tacos"],
       "grounded": [
         {
           "entityId": "18f5fa4d-51d0-4a50-a998-966bd12f76b9",
@@ -5801,9 +5753,7 @@
           "foldedName": "cheese"
         }
       ],
-      "unresolved": [
-        "with"
-      ],
+      "unresolved": ["with"],
       "analysis": {
         "script": "latin",
         "requestLocale": "es-US",
@@ -5836,9 +5786,7 @@
           "foldedName": "bbq"
         }
       ],
-      "unresolved": [
-        "quiero comer"
-      ],
+      "unresolved": ["quiero comer"],
       "analysis": {
         "script": "latin",
         "requestLocale": "es-US",
@@ -5871,9 +5819,7 @@
           "foldedName": "rooftop"
         }
       ],
-      "unresolved": [
-        "restaurantes con"
-      ],
+      "unresolved": ["restaurantes con"],
       "analysis": {
         "script": "latin",
         "requestLocale": "es-US",
@@ -5906,6 +5852,15 @@
           "foldedName": "ice cream"
         },
         {
+          "entityId": "8f3dd353-57da-422c-8e45-0ffdcc9bb217",
+          "bucket": "ingredients",
+          "type": "ingredient",
+          "span": "me",
+          "name": "tamarind",
+          "tier": "gazetteer-exact",
+          "foldedName": "tamarind"
+        },
+        {
           "entityId": "fd5a75b5-7dd4-49f9-9704-e7b272e9bf98",
           "bucket": "ingredients",
           "type": "ingredient",
@@ -5924,9 +5879,7 @@
           "foldedName": "cream"
         }
       ],
-      "unresolved": [
-        "me gusta el"
-      ],
+      "unresolved": ["gusta el"],
       "analysis": {
         "script": "latin",
         "requestLocale": "es-US",
@@ -5977,9 +5930,7 @@
           "foldedName": "wine"
         }
       ],
-      "unresolved": [
-        "hay algún"
-      ],
+      "unresolved": ["hay algún"],
       "analysis": {
         "script": "latin",
         "requestLocale": "es-US",
@@ -6012,9 +5963,7 @@
           "foldedName": "bagel"
         }
       ],
-      "unresolved": [
-        "quiero un"
-      ],
+      "unresolved": ["quiero un"],
       "analysis": {
         "script": "latin",
         "requestLocale": "es-US",
@@ -6045,6 +5994,15 @@
           "name": "pizza pie",
           "tier": "gazetteer-exact",
           "foldedName": "pizza pie"
+        },
+        {
+          "entityId": "b33eb888-0acd-432b-bebd-e14d0699ec13",
+          "bucket": "food",
+          "type": "food",
+          "span": "pizza",
+          "name": "pitzas",
+          "tier": "gazetteer-exact",
+          "foldedName": "pitzas"
         },
         {
           "entityId": "b3a4c3e8-307f-4694-89b2-9160fcaa0436",
@@ -6095,9 +6053,7 @@
       "locale": "es-US",
       "pass": false,
       "preservation": 0.5,
-      "reasons": [
-        "NOT GROUNDED: thai"
-      ],
+      "reasons": ["NOT GROUNDED: thai"],
       "grounded": [
         {
           "entityId": "64ff9303-1978-49d4-80a4-88cf7d8ab997",
@@ -6118,9 +6074,7 @@
           "foldedName": "curry"
         }
       ],
-      "unresolved": [
-        "busco"
-      ],
+      "unresolved": ["busco"],
       "analysis": {
         "script": "latin",
         "requestLocale": "es-US",
@@ -6153,9 +6107,7 @@
           "foldedName": "pancakes"
         }
       ],
-      "unresolved": [
-        "quiero"
-      ],
+      "unresolved": ["quiero"],
       "analysis": {
         "script": "latin",
         "requestLocale": "es-US",
@@ -6188,9 +6140,7 @@
           "foldedName": "steak"
         }
       ],
-      "unresolved": [
-        "dónde comer"
-      ],
+      "unresolved": ["dónde comer"],
       "analysis": {
         "script": "latin",
         "requestLocale": "es-US",
@@ -6223,9 +6173,7 @@
           "foldedName": "salad"
         }
       ],
-      "unresolved": [
-        "un buen"
-      ],
+      "unresolved": ["un buen"],
       "analysis": {
         "script": "latin",
         "requestLocale": "es-US",
@@ -6276,9 +6224,7 @@
           "foldedName": "bbq"
         }
       ],
-      "unresolved": [
-        "quiero probar"
-      ],
+      "unresolved": ["quiero probar"],
       "analysis": {
         "script": "latin",
         "requestLocale": "es-US",
@@ -6311,9 +6257,7 @@
           "foldedName": "seafood"
         }
       ],
-      "unresolved": [
-        "algo de"
-      ],
+      "unresolved": ["algo de"],
       "analysis": {
         "script": "latin",
         "requestLocale": "es-US",
@@ -6346,6 +6290,15 @@
           "foldedName": "sandwich"
         },
         {
+          "entityId": "8f26ae55-e27b-465c-bac5-ade9ee064905",
+          "bucket": "food",
+          "type": "food",
+          "span": "sandwich",
+          "name": "sub sandwich",
+          "tier": "gazetteer-exact",
+          "foldedName": "sub sandwich"
+        },
+        {
           "entityId": "a27bd632-a0eb-4d0f-83e1-41a444a05276",
           "bucket": "food",
           "type": "food",
@@ -6355,9 +6308,7 @@
           "foldedName": "sando"
         }
       ],
-      "unresolved": [
-        "quiero un"
-      ],
+      "unresolved": ["quiero un"],
       "analysis": {
         "script": "latin",
         "requestLocale": "es-US",

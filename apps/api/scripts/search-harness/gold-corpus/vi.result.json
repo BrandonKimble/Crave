@@ -1,5 +1,5 @@
 {
-  "ranAt": "2026-08-12T06:08:57.354Z",
+  "ranAt": "2026-08-13T05:21:19.785Z",
   "lang": "vi",
   "corpusVersion": 1,
   "scoreboard": {
@@ -273,6 +273,15 @@
       "reasons": [],
       "grounded": [
         {
+          "entityId": "4e5ee601-a11b-4dfc-a83d-3d1685ee5c66",
+          "bucket": "food",
+          "type": "food",
+          "span": "cơm tấm",
+          "name": "viet rice plate",
+          "tier": "gazetteer-exact",
+          "foldedName": "viet rice plate"
+        },
+        {
           "entityId": "bad1e222-175c-4473-8620-b95d021bab77",
           "bucket": "food",
           "type": "food",
@@ -289,6 +298,15 @@
           "name": "broken rice",
           "tier": "gazetteer-exact",
           "foldedName": "broken rice"
+        },
+        {
+          "entityId": "77490d5e-e33e-4f6e-b1b8-d370755faf1f",
+          "bucket": "food",
+          "type": "food",
+          "span": "cơm",
+          "name": "rice",
+          "tier": "linked",
+          "foldedName": "rice"
         }
       ],
       "unresolved": [],
@@ -489,9 +507,7 @@
       "locale": "vi-VN",
       "pass": false,
       "preservation": 0.5,
-      "reasons": [
-        "NOT GROUNDED: prawns"
-      ],
+      "reasons": ["NOT GROUNDED: prawns"],
       "grounded": [
         {
           "entityId": "7eeb7cb1-5653-46e7-a24b-af91cd5e85cd",
@@ -689,9 +705,7 @@
       "locale": "vi-VN",
       "pass": false,
       "preservation": 0,
-      "reasons": [
-        "NOT GROUNDED: rice noodle"
-      ],
+      "reasons": ["NOT GROUNDED: rice noodle"],
       "grounded": [
         {
           "entityId": "6e666716-a419-45b8-93fd-c0a2274af7cb",
@@ -1498,9 +1512,7 @@
       "locale": "vi-VN",
       "pass": false,
       "preservation": 0,
-      "reasons": [
-        "NOT GROUNDED: banh mi"
-      ],
+      "reasons": ["NOT GROUNDED: banh mi"],
       "grounded": [
         {
           "entityId": "33c909c3-0de7-4cd6-aaea-ca05e968f0a0",
@@ -2010,9 +2022,7 @@
       "locale": "vi-VN",
       "pass": false,
       "preservation": 0,
-      "reasons": [
-        "NOT GROUNDED: pork vermicelli"
-      ],
+      "reasons": ["NOT GROUNDED: pork vermicelli"],
       "grounded": [
         {
           "entityId": "6e666716-a419-45b8-93fd-c0a2274af7cb",
@@ -2090,9 +2100,7 @@
       "locale": "vi-VN",
       "pass": false,
       "preservation": 0,
-      "reasons": [
-        "NOT GROUNDED: pork chop plate"
-      ],
+      "reasons": ["NOT GROUNDED: pork chop plate"],
       "grounded": [
         {
           "entityId": "625f7efc-70c1-4f02-aa27-99017396a47a",
@@ -2458,9 +2466,7 @@
           "foldedName": "italian"
         }
       ],
-      "unresolved": [
-        "nhà hàng"
-      ],
+      "unresolved": ["nhà hàng"],
       "analysis": {
         "script": "latin",
         "requestLocale": "vi-VN",
@@ -2493,9 +2499,7 @@
           "foldedName": "vietnamese"
         }
       ],
-      "unresolved": [
-        "đồ ăn"
-      ],
+      "unresolved": ["đồ ăn"],
       "analysis": {
         "script": "latin",
         "requestLocale": "vi-VN",
@@ -2549,9 +2553,7 @@
       "locale": "vi-VN",
       "pass": false,
       "preservation": 0,
-      "reasons": [
-        "NOT GROUNDED: korean bbq"
-      ],
+      "reasons": ["NOT GROUNDED: korean bbq"],
       "grounded": [
         {
           "entityId": "53df955f-ec55-4392-ba46-e1184c52fafc",
@@ -2692,9 +2694,7 @@
       "locale": "vi-VN",
       "pass": false,
       "preservation": 0.5,
-      "reasons": [
-        "NOT GROUNDED: spicy"
-      ],
+      "reasons": ["NOT GROUNDED: spicy"],
       "grounded": [
         {
           "entityId": "08f45e9c-abf7-4db2-bbc9-d772538ca720",
@@ -2808,9 +2808,7 @@
           "foldedName": "romantic"
         }
       ],
-      "unresolved": [
-        "nhà hàng"
-      ],
+      "unresolved": ["nhà hàng"],
       "analysis": {
         "script": "latin",
         "requestLocale": "vi-VN",
@@ -2945,9 +2943,7 @@
           "foldedName": "meat"
         }
       ],
-      "unresolved": [
-        "không"
-      ],
+      "unresolved": ["không"],
       "analysis": {
         "script": "latin",
         "requestLocale": "vi-VN",
@@ -2968,9 +2964,7 @@
       "locale": "vi-VN",
       "pass": false,
       "preservation": 0,
-      "reasons": [
-        "head not grounded: missing rice noodle"
-      ],
+      "reasons": ["head not grounded: missing rice noodle"],
       "grounded": [
         {
           "entityId": "6e666716-a419-45b8-93fd-c0a2274af7cb",
@@ -3000,9 +2994,7 @@
           "foldedName": "beef"
         }
       ],
-      "unresolved": [
-        "không"
-      ],
+      "unresolved": ["không"],
       "analysis": {
         "script": "latin",
         "requestLocale": "vi-VN",
@@ -3044,9 +3036,7 @@
           "foldedName": "onion"
         }
       ],
-      "unresolved": [
-        "không"
-      ],
+      "unresolved": ["không"],
       "analysis": {
         "script": "latin",
         "requestLocale": "vi-VN",
@@ -3097,18 +3087,16 @@
           "foldedName": "viet sandwich"
         },
         {
-          "entityId": "93d01a72-e5bf-46c6-adda-351cb14370a1",
-          "bucket": "ingredients",
-          "type": "ingredient",
+          "entityId": "33f5e5f1-5f8f-4f9e-b936-0aca3e442eed",
+          "bucket": "food",
+          "type": "food",
           "span": "pate",
           "name": "pate",
           "tier": "gazetteer-exact",
           "foldedName": "pate"
         }
       ],
-      "unresolved": [
-        "không"
-      ],
+      "unresolved": ["không"],
       "analysis": {
         "script": "latin",
         "requestLocale": "vi-VN",
@@ -3321,9 +3309,7 @@
           "foldedName": "vegetable"
         }
       ],
-      "unresolved": [
-        "không"
-      ],
+      "unresolved": ["không"],
       "analysis": {
         "script": "latin",
         "requestLocale": "vi-VN",
@@ -3365,9 +3351,7 @@
           "foldedName": "skin"
         }
       ],
-      "unresolved": [
-        "không"
-      ],
+      "unresolved": ["không"],
       "analysis": {
         "script": "latin",
         "requestLocale": "vi-VN",
@@ -3469,9 +3453,7 @@
           "foldedName": "shrimp"
         }
       ],
-      "unresolved": [
-        "không"
-      ],
+      "unresolved": ["không"],
       "analysis": {
         "script": "latin",
         "requestLocale": "vi-VN",
@@ -3504,6 +3486,15 @@
           "foldedName": "mos"
         },
         {
+          "entityId": "4e5ee601-a11b-4dfc-a83d-3d1685ee5c66",
+          "bucket": "food",
+          "type": "food",
+          "span": "cơm tấm",
+          "name": "viet rice plate",
+          "tier": "gazetteer-exact",
+          "foldedName": "viet rice plate"
+        },
+        {
           "entityId": "bad1e222-175c-4473-8620-b95d021bab77",
           "bucket": "food",
           "type": "food",
@@ -3520,6 +3511,15 @@
           "name": "broken rice",
           "tier": "gazetteer-exact",
           "foldedName": "broken rice"
+        },
+        {
+          "entityId": "77490d5e-e33e-4f6e-b1b8-d370755faf1f",
+          "bucket": "food",
+          "type": "food",
+          "span": "cơm",
+          "name": "rice",
+          "tier": "linked",
+          "foldedName": "rice"
         }
       ],
       "unresolved": [],
@@ -3573,9 +3573,7 @@
           "foldedName": "vegetable"
         }
       ],
-      "unresolved": [
-        "không"
-      ],
+      "unresolved": ["không"],
       "analysis": {
         "script": "latin",
         "requestLocale": "vi-VN",
@@ -3617,9 +3615,7 @@
           "foldedName": "fish sauce"
         }
       ],
-      "unresolved": [
-        "không"
-      ],
+      "unresolved": ["không"],
       "analysis": {
         "script": "latin",
         "requestLocale": "vi-VN",
@@ -3652,6 +3648,15 @@
           "foldedName": "sushi"
         },
         {
+          "entityId": "f2e2ce70-e8bf-4972-ad06-2f8a32400754",
+          "bucket": "food",
+          "type": "food",
+          "span": "sushi",
+          "name": "sushi prepared fish",
+          "tier": "gazetteer-exact",
+          "foldedName": "sushi prepared fish"
+        },
+        {
           "entityId": "bcb888b0-d59a-4c2f-956a-ab7374c4cfa5",
           "bucket": "food",
           "type": "food",
@@ -3679,9 +3684,7 @@
           "foldedName": "raw fish"
         }
       ],
-      "unresolved": [
-        "không"
-      ],
+      "unresolved": ["không"],
       "analysis": {
         "script": "latin",
         "requestLocale": "vi-VN",
@@ -3801,9 +3804,7 @@
           "foldedName": "meat"
         }
       ],
-      "unresolved": [
-        "đồ ăn không"
-      ],
+      "unresolved": ["đồ ăn không"],
       "analysis": {
         "script": "latin",
         "requestLocale": "vi-VN",
@@ -3863,9 +3864,7 @@
           "foldedName": "meat"
         }
       ],
-      "unresolved": [
-        "không"
-      ],
+      "unresolved": ["không"],
       "analysis": {
         "script": "latin",
         "requestLocale": "vi-VN",
@@ -3916,9 +3915,7 @@
           "foldedName": "savory"
         }
       ],
-      "unresolved": [
-        "không"
-      ],
+      "unresolved": ["không"],
       "analysis": {
         "script": "latin",
         "requestLocale": "vi-VN",
@@ -3981,9 +3978,7 @@
       "locale": "vi-VN",
       "pass": false,
       "preservation": 0,
-      "reasons": [
-        "NOT GROUNDED: spicy"
-      ],
+      "reasons": ["NOT GROUNDED: spicy"],
       "grounded": [
         {
           "entityId": "042653d2-f070-45f0-aa1c-5da1caf6df2c",
@@ -4355,13 +4350,9 @@
       "locale": "vi-VN",
       "pass": false,
       "preservation": 0,
-      "reasons": [
-        "NOT GROUNDED: rooftop"
-      ],
+      "reasons": ["NOT GROUNDED: rooftop"],
       "grounded": [],
-      "unresolved": [
-        "sân thượng"
-      ],
+      "unresolved": ["sân thượng"],
       "analysis": {
         "script": "latin",
         "requestLocale": "vi-VN",
@@ -4815,9 +4806,7 @@
         },
         "denseTierUsed": false
       },
-      "misGroundings": [
-        "soybean sprout[gazetteer-exact]"
-      ],
+      "misGroundings": ["soybean sprout[gazetteer-exact]"],
       "notes": "'giá' = bean sprouts AND 'price'. Banked on the sprout senses. A price-shaped or restaurant-shaped capture would be the failure."
     },
     {
@@ -4827,9 +4816,7 @@
       "locale": "vi-VN",
       "pass": false,
       "preservation": 0.6666666666666666,
-      "reasons": [
-        "MIS-GROUNDED (outside allowed set): mian[gazetteer-exact]"
-      ],
+      "reasons": ["MIS-GROUNDED (outside allowed set): mian[gazetteer-exact]"],
       "grounded": [
         {
           "entityId": "042de43d-2fb6-460d-bbea-b8779b79b52a",
@@ -4870,9 +4857,7 @@
         },
         "denseTierUsed": false
       },
-      "misGroundings": [
-        "mian[gazetteer-exact]"
-      ],
+      "misGroundings": ["mian[gazetteer-exact]"],
       "notes": "'mì' = wheat noodles; banked on noodle/noodles. Also one fold away from 'mỹ' (America) — see hg-06."
     },
     {
@@ -5014,13 +4999,9 @@
       "locale": "vi-VN",
       "pass": true,
       "preservation": 1,
-      "reasons": [
-        "clean park (safe)"
-      ],
+      "reasons": ["clean park (safe)"],
       "grounded": [],
-      "unresolved": [
-        "chả"
-      ],
+      "unresolved": ["chả"],
       "analysis": {
         "script": "latin",
         "requestLocale": "vi-VN",
@@ -5041,9 +5022,7 @@
       "locale": "vi-VN",
       "pass": false,
       "preservation": 0,
-      "reasons": [
-        "MIS-GROUNDED (outside allowed set): Nems[linked]"
-      ],
+      "reasons": ["MIS-GROUNDED (outside allowed set): Nems[linked]"],
       "grounded": [
         {
           "entityId": "c560b1f8-e46b-47ee-a74f-19d3d2bdb25b",
@@ -5066,9 +5045,7 @@
         },
         "denseTierUsed": false
       },
-      "misGroundings": [
-        "Nems[linked]"
-      ],
+      "misGroundings": ["Nems[linked]"],
       "notes": "STILL PARKED, and the reason is now known precisely (2026-08-09). 'nem' is unbanked bare not because anything refused it — with form-scoped claims nothing contests it — but because the vocabulary generator never OFFERS the bare word: asked for spring roll in vi it emits the compounds ('nem cuốn', 'nem rán', 'chả giò'). So bare 'nem' falls to the fuzzy linker, which reaches 'little gem lettuce' — a substring accident, not a locale defect. The fix is a generator that also emits the head word, and it is not owed to the claims registry."
     },
     {
@@ -5145,9 +5122,7 @@
         },
         "denseTierUsed": false
       },
-      "misGroundings": [
-        "vermicelli bowl[gazetteer-exact]"
-      ],
+      "misGroundings": ["vermicelli bowl[gazetteer-exact]"],
       "notes": "CROSS-LANGUAGE HOMOGRAPH: Vietnamese 'bún' = rice vermicelli; English 'bun' = bread. The corpus holds BOTH and they fold identically. | AUTHORING CORRECTION (gate run 1): the first draft forbade 'bun'. That contradicts the ratified es ruling (hg-07/hg-08, tuna/pie): an exact English NAME match is correct for ANY locale in an English-corpus market — the locale guard governs tagged ALIAS rows, not source-faithful names. The parse returned rice noodle AND bun; the Vietnamese sense is present, so this is breadth, not a mis-grounding."
     },
     {
@@ -5461,11 +5436,18 @@
           "name": "sushi",
           "tier": "gazetteer-exact",
           "foldedName": "sushi"
+        },
+        {
+          "entityId": "f2e2ce70-e8bf-4972-ad06-2f8a32400754",
+          "bucket": "food",
+          "type": "food",
+          "span": "sushi",
+          "name": "sushi prepared fish",
+          "tier": "gazetteer-exact",
+          "foldedName": "sushi prepared fish"
         }
       ],
-      "unresolved": [
-        "tôi muốn ăn"
-      ],
+      "unresolved": ["tôi muốn ăn"],
       "analysis": {
         "script": "latin",
         "requestLocale": "vi-VN",
@@ -5516,9 +5498,7 @@
           "foldedName": "pizza"
         }
       ],
-      "unresolved": [
-        "cho tôi"
-      ],
+      "unresolved": ["cho tôi"],
       "analysis": {
         "script": "latin",
         "requestLocale": "vi-VN",
@@ -5560,9 +5540,7 @@
           "foldedName": "ramen"
         }
       ],
-      "unresolved": [
-        "gần đây"
-      ],
+      "unresolved": ["gần đây"],
       "analysis": {
         "script": "latin",
         "requestLocale": "vi-VN",
@@ -5595,9 +5573,7 @@
           "foldedName": "burger"
         }
       ],
-      "unresolved": [
-        "tôi thích"
-      ],
+      "unresolved": ["tôi thích"],
       "analysis": {
         "script": "latin",
         "requestLocale": "vi-VN",
@@ -5630,9 +5606,7 @@
           "foldedName": "bbq"
         }
       ],
-      "unresolved": [
-        "muốn ăn"
-      ],
+      "unresolved": ["muốn ăn"],
       "analysis": {
         "script": "latin",
         "requestLocale": "vi-VN",
@@ -5683,9 +5657,7 @@
           "foldedName": "bbq"
         }
       ],
-      "unresolved": [
-        "tìm quán"
-      ],
+      "unresolved": ["tìm quán"],
       "analysis": {
         "script": "latin",
         "requestLocale": "vi-VN",
@@ -5727,9 +5699,7 @@
           "foldedName": "cozy"
         }
       ],
-      "unresolved": [
-        "không"
-      ],
+      "unresolved": ["không"],
       "analysis": {
         "script": "latin",
         "requestLocale": "vi-VN",
@@ -5780,9 +5750,7 @@
           "foldedName": "cream"
         }
       ],
-      "unresolved": [
-        "tôi muốn"
-      ],
+      "unresolved": ["tôi muốn"],
       "analysis": {
         "script": "latin",
         "requestLocale": "vi-VN",
@@ -5866,9 +5834,7 @@
           "foldedName": "seafood"
         }
       ],
-      "unresolved": [
-        "nhà hàng"
-      ],
+      "unresolved": ["nhà hàng"],
       "analysis": {
         "script": "latin",
         "requestLocale": "vi-VN",
@@ -5899,20 +5865,9 @@
           "name": "brunch",
           "tier": "gazetteer-exact",
           "foldedName": "brunch"
-        },
-        {
-          "entityId": "523eec4d-ead5-4ca0-a897-b5de1b259793",
-          "bucket": "restaurantAttributes",
-          "type": "restaurant_attribute",
-          "span": "ăn",
-          "name": "vietnamese",
-          "tier": "linked",
-          "foldedName": "vietnamese"
         }
       ],
-      "unresolved": [
-        "ở đâu"
-      ],
+      "unresolved": ["ăn", "ở đâu"],
       "analysis": {
         "script": "latin",
         "requestLocale": "vi-VN",
@@ -5936,6 +5891,15 @@
       "reasons": [],
       "grounded": [
         {
+          "entityId": "042de43d-2fb6-460d-bbea-b8779b79b52a",
+          "bucket": "food",
+          "type": "food",
+          "span": "pasta",
+          "name": "noodles",
+          "tier": "gazetteer-exact",
+          "foldedName": "noodles"
+        },
+        {
           "entityId": "ea223900-5f0e-447f-83a2-74b23ca8b933",
           "bucket": "food",
           "type": "food",
@@ -5945,9 +5909,7 @@
           "foldedName": "pasta"
         }
       ],
-      "unresolved": [
-        "tôi muốn"
-      ],
+      "unresolved": ["tôi muốn"],
       "analysis": {
         "script": "latin",
         "requestLocale": "vi-VN",
@@ -6022,9 +5984,7 @@
           "foldedName": "steak"
         }
       ],
-      "unresolved": [
-        "muốn ăn"
-      ],
+      "unresolved": ["muốn ăn"],
       "analysis": {
         "script": "latin",
         "requestLocale": "vi-VN",
@@ -6057,9 +6017,7 @@
           "foldedName": "salad"
         }
       ],
-      "unresolved": [
-        "tìm"
-      ],
+      "unresolved": ["tìm"],
       "analysis": {
         "script": "latin",
         "requestLocale": "vi-VN",
@@ -6101,9 +6059,7 @@
           "foldedName": "cozy"
         }
       ],
-      "unresolved": [
-        "không"
-      ],
+      "unresolved": ["không"],
       "analysis": {
         "script": "latin",
         "requestLocale": "vi-VN",
@@ -6136,9 +6092,7 @@
           "foldedName": "wifi"
         }
       ],
-      "unresolved": [
-        "quán có"
-      ],
+      "unresolved": ["quán có"],
       "analysis": {
         "script": "latin",
         "requestLocale": "vi-VN",
@@ -6162,6 +6116,15 @@
       "reasons": [],
       "grounded": [
         {
+          "entityId": "7d662533-e35f-47d0-8645-4bce3e9837b7",
+          "bucket": "food",
+          "type": "food",
+          "span": "hot pot",
+          "name": "hotpot",
+          "tier": "gazetteer-exact",
+          "foldedName": "hotpot"
+        },
+        {
           "entityId": "dc27d7c4-5b49-429d-9d11-ab65827fb6d9",
           "bucket": "food",
           "type": "food",
@@ -6171,9 +6134,7 @@
           "foldedName": "hot pot"
         }
       ],
-      "unresolved": [
-        "tôi muốn thử"
-      ],
+      "unresolved": ["tôi muốn thử"],
       "analysis": {
         "script": "latin",
         "requestLocale": "vi-VN",
@@ -6215,9 +6176,7 @@
           "foldedName": "sub sandwich"
         }
       ],
-      "unresolved": [
-        "muốn ăn"
-      ],
+      "unresolved": ["muốn ăn"],
       "analysis": {
         "script": "latin",
         "requestLocale": "vi-VN",
@@ -6433,9 +6392,7 @@
       "locale": "vi-VN",
       "pass": false,
       "preservation": 0,
-      "reasons": [
-        "NOT GROUNDED: iced viet coffee"
-      ],
+      "reasons": ["NOT GROUNDED: iced viet coffee"],
       "grounded": [
         {
           "entityId": "926935db-c5d9-45f8-8618-05fb6a9fd3e9",
@@ -6699,13 +6656,13 @@
       "reasons": [],
       "grounded": [
         {
-          "entityId": "1bc56644-11f3-4e9a-9483-29c82bcabafc",
-          "bucket": "restaurants",
-          "type": "restaurant",
-          "span": "tam",
-          "name": "Tam",
-          "tier": "linked",
-          "foldedName": "tam"
+          "entityId": "4e5ee601-a11b-4dfc-a83d-3d1685ee5c66",
+          "bucket": "food",
+          "type": "food",
+          "span": "cơm tam",
+          "name": "viet rice plate",
+          "tier": "gazetteer-exact",
+          "foldedName": "viet rice plate"
         },
         {
           "entityId": "bad1e222-175c-4473-8620-b95d021bab77",
@@ -6724,6 +6681,15 @@
           "name": "broken rice",
           "tier": "gazetteer-exact",
           "foldedName": "broken rice"
+        },
+        {
+          "entityId": "77490d5e-e33e-4f6e-b1b8-d370755faf1f",
+          "bucket": "food",
+          "type": "food",
+          "span": "cơm",
+          "name": "rice",
+          "tier": "linked",
+          "foldedName": "rice"
         }
       ],
       "unresolved": [],
@@ -6789,9 +6755,7 @@
       "locale": "vi-VN",
       "pass": false,
       "preservation": 0,
-      "reasons": [
-        "NOT GROUNDED: pork vermicelli"
-      ],
+      "reasons": ["NOT GROUNDED: pork vermicelli"],
       "grounded": [
         {
           "entityId": "38dd8008-11fd-4771-8203-7434a8040bd4",
@@ -7076,18 +7040,34 @@
       "reasons": [],
       "grounded": [
         {
+          "entityId": "33c909c3-0de7-4cd6-aaea-ca05e968f0a0",
+          "bucket": "restaurants",
+          "type": "restaurant",
+          "span": "bánh",
+          "name": "Bánh",
+          "tier": "gazetteer-exact",
+          "foldedName": "banh"
+        },
+        {
+          "entityId": "77011adc-2ddc-4a72-9411-49e3d26b808e",
+          "bucket": "food",
+          "type": "food",
+          "span": "taco callejero",
+          "name": "street taco",
+          "tier": "gazetteer-exact",
+          "foldedName": "street taco"
+        },
+        {
           "entityId": "18f5fa4d-51d0-4a50-a998-966bd12f76b9",
           "bucket": "food",
           "type": "food",
-          "span": "bánh taco",
+          "span": "taco",
           "name": "taco",
-          "tier": "gazetteer-exact",
+          "tier": "linked",
           "foldedName": "taco"
         }
       ],
-      "unresolved": [
-        "callejero"
-      ],
+      "unresolved": [],
       "analysis": {
         "script": "latin",
         "requestLocale": "vi-VN",
@@ -7096,7 +7076,7 @@
           "confidence": 1,
           "source": "request-prior"
         },
-        "denseTierUsed": true
+        "denseTierUsed": false
       },
       "misGroundings": [],
       "notes": "THE THIRD MEASURED STRAND CASE, RE-AUTHORED TO WHAT THE DATA SAYS (2026-08-10). It looks like a bridging case — 'bánh taco' (vi surface of taco) against 'taco callejero' (es surface of street taco) — but under a vi request the Spanish surface is never admitted, so there is no second span to select and the word 'callejero' cannot ground at all. This is a RECALL/locale fact, not a selection one: no span-selection rule can recover it. Kept as the record of that finding, asserting the concept that IS reachable."
