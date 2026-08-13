@@ -16,16 +16,17 @@ looks like a dish, and a comparison looks like a property.
 1. **THE TESTIMONY TEST** — _Has the writer eaten it?_
    A claim is a report of experience. Planning, asking, announcing,
    cataloguing a roster, and repeating what others say are not experience.
+   One named satisfier: **THE ANSWER TEST** — _was this name offered as the
+   writer's own pick, in answer to a request for a pick?_ If yes, **the name
+   IS the verdict** — testimony is satisfied with no adjective, no verb, and
+   no dish.
 2. **THE PLACE TEST** — _Is this claim about food prepared and served by this
    place, to eat now?_ Not goods sold packaged to take home and prepare later.
 3. **THE ORDER TEST** — _Could you say this to a server as the thing you want?_
-   and **THE PREDICTION TEST** — _If a diner names only this word, do you know
-   anything about the food that arrives?_
+   and its stricter sibling **THE PREDICTION TEST** — _If a diner names only
+   this word, do you know anything about the food that arrives?_
 4. **THE STANDALONE TEST** — _Severed from the noun it modified, does this word
    still mean one definite thing?_
-5. **THE ANSWER TEST** — _Was this name offered as the writer's own pick, in
-   answer to a request for a pick?_ If yes, **the name IS the verdict** —
-   testimony is satisfied with no adjective, no verb, and no dish.
 
 A failure at any test ends the work for that claim. Test in order: they run
 cheapest-first, and each one protects the tests after it.
@@ -69,6 +70,13 @@ diverge from a principle, follow the principle.
 
 Answer one question about the writer: **is this person reporting on food they
 have eaten, or doing something else?**
+
+Answer it **clause by clause, never for the comment as a whole.** A verdict,
+hedge, frame, or annotation binds only to the clause or list entry that
+carries it: a reaction to the post, criticism of other entries, or an
+availability aside is a fact about its own clause and never silences the
+writer's other clauses — and a positive clause never rescues a hedged or
+negative neighbor.
 
 ### A.1 What counts as testimony
 
@@ -123,7 +131,12 @@ The writer vouches from experience, or reports a clear consensus:
   not testimony. But the same comment often continues into the writer's own
   first-person testimony ("Great list, my friend! I love La Gran Uruguaya"),
   and that testimony emits like any other. Judge every sentence of the
-  source; never let a reaction frame silence the rest of the comment. And a
+  source (clause by clause, as Step A opens); never let a reaction frame silence the rest of
+  the comment. **A critical reaction is still only a reaction**: "Honestly,
+  half this list is overrated — but Chivito d'Oro is fantastic" testifies
+  for Chivito d'Oro; the criticism of the list is a fact about the LIST's
+  entries (A.2's NEGATIVE CONTENT applies to the criticized items, and to
+  them only). And a
   reaction is only ever a fact about ITS OWN source: every comment nested
   below it is still run through these steps on its own text — a chain of
   compliments can carry a reply full of real picks, and those picks emit.
@@ -145,6 +158,9 @@ The writer vouches from experience, or reports a clear consensus:
   someone INTENDS to visit is a request for testimony, not testimony — no
   matter how much it looks like a recommendation list. **This is the single
   most common false positive; check tense and intent before crediting a list.**
+  The check cuts both ways: the SAME list shape in the past tense — "just got
+  back", "here's what we ate through", "how did we do?" — is a trip REPORT,
+  and every place on it was eaten at. Tense decides, never the shape.
 - **AN ASK.** The request itself never emits, whether or not it names places.
 - **AN ANNOUNCEMENT or DIRECTORY.** Participant rosters, event line-ups,
   fundraiser lists, "these 12 spots are doing a prix fixe this week", opening
@@ -186,7 +202,9 @@ The writer vouches from experience, or reports a clear consensus:
   hedged verdict on the food itself.
 - **NEGATIVE CONTENT.** Criticism, warnings, "I'd skip \_\_\_", "many of your
   items I would not suggest", or a reply to an explicitly negative ask
-  ("worst/avoid/overrated"). Emit nothing.
+  ("worst/avoid/overrated"). Emit nothing **for the criticized items** — and
+  only for them: a comment that pans the list and then vouches for one place
+  in its own words still emits that place.
 - **PRICE-ONLY commentary.** "priciest in town", "$100+ steak" with no verdict.
 - **A CLOSED PLACE.** "RIP", "closed down", "went out of business", "used to
   go", "who remembers", "back in the day", "I miss \_\_\_" — with no
@@ -756,33 +774,29 @@ if the place cannot be resolved with confidence, skip the mention.
 
 ### F.1 `general_praise`
 
-`general_praise` is **true when the source endorses the PLACE AS A WHOLE**,
-independent of any dish — "this place is incredible", "my favorite spot in
-Austin", or a name or list of names offered as the writer's own pick in
-answer to any request for a recommendation (the ANSWER TEST, A.1).
+`general_praise: true` marks **THE CARRIER of holistic, place-level
+endorsement** — "this place is incredible", "my favorite spot in Austin", or
+a name offered as the writer's own pick (the ANSWER TEST, A.1). Decide
+placement by what the praise NAMES:
 
-- It is an **independent axis**. Composing a dish neither creates nor
-  suppresses it; endorsing a place neither creates nor suppresses a dish.
-- Praise aimed at a specific dish ("the brisket is unreal") sets
-  `general_praise: false` on that dish's mention — the praise is already
-  carried by the dish connection.
-- **One carrier per source per restaurant**: when a source praises a place
-  holistically AND names dishes, emit the dish mentions with
-  `general_praise: false` plus ONE restaurant-only mention with
-  `general_praise: true`.
-- The two rules above compose into a flat invariant: **`general_praise: true`
-  lives ONLY on a restaurant-only mention (`food` null).** A mention that
-  carries a dish never carries `general_praise: true` — dish-directed praise
-  IS the dish connection, and holistic praise gets its own carrier. Decide
-  placement by what the praise NAMES: a dish → that dish's mention at
-  `false`, with no carrier created; the place (or an ANSWER-TEST pick) → the
-  carrier. A source that IS an answer-test pick and also names dishes emits
-  both: the dish mentions at `false` PLUS the pick's restaurant-only carrier
-  at `true` — the pick endorsed the place, not only the dishes it went on to
-  name. Final check before emitting: if any mention carries BOTH a non-null
-  `food` and `general_praise: true`, split it — the dish mention keeps the
-  food at `false`, and the `true` moves to a restaurant-only carrier.
-- Availability, popularity, and price are never endorsement (Step A.2).
+- **Aimed at a dish** ("the brisket is unreal") → that dish's mention with
+  `general_praise: false` — the praise IS the dish connection; no carrier is
+  created.
+- **Aimed at the place as a whole** (or an ANSWER-TEST pick) → ONE
+  restaurant-only mention (`food` null) with `general_praise: true`, per
+  source per restaurant.
+- **Both at once** — a source that praises the place holistically (or IS a
+  pick) AND names dishes — emits both: the dish mentions at `false` PLUS the
+  restaurant-only carrier at `true`. The pick endorsed the place, not only
+  the dishes it went on to name.
+
+The invariant that follows: **`general_praise: true` lives ONLY on a
+restaurant-only mention (`food` null).** Before emitting, if any mention
+carries BOTH a non-null `food` and `general_praise: true`, split it — the
+dish keeps `false`, the `true` moves to a restaurant-only carrier. It is an
+independent axis: composing a dish neither creates nor suppresses it, and
+endorsing a place neither creates nor suppresses a dish. Availability,
+popularity, and price are never endorsement (Step A.2).
 
 ### F.2 Fields
 
