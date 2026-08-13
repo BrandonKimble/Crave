@@ -34,14 +34,15 @@
 import 'dotenv/config';
 import { NestFactory } from '@nestjs/core';
 import { AppModule } from '../src/app.module';
-import { WordClaimAdjudicatorService } from '../src/modules/content-processing/entity-resolver/word-claim-adjudicator.service';
+import {
+  WordClaimAdjudicatorService,
+  type AdjudicationSummary,
+} from '../src/modules/content-processing/entity-resolver/word-claim-adjudicator.service';
 import { CLAIM_JUDGE_PROMPT_VERSION } from '../src/modules/content-processing/entity-resolver/claim-judge-rule';
 import {
-  ClaimRehearingBudgetService,
   DrainExceedsStandingCapError,
   StaleDrainApprovalError,
 } from '../src/modules/content-processing/entity-resolver/claim-rehearing-budget.service';
-import { WORD_CLAIM_LANE } from '../src/modules/content-processing/entity-resolver/word-claim-lane';
 import { stopCronsForScript } from '../src/shared/utils/stop-crons';
 
 async function main(): Promise<void> {
@@ -66,7 +67,6 @@ async function main(): Promise<void> {
   const out = (m: string) => process.stdout.write(`${m}\n`);
   try {
     const judge = app.get(WordClaimAdjudicatorService);
-    const budget = app.get(ClaimRehearingBudgetService);
 
     // FINISH FIRST. A previous run may have died between a verdict and its
     // effect; those decisions are already paid for and must be obeyed before
@@ -81,22 +81,23 @@ async function main(): Promise<void> {
       }`,
     );
 
-    let allowed = limit;
-    try {
-      const authorized = await budget.authorizeDrain({
-        lane: WORD_CLAIM_LANE,
-        ruleVersion: CLAIM_JUDGE_PROMPT_VERSION,
-        dueCount: dueTotal,
-        requested: limit,
-        approvedHash,
-      });
-      allowed = authorized.allowed;
-      if (authorized.estimate) {
+    // NO SECOND GATE HERE (2026-08-13). `adjudicate` authorizes the drain it
+    // is about to run; quoting a different population up here and approving
+    // THAT is how an approval hash comes to name work nobody performed.
+    const due = await judge.dueClaims(locale, { limit, forms: words });
+    out(`offering=${due.length}`);
+    if (!apply) {
+      out('DRY RUN — add --apply to re-hear. Claims due:');
+      for (const claim of due) {
         out(
-          `APPROVED drain: ${authorized.estimate.dueCount} hearings, ` +
-            `$${(authorized.estimate.estimateMicros / 1_000_000).toFixed(2)}`,
+          `  [${claim.hearing ?? 'grant'}] ${claim.form} (${claim.entityId})`,
         );
       }
+      return;
+    }
+    let summary: AdjudicationSummary;
+    try {
+      summary = await judge.adjudicate(due, { approvedHash });
     } catch (error) {
       if (
         error instanceof DrainExceedsStandingCapError ||
@@ -108,19 +109,6 @@ async function main(): Promise<void> {
       }
       throw error;
     }
-
-    const due = await judge.dueClaims(locale, { limit: allowed, forms: words });
-    out(`offering=${due.length}`);
-    if (!apply) {
-      out('DRY RUN — add --apply to re-hear. Claims due:');
-      for (const claim of due) {
-        out(
-          `  [${claim.hearing ?? 'grant'}] ${claim.form} (${claim.entityId})`,
-        );
-      }
-      return;
-    }
-    const summary = await judge.adjudicate(due);
     for (const c of summary.cases) {
       out(
         `${c.outcome.padEnd(17)} "${c.form}" → ${c.targetName}` +

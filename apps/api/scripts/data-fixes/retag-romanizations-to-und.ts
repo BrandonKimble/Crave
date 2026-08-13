@@ -35,6 +35,27 @@
  *    extraction-locale repair had to admit it may have dropped), then the
  *    language-tagged twin is deleted.
  *
+ * THE LOCALE IS PART OF THE CLAIM KEY, SO A LOCALE MOVE IS A LEDGER MOVE
+ * (2026-08-13, after this script orphaned 9 paid verdicts). A word claim is
+ * keyed `locale|form|entity` in `claim_verdicts` — that is the whole point of
+ * the locale being in the key: `chay` in vi and `chay` in es are different
+ * questions. Re-tagging a surface vi -> und therefore RENAMES the claim, and a
+ * verdict left behind under the old name is not merely untidy: the claim reads
+ * as never heard, `dueClaims('und')` offers it again, and the corpus pays a
+ * second time for an answer it already owns — with the first verdict's reason
+ * stranded where nothing will ever read it.
+ *
+ * THE RULE, for this script and any future one: **anything that moves a
+ * surface's locale, form or entity moves its verdicts in the SAME
+ * TRANSACTION** — key AND `subject.locale`, since the subject is what a
+ * resumed effect replays. A move is a RENAME, never a re-hearing: the ruling
+ * did not change, only the name of the thing it ruled on.
+ *
+ * It also REPAIRS the orphans an earlier run already made, by the same rule
+ * (a verdict whose language-tagged claim no longer has a surface, whose
+ * concept holds that exact word at 'und', belongs to the und claim). Nine
+ * rows, all paid for.
+ *
  * IDEMPOTENT: re-running finds nothing to do. REPORT-THEN-APPLY: it prints
  * the full picture and changes nothing without `--apply`.
  *
@@ -44,11 +65,59 @@
 import 'dotenv/config';
 process.env.PROCESS_ROLE ||= 'api';
 
-import { PrismaClient } from '@prisma/client';
-import { isRomanizationOfMarkedSibling } from '../../src/modules/content-processing/entity-resolver/entity-surface.service';
+import { Prisma, PrismaClient } from '@prisma/client';
+import {
+  isRomanizationOfMarkedSibling,
+  surfaceClaimKey,
+} from '../../src/modules/content-processing/entity-resolver/entity-surface.service';
 import { isAccented } from '../../src/modules/content-processing/entity-resolver/entity-identity';
+import {
+  WORD_CLAIM_LANE,
+  wordClaimLane,
+} from '../../src/modules/content-processing/entity-resolver/word-claim-lane';
 
 const prisma = new PrismaClient();
+
+/**
+ * MOVE A CLAIM'S VERDICTS TO ITS NEW NAME. A rename, not a re-hearing: the
+ * ruling, its ground and its executed state all survive intact, under the key
+ * the claim is now called by.
+ *
+ * `subject.locale` moves with the key because the subject is what a resumed
+ * effect replays — a verdict whose key says 'und' and whose subject still
+ * says 'vi' would, on replay, write the row this script just moved back where
+ * it came from.
+ *
+ * A verdict may ALREADY exist at the destination (both spellings were heard
+ * before the tags were fixed). The destination's is the one about the claim
+ * as it is now named, so it stands and the old row is dropped: two verdicts
+ * cannot share one claim, and inventing a merge rule between them would be
+ * this script deciding a case no judge heard.
+ */
+async function moveClaimVerdicts(
+  tx: Prisma.TransactionClient,
+  moves: ReadonlyArray<{ from: string; to: string }>,
+): Promise<{ moved: number; superseded: number }> {
+  let moved = 0;
+  let superseded = 0;
+  for (const move of moves) {
+    moved += await tx.$executeRaw`
+      UPDATE claim_verdicts v
+         SET claim_key = ${move.to},
+             subject   = jsonb_set(v.subject, '{locale}', '"und"'::jsonb, true)
+       WHERE v.lane = ${WORD_CLAIM_LANE}
+         AND v.claim_key = ${move.from}
+         AND NOT EXISTS (
+           SELECT 1 FROM claim_verdicts d
+            WHERE d.lane = v.lane AND d.claim_key = ${move.to}
+              AND d.rule_version = v.rule_version
+              AND d.fold_version = v.fold_version)`;
+    superseded += await tx.$executeRaw`
+      DELETE FROM claim_verdicts
+       WHERE lane = ${WORD_CLAIM_LANE} AND claim_key = ${move.from}`;
+  }
+  return { moved, superseded };
+}
 
 interface SurfaceRow {
   surface_id: string;
@@ -170,42 +239,118 @@ async function main(): Promise<void> {
     `  plain re-tags (locale -> 'und'):                              ${retagging.length}`,
   );
 
+  // THE ORPHANS AN EARLIER RUN ALREADY MADE. Same rule as the move below,
+  // applied to verdicts whose surface has ALREADY gone to 'und' — a
+  // language-tagged claim with no surface left, on a concept that holds that
+  // exact word at 'und'. Detected here rather than in SQL because the claim
+  // key is canonicalized in TypeScript and re-deriving it in SQL would mint a
+  // second definition of what one claim is.
+  const claimKeyOf = (row: SurfaceRow): string =>
+    wordClaimLane.canonicalClaimKey({
+      form: row.form,
+      locale: row.locale,
+      entityId: row.entity_id,
+    });
+  const claimKeys = new Set(rows.map(claimKeyOf));
+  const undRows = await prisma.$queryRaw<
+    Array<{ entity_id: string; form: string }>
+  >`SELECT entity_id::text AS entity_id, form
+      FROM entity_surface WHERE LOWER(locale) = 'und'`;
+  const undClaims = new Set(
+    undRows.map((r) => `${r.entity_id}\0${surfaceClaimKey(r.form)}`),
+  );
+  const verdictKeys = await prisma.$queryRaw<Array<{ claim_key: string }>>`
+    SELECT DISTINCT claim_key FROM claim_verdicts WHERE lane = ${WORD_CLAIM_LANE}`;
+  const orphanMoves: Array<{ from: string; to: string }> = [];
+  for (const { claim_key: key } of verdictKeys) {
+    const first = key.indexOf('|');
+    const last = key.lastIndexOf('|');
+    if (first < 0 || last <= first) continue;
+    const locale = key.slice(0, first);
+    const form = key.slice(first + 1, last);
+    const entityId = key.slice(last + 1);
+    if (locale === 'und') continue;
+    // Still has its own surface? Then it is not an orphan, whatever else
+    // the concept holds.
+    if (claimKeys.has(key)) continue;
+    if (!undClaims.has(`${entityId}\0${form}`)) continue;
+    orphanMoves.push({ from: key, to: `und|${form}|${entityId}` });
+  }
+  console.log(
+    `\n  orphaned verdicts to re-key onto their 'und' claim: ${orphanMoves.length}`,
+  );
+  for (const move of orphanMoves.slice(0, 12)) {
+    console.log(`    ${move.from}  ->  ${move.to}`);
+  }
+
   if (!apply) {
     console.log('\nDRY RUN — nothing written. Re-run with --apply.\n');
     await prisma.$disconnect();
     return;
   }
 
-  const foldIds = folding.map((r) => r.surface_id);
-  const retagIds = retagging.map((r) => r.surface_id);
   const CHUNK = 2000;
   let carried = 0;
   let deleted = 0;
   let moved = 0;
-  for (let i = 0; i < foldIds.length; i += CHUNK) {
-    const ids = foldIds.slice(i, i + CHUNK);
-    carried += await prisma.$executeRaw`
-      UPDATE entity_surface u
-         SET prompt_version = GREATEST(u.prompt_version, s.prompt_version),
-             claim_judge_version = GREATEST(u.claim_judge_version,
-                                            s.claim_judge_version),
-             updated_at = now()
-        FROM entity_surface s
-       WHERE s.surface_id = ANY(${ids}::uuid[])
-         AND u.entity_id = s.entity_id
-         AND u.form = s.form
-         AND LOWER(u.locale) = 'und'`;
-    deleted += await prisma.$executeRaw`
-      DELETE FROM entity_surface WHERE surface_id = ANY(${ids}::uuid[])`;
+  let verdictsMoved = 0;
+  let verdictsSuperseded = 0;
+
+  // The verdict move rides in the SAME TRANSACTION as the locale move, in
+  // both arms: a crash between them is exactly the orphan this repairs.
+  const verdictMovesFor = (
+    set: readonly SurfaceRow[],
+  ): Array<{ from: string; to: string }> =>
+    set.map((row) => ({
+      from: claimKeyOf(row),
+      to: `und|${surfaceClaimKey(row.form)}|${row.entity_id}`,
+    }));
+
+  for (let i = 0; i < folding.length; i += CHUNK) {
+    const chunk = folding.slice(i, i + CHUNK);
+    const ids = chunk.map((r) => r.surface_id);
+    await prisma.$transaction(async (tx) => {
+      carried += await tx.$executeRaw`
+        UPDATE entity_surface u
+           SET prompt_version = GREATEST(u.prompt_version, s.prompt_version),
+               claim_judge_version = GREATEST(u.claim_judge_version,
+                                              s.claim_judge_version),
+               updated_at = now()
+          FROM entity_surface s
+         WHERE s.surface_id = ANY(${ids}::uuid[])
+           AND u.entity_id = s.entity_id
+           AND u.form = s.form
+           AND LOWER(u.locale) = 'und'`;
+      deleted += await tx.$executeRaw`
+        DELETE FROM entity_surface WHERE surface_id = ANY(${ids}::uuid[])`;
+      const result = await moveClaimVerdicts(tx, verdictMovesFor(chunk));
+      verdictsMoved += result.moved;
+      verdictsSuperseded += result.superseded;
+    });
   }
-  for (let i = 0; i < retagIds.length; i += CHUNK) {
-    const ids = retagIds.slice(i, i + CHUNK);
-    moved += await prisma.$executeRaw`
-      UPDATE entity_surface SET locale = 'und', updated_at = now()
-       WHERE surface_id = ANY(${ids}::uuid[])`;
+  for (let i = 0; i < retagging.length; i += CHUNK) {
+    const chunk = retagging.slice(i, i + CHUNK);
+    const ids = chunk.map((r) => r.surface_id);
+    await prisma.$transaction(async (tx) => {
+      moved += await tx.$executeRaw`
+        UPDATE entity_surface SET locale = 'und', updated_at = now()
+         WHERE surface_id = ANY(${ids}::uuid[])`;
+      const result = await moveClaimVerdicts(tx, verdictMovesFor(chunk));
+      verdictsMoved += result.moved;
+      verdictsSuperseded += result.superseded;
+    });
+  }
+  if (orphanMoves.length) {
+    const result = await prisma.$transaction((tx) =>
+      moveClaimVerdicts(tx, orphanMoves),
+    );
+    verdictsMoved += result.moved;
+    verdictsSuperseded += result.superseded;
   }
   console.log(
-    `\nAPPLIED: ${moved} re-tagged to 'und', ${deleted} folded into an existing und row (${carried} stamp carries).\n`,
+    `\nAPPLIED: ${moved} re-tagged to 'und', ${deleted} folded into an existing und row (${carried} stamp carries).` +
+      `\n         ${verdictsMoved} verdicts re-keyed onto the moved claim, ` +
+      `${verdictsSuperseded} dropped as superseded by a verdict already at the destination.\n`,
   );
   await prisma.$disconnect();
 }

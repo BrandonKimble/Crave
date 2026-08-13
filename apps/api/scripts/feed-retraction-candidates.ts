@@ -51,16 +51,10 @@ import { AppModule } from '../src/app.module';
 import { WordClaimAdjudicatorService } from '../src/modules/content-processing/entity-resolver/word-claim-adjudicator.service';
 import { CLAIM_JUDGE_PROMPT_VERSION } from '../src/modules/content-processing/entity-resolver/claim-judge-rule';
 import {
-  ClaimRehearingBudgetService,
   DrainExceedsStandingCapError,
   StaleDrainApprovalError,
 } from '../src/modules/content-processing/entity-resolver/claim-rehearing-budget.service';
-import { WORD_CLAIM_LANE } from '../src/modules/content-processing/entity-resolver/word-claim-lane';
 import { stopCronsForScript } from '../src/shared/utils/stop-crons';
-
-/** Claims per adjudicate() call — the adjudicator batches 10 per LLM call,
- *  so this only bounds how much work one transaction wave does. */
-const BATCH = 20;
 
 async function main(): Promise<void> {
   const argv = process.argv.slice(2);
@@ -84,7 +78,6 @@ async function main(): Promise<void> {
   const out = (m: string) => process.stdout.write(`${m}\n`);
   try {
     const judge = app.get(WordClaimAdjudicatorService);
-    const budget = app.get(ClaimRehearingBudgetService);
 
     const resumed = await judge.resumePendingEffects();
     if (resumed) out(`resumed=${resumed} decided-but-unexecuted verdicts`);
@@ -96,31 +89,14 @@ async function main(): Promise<void> {
         (forms.length ? ` forms=${forms.join(',')}` : ''),
     );
 
-    let allowed = limit;
-    try {
-      const authorized = await budget.authorizeDrain({
-        lane: WORD_CLAIM_LANE,
-        ruleVersion: CLAIM_JUDGE_PROMPT_VERSION,
-        dueCount: dueTotal,
-        requested: limit,
-        approvedHash,
-      });
-      allowed = authorized.allowed;
-    } catch (error) {
-      if (
-        error instanceof DrainExceedsStandingCapError ||
-        error instanceof StaleDrainApprovalError
-      ) {
-        out(`REFUSED — ${error.message}`);
-        process.exitCode = 1;
-        return;
-      }
-      throw error;
-    }
-
+    // NO SECOND GATE HERE (2026-08-13). `adjudicate` is the chokepoint that
+    // authorizes a drain, so this script asks for what it wants and lets the
+    // machinery refuse — a pre-check would quote a different population than
+    // the one actually heard, and its approval hash would then never match
+    // the batch it authorized.
     const claims = await judge.dueClaims(locale, {
       ...selection,
-      limit: allowed,
+      limit,
     });
     for (const claim of claims) {
       out(
@@ -132,8 +108,11 @@ async function main(): Promise<void> {
       return;
     }
 
-    for (let i = 0; i < claims.length; i += BATCH) {
-      const summary = await judge.adjudicate(claims.slice(i, i + BATCH));
+    try {
+      // ONE call: the adjudicator batches PER_CALL claims per LLM request
+      // itself, and handing it the whole drain is what lets its budget gate
+      // price the work that is actually about to happen.
+      const summary = await judge.adjudicate(claims, { approvedHash });
       for (const c of summary.cases) {
         out(
           `${c.outcome.padEnd(17)} "${c.form}" → ${c.targetName}` +
@@ -142,6 +121,16 @@ async function main(): Promise<void> {
         );
       }
       out(JSON.stringify({ ...summary, cases: summary.cases.length }));
+    } catch (error) {
+      if (
+        error instanceof DrainExceedsStandingCapError ||
+        error instanceof StaleDrainApprovalError
+      ) {
+        out(`REFUSED — ${error.message}`);
+        process.exitCode = 1;
+        return;
+      }
+      throw error;
     }
   } finally {
     await app.close();
