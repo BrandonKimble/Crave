@@ -411,6 +411,26 @@ export function isAccented(text: string): boolean {
   return diacriticFold(text) !== canonicalFold(text);
 }
 
+/** The WHOLE-STRING accent veto for consumers that have no banked side to
+ *  discriminate with (mint-time twins, dedupe sweeps, brand agreement):
+ *  when BOTH names carry accent evidence and their accent-preserving folds
+ *  conflict, they are different words — never the same entity — even though
+ *  the accent-stripped fold (identity_key) says they collide. One-sided or
+ *  absent accents assert nothing and pass, so de-diacritized typing keeps
+ *  matching. Word-boundary prefix on the accented folds counts as agreement
+ *  (the stub/qualifier merge shape, same agrees() shape as
+ *  restaurantNamesAgree). This is the one shared home for the rule the
+ *  resolver's mint veto states in place; every identity_key-grouped MERGE
+ *  lane must consult it before treating a fold collision as identity (the
+ *  2026-08-12 red team found two sweeps — restaurant same-name, food dedupe
+ *  auto-merge — that merged accent-blind through this exact hole). */
+export function accentsAgreeUnbanked(a: string, b: string): boolean {
+  if (!isAccented(a) || !isAccented(b)) return true;
+  const da = diacriticFold(a);
+  const db = diacriticFold(b);
+  return da === db || da.startsWith(`${db} `) || db.startsWith(`${da} `);
+}
+
 export function admitsAtExactTier(
   span: { folded: string; diacritic: string },
   spellings: readonly SurfaceSpelling[],

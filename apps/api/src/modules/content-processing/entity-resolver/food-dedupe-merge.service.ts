@@ -3,6 +3,7 @@ import { EntityType, Prisma } from '@prisma/client';
 import { PrismaService } from '../../../prisma/prisma.service';
 import { foodNameVariants, isSameFoodUpToNumber } from './food-lemma';
 import {
+  accentsAgreeUnbanked,
   canonicalFold,
   entityIdentityKey,
   entityLockKey,
@@ -365,7 +366,17 @@ export class FoodDedupeMergeService {
     const autoMerge: typeof pairs = [];
     const needJudge: typeof pairs = [];
     for (const pair of pairs) {
-      if (this.contentTokens(pair.a_name) === this.contentTokens(pair.b_name)) {
+      // ACCENT VETO on the deterministic arm (2026-08-12 red team):
+      // contentTokens is canonicalFold-based (accent-stripped), so
+      // "cơm chay" and "cơm cháy" read as identical token multisets and
+      // auto-merged with no judge. When both names carry accent evidence
+      // and their accent-preserving folds conflict, the pair is NOT
+      // deterministically identical — it is exactly the judge's question.
+      // Same shared rule as the resolver's mint veto (entity-identity.ts).
+      if (
+        this.contentTokens(pair.a_name) === this.contentTokens(pair.b_name) &&
+        accentsAgreeUnbanked(pair.a_name, pair.b_name)
+      ) {
         autoMerge.push(pair);
       } else {
         needJudge.push(pair);

@@ -1,5 +1,6 @@
 import { EntityType } from '@prisma/client';
 import {
+  accentsAgreeUnbanked,
   canonicalFold,
   diacriticFold,
   entityIdentityKey,
@@ -221,5 +222,27 @@ describe('diacriticFold — canonicalFold minus exactly the accent strip', () =>
     expect(diacriticFold('cà phê'.normalize('NFD'))).toBe(
       diacriticFold('cà phê'.normalize('NFC')),
     );
+  });
+});
+
+describe('accentsAgreeUnbanked — the shared whole-string accent veto', () => {
+  it('vetoes when both sides carry accent evidence and their accented folds conflict', () => {
+    // The wrong-merge pair the 2026-08-12 red team found flowing accent-blind
+    // through BOTH identity_key-grouped merge sweeps (restaurant same-name,
+    // food dedupe auto-merge): vegetarian rice vs scorched rice.
+    expect(accentsAgreeUnbanked('Cơm Chay', 'Cơm Cháy')).toBe(false);
+    expect(accentsAgreeUnbanked('bò né', 'bơ né')).toBe(false);
+  });
+
+  it('one-sided or absent accents assert nothing — de-diacritized names still merge', () => {
+    expect(accentsAgreeUnbanked('pho', 'phở')).toBe(true);
+    expect(accentsAgreeUnbanked('com chay', 'cơm chay')).toBe(true);
+    expect(accentsAgreeUnbanked('pizza', 'pizza')).toBe(true);
+  });
+
+  it('word-boundary prefix on the accented folds counts as agreement (stub/qualifier merges)', () => {
+    expect(accentsAgreeUnbanked('Phở Bò', 'Phở Bò Saigon')).toBe(true);
+    // ...but a conflict inside the shared tokens still vetoes.
+    expect(accentsAgreeUnbanked('Phở Bò', 'Phở Bơ Saigon')).toBe(false);
   });
 });

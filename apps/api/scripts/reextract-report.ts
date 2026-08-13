@@ -41,20 +41,21 @@ async function main(): Promise<void> {
         caller: string;
         service: string;
         model: string | null;
+        mode: string | null;
         input_tokens: bigint;
         output_tokens: bigint;
         cached_tokens: bigint;
         calls: bigint;
       }>
     >`
-      SELECT caller, service, model,
+      SELECT caller, service, model, mode,
              sum(input_tokens) AS input_tokens,
              sum(output_tokens) AS output_tokens,
              sum(cached_tokens) AS cached_tokens,
              count(*) AS calls
       FROM api_usage_ledger
       WHERE campaign_id = ${campaignId}::uuid
-      GROUP BY caller, service, model
+      GROUP BY caller, service, model, mode
       ORDER BY caller`;
 
     let actualMicros = 0;
@@ -72,6 +73,7 @@ async function main(): Promise<void> {
       const micros = priced
         ? pricedGeminiRow({
             model: row.model,
+            mode: row.mode,
             inputTokens: Number(row.input_tokens),
             outputTokens: Number(row.output_tokens),
             cachedTokens: Number(row.cached_tokens),

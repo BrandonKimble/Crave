@@ -9,9 +9,9 @@
  * report per-case verdicts plus a head-to-head. Read-only: no DB writes, no
  * prompt activation, caches bypassed for both variants.
  *
- *   yarn workspace api ts-node scripts/query-ab.ts \
- *     --case-file=scripts/fixtures/query-ab-cases.json \
- *     [--live=query-prompt.md] [--candidate=query-prompt.candidate.md] \
+ *   yarn workspace api ts-node scripts/residue-ab.ts \
+ *     --case-file=scripts/fixtures/residue-ab-cases.json \
+ *     [--live=residue-prompt.md] [--candidate=<challenger.md>] \
  *     [--only=<caseId>] [--repeat=3] [--out=<results.json>]
  *
  * Gold-set provenance: every distinct real natural query in the local
@@ -134,15 +134,19 @@ async function main(): Promise<void> {
 
   const caseFile = arg(
     'case-file',
-    join(__dirname, 'fixtures/query-ab-cases.json'),
+    join(__dirname, 'fixtures/residue-ab-cases.json'),
   ) as string;
   const repeat = parseInt(arg('repeat', '3') as string, 10);
   const only = arg('only');
   const outFile = arg('out');
 
-  const livePath = resolvePrompt(arg('live', 'query-prompt.md') as string);
+  // Defaults track the residue rename (559f11922): the live prompt is
+  // residue-prompt.md; with no candidate file on disk, --candidate defaults
+  // to the SAME file so a bare run is a live-vs-live regression check —
+  // pass --candidate=<file> to A/B a real challenger.
+  const livePath = resolvePrompt(arg('live', 'residue-prompt.md') as string);
   const candidatePath = resolvePrompt(
-    arg('candidate', 'query-prompt.candidate.md') as string,
+    arg('candidate', 'residue-prompt.md') as string,
   );
   const prompts = {
     live: readFileSync(livePath, 'utf-8'),

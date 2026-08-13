@@ -11,7 +11,10 @@ import {
   activeSupportExistsSql,
   dominantCommunitySql,
 } from '../content-processing/reddit-collector/extraction-scope.service';
-import { entityLockKey } from '../content-processing/entity-resolver/entity-identity';
+import {
+  accentsAgreeUnbanked,
+  entityLockKey,
+} from '../content-processing/entity-resolver/entity-identity';
 import {
   nonAggregatorDomainSql,
   sameBusinessVerdict,
@@ -555,6 +558,7 @@ export class RestaurantEntityMergeService {
       const details = await this.prisma.$queryRaw<
         Array<{
           entity_id: string;
+          name: string;
           mention_count: number;
           place_ids: string[];
           domain: string | null;
@@ -563,6 +567,7 @@ export class RestaurantEntityMergeService {
         }>
       >`
         SELECT e.entity_id,
+               e.name,
                ${Prisma.raw(activeEntityEventCountSql('e.entity_id'))} AS mention_count,
                COALESCE((SELECT array_agg(DISTINCT l.google_place_id) FILTER (WHERE l.google_place_id IS NOT NULL) FROM core_restaurant_locations l WHERE l.restaurant_id = e.entity_id), '{}') AS place_ids,
                e.canonical_domain AS domain,
@@ -604,6 +609,18 @@ export class RestaurantEntityMergeService {
         },
       );
       if (!mergeable) {
+        held += 1;
+        decisions.push({ name: group.name, verdict: 'hold' });
+        continue;
+      }
+      // ACCENT VETO (2026-08-12 red team): identity_key strips accents, so
+      // tone-differing names ("Cơm Chay" vs "Cơm Cháy") group as fold twins
+      // and sameBusinessVerdict's dominant-community arm would merge two
+      // different words into one restaurant. The one shared rule
+      // (entity-identity.ts, same law as the resolver's mint veto): both
+      // sides accented + accent-preserving folds conflict => different
+      // businesses => hold. One-sided/absent accents still merge as before.
+      if (!accentsAgreeUnbanked(a.name, b.name)) {
         held += 1;
         decisions.push({ name: group.name, verdict: 'hold' });
         continue;

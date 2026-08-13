@@ -116,13 +116,14 @@ async function main(): Promise<void> {
       Array<{
         caller: string;
         model: string;
+        mode: string | null;
         input_tokens: bigint;
         output_tokens: bigint;
         cached_tokens: bigint;
         calls: bigint;
       }>
     >`
-      SELECT caller, model,
+      SELECT caller, model, mode,
              sum(input_tokens)  AS input_tokens,
              sum(output_tokens) AS output_tokens,
              sum(cached_tokens) AS cached_tokens,
@@ -131,7 +132,7 @@ async function main(): Promise<void> {
       WHERE service = 'gemini'
         AND caller = ANY(${REPLAY_INTERACTIVE_CALLERS})
         AND created_at > now() - make_interval(days => ${WINDOW_DAYS}::int)
-      GROUP BY caller, model`;
+      GROUP BY caller, model, mode`;
     const [{ count: windowDocs }] = await prisma.$queryRaw<
       Array<{ count: bigint }>
     >`
@@ -142,6 +143,7 @@ async function main(): Promise<void> {
     for (const row of callerRows) {
       const micros = pricedGeminiRow({
         model: row.model,
+        mode: row.mode,
         inputTokens: Number(row.input_tokens),
         outputTokens: Number(row.output_tokens),
         cachedTokens: Number(row.cached_tokens),
@@ -164,6 +166,7 @@ async function main(): Promise<void> {
       Array<{
         caller: string;
         model: string | null;
+        mode: string | null;
         input_tokens: bigint;
         output_tokens: bigint;
         cached_tokens: bigint;
@@ -174,13 +177,13 @@ async function main(): Promise<void> {
         SELECT campaign_id, unit_count FROM spend_campaigns
         WHERE name LIKE 'reextract:%' AND state = 'completed'
         ORDER BY completed_at DESC NULLS LAST LIMIT 1)
-      SELECT l.caller, l.model,
+      SELECT l.caller, l.model, l.mode,
              sum(l.input_tokens) AS input_tokens,
              sum(l.output_tokens) AS output_tokens,
              sum(l.cached_tokens) AS cached_tokens,
              (SELECT unit_count FROM last_replay) AS docs
       FROM api_usage_ledger l JOIN last_replay r ON l.campaign_id = r.campaign_id
-      WHERE l.service = 'gemini' GROUP BY l.caller, l.model`;
+      WHERE l.service = 'gemini' GROUP BY l.caller, l.model, l.mode`;
     let interactivePerDocMicros = trailingInteractivePerDoc;
     let replayPriorOverrides: Record<string, number> | null = null;
     if (priorRows.length && Number(priorRows[0].docs ?? 0) > 0) {
@@ -189,6 +192,7 @@ async function main(): Promise<void> {
       for (const row of priorRows) {
         const micros = pricedGeminiRow({
           model: row.model,
+          mode: row.mode,
           inputTokens: Number(row.input_tokens),
           outputTokens: Number(row.output_tokens),
           cachedTokens: Number(row.cached_tokens),
