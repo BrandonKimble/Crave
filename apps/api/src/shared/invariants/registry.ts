@@ -587,6 +587,53 @@ export const INVARIANTS: readonly Invariant[] = [
     ],
   },
   {
+    // THE SAME LAW, ONE TABLE OVER — and the one that had actually rotted.
+    //
+    // `entity_surface.form_folded` is what every recall arm compares against,
+    // on both sides. A row whose stored fold is not canonicalFold(form) is not
+    // wrong, it is INVISIBLE: the join finds nothing and nothing errors, so the
+    // word simply stops being findable and no one hears about it.
+    //
+    // Four rows were sitting like that when this entry was written
+    // (2026-08-13): "black-eyed pea", "dry-aged beef", "jalapeño",
+    // "lemon-lime soda" carried their form VERBATIM in form_folded — hyphen
+    // unspaced, accent unstripped. All four were minted by one merge_fold pass
+    // on 2026-08-04 out of the losing entity's identity_key OF THAT DAY; the
+    // entities were later re-keyed by the identity backfill and these carried
+    // copies were not. So the sibling entry above was green the whole time —
+    // it reads core_entities — while the column the searches actually join on
+    // had drifted. A fold law is only held where it is CHECKED, and it was
+    // checked in one of the two places that store a fold.
+    //
+    // Unsampled on purpose: the active table is ~69k rows and the whole scan
+    // takes under a second, so there is no reason to inspect a spread and hope.
+    id: 'identity.surface-folds-match-the-fold',
+    statement:
+      'Every active entity_surface.form_folded equals canonicalFold(form) under the CURRENT fold algorithm — the recall key a search joins on is the fold of the form it claims to be, for every row, not a sample.',
+    incident:
+      'Found 2026-08-13: four active surfaces ("black-eyed pea", "dry-aged beef", "jalapeño", "lemon-lime soda") stored their form verbatim as form_folded, carried in by the 2026-08-04 merge_fold pass from a pre-heal identity_key and never re-folded. Every fold-joined read had silently missed them for nine days; the entity-side drift check was green throughout, because it reads a different column.',
+    level: 'behaviour',
+    mechanism:
+      'scripts/check-surface-fold-drift.ts — recomputes canonicalFold(form) in JS over EVERY active entity_surface row and exits 1 on any divergence. In JS deliberately: a SQL re-spelling of the fold would be a second implementation, which is the drift this check exists to detect.',
+    check: {
+      command: 'npx ts-node -T scripts/check-surface-fold-drift.ts',
+      reads:
+        'every active surface row in a real database against the live fold',
+    },
+    mutations: [
+      {
+        // The way this actually goes wrong: the fold's output moves and the
+        // stored column does not — a fold change shipped without a backfill.
+        // Identical in shape to the entity-side mutation because the failure
+        // is identical; what differs is which column notices.
+        file: 'src/modules/content-processing/entity-resolver/entity-identity.ts',
+        find: 'export function canonicalFold(name: string): string {\n  return foldWithAccentPolicy(name, true);\n}',
+        replace:
+          "export function canonicalFold(name: string): string {\n  return foldWithAccentPolicy(name, true).replace(/e/g, 'q'); // MUTATED fold\n}",
+      },
+    ],
+  },
+  {
     id: 'identity.a-deleted-person-has-no-name-in-the-database',
     statement:
       'From the moment deletion is requested, users.username/display_name/avatar_url are NULL and the originals live only in users.deleted_identity — so no read anywhere can expose a departed person’s name, whatever it does with the row.',
