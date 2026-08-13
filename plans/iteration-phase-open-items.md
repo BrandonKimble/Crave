@@ -526,6 +526,30 @@ decision + re-baseline; eslint harness un-ignore; 4 unfolded form_folded
 repairs + fold invariant candidate; wave-4 residual und reads (4 sites);
 cp-29 re-measure; stale staleVerdictClaims comments.
 
+FINISHER LANDED (5af211769/9d3acef68/bd8e559fe/2bfc6bf53/08f763a3d;
+verified: coverage-truth 0 UNEXPLAINED in baseline, invariants 36/66).
+Item-2 brief diagnosis OVERTURNED by measurement: pastel-de-arroz's 334
+rows were the VENUE arm ('de'→serves-dessert restaurant attribute, 692
+venues) — harness measured only the dish side; multi-anchor union theory
+wrong (concept sets disjoint). F9 decided: neither snapshot nor tolerance
+— the gate asserts the ATTRIBUTION INVARIANT (property of the instrument,
+not corpus), exits 1, proven red at 191. camarones → containment builder
+reads identity_key ONLY, never surfaces (banked plurals invisible) — wave
+design finding. Lint un-ignore immediately caught a real fold-back bug in
+coverage-truth itself. 4 form_folded strays = stale merge_fold copies;
+0/69,273 drifted now + new invariant (code+data REDs). und-docket fix:
+locale-exactness was NOT the bug — enumeration was (callers iterate
+SUPPORTED_LOCALES, a serve-side list, over a write-side population);
+widened scan delta = exactly the und docket (317), no double-hearing.
+vi gold 90.42→91.02 (pa-12 newly green). NEW SYSTEMATIC curation finding:
+cuisine adjectives banked one-gender-only (griega yes/griego no; cp-29,
+at-12/14/15, cs-14 all this class) — flagged ⭐04 for wave prompts.
+STILL OPEN: romanization endgame (agent dispatched, file now quiet);
+item-5 site 3 (⭐04's restaurant-enrichment, analysis handed over:
++1,911 rows/424 entities); hg-01 'pan' red from ⭐04's 06:17 extraction
+write (shadow isolation question flagged); autocomplete 24/26 reds
+pre-existing/corpus.
+
 READ DOOR (fix wave 4 — red team C): write side has one door and held;
 READ side has none — 9 hard-coded locale='und' identity probes (74 twins
 invisible), display's parallel chain can never read und (limonada-not-
