@@ -458,6 +458,30 @@ outside the lint rule). F9/F10 coverage-truth needs frozen snapshot +
 missing attribution arm (335 UNEXPLAINED rows — the '0 unexplained'
 property currently false).
 
+WAVE-1 LANDED (aa6e119bd, 92a4e4999; verified: replay proof byte-identical,
+4,450 relabeled unknown-pre-ledger, fold_version IN PK, 9 orphans re-keyed,
+rolling-window budget at adjudicate() chokepoint). ⭐04 un-blocked.
+Residuals: entity-surface.service.ts:757/:813 stale comments (⭐04 lineage);
+attribute-ontology + projection-rebuild raw re-keys don't stamp fold_version.
+
+WAVE-4 LANDED (2db7e81a2..d3394b45a, 6 commits; verified: gate 66/66,
+surface-scope.ts door live, 15 adoption files; es/vi gold byte-identical).
+identityScope/recallScope/displayScope one-chain door; 7 of 9 sites were
+identity, 2 correctly recall (curated-list en-authored vocab gains 254
+surfaces; signal-demand null-chain byte-identical); display parallel chain
+killed (limonada→lemonade class, 24 entities); autocomplete localizes by
+has-display-row (5,665 es foods); generic-token und≠English mutation-proven;
+region question implemented language-only + UNRULED seam named. Two gates
+were PINNING defects (asserting the hand-rolled predicate literally) —
+re-authored to follow mechanism. Residuals: (a) claim-judge due-scan
+locale-exact never scans und (321 rows) — SKIPPED for file-collision, still
+open; (b) 4 more hard-coded und reads: entity-embedding-reconciler:111
+(und∪en fifth semantics), entity-text-search.service:1603,
+restaurant-cuisine-extraction:346,356; (c) chili/chile/chili-pepper
+TRIPLICATE ingredient unmasked by correct identity (7 new attributed
+serving rows) — dedupe lane food; (d) CLAUDE.md $queryRaw trap DISPROVEN
+on Prisma 6.18 — corrected in CLAUDE.md.
+
 READ DOOR (fix wave 4 — red team C): write side has one door and held;
 READ side has none — 9 hard-coded locale='und' identity probes (74 twins
 invisible), display's parallel chain can never read und (limonada-not-

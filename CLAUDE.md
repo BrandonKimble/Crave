@@ -413,13 +413,15 @@ being told what he's missing); ending decisions with a clean "your call" and a f
 ("take all my recommendations"); wiring built things to visible surfaces (a real Settings
 button over hidden logic) so he and future agents have an entry point to reason from.
 
-## Memory: $queryRaw composition trap (2026-08-09, sibling of the backtick trap)
+## Memory: $queryRaw composition trap — DISPROVEN on Prisma 6.18 (2026-08-13)
 
-`prisma.$queryRaw\`... ${fragment} ...\`` treats an interpolated `Prisma.Sql`
-FRAGMENT as a BIND PARAMETER (a value), silently producing wrong SQL. To
-compose fragments, call the function form: `prisma.$queryRaw(Prisma.sql\`...\`)`.
-tsc does NOT catch it; only a runtime test does. Same family as the
-backtick-ends-the-template trap above.
+CORRECTED: the 2026-08-09 claim that the tagged-template form treats an
+interpolated `Prisma.Sql` fragment as a bind parameter was probed directly
+on Prisma 6.18 (read-door wave): tagged template and `Prisma.sql` function
+form compose nested fragments IDENTICALLY (both returned the correct
+34,443-row result). Do not "fix" tagged-template composition or write
+comments asserting the old claim. The BACKTICK-ends-the-template trap
+above remains fully real (re-hit the same day it was re-tested).
 
 ## Memory: `prisma migrate dev` WIPED the local DB (2026-08-09, data-loss event)
 
