@@ -6,7 +6,7 @@ import {
   isDisplayable,
   normalizeSurface,
 } from './entity-identity';
-import { localeLookupChain, normalizeLocaleTag } from '../../../shared/locale';
+import { bankableLanguageTag } from '../../../shared/locale';
 
 /**
  * THE SURFACE WRITER (multilingual plan A1) — the ONE writer of
@@ -314,7 +314,35 @@ export async function addSurfaces(
     if (!isDisplayable(form)) {
       continue;
     }
-    const locale = normalizeLocaleTag(input.locale);
+    const role = input.role ?? 'recall';
+    // THE WRITE DOOR IS LANGUAGE-ONLY. `bankableLanguageTag` bases every tag
+    // to its language subtag ('es-MX' -> 'es', 'zh-TW' -> 'zh') and returns
+    // undefined for 'und'/unparseable, which banks as the universal slice.
+    //
+    // This used to be `normalizeLocaleTag`, which PRESERVES the region — and
+    // that was safe only by data coincidence, because nothing upstream
+    // happens to emit a region today. It is not a guard that can be trusted:
+    // the read side's chain is the only thing that ever looks at a banked
+    // locale, and `localeLookupChain('es')` does NOT contain 'es-mx'. So one
+    // regional tag slipping through would bank a word we PAID to learn into a
+    // slice reachable only by another es-MX caller — invisible to every other
+    // Spanish speaker and to ingestion out of any 'es' document. A region is
+    // information about the ASKER or the REQUEST, never about the WORD.
+    //
+    // UNRULED (2026-08-13): whether a DISPLAY row may legitimately carry a
+    // region. 'es-MX' vs 'es-ES' is a real distinction for a rendered label
+    // in a way it is not for a recall claim — torta, palta vs aguacate — and
+    // `SUPPORTED_LOCALES`' own doc keeps the key space full-tag for exactly
+    // that day. It is language-only here for BOTH roles today, because (a)
+    // nothing currently generates a regional label, so admitting one would be
+    // adding an untested path for zero live rows, and (b) an unreachable
+    // display row is the same silent failure as an unreachable recall row.
+    // The seam is THIS LINE plus `role`, which is already in scope: ruling
+    // regional display labels in means splitting this on `role`, and the
+    // recall arm must not move when that happens. It is written as one
+    // expression rather than a branch with two identical arms, because a
+    // branch that cannot differ is a lie about what the code does today.
+    const locale = bankableLanguageTag(input.locale) ?? 'und';
     // '\0' as an ESCAPE, never a literal NUL byte in the source (2026-08-11).
     // A separator that cannot occur in a locale tag or a surface form is the
     // right choice — but typing the byte itself made this file BINARY to
@@ -333,7 +361,7 @@ export async function addSurfaces(
       source: input.source,
       confidence: input.confidence ?? 1,
       status: input.status ?? 'active',
-      role: input.role ?? 'recall',
+      role,
       description: input.description ?? null,
       isDefault: input.isDefault ?? false,
       rank: input.rank ?? 0,
@@ -842,47 +870,4 @@ export async function foldSurfacesFromMerge(
   // changed (a re-run of an idempotent merge legitimately inserts zero), and
   // an unnecessary re-embed is cheap while a missed one is silent staleness.
   await markEntityTouched(tx, canonicalId, 1, options);
-}
-
-/**
- * THE RECALL SLICE, as a SQL predicate — the successor to every
- * `unnest(e.aliases)` arm. Alias the surface table `s`.
- *
- * Three predicates, and each one is load-bearing:
- *   - `status = 'active'` — a 'candidate' form is banked but unjudged, and a
- *     'deprecated' form is REMEMBERED AS WRONG (R5-6b). Neither grounds.
- *   - `locale = ANY(localeLookupChain(documentLocale))` — the recall slice a
- *     document written in that language may ground through. A caller with no
- *     locale passes null and the chain is `['und']` — byte-identical to the
- *     und-only predicate this used to hard-code, which is why every
- *     locale-less caller is unchanged. An `es` document gets
- *     `['es','und']`: its own language's words AND the universal ones, and
- *     NEVER another language's. Matching every locale at once remains the F2
- *     bug the gazetteer removed its legacy-array arm to fix — the chain is
- *     the opposite of that, a closed set the request names.
- *   - `role <> 'display'` — a display row makes NO recall claim (it is a label,
- *     or a recall claim the collision guard refused), so grounding on it would
- *     resurrect exactly the claim that lost.
- *
- * The und slice is 100% role='recall' in the live corpus today, which is why
- * the old array projection got away with omitting the role test. That is a
- * data coincidence, not a law — the first und display row would have made the
- * array ground a refused claim, silently.
- *
- * COMPOSE IT WITH `Prisma.sql`, never a bare `$queryRaw` tagged template:
- * $queryRaw's own template turns every interpolation into a bind parameter,
- * so this fragment would arrive as a parameter object instead of a predicate.
- */
-export function recallSurfaceScopeSql(
-  documentLocale: string | null | undefined,
-  alias = 's',
-): Prisma.Sql {
-  // LOWER() on the stored side, because the chain is lowercased by
-  // construction and `normalizeLocaleTag` preserves the canonical case of a
-  // region subtag ('es-MX'). Every other locale-chain read in the codebase
-  // (label-sweep, the localized-surface lane) matches the same way.
-  const table = Prisma.raw(alias);
-  return Prisma.sql`${table}.status = 'active'
-     AND LOWER(${table}.locale) = ANY(${localeLookupChain(documentLocale ?? null)}::text[])
-     AND ${table}.role <> 'display'`;
 }

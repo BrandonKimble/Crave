@@ -130,7 +130,7 @@ function fakePrisma(entities: FakeEntityRow[]) {
         sql.includes('entity_surface')
       ) {
         // POSITION-FREE READ of the bound values. The surface scope is now
-        // a COMPOSED fragment (`recallSurfaceScopeSql`) that binds its own
+        // a COMPOSED fragment (`recallScope`) that binds its own
         // locale chain, so the probes are no longer values[1] — they are the
         // LAST bound array. Destructuring by index silently read the locale
         // chain as the probe set (every fixture went 'new'), which is the

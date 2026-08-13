@@ -4,12 +4,13 @@ import { PrismaService } from '../../prisma/prisma.service';
 import { AdvisoryLockService, LoggerService } from '../../shared';
 import { LLMService } from '../external-integrations/llm/llm.service';
 import { EntityTextSearchService } from '../entity-text-search/entity-text-search.service';
-import {
-  addSurfaces,
-  recallSurfaceScopeSql,
-} from '../content-processing/entity-resolver/entity-surface.service';
+import { addSurfaces } from '../content-processing/entity-resolver/entity-surface.service';
 import { canonicalFold } from '../content-processing/entity-resolver/entity-identity';
-import { bankableLanguageTag, localeLookupChain } from '../../shared/locale';
+import {
+  bankableLanguageTag,
+  localeLookupChain,
+  recallScope,
+} from '../../shared/locale';
 
 /**
  * DEMAND → VOCABULARY (concept-graph plan, build step 6).
@@ -272,7 +273,7 @@ export class DemandVocabularyService {
         SELECT s.entity_id, array_agg(s.form) AS forms
           FROM entity_surface s
          WHERE s.entity_id = ANY(${candidateIds}::uuid[])
-           AND ${recallSurfaceScopeSql(termLocale)}
+           AND ${recallScope(termLocale)}
          GROUP BY s.entity_id`);
       const aliasesById = new Map(
         aliasRows.map((r) => [r.entity_id, r.forms ?? []]),

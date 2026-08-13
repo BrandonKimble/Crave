@@ -4502,7 +4502,7 @@ CLEAN-PASS-1 api-core + api-search (2026-08-07, ATTEMPT 2, F8400): FRESH-EYES RE
 | apps/api/src/modules/external-integrations/llm/gemini-billable-surfaces.ts | api-entity-display-search | IDEAL-VERIFIED | 1 | f6ec726ab07f | billable list VERIFIED COMPLETE + boot-enforced (undeclaredSurfaces at gated-gemini-client:94). |
 | apps/api/src/modules/infrastructure/redis-policy.enforcer.ts | api-entity-display-search | IDEAL-VERIFIED | 1 | 0e946969fb2f | self-healing boot enforcement; config-disabled=WARN not crash. |
 | apps/api/src/shared/locale/accept-language.ts | locale-i18n | UNREVIEWED| 1 | 9f3f6b2b131b | RFC-4647 Lookup duplicated vs mobile; only api has MACRO_REGION_FALLBACKS (F9371). (reverted from PARTIAL: file changed since review, was 9f3f6b2b131b) |
-| apps/api/src/shared/locale/index.ts | locale-i18n | IDEAL-VERIFIED | 1 | 8602cf045505 | barrel. |
+| apps/api/src/shared/locale/index.ts | locale-i18n | UNREVIEWED    | 1 | 8602cf045505 | barrel. (reverted from IDEAL-VERIFIED: file changed since review, was 8602cf045505) |
 | apps/api/src/shared/locale/request-locale.decorator.ts | locale-i18n | IDEAL-VERIFIED | 1 | 129bfab1bb61 | argued ideal. |
 | apps/api/src/shared/locale/request-locale.interceptor.ts | locale-i18n | IDEAL-VERIFIED | 1 | 8d0269d35eac | Fastify Vary merge (unions Accept-Language) — prior red-team F3 fix verified. |
 | apps/api/src/shared/locale/request-locale.ts | locale-i18n | IDEAL-VERIFIED | 1 | 7f4d5ffc0f8b | argued ideal. |

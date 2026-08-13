@@ -15,7 +15,7 @@ import {
   spellingOf,
   type SurfaceSpelling,
 } from './entity-identity';
-import { recallSurfaceScopeSql } from './entity-surface.service';
+import { recallScope } from '../../../shared/locale';
 
 import { LoggerService, CorrelationUtils } from '../../../shared';
 import { localeLookupChain } from '../../../shared/locale/accept-language';
@@ -1155,11 +1155,11 @@ export class EntityResolutionService implements OnModuleInit {
           JOIN entity_surface s ON s.entity_id = e.entity_id
          WHERE e.type = ${entityType}::entity_type
            AND e.status <> 'archived'::entity_status
-           AND ${recallSurfaceScopeSql(documentLocale)}
+           AND ${recallScope(documentLocale)}
            AND EXISTS (
              SELECT 1 FROM entity_surface m
               WHERE m.entity_id = e.entity_id
-                AND ${recallSurfaceScopeSql(documentLocale, 'm')}
+                AND ${recallScope(documentLocale, 'm')}
                 AND m.form_folded = ANY(${foldedProbes}::text[])
            )
          GROUP BY e.entity_id, e.name`);
@@ -1404,7 +1404,7 @@ export class EntityResolutionService implements OnModuleInit {
           JOIN entity_surface s ON s.entity_id = e.entity_id
          WHERE e.type = ${entityType}::entity_type
            AND e.status <> 'archived'::entity_status
-           AND ${recallSurfaceScopeSql(documentLocale)}
+           AND ${recallScope(documentLocale)}
            AND replace(s.form_folded, ' ', '') = ANY(${probeArray}::text[])`);
 
       // Per squeezed key: the distinct owning entities, and whether ANY
@@ -1545,7 +1545,7 @@ export class EntityResolutionService implements OnModuleInit {
           SELECT s.entity_id, array_agg(s.form) AS forms
             FROM entity_surface s
            WHERE s.entity_id = ANY(${candidateIds}::uuid[])
-             AND ${recallSurfaceScopeSql(documentLocale)}
+             AND ${recallScope(documentLocale)}
            GROUP BY s.entity_id`)
       : [];
     const aliasesById = new Map(
