@@ -98,7 +98,15 @@ describe('surface role verdicts — proven against a live database', () => {
     const judge = {
       generateForCaller: jest.fn().mockResolvedValue(
         JSON.stringify({
-          items: [{ n: 1, a_owns_word: true, incumbents_own_word: [false] }],
+          items: [
+            {
+              n: 1,
+              a_owns_word: true,
+              incumbents_own_word: [false],
+              // A ruling states its ground (H5 amendment (d)).
+              reason: 'the incumbent pairing is factually wrong',
+            },
+          ],
         }),
       ),
     };

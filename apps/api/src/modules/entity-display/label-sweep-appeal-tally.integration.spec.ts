@@ -154,19 +154,26 @@ describe('label sweep appeal tally — proven against a live database', () => {
       generator: {
         name: 'test-contested',
         dryRun: false,
+        // The generator answers with a GenerationOutcome — labels plus the
+        // subjects it could not answer for (the sweep contract, 559f11922).
+        // This spec was left returning a bare array by that change and has
+        // been red since; the shape is what the service reads.
         generate: () =>
-          Promise.resolve([
-            {
-              entityId,
-              form: `zzappeal label ${randomUUID().slice(0, 8)}`,
-              locale: 'en',
-              status: 'active' as never,
-              source: 'sweep' as never,
-              // The SEARCH surface — the half the offered/banked/blocked
-              // tally is about — and it is a word another concept owns.
-              aliases: [contestedWord],
-            },
-          ]),
+          Promise.resolve({
+            unanswered: new Set<string>(),
+            labels: [
+              {
+                entityId,
+                form: `zzappeal label ${randomUUID().slice(0, 8)}`,
+                locale: 'en',
+                status: 'active' as never,
+                source: 'sweep' as never,
+                // The SEARCH surface — the half the offered/banked/blocked
+                // tally is about — and it is a word another concept owns.
+                aliases: [contestedWord],
+              },
+            ],
+          }),
       } as never,
     });
 

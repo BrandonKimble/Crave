@@ -13,6 +13,17 @@
  * label sweep uses `>=`, so one lane re-hears on a rollback and the other
  * does not.
  *
+ * NOTHING HERE KNOWS WHAT A CLAIM IS MADE OF. The claim type is generic, the
+ * base carries no entity type, no `entity_surface`, no food ontology, and the
+ * ledger it feeds stores only (lane, key, rule version, outcome, reason,
+ * subject). That is not tidiness — it is the requirement, because the lanes
+ * already queued behind this one do not share a shape: dedupe decides about an
+ * unordered PAIR of entities, and RESTAURANT-NAME recall admission (C4a) will
+ * decide about a proper noun that never faced a judge at all — an active
+ * `best` surface on a restaurant named "Best" hard-ANDs every "best X" search
+ * to zero results. A base that assumed the word lane's row shape would have to
+ * be reopened for each of them.
+ *
  * A lane adapts to the ledger by answering exactly one question the ledger
  * cannot answer for it: WHAT IS ONE CLAIM. That is amendment (a), and it is
  * abstract on purpose — the canonicalization is the part every lane gets

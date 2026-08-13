@@ -122,7 +122,17 @@ describe('the claim unit is the FORM, not the fold', () => {
     const judge = {
       generateForCaller: jest.fn().mockResolvedValue(
         JSON.stringify({
-          items: [{ n: 1, a_owns_word: true, incumbents_own_word: [true] }],
+          items: [
+            {
+              n: 1,
+              a_owns_word: true,
+              incumbents_own_word: [true],
+              // A ruling states its ground (H5 amendment (d)): a reasonless
+              // answer is dropped as UNJUDGED, so a mock that omits it is
+              // testing a case the machinery deliberately refuses to act on.
+              reason: 'both are used for this concept',
+            },
+          ],
         }),
       ),
     };
@@ -325,7 +335,13 @@ describe('the claim unit is the FORM, not the fold', () => {
         }),
       ),
     };
-    const summary = await adjudicatorWith(upholdingJudge).adjudicate(due);
+    // Only the LOSER's claim is re-heard here. The due-predicate is symmetric
+    // now (H5), so the incumbent's own live claim on this word is in `due`
+    // too — a fact this test is not about, and one this single-case mock
+    // judge cannot answer for. The re-heard WIN is the property under test.
+    const summary = await adjudicatorWith(upholdingJudge).adjudicate(
+      due.filter((c) => c.entityId === loser),
+    );
     expect(summary.bothUpheld).toBe(1);
     expect(summary.cases[0].reason).toBe('culinary near-synonyms');
     expect((await surfacesOf(loser))[0]).toMatchObject({
