@@ -20,8 +20,15 @@
  * it was bought with.
  */
 import { execSync } from 'node:child_process';
-import { existsSync, readFileSync, unlinkSync, writeFileSync } from 'node:fs';
-import { join } from 'node:path';
+import {
+  existsSync,
+  mkdirSync,
+  readFileSync,
+  rmdirSync,
+  unlinkSync,
+  writeFileSync,
+} from 'node:fs';
+import { dirname, join } from 'node:path';
 import {
   INVARIANTS,
   SCRATCH_FILE,
@@ -45,9 +52,29 @@ function apply(mutation: Mutation): Restore {
         `${mutation.file} already exists — a create-mutation must not clobber a real file.`,
       );
     }
+    // A create-mutation may need a directory that does not exist yet, and for
+    // one whole class of defect that IS the defect: an unguarded heavy
+    // migration arrives as a NEW prisma/migrations/<name>/migration.sql, never
+    // as an edit to an existing one (every heavy migration in the corpus today
+    // is grandfathered, so editing one proves nothing about what a new one
+    // would do). Directories created here are removed on restore, innermost
+    // first, and only while still empty — an rmdir that would delete somebody
+    // else's file simply fails the emptiness test and is skipped.
+    const created: string[] = [];
+    for (let dir = dirname(path); !existsSync(dir); dir = dirname(dir)) {
+      created.unshift(dir);
+    }
+    if (created.length > 0) mkdirSync(dirname(path), { recursive: true });
     writeFileSync(path, mutation.content);
     return () => {
       if (existsSync(path)) unlinkSync(path);
+      for (const dir of [...created].reverse()) {
+        try {
+          rmdirSync(dir);
+        } catch {
+          // Not empty: another lane put something here. Leave it.
+        }
+      }
     };
   }
 

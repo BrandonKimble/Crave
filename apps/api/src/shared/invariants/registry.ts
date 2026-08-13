@@ -77,6 +77,40 @@
  * they guard money and identity, the two places where "almost certainly
  * cannot regress" is not a sentence anyone should have to say out loud.
  *
+ * ─── THREE KINDS OF GUARD, AND WHERE EACH BELONGS ───────────────────────
+ *
+ * Written down 2026-08-12 because an architecture review re-litigated it, and
+ * the next reader should not have to. Sort a guard by asking what happens when
+ * someone tries to write the defect:
+ *
+ *   1. STRUCTURAL-RUNTIME GUARDS — the wrong thing cannot be EXPRESSED, or the
+ *      process refuses to carry it. DerivedIndexJob's typed lane, the boot
+ *      spend guard, AdvisoryLockService's dedicated connection, the detector-gap
+ *      throw. These DO NOT BELONG HERE, and that is a promotion, not an
+ *      omission: they are the rung ABOVE registration. Registering one would
+ *      prove that the constructor still takes its arguments — the same category
+ *      error as registering a branded type. If such a guard is ever softened
+ *      into a convention, THAT is when it earns an entry, and the entry should
+ *      be filed as a regression.
+ *
+ *   2. SEPARATE-ARTIFACT SCANNERS — a .mjs, a .sh, a lint selector, a spec that
+ *      nothing else exercises. These BELONG HERE, always, when the three tests
+ *      hold. They are the population the census's 19 historical failures came
+ *      from, because an artifact nothing exercises is an artifact nothing
+ *      notices dying. Everything in the repo-root-scanners section below is
+ *      one of these.
+ *
+ *   3. HYGIENE SCANNERS — real, wired, worth keeping, but their defect costs
+ *      readability rather than money, trust, or data. coverage-staleness,
+ *      doc-claims, the search-runtime hook-name and orphan-key gates,
+ *      find-dead-hook-args, the tracksheet R8 invariants, and the cutover
+ *      delete-gates (whose diseases were killed by deleting their pattern, so
+ *      nothing regenerates them — test 2 fails outright). These stay in CI and
+ *      OUT of this registry. Registering them would trade the registry's
+ *      strongest property — that every entry is worth the mutation run — for
+ *      the appearance of coverage, which is the census instinct this file was
+ *      written to refuse.
+ *
  * ─── WHAT THIS IS NOT ────────────────────────────────────────────────────
  */
 
@@ -809,6 +843,217 @@ export const INVARIANTS: readonly Invariant[] = [
         file: SCRATCH,
         content:
           'export const key = (a: string, b: string) => `${a}\\0${b}`;\n',
+      },
+    ],
+  },
+
+  // ── THE REPO-ROOT SCANNERS ───────────────────────────────────────────
+  //
+  // Everything above lives in apps/api. These five mechanisms live at the
+  // REPOSITORY root — scripts/*.mjs and scripts/*.sh, run by CI rather than by
+  // anything apps/api owns — and until now not one of them was registered,
+  // which is precisely backwards: the census's 19 historical guard failures
+  // were dominated by exactly this population (separate artifacts, exercised by
+  // nothing else, defeated by a comment, a rename, or a regex that only matched
+  // the already-fixed shape). Each entry below earns its place on all three
+  // tests, and the ones DECLINED are named in the doc block at the bottom of
+  // this file so the next author does not re-litigate them.
+  //
+  // The checks run `node ../../scripts/...` because every check.command runs
+  // from apps/api. The mutations reach out of apps/api the same way the i18n
+  // and source entries already do.
+  {
+    id: 'source.a-backtick-cannot-quietly-end-a-sql-template',
+    statement:
+      'No line-initial SQL comment inside a TypeScript file contains a backtick — including in a file nobody has `git add`ed yet.',
+    incident:
+      'CLAUDE.md, "cost 4 round trips in one day": a backtick in a `Prisma.sql` comment CLOSES the template, and tsc then reports TS1005/TS1134 about commas and variable declarations, anchored a line or two off and naming neither the backtick nor the template. tsc catches the break; only this names it. And a parser-based rule cannot run at all on a file that no longer parses.',
+    level: 'lint',
+    mechanism:
+      'scripts/check-sql-comment-backticks.mjs, on scripts/lib/scan-repo.mjs',
+    check: {
+      command: 'node ../../scripts/check-sql-comment-backticks.mjs',
+      reads: 'every .ts/.tsx in the repository, tracked or merely present',
+    },
+    mutations: [
+      {
+        // THE UNTRACKED PROBE IS THE POINT. This file is not in the index, and
+        // before scan-repo.mjs the gate enumerated the index ONLY — so this
+        // exact mutation PASSED, and the author of a brand-new file got the
+        // TS1005 cascade with no gate to name it. The mutation is therefore
+        // proof of the scope as much as of the rule.
+        file: SCRATCH,
+        content:
+          'export const q = `\n  SELECT 1\n  -- a bare `::date` literal resolves in the session timezone\n`;\n',
+      },
+    ],
+    legitimate: [
+      {
+        // The fix the gate tells you to write: the term bare. A gate that
+        // refused its own remedy would be untrustworthy.
+        file: SCRATCH,
+        content:
+          'export const q = `\n  SELECT 1\n  -- a bare ::date literal resolves in the session timezone\n`;\n',
+      },
+    ],
+  },
+  {
+    id: 'ledger.the-evidence-ledger-has-one-write-door',
+    statement:
+      'Every write to the two event-ledger tables goes through writeRestaurantEvents / writeRestaurantEntityEvents, which resolve entity_redirects at insert time.',
+    incident:
+      'The rule was prose in a header and enforced by nothing. A direct write lands live evidence on a merged-away tombstone, where the projection rebuild will never see it again — the evidence is not lost loudly, it is simply never counted. ESLint cannot hold this: the tree-wide no-restricted-syntax block already exempts the two files that legitimately write the ledger.',
+    level: 'lint',
+    mechanism:
+      'scripts/check-event-ledger-chokepoint.mjs, on scripts/lib/scan-repo.mjs',
+    check: {
+      command: 'node ../../scripts/check-event-ledger-chokepoint.mjs',
+      reads: 'every .ts/.tsx/.sql in the repository, tracked or merely present',
+    },
+    mutations: [
+      {
+        // A new service writing the ledger directly — the attractor exactly.
+        // Untracked again, and again that is load-bearing: a new writer is a
+        // live defect from the moment the file exists, not from the moment
+        // somebody stages it.
+        file: SCRATCH,
+        content:
+          'declare const tx: {\n  restaurantEvent: { createMany: (a: unknown) => Promise<void> };\n};\ndeclare const rows: unknown[];\nexport const w = async () => tx.restaurantEvent.createMany({ data: rows });\n',
+      },
+    ],
+  },
+  {
+    id: 'deploy.a-manifest-cannot-silently-not-serve',
+    statement:
+      'No railway*.json declares deploy.startCommand or a non-empty build.watchPatterns.',
+    incident:
+      'Both are burned into CLAUDE.md after real production incidents. `startCommand` OVERRIDES the Dockerfile CMD and is exec\'d WITHOUT a shell, so `sh -c "migrate && start"` becomes argv: the container migrates, exits 0, and never serves — exit 0 is the cruelty. `watchPatterns` makes Railway SKIP a deploy while printing "Deploy complete"; on 2026-08-02 prod ran the wrong commit and the smoke passed because it checked uptime rather than the running commit.',
+    level: 'lint',
+    mechanism: 'scripts/check-railway-manifests.mjs',
+    check: {
+      command: 'node ../../scripts/check-railway-manifests.mjs',
+      reads: 'every railway*.json in the repository',
+    },
+    mutations: [
+      {
+        file: '../../railway.json',
+        find: '    "healthcheckPath": "/health",',
+        replace:
+          '    "startCommand": "node apps/api/dist/main.js",\n    "healthcheckPath": "/health",',
+      },
+      {
+        file: '../../railway.json',
+        find: '  "build": {\n    "builder": "DOCKERFILE",',
+        replace:
+          '  "build": {\n    "watchPatterns": ["apps/api/**"],\n    "builder": "DOCKERFILE",',
+      },
+    ],
+  },
+  {
+    id: 'deploy.a-heavy-migration-yields-its-parallel-workers',
+    statement:
+      'A migration that rewrites a column or runs an unbounded UPDATE sets max_parallel_workers_per_gather = 0 and max_parallel_maintenance_workers = 0 ABOVE the heavy statement.',
+    incident:
+      'Prod postgres has a small /dev/shm, so a heavy migration dies with "could not resize shared memory segment". Migrations run in the container\'s BOOT command, so that is not a failed migration — it is a P3009 crash-loop that takes the whole deploy with it. AUTHORING.md §1 had required the two lines since F303 and nothing enforced it; the heaviest rewrite in the corpus carried the guard zero times. F3914 then found the position hole: a SET below the rewrite protects nothing.',
+    level: 'schema',
+    mechanism: 'scripts/check-migration-parallel-guard.mjs',
+    check: {
+      command: 'node ../../scripts/check-migration-parallel-guard.mjs',
+      reads:
+        'every prisma/migrations/*/migration.sql, guarded or grandfathered',
+    },
+    mutations: [
+      {
+        // A NEW migration, because that is the only shape this defect has.
+        // Every heavy migration in the corpus today is grandfathered by pinned
+        // sha, so editing one proves nothing about what the NEXT author's file
+        // would do — and the next author's file is the entire attractor. (This
+        // is the mutation the harness grew directory-creation for.)
+        file: 'prisma/migrations/29990101000000_invariant_probe_heavy/migration.sql',
+        content: 'ALTER TABLE core_entities ALTER COLUMN name TYPE text;\n',
+      },
+    ],
+    legitimate: [
+      {
+        // The same heavy statement, guarded at the top: the gate must not make
+        // the correct migration unwritable.
+        file: 'prisma/migrations/29990101000000_invariant_probe_heavy/migration.sql',
+        content:
+          'SET max_parallel_workers_per_gather = 0;\nSET max_parallel_maintenance_workers = 0;\n\nALTER TABLE core_entities ALTER COLUMN name TYPE text;\n',
+      },
+    ],
+  },
+  {
+    id: 'lint.a-ban-survives-every-override',
+    statement:
+      'The repo-root lint standard holds its safety rules at error, and no eslint override scope carries fewer restricted-rule bans than the baseline beside it.',
+    incident:
+      "ESLint REPLACES a rule's options when a later config block sets the same rule, which silently deleted two door-lock bans (F2050) while their comments still claimed they were live — `yarn lint` was green throughout, because a rule that does not exist reports nothing. Separately (F9100/F9101) the root standard held these rules at `warn`, and NOTHING in this repo fails on warnings: `eslint` exits 0 with any number of them. THIS ENTRY GUARDS THE OTHER ENTRIES — eight invariants above are enforced by eslint, and every one of them is only as alive as this.",
+    level: 'lint',
+    mechanism: 'scripts/check-lint-ban-inheritance.mjs',
+    check: {
+      command: 'node ../../scripts/check-lint-ban-inheritance.mjs',
+      reads:
+        "each override scope's EFFECTIVE eslint config, via --print-config",
+    },
+    mutations: [
+      {
+        // The demotion, which is how the two standards arose in the first
+        // place: a safety rule at 'warn' is a comment with a severity field.
+        file: '../../.eslintrc.js',
+        find: "'@typescript-eslint/no-floating-promises': 'error',",
+        replace: "'@typescript-eslint/no-floating-promises': 'warn',",
+      },
+    ],
+  },
+  {
+    id: 'source.every-script-declares-what-runs-it',
+    statement:
+      'Every file in scripts/ declares @script-class and @run-by, so "wired to nothing" is a statement the repository makes out loud rather than a fact someone discovers.',
+    incident:
+      "Four gates in this repo were found wired to NOTHING, sitting green for months — F702's 16 rotted checks and F709's dead cluster both hid in what the containment gate's own header calls \"a flat bag of 57 undifferentiated files\". The whole H4 exercise this entry belongs to began by asking which root scanners were wired, and the answer was legible ONLY because this gate had already forced every script to answer.",
+    level: 'lint',
+    mechanism:
+      'scripts/scripts-containment-gate.sh, on scripts/lib/gate-runner.sh',
+    check: {
+      command: 'bash ../../scripts/scripts-containment-gate.sh',
+      reads: 'the class/run-by declaration of every file in scripts/',
+    },
+    mutations: [
+      {
+        // A new script that declares nothing — the shape every dead cluster in
+        // this repo started as.
+        file: '../../scripts/invariant-probe-undeclared.mjs',
+        content: "console.log('a script that says nothing about itself');\n",
+      },
+    ],
+  },
+
+  // ── PROMPTS ──────────────────────────────────────────────────────────
+  {
+    id: 'prompt.the-instruction-describes-the-request-we-send',
+    statement:
+      'For each entity-match transport, every field name the rendered system instruction mentions is a field that transport actually sends or its schema actually enforces.',
+    incident:
+      'The canonical .md drifted into describing the BATCH request — "you receive `items`", "one verdict per `index`", output key `candidateId` — while the SINGLE transport sends `{term, kind, candidates}` and enforces a schema whose id field is snake_case `candidate_id`. Both halves were internally consistent and every existing spec was green: the binding spec compared the .md to the OTHER rendered text, never to the bytes on the wire. A model told to key its answer by `index` on a request that has no index is a SILENT-ACCURACY defect — nothing crashes, the corpus just merges worse.',
+    level: 'behaviour',
+    mechanism:
+      "entity-match-payload-conformance.spec.ts — renders each mode's real instruction and captures the real JSON payload by driving matchEntity / matchEntitiesBatch with the transport stubbed at callLLMApi, then cross-checks field names in both directions, case-sensitively (`candidateId` vs `candidate_id` is exactly the drift that shipped).",
+    check: {
+      command:
+        'npx jest src/modules/external-integrations/llm/entity-match-payload-conformance.spec.ts --silent',
+      reads: 'the bytes each transport puts on the wire, not a fixture of them',
+    },
+    mutations: [
+      {
+        // The drift as it shipped: the single lane's canonical text naming a
+        // field that belongs to the batch transport. Editing the .md rather
+        // than the envelope is deliberate — the .md is the file a human edits
+        // and the prompt-versioning machinery reads, so it is where drift is
+        // actually introduced.
+        file: 'src/modules/external-integrations/llm/prompts/entity-match-prompt.md',
+        find: 'each with an `id`',
+        replace: 'each with a `candidateId`',
       },
     ],
   },

@@ -60,6 +60,13 @@ const EXCEPTIONS = new Map([
     'apps/api/src/modules/content-processing/reddit-collector/redirect-aware-event-write.integration.spec.ts',
     'plants an unresolved row on purpose, to prove the tombstone sweep heals it',
   ],
+  [
+    'apps/api/src/shared/invariants/registry.ts',
+    'DECLARES the defect as a string, so that the invariant harness can plant ' +
+      'it in a scratch file and prove this gate still rejects it. The registry ' +
+      'never executes anything; a mutation that could not spell the banned ' +
+      'shape would not be a proof of anything',
+  ],
 ]);
 
 /**
