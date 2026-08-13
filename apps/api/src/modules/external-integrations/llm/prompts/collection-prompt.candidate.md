@@ -250,6 +250,24 @@ capitalization, "The" fronting it as a title, a possessive, a locating tail
 span denotes a particular establishment, so keep it even when its words are
 generic ("The Smith", "Superiority Burger").
 
+**A naming frame needs a name inside it.** A locating tail or definite article
+around a bare category noun is a DESCRIPTION of an unnamed venue, not a name:
+"the boba shop in 99 ranch market", "the taco truck on 5th", "the deli
+downstairs" describe a place the writer never names. Skip that venue; never
+promote the description (or the landmark hosting it) into a restaurant name.
+The head must be a proper name for the frame to keep it ("Liberty halal cart"
+names; "the halal cart at South Ferry" describes).
+
+**A one-word shorthand in a list names its referent, not itself.** Locals
+clip names: "Vinnie's, Williamsburg Pizza, Best, Smiling, Ben's" uses "Best"
+as shorthand for a fuller brand. A series slot alone does not make a bare
+generic English word ("Best", "Good", "Place") a canonical name — keep such a
+slot only when this input elsewhere shows the fuller form (then emit that
+form); otherwise drop ONLY that slot. Every other name in the list, and all
+dish/testimony handling, is untouched by this rule. Possessives and
+distinctive coinages are real shorthands and stay ("Vinnie's", "Smitty's",
+"sho").
+
 **Discard** a span the text uses as a category, dish, or dining format — the
 object of a craving, comparison, or description with no naming frame ("just
 want good tacos", "love hot pot", "a solid steakhouse"). **A dish phrase is not
@@ -359,7 +377,9 @@ informative token set. **Use the chosen canonical consistently for every
 mention of that place within the post object.**
 
 Never emit placeholders ("unknown restaurant", "that place") or a partial name
-with no brand token.
+with no brand token. A bare generic English word kept from a list slot (B.1's
+shorthand rule) is a partial name under this law — if no fuller observed form
+completes it, it must not survive to output.
 
 Examples: "Franklin BBQ" → `franklin bbq`; "The Smith" → `smith`; "Joe's Pizza"
 → `joes pizza`; "Pho & Co." → `pho and co`.

@@ -1567,5 +1567,82 @@
         }
       ]
     }
+  },
+  {
+    "id": "ghost-best-shorthand-list",
+    "why": "Ghost provenance: 'Best' minted from one-word colloquial shorthand for Best Pizza in a pizza list (r/FoodNYC t1_ob9w2uz). Kill: the bare shorthand must not become a restaurant named 'Best'. Real full names in the list stay.",
+    "posts": [
+      {
+        "id": "t3_ghost1",
+        "title": "Best pizza in Brooklyn?",
+        "comments": [
+          {
+            "id": "t1_ob9w2uz",
+            "body": "Big disagree on Joe’s. Native Brooklynite zillennial here. Joe’s Carmine is the one though. The 14th street one is fine too. Can’t vouch for the rest of the Joe’s. I would say Vinnie’s, Williamsburg Pizza, Best, Smiling, Ben’s, and L&B Spumoni.\n\nApollo Bagels is awful bc it is venture capital disney version of nyc. I will not acknowledge it as a valid food establishment in this here fine city. Almost any bagel store will be better, though if the point is both a great bagel AND the spirit of a normal (read: casual) quick bagel experience, I would say H&H, Smith Street Bagels, Bakers Dozen, Terrace Bagels, Tompkins Square Bagels, and also Bagelsmith honorable mention for being one of the few bagel shops carrying the torch of all night bagels (a dying institution)."
+          }
+        ]
+      }
+    ],
+    "expect": {
+      "restaurants": ["Williamsburg Pizza"],
+      "notRestaurants": ["Best"]
+    }
+  },
+  {
+    "id": "ghost-boba-shop-descriptor",
+    "why": "Ghost provenance: 'Boba Shop In 99 Ranch Market' minted from a pure descriptor ('the boba shop in 99 ranch market'). A description of an unnamed stall must not become a canonical restaurant name.",
+    "posts": [
+      {
+        "id": "t3_ghost4",
+        "title": "Boba recs north Austin",
+        "comments": [
+          {
+            "id": "t1_meg354w",
+            "body": "My favorite is the boba shop in 99 ranch market in the north but its opened in noon and no online ordering choices. However, it's very nice if you have a sweet tooth like me. I personally love the Strawberry Shortcake with tapioca pearls. There's also many boba spots next to the 99 ranch market to explore."
+          }
+        ]
+      }
+    ],
+    "expect": {
+      "notRestaurants": ["Boba Shop In 99 Ranch Market", "Boba Shop"]
+    }
+  },
+  {
+    "id": "ghost-keep-popup-bakery",
+    "why": "KEEP-SIDE: 'Bakers of Tomorrow' is a real named pop-up bakery. A shorthand/descriptor fix must not kill named trucks and pop-ups.",
+    "posts": [
+      {
+        "id": "t3_ghost5",
+        "title": "Vegan croissants in Austin?",
+        "comments": [
+          {
+            "id": "t1_jux34k9",
+            "body": "Bakers of Tomorrow do pop ups at markets and have great vegan croissants."
+          }
+        ]
+      }
+    ],
+    "expect": {
+      "restaurants": ["Bakers of Tomorrow"]
+    }
+  },
+  {
+    "id": "ghost-keep-halal-cart",
+    "why": "KEEP-SIDE: 'Liberty halal cart' is a named street cart — legitimate ungroundable restaurant.",
+    "posts": [
+      {
+        "id": "t3_ghost6",
+        "title": "Halal cart recs?",
+        "comments": [
+          {
+            "id": "t1_oit4j1n",
+            "body": "Several years ago when I was staying on SI, I used to go to and really enjoy Liberty halal cart down at South Ferry."
+          }
+        ]
+      }
+    ],
+    "expect": {
+      "restaurants": ["Liberty Halal Cart"]
+    }
   }
 ]
