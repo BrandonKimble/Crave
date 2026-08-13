@@ -176,3 +176,22 @@ NEEDS OWNER HASH via campaign flow); (2) failures then get the ignore
 rule: archive/suppress from search, mentions re-attach to grounded
 referents where the resolver can; (3) the ungroundable-survival gate
 becomes a standing enrichment-lifecycle invariant, not a one-off sweep.
+
+## v13 SHADOW — pre-arm red team GO (2026-08-12) + named diff-review checks
+
+Final red team: GO with 3 conditions (76-case certification on final
+text+schema pairing — running; absolute-path push + same-env DB/worker;
+named checks below). Two AT-RISK consumer items are MEASUREMENT checks
+for the shadow-diff review, not blockers:
+1. PRAISE-MASS SHIFT: ANSWER TEST + F.1 both-at-once create praise
+   carriers the old prompt suppressed; praise feeds restaurant lane at
+   2.0x weight — measure corpus-wide score shift in the diff review;
+   also two divergent praise dedupe keys noted.
+2. CURATED-LIST ATTRIBUTE THINNING: home lists bucket on dish/venue-word
+   attributes the candidate forbids minting (sushi/burgers/bakery/cafe);
+   places_api + cuisine_llm writers still supply them — measure thinning
+   rate; bbq canonical spelling never picked (teaser pins 'barbecue').
+Owner line-items surfaced: schema hash should eventually fold into the
+registered prompt hash (schemas are load-bearing prompt text now); the
+verbatim-alias surface banking path is dead (pre-existing) and the
+rewrite makes it permanent.
