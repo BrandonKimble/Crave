@@ -280,8 +280,17 @@ Findings, triaged:
   CLASS — restaurant recall surfaces are word-claims in another lane and
   never face a judge — folds into the hearing abstraction as a
   restaurant-name lane (a generic-word surface like "best" loses a hearing
-  it was never given). Also: an unreachable restaurant (no geocode) should
-  not be groundable at all — admission predicate for the gazetteer build.
+  it was never given). Admission note REFINED 2026-08-12: 'unreachable AND
+  unheard' — a hearing-passed name (food truck, pop-up) stays searchable;
+  map-pin absence is display, not identity. PROVENANCE TRACED (2026-08-12,
+  for ⭐04's ghost census): minted 2026-07-31 from r/FoodNYC t1_ob9w2uz —
+  "Vinnie's, Williamsburg Pizza, Best, Smiling, Ben's..." — LOCAL SHORTHAND
+  IN A LIST class ("Best" = Best Pizza Williamsburg, taken literally).
+  Discriminating datum: of 6 shorthands in that list only "Best" minted →
+  mechanism = shorthand-mint + generic-word false reinforcement (3 mentions
+  / 2 docs; the bagel link is Apollo-sentence bleed). Prompt fix (⭐04):
+  expand shorthand to referent or emit against it, never mint the
+  shorthand; generic-word reinforcement = my hearing lane's job.
 - **C4b judged-reject re-admitted** ('taqueria' for 'tacos al pastor'
   despite an explicit judge NO): the known rejects-not-subtracted bug; dies
   with the A1 ladder (band 2 = DENSE ∪ COUSINS MINUS REJECTS). Ladder-bound.
