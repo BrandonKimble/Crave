@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-08-13T05:31:58.729Z",
+  "generatedAt": "2026-08-13T06:06:53.354Z",
   "pageSize": 25,
   "maxPages": 60,
   "mutation": null,
@@ -10,12 +10,13 @@
     "maxAnchors": 3
   },
   "corpus": {
-    "mustAppear": 2303,
-    "missing": 766,
-    "served": 2897,
-    "leaks": 369,
+    "mustAppear": 2333,
+    "missing": 781,
+    "served": 2910,
+    "leaks": 365,
     "judgedRejectsServed": 3,
-    "coverage": 0.667390360399479
+    "coverage": 0.6652378911273039,
+    "unexplainedMisses": 0
   },
   "cases": [
     {
@@ -25,24 +26,24 @@
       "grounded": ["chili", "cheese", "dog"],
       "groundingShattered": true,
       "anchors": 3,
-      "tier0Concepts": 86,
+      "tier0Concepts": 108,
       "ringConcepts": 177,
       "dietaryWallActive": false,
       "served": {
         "expansionFired": false,
         "pages": 19,
         "exhausted": true,
-        "dishes": 426,
-        "restaurants": 309,
+        "dishes": 443,
+        "restaurants": 324,
         "reportedTotals": {
-          "dishes": 426,
-          "restaurants": 309
+          "dishes": 443,
+          "restaurants": 324
         }
       },
       "truth": {
-        "candidates": 420,
-        "mustAppear": 399,
-        "mayAppear": 21
+        "candidates": 436,
+        "mustAppear": 414,
+        "mayAppear": 22
       },
       "coverage": 1,
       "missing": 0,
@@ -102,11 +103,11 @@
       "grounded": ["chili", "cheese", "dog", "best"],
       "groundingShattered": false,
       "anchors": 3,
-      "tier0Concepts": 86,
+      "tier0Concepts": 108,
       "ringConcepts": 177,
       "dietaryWallActive": false,
       "served": {
-        "expansionFired": true,
+        "expansionFired": false,
         "pages": 1,
         "exhausted": true,
         "dishes": 0,
@@ -117,14 +118,14 @@
         }
       },
       "truth": {
-        "candidates": 420,
-        "mustAppear": 399,
-        "mayAppear": 21
+        "candidates": 436,
+        "mustAppear": 414,
+        "mayAppear": 22
       },
       "coverage": 0,
-      "missing": 399,
+      "missing": 414,
       "missReasons": {
-        "restaurant-entity conjunction (query grounded a venue)": 399
+        "restaurant-entity conjunction (query grounded a venue)": 414
       },
       "missSamples": [
         {
@@ -225,7 +226,7 @@
       "groundingShattered": true,
       "anchors": 1,
       "tier0Concepts": 3,
-      "ringConcepts": 246,
+      "ringConcepts": 250,
       "dietaryWallActive": false,
       "served": {
         "expansionFired": true,
@@ -480,18 +481,18 @@
       "grounded": ["pho"],
       "groundingShattered": false,
       "anchors": 1,
-      "tier0Concepts": 10,
-      "ringConcepts": 15,
+      "tier0Concepts": 12,
+      "ringConcepts": 13,
       "dietaryWallActive": false,
       "served": {
-        "expansionFired": true,
+        "expansionFired": false,
         "pages": 2,
         "exhausted": true,
-        "dishes": 19,
-        "restaurants": 19,
+        "dishes": 15,
+        "restaurants": 15,
         "reportedTotals": {
-          "dishes": 19,
-          "restaurants": 19
+          "dishes": 15,
+          "restaurants": 15
         }
       },
       "truth": {
@@ -503,33 +504,9 @@
       "missing": 0,
       "missReasons": {},
       "missSamples": [],
-      "leaks": 4,
-      "leakReasons": {
-        "plan-expansion arm (lexical/attribute widening past the graph)": 3,
-        "lexical-expansion arm (name look-alike)": 1
-      },
-      "leakSamples": [
-        {
-          "connectionId": "23eedca9-b7d3-4d53-aefa-3a9c91192af9",
-          "food": "chicken tail skewer",
-          "reason": "plan-expansion arm (lexical/attribute widening past the graph)"
-        },
-        {
-          "connectionId": "4f81e0ae-80aa-46de-8233-cf971c80da90",
-          "food": "intestines",
-          "reason": "plan-expansion arm (lexical/attribute widening past the graph)"
-        },
-        {
-          "connectionId": "eb13e296-e277-4671-883b-b728bbdad57b",
-          "food": "phony negroni",
-          "reason": "lexical-expansion arm (name look-alike)"
-        },
-        {
-          "connectionId": "4a6268d0-1bed-4ce7-9180-0db79f93a1b8",
-          "food": "grilled intestines",
-          "reason": "plan-expansion arm (lexical/attribute widening past the graph)"
-        }
-      ],
+      "leaks": 0,
+      "leakReasons": {},
+      "leakSamples": [],
       "judgedRejectsServed": 0,
       "judgedRejectSamples": [],
       "expectEmpty": false,
@@ -682,7 +659,7 @@
       "groundingShattered": true,
       "anchors": 2,
       "tier0Concepts": 4,
-      "ringConcepts": 183,
+      "ringConcepts": 184,
       "dietaryWallActive": false,
       "served": {
         "expansionFired": false,
@@ -783,7 +760,7 @@
       "groundingShattered": false,
       "anchors": 2,
       "tier0Concepts": 49,
-      "ringConcepts": 79,
+      "ringConcepts": 80,
       "dietaryWallActive": false,
       "served": {
         "expansionFired": false,
@@ -804,14 +781,14 @@
       "coverage": 0.9932,
       "missing": 1,
       "missReasons": {
-        "UNEXPLAINED": 1
+        "ring-only membership (tier-0 concept miss; plan expansion did not fire)": 1
       },
       "missSamples": [
         {
           "connectionId": "d1c32345-4b34-4db7-acda-8fa7859f4ada",
           "food": "camaron machete",
           "restaurant": "Machetes “Doña Leova”",
-          "reason": "UNEXPLAINED"
+          "reason": "ring-only membership (tier-0 concept miss; plan expansion did not fire)"
         }
       ],
       "leaks": 0,
@@ -830,7 +807,7 @@
       "groundingShattered": false,
       "anchors": 1,
       "tier0Concepts": 3,
-      "ringConcepts": 240,
+      "ringConcepts": 244,
       "dietaryWallActive": false,
       "served": {
         "expansionFired": true,
@@ -900,8 +877,8 @@
       "grounded": ["pastel", "arroz", "de"],
       "groundingShattered": false,
       "anchors": 3,
-      "tier0Concepts": 268,
-      "ringConcepts": 87,
+      "tier0Concepts": 271,
+      "ringConcepts": 88,
       "dietaryWallActive": false,
       "served": {
         "expansionFired": false,
@@ -922,80 +899,38 @@
       "coverage": 0.2511,
       "missing": 334,
       "missReasons": {
-        "UNEXPLAINED": 334
+        "pooled-gate: tier-1 suppressed (venue lacks a soft restaurant attribute)": 334
       },
       "missSamples": [
         {
           "connectionId": "0106db95-2bfc-47e6-9e0c-f16cc9ca82af",
           "food": "almond creme cake",
           "restaurant": "Hayley Cakes and Cookies",
-          "reason": "UNEXPLAINED"
+          "reason": "pooled-gate: tier-1 suppressed (venue lacks a soft restaurant attribute)"
         },
         {
           "connectionId": "01312af4-22b9-4c64-8d7e-9ede9fbe1372",
           "food": "chuleta plate",
           "restaurant": "Habanero Cafe",
-          "reason": "UNEXPLAINED"
+          "reason": "pooled-gate: tier-1 suppressed (venue lacks a soft restaurant attribute)"
         },
         {
           "connectionId": "015b28c2-f8f7-4474-b0b9-1c12b1fa5a21",
           "food": "rice",
           "restaurant": "KG BBQ",
-          "reason": "UNEXPLAINED"
+          "reason": "pooled-gate: tier-1 suppressed (venue lacks a soft restaurant attribute)"
         },
         {
           "connectionId": "01f8fcd2-c4c6-4455-8360-74eb7b71a266",
           "food": "strawberry short cake",
           "restaurant": "Jacoby's Restaurant & Mercantile",
-          "reason": "UNEXPLAINED"
+          "reason": "pooled-gate: tier-1 suppressed (venue lacks a soft restaurant attribute)"
         },
         {
           "connectionId": "023b3e3f-a78f-45b6-848f-83b7db69e119",
           "food": "grilled romaine handroll",
           "restaurant": "Uchi Austin",
-          "reason": "UNEXPLAINED"
-        },
-        {
-          "connectionId": "02569b6a-2f08-46fb-a9c7-3280f2c71315",
-          "food": "bundt cake",
-          "restaurant": "Nothing Bundt Cakes",
-          "reason": "UNEXPLAINED"
-        },
-        {
-          "connectionId": "02fe2de5-9756-4784-b3ab-bfe2ef798a3e",
-          "food": "lamb shawarma over rice",
-          "restaurant": "Halal Bros",
-          "reason": "UNEXPLAINED"
-        },
-        {
-          "connectionId": "04883eb4-29aa-4f06-94ca-53769fdd9f16",
-          "food": "cupcake",
-          "restaurant": "Quack's 43rd Street Bakery",
-          "reason": "UNEXPLAINED"
-        },
-        {
-          "connectionId": "051f9705-f453-48e4-9262-1c209e2706cb",
-          "food": "bulgogi bowl",
-          "restaurant": "Bouldin Creek Cafe",
-          "reason": "UNEXPLAINED"
-        },
-        {
-          "connectionId": "052b043d-f556-4eea-8c71-857d08696a45",
-          "food": "gateau marissa",
-          "restaurant": "Upper Crust Bakery",
-          "reason": "UNEXPLAINED"
-        },
-        {
-          "connectionId": "053af513-1119-4a2a-8464-9c58d5ad9893",
-          "food": "boudin",
-          "restaurant": "Sawyer & Co",
-          "reason": "UNEXPLAINED"
-        },
-        {
-          "connectionId": "055f4290-d2be-463b-8d2e-5edbfd64424c",
-          "food": "arroz con leche shave ice",
-          "restaurant": "Shaved Ice Island",
-          "reason": "UNEXPLAINED"
+          "reason": "pooled-gate: tier-1 suppressed (venue lacks a soft restaurant attribute)"
         }
       ],
       "leaks": 0,
@@ -1238,7 +1173,7 @@
       "groundingShattered": false,
       "anchors": 1,
       "tier0Concepts": 46,
-      "ringConcepts": 78,
+      "ringConcepts": 79,
       "dietaryWallActive": false,
       "served": {
         "expansionFired": false,
@@ -1313,7 +1248,7 @@
       "grounded": ["pudding"],
       "groundingShattered": false,
       "anchors": 1,
-      "tier0Concepts": 24,
+      "tier0Concepts": 26,
       "ringConcepts": 10,
       "dietaryWallActive": false,
       "served": {
@@ -1352,7 +1287,7 @@
       "groundingShattered": false,
       "anchors": 1,
       "tier0Concepts": 2,
-      "ringConcepts": 16,
+      "ringConcepts": 17,
       "dietaryWallActive": false,
       "served": {
         "expansionFired": false,
@@ -1643,7 +1578,7 @@
       "grounded": ["tacos"],
       "groundingShattered": false,
       "anchors": 1,
-      "tier0Concepts": 232,
+      "tier0Concepts": 236,
       "ringConcepts": 7,
       "dietaryWallActive": false,
       "served": {

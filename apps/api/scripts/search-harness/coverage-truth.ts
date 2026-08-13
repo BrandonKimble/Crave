@@ -381,6 +381,10 @@ type TruthRow = {
   restaurantId: string;
   restaurantName: string;
   viaTier0: boolean;
+  /** the tier-0 CONCEPT arm alone, without the twin-ingredient union — the two
+   *  differ exactly on rows admitted only because the dish carries an
+   *  ingredient that is the anchor's twin (the burrata ruling). */
+  viaTier0Concept: boolean;
   viaRing: boolean;
   viaIngredient: boolean;
   viaTwin: boolean;
@@ -389,6 +393,10 @@ type TruthRow = {
   locOk: boolean;
   dietaryOk: boolean;
   softAllMet: boolean;
+  /** the VENUE side of the pooled gate: does this row's restaurant carry every
+   *  soft restaurant-attribute the ask grounded? (`softAllMet` is the dish
+   *  side.) Both must hold for the row to be tier-0 — see `chaseMiss`. */
+  restSoftMet: boolean;
   mentionCount: number;
   priceLevel: number | null;
 };
@@ -460,6 +468,14 @@ async function deriveTruthRows(
   const softAllSql = sets.softFoodAttrs.length
     ? Prisma.sql`c.food_attributes @> ${sets.softFoodAttrs}::uuid[]`
     : Prisma.sql`TRUE`;
+  // THE POOLED GATE HAS TWO SIDES AND THE HARNESS ONLY EVER MEASURED ONE.
+  // `search-query.builder.ts`'s `pooledRestFullExpr` makes tier-0 membership
+  // the conjunction `restaurant_attributes @> softRest AND EXISTS(dish with
+  // softFood)`. This column is the venue half, read off the restaurant entity
+  // exactly as the builder reads it.
+  const restSoftSql = sets.softRestAttrs.length
+    ? Prisma.sql`r.restaurant_attributes @> ${sets.softRestAttrs}::uuid[]`
+    : Prisma.sql`TRUE`;
   const tier0Arm = sets.tier0.length
     ? Prisma.sql`c.food_id = ANY(${sets.tier0}::uuid[])`
     : Prisma.sql`FALSE`;
@@ -475,6 +491,7 @@ async function deriveTruthRows(
       c.restaurant_id                              AS "restaurantId",
       r.name                                       AS "restaurantName",
       (${tier0Arm} OR ${twinArm})                  AS "viaTier0",
+      (${tier0Arm})                                AS "viaTier0Concept",
       (${ringArm})                                 AS "viaRing",
       (${ingArm})                                  AS "viaIngredient",
       (${twinArm})                                 AS "viaTwin",
@@ -488,6 +505,7 @@ async function deriveTruthRows(
                                                    AS "locOk",
       (${dietaryOkSql})                            AS "dietaryOk",
       (${softAllSql})                              AS "softAllMet",
+      (${restSoftSql})                             AS "restSoftMet",
       c.mention_count                              AS "mentionCount",
       r.price_level                                AS "priceLevel"
     FROM core_restaurant_items c
@@ -510,6 +528,7 @@ async function deriveTruthRows(
     restaurantId: String(r.restaurantId),
     restaurantName: String(r.restaurantName),
     viaTier0: Boolean(r.viaTier0),
+    viaTier0Concept: Boolean(r.viaTier0Concept),
     viaRing: Boolean(r.viaRing),
     viaIngredient: Boolean(r.viaIngredient),
     viaTwin: Boolean(r.viaTwin),
@@ -518,6 +537,7 @@ async function deriveTruthRows(
     locOk: Boolean(r.locOk),
     dietaryOk: Boolean(r.dietaryOk),
     softAllMet: Boolean(r.softAllMet),
+    restSoftMet: Boolean(r.restSoftMet),
     mentionCount: Number(r.mentionCount ?? 0),
     priceLevel:
       r.priceLevel === null || r.priceLevel === undefined
@@ -605,6 +625,7 @@ function chaseMiss(
     threshold: number;
     served: Served;
     hasSoft: boolean;
+    hasSoftRest: boolean;
     restaurantIds: string[];
     priceLevels: number[];
   },
@@ -624,9 +645,44 @@ function chaseMiss(
     return 'ask-ingredient conjunction (row lacks the decomposed part)';
   if (!row.hasRestScore) return 'no-restaurant-public-score (INNER JOIN prs)';
   if (!row.hasConnScore) return 'no-connection-public-score (INNER JOIN pcs)';
-  if (ctx.hasSoft && !row.softAllMet && ctx.tier0Count >= ctx.threshold)
-    return 'pooled-gate: tier-1 suppressed (tier-0 filled the page)';
+  // THE POOLED GATE, BOTH SIDES. Tier-0 is the CONJUNCTION of the dish-side
+  // and venue-side soft-attribute tests (`pooledRestFullExpr`), so a row is
+  // demoted to tier 1 by failing EITHER. The harness asked only the dish
+  // question for a year, which is why "pastel de arroz" reported 334
+  // UNEXPLAINED misses: its third token grounds the restaurant attribute
+  // "serves dessert", carried by 692 of the 1,621 Austin venues in view, and
+  // every must-appear row at the other 929 was suppressed by an arm the chase
+  // could not name. Split into two reasons rather than one, because they fail
+  // for different reasons and a merged count would hide which.
+  if (ctx.tier0Count >= ctx.threshold) {
+    if (ctx.hasSoftRest && !row.restSoftMet)
+      return 'pooled-gate: tier-1 suppressed (venue lacks a soft restaurant attribute)';
+    if (ctx.hasSoft && !row.softAllMet)
+      return 'pooled-gate: tier-1 suppressed (tier-0 filled the page)';
+  }
   if (!ctx.served.exhausted) return 'not-paginated (page cap reached)';
+  // RING-ONLY MEMBERSHIP WITH EXPANSION COLD. The truth universe promotes a
+  // row to MUST-APPEAR on the twin-ingredient arm (the burrata ruling), but
+  // the SERVER's hard membership is the tier-0 CONCEPT set. A row whose food
+  // concept is not in tier 0 is reachable only through the dense sibling ring,
+  // and the ring is only consulted when PLAN EXPANSION fires. When it did not
+  // fire, such a row is unreachable by construction rather than silently
+  // dropped — so the arm is conditioned on `expansionFired`, and a ring-only
+  // miss WITH expansion hot stays UNEXPLAINED, which is what keeps this arm
+  // able to show red.
+  //
+  // The live instance is "camaron machete" for the ask "camarones". It is a
+  // dense sibling (cosine 0.861, forward_rank 4, mutual_rank 1) and carries
+  // ingredient shrimp — the anchor's twin — but no category, containment or
+  // satisfies edge joins its food to either anchor. The reason is a corpus
+  // fact worth recording: `name-containment-edge-builder` derives edges from
+  // `core_entities.identity_key` ALONE and never consults `entity_surface`.
+  // The dish banks the plural spelling "camarones machete" as an es recall
+  // surface, but its identity_key is the singular "camaron machete", which
+  // does not contain the whole word "camarones" — so the edge the ask needed
+  // was never built. Named here, not force-fixed.
+  if (!row.viaTier0Concept && !ctx.served.expansionFired)
+    return 'ring-only membership (tier-0 concept miss; plan expansion did not fire)';
   return 'UNEXPLAINED';
 }
 
@@ -703,8 +759,14 @@ async function main(): Promise<void> {
       const truthFoods = new Set(truth.map((t) => t.foodId));
 
       const threshold = Math.max(25, PAGE_SIZE);
-      const tier0Count = mustAppear.filter((t) => t.softAllMet).length;
+      // Tier-0 is the CONJUNCTION of both soft sides, matching the builder's
+      // `pooledRestFullExpr`. Counting only the dish side overstated the pool
+      // whenever the ask grounded a restaurant attribute.
+      const tier0Count = mustAppear.filter(
+        (t) => t.softAllMet && t.restSoftMet,
+      ).length;
       const hasSoft = sets.softFoodAttrs.length > 0;
+      const hasSoftRest = sets.softRestAttrs.length > 0;
 
       const missing = mustAppear.filter(
         (t) => !served.dishes.has(t.connectionId),
@@ -717,6 +779,7 @@ async function main(): Promise<void> {
           threshold,
           served,
           hasSoft,
+          hasSoftRest,
           restaurantIds: uniq(
             (req.entities.restaurants ?? []).flatMap((e) => e.entityIds ?? []),
           ),
@@ -874,6 +937,14 @@ async function main(): Promise<void> {
       0,
     );
     const totalMiss = results.reduce((n, r) => n + (r.missing as number), 0);
+    /** the gate's pass condition — see the assertion at the end of main(). */
+    const totalUnexplained = results.reduce(
+      (n, r) =>
+        n +
+        ((r.missReasons as Record<string, number> | undefined)?.UNEXPLAINED ??
+          0),
+      0,
+    );
     const totalLeak = results.reduce((n, r) => n + (r.leaks as number), 0);
     const totalServed = results.reduce(
       (n, r) => n + (r.served as any).dishes,
@@ -903,11 +974,50 @@ async function main(): Promise<void> {
         leaks: totalLeak,
         judgedRejectsServed: totalRejects,
         coverage: totalMust ? (totalMust - totalMiss) / totalMust : 1,
+        unexplainedMisses: totalUnexplained,
       },
       cases: results,
     };
     fs.writeFileSync(JSON_PATH, `${JSON.stringify(artifact, null, 2)}\n`);
     out(`wrote ${JSON_PATH}`);
+
+    // WHAT THIS GATE ASSERTS — and why it is not a row count (F9).
+    //
+    // This script carried `@script-class: gate` while always exiting 0: it
+    // reported and never failed, which is the always-green disease the map
+    // saga cost months to learn. Making it fail needs a pass condition that
+    // survives a LIVE corpus, and the two obvious candidates both fail that:
+    //
+    //   - A FROZEN SNAPSHOT (pin the corpus, diff the numbers) makes the run
+    //     reproducible by severing it from the data relationships it exists to
+    //     walk. It would go green on a corpus that no longer resembles
+    //     production, which is the one thing this harness was built not to do.
+    //   - A TOLERANCE BAND on coverage% absorbs exactly the drift it cannot
+    //     distinguish from a regression. Every count here moves for honest
+    //     reasons — collection adds dishes, the judge settles claims, a
+    //     concurrent writer banks surfaces (the 383-row write that reddened
+    //     cp-29 mid-wave landed while this battery was being read). A band wide
+    //     enough to be quiet is wide enough to hide a real loss.
+    //
+    // So the gate asserts the ATTRIBUTION INVARIANT instead: every must-appear
+    // row the API did not serve is explained by a NAMED arm. That is a property
+    // of the instrument, not of the corpus — it does not drift when dishes are
+    // added, and it goes red the moment a miss appears that no known mechanism
+    // accounts for, which is precisely the event worth waking up for. The
+    // counts stay in the artifact as diagnosis; they are not the pass
+    // condition. A mutation run is exempt: `--mutate=` deliberately breaks the
+    // derivation to prove the instrument can show red, so unexplained misses
+    // there are the POINT rather than the failure.
+    if (totalUnexplained > 0 && !MUTATE) {
+      out('');
+      out(
+        `FAIL: ${totalUnexplained} must-appear row(s) went unserved with no arm to explain them.`,
+      );
+      out(
+        'Each is either a real coverage loss or an arm this chase is missing.',
+      );
+      process.exitCode = 1;
+    }
   } finally {
     await app.close();
   }
