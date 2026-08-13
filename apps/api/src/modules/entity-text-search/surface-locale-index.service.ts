@@ -2,6 +2,7 @@ import { Injectable, OnModuleInit } from '@nestjs/common';
 import { Cron } from '@nestjs/schedule';
 import { PrismaService } from '../../prisma/prisma.service';
 import { LoggerService } from '../../shared';
+import { primaryLanguageSubtag } from '../../shared/locale';
 import type {
   SurfaceLocaleEvidence,
   SurfaceLocaleOracle,
@@ -144,13 +145,17 @@ export class SurfaceLocaleIndexService implements OnModuleInit {
       // ONE entity — one writer's one answer — and counting them as two would
       // let a single generator response clear the "more than one entity says
       // so" bar the analyzer applies before contradicting a stated prior.
-      // The base language is taken here (split on '-') so the analyzer never
-      // has to re-derive it: 'es-MX' and 'es' are one language's evidence.
+      // The base language is taken so the analyzer never has to re-derive it:
+      // 'es-MX' and 'es' are one language's evidence. It is derived in TS by
+      // `primaryLanguageSubtag` — the module that owns the rule — rather than
+      // by SQL `split_part`, which is a TRUNCATION, not a parse: it reads a
+      // malformed 'es_MX' as the language 'es_mx' and files it as a language
+      // of its own, and it cannot recognise 'und' for what it is.
       const rows = await this.prisma.$queryRaw<
-        Array<{ form_folded: string; language: string; entities: bigint }>
+        Array<{ form_folded: string; locale: string; entities: bigint }>
       >`
         SELECT s.form_folded,
-               split_part(lower(s.locale), '-', 1) AS language,
+               lower(s.locale) AS locale,
                count(DISTINCT s.entity_id)::bigint AS entities
           FROM entity_surface s
          WHERE s.status = 'active'
@@ -160,17 +165,30 @@ export class SurfaceLocaleIndexService implements OnModuleInit {
            AND (s.source = ANY(${LANGUAGE_KNOWLEDGE_SOURCES}::text[])
                 OR s.claim_judge_version IS NOT NULL)
          GROUP BY 1, 2`;
-      const next = new Map<string, SurfaceLocaleEvidence[]>();
+      // Merging two locale rows into one language would DOUBLE-COUNT an
+      // entity holding a surface under both, and the count is load-bearing —
+      // it feeds the "more than one entity says so" bar. It cannot happen:
+      // the write door banks language-only (`bankableLanguageTag`) and the
+      // live corpus holds zero regional tags on this table, so each language
+      // comes from exactly one row and SQL's DISTINCT survives intact. The
+      // fold is still performed, rather than the locale being used as the
+      // language directly, so that a legacy regional row would be filed under
+      // its real language instead of inventing one.
+      const next = new Map<string, Map<string, SurfaceLocaleEvidence>>();
       for (const row of rows) {
-        const evidence: SurfaceLocaleEvidence = {
-          language: row.language,
-          entities: Number(row.entities),
-        };
-        const bucket = next.get(row.form_folded);
-        if (bucket) bucket.push(evidence);
-        else next.set(row.form_folded, [evidence]);
+        const language = primaryLanguageSubtag(row.locale, row.locale);
+        let bucket = next.get(row.form_folded);
+        if (!bucket) {
+          bucket = new Map<string, SurfaceLocaleEvidence>();
+          next.set(row.form_folded, bucket);
+        }
+        const existing = bucket.get(language);
+        if (existing) existing.entities += Number(row.entities);
+        else bucket.set(language, { language, entities: Number(row.entities) });
       }
-      this.index = next;
+      this.index = new Map(
+        [...next].map(([form, byLanguage]) => [form, [...byLanguage.values()]]),
+      );
       this.loadedAt = new Date();
       this.logger.info('Surface locale index refreshed', {
         forms: next.size,
