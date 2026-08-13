@@ -153,6 +153,35 @@ const TOMTOM_SPEND_GATE: SpendGateCopy = {
 };
 
 /**
+ * GOOGLE VISION — the fourth metered vendor, and the last one with no gate
+ * (D4, 2026-08-13). SafeSearch moderation joined MeteredService when photo
+ * safety stopped being a Cloudinary prepaid add-on and became a paid call we
+ * make ourselves, but unlike Gemini, Places and TomTom it had no dollar gate
+ * at all: nothing in the process could notice a runaway upload loop spending
+ * against it.
+ *
+ * THE CAP IS NOT INVENTED. The other three defaults are derivations from a
+ * measured month (July's TomTom volume, the Places accident, Gemini's
+ * steady state). Vision has NEVER been called — zero rows in
+ * api_usage_ledger — so there is no month to multiply, and seeding a
+ * plausible-looking number would be exactly the fabricated prior this
+ * codebase forbids. So the cap comes from the owner's dial and NOTHING
+ * else: with GOOGLE_VISION_MONTHLY_SPEND_CAP_USD unset, the pool is not
+ * registered and the gate reports itself UNARMED, loudly, rather than
+ * pretending to a ceiling nobody measured. Once a month of real volume
+ * exists, the same 3x-a-measured-month derivation the other three used
+ * applies here and the default stops being a blank.
+ */
+const VISION_SPEND_GATE: SpendGateCopy = {
+  poolName: 'googleVision.monthlySpend',
+  alertKind: 'vision_backstop',
+  titleNoun: 'Vision',
+  budgetNoun: 'Vision',
+  exhaustedMessage:
+    'Vision spend budget exhausted (googleVision.monthlySpend backstop, GOOGLE_VISION_MONTHLY_SPEND_CAP_USD) — photo safety moderation is a USER path, so this NEVER refuses a person (D149): the call proceeds and this alert is the signal. If it fires, look for an upload loop',
+};
+
+/**
  * The Resource Governor's runtime seam (master plan §14 v2, Phase-A minimum):
  * one process-local PoolRegistry with the vendor pools registered at boot.
  * TomTom is governed FIRST (§22 — the one previously ungoverned money);
@@ -194,6 +223,9 @@ export interface DrawOptions {
 @Injectable()
 export class GovernanceService implements OnModuleInit {
   readonly pools: PoolRegistry;
+  /** True only when the owner set GOOGLE_VISION_MONTHLY_SPEND_CAP_USD — see
+   *  VISION_SPEND_GATE for why there is no fabricated default. */
+  private visionSpendCapConfigured = false;
   private readonly logger: LoggerService;
 
   constructor(
@@ -458,6 +490,26 @@ export class GovernanceService implements OnModuleInit {
       },
       reservationTtlMs: 60_000,
     });
+    // GOOGLE VISION spend pool — registered ONLY when the owner has set a
+    // cap. See VISION_SPEND_GATE: there is no measured month to derive a
+    // default from, and a fabricated ceiling is worse than an absent one
+    // because it looks like governance. `visionSpendCapConfigured` is what
+    // the gate consults to tell "open" from "not armed".
+    const visionCapRaw = process.env.GOOGLE_VISION_MONTHLY_SPEND_CAP_USD;
+    if (visionCapRaw !== undefined && visionCapRaw.trim() !== '') {
+      const visionCapUsd = readSpendCapUsd(visionCapRaw, 0);
+      this.visionSpendCapConfigured = true;
+      this.pools.register({
+        name: 'googleVision.monthlySpend',
+        credential: 'default',
+        window: {
+          kind: 'perMonth',
+          limit: Math.round(visionCapUsd * 1_000_000),
+          denomination: 'billedMicros',
+        },
+        reservationTtlMs: 60_000,
+      });
+    }
     // Reddit pool (§12.5 client rewrite executed): vendor fact K4 is
     // 1000-per-10-minutes / 100-per-minute; the per-minute window is the
     // binding constraint. This pool is THE one reddit window and ledger
@@ -658,6 +710,37 @@ export class GovernanceService implements OnModuleInit {
       { pools: this.pools, opsAlerts: this.opsAlerts },
       TOMTOM_SPEND_GATE,
     );
+  }
+
+  /**
+   * THE VISION DOLLAR GATE. Structurally the twin of the other three — it
+   * lives on the governor and the vendor's one owner (GoogleVisionService)
+   * calls it before every annotate request, so no call site can forget it.
+   *
+   * TWO HONEST DIFFERENCES, both stated rather than papered over:
+   *
+   *  1. UNARMED IS A REAL ANSWER. With no owner-set cap there is no pool to
+   *     admit against, so this returns 'unarmed'. It does not silently
+   *     succeed — the caller reports the gap once, so an ungoverned vendor
+   *     is visible instead of merely absent.
+   *  2. IT NEVER REFUSES A PERSON. Moderation runs on a user's upload, and
+   *     D149 says a person is never refused by our own counter. So this
+   *     REPORTS 'exhausted' rather than throwing; the caller proceeds and
+   *     alerts. The gate's job here is to make a runaway loud, not to make a
+   *     user's photo fail.
+   */
+  async visionSpendVerdict(): Promise<'open' | 'exhausted' | 'unarmed'> {
+    if (!this.visionSpendCapConfigured) return 'unarmed';
+    try {
+      await assertSpendOpen(
+        { pools: this.pools, opsAlerts: this.opsAlerts },
+        VISION_SPEND_GATE,
+      );
+      return 'open';
+    } catch (error) {
+      if (error instanceof SpendBudgetClosedError) return 'exhausted';
+      throw error;
+    }
   }
 
   async draw<T>(

@@ -14,7 +14,10 @@ import {
  *      it reds) — the whole point of the migration was that moderation stop
  *      being spend nobody could see.
  */
-function build(overrides?: { apiKey?: string | undefined }) {
+function build(overrides?: {
+  apiKey?: string | undefined;
+  spendVerdict?: 'open' | 'exhausted' | 'unarmed';
+}) {
   const post = jest.fn();
   const record = jest.fn();
   const logger = {
@@ -35,13 +38,21 @@ function build(overrides?: { apiKey?: string | undefined }) {
           ? 15000
           : undefined,
   };
+  // The spend gate's verdict is part of the constructor now. Default 'open'
+  // so the existing moderation assertions measure moderation; the gate's own
+  // behaviour (never refusing a user, reporting an unarmed vendor) is
+  // asserted separately below.
+  const visionSpendVerdict = jest
+    .fn<Promise<'open' | 'exhausted' | 'unarmed'>, []>()
+    .mockResolvedValue(overrides?.spendVerdict ?? 'open');
   const service = new GoogleVisionService(
     { post } as never,
     config as never,
     { record } as never,
+    { visionSpendVerdict } as never,
     logger as never,
   );
-  return { service, post, record };
+  return { service, post, record, logger, visionSpendVerdict };
 }
 
 const annotation = (a: Record<string, string>) =>
@@ -253,5 +264,63 @@ describe('GoogleVisionService.moderateImage', () => {
       /GOOGLE_VISION_API_KEY/,
     );
     expect(post).not.toHaveBeenCalled();
+  });
+});
+
+/**
+ * THE SPEND GATE, at the vendor's one door (D4, 2026-08-13).
+ *
+ * Vision was the fourth metered vendor and the only ungated one. These
+ * assert the two properties that make the gate honest rather than merely
+ * present: it is consulted on EVERY call, and it never turns a user's photo
+ * into a failure.
+ */
+describe('GoogleVisionService spend gate', () => {
+  it('consults the gate before every annotate call', async () => {
+    const { service, post, visionSpendVerdict } = build();
+    post.mockReturnValue(
+      annotation({
+        adult: 'VERY_UNLIKELY',
+        violence: 'VERY_UNLIKELY',
+        racy: 'VERY_UNLIKELY',
+      }),
+    );
+    await service.moderateImage('u');
+    expect(visionSpendVerdict).toHaveBeenCalledTimes(1);
+  });
+
+  it('an EXHAUSTED budget still moderates the photo — D149, and screams', async () => {
+    const { service, post, logger } = build({ spendVerdict: 'exhausted' });
+    post.mockReturnValue(
+      annotation({
+        adult: 'VERY_UNLIKELY',
+        violence: 'VERY_UNLIKELY',
+        racy: 'VERY_UNLIKELY',
+      }),
+    );
+    // The user's upload is NOT refused by our own counter...
+    await expect(service.moderateImage('u')).resolves.toBeDefined();
+    expect(post).toHaveBeenCalledTimes(1);
+    // ...but the runaway is loud.
+    expect(logger.warn).toHaveBeenCalledWith(
+      expect.stringContaining('CLOSED'),
+      expect.objectContaining({ verdict: 'exhausted' }),
+    );
+  });
+
+  it('an UNARMED gate is reported, not passed over in silence', async () => {
+    const { service, post, logger } = build({ spendVerdict: 'unarmed' });
+    post.mockReturnValue(
+      annotation({
+        adult: 'VERY_UNLIKELY',
+        violence: 'VERY_UNLIKELY',
+        racy: 'VERY_UNLIKELY',
+      }),
+    );
+    await service.moderateImage('u');
+    expect(logger.warn).toHaveBeenCalledWith(
+      expect.stringContaining('UNGOVERNED'),
+      expect.objectContaining({ verdict: 'unarmed' }),
+    );
   });
 });

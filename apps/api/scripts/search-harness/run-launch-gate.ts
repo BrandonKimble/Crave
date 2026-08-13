@@ -72,6 +72,7 @@ import { bootstrap, out } from './_shared';
 import { SearchQueryInterpretationService } from '../../src/modules/search/search-query-interpretation.service';
 import { EntityTextSearchService } from '../../src/modules/entity-text-search/entity-text-search.service';
 import { PrismaService } from '../../src/prisma/prisma.service';
+import { LLMService } from '../../src/modules/external-integrations/llm/llm.service';
 import { EntityType } from '@prisma/client';
 import { canonicalFold } from '../../src/modules/content-processing/entity-resolver/entity-identity';
 
@@ -604,7 +605,7 @@ async function main(): Promise<void> {
   out('');
   out(`run artifact → ${artifact}`);
 
-  if (args.grade) await gradeSpotCheck(results, artifact);
+  if (args.grade) await gradeSpotCheck(results, artifact, app.get(LLMService));
 }
 
 /**
@@ -621,6 +622,7 @@ async function main(): Promise<void> {
 async function gradeSpotCheck(
   results: EntryResult[],
   artifactPath: string,
+  llm: LLMService,
 ): Promise<void> {
   const pool = results.filter((r) =>
     ['single_noun', 'compound'].includes(r.stratum),
@@ -630,14 +632,6 @@ async function gradeSpotCheck(
     .sort((a, b) => a.id.localeCompare(b.id))
     .filter((_, i) => i % Math.ceil(pool.length / 20) === 0)
     .slice(0, 20);
-
-  // Same env var the app's LLM config reads (`llm.apiKey` ← LLM_API_KEY).
-  const apiKey = process.env.LLM_API_KEY;
-  if (!apiKey) {
-    out('');
-    out('--grade requested but LLM_API_KEY is unset — skipping.');
-    return;
-  }
 
   const items = sample.map((r) => ({
     id: r.id,
@@ -663,30 +657,39 @@ async function gradeSpotCheck(
     JSON.stringify(items, null, 1),
   ].join('\n');
 
-  const res = await fetch(
-    `https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-lite-latest:generateContent?key=${apiKey}`,
-    {
-      method: 'POST',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({
-        contents: [{ parts: [{ text: prompt }] }],
-        generationConfig: {
-          temperature: 0,
-          responseMimeType: 'application/json',
-        },
-      }),
-    },
-  );
-  const body = (await res.json()) as {
-    candidates?: Array<{ content?: { parts?: Array<{ text?: string }> } }>;
-    usageMetadata?: Record<string, number>;
-    error?: { message?: string };
-  };
-  if (body.error) {
-    out(`--grade failed: ${body.error.message}`);
+  // THROUGH THE DOOR, NOT AROUND IT (D4, 2026-08-13).
+  //
+  // This was a raw `fetch` to generativelanguage.googleapis.com with
+  // LLM_API_KEY read straight out of the environment — a real, billable
+  // Gemini call that no spend gate admitted, no campaign envelope debited,
+  // and no api_usage_ledger row recorded. That is the same shape as every
+  // cost incident this repo has paid for: spend that reaches the BigQuery
+  // billing export with nothing on our side that saw it happen.
+  //
+  // The door can serve it. This gate already boots a Nest context (it uses
+  // app.get for the interpretation and search services), so LLMService is
+  // right there, and `generateForCaller` is its public gateway for callers
+  // outside the LLM service: spend admission, caller profile, retry
+  // classification and full ledger accounting, all by construction. The
+  // caller tag makes this gate's grading spend answerable by name.
+  //
+  // No exemption is needed, so none is taken.
+  let text: string;
+  try {
+    text = await llm.generateForCaller({
+      caller: 'searchHarness.launchGateGrader',
+      prompt,
+      generationConfig: {
+        temperature: 0,
+        responseMimeType: 'application/json',
+      },
+    });
+  } catch (error) {
+    out(
+      `--grade failed: ${error instanceof Error ? error.message : String(error)}`,
+    );
     return;
   }
-  const text = body.candidates?.[0]?.content?.parts?.[0]?.text ?? '[]';
   let graded: Array<{ id: string; score: number; reason: string }> = [];
   try {
     graded = JSON.parse(text);
@@ -719,15 +722,22 @@ async function gradeSpotCheck(
       (graded.length || 1)
     ).toFixed(0)}%)`,
   );
-  const usage = body.usageMetadata ?? {};
+  // NO HAND-ROLLED COST ESTIMATE HERE ANY MORE. This used to re-price the
+  // call from the raw response's usageMetadata with two literal rates — a
+  // second, unreconciled opinion about what we spent, of exactly the kind
+  // that produced the wrong "all-in" reload figure. The call now goes
+  // through LLMService, so it writes a real api_usage_ledger row with the
+  // model, thinking and cached tokens the ledger's own pricer understands.
+  // Ask the ledger:
+  //
+  //   SELECT service, operation, model, sum(request_count), sum(input_tokens),
+  //          sum(output_tokens)
+  //   FROM api_usage_ledger
+  //   WHERE caller = 'searchHarness.launchGateGrader'
+  //   GROUP BY 1,2,3;
   out(
-    `ledger estimate: 1 call, in=${usage.promptTokenCount ?? '?'} out=${
-      usage.candidatesTokenCount ?? '?'
-    } tokens (gemini-flash-lite) ≈ $${(
-      ((usage.promptTokenCount ?? 0) * 0.1 +
-        (usage.candidatesTokenCount ?? 0) * 0.4) /
-      1_000_000
-    ).toFixed(5)}`,
+    "ledger: recorded under caller 'searchHarness.launchGateGrader' " +
+      '(api_usage_ledger) — this gate no longer prices its own call.',
   );
 
   const artifact = JSON.parse(fs.readFileSync(artifactPath, 'utf8'));

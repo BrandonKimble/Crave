@@ -5,6 +5,7 @@ import { firstValueFrom } from 'rxjs';
 import { AxiosError } from 'axios';
 import { LoggerService } from '../../../shared';
 import { UsageLedgerService } from '../shared/usage-ledger.service';
+import { GovernanceService } from '../governance/governance.service';
 
 /**
  * SAFETY MODERATION, SERVER-SIDE (D149-V, owner-approved 2026-08-07).
@@ -136,6 +137,7 @@ export class GoogleVisionService {
     private readonly httpService: HttpService,
     private readonly configService: ConfigService,
     private readonly usageLedger: UsageLedgerService,
+    private readonly governance: GovernanceService,
     loggerService: LoggerService,
   ) {
     this.logger = loggerService.setContext('GoogleVisionService');
@@ -165,6 +167,30 @@ export class GoogleVisionService {
     }
     const timeout =
       Number(this.configService.get('googleVision.timeout')) || 15_000;
+
+    // THE DOLLAR GATE, INSIDE THE VENDOR'S ONE DOOR (D4, 2026-08-13).
+    //
+    // Vision was the fourth metered vendor and the only one with no spend
+    // gate at all: it wrote its ledger row and called Google, and nothing in
+    // the process could notice a runaway upload loop. Gemini, Places and
+    // TomTom each gate here, in their owner, before the call — that
+    // placement is the whole property (no call site can forget it).
+    //
+    // IT NEVER REFUSES THE PERSON. This runs on a user's photo upload, and
+    // D149 is that a person is never refused by our own counter. So an
+    // exhausted budget SCREAMS and the call proceeds; the alert is the
+    // product, not the refusal. And an UNARMED gate — no owner-set cap, so
+    // no ceiling anyone measured — says so rather than passing silently,
+    // because an ungoverned vendor should be visible.
+    const budget = await this.governance.visionSpendVerdict();
+    if (budget !== 'open') {
+      this.logger.warn(
+        budget === 'exhausted'
+          ? 'Vision spend backstop is CLOSED — proceeding anyway (D149: a user is never refused by our own counter)'
+          : 'Vision spend is UNGOVERNED — GOOGLE_VISION_MONTHLY_SPEND_CAP_USD is unset, so no ceiling exists for this vendor',
+        { verdict: budget },
+      );
+    }
 
     // METERED BEFORE THE CALL, like Places: a request that times out was
     // still made and still billed. Recording after a successful response

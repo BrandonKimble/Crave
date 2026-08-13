@@ -394,6 +394,36 @@ export const INVARIANTS: readonly Invariant[] = [
     ],
   },
   {
+    id: 'spend.gemini-vendor-has-one-door',
+    statement:
+      'The Gemini key and host are only spellable in LlmService and configuration.ts; everything else calls generateForCaller.',
+    incident:
+      "TomTom got a vendor-door rule after two operator scripts fetched it directly. Gemini — the vendor we spend the MOST on — never got the twin (D4, 2026-08-13), and the search harness's launch gate was reading LLM_API_KEY out of the environment and POSTing to generativelanguage.googleapis.com itself: a real billable call that no spend gate admitted, no campaign envelope debited, and no api_usage_ledger row recorded. Spend that reaches the BigQuery billing export with nothing on our side that saw it happen.",
+    level: 'lint',
+    mechanism: 'eslint.config.mjs — Gemini vendor-surface selectors',
+    check: { command: `npx eslint ${SCRATCH}`, reads: 'the vendor boundary' },
+    mutations: [
+      {
+        file: SCRATCH,
+        content: 'export const k = process.env.LLM_API_KEY;\n',
+      },
+      {
+        // The literal form — a key read spelled through a lookup table, and
+        // the host in a plain string.
+        file: SCRATCH,
+        content:
+          "export const k = process.env['LLM_API_KEY'];\nexport const h =\n  'https://generativelanguage.googleapis.com/v1beta';\n",
+      },
+      {
+        // The template-literal host, which is how the launch gate spelled it
+        // (it interpolated the key into the URL).
+        file: SCRATCH,
+        content:
+          'export const key = "x";\nexport const u = `https://generativelanguage.googleapis.com/v1beta/models/m:generateContent?key=${key}`;\n',
+      },
+    ],
+  },
+  {
     id: 'spend.tomtom-money-gate-inside-the-adapter',
     statement:
       'Every TomTom vendor call passes assertTomtomSpendOpen inside the adapter; a closed budget is a typed denied, and the vendor is never reached.',

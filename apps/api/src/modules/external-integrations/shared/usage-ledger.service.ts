@@ -13,6 +13,7 @@ import { currentCampaignId, currentAttribution } from './work-context';
 import {
   placesCostMicrosPerCall,
   tomtomCostMicrosPerDraw,
+  visionSafeSearchCostMicrosPerImage,
 } from './vendor-pricing';
 import { geminiCostMicros } from './gemini-pricing';
 import { ReconciliationMultiplierService } from './reconciliation-multiplier.service';
@@ -138,6 +139,82 @@ const KNOWN_PLACES_FIELDS = new Set<string>([
  *   FROM api_usage_ledger WHERE run_key = $1 GROUP BY 1,2,3,4,5;
  * A write failure only warns — the ledger must never break a real call.
  */
+
+/**
+ * WHAT THIS EVENT COSTS ITS CAMPAIGN'S ENVELOPE — for EVERY vendor we meter,
+ * enforced by the compiler (D4, 2026-08-13).
+ *
+ * This used to be an if/else chain over gemini and google_places with a bare
+ * `return` for everything else, under a comment reading "One meter, every
+ * priced vendor." It was not. Two of the four members of MeteredService fell
+ * out of that `else`:
+ *
+ *   - TOMTOM, whose adapter's own header states that its draws "drain real
+ *     prepaid credit and debit campaign envelopes". The first half was true
+ *     and the second half was not: a TomTom draw wrote its ledger row and
+ *     then hit the `return`, so a polygon-promotion campaign could spend its
+ *     whole envelope and breach nothing.
+ *   - GOOGLE_VISION, which joined MeteredService when photo moderation
+ *     stopped being a Cloudinary add-on and became a paid call we make. It
+ *     was priced in vendor-pricing.ts from the start and drained nothing.
+ *
+ * Both are the SAME shape as the $118 Places lesson and the F1256 photoMedia
+ * lesson: a vendor line that lands in the BigQuery billing export with no
+ * counterpart in the envelope that was supposed to bound it. And an if/else
+ * chain cannot fail when a vendor is added — it just silently means "free".
+ *
+ * So this is an exhaustive SWITCH with a `never` arm. Adding a fifth member
+ * to MeteredService does not compile until someone has said, in this
+ * function, what a call to that vendor costs. Deciding a vendor is genuinely
+ * free is still allowed — it is a `case` that returns 0, which is a written
+ * decision, not an omission.
+ */
+function campaignSpendMicros(event: UsageEvent): number {
+  switch (event.service) {
+    case 'gemini':
+      return geminiCostMicros(event);
+    case 'google_places': {
+      // × requestCount (round-six cost red team #6): the POOL meter
+      // multiplies correctly; this one didn't, so a batched Places event
+      // under-drained its campaign envelope.
+      const calls = event.requestCount ?? 1;
+      return (
+        placesCostMicrosPerCall(event.skuTier ?? null, event.operation) *
+        (Number.isFinite(calls) && calls > 0 ? calls : 1)
+      );
+    }
+    case 'tomtom': {
+      // One ledger row is one ADMITTED DRAW (the adapter's governor fires
+      // recordDraw once per admitted draw, on the throw path too), and the
+      // price depends on which draw it was — scarce polygons cost far more
+      // than the cheap lookups. requestCount is carried for symmetry with
+      // the other vendors; it is 1 for every draw the adapter records.
+      const draws = event.requestCount ?? 1;
+      return (
+        tomtomCostMicrosPerDraw(event.operation) *
+        (Number.isFinite(draws) && draws > 0 ? draws : 1)
+      );
+    }
+    case 'google_vision': {
+      // One image = one unit = one feature request; see
+      // visionSafeSearchCostMicrosPerImage for why that equality holds.
+      const images = event.requestCount ?? 1;
+      return (
+        visionSafeSearchCostMicrosPerImage *
+        (Number.isFinite(images) && images > 0 ? images : 1)
+      );
+    }
+    default: {
+      // THE COMPILE-TIME BACKSTOP. If a new MeteredService member reaches
+      // here, `event.service` is no longer `never` and this assignment fails
+      // the build — naming the vendor nobody priced.
+      const unpriced: never = event.service;
+      void unpriced;
+      return 0;
+    }
+  }
+}
+
 @Injectable()
 export class UsageLedgerService implements OnModuleDestroy {
   /** In-flight fire-and-forget writes, awaited on shutdown so short-lived
@@ -375,26 +452,7 @@ export class UsageLedgerService implements OnModuleDestroy {
       return;
     }
     try {
-      // SERVICE → PRICER dispatch (final-final red team #5): the old
-      // `service !== 'gemini'` early-return meant Places spend under a
-      // campaign was never metered — while the manifest PRICES a Places
-      // line and the $118 lesson was Places. The stale comment claimed
-      // Places wasn't priced; vendor-pricing.ts has priced it per-SKU since
-      // 2026-07-30. One meter, every priced vendor.
-      let micros = 0;
-      if (event.service === 'gemini') {
-        micros = geminiCostMicros(event);
-      } else if (event.service === 'google_places') {
-        // × requestCount (round-six cost red team #6): the POOL meter three
-        // methods up multiplies correctly; this one didn't, so a batched
-        // Places event under-drained its campaign envelope.
-        const calls = event.requestCount ?? 1;
-        micros =
-          placesCostMicrosPerCall(event.skuTier ?? null, event.operation) *
-          (Number.isFinite(calls) && calls > 0 ? calls : 1);
-      } else {
-        return; // unpriced vendors stay out of the envelope
-      }
+      const micros = campaignSpendMicros(event);
       if (micros <= 0) {
         return;
       }

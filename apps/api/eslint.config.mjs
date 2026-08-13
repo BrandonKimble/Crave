@@ -181,6 +181,16 @@ export default tseslint.config(
       // THE TomTom vendor door, and the config layer that holds its key.
       'src/modules/places/tomtom-chain-probe.adapter.ts',
       'src/config/configuration.ts',
+      // THE GEMINI vendor door. Same law, same shape as TomTom above:
+      // LlmService owns the host and the key, and configuration.ts (already
+      // listed) resolves LLM_API_KEY. vendor-cap-detector.spec.ts names the
+      // host inside VENDOR QUOTA-METRIC STRINGS it parses
+      // ('generativelanguage.googleapis.com/generate_content_requests_...') —
+      // that is Google's own identifier for a quota, not a call to the API,
+      // and obfuscating it would make the spec stop resembling what the
+      // vendor actually returns.
+      'src/modules/external-integrations/llm/llm.service.ts',
+      'src/modules/external-integrations/llm/vendor-cap-detector.spec.ts',
       // THE ONE OWNER of pg advisory locks, and the two specs that must
       // hold a lock from a SECOND session to prove the mechanism is a real
       // cross-process fact. Nothing else may spell the lock functions.
@@ -262,6 +272,29 @@ export default tseslint.config(
             "Literal[value=/TOMTOM_API_KEY|api\\.tomtom\\.com/], TemplateElement[value.raw=/api\\.tomtom\\.com/], MemberExpression[object.object.name='process'][object.property.name='env'][property.name='TOMTOM_API_KEY']",
           message:
             'The TomTom vendor surface has one owner: TomtomChainProbeAdapter (behind the TOMTOM_CHAIN_PROBE port). A direct key read or fetch is ungoverned, unmetered and money-ungated — consume the port.',
+        },
+        {
+          // THE GEMINI VENDOR HAS ONE DOOR: LlmService — specifically
+          // `generateForCaller`, its public gateway for callers outside the
+          // service. TomTom got this rule after two operator scripts fetched
+          // api.tomtom.com themselves; Gemini, the vendor we spend the MOST
+          // on, never got the twin (D4, 2026-08-13). The search harness's
+          // launch gate was reading LLM_API_KEY out of the environment and
+          // POSTing to generativelanguage.googleapis.com directly: a real
+          // billable call that no spend gate admitted, no campaign envelope
+          // debited, and no api_usage_ledger row recorded — spend that reaches
+          // the BigQuery billing export with nothing on our side that saw it.
+          // Exactly the photoMedia / $118-Places shape.
+          //
+          // The door gives a caller spend admission, the caller profile
+          // (model, ceiling, thinking level), retry classification and full
+          // ledger accounting by construction. There is no reason to hold the
+          // raw key, so holding it is banned. llm.service.ts and
+          // configuration.ts are exempted at the block level.
+          selector:
+            "Literal[value=/LLM_API_KEY|generativelanguage\\.googleapis\\.com/], TemplateElement[value.raw=/generativelanguage\\.googleapis\\.com/], MemberExpression[object.object.name='process'][object.property.name='env'][property.name='LLM_API_KEY']",
+          message:
+            'The Gemini vendor surface has one owner: LlmService. A direct key read or fetch is unadmitted, unmetered and outside every campaign envelope — call llmService.generateForCaller({ caller, prompt }) instead.',
         },
         {
           // EXTRACTION SCOPE IS DEFINED ONCE. The activation pointer decides

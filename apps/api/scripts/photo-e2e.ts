@@ -64,10 +64,19 @@ async function main(): Promise<void> {
   // is that a live upload settles, and settling now depends on our own Vision
   // SafeSearch call rather than a Cloudinary preset add-on. It writes a real
   // google_vision ledger line, which is a fraction of a cent per run.
+  // The spend gate is a constructor argument now (D4): the vendor's dollar
+  // gate lives inside its one door, like every other vendor's. This probe
+  // makes a real, gated call, and it is not the place to exercise an
+  // exhausted budget — the verdict is 'open' so the flow under test is the
+  // upload/moderation flow.
+  const openSpendGate = {
+    visionSpendVerdict: () => Promise.resolve('open' as const),
+  } as unknown as import('../src/modules/external-integrations/governance/governance.service').GovernanceService;
   const safety = new GoogleVisionService(
     new HttpService(axios.create()),
     fakeConfig,
     new UsageLedgerService(prisma, fakeLogger),
+    openSpendGate,
     fakeLogger,
   );
   const photos = new PhotosService(
