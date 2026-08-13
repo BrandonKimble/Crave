@@ -160,3 +160,19 @@ quote-vs-actual (first live test of replay-prior estimation); owner
 decisions; activation; GC; enrichment backfill.
 P4: dedupe (mine) + retraction (⭐05) per ratified lane split → language
 wave handed to ⭐05, who audits those runs (calibration law applies).
+
+## OWNER RULING — ghosts/pop-ups survival law (2026-08-12, via ⭐05)
+
+"Don't create anything we can't hook to a real restaurant." Pop-ups: if
+the name grounds to a real (grounded) restaurant, LINK the mention;
+otherwise IGNORE — no entity. Survival as an active searchable entity is
+decided at ENRICHMENT, not extraction: extraction still emits real venue
+mentions (v13 keep-cases stay valid at the extraction layer); the
+lifecycle rule is that a restaurant that fails grounding after a real
+attempt does not remain active/searchable. IMPLEMENTATION (post-v13-
+activation sequence, with reground): (1) reground sweep attempts Places
+grounding on the 4,057 ungrounded first (~4,057 × $0.045 ≈ $183 — SPEND
+NEEDS OWNER HASH via campaign flow); (2) failures then get the ignore
+rule: archive/suppress from search, mentions re-attach to grounded
+referents where the resolver can; (3) the ungroundable-survival gate
+becomes a standing enrichment-lifecycle invariant, not a one-off sweep.
