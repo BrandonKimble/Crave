@@ -30,6 +30,13 @@
  *   npx ts-node -T scripts/rehear-word-claims.ts --locale vi --limit 30 --apply
  *   npx ts-node -T scripts/rehear-word-claims.ts --locale vi --limit 900 --apply \
  *        --approve-drain <hash>
+ *   npx ts-node -T scripts/rehear-word-claims.ts --locale all          # every docket
+ *
+ * `--locale all` opens EVERY BANKABLE DOCKET (`CLAIMABLE_LOCALES`), which is
+ * the serve list PLUS `und`. Naming the four served languages by hand is how
+ * 321 `und` rows stayed permanently unheard: they were never judged wrong,
+ * they were never enumerated. Each row is still keyed by its OWN locale, so
+ * widening the scan cannot merge two languages' claims.
  */
 import 'dotenv/config';
 import { NestFactory } from '@nestjs/core';
@@ -44,6 +51,7 @@ import {
   StaleDrainApprovalError,
 } from '../src/modules/content-processing/entity-resolver/claim-rehearing-budget.service';
 import { stopCronsForScript } from '../src/shared/utils/stop-crons';
+import { CLAIMABLE_LOCALES } from '../src/shared/locale';
 
 async function main(): Promise<void> {
   const argv = process.argv.slice(2);
@@ -51,7 +59,12 @@ async function main(): Promise<void> {
     const i = argv.indexOf(`--${name}`);
     return i >= 0 ? (argv[i + 1] ?? null) : null;
   };
-  const locale = flag('locale') ?? 'vi';
+  const localeArg = flag('locale') ?? 'vi';
+  const locale: string | readonly string[] =
+    localeArg === 'all' ? CLAIMABLE_LOCALES : localeArg;
+  /** what the run PRINTS as its docket — a set renders as its members, so the
+   *  log names every docket actually opened rather than the word "all". */
+  const localeLabel = typeof locale === 'string' ? locale : locale.join(',');
   const limit = Number(flag('limit') ?? 50);
   const approvedHash = flag('approve-drain');
   const words = (flag('words') ?? '')
@@ -76,7 +89,7 @@ async function main(): Promise<void> {
 
     const dueTotal = await judge.countDue(locale, { forms: words });
     out(
-      `due=${dueTotal} locale=${locale} rule=v${CLAIM_JUDGE_PROMPT_VERSION}${
+      `due=${dueTotal} locale=${localeLabel} rule=v${CLAIM_JUDGE_PROMPT_VERSION}${
         words.length ? ` words=${words.join(',')}` : ''
       }`,
     );

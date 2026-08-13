@@ -32,6 +32,34 @@ export const SUPPORTED_LOCALES = ['en', 'es', 'vi', 'zh'] as const;
 export type SupportedLocale = (typeof SUPPORTED_LOCALES)[number];
 
 /**
+ * EVERY LOCALE A SURFACE MAY BE BANKED AT — the WRITE-side vocabulary, which
+ * is NOT the serve-side list above.
+ *
+ * `SUPPORTED_LOCALES` answers "what can the server serve?", and every reader
+ * that negotiates a request is right to use it. A claim docket asks a
+ * different question — "what locales do rows in `entity_surface` actually
+ * carry?" — and the answer has always had one more entry: `und`, the honest
+ * tag for a form nobody can assign a language to, which the write door banks
+ * deliberately.
+ *
+ * Reading the serve list where the write vocabulary was meant is not a
+ * cosmetic mix-up; it silently orphans a whole docket. The word-claim
+ * adjudicator's due-scan is per-locale by law (locale is part of the claim
+ * key, and the v3 hearing asks a question about a speaker of that locale), so
+ * a drain that iterates `SUPPORTED_LOCALES` opens four dockets and never the
+ * fifth. Measured on the live corpus the day this was added: 321 inference-
+ * sourced `und` rows, every one of them a claim no scan could ever offer and
+ * no rule bump could ever re-open — permanently unheard, not by a verdict but
+ * by an enumeration.
+ *
+ * So the docket vocabulary is declared HERE, once, beside the list it is
+ * forever going to be confused with, and the drain iterates this one.
+ */
+export const CLAIMABLE_LOCALES = [...SUPPORTED_LOCALES, 'und'] as const;
+
+export type ClaimableLocale = (typeof CLAIMABLE_LOCALES)[number];
+
+/**
  * The unlabeled fallback (plan M2, explicit): English. A concept with no
  * label row for the negotiated locale displays its English `name` — never a
  * blank, never a slug the user cannot read.

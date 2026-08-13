@@ -963,7 +963,7 @@ export class WordClaimAdjudicatorService {
    * gets heard.
    */
   async dueClaims(
-    locale: string,
+    locale: string | readonly string[],
     options: {
       limit?: number;
       forms?: readonly string[];
@@ -997,7 +997,7 @@ export class WordClaimAdjudicatorService {
    * thing the campaign idiom exists to refuse.
    */
   async countDue(
-    locale: string,
+    locale: string | readonly string[],
     options: { forms?: readonly string[]; collisionsOnly?: boolean } = {},
   ): Promise<number> {
     let total = 0;
@@ -1018,10 +1018,18 @@ export class WordClaimAdjudicatorService {
   /** The candidate population, paged. Ordering and filters live here so the
    *  due-predicate and its count can never read different populations. */
   private async *candidatePages(
-    locale: string,
+    locale: string | readonly string[],
     options: { forms?: readonly string[]; collisionsOnly?: boolean },
   ): AsyncGenerator<ContestedClaim[]> {
     const forms = (options.forms ?? []).map((f) => canonicalFold(f));
+    // A DOCKET MAY BE MORE THAN ONE LOCALE, BUT A CLAIM IS STILL EXACTLY ONE.
+    // The scan widens to a SET so a drain can open every bankable docket in
+    // one pass (`CLAIMABLE_LOCALES`) instead of enumerating the serve list and
+    // silently skipping `und`. What does NOT widen is the claim: every row is
+    // mapped with `locale: row.locale` below, so the key stays
+    // `<row locale>|<word>|<entity>` and a verdict in one language can never
+    // answer for another — the same exactness `canonicalClaimKey` spells.
+    const locales = typeof locale === 'string' ? [locale] : [...locale];
     const collisionsOnly = options.collisionsOnly === true;
     for (let offset = 0; ; offset += DUE_SCAN_PAGE) {
       const rows = await this.prisma.$queryRaw<
@@ -1045,7 +1053,7 @@ export class WordClaimAdjudicatorService {
           FROM entity_surface s
           JOIN core_entities e ON e.entity_id = s.entity_id
          WHERE e.status = 'active'
-           AND s.locale = ${locale}
+           AND s.locale = ANY(${locales}::text[])
            AND s.source IN ('vocabulary', 'sweep', 'knowledge_synthesis',
                             'seed', 'query_banking', 'synthesis')
            AND s.status IN ('active', 'deprecated')
