@@ -320,16 +320,28 @@ active zh surfaces/294 concepts, $0.035 measured vs $2-5 envelope, 0
 unanswered. Han budget-0 law EXECUTED-proven (0 typo variants; 牛肉麺/肉面
 return empty, no garbage recovery). Battery 14 queries, re-run personally.
 
-- **C5a GROUNDING GATED BY PHONE LOCALE (verified personally, pre-wave
-  blocker):** 牛肉面 = beef noodle soup at zh-CN, UNGROUNDED at es-MX;
-  pho 牛肉 at en-US leaves 牛肉 unresolved — the gazetteer locale chain
-  reads requestLocale and ignores the confidence-1 script pin. Doctrine
-  violation: reader context deciding word identity. Ideal shape ruling
-  needed in the fix: detected language joins the chain (minimum), or
-  grounding matches ALL supported locales with the chain reserved for
-  ranking/labels (candidate ideal). Agent dispatched 2026-08-12.
-- **C5b a typed space changes the answer**: 珍珠奶茶 ≠ 珍珠 奶茶 (CJK
-  re-join treats user space as hard boundary). Same dispatch.
+- **C5a RESOLVED (5a1098a64; battery witnesses re-verified personally
+  14/14).** RULING AS BUILT: exact grounding is LOCALE-BLIND — "is this
+  typed string a banked surface" has no reader in it; request locale keeps
+  labels, ranking, and the INEXACT lanes (prefix/trigram/FTS — a guess
+  needs a prior). Refinement the data forced: identity is universal,
+  ACCENT LENIENCY IS NOT — fold-manufactured homographs (vi 'dê'/goat vs
+  es 'de') mean accent-stripping still needs a language prior (reader
+  chain ∪ analyzer verdict); Han has no accents so it passes strict for
+  every reader. Shape (a) built + measured head-to-head and REJECTED on
+  data (133 extra leaks on cơm tấm alone). Census: 66,331 surfaces, 38
+  cross-language folded collisions, ZERO true homographs in corpus.
+  es/vi gold byte-identical. ACCEPTED COST (attributed, per the
+  instrument's own law): coverage-truth headline 75.1→66.7 is ONE query
+  (pastel de arroz now genuinely grounds cake+rice; truth set 4→462;
+  excluding it coverage IMPROVED to 76.7); leaks 59→230 concentrated in
+  decomposed-sub-span expansion = the already-ledgered C4g/ladder lane
+  (shared by shape (a); cost of grounding vi words at all, not of
+  blindness). Ladder/L1 at step 2 is the fix; re-baseline coverage-truth
+  artifact after it lands.
+- **C5b RESOLVED (same commit)**: a space between Han characters is a
+  soft separator (whitespace only; punctuation/Latin stay hard).
+  珍珠 奶茶 ≡ 珍珠奶茶 verified personally.
 - **C5c food-type suggestions never localize their label** (pho/seafood/
   taco display English at es/vi/zh; attribute rows localize) — pre-existing
   display-path gap, folds into the H1/display-residue lane.
