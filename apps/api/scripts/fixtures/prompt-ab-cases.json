@@ -857,5 +857,364 @@
       "foods": ["taco"],
       "somePraise": true
     }
+  },
+  {
+    "id": "G1-hedged-annotated-list",
+    "why": "v8 audit class 1 (top MAJOR class): hedged/operational annotations inside a rec-list reply were extracted anyway (doc 5cda6279). Each entry's own annotation strips it: 'decent' and 'not spectacular' hedge, 'serves BBQ' is availability.",
+    "posts": [
+      {
+        "id": "SRC001",
+        "title": "Cheap eats in Austin?",
+        "body": "Where can I get good food on a budget?",
+        "extract_from_post": false,
+        "comments": [
+          {
+            "id": "SRC002",
+            "body": "Rudy's (cheaper BBQ but decent)\nKolache Factory (not spectacular but on cheaper side)\nH-E-B (location at Lake Austin blvd serves BBQ)"
+          }
+        ]
+      }
+    ],
+    "expect": {
+      "emitsNothing": true
+    }
+  },
+  {
+    "id": "G1-liked-but-didnt-love",
+    "why": "v8 audit class 1: 'liked it - but didn't love' (doc 7e67b8c1) qualifies downward and withholds endorsement; the genuinely praised sibling entry must survive (A.3 per-entry verdicts).",
+    "posts": [
+      {
+        "id": "SRC001",
+        "title": "NYC trip recap",
+        "body": "Le Bernardin - liked it - but didn't love. Radio Bakery: Salmon lox focaccia. Best bite of the trip, hands down.",
+        "extract_from_post": true,
+        "comments": []
+      }
+    ],
+    "expect": {
+      "restaurants": ["radio bakery"],
+      "notRestaurants": ["le bernardin"],
+      "foods": ["focaccia"]
+    }
+  },
+  {
+    "id": "G1-middling-score-entry",
+    "why": "v8 audit class 1 (doc 8b3a5a32): a middling numeric score amid higher-rated siblings is a hedged verdict — the 7.3 ribs must not emit while the 8.4 'most liked' sprouts must.",
+    "posts": [
+      {
+        "id": "SRC001",
+        "title": "Bad Roman review",
+        "body": "Bad Roman recap with ratings. The crispy brussels sprouts were my most liked item at a 8.4. My main was an order of the porchetta ribs (7.3).",
+        "extract_from_post": true,
+        "comments": []
+      }
+    ],
+    "expect": {
+      "foods": ["brussels sprouts"],
+      "notFoods": ["porchetta ribs", "rib"]
+    }
+  },
+  {
+    "id": "G2-la-nueva-reaction-chain",
+    "why": "v8 audit class 2 SYSTEMATIC (La Nueva, doc t1_nl2atf9, 0/6 repro): replies framed as reaction-to-the-post's-list silenced the whole chain. SRC085's own 'I love La Gran Uruguaya' and SRC087's first-person picks (incl. writer-moved-away past tense) must all emit.",
+    "posts": [
+      {
+        "id": "SRC001",
+        "title": "Best things I ate in NY",
+        "body": "Pic 1: coconut chicken noodle soup from Little Myanmar 🇲🇲 little myanmar but big flavor \n\nPic 2+3: pomegranate Fesenjan and cherry rice  🍒🍚 from Ravagh Persian Grill 🇮🇷\n\nPic 4: Reina pepiada 👸🍑 arepa from El Budare Cafe 🇻🇪\n\nPic 5: red curry and Thai iced tea from Saranrom Thai 🇹🇭 the servers here were so sweet too, great flavor+customer service combo \n\nPic 6: cachapitas from El Budare Cafe again 🇻🇪\n\nPic 7: pineapple 🍍 bun 🍑 from Mei Lai Wah \n\nPic 8: I know the pic looks horrible but this was one of my favorite pupusas ever. Seconds after the pic this pupusa was devoured. Pupusas Ridgewood 🇸🇻\n\nPic 9: Burmese Bites keema palata 🇲🇲\n\nPic 10: Ube flan from Queens Night Market. Alas I forgot the name of the stand, I know it was Filipino 🇵🇭\n\nPic 11: Breadfruit 🍞🍋 balls ⚽️🏀 from Ella Spice 🇬🇩\n\nPic 12: Aji de gallina from Amar Peruvian Kitchen 🇵🇪\n\nPic 13: pollo parmigiana from Tuscan Hills 🇮🇹 service and cocktails were top notch  \n\nPic 14: kewa datshi from The Weekender 🇧🇹 I love seeing more obscure cuisines in NY, and this place was delicious \n\nPic 15: jhol momo from Lhasa Snack Cafe 🥟\n\nPic 16: drunken noodles from Lenox Thai 🇹🇭 friendly service and also there was so much beef, they really did not skimp on the protein\n\nPic 17: mofongo from Casa Adela 🇵🇷\n\nPic 18: Dulce de leche Medialuna from La Gran Uruguaya bakery 🇺🇾\n\nPic 19: samsa from Tastes of the Silk Road at the QNM 🇰🇿 I was very surprised to see a Kazakh stand, the people in charge seem very nice too \n\nPic 20: Birria-Landia in Queens. I tried birria from the truck in Manhattan and it was just okay, but then I tried the Jackson Heights version, and it is absolutely 🥵💦💯 best birria I ever had. Also don’t sleep on the mulita 🫏 I never heard of mulita before but now i have dreams about it\n\n\n\n",
+        "extract_from_post": true,
+        "comments": [
+          {
+            "id": "SRC085",
+            "body": "Great list, my friend! I love La Gran Uruguaya and Birrialandia. The Ube flan looks great, I know my wife would love to go and try it. Some of the other stuff looks incredible. You did NYC proud.",
+            "parent_id": "SRC001"
+          },
+          {
+            "id": "SRC086",
+            "body": "I was SHOOK to see La Gran Uruguaya on this list! That's a real Queens deep cut (I live a block away and can't imagine knowing about it if I wasn't from JH)",
+            "parent_id": "SRC085"
+          },
+          {
+            "id": "SRC087",
+            "body": "I used to live in NYC pre-pandemic and I would go out of my way just for La Gran Uruguaya and La Nueva Bakery\n\nChivito d'Oro nearby is also fantastic",
+            "parent_id": "SRC086"
+          }
+        ]
+      }
+    ],
+    "expect": {
+      "restaurants": ["la gran uruguaya", "la nueva bakery", "chivito"]
+    }
+  },
+  {
+    "id": "G2-annotated-rec-list",
+    "why": "v8 audit class 2 (doc 982af2e6): a playful annotated rec list answering a judgment ask emitted NOTHING. Every entry is a pick.",
+    "posts": [
+      {
+        "id": "SRC001",
+        "title": "Visiting friend wants real Austin food",
+        "body": "Where should I take him?",
+        "extract_from_post": false,
+        "comments": [
+          {
+            "id": "SRC002",
+            "body": "Threadgills for the chicken fried steak! Or, maybe hit up Shady Grove for the green Chile chicken fried steak.\n\nIn the mood for a classic burger? Hut's downtown has got you covered!\n\nDoes he dig vegetarian food? I know just the place, Mother's.\n\nMaybe you are night owls, lookin' for a classic late night spot? Guess what? Katz's never kloses!"
+          }
+        ]
+      }
+    ],
+    "expect": {
+      "restaurants": ["threadgills", "shady grove", "huts", "mothers"],
+      "foods": ["chicken fried steak", "burger"]
+    }
+  },
+  {
+    "id": "G2-queens-classification-list",
+    "why": "v8 audit Queens wobble (doc t1_nybbx7j): neutral-cataloguing framing ('My classification', 'Notable...') made real picks read as directory. The writer's own taste chose these names in answer to SRC048/SRC050's ask — a classified list is still an answer.",
+    "posts": [
+      {
+        "id": "SRC001",
+        "title": "Old school vs New School NYC pizza",
+        "body": "Discussion only for pizzaholics:\n\nI remember pizza (in both NYC and its suburbs) when I was a kid generally being very cheesy, greasy, somewhat floppy, and maybe mildly crispy. It had tons of flavor, like this sort of strong savory taste from the cheese that was combined with a slight tang from the sauce. There was also a decent amount of herbaceousness, but provided by oregano rather than basil leaves.\n\nNowadays, Dave Portnoy would call it \"football pizza\" and a place opening up with that kind of pizza would not receive much acclaim.\n\nIt seems like what is considered good pizza nowadays is a sort of New Haven influenced thing with very thin and  crispy crust, combined with new school artisan ingredients and cooking techniques. I personally like both types, but it is interesting seeing people on this sub hate Joes even though it's as classic of a New York slice as it gets. Though, Joe's is honestly even better than the average slice spot I remember growing up, it has more sauce and less grease. Which is what I prefer as an adult.\n\nWhat spots do you think best represent classic NY pizza? What changes have you observed over the years to the NY pizza scene? \n\n",
+        "extract_from_post": true,
+        "comments": [
+          {
+            "id": "SRC047",
+            "body": "There are a lot of classic ny pizza place still in Queens.  In fact the whole borough is dominated by really great classic NY pizza.  Brooklyn's pizzerias are all being replaced by the elevated ones.",
+            "parent_id": "SRC046"
+          },
+          {
+            "id": "SRC048",
+            "body": "Can you share the names of some of these Queens places that still make these types of pizza?",
+            "parent_id": "SRC047"
+          },
+          {
+            "id": "SRC049",
+            "body": "Classic NY Slices?  what neighborhood are you in?  Edit:  or ones you frequently travel to/through.",
+            "parent_id": "SRC048"
+          },
+          {
+            "id": "SRC050",
+            "body": "Yes classic, cheesy, oily, foldable pizza with that distinct pizza smell, just like what u/BlueInCardinalNest said. Willing to go anywhere, but Western Queens would be nice since it's closer to the city. I've had great pizza in Queens but no that old school NY style for many years.",
+            "parent_id": "SRC049"
+          },
+          {
+            "id": "SRC051",
+            "body": "My classification for Old school and Classic New York are further down in the comments.\n\nOld School, i think the only one i can think of left in Queens is Nick's in Forest Hills, but they aren't really old enough, their pies are definitely old school taste and feel, but i also haven't been there in almost 20 years.\n\nClassic slice shop which you described in western queens i would say:  \nSunnyside Pizza, GoodFellas Pizza (LIC and Sunnyside), Steinway Pizza, Rosa's Pizza, Rizzo's, Rose and Joe's, Rosario's bakery (technically an old school bakery pie).\n\nNotable new new york style slices in western queens:  \nR &amp; R Pizza Connection, Andrew Bellucci's, Philomena's, Traze, Lupo Rosso, Frankie's Brooklyn Pizza, Beebe's at Boro hotel.\n\nIn Queens, most of our classic places are being replaced by Neapolitan pizza places, but we are getting some of the new new york style now, so that's nice.  Don't have to go to Williamsburg or Greenpoint anymore.\n\nedit:  \nif you want some really classic NY style pizza that has stood the test of time, you have to go to flushing:  \nLucia's on Roosevelt ave.    \n  \nPizza Garden on Northern Blvd (I mentioned their Dave Portnoy review and they said \"Oh that guy?  he's such a schmuck.  Oooh i'm from baaaahston i'm going to review New York Pizzzaaaahhhh\".\n\nAmore's off the Whitestone Expressway.\n\n  \nThere's also Dani's House of Pizza in Kew Gardens, which...its easier to take the LIRR to get to since its really far from the subway.  Try the Pesto slice.",
+            "parent_id": "SRC050"
+          }
+        ]
+      }
+    ],
+    "expect": {
+      "restaurants": ["philomenas", "traze", "lupo rosso"]
+    }
+  },
+  {
+    "id": "G3-name-expansion-sho",
+    "why": "v8 audit class 3 (doc 3d5146bd): 'sho' expanded to 'sushi sho' from world knowledge — observed-forms-only forbids tokens absent from the text.",
+    "posts": [
+      {
+        "id": "SRC001",
+        "title": "Best omakase in the city?",
+        "body": "Money no object.",
+        "extract_from_post": false,
+        "comments": [
+          {
+            "id": "SRC002",
+            "body": "the best overall omakase like sho or yoshino"
+          }
+        ]
+      }
+    ],
+    "expect": {
+      "restaurants": ["sho", "yoshino"],
+      "notRestaurants": ["sushi sho"]
+    }
+  },
+  {
+    "id": "G3-name-expansion-minetta",
+    "why": "v8 audit class 3 (docs 7811129a, 6efaa1b5): 'Minetta' -> 'minetta tavern' and '1618' -> '1618 asian fusion' were synthesized from world knowledge.",
+    "posts": [
+      {
+        "id": "SRC001",
+        "title": "Is the 4 Charles burger worth it?",
+        "body": "",
+        "extract_from_post": false,
+        "comments": [
+          {
+            "id": "SRC002",
+            "body": "Would much rather have the black label burger from Minetta for almost half the price."
+          }
+        ]
+      },
+      {
+        "id": "SRC003",
+        "title": "Where to eat duck in Austin?",
+        "body": "",
+        "extract_from_post": false,
+        "comments": [
+          {
+            "id": "SRC004",
+            "body": "1618 has an amazing duck curry, along with other duck dishes"
+          }
+        ]
+      }
+    ],
+    "expect": {
+      "restaurants": ["minetta", "1618"],
+      "notRestaurants": ["minetta tavern", "1618 asian fusion"]
+    }
+  },
+  {
+    "id": "G4-inherited-menu-item-false",
+    "why": "v8 audit class 4 SYSTEMATIC (docs 30071203, 46e0e081, 68a4146e): a reply naming only restaurants inherits the ask's dish with is_menu_item false — this source never narrowed it to one item.",
+    "posts": [
+      {
+        "id": "SRC001",
+        "title": "Best cold sesame noodles?",
+        "body": "Craving them badly.",
+        "extract_from_post": false,
+        "comments": [
+          {
+            "id": "SRC002",
+            "body": "Mr Wonton and Sal Tangs in Brooklyn both are great."
+          }
+        ]
+      }
+    ],
+    "expect": {
+      "restaurants": ["mr wonton", "sal tangs"],
+      "foods": ["cold sesame noodles"],
+      "noMenuItemTrue": true
+    }
+  },
+  {
+    "id": "G5-praise-placement-dish-plus-goto",
+    "why": "v8 audit class 5 (doc 51192c78): dish-directed praise plus 'my go-to' produced one mention carrying both the dish and general_praise true. F.1: dish mention false, separate restaurant-only carrier true.",
+    "posts": [
+      {
+        "id": "SRC001",
+        "title": "Best thin crust in Austin?",
+        "body": "",
+        "extract_from_post": false,
+        "comments": [
+          {
+            "id": "SRC002",
+            "body": "i Fratelli is the best thin crust pizza in Austin. Hands down. It’s my go-to."
+          }
+        ]
+      }
+    ],
+    "expect": {
+      "restaurants": ["i fratelli"],
+      "foods": ["thin crust pizza"],
+      "somePraise": true,
+      "praiseOnlyRestaurantOnly": true
+    }
+  },
+  {
+    "id": "G5-praise-placement-pick-with-dishes",
+    "why": "v8 audit class 5 (doc 16cc7fab): an ANSWER-TEST pick with named dishes put general_praise true on the dish mention. The pick's endorsement rides a restaurant-only carrier; dishes ride false.",
+    "posts": [
+      {
+        "id": "SRC001",
+        "title": "Underrated tacos in Austin?",
+        "body": "Give me your sleeper picks.",
+        "extract_from_post": false,
+        "comments": [
+          {
+            "id": "SRC002",
+            "body": "El Perrito get the El P tacos and fries"
+          }
+        ]
+      }
+    ],
+    "expect": {
+      "restaurants": ["el perrito"],
+      "foods": ["el p taco"],
+      "somePraise": true,
+      "praiseOnlyRestaurantOnly": true
+    }
+  },
+  {
+    "id": "G6-venue-name-dish-and-success",
+    "why": "v8 audit class 6 (docs 7ce6c9e9, 9c38d5d3): a no-verdict caption minted 'birria' from the truck's NAME, and 'they're doing great' (business success) was read as endorsement with 'ramen' minted from the venue name. Both emit nothing.",
+    "posts": [
+      {
+        "id": "SRC001",
+        "title": "Taco truck tonight",
+        "body": "Tonight’s animation …….. Birria-Landia !",
+        "extract_from_post": true,
+        "comments": []
+      },
+      {
+        "id": "SRC002",
+        "title": "Influencers asking for free food",
+        "body": "Ramen Del Barrio has never handed out free stuff and they’re doing great.",
+        "extract_from_post": true,
+        "comments": []
+      }
+    ],
+    "expect": {
+      "emitsNothing": true
+    }
+  },
+  {
+    "id": "G6-availability-on-tap",
+    "why": "v8 audit class 6 (doc 5b2ba4e8): 'still has it on tap' is availability answering a findability ask — never a food claim; the holistic 'food there is delicious' is the only verdict and lands as the carrier.",
+    "posts": [
+      {
+        "id": "SRC001",
+        "title": "Where can I still find Thirsty Goat on tap?",
+        "body": "My favorite beer disappeared from most bars.",
+        "extract_from_post": false,
+        "comments": [
+          {
+            "id": "SRC002",
+            "body": "Casa Columbia on east 7th still has it on tap, and the food there is delicious."
+          }
+        ]
+      }
+    ],
+    "expect": {
+      "restaurants": ["casa columbia"],
+      "notFoods": ["thirsty goat", "beer"],
+      "somePraise": true
+    }
+  },
+  {
+    "id": "G6-filler-foods",
+    "why": "v8 audit class 6 (docs 7ad6cb0f, 1db848b2): 'dinner' (when-only word) and 'rice' (lone ingredient with no broader dish) were minted as foods. Both mentions are restaurant-only.",
+    "posts": [
+      {
+        "id": "SRC001",
+        "title": "Clinton St Baking worth it?",
+        "body": "",
+        "extract_from_post": false,
+        "comments": [
+          {
+            "id": "SRC002",
+            "body": "Dinner is super solid there."
+          }
+        ]
+      },
+      {
+        "id": "SRC003",
+        "title": "Best value sushi?",
+        "body": "",
+        "extract_from_post": false,
+        "comments": [
+          {
+            "id": "SRC004",
+            "body": "Ikumi is my overall best value quality place. Love their rice."
+          }
+        ]
+      }
+    ],
+    "expect": {
+      "restaurants": ["clinton st baking", "ikumi"],
+      "notFoods": ["dinner", "rice"]
+    }
   }
 ]

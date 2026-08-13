@@ -91,7 +91,13 @@ The writer vouches from experience, or reports a clear consensus:
   a list ("Pho phong luu, Tan My, Fresh Bowl, Sip Pho if central"), of an
   annotated list ("Cabernet Grill for dinner / Sunset Grill for breakfast"),
   and of a reply that ADDS names to an ongoing answer thread ("Bar Snack &
-  Paradise Lost as well"). Two conditions, both required:
+  Paradise Lost as well"). **Presentation never demotes a pick**: a writer
+  answering a rec ask may organize their picks like a catalogue — headings,
+  "Notable \_\_\_", "My classification", per-neighborhood groupings. The
+  directory tell (A.2) is an EXTERNAL criterion choosing the names; when the
+  writer's own taste chose them, a classified list is still an answer, judged
+  entry by entry — every entry under every heading. Two conditions, both
+  required:
   1. **The ask requests a JUDGMENT, not a FACT.** A judgment ask asks which is
      good or which you'd pick. A fact ask asks where to obtain, who is open,
      who delivers — "where can I find kolaches?", "who's open Christmas Day?".
@@ -100,12 +106,27 @@ The writer vouches from experience, or reports a clear consensus:
   2. **Nothing in the reply re-frames the name as neutral information or
      disclaims it.** Hours, prices, "they sell", "never been but", "I've
      heard" strip the pick back to information. Positive or plain annotations
-     do not ("for dinner", "if central", a neighborhood tag).
+     do not ("for dinner", "if central", a neighborhood tag). An annotation
+     that qualifies DOWNWARD is a hedge and strips THAT entry — it emits
+     nothing ("not spectacular but on the cheaper side", "cheaper BBQ but
+     decent"). An operational annotation ("serves BBQ", a location, hours)
+     re-frames its entry as availability — that entry also emits nothing,
+     not even the food it mentions. Each entry is judged on its OWN
+     annotation; one stripped entry never strips its neighbors.
 - **A verdict has no minimum eloquence.** "is good", "is great", "is awesome",
   "love this place", "my go-to" are complete endorsements — as complete as a
   paragraph. A hedge is a word that qualifies DOWNWARD ("it's _fine_", "not
   bad", "6/10", "decent for what it is"), not a word that is merely short or
   plain. Do not require enthusiasm.
+- **A reply that reacts to the post still testifies for itself.** "Great
+  list!", "You did NYC proud", "Well done" are reactions to the post's list —
+  not testimony. But the same comment often continues into the writer's own
+  first-person testimony ("Great list, my friend! I love La Gran Uruguaya"),
+  and that testimony emits like any other. Judge every sentence of the
+  source; never let a reaction frame silence the rest of the comment. And a
+  reaction is only ever a fact about ITS OWN source: every comment nested
+  below it is still run through these steps on its own text — a chain of
+  compliments can carry a reply full of real picks, and those picks emit.
 - **Asking for feedback on an experience already had IS testimony.** "2026 NYC
   Food Trip Review — how did I do?" reports meals eaten; the question at the
   end does not undo them.
@@ -139,20 +160,30 @@ The writer vouches from experience, or reports a clear consensus:
   this writer's taste choose these names, or did a fact about the world?_
   Emit nothing.
 - **AVAILABILITY or POPULARITY alone.** "X has Y", "they sell it by the pound",
-  "it's always packed", "there's a location on 5th". Stating that food exists,
-  or that others go, is not a verdict on it.
+  "it's always packed", "there's a location on 5th", "they're doing great".
+  Stating that food exists, that others go, or that the BUSINESS is
+  succeeding is not a verdict on its food.
   **This holds even when the availability answers a FINDABILITY ask.** A
   "where can I find \_\_\_?" ask makes "Quack's on 43rd has them. Also Epoch
   sells them sometimes" a helpful and RESPONSIVE reply — and still not
   testimony, because the writer said where to _get_ the thing, never that it
-  is good. **But when the ask requested a PICK rather than a location, naming
+  is good. A reply may mix an availability answer with its own real
+  testimony; the availability item still never becomes a food claim: "Casa
+  Columbia still has it on tap, and the food there is delicious" praises the
+  food generally (a restaurant-only mention) — the thing on tap was located,
+  never vouched for, and does not emit as `food`. **But when the ask requested a PICK rather than a location, naming
   a place IS the verdict — see the ANSWER TEST in A.1.** Discriminate by what
   the ask wanted, never by how much the reply said.
 - **HEARSAY or DESIRE.** "I've heard", "supposedly", "want to try", "never been
   but interested".
 - **A MIDDLING OR HEDGED VERDICT.** "it's fine", "solid enough", "6/10", "not
-  bad", "perfectly fine", "decent for what it is". These withhold endorsement;
-  they are not positive claims.
+  bad", "perfectly fine", "decent". These withhold endorsement; they are not
+  positive claims. The test is the NET DIRECTION of the clause, not a word
+  list: any qualifier that pulls the verdict downward defeats it — "liked
+  it — but didn't love", "average quality but absurd portions", a middling
+  score amid higher-rated siblings ("porchetta ribs (7.3)" when the writer's
+  favorites rate 8+). Praise of size, price, or portions never rescues a
+  hedged verdict on the food itself.
 - **NEGATIVE CONTENT.** Criticism, warnings, "I'd skip \_\_\_", "many of your
   items I would not suggest", or a reply to an explicitly negative ask
   ("worst/avoid/overrated"). Emit nothing.
@@ -161,7 +192,10 @@ The writer vouches from experience, or reports a clear consensus:
   go", "who remembers", "back in the day", "I miss \_\_\_" — with no
   contradicting present-tense context. A recommendation for a place that no
   longer exists is not actionable. Places whose status is unstated remain
-  eligible; never guess at a closure.
+  eligible; never guess at a closure. **Closure is a fact stated about the
+  PLACE, never an inference from the WRITER's tense**: "I used to live in
+  NYC and would go out of my way just for \_\_\_" reports a live place from
+  a writer who moved away — testimony, not closure.
 
 ### A.3 Judge each entry on its own verdict
 
@@ -215,6 +249,14 @@ BREAK is a series separator too** — a reply listing one name per line
 ("Yafa Deli ⏎ Crispy Burger") is a list of distinct places, each judged on
 its own.
 
+**A shared verb covers every name it governs — account for each.** "I would
+go out of my way just for La Gran Uruguaya and La Nueva Bakery" vouches for
+BOTH places; "Chivito d'Oro nearby is also fantastic" is a third,
+self-contained verdict in the same comment. Emitting only the first name of
+a coordinated series, or only the first section of a long sectioned comment,
+is the most common miss in large threads: count the names the testimony
+covers, then emit a mention for each.
+
 **A misspelling is still a name.** Emit it as written after normalization —
 resolution happens downstream. But when the writer disclaims the name itself
 ("some place called Ravi's or whatever it's called"), the reference is too
@@ -260,6 +302,14 @@ Also fails the PLACE TEST:
 Choose ONE canonical name per establishment, from **observed forms only** —
 never synthesize or expand a name with tokens absent from the text, and never
 contract a name into an acronym or initialism the text does not use.
+
+**Your world knowledge of the establishment is off-limits here.** You will
+often RECOGNIZE the place and know its fuller real-world name or its correct
+spelling. Do not use it: "Minetta" stays `minetta` even when you know it is
+Minetta Tavern; "sho" stays `sho`; a misspelled name stays as the writer
+spelled it. Completing or correcting a name mis-resolves it downstream —
+emission records what was OBSERVED; resolution to the real place is another
+system's job.
 
 Normalize:
 
@@ -315,6 +365,15 @@ but no orderable item — **there is no dish.** Leave `food` and
 lands as an attribute in Step D. **Never manufacture a dish** from a cuisine
 word, a style word, or the kind of place it is: a cocktail bar does not thereby
 serve a dish called "cocktail", and "great Indian place" names no food.
+Two more sources that never yield a dish:
+
+- **The venue's own name.** A food token inside a restaurant's name is part
+  of the name and nothing more: praising the truck "Birria-Landia" has not
+  thereby praised a dish called "birria", and "Ramen Del Barrio" names no
+  ramen claim. A dish exists only when the source's own FOOD LANGUAGE names
+  one.
+- **A when-word praised holistically.** "Dinner is super solid there" names
+  no dish — dinner is any food at all (C.3). The mention is restaurant-only.
 
 **A format or deal that fails the PREDICTION TEST is not a dish, even when
 the writer praises it by name, and even when it carries a modifier.**
@@ -394,7 +453,8 @@ Drop generic filler outright ("food", "meal", "dish", "the food", "restaurant",
 4. **Sanity-check.** Would this exact wording appear on a menu? If not, peel
    one modifier until it would, keeping the head noun. If you end with a lone
    ingredient, keep the broader dish instead — a lone ingredient is neither a
-   dish nor a category.
+   dish nor a category. When the source names NO broader dish ("Love their
+   rice"), there is no dish at all: the mention is restaurant-only.
    - **Appearing on a menu is NOT sufficient.** "Lunch Special", "3-Course
      Menu", "Happy Hour Deal", "Chef's Tasting" are all printed menu headings
      and none of them is a dish. Re-run C.1's HEAD NOUN check on the phrase
@@ -659,6 +719,12 @@ Set `is_menu_item` for each composed dish.
 
 Set `true` only with strong evidence; when unsure, `false`.
 
+**A dish this source never named is never `true`.** When the dish was
+INHERITED from the ask, or adopted from a parent, THIS source did not narrow
+it to one item — `is_menu_item` is `false` no matter how specific the ask's
+wording was. `true` requires the narrowing to happen in this source's own
+words.
+
 **Answering an item-specific ask.** When the ask names a target dish ("best
 burger in EV?") and a reply ONLY names a restaurant while passing the TESTIMONY
 TEST (a bare name answering a judgment ask passes it via the ANSWER TEST in
@@ -704,6 +770,18 @@ answer to any request for a recommendation (the ANSWER TEST, A.1).
   holistically AND names dishes, emit the dish mentions with
   `general_praise: false` plus ONE restaurant-only mention with
   `general_praise: true`.
+- The two rules above compose into a flat invariant: **`general_praise: true`
+  lives ONLY on a restaurant-only mention (`food` null).** A mention that
+  carries a dish never carries `general_praise: true` — dish-directed praise
+  IS the dish connection, and holistic praise gets its own carrier. Decide
+  placement by what the praise NAMES: a dish → that dish's mention at
+  `false`, with no carrier created; the place (or an ANSWER-TEST pick) → the
+  carrier. A source that IS an answer-test pick and also names dishes emits
+  both: the dish mentions at `false` PLUS the pick's restaurant-only carrier
+  at `true` — the pick endorsed the place, not only the dishes it went on to
+  name. Final check before emitting: if any mention carries BOTH a non-null
+  `food` and `general_praise: true`, split it — the dish mention keeps the
+  food at `false`, and the `true` moves to a restaurant-only carrier.
 - Availability, popularity, and price are never endorsement (Step A.2).
 
 ### F.2 Fields

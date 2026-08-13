@@ -73,6 +73,13 @@ type Case = {
     somePraise?: boolean;
     /** No mention may carry general_praise: true. */
     noPraise?: boolean;
+    /** No mention may carry is_menu_item: true (v8 audit class 4 — the
+     *  inherited-dish rule mandates false; a true here is the systematic
+     *  overcall). */
+    noMenuItemTrue?: boolean;
+    /** Every general_praise:true mention must be restaurant-only (food null)
+     *  — the F.1 one-carrier invariant (v8 audit class 5). */
+    praiseOnlyRestaurantOnly?: boolean;
   };
 };
 
@@ -169,6 +176,20 @@ function grade(
   }
   if (expect.noPraise && mentions.some((m) => m.general_praise === true)) {
     failures.push('FORBIDDEN general_praise:true');
+  }
+  if (expect.noMenuItemTrue && mentions.some((m) => m.is_menu_item === true)) {
+    failures.push('FORBIDDEN is_menu_item:true (inherited/family dish)');
+  }
+  if (
+    expect.praiseOnlyRestaurantOnly &&
+    mentions.some(
+      (m) =>
+        m.general_praise === true &&
+        typeof m.food === 'string' &&
+        m.food.length > 0,
+    )
+  ) {
+    failures.push('general_praise:true on a mention that carries a dish');
   }
   return { pass: failures.length === 0, failures };
 }
