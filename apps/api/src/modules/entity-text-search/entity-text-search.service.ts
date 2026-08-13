@@ -122,7 +122,9 @@ import {
   admitsAtExactTier,
   groupEntitySpans,
   pickSpanWinner,
+  spellingOf,
   type EntitySpanGroup,
+  type SurfaceSpelling,
 } from './gazetteer-spans';
 import {
   analyzeQuery,
@@ -1438,6 +1440,7 @@ export class EntityTextSearchService {
       analysis?: QueryAnalysis;
     } = {},
   ): Promise<EntitySpanGroup[]> {
+    const EMPTY_PLAIN_FORMS: ReadonlySet<string> = new Set<string>();
     const raw = text ?? '';
     if (!raw.trim() || entityTypes.length === 0) return [];
 
@@ -1506,19 +1509,62 @@ export class EntityTextSearchService {
     // identity_key IS canonicalFold(name) for every type (identityInsertData);
     // identity_key_sorted is the coarse lemma/dedupe key and is deliberately
     // NOT probed here — grounding is an EQUALITY claim, not a dedupe probe.
-    // LOCALE MATCHING — one authority, one primitive. THE LOCALE IS
-    // `analysis.requestLocale`, NOT `options.requestLocale`: the interpreter
-    // (the production caller) passes only `analysis`, so reading the separate
-    // option left `requestBaseLang=''` and the whole tagged-alias + labels
-    // path DEAD in prod — 'asiatica'/es grounded nothing (i18n red team,
-    // executed). The analyzer already resolved the request locale; it is the
-    // single source, and `localeLookupChain` turns it into the RFC-4647
-    // ordered match set both this SQL and the display path share (so a row
-    // can never ground here yet render its English label). 'und' (universal)
-    // is always the chain's tail; a null-locale request => ['und'] only, so
-    // tagged rows are excluded — the conservative side F2 established.
-    const localeChain = localeLookupChain(analysis.requestLocale);
-    const aliasLocaleFilter = Prisma.sql`AND LOWER(ea.locale) = ANY(${localeChain}::text[])`;
+    // ┌─ THE RULING: EXACT GROUNDING IS LOCALE-BLIND (2026-08-12) ─────────┐
+    //
+    // THE DEFECT it replaces: this scan filtered its surface arms by
+    // `localeLookupChain(analysis.requestLocale)` — the REQUEST's chain. So
+    // the SAME four characters answered differently depending on who was
+    // holding the phone: 牛肉面 ground BEEF NOODLE SOUP from a zh-CN request
+    // and NOTHING AT ALL from an es-MX one, and 'pho 牛肉' from an en-US
+    // request left 牛肉 unresolved — all three AFTER the script gate had
+    // already pinned the text `zh` at confidence 1. The system was told what
+    // language the words were in and filtered them out anyway.
+    //
+    // THE PRINCIPLE (spine correction canon): source/request language is
+    // READER CONTEXT, never WORD IDENTITY. This scan asks exactly one
+    // question — "is this exact typed string a banked surface of some
+    // concept?" — and that question has no reader in it. 牛肉面 is beef
+    // noodle soup because of what those characters ARE; a Spanish speaker
+    // who types them has typed Chinese, and the honest reading of their
+    // query is the one the characters carry. Reader preference is real and
+    // it keeps every place it belongs: which LABEL renders (label-sweep,
+    // still chained), how results RANK, and the INEXACT recall lanes
+    // (prefix/trigram/FTS, `searchLocalizedSurfaces` and
+    // `fetchFtsTrgmRowsForTerms`, both still chained) — a near-miss is a
+    // GUESS and a guess needs a prior. Exact equality needs none.
+    //
+    // WHAT IT COSTS, MEASURED (local corpus, 66,331 active recall surfaces —
+    // und 34,268 / es 16,838 / vi 13,259 / en 1,410 / zh 556):
+    //   - 54,648 distinct folded forms; 1,534 banked under ≥2 languages.
+    //   - Of those, 38 forms name a DIFFERENT ENTITY in a different language
+    //     (46 language pairs) — the entire cross-locale collision surface.
+    //   - Reading all 46: not one is a homograph. Every single pair is the
+    //     SAME CONCEPT under two canonical names — mole/mole plate,
+    //     ricotta/ricotta cheese, cilantro/coriander, cheesesteak/philly
+    //     sandwich, tres leches/tres leches cake. There is no 'pan' case
+    //     (es bread vs an unrelated en concept) in the corpus at all.
+    // So the cost of blindness here is that 38 spans out of 54,648 offer a
+    // near-synonym entity alongside the one they already offered — which is
+    // what `entities` is FOR (a span names every concept the data says it
+    // names, exactly as 牛肉 already returns beef(food)|beef(ingredient)).
+    // It is not a wrong-concept risk, and it was measured before the choice
+    // rather than assumed away.
+    //
+    // WHY NOT "let the DETECTED language widen the chain" — the other
+    // candidate, and the narrower-looking one. It fixes the two witnesses
+    // and leaves the disease: it still makes grounding a function of a
+    // LANGUAGE VERDICT, so every word whose language the detector cannot
+    // name (which is most 1–3-word food vocabulary, by the detector's own
+    // documented limits above) stays hostage to the reader's setting, and a
+    // mis-detection silently deletes concepts instead of merely mis-ranking
+    // them. It would also have to special-case script to work, which the
+    // battery forbids. Removing the filter removes the class.
+    //
+    // There is consequently NO locale predicate left in this method, and no
+    // chain to build: `analysis.requestLocale` no longer changes anything the
+    // scan returns. That is the property the Mandarin battery pins — 牛肉面
+    // from an es-MX request and from a zh-CN one are the same query.
+    // └────────────────────────────────────────────────────────────────────┘
     const matchedFormsSelect = Prisma.sql`
              LOWER(e.name) AS "normName",
              e.identity_key AS "foldedName",
@@ -1543,7 +1589,6 @@ export class EntityTextSearchService {
                WHERE ea.entity_id = e.entity_id
                  AND ea.status = 'active'
                  AND ea.role <> 'display'
-                 ${aliasLocaleFilter}
                  AND ea.form_folded = ANY(${candidates}::text[])
              ) AS "foldedAliases",
              -- The RAW (accent-bearing) spelling of every surface that
@@ -1566,14 +1611,19 @@ export class EntityTextSearchService {
              -- about the entity, not a per-locale recall claim. With it, an
              -- en-locale request for 'bánh mì' could not see the vi spelling
              -- and refused the dish (red team, executed).
+             -- The LOCALE TRAVELS WITH THE SPELLING (tab-joined), because the
+             -- ACCENT-LENIENCY half of the admission rule needs to know
+             -- whether this spelling is written in a language the requester
+             -- reads. See the leniency note in the scan loop below: identity
+             -- is universal, leniency is not.
              ARRAY(
-               SELECT ea.form FROM entity_surface ea
+               SELECT LOWER(ea.locale) || E'\t' || ea.form FROM entity_surface ea
                WHERE ea.entity_id = e.entity_id
                  AND ea.status = 'active'
                  AND ea.form_folded = ANY(${candidates}::text[])
              ) AS "rawAliases",
-             -- The entity's surfaces that are TAGGED IN THE REQUEST'S OWN
-             -- LANGUAGE ('und' excluded). This is the accent-complete
+             -- The entity's surfaces that are TAGGED WITH A LANGUAGE ('und'
+             -- excluded). This is the accent-complete
              -- evidence: a form banked under 'vi' is how the word is SPELLED
              -- in Vietnamese, whereas the same string under 'und' is the
              -- de-diacritized romanization the fold exists to serve. The
@@ -1582,13 +1632,33 @@ export class EntityTextSearchService {
              -- 'bun' / 'pho' / 'phe' (und romanizations). Judging accent-
              -- completeness in the universal bucket refused 'banh mì',
              -- 'pho bò', 'cà phe' and nine more (measured).
+             --
+             -- THE LANGUAGE THE QUESTION IS ASKED IN IS THE SURFACE'S, NOT
+             -- THE READER'S (2026-08-12, and the vi gate is what proved it).
+             --
+             -- "Is this plain string a complete spelling, or an accent the
+             -- typist skipped?" is only answerable RELATIVE TO A LANGUAGE:
+             -- 'chay' is a whole Vietnamese word, 'pho' is the universal
+             -- romanization of 'phở'. This arm used to relativize to the
+             -- REQUEST's chain, which is the reader-context-as-identity error
+             -- the ruling above removes — but simply widening it to every
+             -- language is the OPPOSITE error, and it is not free: 'pho' is
+             -- banked plain under en, es and zh (never under vi), so a
+             -- language-blind set made 'pho' accent-complete and 'pho bò' —
+             -- a normal half-Telex typing — stopped reaching 'phở bò' and
+             -- shredded into pho + beef. Measured on the vi gold gate:
+             -- pa-02 flipped green→red, overall 90.4% → 89.8%.
+             --
+             -- So the locale travels WITH the form (tab-joined; a BCP 47 tag
+             -- contains no tab) and the reader is out of it entirely. Each
+             -- row's own tagged languages select which language's plain
+             -- forms may judge its spellings — see bankedPlainFormsFor.
              ARRAY(
-               SELECT LOWER(ea.form) FROM entity_surface ea
+               SELECT LOWER(ea.locale) || E'\t' || LOWER(ea.form)
+               FROM entity_surface ea
                WHERE ea.entity_id = e.entity_id
                  AND ea.status = 'active'
-                 AND LOWER(ea.locale) = ANY(${localeChain.filter(
-                   (l) => l !== 'und',
-                 )}::text[])
+                 AND LOWER(ea.locale) <> 'und'
                  AND ea.form_folded = ANY(${candidates}::text[])
              ) AS "langTaggedForms"`;
     const rows = await this.prisma.$queryRaw<
@@ -1630,7 +1700,6 @@ export class EntityTextSearchService {
           WHERE ea.entity_id = e.entity_id
             AND ea.status = 'active'
             AND ea.role <> 'display'
-            ${aliasLocaleFilter}
             AND ea.form_folded = ANY(${candidates}::text[])
         )
         ${territoryFilter}
@@ -1643,22 +1712,80 @@ export class EntityTextSearchService {
     // without passing the claim law. The junk-label class (`taco` on a dish
     // named "good taco" grounding at confidence 1.0) is structurally gone.
 
+    /**
+     * THE LANGUAGES THIS QUERY MAY BE TYPED LAZILY IN.
+     *
+     * Accent-leniency needs a prior (see the leniency note in the scan loop),
+     * and there are exactly two honest sources for it, both already computed:
+     *
+     *  - THE READER. Someone searching in their own language is the person
+     *    the fold's accent-stripping was built for — 'cafe' for 'café'.
+     *  - THE TEXT. The analyzer names the language of the words themselves,
+     *    from the script gate or the registry-surface oracle. A person typing
+     *    'phở bo' is typing Vietnamese half-accented whatever their phone
+     *    says, and that is a fact about the WORDS, not about them — which is
+     *    why it is admissible under the ruling above and why a locale-less
+     *    request does not lose leniency it should have.
+     *
+     * Their union, chained. Everything outside it is a language nobody in
+     * this query is writing in, so its spellings are matched literally.
+     */
+    const lenientLocales = new Set([
+      ...localeLookupChain(analysis.requestLocale),
+      ...localeLookupChain(analysis.detectedLocale?.tag ?? null),
+    ]);
     const candidateSet = new Set(candidates);
-    // Every accent-free string the registry banks AS A SURFACE OF THE
-    // REQUEST'S OWN LANGUAGE, as far as this query can see. Built from the
-    // rows already fetched — no extra round trip — and read by the accent-
-    // complete arm of the admission rule. A null-locale request has no
-    // language-tagged chain, so this set is empty and the rule falls back to
-    // pure per-token evidence: the conservative side.
-    const bankedPlainForms = new Set<string>();
+    // THE ACCENT-COMPLETE INDEX, KEYED BY LANGUAGE (see langTaggedForms).
+    // Every accent-free string the registry banks as a surface OF A NAMED
+    // LANGUAGE, filed under that language. Built from the rows already
+    // fetched — no extra round trip.
+    const plainFormsByLanguage = new Map<string, Set<string>>();
+    const languagesByEntity = new Map<string, Set<string>>();
     for (const row of rows) {
-      for (const form of row.langTaggedForms) {
+      for (const tagged of row.langTaggedForms) {
+        const tab = tagged.indexOf('\t');
+        if (tab < 0) continue;
+        const language = tagged.slice(0, tab);
+        const form = tagged.slice(tab + 1);
+        let languages = languagesByEntity.get(row.entityId);
+        if (!languages)
+          languagesByEntity.set(row.entityId, (languages = new Set()));
+        languages.add(language);
         const folded = canonicalFold(form);
-        if (folded && folded === diacriticFold(form)) {
-          bankedPlainForms.add(folded);
-        }
+        if (!folded || folded !== diacriticFold(form)) continue;
+        let forms = plainFormsByLanguage.get(language);
+        if (!forms) plainFormsByLanguage.set(language, (forms = new Set()));
+        forms.add(folded);
       }
     }
+    /**
+     * The accent-complete evidence admissible against ONE entity's spellings:
+     * the plain forms of the languages THAT ENTITY banks its matched surfaces
+     * in. This is the reader-free relativizer the arm's SQL comment names.
+     *
+     * Entity granularity, not per-spelling, because the row IS the thing
+     * whose spelling is being judged and its tagged languages are exactly the
+     * languages its spellings are written in — 'cơm cháy' and 'phở bò' are
+     * both vi rows, so the vi word 'chay' judges the first (correctly
+     * refusing 'cơm chay' → scorched rice) while the en/es/zh romanization
+     * 'pho' never reaches the second.
+     *
+     * An entity with only universal ('und') surfaces has no language here and
+     * gets the empty set: the rule falls back to pure per-token accent
+     * evidence, the conservative side it already took for a null-locale
+     * request.
+     */
+    const bankedPlainFormsFor = (entityId: string): ReadonlySet<string> => {
+      const languages = languagesByEntity.get(entityId);
+      if (!languages) return EMPTY_PLAIN_FORMS;
+      const admissible = new Set<string>();
+      for (const language of languages) {
+        for (const form of plainFormsByLanguage.get(language) ?? []) {
+          admissible.add(form);
+        }
+      }
+      return admissible;
+    };
     const rawSpans: Array<{
       start: number;
       end: number;
@@ -1683,12 +1810,56 @@ export class EntityTextSearchService {
       // name, its untagged recall forms, and the raw form of every surface
       // that matched. normAliases is LOWER(form) — lowercasing preserves
       // accents, so it is still raw evidence.
-      const spellings = [row.name, ...row.normAliases, ...row.rawAliases].map(
-        (form) => ({
-          folded: canonicalFold(form),
-          diacritic: diacriticFold(form),
-        }),
-      );
+      //
+      // ┌─ IDENTITY IS UNIVERSAL; ACCENT LENIENCY IS NOT ──────────────────┐
+      // The ruling above removed the reader from GROUNDING. It did not, and
+      // must not, remove the reader from how much SPELLING we let someone
+      // skip — and those are different questions that this one loop decides
+      // together.
+      //
+      // WHY THE DISTINCTION IS REAL, MEASURED (coverage-truth, 2026-08-12).
+      // Locale-blind matching alone dropped corpus coverage 75.1% -> 61.9%,
+      // and reading the per-case diff the whole drop is ONE query: 'pastel de
+      // arroz', where the Spanish preposition 'de' ground GOAT. The
+      // mechanism is the fold, not a bad row: 'dê' is the Vietnamese word for
+      // goat, and canonicalFold strips the circumflex, so a foreign word's
+      // ACCENT-STRIPPED shadow is byte-equal to a function word of the
+      // requester's language. That is the cross-locale homograph class, and
+      // the corpus-wide collision census (38 forms banked in ≥2 languages
+      // naming different entities — every one a near-synonym, no true
+      // homograph) could not see it, because 'de' is not a banked Spanish
+      // surface at all. It is manufactured by the fold.
+      //
+      // THE LINE. Accent-stripping is a FAVOUR the fold does for a person
+      // typing their own language lazily — 'pho bo' for 'phở bò', 'cafe' for
+      // 'café'. A favour needs a prior, exactly as the inexact recall lanes
+      // do. Identity does not: characters that AGREE are the same characters
+      // for everybody. So a surface written in a language the requester does
+      // not read must match what they actually TYPED, accents and all;
+      // surfaces in their own languages (and the universal 'und' spellings,
+      // which belong to no language and are the fold's own home) keep the
+      // full per-token leniency the vi partial-accenting stratum depends on.
+      //
+      // NOTHING HERE KNOWS ABOUT SCRIPT, and Han is the proof: 牛肉面 carries
+      // no accents, so its accent-preserving fold IS its canonical fold and
+      // it agrees exactly for every requester on earth. The battery's es-MX
+      // witness passes through the strict arm, not an exemption.
+      // └──────────────────────────────────────────────────────────────────┘
+      const readerLocales = lenientLocales;
+      const nativeSpellings: SurfaceSpelling[] = [
+        row.name,
+        ...row.normAliases,
+      ].map(spellingOf);
+      const foreignSpellings: SurfaceSpelling[] = [];
+      for (const tagged of row.rawAliases) {
+        const tab = tagged.indexOf('\t');
+        if (tab < 0) continue;
+        const language = tagged.slice(0, tab);
+        const spelling = spellingOf(tagged.slice(tab + 1));
+        if (readerLocales.has(language)) nativeSpellings.push(spelling);
+        else foreignSpellings.push(spelling);
+      }
+      const bankedPlainForms = bankedPlainFormsFor(row.entityId);
       for (const phrase of matchedPhrases) {
         for (const span of candidateSpans.get(phrase) ?? []) {
           // DIACRITIC EVIDENCE (see admitsAtExactTier): a span the user typed
@@ -1696,15 +1867,21 @@ export class EntityTextSearchService {
           // them. Skipping leaves the span as residue, where the lower-
           // evidence lanes may still reach it — the tier is what is refused,
           // not the candidate.
-          if (
-            !admitsAtExactTier(
+          const admitted =
+            admitsAtExactTier(
               { folded: phrase, diacritic: span.diacritic },
-              spellings,
+              nativeSpellings,
               bankedPlainForms,
-            )
-          ) {
-            continue;
-          }
+            ) ||
+            // The strict arm for foreign-language spellings: what was typed
+            // IS the surface, accents included. No leniency, no locale
+            // filter, no script test — see the leniency note above.
+            foreignSpellings.some(
+              (spelling) =>
+                spelling.folded === phrase &&
+                spelling.diacritic === span.diacritic,
+            );
+          if (!admitted) continue;
           rawSpans.push({
             start: span.start,
             end: span.end,

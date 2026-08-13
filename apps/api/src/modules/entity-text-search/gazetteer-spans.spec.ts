@@ -268,6 +268,51 @@ describe('admitsAtExactTier — typed accents are evidence, token by token', () 
       ),
     ).toBe(true);
   });
+
+  /**
+   * IDENTITY IS UNIVERSAL; ACCENT LENIENCY IS NOT (2026-08-12).
+   *
+   * Grounding is locale-blind now — the typed characters carry their own
+   * identity, whoever is holding the phone. The scan keeps that honest by
+   * splitting this rule's evidence in two: spellings written in a language
+   * the query is in (the reader's chain plus the analyzer's verdict) get the
+   * per-token leniency pinned above; everything else must match what was
+   * actually TYPED. The service owns the split; these two lines pin the two
+   * behaviours it composes, which is what makes the split meaningful.
+   *
+   * The case that forced it: 'dê' is Vietnamese for goat and folds to 'de',
+   * the Spanish preposition — so under leniency, 'pastel de arroz' ground
+   * GOAT. The strict arm refuses it while still admitting 牛肉面 for every
+   * requester, because Han carries no accents to strip and its
+   * accent-preserving fold IS its canonical fold.
+   */
+  describe('the strict arm — a foreign spelling must match what was typed', () => {
+    const strictlyMatches = (query: string, form: string) => {
+      const [spelling] = spell(form);
+      const span = typed(query);
+      return (
+        spelling.folded === span.folded && spelling.diacritic === span.diacritic
+      );
+    };
+
+    it('refuses an accent the user never typed', () => {
+      expect(strictlyMatches('de', 'dê')).toBe(false);
+      // ...which the lenient arm, correctly, would have admitted.
+      expect(admitsAtExactTier(typed('de'), spell('dê'))).toBe(true);
+    });
+
+    it('admits an unaccented script unconditionally — Han needs no favour', () => {
+      expect(strictlyMatches('牛肉面', '牛肉面')).toBe(true);
+      expect(strictlyMatches('珍珠奶茶', '珍珠奶茶')).toBe(true);
+      // And still refuses a different word, as identity demands.
+      expect(strictlyMatches('牛肉面', '牛肉')).toBe(false);
+    });
+
+    it('admits a fully accented typing of a foreign word', () => {
+      expect(strictlyMatches('phở bò', 'phở bò')).toBe(true);
+      expect(strictlyMatches('pho bo', 'phở bò')).toBe(false);
+    });
+  });
 });
 
 /**

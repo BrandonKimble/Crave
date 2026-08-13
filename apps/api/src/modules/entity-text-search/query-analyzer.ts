@@ -757,8 +757,17 @@ const CJK_RUN_SCRIPT = (ch: string): 'han' | 'kana' | null =>
  *  stored identity_key (which is the fold of the surface, spaceless) and a
  *  kanji+kana compound — most Japanese dish and shop names — was unmatchable
  *  at exactly the span that identifies it. The invariant this restores:
- *  every n-gram's folded text equals canonicalFold of its own raw slice. */
-function segmentToken(raw: string, start: number): QueryToken[] {
+ *  every n-gram's folded text equals canonicalFold of its own raw slice, for
+ *  every query that contains no whitespace inside a morphemic run (see
+ *  `softSeparatorBetween`, which deliberately admits the one exception).
+ *
+ *  `joinsToPrevious` is how this token's FIRST piece joins to whatever was
+ *  emitted before it. */
+function segmentToken(
+  raw: string,
+  start: number,
+  joinsToPrevious: ' ' | '' = ' ',
+): QueryToken[] {
   const chars = Array.from(raw);
   if (!chars.some((ch) => CJK_RUN_SCRIPT(ch) !== null)) {
     return [
@@ -768,7 +777,7 @@ function segmentToken(raw: string, start: number): QueryToken[] {
         diacritic: diacriticFold(raw),
         start,
         end: start + raw.length,
-        separator: ' ',
+        separator: joinsToPrevious,
       },
     ];
   }
@@ -800,8 +809,66 @@ function segmentToken(raw: string, start: number): QueryToken[] {
     diacritic: diacriticFold(piece),
     start: pieceStart,
     end: pieceStart + piece.length,
-    separator: index === 0 ? ' ' : '',
+    separator: index === 0 ? joinsToPrevious : '',
   }));
+}
+
+/**
+ * IN A SCRIPT WITH NO SPACING CONVENTION, A TYPED SPACE IS NOT A WORD
+ * BOUNDARY (2026-08-12, Mandarin battery defect 2).
+ *
+ * THE DEFECT: 珍珠奶茶 ground BOBA TEA; 珍珠 奶茶 — the same four characters,
+ * the same request — ground only MILK TEA, because TOKEN_RE cut at the space
+ * and the re-join then reproduced that space inside the folded key, which
+ * equals no stored surface (identity_key for 珍珠奶茶 is spaceless). A typed
+ * space changed the answer.
+ *
+ * THE RULING: whitespace only means "word boundary" in a script that USES
+ * whitespace to mean that. Chinese and Japanese do not — they are written
+ * unspaced, so a space between two Han/kana characters is something the
+ * TYPIST or the IME did (segmenting for readability, an IME committing a
+ * candidate, a paste), not something the LANGUAGE said. Han-adjacent-to-Han
+ * across whitespace therefore re-joins with '': the cover linker sees the
+ * identical candidate readings either way, and 珍珠 奶茶 ≡ 珍珠奶茶.
+ *
+ * IT IS A SOFT SEPARATOR, NOT A DELETED ONE. The space is still in the RAW
+ * query and every span still slices the raw string, so highlighting and
+ * offsets are untouched; and the shorter readings (珍珠, 奶茶) are still
+ * offered as their own n-grams, so the spaced reading loses nothing — it only
+ * gains the compound it was blind to. `spanCoverage` already strips interior
+ * whitespace, so the two forms also SCORE identically in the cover linker.
+ *
+ * ONLY BETWEEN TWO MORPHEMIC CHARACTERS. 'pho 牛肉' keeps its space: Latin is
+ * spaced by convention, so that whitespace is a real boundary and joining
+ * across it would fabricate a compound nobody typed. Hangul is excluded for
+ * the reason it is excluded from segmentation at all — Korean IS
+ * space-delimited (CJK_RUN_SCRIPT answers null for it).
+ *
+ * THE COST, STATED: for this one input shape an n-gram's folded text is no
+ * longer canonicalFold of its own raw slice (the fold of '珍珠 奶茶' keeps the
+ * space). That invariant was always a statement about the JOIN, and the join
+ * is what this corrects; the offset contract — the one downstream consumers
+ * actually read — is unchanged.
+ */
+function softSeparatorBetween(
+  previousToken: QueryToken | undefined,
+  nextRaw: string,
+  gap: string,
+): ' ' | '' {
+  // WHITESPACE ONLY. TOKEN_RE also cuts at PUNCTUATION, and punctuation in
+  // these scripts is a deliberate mark — 牛肉、面 enumerates two things, and
+  // 「珍珠」奶茶 quotes one. The typist did not put those there by accident, so
+  // they stay hard boundaries; the ruling above is about the space, which is
+  // the mark the script has no convention for.
+  if (!previousToken || !/^\s+$/u.test(gap)) return ' ';
+  const previousChars = Array.from(previousToken.raw);
+  const lastOfPrevious = previousChars[previousChars.length - 1];
+  const firstOfNext = Array.from(nextRaw)[0];
+  if (!lastOfPrevious || !firstOfNext) return ' ';
+  return CJK_RUN_SCRIPT(lastOfPrevious) !== null &&
+    CJK_RUN_SCRIPT(firstOfNext) !== null
+    ? ''
+    : ' ';
 }
 
 export interface AnalyzeOptions {
@@ -833,7 +900,15 @@ export function analyzeQuery(
     // Whitespace/punctuation gives the WORDS of a spaced script and the
     // whole unspaced run of a CJK one; segmentToken cuts the latter down to
     // matchable sub-tokens and returns the former untouched.
-    for (const token of segmentToken(match[0], match.index)) {
+    for (const token of segmentToken(
+      match[0],
+      match.index,
+      softSeparatorBetween(
+        tokens[tokens.length - 1],
+        match[0],
+        raw.slice(tokens[tokens.length - 1]?.end ?? 0, match.index),
+      ),
+    )) {
       tokens.push(token);
       if (tokens.length >= maxTokens) break;
     }

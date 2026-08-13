@@ -160,6 +160,41 @@ describe('query analyzer (A2 seam)', () => {
       expect(analysis.ngrams(3).map((n) => n.folded)).toContain('한국 음식');
     });
 
+    it('treats a typed space between Han characters as a SOFT separator', () => {
+      // THE DEFECT (Mandarin battery, 2026-08-12): 珍珠奶茶 ground boba tea and
+      // 珍珠 奶茶 ground only milk tea, because the re-join reproduced the
+      // user's space inside the folded key and no stored surface has one.
+      // Chinese is written unspaced, so that space is the typist or the IME,
+      // never the language.
+      const unspaced = analyzeQuery('珍珠奶茶', null);
+      const spaced = analyzeQuery('珍珠 奶茶', null);
+      // The run's own first token keeps ' ' (it joins to whatever precedes
+      // the query); the space between 珠 and 奶 is absorbed.
+      expect(spaced.tokens.map((t) => t.separator)).toEqual([' ', '', '', '']);
+      const folds = (a: ReturnType<typeof analyzeQuery>) =>
+        a.ngrams(4).map((n) => n.folded);
+      expect(folds(spaced)).toEqual(folds(unspaced));
+      expect(folds(spaced)).toContain('珍珠奶茶');
+      // Offsets still slice the RAW string, space and all.
+      for (const ngram of spaced.ngrams(4)) {
+        expect(spaced.raw.slice(ngram.start, ngram.end)).toBe(ngram.raw);
+      }
+    });
+
+    it('keeps a real word boundary hard — Latin neighbours and punctuation', () => {
+      // 'pho 牛肉': Latin IS spaced by convention, so joining across that
+      // space would fabricate a compound nobody typed.
+      expect(
+        analyzeQuery('pho 牛肉', null).tokens.map((t) => t.separator),
+      ).toEqual([' ', ' ', '']);
+      // Punctuation is a deliberate mark even between Han characters.
+      expect(
+        analyzeQuery('牛肉、面', null)
+          .ngrams(4)
+          .map((n) => n.folded),
+      ).not.toContain('牛肉面');
+    });
+
     it('leaves LATIN byte-identical to its prior output', () => {
       const analysis = analyzeQuery('breakfast taco', null);
       expect(analysis.tokens.map((t) => t.raw)).toEqual(['breakfast', 'taco']);
