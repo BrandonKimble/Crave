@@ -96,17 +96,28 @@ L3. **COVER-LINKER (locked 2026-08-10, owner delegated).** Whole-query span
    (bún bò huế) naturally reproduce the July always-on sibling feel.
    Alternative on the table: July's always-interleaved siblings on every
    search. Recommendation: the ladder.
-2. **Negation cue list: keep or delete.** Empirically proven real: unstripped
-   'sin cerdo' dense-retrieves vegetarian/soy-free (inversion); stripped →
-   pork. Options: (a) keep literal-ignore everywhere (4-word closed-class
-   list per language, added per rollout — current state); (b) delete the
-   list and let ONLY the dense leftover lane be semantic (softens the
-   literal-ignore doctrine in one lane). Owner suspects (b); data supports
-   either; doctrine call.
-3. **chè → dessert-soup**: no dessert concept exists in the corpus to claim
-   the word (tea holds it uncontested). Mint-by-hand violates no-fake-data;
-   organic minting happens when collection processes a vi dessert shop.
-   Owner may rule mint-now vs wait.
+2. **Negation cue list — RE-PRESENTED 2026-08-12, recommendation KEEP.**
+   Owner leaned delete based on my WRONG "dead machinery" description;
+   corrected before acting: the list is live and load-bearing — it strips
+   bare negators ONLY from the dense-embedding path ('phở không thịt'
+   leftover 'không' was being embedded and linked as a dish; all-cue run →
+   skip dense entirely), never from lexical matching ("No Name Burgers"
+   keeps its No). Deleting resurrects embedded-negator garbage. Presented
+   to owner with the correction; awaiting his final word (my rec: keep).
+3. **chè → RULED 2026-08-12: WAIT for the wave** (organic minting; no
+   hand-mint). CLOSED.
+3b. **Pop-ups/ungrounded restaurants — RULED 2026-08-12 (lifecycle law,
+   supersedes my 'unreachable AND unheard' note):** nothing exists that
+   can't hook to a real grounded restaurant. Enforced at ENRICHMENT, not
+   extraction (venue testimony still emitted): (1) reground sweep attempts
+   Places grounding on all 4,057 ungrounded actives first (~$183 campaign,
+   owner hash, post-v13-activation); (2) ignore rule applies to attempt-
+   failures — archive/suppress, re-attach mentions to grounded referents
+   (re-attachments write through the verdict ledger once ⭐04's adapter
+   lands); (3) standing enrichment-lifecycle invariant, not a one-off.
+   Pop-up link-or-ignore rides the same mechanism. ⭐04 ledgered 22b4c5f00;
+   split confirmed both sides. C4a hearing lane orthogonal (judges the
+   NAME; borderline names get the hearing before the survival default).
 4. **Activate the measured-better extraction prompt**
    (`collection-prompt.candidate.md`: 17/17 vs live 11/17, defects −51/79/98%
    on a 150-post A/B — committed, unactivated). This IS the re-extraction
