@@ -195,3 +195,25 @@ Owner line-items surfaced: schema hash should eventually fold into the
 registered prompt hash (schemas are load-bearing prompt text now); the
 verbatim-alias surface banking path is dead (pre-existing) and the
 rewrite makes it permanent.
+
+## CROSS-SESSION RED-TEAM INTAKE (2026-08-13, ⭐05's 4-lens pass) — my-lane queue
+
+Sequenced BEHIND ⭐05's wave-1 landing (their SEVERITY-1 fix in the shared
+effect-replay path: record()'s ON CONFLICT re-opens executed effects +
+non-idempotent CASE arms — 15.5k default-label rows exposed, executed
+proof). DO NOT un-gate the nightly dedupe until their 'wave-1 landed'
+ping, despite adapters being live/condition-met.
+1. Resolution-time entity-match verdict memory: entity-resolution
+   :1571 runs the same judge food-dedupe adopted through claim_verdicts —
+   adapter needed (same rule fingerprint), plus the place_grounding lane
+   (permanent groundings currently have NO seam) — the two most expensive
+   irreversible judgments.
+2. Relevance-gate verdict table: add rule_version to (platform, post_id)
+   PK usage + due-predicate — 8,197 rows currently can never re-open on a
+   prompt bump; fingerprint already stored but unusable.
+3. VOCABULARY_PROMPT_VERSION=7: last hand-maintained version constant —
+   convert to asset-fingerprint + append-only ledger (throw on unlisted).
+4. llm_decision_records has zero readers — fold sites into hearing lanes
+   as each is touched, not as a big-bang.
+(FYI theirs: Han negation inversion 不辣→spicy queued for owner ruling;
+label-sweep >= watermark fix is their wave-1.)
