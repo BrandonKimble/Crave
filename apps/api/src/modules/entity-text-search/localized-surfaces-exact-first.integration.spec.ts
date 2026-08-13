@@ -229,4 +229,71 @@ describe('searchLocalizedSurfaces: the exact match survives the LIMIT (F3801)', 
       });
     }
   });
+
+  it('EXACT EQUALITY HAS NO READER — a foreign-language surface still matches exactly (F6)', async () => {
+    // THE DEFECT, executed 2026-08-13: the locale chain gated EVERY arm of
+    // this lane, so 牛肉面 typed on an es-MX phone returned NOTHING from
+    // autocomplete while GROUNDING in search (the Mandarin battery pins that
+    // search behaviour). One surface of the app said the user's own word does
+    // not exist and the other said it does.
+    //
+    // The seed here is the same shape without depending on corpus data: a
+    // surface tagged in a language NOBODY in this request reads.
+    const foreignId = crypto.randomUUID();
+    const foreignTerm = `${TERM}foreign`;
+    await prisma.entity.create({
+      data: { entityId: foreignId, name: `${TEST_TAG}-foreign`, type: 'food' },
+    });
+    await prisma.entitySurface.create({
+      data: {
+        entityId: foreignId,
+        form: foreignTerm,
+        formFolded: canonicalFold(foreignTerm),
+        locale: 'zh',
+        source: 'seed',
+        status: 'active',
+      },
+    });
+    allIds.push(foreignId);
+    try {
+      // Typed EXACTLY: admitted, from a chain that does not contain 'zh'.
+      const exact = await service.searchLocalizedSurfaces(
+        foreignTerm,
+        ['food'],
+        LIMIT,
+        'es',
+      );
+      expect(exact.map((m) => m.entityId)).toContain(foreignId);
+      expect(exact.find((m) => m.entityId === foreignId)).toMatchObject({
+        evidence: 'exact',
+        similarity: 1,
+      });
+
+      // Typed as a PREFIX of it: refused, because a prefix is a GUESS and a
+      // guess needs a prior. This is the half of the ruling that is easy to
+      // lose, so it is asserted in the same test as the half it qualifies.
+      const prefix = await service.searchLocalizedSurfaces(
+        `${foreignTerm.slice(0, foreignTerm.length - 2)}`,
+        ['food'],
+        LIMIT,
+        'es',
+      );
+      expect(prefix.map((m) => m.entityId)).not.toContain(foreignId);
+
+      // And a reader who DOES read it gets the prefix, so the refusal above
+      // is the chain doing its job rather than the row being unreachable.
+      const prefixForReader = await service.searchLocalizedSurfaces(
+        `${foreignTerm.slice(0, foreignTerm.length - 2)}`,
+        ['food'],
+        LIMIT,
+        'zh',
+      );
+      expect(prefixForReader.map((m) => m.entityId)).toContain(foreignId);
+    } finally {
+      await prisma.entitySurface.deleteMany({
+        where: { entityId: foreignId },
+      });
+      await prisma.entity.deleteMany({ where: { entityId: foreignId } });
+    }
+  });
 });

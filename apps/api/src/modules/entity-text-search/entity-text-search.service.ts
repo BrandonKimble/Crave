@@ -293,14 +293,33 @@ export class EntityTextSearchService {
            -- recall claim the collision guard REFUSED, so it must never
            -- ground. Every recall arm carries this filter.
            AND ea.role <> 'display'
-           AND LOWER(ea.locale) = ANY(${chain}::text[])
+           -- ┌─ EXACT EQUALITY HAS NO READER (red team A F6, 2026-08-13) ──┐
+           -- The locale chain used to gate EVERY arm of this lane, the
+           -- exact one included, and that is the same reader-context-as-
+           -- identity error the gazetteer scan was rid of — reached here by
+           -- a WHERE clause instead of a locale filter. Executed: 牛肉面
+           -- from an es-MX phone GROUNDS in search (the Mandarin battery
+           -- pins it: same spans as a zh-CN request) and returned NOTHING
+           -- from autocomplete, because the only surface that spells it is
+           -- tagged zh and zh is not in ['es','und'] (no backticks in this
+           -- comment: a backtick ENDS the Prisma.sql template literal). Two surfaces of
+           -- the app disagreed about whether the user's own word exists.
+           --
+           -- Characters that AGREE are the same characters for everybody, so
+           -- the exact arm carries no chain. The INEXACT arms keep theirs and
+           -- must: a prefix or a trigram neighbour in a language nobody in
+           -- this request reads is a guess, and a guess needs a prior — that
+           -- is the identical line the accent-leniency rule draws in the
+           -- scan, one lane over.
+           -- └────────────────────────────────────────────────────────────┘
            AND (ea.form_folded = ${folded}
-                OR ea.form_folded LIKE ${folded + '%'}
+                OR (LOWER(ea.locale) = ANY(${chain}::text[])
+                    AND (ea.form_folded LIKE ${folded + '%'}
                 -- AC-P2c: the TRIGRAM arm — typo tolerance was an
                 -- English-only privilege while this lane was exact+prefix.
                 -- Same banded threshold as the sparse lane; the GIN trgm
                 -- index on form_folded makes it a probe.
-                OR (${folded.length >= 4} AND similarity(ea.form_folded, ${folded}) >= ${this.resolveSimilarityThreshold(folded)}))
+                         OR (${folded.length >= 4} AND similarity(ea.form_folded, ${folded}) >= ${this.resolveSimilarityThreshold(folded)}))))
            AND e.status = 'active'::entity_status
            AND e.type = ANY(${typeArray})
          ORDER BY e.entity_id, (ea.form_folded = ${folded}) DESC, similarity(ea.form_folded, ${folded}) DESC
