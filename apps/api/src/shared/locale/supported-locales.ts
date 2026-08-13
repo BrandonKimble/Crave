@@ -12,8 +12,22 @@
  * rows, and today `es` has label rows for the spine. Adding a locale is a
  * DATA change (a locale file + ~60 spine words + sweep rows), not a code
  * change; this array is the one place that fact is declared.
+ *
+ * `zh` IS BARE ON PURPOSE, and it is not a contradiction of the R5-8 tag law
+ * above (2026-08-12). The law governs the KEY SPACE — what a row may be
+ * banked under — and that space is the full tag; it does not oblige the
+ * SERVE list to name a script it cannot observe. Nothing upstream produces a
+ * script subtag: the script gate reads Unicode ranges and pins Han to `zh`
+ * (SCRIPT_PINNED_LANGUAGE), the detector's profile is `cmn`, and
+ * `bankableLanguageTag` bases every write to its language subtag. A
+ * `zh-Hans` entry here would be a tag no request, no detection and no write
+ * ever produces, so the lookup chain from `zh` would reach none of its rows
+ * — the exact `zh-TW` failure that function's comment already warns about.
+ * Simplified/traditional is a RENDERING question for the day the corpus
+ * carries both; the key space is ready for it and this list is not the place
+ * to assert it early.
  */
-export const SUPPORTED_LOCALES = ['en', 'es', 'vi'] as const;
+export const SUPPORTED_LOCALES = ['en', 'es', 'vi', 'zh'] as const;
 
 export type SupportedLocale = (typeof SUPPORTED_LOCALES)[number];
 

@@ -29,37 +29,24 @@
  * SQL comments write `::date` bare. Same family as a nested end-of-comment
  * marker terminating a doc comment early.
  */
-import { execFileSync } from 'child_process';
-import { dirname, join, resolve } from 'path';
-import { fileURLToPath } from 'url';
-
-import { readTrackedFile, skipNote } from './lib/tracked-source.mjs';
-
-const REPO_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
+import { scanRepo } from './lib/scan-repo.mjs';
 
 /**
- * Files to scan. Tracked TypeScript only — a backtick in a real .sql file is
- * harmless, since nothing is embedding it in a template there.
+ * Files to scan: TypeScript only — a backtick in a real .sql file is harmless,
+ * since nothing is embedding it in a template there.
+ *
+ * UNTRACKED FILES ARE IN SCOPE, and that is the point of the shared
+ * enumeration: this gate used to read the INDEX only, so a brand-new .ts file
+ * carrying the trap compiled, failed tsc with the unrelated TS1005 cascade the
+ * header describes, and was invisible to the one tool that could have NAMED
+ * it — until someone thought to `git add` first. scanRepo refuses on an empty
+ * subject list and discriminates a missing/failing git from a clean scan.
  */
-function trackedTsFiles() {
-  const out = execFileSync(
-    'git',
-    ['ls-files', '*.ts', '*.tsx'],
-    { cwd: REPO_ROOT, encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 },
-  );
-  return out.split('\n').map((l) => l.trim()).filter(Boolean);
-}
-
-const files = trackedTsFiles();
-
-// Missing tooling is a FAILURE, never a pass.
-if (files.length === 0) {
-  console.error(
-    'FAIL: git ls-files returned no TypeScript files — the scan is broken, ' +
-      'and a broken scan reports clean.',
-  );
-  process.exit(1);
-}
+const scan = scanRepo({
+  label: 'sql-comment-backticks',
+  pathspecs: ['*.ts', '*.tsx'],
+});
+const files = scan.files;
 
 /**
  * A SQL comment line: optional whitespace, then `--`. Inside a .ts file that
@@ -90,14 +77,11 @@ if (files.length === 0) {
 const SQL_COMMENT_LINE = /^\s*--/;
 
 const failures = [];
-let skipped = 0;
 for (const rel of files) {
-  const src = readTrackedFile(join(REPO_ROOT, rel));
-  if (src === null) {
-    // Tracked, absent from the worktree (F3912 item six): skip and COUNT.
-    skipped += 1;
-    continue;
-  }
+  // null = in the index, absent from the worktree. scanRepo counts the skip
+  // and prints it in note(); it is never silent and never a crash.
+  const src = scan.read(rel);
+  if (src === null) continue;
   if (!src.includes('--')) continue;
   const lines = src.split('\n');
   for (let i = 0; i < lines.length; i += 1) {
@@ -123,7 +107,7 @@ if (failures.length) {
 console.log(
   `sql-comment-backticks OK — ${files.length} TypeScript files, no backtick ` +
     `in a LINE-INITIAL SQL comment` +
-    skipNote(skipped) +
+    scan.note() +
     `. SCOPE (F3912): this checks comments that START a line only. A TRAILING ` +
     `\`-- ... \\\` ...\` closes the template just as hard and is NOT covered ` +
     `here — tsc catches the break, this gate only names the ones it sees.`,

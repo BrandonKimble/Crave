@@ -30,13 +30,7 @@
  * deploy-time check (scripts/rig/deploy.sh asserts SKIPPED unconditionally, and
  * the smoke asserts /health.commit == HEAD).
  */
-import { execFileSync } from 'child_process';
-import { dirname, join, resolve } from 'path';
-import { fileURLToPath } from 'url';
-
-import { readTrackedFile, skipNote } from './lib/tracked-source.mjs';
-
-const REPO_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
+import { scanRepo } from './lib/scan-repo.mjs';
 
 /**
  * Discovered, not hardcoded: a new railway manifest must be covered too.
@@ -53,27 +47,28 @@ const REPO_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
  * `railway-notes.json`, and a gate that fails on a file Railway never reads is
  * a gate that gets deleted.
  */
+const scan = scanRepo({
+  label: 'railway-manifests',
+  // UNTRACKED IS IN SCOPE: a railway.json that Railway will read the moment it
+  // is pushed is a live manifest, staged or not.
+  pathspecs: ['*railway*.json'],
+});
+
 export function manifests() {
-  const out = execFileSync('git', ['ls-files', '*railway*.json'], {
-    cwd: REPO_ROOT,
-    encoding: 'utf8',
-  });
-  return out
-    .split('\n')
-    .map((l) => l.trim())
-    .filter(Boolean)
-    .filter((rel) => /^railway[^/]*\.json$/.test(rel.split('/').pop()));
+  return scan.files.filter((rel) =>
+    /^railway[^/]*\.json$/.test(rel.split('/').pop()),
+  );
 }
 
+// scanRepo already refused an empty ls-files result; the BASENAME filter can
+// still empty the list (every manifest renamed), and that is equally a gate
+// covering nothing.
 const files = manifests();
-let skipped = 0;
-
-// Missing tooling is a FAILURE, never a pass — a gate that finds no manifests
-// reports clean while covering nothing.
 if (files.length === 0) {
   console.error(
-    'FAIL: no railway*.json manifests found. Either they were renamed or the ' +
-      'scan is broken; both mean this gate is covering nothing.',
+    'FAIL [railway-manifests]: no railway*.json manifests survived the ' +
+      'basename filter. Either they were renamed or the filter rotted; both ' +
+      'mean this gate is covering nothing.',
   );
   process.exit(1);
 }
@@ -81,12 +76,8 @@ if (files.length === 0) {
 const failures = [];
 for (const rel of files) {
   let cfg;
-  const raw = readTrackedFile(join(REPO_ROOT, rel));
-  if (raw === null) {
-    // Tracked, absent from the worktree (F3912 item six): skip and COUNT.
-    skipped += 1;
-    continue;
-  }
+  const raw = scan.read(rel);
+  if (raw === null) continue; // in the index, absent from the worktree; counted
   try {
     cfg = JSON.parse(raw);
   } catch (err) {
@@ -126,5 +117,5 @@ console.log(
   `railway-manifests OK — ${files.length} manifest(s), no startCommand, no ` +
     `non-empty watchPatterns. (Dashboard-side watchPatterns are NOT covered ` +
     `here; deploy.sh's unconditional SKIPPED check owns that half.)` +
-    skipNote(skipped),
+    scan.note(),
 );

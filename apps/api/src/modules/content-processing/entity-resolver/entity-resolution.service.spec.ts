@@ -57,6 +57,15 @@ interface FakeEntityRow {
    */
   type: EntityType;
   status?: string;
+  /**
+   * SURFACES BANKED UNDER A LANGUAGE TAG (locale <> 'und'). `aliases` above is
+   * the universal, de-diacritized romanization bucket; these are claims about
+   * how a word is SPELLED in a language, and they are the ONLY rows that can
+   * feed the banked-plain-forms discriminator — 'chay' banked as vi is a
+   * complete Vietnamese word, while the same string under 'und' is a
+   * romanization that asserts nothing. Both sets are spelling evidence.
+   */
+  langForms?: Array<{ form: string; locale: string }>;
 }
 
 /** Minimal PrismaService double: only the calls entity-resolution.service.ts
@@ -155,7 +164,16 @@ function fakePrisma(entities: FakeEntityRow[]) {
         const out: any[] = [];
         for (const row of live().filter((r) => ids.includes(r.entityId))) {
           for (const form of row.aliases) {
-            out.push({ entity_id: row.entityId, form });
+            // The universal bucket: spelling evidence, but never a claim
+            // about how the word is written in the document's language.
+            out.push({ entity_id: row.entityId, form, locale: 'und' });
+          }
+          for (const tagged of row.langForms ?? []) {
+            out.push({
+              entity_id: row.entityId,
+              form: tagged.form,
+              locale: tagged.locale.toLowerCase(),
+            });
           }
         }
         return out;
@@ -987,6 +1005,165 @@ describe('EntityResolutionService — the v7 shadow twin classes (2026-08-10 pro
     );
     expect(resolutionResults[0].resolutionTier).toBe('exact');
     expect(resolutionResults[0].entityId).toBe('a-cafe');
+  });
+
+  /**
+   * THE PORT (2026-08-12): one accent-admission rule for the query gazetteer
+   * and for ingestion. The resolver used to compare the WHOLE string, so
+   * 'phở bo' — the commonest way Vietnamese is actually typed, one word
+   * accented and one not — was REFUSED at ingestion while the very same
+   * spelling was ADMITTED by search. A mention a searcher can find was not
+   * being banked. The rule now reads evidence where the user supplied it,
+   * token by token (admitsAtExactTier, entity-identity.ts).
+   */
+  it('PER-TOKEN ADMISSION: partially accented "phở bo" exact-claims "phở bò" — the plain token asks nothing, the accented one agrees', async () => {
+    // Premise: the whole-string test cannot admit this pair; the per-token
+    // one can. Both spellings share a canonical fold.
+    expect(canonicalFold('phở bo')).toBe(canonicalFold('phở bò'));
+    expect(diacriticFold('phở bo')).not.toBe(diacriticFold('phở bò'));
+    const { service } = buildService({
+      entities: [
+        {
+          entityId: 'f-phobo',
+          name: 'phở bò',
+          aliases: [],
+          type: EntityType.food,
+        },
+      ],
+    });
+    const { resolutionResults } = await service.resolveBatch(
+      [
+        baseInput({
+          tempId: 't1',
+          normalizedName: 'phở bo',
+          entityType: EntityType.food,
+          documentLocale: 'vi',
+        }),
+      ],
+      { ...CONFIG_NO_LLM, allowEntityCreation: false },
+    );
+    expect(resolutionResults[0].resolutionTier).toBe('exact');
+    expect(resolutionResults[0].entityId).toBe('f-phobo');
+  });
+
+  it('PER-TOKEN ADMISSION, THE REFUSING SIDE: "cơm chay" still does NOT claim "cơm cháy" — the accented token disagrees', async () => {
+    const { service } = buildService({
+      entities: [
+        {
+          entityId: 'f-comchay-scorched',
+          name: 'cơm cháy',
+          aliases: [],
+          type: EntityType.food,
+        },
+      ],
+    });
+    const { resolutionResults } = await service.resolveBatch(
+      [
+        baseInput({
+          tempId: 't1',
+          normalizedName: 'cơm chay',
+          entityType: EntityType.food,
+          documentLocale: 'vi',
+        }),
+      ],
+      { ...CONFIG_NO_LLM, allowEntityCreation: false },
+    );
+    expect(resolutionResults).toHaveLength(0);
+  });
+
+  it('THE BANKED-PLAIN-FORMS DISCRIMINATOR, ported with the rule: fully plain "com chay" does NOT claim "cơm cháy" when "chay" is banked as a vi word', async () => {
+    // A plain token normally asks nothing — that is what lets 'phở bo' reach
+    // 'phở bò'. But a plain string the registry banks as a COMPLETE surface of
+    // the document's own language is a word somebody spelled, not an accent
+    // they skipped. The discriminator is the DATA (a vi-tagged surface), never
+    // a word list of ours.
+    const { service } = buildService({
+      entities: [
+        {
+          entityId: 'f-scorched',
+          name: 'cơm cháy',
+          aliases: [],
+          type: EntityType.food,
+        },
+        {
+          entityId: 'a-chay',
+          name: 'vegetarian',
+          aliases: [],
+          langForms: [{ form: 'chay', locale: 'vi' }],
+          type: EntityType.food,
+        },
+      ],
+    });
+    const { resolutionResults } = await service.resolveBatch(
+      [
+        baseInput({
+          tempId: 't1',
+          normalizedName: 'com chay',
+          entityType: EntityType.food,
+          documentLocale: 'vi',
+        }),
+      ],
+      { ...CONFIG_NO_LLM, allowEntityCreation: false },
+    );
+    expect(resolutionResults).toHaveLength(0);
+  });
+
+  it('CONTROL, es: accented "jalapeño" exact-claims the de-accented name "jalapeno" through the surface it banks', async () => {
+    const { service } = buildService({
+      entities: [
+        {
+          entityId: 'i-jalapeno',
+          name: 'jalapeno',
+          aliases: ['jalapeño'],
+          type: EntityType.ingredient,
+        },
+      ],
+    });
+    const { resolutionResults } = await service.resolveBatch(
+      [
+        baseInput({
+          tempId: 't1',
+          normalizedName: 'jalapeño',
+          entityType: EntityType.ingredient,
+          documentLocale: 'es',
+        }),
+      ],
+      { ...CONFIG_NO_LLM, allowEntityCreation: false },
+    );
+    expect(resolutionResults[0].resolutionTier).toBe('exact');
+    expect(resolutionResults[0].entityId).toBe('i-jalapeno');
+  });
+
+  it('CONTROL, en: an all-ASCII mention resolves with NO accent evidence read at all — the common case pays nothing', async () => {
+    const { service, prisma } = buildService({
+      entities: [
+        {
+          entityId: 'f-taco',
+          name: 'taco',
+          aliases: ['tacos'],
+          type: EntityType.food,
+        },
+      ],
+    });
+    const { resolutionResults } = await service.resolveBatch(
+      [
+        baseInput({
+          tempId: 't1',
+          normalizedName: 'taco',
+          entityType: EntityType.food,
+          documentLocale: 'en',
+        }),
+      ],
+      { ...CONFIG_NO_LLM, allowEntityCreation: false },
+    );
+    expect(resolutionResults[0].entityId).toBe('f-taco');
+    const evidenceReads = (prisma.$queryRaw as jest.Mock).mock.calls.filter(
+      ([query]: [any]) =>
+        (query?.strings?.join(' ') ?? '').includes(
+          'SELECT s.entity_id, s.form',
+        ),
+    );
+    expect(evidenceReads).toHaveLength(0);
   });
 
   it('ACCENT EVIDENCE AT TIER 2 (2026-08-12): the SURFACE fold refuses "bún" for the English bread too — and the concept that banks the Vietnamese spelling gets it instead', async () => {

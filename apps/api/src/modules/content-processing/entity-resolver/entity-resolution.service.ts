@@ -7,7 +7,14 @@ import { createHash } from 'crypto';
 import { Redis } from 'ioredis';
 import { PrismaService } from '../../../prisma/prisma.service';
 import { foodNameVariants } from './food-lemma';
-import { canonicalFold, diacriticFold } from './entity-identity';
+import {
+  admitsAtExactTier,
+  canonicalFold,
+  diacriticFold,
+  isAccented,
+  spellingOf,
+  type SurfaceSpelling,
+} from './entity-identity';
 import { recallSurfaceScopeSql } from './entity-surface.service';
 
 import { LoggerService, CorrelationUtils } from '../../../shared';
@@ -25,19 +32,6 @@ import {
   EntityResolutionConfig,
   ResolutionPerformanceMetrics,
 } from './entity-resolution.types';
-
-/**
- * Does this spelling ASSERT anything about accents? `canonicalFold` strips
- * diacritics and `diacriticFold` keeps them, so the two folds disagree exactly
- * when the text carries an accent that survives folding. An input that carries
- * one is EVIDENCE about which word was meant; an unaccented input asserts
- * nothing (de-diacritized typing is how most people type Vietnamese on a US
- * keyboard). Both accent-evidence tiers turn on this one question, so it is one
- * function.
- */
-function isAccented(text: string): boolean {
-  return diacriticFold(text) !== canonicalFold(text);
-}
 
 interface EntityResolutionCachePayload {
   entityId: string | null;
@@ -885,10 +879,18 @@ export class EntityResolutionService implements OnModuleInit {
         const raw = entity.normalizedName.toLowerCase().trim();
         return usesNumberVariants ? [raw, ...foodNameVariants(raw)] : [raw];
       };
+      // WHOSE spellings must we go and read? An owner whose stored name
+      // already agrees with the probe accent-for-accent proves itself from the
+      // row we hold; anyone else may still hold the spelling on a surface, so
+      // ask the database once, for all of them, in one round trip. Note there
+      // is NO `isAccented(probe)` gate on this loop: under the per-token rule
+      // a fully PLAIN probe can also be refused — 'com chay' must not claim
+      // 'cơm cháy' when 'chay' is a banked vi word — and the accent-free
+      // common case is still free, because an ASCII probe with an ASCII owner
+      // name agrees on the line below and asks for nothing.
       const ownersNeedingEvidence = new Set<string>();
       for (const entity of entities) {
         for (const probe of foldProbesFor(entity)) {
-          if (!isAccented(probe)) continue;
           const owner = identityToEntityMap.get(canonicalFold(probe));
           if (!owner) continue;
           if (diacriticFold(owner.name) === diacriticFold(probe)) continue;
@@ -896,23 +898,30 @@ export class EntityResolutionService implements OnModuleInit {
         }
       }
 
-      const accentEvidence = await this.accentEvidenceFor(
-        Array.from(ownersNeedingEvidence),
-        documentLocale,
-      );
+      const { spellings: accentEvidence, bankedPlainForms } =
+        await this.accentSpellingsFor(
+          Array.from(ownersNeedingEvidence),
+          documentLocale,
+        );
 
-      const accentCompatible = (input: string, stored: string): boolean => {
-        if (!isAccented(input)) return true;
-        const inputDia = diacriticFold(input);
-        return diacriticFold(stored) === inputDia;
-      };
       const claimByFold = (probe: string): string | undefined => {
         const folded = canonicalFold(probe);
         if (!folded) return undefined;
         const owner = identityToEntityMap.get(folded);
         if (!owner) return undefined;
-        if (accentCompatible(probe, owner.name)) return owner.entityId;
-        return accentEvidence.has(`${owner.entityId}|${diacriticFold(probe)}`)
+        // THE ONE ADMISSION RULE (entity-identity.ts), the same call the query
+        // gazetteer makes: token by token, an accented token must be answered,
+        // a plain token asks nothing unless the registry banks it as a whole
+        // word of this language. The entity's own name is evidence #1; its
+        // locale-chain surfaces are the rest.
+        return admitsAtExactTier(
+          { folded, diacritic: diacriticFold(probe) },
+          [
+            spellingOf(owner.name),
+            ...(accentEvidence.get(owner.entityId) ?? []),
+          ],
+          bankedPlainForms,
+        )
           ? owner.entityId
           : undefined;
       };
@@ -953,11 +962,25 @@ export class EntityResolutionService implements OnModuleInit {
   }
 
   /**
-   * WHICH ACCENTED SPELLINGS CAN THESE ENTITIES PROVE THEY HOLD — the one
+   * WHICH SPELLINGS CAN THESE ENTITIES PROVE THEY HOLD — the one
    * implementation of the accent-evidence read, shared by BOTH tiers that ask
-   * the question (tier 1's identity fold, tier 2's surface fold). Returns
-   * `entityId|diacriticFold(form)` for every active surface the entity carries
-   * in this document's locale chain.
+   * the question (tier 1's identity fold, tier 2's surface fold). Returns the
+   * folded/accent-preserving spelling pair of every active surface the entity
+   * carries in this document's locale chain, plus the banked-plain-forms
+   * discriminator the admission rule needs.
+   *
+   * TWO READINGS OF ONE QUERY, which is how the resolver and the query
+   * gazetteer end up on one design (2026-08-12). The gazetteer builds the same
+   * two things out of its own grounding query: the raw spellings of everything
+   * that matched, and — from the LANGUAGE-TAGGED ('und' excluded) slice — the
+   * set of accent-free strings the registry banks as complete words. Here the
+   * data source is the document's locale chain (loc-05: the chain scopes the
+   * EVIDENCE, never which names are probeable) and the plain-forms set is that
+   * chain minus its universal tail. Same rule, same two inputs, one query
+   * each: 'und' is the de-diacritized romanization bucket, so a form banked
+   * there says nothing about how a word is SPELLED in this language, while a
+   * form banked under 'vi' does — which is exactly the difference between
+   * 'chay' (a complete vi word) and 'pho' (a romanization of phở).
    *
    * DISPLAY ROWS COUNT AS EVIDENCE HERE, unlike the recall slice. A display row
    * is the entity's LABEL in that language — 'chả lụa' is the vi label of the
@@ -967,34 +990,49 @@ export class EntityResolutionService implements OnModuleInit {
    * grounded on, it is being read as spelling testimony for a claim the fold
    * already made. Deprecated rows are remembered-as-wrong and are excluded.
    *
-   * Names stay locale-UNSCOPED (loc-05): the chain scopes the EVIDENCE
-   * consulted, never which names or surfaces are probeable. One extra query,
-   * and only when some probe carries an accent — the caller passes an empty
-   * list in the common all-ASCII case and no query is issued at all.
+   * One extra query, and only when some probe's spelling disagrees with its
+   * owner's — the caller passes an empty list in the common all-ASCII case and
+   * no query is issued at all.
    */
-  private async accentEvidenceFor(
+  private async accentSpellingsFor(
     entityIds: string[],
     documentLocale: string | null,
-  ): Promise<Set<string>> {
-    const evidence = new Set<string>();
-    if (entityIds.length === 0) return evidence;
+  ): Promise<{
+    spellings: Map<string, SurfaceSpelling[]>;
+    bankedPlainForms: Set<string>;
+  }> {
+    const spellings = new Map<string, SurfaceSpelling[]>();
+    const bankedPlainForms = new Set<string>();
+    if (entityIds.length === 0) return { spellings, bankedPlainForms };
+    const chain = localeLookupChain(documentLocale);
     // Prisma.sql, not a bare $queryRaw template: the locale chain is bound
     // inside a composed fragment, and $queryRaw's own template would bind a
     // fragment as a parameter instead of splicing a predicate.
     const rows = await this.prisma.$queryRaw<
-      Array<{ entity_id: string; form: string }>
+      Array<{ entity_id: string; form: string; locale: string }>
     >(Prisma.sql`
-      SELECT s.entity_id, s.form
+      SELECT s.entity_id, s.form, LOWER(s.locale) AS locale
         FROM entity_surface s
        WHERE s.entity_id = ANY(${entityIds}::uuid[])
          AND s.status = 'active'
-         AND LOWER(s.locale) = ANY(${localeLookupChain(
-           documentLocale,
-         )}::text[])`);
+         AND LOWER(s.locale) = ANY(${chain}::text[])`);
     for (const row of rows) {
-      evidence.add(`${row.entity_id}|${diacriticFold(row.form)}`);
+      const spelling = spellingOf(row.form);
+      const held = spellings.get(row.entity_id);
+      if (held) held.push(spelling);
+      else spellings.set(row.entity_id, [spelling]);
+      // The accent-complete discriminator: a form banked under the request's
+      // OWN language whose accent-preserving spelling is already accent-free
+      // is a word someone spelled in full, not an accent anybody skipped.
+      if (
+        row.locale !== 'und' &&
+        spelling.folded &&
+        spelling.folded === spelling.diacritic
+      ) {
+        bankedPlainForms.add(spelling.folded);
+      }
     }
-    return evidence;
+    return { spellings, bankedPlainForms };
   }
 
   /**
@@ -1123,7 +1161,14 @@ export class EntityResolutionService implements OnModuleInit {
           .map((term) => term.trim())
           .filter((term) => term.length > 0);
 
-      const foldsAgreeingOnAccents = (
+      // The candidate's own matching forms are evidence #1, exactly as the
+      // entity's name is at tier 1.
+      const spellingsOfCandidate = (candidate: {
+        aliases: string[];
+      }): SurfaceSpelling[] =>
+        candidate.aliases.map((form) => spellingOf(form));
+
+      const wholeStringAgrees = (
         candidate: { aliases: string[] },
         term: string,
       ): boolean => {
@@ -1135,10 +1180,15 @@ export class EntityResolutionService implements OnModuleInit {
         );
       };
 
+      // No `isAccented(term)` gate, for the tier-1 reason: under the per-token
+      // rule a plain term can also be refused when the registry banks that
+      // exact string as a word of this language. A candidate that already
+      // agrees on the WHOLE string needs nothing read — whole agreement admits
+      // under any per-token reading — so the all-ASCII case still issues no
+      // query at all.
       const candidatesNeedingEvidence = new Set<string>();
       for (const entity of entities) {
         for (const term of aliasProbesOf(entity)) {
-          if (!isAccented(term)) continue;
           const folded = canonicalFold(term);
           for (const candidate of matchedEntities) {
             // Only candidates this term could actually claim, and only those
@@ -1148,23 +1198,29 @@ export class EntityResolutionService implements OnModuleInit {
               (form) => canonicalFold(form) === folded,
             );
             if (!overlaps) continue;
-            if (foldsAgreeingOnAccents(candidate, term)) continue;
+            if (wholeStringAgrees(candidate, term)) continue;
             candidatesNeedingEvidence.add(candidate.entityId);
           }
         }
       }
-      const accentEvidence = await this.accentEvidenceFor(
-        Array.from(candidatesNeedingEvidence),
-        documentLocale,
-      );
+      const { spellings: accentEvidence, bankedPlainForms } =
+        await this.accentSpellingsFor(
+          Array.from(candidatesNeedingEvidence),
+          documentLocale,
+        );
 
       const accentAdmits = (
         candidate: { entityId: string; aliases: string[] },
         term: string,
       ): boolean =>
-        !isAccented(term) ||
-        foldsAgreeingOnAccents(candidate, term) ||
-        accentEvidence.has(`${candidate.entityId}|${diacriticFold(term)}`);
+        admitsAtExactTier(
+          { folded: canonicalFold(term), diacritic: diacriticFold(term) },
+          [
+            ...spellingsOfCandidate(candidate),
+            ...(accentEvidence.get(candidate.entityId) ?? []),
+          ],
+          bankedPlainForms,
+        );
 
       return entities.map((entity) => {
         const matchedEntity = this.selectBestAliasMatch(
@@ -1237,8 +1293,8 @@ export class EntityResolutionService implements OnModuleInit {
   ): Promise<EntityResolutionResult[]> {
     if (entities.length === 0) return [];
 
-    const accentFree = (value: string): boolean =>
-      diacriticFold(value) === canonicalFold(value);
+    // The one accent-evidence predicate, from the module that owns the folds.
+    const accentFree = (value: string): boolean => !isAccented(value);
     const squeeze = (value: string): string =>
       canonicalFold(value).replace(/ /g, '');
 
@@ -1809,14 +1865,27 @@ export class EntityResolutionService implements OnModuleInit {
                 entity.engineId,
               )}:${identityName}`
             : `${entityType}:${identityName}`;
-        // THE ACCENT VETO, AT MINT (R2, 2026-08-12): the same rule tier 1,
-        // tier 2 and tier 2.5 already enforce, from the same evidence test
-        // (isAccented — accentEvidenceFor does not apply here: both sides
-        // are unpersisted, so their own spellings ARE the only evidence). A
-        // canonical-fold hit only folds when the occupant and the newcomer
-        // do not BOTH carry disagreeing accent evidence ("cơm chay" never
-        // absorbs "cơm cháy" at creation); one-sided accents still fold
-        // (de-diacritized typing). A vetoed newcomer keys by its
+        // THE ACCENT VETO, AT MINT (R2, 2026-08-12) — and WHY IT IS NOT
+        // `admitsAtExactTier` (ruled 2026-08-12, when the tiers were ported to
+        // the shared rule and this site was ported with them, then reverted).
+        //
+        // The admission rule reads a typed string against a BANKED one, and its
+        // per-token subtlety only works because the registry can be asked which
+        // accent-free strings are complete words ('chay' is banked; 'bo' is
+        // not). At mint there is no banked side at all: both names are
+        // unpersisted mentions from the same batch, so the discriminator is
+        // empty — and with it empty the per-token rule reads "cơm chay" against
+        // "cơm cháy" as a plain token asking nothing, and MERGES vegetarian
+        // rice into scorched rice at confidence 1.0. Without evidence the
+        // conservative side is the whole-string test: two names that BOTH carry
+        // accents and disagree on them are different words; one-sided accents
+        // still fold, so de-diacritized typing keeps collapsing ("pho"/"phở").
+        //
+        // The recall the per-token rule buys is not lost here, because it is
+        // won one step earlier: a "phở bo" whose "phở bò" already EXISTS now
+        // grounds at tier 1 and never reaches this path. Only names the whole
+        // corpus could not answer are minted, and for those a twin (mergeable)
+        // beats a wrong merge (a claim). A vetoed newcomer keys by its
         // accent-preserving fold, so its OWN later duplicates still collapse
         // deterministically.
         const occupantForVeto = primaryNewEntityMap.get(baseKey);

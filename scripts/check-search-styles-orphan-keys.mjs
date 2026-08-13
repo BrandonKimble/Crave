@@ -54,13 +54,12 @@
  *       another file → STILL RED, because prose is stripped before matching.
  *   Clean tree → GREEN. Zero sheets or zero keys scanned is a FAILURE.
  */
-import { execFileSync } from 'child_process';
 import { existsSync, readdirSync } from 'fs';
 import { dirname, join, resolve } from 'path';
 import { fileURLToPath } from 'url';
 
 import { stripComments } from './lib/strip-comments.mjs';
-import { readTrackedFile, skipNote } from './lib/tracked-source.mjs';
+import { readOrNull, scanRepo, skipNote } from './lib/scan-repo.mjs';
 
 const REPO_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const SEARCH_DIR = join(REPO_ROOT, 'apps/mobile/src/screens/Search');
@@ -88,18 +87,23 @@ function collectSourceFiles(dir) {
   return out;
 }
 
-/** Subjects come from the INDEX, so an untracked scratch file cannot fail CI. */
+/**
+ * Subjects come from the INDEX, so an untracked scratch sheet in someone's
+ * worktree cannot fail CI — the second deliberate `untracked: false` in the
+ * repo, and the reason is the same as doc-claims': this gate DELETES code for
+ * a living, and it should only ever say that about code the repo has adopted.
+ * scanRepo owns the refusal-on-zero and tells a missing git from a clean scan.
+ */
+const subjectScan = scanRepo({
+  label: 'search-styles-orphan-keys',
+  pathspecs: ['apps/mobile/src/screens/Search'],
+  untracked: false,
+});
+
 function trackedSearchFiles() {
-  const out = execFileSync(
-    'git',
-    ['ls-files', 'apps/mobile/src/screens/Search'],
-    { cwd: REPO_ROOT, encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 },
-  );
-  return out
-    .split('\n')
-    .map((l) => l.trim())
-    .filter((l) => /\.tsx?$/.test(l))
-    .map((l) => join(REPO_ROOT, l));
+  return subjectScan.files
+    .filter((rel) => /\.tsx?$/.test(rel))
+    .map((rel) => join(REPO_ROOT, rel));
 }
 
 const CREATE_RE = /(?:export\s+)?const\s+([A-Za-z_$][\w$]*)\s*=\s*StyleSheet\s*\.\s*create\s*\(\s*\{/g;
@@ -200,7 +204,7 @@ function bindingsFor(code, stem) {
 
 const skipped = { count: 0 };
 function read(abs) {
-  const raw = readTrackedFile(abs);
+  const raw = readOrNull(abs);
   if (raw === null) {
     skipped.count += 1;
     return null;
@@ -208,11 +212,13 @@ function read(abs) {
   return stripComments(raw);
 }
 
+// scanRepo refused an empty ls-files; the .tsx? filter can still empty it.
 const subjectFiles = trackedSearchFiles();
 if (subjectFiles.length === 0) {
   console.error(
-    'FAIL: git ls-files found no TypeScript under screens/Search — the ' +
-      'subject scan is broken, and a broken scan reports clean.',
+    'FAIL [search-styles-orphan-keys]: no TypeScript under screens/Search ' +
+      'survived the extension filter — the subject scan is broken, and a ' +
+      'broken scan reports clean.',
   );
   process.exit(1);
 }

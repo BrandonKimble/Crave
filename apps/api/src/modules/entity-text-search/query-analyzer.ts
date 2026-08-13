@@ -446,11 +446,16 @@ const SCRIPT_PINNED_LANGUAGE: Partial<Record<QueryScript, string>> = {
 /**
  * MAY ANYTHING BUT THE SCRIPT TABLE NAME THIS TEXT'S LANGUAGE?
  *
- * Only for Latin script. Every SUPPORTED_LOCALE is written in Latin — that is
- * a fact about the set, not a list kept beside it: none of SUPPORTED_LOCALES
- * appears among SCRIPT_PINNED_LANGUAGE's values, and a language pinned to no
- * non-Latin script is a Latin-script language. So for text in any other
- * script, neither the requester's locale nor the n-gram detector (whose
+ * Only for Latin script — and since `zh` joined SUPPORTED_LOCALES
+ * (2026-08-12) that is a claim about WHO ASKS THE QUESTION, not about the
+ * locale set. This gate is only ever reached when the script table declined
+ * to pin: `fuseLocale` consults SCRIPT_PINNED_LANGUAGE FIRST and returns
+ * outright, so every script a supported locale is written in is already
+ * answered before control gets here. Han is the live proof — it pins to `zh`
+ * at confidence 1 and never reaches this line.
+ *
+ * What remains below the pin is text in a script NO supported locale uses.
+ * For that text neither the requester's locale nor the n-gram detector (whose
  * candidate set IS SUPPORTED_LOCALES) can name an answer that could be right;
  * both would be fabricating a tag.
  *

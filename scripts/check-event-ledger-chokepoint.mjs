@@ -40,13 +40,7 @@
  * RED PROOF: add `await tx.restaurantEvent.createMany({ data: rows })` to any
  * file other than the owner and this exits 1 naming the line.
  */
-import { execFileSync } from 'child_process';
-import { dirname, join, resolve } from 'path';
-import { fileURLToPath } from 'url';
-
-import { readTrackedFile, skipNote } from './lib/tracked-source.mjs';
-
-const REPO_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
+import { scanRepo } from './lib/scan-repo.mjs';
 
 /**
  * THE ONE OWNER. The chokepoint functions live here, so this is the only file
@@ -81,33 +75,21 @@ const PRISMA_WRITE =
 const RAW_INSERT =
   /insert\s+into\s+(?:public\s*\.\s*)?(core_restaurant_events|core_restaurant_entity_events)\b/gi;
 
-function trackedFiles() {
-  const out = execFileSync('git', ['ls-files', '*.ts', '*.tsx', '*.sql'], {
-    cwd: REPO_ROOT,
-    encoding: 'utf8',
-    maxBuffer: 64 * 1024 * 1024,
-  });
-  return out
-    .split('\n')
-    .map((line) => line.trim())
-    .filter(Boolean);
-}
-
-const files = trackedFiles();
-
-// Missing tooling is a FAILURE, never a pass (the tool-absence-swallow class:
-// a gate whose subject list came back empty reports clean and means nothing).
-if (files.length === 0) {
-  console.error(
-    'FAIL: git ls-files returned no source files — the scan is broken, and a ' +
-      'broken scan reports clean.'
-  );
-  process.exit(1);
-}
+/**
+ * The subject list. UNTRACKED FILES ARE IN SCOPE: a new service that writes
+ * the ledger directly is a live defect from the moment it exists, not from
+ * the moment it is staged. scanRepo owns the refusal-on-zero and tells a
+ * missing/failing git apart from a clean scan.
+ */
+const scan = scanRepo({
+  label: 'event-ledger-chokepoint',
+  pathspecs: ['*.ts', '*.tsx', '*.sql'],
+});
+const files = scan.files;
 
 // The owner must exist and must still hold the door. If someone renames or
 // deletes it, this gate would otherwise pass by finding nothing anywhere.
-const ownerSrc = readTrackedFile(join(REPO_ROOT, OWNER));
+const ownerSrc = scan.read(OWNER);
 if (ownerSrc === null) {
   console.error(
     `FAIL: the ledger's owner file is missing: ${OWNER}. Either it moved (update ` +
@@ -127,14 +109,10 @@ for (const door of ['writeRestaurantEvents', 'writeRestaurantEntityEvents']) {
 
 const failures = [];
 const allowed = [];
-let skipped = 0;
 for (const rel of files) {
   if (rel === OWNER) continue;
-  const src = readTrackedFile(join(REPO_ROOT, rel));
-  if (src === null) {
-    skipped += 1;
-    continue;
-  }
+  const src = scan.read(rel);
+  if (src === null) continue;
   const lines = src.split('\n');
   for (let i = 0; i < lines.length; i += 1) {
     const line = lines[i];
@@ -162,10 +140,10 @@ if (failures.length) {
   process.exit(1);
 }
 console.log(
-  `event-ledger-chokepoint OK — ${files.length} tracked source files, no ` +
+  `event-ledger-chokepoint OK — ${files.length} source files, no ` +
     `direct write to core_restaurant_events / core_restaurant_entity_events ` +
     `outside ${OWNER}` +
-    skipNote(skipped) +
+    scan.note() +
     (allowed.length
       ? `. Declared exceptions: ${allowed.join('; ')}`
       : '. No declared exceptions in use.') +

@@ -189,6 +189,79 @@ const FLOWS: FlowEntry[] = [
     mustInclude: [{ name: 'vegan', type: 'food_attribute' }],
     note: 'vi typo via the edit lane: diacritics dropped AND a letter missing — vegan, never vegetarian (the dietary-boundary rule holds under a typo)',
   },
+  // ── Mandarin ────────────────────────────────────────────────────────────
+  // The fourth language, and the first NON-LATIN one (2026-08-12). Every
+  // assertion below was read out of entity_surface and then out of a live
+  // AutocompleteService run BEFORE it was written here; the preview sweep
+  // that backs them banked 562 `zh` rows over 300 concepts (the ≥10-
+  // connection head plus a named battery), so this block asserts the SHAPE
+  // of Chinese autocomplete, not the coverage of the corpus.
+  //
+  // WHAT ONLY CHINESE CAN TEST. Vietnamese proved the fold; Han proves the
+  // SEGMENTATION and the EDIT BUDGET. A Chinese speaker types no spaces, so
+  // every entry here is one unbroken run the analyzer must cut for itself,
+  // and `editBudgetForToken` returns 0 for Han — the deletion lane that
+  // recovers `thuan chy` -> vegan above is DELIBERATELY silent here, because
+  // one deletion from 牛肉面 is 肉面, which is not a misspelling but another
+  // dish. zh-07/zh-08 are that law's live proof: both come back EMPTY.
+  {
+    id: 'zh-01',
+    locale: 'zh',
+    query: '牛肉面',
+    mustInclude: [{ name: 'beef noodle soup', type: 'food' }],
+    note: 'unspaced 3-character compound reaches the concept whole',
+  },
+  {
+    id: 'zh-02',
+    locale: 'zh',
+    query: '饺子',
+    mustInclude: [{ name: 'dumpling' }],
+    note: 'the commonest Chinese food word reaches its English concept',
+  },
+  {
+    id: 'zh-03',
+    locale: 'zh',
+    query: '饺子',
+    mustInclude: [{ name: 'dumpling' }],
+    localizedLabel: true,
+    note: 'the row DISPLAYS 饺子 while submitting the canonical token',
+  },
+  {
+    id: 'zh-04',
+    locale: 'zh',
+    query: '珍珠奶茶',
+    mustInclude: [{ name: 'boba tea', type: 'food' }],
+    note: '4-character compound: the whole phrase wins over its 奶茶 tail',
+  },
+  {
+    id: 'zh-05',
+    locale: 'zh',
+    query: '珍珠奶',
+    mustInclude: [{ name: 'boba tea', type: 'food' }],
+    note: 'MID-COMPOUND prefix — a Han query is unfinished mid-WORD, not mid-phrase',
+  },
+  {
+    id: 'zh-06',
+    locale: 'zh',
+    query: '便宜',
+    mustInclude: [{ name: 'affordable', type: 'restaurant_attribute' }],
+    localizedLabel: true,
+    note: 'THE P0 in Chinese: the attribute chip is typeable, and displays 平价',
+  },
+  {
+    id: 'zh-07',
+    locale: 'zh',
+    query: '牛肉麺',
+    mustNotInclude: [{ name: 'beef noodle soup' }, { name: 'beef' }],
+    note: 'HAN BUDGET 0: a wrong character recovers NOTHING — no typo lane on a morphemic script',
+  },
+  {
+    id: 'zh-08',
+    locale: 'zh',
+    query: '肉面',
+    mustNotInclude: [{ name: 'beef noodle soup' }],
+    note: 'the one-deletion neighbour of 牛肉面 must not resurrect it (肉面 is a different word, not a slip)',
+  },
 ];
 
 async function main(): Promise<void> {

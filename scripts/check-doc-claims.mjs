@@ -38,7 +38,7 @@ import { existsSync, readFileSync } from 'fs';
 import { dirname, join, resolve } from 'path';
 import { fileURLToPath } from 'url';
 
-import { readTrackedFile, skipNote } from './lib/tracked-source.mjs';
+import { scanRepo } from './lib/scan-repo.mjs';
 
 // A doc may legitimately reference a file the repo deliberately does NOT
 // track — apps/api/.env, dist/ build artifacts. Locally those exist and the
@@ -104,57 +104,65 @@ const EXCLUDED = [
 const CORRECTION_WORDS =
   /(\bDELETED\b|\bdeleted\b|\bdoes not exist\b|\bdoesn't exist\b|\bno longer exists?\b|\bnonexistent\b|\bsuperseded\b|\bSUPERSEDED\b|\bCORRECTED\b|\bCORRECTION\b|\bHISTORICAL\b|\bdead link\b|\bis dead\b|\bgitignored\b)/;
 
-/** Tracked, gated .md files. Discovered, never hand-listed. */
+/**
+ * Gated .md files. Discovered, never hand-listed.
+ *
+ * TRACKED ONLY, deliberately — the ONE call site in this repo that opts out of
+ * scanRepo's untracked default. This gate asserts that a doc's commands and
+ * paths RESOLVE, and an agent scratchpad or a half-written note sitting
+ * un-added in someone's worktree is not yet a claim the repo makes. Including
+ * those would make the gate fail for reasons unrelated to the repository,
+ * which is how a gate earns a `|| true`.
+ */
+const scan = scanRepo({
+  label: 'doc-claims',
+  pathspecs: ['*.md'],
+  untracked: false,
+});
+
 function docs() {
-  const out = execFileSync('git', ['ls-files', '*.md'], {
-    cwd: REPO_ROOT,
-    encoding: 'utf8',
-  });
-  return out
-    .split('\n')
-    .map((l) => l.trim())
-    .filter(Boolean)
+  return scan.files
     .filter((f) => !f.includes('node_modules/'))
     .filter((f) => !EXCLUDED.some(([prefix]) => f === prefix || f.startsWith(prefix)));
 }
 
+// scanRepo refused an empty ls-files; the EXCLUDED filter can still empty the
+// list, and a gate that reviews no documents reports clean while covering
+// nothing.
 const files = docs();
-
-// A gate that finds no documents reports clean while covering nothing.
 if (files.length === 0) {
   console.error(
-    'FAIL: no gated .md files found. Either the corpus moved or ' +
-      'this discovery is broken; both mean this gate is covering nothing.'
+    'FAIL [doc-claims]: no gated .md files survived the exclusion list. ' +
+      'Either the corpus moved or the exclusions widened to everything; both ' +
+      'mean this gate is covering nothing.'
   );
   process.exit(1);
 }
 
 /**
- * Tracked-but-absent files skipped this run (F3912 item six). Counted here so
- * both discovery passes report into one number, and PRINTED — a gate that
+ * Tracked-but-absent files skipped this run (F3912 item six) are counted by
+ * each scanRepo handle and PRINTED by its note() on the OK line — a gate that
  * silently covers fewer files than it claims is the always-green disease.
+ * Both discovery passes below report their own.
  */
-let skippedFiles = 0;
 
 /** workspace name -> Set(script names), plus the root under the name '.'. */
+const manifestScan = scanRepo({
+  label: 'doc-claims/manifests',
+  pathspecs: ['*package.json'],
+  untracked: false,
+});
+
 function scriptIndex() {
-  const manifests = execFileSync('git', ['ls-files', '*package.json'], {
-    cwd: REPO_ROOT,
-    encoding: 'utf8',
-  })
-    .split('\n')
-    .map((l) => l.trim())
-    .filter(Boolean)
-    .filter((f) => !f.includes('/node_modules/'));
+  const manifests = manifestScan.files.filter(
+    (f) => !f.includes('/node_modules/'),
+  );
 
   const byWorkspaceName = new Map();
   let rootScripts = new Set();
   for (const rel of manifests) {
-    const rawPkg = readTrackedFile(join(REPO_ROOT, rel));
-    if (rawPkg === null) {
-      skippedFiles += 1; // tracked, absent from the worktree (F3912 item six)
-      continue;
-    }
+    const rawPkg = manifestScan.read(rel);
+    if (rawPkg === null) continue; // in the index, absent from the worktree
     let pkg;
     try {
       pkg = JSON.parse(rawPkg);
@@ -221,10 +229,9 @@ const hasBin = (name) => existsSync(join(REPO_ROOT, 'node_modules', '.bin', name
  * deleted. Anchored on real tracked top-level directories.
  */
 const TOP_LEVEL = new Set(
-  execFileSync('git', ['ls-files'], { cwd: REPO_ROOT, encoding: 'utf8' })
-    .split('\n')
-    .map((l) => l.split('/')[0])
-    .filter(Boolean)
+  scanRepo({ label: 'doc-claims/top-level', untracked: false }).files.map(
+    (path) => path.split('/')[0],
+  ),
 );
 
 function isPathClaim(tok) {
@@ -244,11 +251,8 @@ let checkedPaths = 0;
 let suppressed = 0;
 
 for (const rel of files) {
-  const text = readTrackedFile(join(REPO_ROOT, rel));
-  if (text === null) {
-    skippedFiles += 1; // tracked, absent from the worktree (F3912 item six)
-    continue;
-  }
+  const text = scan.read(rel);
+  if (text === null) continue; // in the index, absent from the worktree
   const lines = text.split('\n');
 
   lines.forEach((line, i) => {
@@ -324,5 +328,6 @@ console.log(
     `${checkedCommands} yarn command(s) and ${checkedPaths} repo path(s) all resolve; ` +
     `${suppressed} line(s) skipped as self-declared corrections. ` +
     `(${EXCLUDED.length} corpora excluded BY DESIGN — they are history, not recipes.)` +
-    skipNote(skippedFiles)
+    scan.note() +
+    manifestScan.note()
 );

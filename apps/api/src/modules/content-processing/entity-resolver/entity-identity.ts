@@ -339,3 +339,132 @@ export function identityProbeNames(name: string, type: EntityType): string[] {
   }
   return [name];
 }
+
+/**
+ * DIACRITIC EVIDENCE — the exact-tier admission rule (2026-08-09).
+ *
+ * THE DEFECT: the exact tier matches on the FOLDED key, and the fold strips
+ * accents so de-diacritized typing works ('pho' → phở, the way most people
+ * type Vietnamese on a US keyboard). But the same collapse merges words that
+ * are only distinguished BY their accents, and it did so at confidence 1.0:
+ * 'bò' (beef) ground to avocado (via bơ), 'mỹ' (American) to mian (via mỳ),
+ * 'cơm chay' (vegetarian rice) to scorched rice (via cơm cháy). A confident
+ * wrong answer, on the one tier that admits no doubt.
+ *
+ * THE RULE, in one line: **when the user types accents, the accents are
+ * evidence.** A span typed WITH accents is admitted at the exact tier only by
+ * a surface that agrees on them; a surface that matches only after the accents
+ * are stripped is not exact — it may still be reached by the lower-evidence
+ * lanes (residue probe, dense link), which is where a genuine near-miss
+ * belongs. A span typed WITHOUT accents carries no evidence either way, so
+ * the folded key rules exactly as before and 'pho'/'bo' behave identically to
+ * yesterday.
+ *
+ * THE SCOPE IS PER TOKEN, and that is the whole subtlety (red team, executed,
+ * 2026-08-09 — the first cut of this rule compared the WHOLE span and was
+ * refuted). PARTIAL accenting is the normal way Vietnamese is typed: 'phở bo',
+ * 'bún bò hue', 'cà phê sữa da'. Under a whole-span test none of those agrees
+ * with any banked surface, so the phrase was refused and SHREDDED into
+ * confidently-wrong single tokens ('phở bo' → pho + avocado). Measured over
+ * the vi gold corpus with exactly one word de-accented: 73 of 150 queries
+ * changed grounding, 59 losing the right concept. So evidence is read where
+ * the user actually supplied it — token by token. An accented token must
+ * agree with the surface's token in the same position; a plain token asks
+ * nothing, exactly as before.
+ *
+ * ONE RULE, BOTH DIRECTIONS OF TRAFFIC (2026-08-12). This lived in
+ * gazetteer-spans.ts and governed only what a SEARCHER's query may ground on,
+ * while the ingestion resolver enforced its own accent rule by comparing the
+ * WHOLE string. They disagreed on the commonest real-world Vietnamese typing:
+ * 'phở bo' against the banked 'phở bò' — the gazetteer admits it, the resolver
+ * REFUSED it, so a mention a searcher can find was not being banked onto the
+ * entity in the first place. The rule now lives with the folds it is made of
+ * and both paths call it; gazetteer-spans.ts re-exports it for its consumers.
+ *
+ * Language-neutral and list-free: nothing here knows Vietnamese exists. It
+ * falls out of `diacriticFold` vs `canonicalFold` — the two functions directly
+ * above. The accent-agreeing case also settles the collision the fold created: when
+ * `bơ` and a hypothetical `bò` both fold to 'bo', typing `bò` admits only the
+ * one that matches raw.
+ */
+export interface SurfaceSpelling {
+  /** canonicalFold(form) — the key the recall arm matched on. */
+  folded: string;
+  /** diacriticFold(form) — the same form with its accents intact. */
+  diacritic: string;
+}
+
+/** The two readings of one stored or typed spelling: the coarse recall key and
+ *  the accent-preserving one. Every consumer of the admission rule builds its
+ *  evidence through this function, so "a spelling" has ONE construction. */
+export function spellingOf(form: string): SurfaceSpelling {
+  return { folded: canonicalFold(form), diacritic: diacriticFold(form) };
+}
+
+/** Does this spelling ASSERT anything about accents? The two folds disagree
+ *  exactly when the text carries an accent (or an identity-bearing letter —
+ *  đ, ł, ı) that survives folding. An input that carries one is EVIDENCE about
+ *  which word was meant; an unaccented input asserts nothing. Every accent
+ *  tier — query gazetteer, resolver tiers 1/2, the mint veto — turns on this
+ *  one question, so it is one function, here, next to the folds. */
+export function isAccented(text: string): boolean {
+  return diacriticFold(text) !== canonicalFold(text);
+}
+
+export function admitsAtExactTier(
+  span: { folded: string; diacritic: string },
+  spellings: readonly SurfaceSpelling[],
+  /** Every ACCENT-FREE spelling the registry actually banks as a whole
+   *  surface, as seen by this query. A plain token that appears here is a WORD
+   *  the user spelled correctly, not a lazily de-accented one — see the
+   *  accent-complete note in the rule below. */
+  bankedPlainForms: ReadonlySet<string> = new Set(),
+): boolean {
+  // A FULLY PLAIN SPAN IS NOT A SPECIAL CASE (2026-08-09). This used to
+  // return true immediately — "nothing accented ⇒ no evidence" — which is
+  // right about ACCENTS and wrong about WORDS: a token the registry banks as
+  // a complete accent-free surface of the request's language is a word the
+  // user spelled, and the loop below already knows that (the accent-complete
+  // arm). The shortcut simply denied it the chance to say so whenever the
+  // WHOLE span happened to be plain, which is the commonest way a one-word
+  // query arrives. Symptom: 'chay' (vegetarian, a banked vi word) also
+  // exact-matched 'chảy' (runny) and a vegetarian-rice search came back
+  // carrying a gooey constraint. Dropping the shortcut costs nothing for
+  // 'pho'/'bo' — those are not banked plain forms, so every token still
+  // 'continue's and the folded key decides exactly as before.
+  const spanFolded = span.folded.split(' ');
+  const spanTyped = span.diacritic.split(' ');
+  return spellings.some((spelling) => {
+    // Only a surface that actually matched THIS span's folded key can be its
+    // exact match; the evidence set is wider than the match (it carries every
+    // spelling the entity has) so the fold equality is re-checked here.
+    if (spelling.folded !== span.folded) return false;
+    const surface = spelling.diacritic.split(' ');
+    // Token counts are equal whenever the folds are — accents never add or
+    // remove a space. The guard is for the impossible case, and it falls back
+    // to the whole-phrase comparison rather than inventing an alignment.
+    if (
+      surface.length !== spanTyped.length ||
+      surface.length !== spanFolded.length
+    ) {
+      return spelling.diacritic === span.diacritic;
+    }
+    for (let i = 0; i < spanTyped.length; i++) {
+      // Token typed WITHOUT accents ⇒ no evidence about this position ⇒ it
+      // already matched on the fold and nothing more is asked of it.
+      if (spanTyped[i] === spanFolded[i]) {
+        // ACCENT-COMPLETE TOKEN. A plain token normally asks nothing — that is
+        // what makes 'phở bo' reach phở bò. But when the registry banks that
+        // exact accent-free string as a surface of its own, the token is a
+        // WORD the user spelled completely, not an accent they skipped:
+        // 'chay' (vegetarian) is banked; 'bo' is not. Without this, 'cơm chay'
+        // (vegetarian rice) matches the scorched-rice surface 'cơm cháy'
+        // through its second token and hands a diner a rice crust. The
+        // discriminator is the DATA, not a word list of ours.
+        if (!bankedPlainForms.has(spanTyped[i])) continue;
+      }
+      if (surface[i] !== spanTyped[i]) return false;
+    }
+    return true;
+  });
+}
