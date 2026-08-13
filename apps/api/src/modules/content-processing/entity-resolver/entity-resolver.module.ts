@@ -8,6 +8,7 @@ import { DishKnowledgeSynthesisService } from './dish-knowledge-synthesis.servic
 import { AliasManagementService } from './alias-management.service';
 import { WordClaimAdjudicatorService } from './word-claim-adjudicator.service';
 import { ClaimVerdictLedgerService } from './claim-verdict-ledger.service';
+import { ClaimRehearingBudgetService } from './claim-rehearing-budget.service';
 import { PrismaModule } from '../../../prisma/prisma.module';
 import { SharedModule } from '../../../shared/shared.module';
 import { LLMModule } from '../../external-integrations/llm/llm.module';
@@ -31,12 +32,14 @@ import { EntityTextSearchModule } from '../../entity-text-search/entity-text-sea
     AliasManagementService,
     WordClaimAdjudicatorService,
     ClaimVerdictLedgerService,
+    ClaimRehearingBudgetService,
     EntityAnchorRehomeService,
   ],
   exports: [
     ConceptSatisfiesService,
     WordClaimAdjudicatorService,
     ClaimVerdictLedgerService,
+    ClaimRehearingBudgetService,
     EntityResolutionService,
     MetroAdoptionService,
     AliasManagementService,

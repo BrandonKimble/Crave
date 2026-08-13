@@ -1,5 +1,3 @@
-import { readFileSync } from 'fs';
-import { join } from 'path';
 import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../../../prisma/prisma.service';
 import { LoggerService } from '../../../shared';
@@ -11,6 +9,13 @@ import {
   type SurfaceSource,
 } from './entity-surface.service';
 import { canonicalFold } from './entity-identity';
+import {
+  CLAIM_JUDGE_PROMPT,
+  CLAIM_JUDGE_PROMPT_VERSION,
+  CLAIM_JUDGE_RULE_FINGERPRINT,
+} from './claim-judge-rule';
+import { ClaimVerdictLedgerService } from './claim-verdict-ledger.service';
+import { WORD_CLAIM_LANE, wordClaimLane } from './word-claim-lane';
 
 /**
  * THE WORD-CLAIM ADJUDICATOR — the judge behind the collision guard
@@ -57,42 +62,34 @@ import { canonicalFold } from './entity-identity';
 
 /**
  * THE JUDGE'S RULE HAS A VERSION, AND A BUMP RE-OPENS EVERY VERDICT IT MADE
- * (2026-08-09). Every row a verdict writes is stamped
- * `entity_surface.claim_judge_version`, and `staleVerdictClaims` re-offers any
- * lost claim decided under an older rule. That is the whole reason this number
- * exists: when the RULE is found wrong, the corpus is corrected by re-hearing,
- * never by hand-editing rows. Two verdicts were hand-reverted on 2026-08-09
- * (`chả giò`, `chảy`) because there was no other lever; there is one now.
+ * (2026-08-09; re-seated on the hearing ledger 2026-08-12). Every verdict is
+ * a row in `claim_verdicts` stamped with the rule that reached it, and
+ * `dueClaims` re-offers any claim with no verdict at the CURRENT rule. That
+ * is the whole reason the number exists: when the RULE is found wrong, the
+ * corpus is corrected by re-hearing, never by hand-editing rows. Two verdicts
+ * were hand-reverted on 2026-08-09 (`chả giò`, `chảy`) because there was no
+ * other lever.
+ *
+ * The number itself is DERIVED from the rule text (claim-judge-rule.ts), not
+ * declared here: a constant beside the prompt can drift from it, and the
+ * drift is silent in the direction that ruins the memory.
  */
-// v3 (2026-08-09): THE RULE, not the formatting. v2 asked one flat question
-// ("does this claimant use this word?") with a fail-closed "unsure → false",
-// which made EVICTION the cheap answer and cost the corpus real food: `tôm`
-// taken off shrimp and given to prawns, `chả giò` taken off spring roll and
-// given to egg roll — pairs a searcher does not distinguish. v3 states the
-// decision rule the outcomes are supposed to encode (evict only what is
-// FACTUALLY WRONG; uphold BOTH for culinary near-synonyms), makes the doubt
-// asymmetric (an unproven newcomer is refused, a doubted incumbent is kept —
-// eviction is the destructive move), names the searcher as the deciding lens,
-// and hands the judge the GRAPH ADJACENCY between the two concepts as
-// evidence, so "near-synonym" is read off derived data instead of vibes.
-// v2 (2026-08-08): every incumbent listed (v1 showed only the first),
-// plus per-claimant context (sample aliases) — v1 mis-voted picante/café
-// on bare name+type pairs, measured on the launch gate.
-export const CLAIM_JUDGE_PROMPT_VERSION = 3;
+export { CLAIM_JUDGE_PROMPT_VERSION } from './claim-judge-rule';
 
 /** Claims per LLM call. */
 const PER_CALL = 10;
 
-/** The judge's rule, as a versioned .md asset (see the version note above).
- *  __dirname-relative like every prompt load — resolves under both src
- *  (ts-jest) and dist (nest-cli copies prompts/*.md as assets). */
-const CLAIM_JUDGE_PROMPT = readFileSync(
-  join(
-    __dirname,
-    '../../external-integrations/llm/prompts/claim-judge-prompt.md',
-  ),
-  'utf8',
-);
+/**
+ * How many candidate rows one page of the due-scan reads. The due-predicate
+ * cannot be a single SQL statement: the claim key is canonicalized in
+ * TypeScript by the LANE'S ADAPTER (`surfaceClaimKey` — NFKD, format-control
+ * deletion, case and punctuation folding, accents PRESERVED), and re-deriving
+ * that in SQL would mint a second, subtly different definition of what one
+ * claim is. That second definition is precisely the bug class this ledger
+ * exists to end, so the population is paged and the decided set is subtracted
+ * in the one place the canonicalization lives.
+ */
+const DUE_SCAN_PAGE = 500;
 
 const TESTIMONY_SOURCES: ReadonlySet<string> = new Set([
   'legacy',
@@ -117,11 +114,16 @@ export interface ContestedClaim {
    * without paying for a judge. 'retain' is the retraction feed: "this
    * concept ALREADY HOLDS this word — should it?" That question is real even
    * with no rival, and it is the only reason a mis-bank nobody contests can
-   * ever be corrected. The intent is stated by the CALLER rather than
-   * inferred from the row, because the two questions have opposite cheap
-   * answers and a hearing costs a real LLM call: silently re-reading every
-   * already-banked re-offer as a retraction would bill the nightly sweep for
-   * questions nobody asked.
+   * ever be corrected.
+   *
+   * THE ROW DECIDES WHICH QUESTION IS REAL (H5, 2026-08-12). This used to be
+   * the caller's assertion, on the reasoning that the two questions have
+   * opposite cheap answers and a hearing costs money. But the caller cannot
+   * be more right about it than the row: a LIVE recall row can only be asked
+   * "should this still hold?", and a deprecated or display row can only be
+   * asked "may this be taken?". `dueClaims` derives it, so a feed can no
+   * longer mis-state the question and pay for an answer nothing may act on.
+   * A caller-supplied value is still honoured for the direct-call path.
    */
   hearing?: 'grant' | 'retain';
 }
@@ -199,6 +201,32 @@ export interface JudgedCase {
   reason: string;
 }
 
+/**
+ * WHAT THE VERDICT ORDERS DONE — persisted as the verdict's `subject`, so a
+ * resumed effect replays the decision rather than re-deriving it from a corpus
+ * that may have moved. Three orthogonal moves cover every outcome this lane
+ * can reach: take the word from some surfaces, bank it on the claimant,
+ * remember it as refused.
+ */
+export interface WordClaimEffect {
+  form: string;
+  locale: string;
+  entityId: string;
+  source: SurfaceSource;
+  /** Surface ids whose recall claim dies — evicted incumbents, or the held
+   *  row on a retraction. Degrades 'both' to 'display', deprecates 'recall'. */
+  takeWordFrom: string[];
+  /** Write the claim active on the claimant. */
+  bank: boolean;
+  /** Write the claim 'deprecated' — remembered wrong, never re-proposed. */
+  refuse: boolean;
+}
+
+type WordClaimIdentityFields = Pick<
+  WordClaimEffect,
+  'form' | 'locale' | 'entityId' | 'source'
+>;
+
 @Injectable()
 export class WordClaimAdjudicatorService {
   private readonly logger: LoggerService;
@@ -207,8 +235,100 @@ export class WordClaimAdjudicatorService {
     private readonly prisma: PrismaService,
     private readonly llm: LLMService,
     loggerService: LoggerService,
+    private readonly ledger: ClaimVerdictLedgerService,
   ) {
     this.logger = loggerService.setContext('WordClaimAdjudicatorService');
+  }
+
+  /**
+   * FINISH WHAT WAS ALREADY DECIDED, BEFORE DECIDING ANYTHING NEW
+   * (amendment (c)).
+   *
+   * A verdict commits before its effect runs, so a process that dies in
+   * between leaves a decision the corpus has not yet obeyed. Every effect
+   * this lane performs is idempotent — banking upserts, refusing upserts,
+   * taking the word is an UPDATE keyed by surface id — so resuming is
+   * replaying the stored effect, not reconstructing it: the subject row
+   * carries exactly what the decision said to do, which is why a resumed
+   * effect can never drift from the verdict that ordered it.
+   *
+   * Returns how many verdicts it completed.
+   */
+  async resumePendingEffects(limit = 500): Promise<number> {
+    const pending = await this.ledger.pendingExecution<WordClaimEffect>(
+      WORD_CLAIM_LANE,
+      limit,
+    );
+    let resumed = 0;
+    for (const verdict of pending) {
+      await this.applyEffect(verdict.subject);
+      await this.ledger.markExecuted(
+        WORD_CLAIM_LANE,
+        verdict.claimKey,
+        verdict.ruleVersion,
+      );
+      resumed += 1;
+    }
+    if (resumed) {
+      this.logger.info('Resumed decided-but-unexecuted word-claim verdicts', {
+        resumed,
+      });
+    }
+    return resumed;
+  }
+
+  /**
+   * THE ONE PLACE A WORD CLAIM'S DECISION TOUCHES THE CORPUS.
+   *
+   * Live hearings and crash-resume both call this with the SAME stored
+   * subject, so there is no second implementation to drift. Overridable so a
+   * test can kill the effect mid-hearing and prove the verdict survives.
+   */
+  protected async applyEffect(effect: WordClaimEffect): Promise<boolean> {
+    if (effect.takeWordFrom.length) {
+      await this.takeTheWord(effect.takeWordFrom);
+    }
+    if (effect.refuse) {
+      await this.refuse(effect);
+      return false;
+    }
+    if (effect.bank) {
+      return this.bank(effect);
+    }
+    return false;
+  }
+
+  /** Commit the verdict, THEN obey it. Returns whether a surface was banked. */
+  private async settle(
+    claim: ContestedClaim,
+    outcome: JudgedCase['outcome'],
+    reason: string,
+    effect: Omit<WordClaimEffect, keyof WordClaimIdentityFields>,
+  ): Promise<boolean> {
+    const full: WordClaimEffect = {
+      form: claim.form,
+      locale: claim.locale,
+      entityId: claim.entityId,
+      source: claim.source,
+      ...effect,
+    };
+    const claimKey = wordClaimLane.canonicalClaimKey(claim);
+    await this.ledger.record<WordClaimEffect>({
+      lane: WORD_CLAIM_LANE,
+      claimKey,
+      ruleVersion: CLAIM_JUDGE_PROMPT_VERSION,
+      outcome,
+      reason,
+      ruleFingerprint: CLAIM_JUDGE_RULE_FINGERPRINT,
+      subject: full,
+    });
+    const banked = await this.applyEffect(full);
+    await this.ledger.markExecuted(
+      WORD_CLAIM_LANE,
+      claimKey,
+      CLAIM_JUDGE_PROMPT_VERSION,
+    );
+    return banked;
   }
 
   async adjudicate(
@@ -270,8 +390,22 @@ export class WordClaimAdjudicatorService {
           // FALSE CONFLICT is undone: a claim refused when the hearing was
           // held on the accent-blind fold has no same-word incumbent at all,
           // so the re-hearing finds no case to answer and the word goes back.
-          if (p.target && (await this.bank(p.claim, dryRun))) {
-            summary.banked += 1;
+          if (p.target && !dryRun) {
+            // A RULING, NOT AN ABSENCE. Nothing contested the word, so the
+            // rule decided it without a judge — but it IS a decision, and
+            // recording it is what stops the nightly re-offering the same
+            // free question forever (the stamp did the same job before).
+            // A rule-version bump re-opens it exactly like a judged one.
+            if (
+              await this.settle(
+                p.claim,
+                'bothUpheld',
+                'uncontested — no other concept claims this word',
+                { takeWordFrom: [], bank: true, refuse: false },
+              )
+            ) {
+              summary.banked += 1;
+            }
           }
           summary.bothUpheld += 1;
           if (p.target) {
@@ -354,11 +488,23 @@ export class WordClaimAdjudicatorService {
           // hold, it is a RETRACTION: the word is grounding mentions right
           // now, and the same encoding eviction uses takes it back — the word
           // dies, the label lives.
+          if (!dryRun) {
+            await this.settle(
+              p.claim,
+              p.held ? 'claimRetracted' : 'newcomerRefused',
+              verdict.reason,
+              p.held
+                ? {
+                    takeWordFrom: [p.held.surfaceId],
+                    bank: false,
+                    refuse: false,
+                  }
+                : { takeWordFrom: [], bank: false, refuse: true },
+            );
+          }
           if (p.held) {
-            await this.retract(p.held, dryRun);
             summary.claimsRetracted += 1;
           } else {
-            await this.refuse(p.claim, dryRun);
             summary.newcomerRefused += 1;
           }
           summary.cases.push({
@@ -378,11 +524,20 @@ export class WordClaimAdjudicatorService {
         const evictable = p.incumbents.filter(
           (inc, k) => verdict.others[k] === false && !inc.testimony,
         );
-        if (!dryRun && evictable.length) {
-          await this.evictIncumbents(evictable);
-        }
-        if (await this.bank(p.claim, dryRun)) {
-          summary.banked += 1;
+        if (!dryRun) {
+          const banked = await this.settle(
+            p.claim,
+            evictable.length ? 'incumbentEvicted' : 'bothUpheld',
+            verdict.reason,
+            {
+              takeWordFrom: evictable
+                .map((inc) => inc.aliasId)
+                .filter((id): id is string => id !== null),
+              bank: true,
+              refuse: false,
+            },
+          );
+          if (banked) summary.banked += 1;
         }
         if (evictable.length) {
           summary.incumbentEvicted += 1;
@@ -636,6 +791,14 @@ export class WordClaimAdjudicatorService {
     return new Map(
       (parsed.items ?? [])
         .filter((item) => typeof item.n === 'number')
+        // A RULING WITH NO STATED GROUND IS NOT A RULING (H5 amendment (d)).
+        // The rule asks for the reason by name and the schema requires it, so
+        // a blank one means the model did not actually answer this case —
+        // dropping it here leaves the claim UNJUDGED and due, which is what
+        // an unanswered question deserves. Acting on it would mutate the
+        // corpus with nothing on the record to audit or re-open, and the
+        // database refuses that write anyway.
+        .filter((item) => (item.reason ?? '').trim().length > 0)
         .map((item) => [
           item.n as number,
           {
@@ -687,49 +850,151 @@ export class WordClaimAdjudicatorService {
   }
 
   /**
-   * THE CLAIMS DUE A FRESH HEARING — the mechanism that replaces hand-reverts.
+   * THE CLAIMS DUE A FRESH HEARING — one predicate, symmetric over wins and
+   * losses (H5, 2026-08-12). This replaces `staleVerdictClaims`, and the
+   * replacement is not a rename.
    *
-   * A lost claim is remembered two ways, and both are selected here: a REFUSED
-   * newcomer (status='deprecated') and an EVICTED or refused label claim
-   * (role='display' on an inferred row, which is only ever how a lost recall
-   * claim is encoded). A row is due when the rule that settled it is older
-   * than the current one — including NULL, which is every verdict minted
-   * before verdicts were versioned at all, and which is the honest reading of
-   * them: the pre-2026-08-09 judge decided on the accent-destroying recall
-   * fold, so `chảy` was refused against `chay` — two different Vietnamese
-   * words — and the question it answered was never real.
+   * The old selection could only see claims that had LOST: a refused newcomer
+   * (status='deprecated') or an evicted recall claim (role='display'), because
+   * those are the rows a lost hearing leaves behind and the stamp had to live
+   * on a row. A claim the judge UPHELD became an ordinary active surface,
+   * indistinguishable from one nobody ever heard — so a wrong YES could not be
+   * re-opened by a rule bump, by a re-hearing, or by anything at all. The
+   * corpus was grounding Vietnamese mentions on `bánh cuộn`→wrap at 0.95 with
+   * no mechanism that could ever ask about it.
    *
-   * Only INFERRED sources are re-offered. Testimony is not a claim anyone
-   * judged, and a display row from a human is a label, not a lost hearing.
+   * With the verdict keyed by the CLAIM, both outcomes are the same shape and
+   * this is the whole predicate: an inferred claim on an active entity, in
+   * this locale, with NO VERDICT AT THE CURRENT RULE VERSION. Every held claim
+   * and every lost claim is in the population; a bump re-opens both.
+   *
+   * The hearing KIND follows the row's actual state rather than the caller's
+   * intent, because the row is what makes the question real: a live recall row
+   * can only be asked "should this still hold?" (retain), and a deprecated or
+   * display row can only be asked "may this be taken?" (grant). Asking either
+   * one the other question is paying for an answer that cannot act.
+   *
+   * Only INFERRED sources are offered. Testimony is not a claim anyone judged,
+   * it is a real person's word, and it is unevictable by law elsewhere in this
+   * machinery — feeding it would ask a question nothing may act on.
+   *
+   * COLLISION-SHAPED CLAIMS COME FIRST. A surface whose folded form IS another
+   * active entity's identity key, of the same type, is the highest-yield
+   * mis-bank shape (the retraction feed's probe): the collision guard runs at
+   * WRITE time, so anything banked before the guard existed, or before the
+   * twin existed, is sitting there uncontested. A drain is always budget-
+   * bounded, so the order in which claims are offered decides what actually
+   * gets heard.
    */
-  async staleVerdictClaims(
+  async dueClaims(
     locale: string,
-    options: { limit?: number; forms?: readonly string[] } = {},
+    options: {
+      limit?: number;
+      forms?: readonly string[];
+      /** Only claims whose word IS another concept's name — the probe. */
+      collisionsOnly?: boolean;
+    } = {},
   ): Promise<ContestedClaim[]> {
     const limit = options.limit ?? 200;
+    const due: ContestedClaim[] = [];
+    for await (const page of this.candidatePages(locale, options)) {
+      const decided = await this.ledger.decidedKeys(
+        WORD_CLAIM_LANE,
+        CLAIM_JUDGE_PROMPT_VERSION,
+        page.map((claim) => wordClaimLane.canonicalClaimKey(claim)),
+      );
+      for (const claim of page) {
+        if (decided.has(wordClaimLane.canonicalClaimKey(claim))) continue;
+        due.push(claim);
+        if (due.length >= limit) return due;
+      }
+    }
+    return due;
+  }
+
+  /**
+   * HOW MANY CLAIMS A DRAIN WOULD HEAR — the count amendment (b) prices.
+   *
+   * It scans the whole population rather than sampling, because the number is
+   * the input to a spend approval: an estimate built on a guess is exactly the
+   * thing the campaign idiom exists to refuse.
+   */
+  async countDue(
+    locale: string,
+    options: { forms?: readonly string[]; collisionsOnly?: boolean } = {},
+  ): Promise<number> {
+    let total = 0;
+    for await (const page of this.candidatePages(locale, options)) {
+      const decided = await this.ledger.decidedKeys(
+        WORD_CLAIM_LANE,
+        CLAIM_JUDGE_PROMPT_VERSION,
+        page.map((claim) => wordClaimLane.canonicalClaimKey(claim)),
+      );
+      for (const claim of page) {
+        if (!decided.has(wordClaimLane.canonicalClaimKey(claim))) total += 1;
+      }
+    }
+    return total;
+  }
+
+  /** The candidate population, paged. Ordering and filters live here so the
+   *  due-predicate and its count can never read different populations. */
+  private async *candidatePages(
+    locale: string,
+    options: { forms?: readonly string[]; collisionsOnly?: boolean },
+  ): AsyncGenerator<ContestedClaim[]> {
     const forms = (options.forms ?? []).map((f) => canonicalFold(f));
-    const rows = await this.prisma.$queryRaw<
-      Array<{ form: string; locale: string; entity_id: string; source: string }>
-    >`
-      SELECT s.form, s.locale, s.entity_id::text, s.source
-        FROM entity_surface s
-        JOIN core_entities e ON e.entity_id = s.entity_id
-       WHERE e.status = 'active'
-         AND s.locale = ${locale}
-         AND s.source IN ('vocabulary', 'sweep', 'knowledge_synthesis',
-                          'seed', 'query_banking', 'synthesis')
-         AND (s.status = 'deprecated' OR s.role = 'display')
-         AND (s.claim_judge_version IS NULL
-              OR s.claim_judge_version < ${CLAIM_JUDGE_PROMPT_VERSION})
-         AND (${forms.length === 0} OR s.form_folded = ANY(${forms}::text[]))
-       ORDER BY s.updated_at ASC
-       LIMIT ${limit}`;
-    return rows.map((row) => ({
-      form: row.form,
-      locale: row.locale,
-      entityId: row.entity_id,
-      source: row.source as SurfaceSource,
-    }));
+    const collisionsOnly = options.collisionsOnly === true;
+    for (let offset = 0; ; offset += DUE_SCAN_PAGE) {
+      const rows = await this.prisma.$queryRaw<
+        Array<{
+          form: string;
+          locale: string;
+          entity_id: string;
+          source: string;
+          hearing: string;
+          collision: boolean;
+        }>
+      >`
+        SELECT s.form, s.locale, s.entity_id::text, s.source,
+               CASE WHEN s.status = 'active' AND s.role <> 'display'
+                    THEN 'retain' ELSE 'grant' END AS hearing,
+               EXISTS (SELECT 1 FROM core_entities twin
+                        WHERE twin.identity_key = s.form_folded
+                          AND twin.type = e.type
+                          AND twin.status = 'active'
+                          AND twin.entity_id <> s.entity_id) AS collision
+          FROM entity_surface s
+          JOIN core_entities e ON e.entity_id = s.entity_id
+         WHERE e.status = 'active'
+           AND s.locale = ${locale}
+           AND s.source IN ('vocabulary', 'sweep', 'knowledge_synthesis',
+                            'seed', 'query_banking', 'synthesis')
+           AND s.status IN ('active', 'deprecated')
+           AND (${forms.length === 0} OR s.form_folded = ANY(${forms}::text[]))
+           AND (${!collisionsOnly} OR EXISTS (
+                 SELECT 1 FROM core_entities twin
+                  WHERE twin.identity_key = s.form_folded
+                    AND twin.type = e.type
+                    AND twin.status = 'active'
+                    AND twin.entity_id <> s.entity_id))
+         ORDER BY s.surface_id
+         LIMIT ${DUE_SCAN_PAGE} OFFSET ${offset}`;
+      if (!rows.length) return;
+      const page = rows
+        // Collision-shaped first WITHIN the page: the scan order itself must
+        // stay stable (surface_id) so paging cannot skip or repeat a row.
+        .sort((a, b) => Number(b.collision) - Number(a.collision))
+        .map((row) => ({
+          form: row.form,
+          locale: row.locale,
+          entityId: row.entity_id,
+          source: row.source as SurfaceSource,
+          hearing: row.hearing as 'grant' | 'retain',
+        }));
+      yield page;
+      if (rows.length < DUE_SCAN_PAGE) return;
+    }
   }
 
   /** Bank a won claim. The guard re-checks; with the incumbent deprecated it
@@ -737,8 +1002,7 @@ export class WordClaimAdjudicatorService {
    *
    *  Returns whether a row was actually written, so callers tally what
    *  HAPPENED rather than what an outcome counter implies. */
-  private async bank(claim: ContestedClaim, dryRun: boolean): Promise<boolean> {
-    if (dryRun) return false;
+  private async bank(claim: WordClaimIdentityFields): Promise<boolean> {
     await this.prisma.$transaction((tx) =>
       addSurfaces(
         tx,
@@ -762,8 +1026,7 @@ export class WordClaimAdjudicatorService {
 
   /** A losing newcomer is REMEMBERED as wrong (status 'deprecated'), so no
    *  future sweep re-proposes it — R5-6b applied to claims. */
-  private async refuse(claim: ContestedClaim, dryRun: boolean): Promise<void> {
-    if (dryRun) return;
+  private async refuse(claim: WordClaimIdentityFields): Promise<void> {
     await this.prisma.$transaction((tx) =>
       addSurfaces(tx, claim.entityId, [
         {
@@ -797,34 +1060,14 @@ export class WordClaimAdjudicatorService {
    * still satisfies the sweep's "this concept is labelled" watermark, so no
    * nightly pass re-offers it. Only a fresh hearing can give the word back.
    */
-  private async evictIncumbents(incumbents: Claimant[]): Promise<void> {
-    await this.takeTheWord(
-      incumbents
-        .map((inc) => inc.aliasId)
-        .filter((id): id is string => id !== null),
-    );
-  }
-
   /**
-   * RETRACTION IS EVICTION WITHOUT A RIVAL (2026-08-12).
-   *
-   * A mis-banked surface is a wrong word→concept claim, and the corpus already
-   * knows exactly how to take a word away from a concept: `takeTheWord` — the
-   * encoding eviction has used since 0e439c897. Retraction is not new
-   * machinery, it is the SAME verdict reached in a hearing that has one
-   * claimant instead of two, so it writes the same rows and leaves the same
-   * memory: the word stops grounding, the label survives if the row was one,
-   * and the stamp records WHICH rule took it, so a future version bump
-   * re-opens this retraction the way it re-opens any other verdict.
+   * ...and RETRACTION IS EVICTION WITHOUT A RIVAL (2026-08-12), which is why
+   * both arrive here as one list of surface ids. A mis-banked surface is a
+   * wrong word→concept claim, and taking a word from a concept is one move
+   * whether a rival won it or nobody wanted it: the word stops grounding, the
+   * label survives if the row was one, and the verdict in the ledger records
+   * which rule took it.
    */
-  private async retract(
-    held: { surfaceId: string },
-    dryRun: boolean,
-  ): Promise<void> {
-    if (dryRun) return;
-    await this.takeTheWord([held.surfaceId]);
-  }
-
   private async takeTheWord(ids: string[]): Promise<void> {
     if (!ids.length) return;
     await this.prisma.$executeRaw`

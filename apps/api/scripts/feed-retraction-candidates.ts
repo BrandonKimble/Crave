@@ -6,10 +6,11 @@
  *
  * A wrong surface is a wrong word→concept claim, so retraction is the CLAIMS
  * machinery, not a new mechanism: this script only decides WHICH claims are
- * offered, exactly like `rehear-word-claims.ts` (stale rule version) and the
- * vocabulary sweep (`--concepts`). Nothing here edits a row by hand; the judge
- * decides and its verdict is written by the adjudicator, with the rule version
- * stamped so the decision can itself be re-opened.
+ * offered. Since H5 (2026-08-12) it does not even own that — the due-predicate
+ * lives in the adjudicator (`dueClaims`), and this script asks it for the
+ * COLLISION-SHAPED subset. That is the difference between the two drivers:
+ * `rehear-word-claims.ts` offers everything due in a locale, this one offers
+ * the highest-yield shape first when a budget will only reach some of it.
  *
  * THE PROBE — surface vs NAME collision. A surface whose `form_folded` equals
  * a DIFFERENT active entity's `identity_key`, of the SAME type, is a word that
@@ -22,49 +23,40 @@
  * uncontested is precisely why the judge never met it, until the single-
  * claimant hearing (word-claim-adjudicator.service.ts).
  *
- * WHAT IS EXCLUDED, AND WHY:
- *   - JUDGE-UPHELD ROWS (`claim_judge_version IS NOT NULL AND status =
- *     'active'`). A hearing already ruled this pairing right. Re-offering it
- *     would pay for the same answer forever — the stamp IS the memory, on the
- *     upholding side as much as the losing side.
- *   - ROWS WHOSE OWNER IS THE NAMED ENTITY. An entity holding a surface that
- *     folds to its own name is not a collision, it is a spelling of itself.
- *   - TESTIMONY SOURCES. Only INFERRED claims are re-offered, the same set
- *     `staleVerdictClaims` selects: testimony is a real person's word, not a
- *     hearing anyone lost, and it is unevictable by law elsewhere in this
- *     machinery. Feeding it would ask the judge a question whose answer
- *     nothing may act on.
- *   - DISPLAY-ONLY AND DEPRECATED ROWS. They hold no recall claim, so there is
- *     nothing to take back.
+ * WHAT IS EXCLUDED, AND WHY (all of it now enforced by the due-predicate, not
+ * by a query copy that could drift from it):
+ *   - CLAIMS ALREADY DECIDED AT THE CURRENT RULE. A hearing ruled on this
+ *     pairing; re-offering it would pay for the same answer forever. A rule
+ *     bump re-opens it — that is the ONLY thing that does.
+ *   - TESTIMONY SOURCES. Only INFERRED claims are offered: testimony is a real
+ *     person's word, not a hearing anyone lost, and it is unevictable by law
+ *     elsewhere in this machinery.
+ *
+ * The HEARING KIND is no longer asserted here. A live recall row can only be
+ * asked "should this still hold?" and a lost row can only be asked "may this
+ * be taken?" — the row's state decides, so the feed cannot mis-state the
+ * question and pay for an answer that cannot act.
  *
  * Run:
  *   npx ts-node -T scripts/feed-retraction-candidates.ts                 # dry run
  *   npx ts-node -T scripts/feed-retraction-candidates.ts --locale vi --limit 20
- *   npx ts-node -T scripts/feed-retraction-candidates.ts --limit 20 --apply
+ *   npx ts-node -T scripts/feed-retraction-candidates.ts --locale vi --limit 20 --apply
  *
- * --apply SPENDS REAL LLM CALLS and writes verdicts. The corpus-wide run is
- * sequenced AFTER the v8 dedupe (a merge removes twins, and a hearing held
- * against a duplicate that is about to disappear is a question about nothing).
+ * --apply SPENDS REAL LLM CALLS and writes verdicts; beyond the standing cap
+ * it refuses with an estimate to approve (--approve-drain <hash>).
  */
 import 'dotenv/config';
 import { NestFactory } from '@nestjs/core';
 import { AppModule } from '../src/app.module';
+import { WordClaimAdjudicatorService } from '../src/modules/content-processing/entity-resolver/word-claim-adjudicator.service';
+import { CLAIM_JUDGE_PROMPT_VERSION } from '../src/modules/content-processing/entity-resolver/claim-judge-rule';
 import {
-  WordClaimAdjudicatorService,
-  type ContestedClaim,
-} from '../src/modules/content-processing/entity-resolver/word-claim-adjudicator.service';
-import { PrismaService } from '../src/prisma/prisma.service';
+  ClaimRehearingBudgetService,
+  DrainExceedsStandingCapError,
+  StaleDrainApprovalError,
+} from '../src/modules/content-processing/entity-resolver/claim-rehearing-budget.service';
+import { WORD_CLAIM_LANE } from '../src/modules/content-processing/entity-resolver/word-claim-lane';
 import { stopCronsForScript } from '../src/shared/utils/stop-crons';
-
-interface CandidateRow {
-  form: string;
-  locale: string;
-  entity_id: string;
-  source: string;
-  owner: string;
-  owner_type: string;
-  named: string;
-}
 
 /** Claims per adjudicate() call — the adjudicator batches 10 per LLM call,
  *  so this only bounds how much work one transaction wave does. */
@@ -76,8 +68,9 @@ async function main(): Promise<void> {
     const i = argv.indexOf(`--${name}`);
     return i >= 0 ? (argv[i + 1] ?? null) : null;
   };
-  const locale = flag('locale');
+  const locale = flag('locale') ?? 'vi';
   const limit = Number(flag('limit') ?? 50);
+  const approvedHash = flag('approve-drain');
   const forms = (flag('forms') ?? '')
     .split(',')
     .map((f) => f.trim())
@@ -90,43 +83,48 @@ async function main(): Promise<void> {
   stopCronsForScript(app);
   const out = (m: string) => process.stdout.write(`${m}\n`);
   try {
-    const prisma = app.get(PrismaService);
     const judge = app.get(WordClaimAdjudicatorService);
+    const budget = app.get(ClaimRehearingBudgetService);
 
-    const rows = await prisma.$queryRaw<CandidateRow[]>`
-      SELECT s.form, s.locale, s.entity_id::text, s.source,
-             owner.name AS owner, owner.type::text AS owner_type,
-             named.name  AS named
-        FROM entity_surface s
-        JOIN core_entities owner ON owner.entity_id = s.entity_id
-        JOIN core_entities named
-          ON named.identity_key = s.form_folded
-         AND named.type = owner.type
-         AND named.status = 'active'
-         AND named.entity_id <> s.entity_id
-       WHERE s.status = 'active'
-         AND s.role <> 'display'
-         AND owner.status = 'active'
-         -- INFERRED ONLY (see the header): testimony is evidence, not a claim
-         -- anyone judged.
-         AND s.source IN ('vocabulary', 'sweep', 'knowledge_synthesis',
-                          'seed', 'query_banking', 'synthesis')
-         -- A hearing already upheld this pairing; the stamp is the memory.
-         AND s.claim_judge_version IS NULL
-         AND (${locale === null} OR s.locale = ${locale ?? ''})
-         AND (${forms.length === 0} OR s.form = ANY(${forms}::text[]))
-       ORDER BY s.updated_at ASC
-       LIMIT ${limit}`;
+    const resumed = await judge.resumePendingEffects();
+    if (resumed) out(`resumed=${resumed} decided-but-unexecuted verdicts`);
 
+    const selection = { forms, collisionsOnly: true } as const;
+    const dueTotal = await judge.countDue(locale, selection);
     out(
-      `candidates=${rows.length}${locale ? ` locale=${locale}` : ''}${
-        forms.length ? ` forms=${forms.join(',')}` : ''
-      }`,
+      `candidates=${dueTotal} locale=${locale} rule=v${CLAIM_JUDGE_PROMPT_VERSION}` +
+        (forms.length ? ` forms=${forms.join(',')}` : ''),
     );
-    for (const row of rows) {
+
+    let allowed = limit;
+    try {
+      const authorized = await budget.authorizeDrain({
+        lane: WORD_CLAIM_LANE,
+        ruleVersion: CLAIM_JUDGE_PROMPT_VERSION,
+        dueCount: dueTotal,
+        requested: limit,
+        approvedHash,
+      });
+      allowed = authorized.allowed;
+    } catch (error) {
+      if (
+        error instanceof DrainExceedsStandingCapError ||
+        error instanceof StaleDrainApprovalError
+      ) {
+        out(`REFUSED — ${error.message}`);
+        process.exitCode = 1;
+        return;
+      }
+      throw error;
+    }
+
+    const claims = await judge.dueClaims(locale, {
+      ...selection,
+      limit: allowed,
+    });
+    for (const claim of claims) {
       out(
-        `  "${row.form}" (${row.locale}) banked on ${row.owner}[${row.owner_type}]` +
-          ` — but "${row.named}" IS that word`,
+        `  [${claim.hearing ?? 'grant'}] "${claim.form}" (${claim.locale}) on ${claim.entityId}`,
       );
     }
     if (!apply) {
@@ -134,17 +132,6 @@ async function main(): Promise<void> {
       return;
     }
 
-    const claims: ContestedClaim[] = rows.map((row) => ({
-      form: row.form,
-      locale: row.locale,
-      entityId: row.entity_id,
-      source: row.source as ContestedClaim['source'],
-      // THE RETAIN QUESTION: these rows are already banked and already
-      // grounding mentions. The hearing asks whether they should be, which is
-      // a real question even when nothing contests them — the whole reason a
-      // mis-bank with no rival was previously uncorrectable.
-      hearing: 'retain' as const,
-    }));
     for (let i = 0; i < claims.length; i += BATCH) {
       const summary = await judge.adjudicate(claims.slice(i, i + BATCH));
       for (const c of summary.cases) {

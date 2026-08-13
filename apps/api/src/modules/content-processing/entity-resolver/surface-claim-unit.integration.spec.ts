@@ -2,6 +2,7 @@ import { PrismaClient } from '@prisma/client';
 import { randomUUID } from 'crypto';
 import { addSurfaces } from './entity-surface.service';
 import { identityInsertData } from './entity-identity';
+import { ClaimVerdictLedgerService } from './claim-verdict-ledger.service';
 import {
   CLAIM_JUDGE_PROMPT_VERSION,
   WordClaimAdjudicatorService,
@@ -75,6 +76,7 @@ describe('the claim unit is the FORM, not the fold', () => {
         warn: jest.fn(),
         error: jest.fn(),
       } as never,
+      new ClaimVerdictLedgerService(prisma as never),
     );
 
   afterAll(async () => {
@@ -292,19 +294,19 @@ describe('the claim unit is the FORM, not the fold', () => {
 
     // Current-rule verdicts are settled: nothing re-offers them.
     const judgeService = adjudicatorWith(refusingJudge);
-    const settled = await judgeService.staleVerdictClaims('es', {
-      forms: [word],
-    });
-    expect(settled).toEqual([]);
+    const settled = await judgeService.dueClaims('es', { forms: [word] });
+    expect(settled.map((c) => c.entityId)).not.toContain(loser);
 
-    // Age the verdict — i.e. the rule moved on — and the claim comes due.
+    // Age the VERDICT — i.e. the rule moved on — and the claim comes due.
+    // The lever is the ledger row, not a stamp on the surface: that is what
+    // makes the same lever work for a claim that WON, which left no losing
+    // row to age.
     await prisma.$executeRawUnsafe(
-      `UPDATE entity_surface SET claim_judge_version = claim_judge_version - 1
-        WHERE entity_id = $1::uuid AND form = $2`,
+      `UPDATE claim_verdicts SET rule_version = rule_version - 1
+        WHERE lane = 'word_claim' AND subject->>'entityId' = $1`,
       loser,
-      word,
     );
-    const due = await judgeService.staleVerdictClaims('es', { forms: [word] });
+    const due = await judgeService.dueClaims('es', { forms: [word] });
     expect(due.map((c) => c.entityId)).toContain(loser);
 
     // Re-heard under the new rule, BOTH are upheld — and the win must land,

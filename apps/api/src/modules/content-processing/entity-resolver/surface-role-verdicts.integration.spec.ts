@@ -3,6 +3,7 @@ import { randomUUID } from 'crypto';
 import { addSurfaces, foldSurfacesFromMerge } from './entity-surface.service';
 import { identityInsertData } from './entity-identity';
 import { WordClaimAdjudicatorService } from './word-claim-adjudicator.service';
+import { ClaimVerdictLedgerService } from './claim-verdict-ledger.service';
 
 /**
  * THE ROLE IS A VERDICT — proven against a real database.
@@ -110,6 +111,7 @@ describe('surface role verdicts — proven against a live database', () => {
         warn: jest.fn(),
         error: jest.fn(),
       } as never,
+      new ClaimVerdictLedgerService(prisma as never),
     );
 
     const summary = await adjudicator.adjudicate([

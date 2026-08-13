@@ -3,6 +3,7 @@ import { randomUUID } from 'crypto';
 import { LabelSweepService, sweepPass } from './label-sweep.service';
 import { identityInsertData } from '../content-processing/entity-resolver/entity-identity';
 import { WordClaimAdjudicatorService } from '../content-processing/entity-resolver/word-claim-adjudicator.service';
+import { ClaimVerdictLedgerService } from '../content-processing/entity-resolver/claim-verdict-ledger.service';
 
 /**
  * THE SWEEP COUNTS THE SURFACES IT WINS ON APPEAL — proven against a real
@@ -57,6 +58,7 @@ describe('label sweep appeal tally — proven against a live database', () => {
       warn: jest.fn(),
       error: jest.fn(),
     } as never,
+    new ClaimVerdictLedgerService(prisma as never),
   );
 
   afterAll(async () => {
