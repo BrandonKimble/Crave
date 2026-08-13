@@ -1,9 +1,9 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import {
-  DEFAULT_LOCALE,
   SUPPORTED_LOCALES,
   lookupSupported,
+  primaryLanguageSubtag,
 } from '../../shared/locale';
 import type {
   DisplayableEntity,
@@ -223,8 +223,9 @@ export class EntityDisplayService {
   // implicit, one function changes". That day was 2026-08-11 (L2), and it was
   // one function — this one, deleted. English is a locale.
 
+  /** The locale module owns this rule — see `primaryLanguageSubtag`. */
   private primarySubtag(locale: string): string {
-    return (locale || DEFAULT_LOCALE).split('-')[0].toLowerCase();
+    return primaryLanguageSubtag(locale);
   }
 
   /** The active locale set, for the sweep and the seeder. */

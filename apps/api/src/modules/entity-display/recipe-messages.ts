@@ -21,7 +21,7 @@
  * are authored here per locale exactly once. The only thing that varies per
  * row is the CONCEPT NOUN inside them, which comes from the display role of entity_surface.
  */
-import { DEFAULT_LOCALE } from '../../shared/locale';
+import { DEFAULT_LOCALE, primaryLanguageSubtag } from '../../shared/locale';
 
 export type RecipeMessageKey =
   | 'cuisine_best.title'
@@ -164,7 +164,7 @@ export function renderMessage(
   locale: string,
   params: Readonly<Record<string, string>> = {},
 ): string {
-  const primary = (locale || DEFAULT_LOCALE).split('-')[0].toLowerCase();
+  const primary = primaryLanguageSubtag(locale);
   const catalogue = CATALOGUES[primary] ?? CATALOGUES[DEFAULT_LOCALE];
   const template = catalogue[key] ?? CATALOGUES[DEFAULT_LOCALE][key];
   return template.replace(/\{(\w+)\}/g, (match, name: string) =>

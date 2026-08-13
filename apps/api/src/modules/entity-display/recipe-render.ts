@@ -25,6 +25,7 @@ import {
   RECIPE_TRENDING,
   RECIPE_WEEKLY_TASTING,
 } from '../home/curated-lists.constants';
+import { DEFAULT_LOCALE, primaryLanguageSubtag } from '../../shared/locale';
 import { localizedMonth, renderMessage } from './recipe-messages';
 
 /**
@@ -38,7 +39,12 @@ import { localizedMonth, renderMessage } from './recipe-messages';
  * implicit-English label, and trust every authored label as written.
  */
 export function conceptCase(label: string, locale: string): string {
-  if ((locale || 'en').split('-')[0].toLowerCase() !== 'en') {
+  // The convention belongs to the DEFAULT locale's language, not to a literal
+  // 'en' typed here: the stored rows were built by an English title-case regex
+  // and the default locale is what names that corpus. Both sides go through
+  // the locale module's own parse, so a malformed tag lands on the fallback
+  // rather than on an accidental non-match.
+  if (primaryLanguageSubtag(locale) !== primaryLanguageSubtag(DEFAULT_LOCALE)) {
     return label;
   }
   return label.replace(/\b\w/g, (char) => char.toUpperCase());

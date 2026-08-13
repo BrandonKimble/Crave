@@ -6,6 +6,7 @@ import {
   lookupSupported,
   negotiateLocale,
   parseAcceptLanguage,
+  primaryLanguageSubtag,
 } from './accept-language';
 
 describe('Accept-Language negotiation (M1)', () => {
@@ -146,5 +147,50 @@ describe('bankableLanguageTag — the tag a claim about a WORD may carry', () =>
     // Casing is canonicalized, not rejected.
     expect(bankableLanguageTag('ES')).toBe('es');
     expect(bankableLanguageTag('  vi  ')).toBe('vi');
+  });
+});
+
+/**
+ * THE DISPLAY PATHS' LANGUAGE KEY (H2 residue, 2026-08-12). Three sites —
+ * the label-row prefix band, the message catalogue, and the title-casing
+ * convention — each hand-rolled `locale.split('-')[0].toLowerCase()`. These
+ * cases pin EQUIVALENCE for every input those sites see today, and pin the
+ * one place the module deliberately differs: a malformed tag.
+ */
+describe('primaryLanguageSubtag — the module owns the truncation', () => {
+  it('is byte-identical to the retired split for every well-formed input', () => {
+    const split = (locale: string, fallback = 'en') =>
+      (locale || fallback).split('-')[0].toLowerCase();
+    for (const tag of [
+      'en',
+      'es',
+      'vi',
+      'zh',
+      'es-MX',
+      'es-419',
+      'zh-Hans',
+      'zh-Hant',
+      'pt-BR',
+      'EN-us',
+      'ES',
+    ]) {
+      expect(primaryLanguageSubtag(tag)).toBe(split(tag));
+    }
+  });
+
+  it('falls back exactly where the split did — empty, null, undefined', () => {
+    expect(primaryLanguageSubtag('')).toBe('en');
+    expect(primaryLanguageSubtag(null)).toBe('en');
+    expect(primaryLanguageSubtag(undefined)).toBe('en');
+    expect(primaryLanguageSubtag('', 'es')).toBe('es');
+  });
+
+  it('a MALFORMED tag lands on the fallback, not on a language nobody parsed', () => {
+    // The split read 'es_MX' as the language 'es_mx' and then filtered label
+    // rows on a prefix nothing can match: an English fallback with no visible
+    // cause. Same floor as every other locale write — see normalizeLocaleTag.
+    expect(primaryLanguageSubtag('es_MX')).toBe('en');
+    expect(primaryLanguageSubtag('not a locale')).toBe('en');
+    expect(primaryLanguageSubtag('und')).toBe('en');
   });
 });

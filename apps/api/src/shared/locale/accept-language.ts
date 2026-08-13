@@ -315,3 +315,27 @@ export function bankableLanguageTag(
   const base = new Intl.Locale(normalized).language.toLowerCase();
   return base && base !== 'und' ? base : undefined;
 }
+
+/**
+ * THE PRIMARY LANGUAGE SUBTAG of a tag, for the paths that key on a LANGUAGE
+ * rather than on a full locale: which message catalogue renders, which prefix
+ * band of label rows to read, which casing convention a title follows.
+ *
+ * IT LIVES HERE BECAUSE THE MODULE OWNS THE RULE (H2 residue, 2026-08-12).
+ * Three display sites hand-rolled `locale.split('-')[0].toLowerCase()`, which
+ * is a truncation, not a parse: it reads `es_MX` (an underscore typo, or any
+ * malformed tag) as the language `es_mx` and then filters label rows on a
+ * prefix nothing can match — a silent English fallback with no way to see
+ * why. Routing through `normalizeLocaleTag` makes a malformed tag land on the
+ * FALLBACK, which is the same honest floor every other locale write uses, and
+ * leaves every well-formed tag exactly where the split put it
+ * (`es-MX`→`es`, `zh-Hans`→`zh`, `ES`→`es`, ``→ the fallback).
+ */
+export function primaryLanguageSubtag(
+  raw: string | null | undefined,
+  fallback: string = DEFAULT_LOCALE,
+): string {
+  return (
+    bankableLanguageTag(raw) ?? bankableLanguageTag(fallback) ?? DEFAULT_LOCALE
+  );
+}
