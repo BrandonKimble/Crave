@@ -1644,5 +1644,125 @@
     "expect": {
       "restaurants": ["Liberty Halal Cart"]
     }
+  },
+  {
+    "id": "B1-availability-retailer-bleed",
+    "why": "Part-1 bleed class (real doc t1_jwir5du, live defect: Local Pastures->yoghurt in corpus): the praised yogurt claim must stay on Mother Culture; the retailer named only as where to BUY it (packaged, availability) must emit nothing.",
+    "posts": [
+      {
+        "id": "t3_yog",
+        "title": "Best yogurt in Austin?",
+        "body": "Looking for really good yogurt — farmers market or shops. Any recs?",
+        "extract_from_post": false,
+        "comments": [
+          {
+            "id": "t1_jwir5du",
+            "body": "Mother culture is great! You can also buy it at local pastures on oltorf if you can’t make it to a weekend farmers market"
+          }
+        ]
+      }
+    ],
+    "expect": {
+      "restaurants": ["mother culture"],
+      "notRestaurants": ["local pastures"],
+      "somePraise": true
+    }
+  },
+  {
+    "id": "B2-trashed-neighbor-not-positive",
+    "why": "Part-1/3b wrong-attachment worst case (real doc t3_1v8hsex): the TRASHED monkey bar french dip/burger must never attach anywhere as a positive claim; 4 Charles keeps its implicit standing without inheriting the trashed dish as praise.",
+    "posts": [
+      {
+        "id": "t3_1v8hsex",
+        "title": "4 Charles vs Au Cheval vs Monkey Bar",
+        "body": "I’ve dined at 4 Charles over a dozen times, Au Cheval NYC once, and most recently, monkey bar once.\n\nI’m not trying to be a 4 Charles homer here. I thought the Au Cheval burger was very very good, and similar, but not identical to the 4 Charles burger. However, I found the Monkey Bar Burger, bread, patty, and all, to be absolute trash compared to 4 Charles. Similarly, I found the monkey bar French dip to be trash compared to 4 Charles. It felt like it could’ve been microwave food. The bread was wrong. The pate was wrong. It was all wrong.",
+        "extract_from_post": true
+      }
+    ],
+    "expect": {
+      "restaurants": ["au cheval"],
+      "notRestaurants": ["monkey bar"]
+    }
+  },
+  {
+    "id": "B3-attribute-spray-expensive",
+    "why": "Part-3a sibling blanket-tagging (real doc t1_jvlagd6): expensive belongs to the hedged/negative Soto clause only; it must not spray onto the endorsed Uchi, and hedged Soto emits nothing.",
+    "posts": [
+      {
+        "id": "t3_uchi",
+        "title": "Uchi or Soto?",
+        "body": "Which would you pick for sushi?",
+        "extract_from_post": false,
+        "comments": [
+          {
+            "id": "t1_jvlagd6",
+            "body": "Uchi all the way.\n\nSoto us just \"so so\" way more expensive than Uchi, not nearly as good."
+          }
+        ]
+      }
+    ],
+    "expect": {
+      "restaurants": ["uchi"],
+      "notRestaurants": ["soto"],
+      "notAttributes": ["expensive"],
+      "somePraise": true
+    }
+  },
+  {
+    "id": "B4-v8-miss-fine-picks",
+    "why": "Part-3c v8-only miss (real docs t3_1ux5umn + t1_oxom0h8): \"Levain, Utopia, L’Industrie, Los Tacos are all fine picks\" is an ANSWER-TEST endorsement of all four; the critical frame must not silence it, and the plan post itself emits nothing.",
+    "posts": [
+      {
+        "id": "t3_1ux5umn",
+        "title": "NYC foodie itinerary feedback?",
+        "body": "Staying in Manhattan from Jun 22-26 for context. This is just my foodie itinerary, not including sight-seeing. Any thoughts/feedback is appreciated.\n\nDinner Reservations: Il Gattopardo and Gallagher’s Steakhouse (these were based more on location/convenience because most places were booked up)\n\nBreakfast: Utopia Bagels on 3rd Ave + Blank Street Coffee, Librae Bakery, Apollo Bagels on 35th St + Culture Espresso\n\nOther - L’industrie, Los Tacos No. 1, LENWICH, Shake Shack, Cava, sweetgreen",
+        "extract_from_post": true,
+        "comments": [
+          {
+            "id": "t1_oxom0h8",
+            "body": "Oh dear. Candidly? Outside of the chains this list reads like it was pulled mainly from Tiktok shorts and could be improved. It also sounds like you’re choosing based heavily on convenience, which I get for a brief visit but frankly won’t give you an exactly stellar experience.\n\nShake Shack original location is cool for a trip like this. But honestly, if you want a quick bite/convenience, skip at least one of the other chains and hit a hot dog/halal cart for a more representative experience of Manhattan. At the *very* least, google \"best coffee NYC\" and delete Blank Street with prejudice. It’s Starbucks or worse with a slick coat of paint.\n\nFor a quick visit, Levain, Utopia, L’Industrie, Los Tacos are all fine picks."
+          }
+        ]
+      }
+    ],
+    "expect": {
+      "perSource": [
+        {
+          "source": "t1_oxom0h8",
+          "restaurants": ["levain", "utopia", "lindustrie", "los tacos"],
+          "notRestaurants": ["blank street"]
+        },
+        {
+          "source": "t3_1ux5umn",
+          "emitsNothing": true
+        }
+      ]
+    }
+  },
+  {
+    "id": "B5-bagel-neighbor-bleed",
+    "why": "Part-1 seed thread (real doc t1_ob9w2uz): the pizza-list picks emit; \"Best\" (bare shorthand, no fuller form) must not mint; Apollo Bagels is panned and must not emit; bagel must not attach to the pizza picks (its only in-doc home is the Apollo/bagel-shop sentences).",
+    "posts": [
+      {
+        "id": "t3_joes",
+        "title": "Is Joe’s the best slice in NYC?",
+        "body": "Visiting and everyone says Joe’s. Thoughts?",
+        "extract_from_post": false,
+        "comments": [
+          {
+            "id": "t1_ob9w2uz",
+            "body": "Big disagree on Joe’s. Native Brooklynite zillennial here. Joe’s Carmine is the one though. The 14th street one is fine too. Can’t vouch for the rest of the Joe’s. I would say Vinnie’s, Williamsburg Pizza, Best, Smiling, Ben’s, and L&B Spumoni.\n\nApollo Bagels is awful bc it is venture capital disney version of nyc. I will not acknowledge it as a valid food establishment in this here fine city. Almost any bagel store will be better, though if the point is both a great bagel AND the spirit of a normal (read: casual) quick bagel experience, I would say H&H, Smith Street Bagels, Bakers Dozen, Terrace Bagels, Tompkins Square Bagels, and also Bagelsmith honorable mention for being one of the few bagel shops carrying the torch of all night bagels (a dying institution)."
+          }
+        ]
+      }
+    ],
+    "expect": {
+      "restaurants": [
+        "vinnies",
+        "williamsburg pizza",
+        "tompkins square bagels"
+      ],
+      "notRestaurants": ["best", "apollo bagels"]
+    }
   }
 ]

@@ -122,7 +122,12 @@ const RESPONSE_SCHEMA: Record<string, unknown> = {
         type: 'object',
         properties: {
           n: { type: 'number' },
-          verdict: { type: 'string' },
+          verdict: {
+            type: 'string',
+            enum: ['satisfies', 'cousin', 'reject'],
+            description:
+              'The DIRECTED question: satisfies = the same thing, a variant, or another name for it; cousin = same family, different craving (swapped protein / changed form); reject = an ingredient, a broad category that merely contains it, or unrelated',
+          },
         },
         required: ['n', 'verdict'],
       },

@@ -1,32 +1,37 @@
 export const SEARCH_QUERY_RESPONSE_JSON_SCHEMA = {
   type: 'object',
-  description: 'Structured representation of the search request',
+  description:
+    'Collectible terms the residue fragment PLAINLY names. Invention is the expensive error; empty arrays are a first-class verdict',
   properties: {
     restaurants: {
       type: 'array',
       items: { type: 'string' },
-      description: 'Restaurant names explicitly requested or implied',
+      description:
+        'A restaurant name the fragment plainly names — never implied or guessed',
     },
     foods: {
       type: 'array',
       items: { type: 'string' },
-      description: 'Food or dish names derived from the query',
+      description:
+        'The dish the fragment names (THE ORDER TEST: sayable to a server as the thing you want), plus each broader phrase that passes THE PREDICTION TEST, most specific first; never a wrapper (special, combo, menu) or a cuisine',
     },
     foodAttributes: {
       type: 'array',
       items: { type: 'string' },
-      description: 'Food-level attributes such as dietary or flavor notes',
+      description:
+        'Food properties passing THE STANDALONE TEST (dietary, flavor, preparation, cuisine-of-a-dish); praise words are never collectible',
     },
     restaurantAttributes: {
       type: 'array',
       items: { type: 'string' },
-      description: 'Restaurant-level attributes such as ambiance or amenities',
+      description:
+        'Place properties passing THE STANDALONE TEST (setting, service, price level, neighborhood, occasion, venue kind, cuisine-of-a-place)',
     },
     ingredients: {
       type: 'array',
       items: { type: 'string' },
       description:
-        'Ingredient nouns the user searches BY (bare ingredient or "with X"); empty when the query names dishes',
+        'A component named as contents rather than as an order ("burrata", "something with miso"). A term is never both a food and an ingredient — the dish reading wins when it is orderable as-is',
     },
   },
   required: [
@@ -46,7 +51,8 @@ export const CUISINE_EXTRACTION_RESPONSE_JSON_SCHEMA = {
     cuisines: {
       type: 'array',
       items: { type: 'string' },
-      description: 'List of cuisine names inferred from the summary',
+      description:
+        'Cuisines passing THE TRADITION TEST — the name of a cooking tradition a diner would give when asked "what kind of food do they make?"; empty when the summary supports none (the cheap error) — never a dish, diet, format, or quality stretched into one',
     },
   },
   required: ['cuisines'],
@@ -59,7 +65,8 @@ export const RESTAURANT_PLACE_CHOOSER_RESPONSE_JSON_SCHEMA = {
     decision: {
       type: 'string',
       enum: ['select', 'reject'],
-      description: 'Select one candidate or reject all candidates.',
+      description:
+        'select only when BOTH the IDENTITY gate and the GEOGRAPHY gate pass for one candidate; otherwise reject — reject means retrieval continues (the cheap error), a wrong select grounds the wrong place permanently',
     },
     candidateId: {
       anyOf: [{ type: 'string' }, { type: 'null' }],
@@ -83,7 +90,7 @@ export const MODERATION_RESPONSE_JSON_SCHEMA = {
     allowed: {
       type: 'boolean',
       description:
-        'true if the text is safe to publish, false if it must be blocked',
+        'true if the text is safe to publish, false if it must be blocked. Judge intent and target, never individual words; when intent is genuinely unclear, ALLOW',
     },
     reason: {
       type: 'string',
@@ -118,7 +125,7 @@ export const ATTRIBUTE_PLACEMENT_RESPONSE_JSON_SCHEMA = {
       type: 'string',
       enum: ['match', 'new', 'reject'],
       description:
-        'match = same filter as a candidate; new = valid but distinct; reject = not a usable attribute',
+        'reject = term fails the DESCRIBE-VS-JUDGE, STANDALONE, or SCOPE test; match = same filter as a candidate (a diner filtering by one would accept the other); new = a real attribute, distinct from every candidate',
     },
     candidate_id: {
       anyOf: [{ type: 'integer' }, { type: 'null' }],
@@ -143,7 +150,7 @@ export const ENTITY_MATCH_RESPONSE_JSON_SCHEMA = {
       type: 'string',
       enum: ['match', 'new'],
       description:
-        'match = same real-world entity as a candidate; new = a distinct entity not in the shortlist',
+        'THE ONE-THING TEST: match = a diner would treat the two names as one and the same thing (a name VARIANT); new = a different SPECIFICATION, or any doubt — doubt says new, because a wrong match FUSES two real entities',
     },
     candidate_id: {
       anyOf: [{ type: 'integer' }, { type: 'null' }],
@@ -264,7 +271,7 @@ export const COLLECTION_RESPONSE_JSON_SCHEMA = {
           ),
           restaurant: withDescription(
             { type: 'string' },
-            'Canonical restaurant name: lowercase, no articles (the/a/an), standardized spacing',
+            'Canonical restaurant name: lowercase, no articles, diacritics kept as written; never expanded, corrected, or completed from world knowledge of the venue, and never a bare generic word kept from a list slot ("Best", "Good") — such a slot emits the fuller observed form or nothing',
           ),
           restaurant_attributes: withDescription(
             { ...NULLABLE_STRING_ARRAY_SCHEMA },
@@ -272,7 +279,7 @@ export const COLLECTION_RESPONSE_JSON_SCHEMA = {
           ),
           food: withDescription(
             { ...NULLABLE_STRING_SCHEMA },
-            'Complete compound food term as primary name, singular form, excluding attributes',
+            'The order-name (THE ORDER TEST: sayable to a server as the thing you want), complete compound term, singular, excluding attributes; null when this source names no orderable dish — never a delivery wrapper (special, combo, menu), a cuisine, or a food token from the venue name',
           ),
           food_categories: withDescription(
             { ...NULLABLE_STRING_ARRAY_SCHEMA },
@@ -284,15 +291,15 @@ export const COLLECTION_RESPONSE_JSON_SCHEMA = {
           ),
           food_attributes: withDescription(
             { ...NULLABLE_STRING_ARRAY_SCHEMA },
-            'Food attributes: dietary filters, preparation styles, textures, flavors, or other descriptors applied to the dish',
+            'Dish properties THIS source states for THIS dish (dietary, preparation, texture, flavor), each passing the DESCRIBE-not-judge bar and THE STANDALONE TEST; never praise, never a comparison, never a property stated for a neighboring dish or venue — empty is the normal output',
           ),
           is_menu_item: withDescription(
             { ...NULLABLE_BOOLEAN_SCHEMA },
-            'True if specific menu item, false if general food type',
+            'True only when THIS source names one specific orderable item (two diners ordering "the X" get the same thing); false for families and for any dish inherited from the ask or a parent — a dish this source never named is never true',
           ),
           general_praise: withDescription(
             { type: 'boolean' },
-            'True if mention contains holistic restaurant praise, regardless of specific food praise',
+            'True ONLY on a restaurant-only mention (food null) that carries holistic place-level endorsement or an ANSWER-TEST pick; every mention with a non-null food is false — dish-directed praise IS the dish connection, never this flag',
           ),
           source_id: withDescription(
             { type: 'string' },
@@ -380,7 +387,12 @@ export const ENTITY_MATCH_BATCH_RESPONSE_JSON_SCHEMA = {
         type: 'object',
         properties: {
           index: { type: 'integer' },
-          decision: { type: 'string', enum: ['match', 'new'] },
+          decision: {
+            type: 'string',
+            enum: ['match', 'new'],
+            description:
+              'THE ONE-THING TEST: match = a name VARIANT of one candidate; new = a different SPECIFICATION, or any doubt — doubt says new, because a wrong match FUSES two real entities',
+          },
           candidateId: { type: ['integer', 'null'] },
           reason: {
             type: 'string',
@@ -503,13 +515,13 @@ export const DISH_KNOWLEDGE_RESPONSE_JSON_SCHEMA = {
             type: 'array',
             items: { type: 'string' },
             description:
-              'Canonical/typical ingredients of the dish as named; singular lowercase; empty when the name is too ambiguous',
+              'Canonical core contents of the dish AS NAMED, from world knowledge; THE IDENTITY-MODIFIER TEST governs — identity words in the name override the standard preparation; empty when the name is too ambiguous (an unanswered dish is asked again; an invented list is indistinguishable from a real one forever)',
           },
           aliases: {
             type: 'array',
             items: { type: 'string' },
             description:
-              'ESTABLISHED shorthand or co-names for exactly this dish; empty for most dishes',
+              'Established co-names passing THE EXCLUSIVITY TEST — the alias points to nothing but this dish anywhere in the food world; never invented, shortened, or translated; empty is the expected default',
           },
         },
         required: ['index', 'ingredients', 'aliases'],

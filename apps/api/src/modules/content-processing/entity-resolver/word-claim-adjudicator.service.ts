@@ -768,7 +768,11 @@ export class WordClaimAdjudicatorService {
                     type: 'array',
                     items: { type: 'boolean' },
                   },
-                  reason: { type: 'string' },
+                  reason: {
+                    type: 'string',
+                    description:
+                      'The stated ground for the ruling — a ruling with no stated ground is not a ruling; a blank reason leaves the claim unjudged',
+                  },
                 },
                 required: ['n', 'a_owns_word', 'incumbents_own_word', 'reason'],
               },
