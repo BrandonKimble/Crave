@@ -90,6 +90,22 @@ type CacheResult = 'hit' | 'miss' | 'skipped';
 // matcher's evidence-tier ladder (exact→prefix→contains→name/alias→fuzzy/
 // edit→embedding). §16 class: derivation, ORDER ONLY — the integers are rank
 // positions on the ladder, never magnitudes, so they cannot act as weights.
+/**
+ * Is this match a row about a CORE ENTITY, as opposed to a query suggestion, a
+ * poll, or a person?
+ *
+ * `AutocompleteMatchDto.entityType` is `EntityType | 'query' | 'poll' | 'user'`,
+ * and the three string lanes put a non-entity value in `entityId` (a poll id,
+ * a user id, or a synthetic `query:<text>`). Asked POSITIVELY against the
+ * enum rather than as a negative list, so a new non-entity lane is excluded by
+ * default instead of leaking a non-uuid into an entity read.
+ */
+function isEntityType(
+  value: AutocompleteMatchDto['entityType'],
+): value is EntityType {
+  return Object.values(EntityType).includes(value as EntityType);
+}
+
 // F582: the ladder ORDER is no longer re-typed here — it is DERIVED from the
 // single canonical ladder (EVIDENCE_TIER_LADDER, entity-text-search). Rows
 // whose evidence is structural-by-construction (query suggestions, injected
@@ -294,17 +310,30 @@ export class AutocompleteService {
     if (!matches.length) {
       return matches;
     }
-    // Only CONCEPTS are localized. Restaurants are proper nouns; dish names
-    // are source-faithful; polls and people are user text.
-    const conceptIds = matches
-      .filter(
-        (match) =>
-          match.entityType === EntityType.restaurant_attribute ||
-          match.entityType === EntityType.food_attribute ||
-          match.entityType === EntityType.ingredient,
-      )
+    // LOCALIZATION IS A PROPERTY OF HAVING A DISPLAY ROW, NOT OF ENTITY TYPE.
+    //
+    // This used to enumerate three types and EXCLUDE food on the reading that
+    // "dish names are source-faithful". That reading was already contradicted
+    // inside the product: `polls.service` localizes `targetDishId` through
+    // this same service, so one dish rendered "limonada" in type-ahead and
+    // its localized label in the poll built on it — the same concept, two
+    // names, one screen apart. It also refused 6,091 es and 5,632 vi food
+    // labels that the sweep had already paid to generate and bank.
+    //
+    // The type test is now gone. A row is localized if a display row exists
+    // for it, which is the only fact that was ever actually being asked
+    // about. Restaurants need no exclusion: they are proper nouns, so nothing
+    // banks display rows for them (0 in the corpus) and `loadLabels` returns
+    // nothing — `displayLabel` floors to the canonical name. The exclusion
+    // that REMAINS is the one that is real: the query/poll/user lanes are not
+    // entities at all. Their `entityId` is a poll id, a user id, or a
+    // synthetic `query:<text>` string — passing that to a uuid column throws,
+    // and `loadLabels` failing closed would silently disable localization for
+    // every row in the response.
+    const entityIds = matches
+      .filter((match) => isEntityType(match.entityType))
       .map((match) => match.entityId);
-    const labels = await this.entityDisplay.loadLabels(conceptIds, locale);
+    const labels = await this.entityDisplay.loadLabels(entityIds, locale);
     return matches.map((match) => ({
       ...match,
       submitToken: match.name,
