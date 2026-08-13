@@ -22,6 +22,7 @@
 import { execSync } from 'node:child_process';
 import {
   existsSync,
+  linkSync,
   mkdirSync,
   readFileSync,
   rmdirSync,
@@ -144,11 +145,30 @@ function apply(mutation: Mutation): Restore {
 }
 
 /**
- * Run a restore and turn a refusal into a recorded FAILURE rather than a
- * thrown one. It is called from `finally`, where an exception would replace
- * whatever verdict the proof had just produced — and the verdict is the thing
- * the run exists to report. The conflict still fails the run; it just does not
- * eat the result it collided with.
+ * A conflict ENDS THE RUN. Thrown by `restoreOrReport` once the failure is
+ * recorded, caught only at the top of `run()`.
+ *
+ * WHY FATAL, not "recorded and carry on" (2026-08-13): a failed restore leaves
+ * a real tracked file MUTATED. Every later mutation re-reads that file to
+ * capture its "original" — and the bytes it captures are the harness's own
+ * defect. Its restore then faithfully writes the DEFECT back and reports
+ * success, so the harness has committed the very sabotage it exists to prove
+ * gets rejected. Demonstrated on railway.json: one conflict, and a later proof
+ * left the manifest permanently holding the mutation. There is no safe work
+ * after a conflict, because the tree is no longer the tree the run measured.
+ */
+class HarnessAborted extends Error {
+  constructor(readonly file: string) {
+    super(`invariant harness ABORTED — ${file} is left mutated`);
+    this.name = 'HarnessAborted';
+  }
+}
+
+/**
+ * Run a restore and turn a refusal into a recorded FAILURE first, so the
+ * verdict it collided with survives into the report — then abort the run.
+ * It is called from `finally`, where a raw exception would replace whatever
+ * verdict the proof had just produced.
  */
 function restoreOrReport(
   restore: Restore | undefined,
@@ -166,6 +186,7 @@ function restoreOrReport(
       what: 'RESTORE ABORTED — the file changed under the harness',
       detail: error.message,
     });
+    throw new HarnessAborted(error.file);
   }
 }
 
@@ -227,6 +248,48 @@ function run(): number {
   const failures: Failure[] = [];
   let proofs = 0;
 
+  try {
+    proofs = proveAll(selected, failures);
+  } catch (error) {
+    if (!(error instanceof HarnessAborted)) throw error;
+    // Every remaining proof is cancelled: see HarnessAborted. Nothing further
+    // is mutated, and the file that conflicted is named in the failure the
+    // restore already recorded.
+    console.log(
+      `\n${'─'.repeat(72)}\nRUN ABORTED after a restore conflict on ${error.file}.\n` +
+        `No further mutation was applied — a later proof would have read the\n` +
+        `harness's own defect as that file's 'original' and written it back for\n` +
+        `good. Resolve 'git diff ${error.file}' before re-running.`,
+    );
+    for (const failure of failures) {
+      console.log(
+        `\n  ${failure.id}\n    ${failure.what}\n    ${failure.detail}`,
+      );
+    }
+    return 1;
+  }
+
+  console.log(
+    `\n${'─'.repeat(72)}\n${selected.length} invariant(s), ${proofs} proof(s) run.`,
+  );
+
+  if (failures.length === 0) {
+    console.log('Every invariant rejected the defect it was bought with.');
+    return 0;
+  }
+
+  console.log(`\n${failures.length} PROBLEM(S):\n`);
+  for (const failure of failures) {
+    console.log(`  ${failure.id}`);
+    console.log(`    ${failure.what}`);
+    console.log(`    ${failure.detail}\n`);
+  }
+  return 1;
+}
+
+/** Prove every selected invariant. Returns the proof count; throws HarnessAborted. */
+function proveAll(selected: Invariant[], failures: Failure[]): number {
+  let proofs = 0;
   for (const invariant of selected) {
     if (invariant.mutations.length === 0) {
       failures.push({
@@ -313,23 +376,7 @@ function run(): number {
       }
     }
   }
-
-  console.log(
-    `\n${'─'.repeat(72)}\n${selected.length} invariant(s), ${proofs} proof(s) run.`,
-  );
-
-  if (failures.length === 0) {
-    console.log('Every invariant rejected the defect it was bought with.');
-    return 0;
-  }
-
-  console.log(`\n${failures.length} PROBLEM(S):\n`);
-  for (const failure of failures) {
-    console.log(`  ${failure.id}`);
-    console.log(`    ${failure.what}`);
-    console.log(`    ${failure.detail}\n`);
-  }
-  return 1;
+  return proofs;
 }
 
 /**
@@ -344,59 +391,128 @@ function run(): number {
  * the code of having moved.
  *
  * There is no per-file trick for that — the mutation IS the shared file — so
- * the runs SERIALIZE. The lock is a directory (mkdir is atomic on every
- * filesystem we run on) holding the owner's pid, and it lives in the temp dir
- * rather than the repo so it can never be committed or gitignored by mistake.
- * A lock whose owner is gone is broken open: a crashed run must not stop the
- * fleet forever, and the probe sweep below means a dead run left nothing
- * behind to protect anyway.
+ * the runs SERIALIZE.
+ *
+ * THE LOCK AND ITS OWNER ARE ONE ATOMIC WRITE (2026-08-13). The lock used to be
+ * `mkdir` followed by a separate `writeFileSync` of the pid, and a release that
+ * unlinked whatever was there. Both halves were stealable, and a 12×8 race
+ * measured EVERY trial overlapping with up to five concurrent "holders":
+ *   - between the mkdir and the pid write the directory is ownerless, so a
+ *     rival reads pid `0`, calls it dead, breaks the lock and takes it — while
+ *     the real owner believes it holds;
+ *   - the release unlinked/rmdir'd without checking WHOSE lock it was, so a run
+ *     that had already been broken open cheerfully deleted its successor's;
+ *   - `process.kill(pid, 0)` throws EPERM for a LIVE process owned by another
+ *     user, and every throw was read as "dead" — so a healthy foreign-owned run
+ *     was declared a corpse.
+ *
+ * The lock is now a FILE PUBLISHED BY `link()`. The pid is written to a
+ * private staging path first, and `link` — atomic, and EEXIST if the name is
+ * taken — publishes that already-complete file under the lock name. The lock
+ * therefore never exists without its owner already inside it.
+ *
+ * `open(path, 'wx')` is NOT enough, and the race says so: create-exclusive is
+ * atomic about the NAME but the file it publishes is EMPTY, and the pid write
+ * that follows is a second syscall. Racing that shape 12×16 still produced 5
+ * overlapping trials with 3 simultaneous holders — a rival reading the empty
+ * file sees owner `0`, calls it a corpse, and breaks a lock that is held. Same
+ * bug as the mkdir version, one syscall smaller. The `link` shape races clean.
+ *
+ * Release reads the file back and unlinks ONLY if the pid is still ours. EPERM
+ * from the liveness probe means ALIVE (the process exists; we merely may not
+ * signal it); only ESRCH is a corpse. It lives in the temp dir rather than the
+ * repo so it can never be committed or gitignored by mistake, and a lock whose
+ * owner is provably gone is still broken open — a crashed run must not stop the
+ * fleet forever, and the probe sweep below means a dead run left nothing behind
+ * to protect anyway.
  */
-const LOCK_DIR = join(
+const LOCK_FILE = join(
   tmpdir(),
   `crave-invariants-${createHash('sha1').update(API_ROOT).digest('hex').slice(0, 12)}.lock`,
 );
 const LOCK_WAIT_MS = 45 * 60 * 1000;
 
+/** The pid recorded in the lock, or 0 when there is no readable owner. */
+function lockOwner(): number {
+  try {
+    return Number(readFileSync(LOCK_FILE, 'utf8').trim()) || 0;
+  } catch {
+    return 0;
+  }
+}
+
+/**
+ * Does this pid still exist? EPERM is the trap: it means the process is THERE
+ * and simply not ours to signal. Only ESRCH — no such process — is death.
+ */
+function pidIsAlive(pid: number): boolean {
+  if (pid <= 0) return false;
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch (error) {
+    return (error as NodeJS.ErrnoException).code !== 'ESRCH';
+  }
+}
+
 function acquireRunLock(): () => void {
   const started = Date.now();
+  const ours = `${process.pid}\n`;
+  // Staged, complete, and private until `link` publishes it. Per-pid, so two
+  // racers never share a staging path.
+  const staging = `${LOCK_FILE}.${process.pid}.staging`;
+  writeFileSync(staging, ours);
+  try {
+    return publishLock(started, ours, staging);
+  } finally {
+    try {
+      unlinkSync(staging);
+    } catch {
+      // Already gone; the published link is the copy that matters.
+    }
+  }
+}
+
+function publishLock(
+  started: number,
+  ours: string,
+  staging: string,
+): () => void {
   for (;;) {
     try {
-      mkdirSync(LOCK_DIR);
-      writeFileSync(join(LOCK_DIR, 'pid'), `${process.pid}\n`);
+      // THE atomic operation: the lock name appears already holding the pid.
+      linkSync(staging, LOCK_FILE);
       return () => {
         try {
-          if (existsSync(join(LOCK_DIR, 'pid')))
-            unlinkSync(join(LOCK_DIR, 'pid'));
-          rmdirSync(LOCK_DIR);
+          // Release only OUR lock. If the pid on disk is not ours we were
+          // broken open and someone else holds it now — deleting it would
+          // hand the tree to a third run while they are mid-mutation.
+          if (readFileSync(LOCK_FILE, 'utf8') === ours) unlinkSync(LOCK_FILE);
         } catch {
-          // Already broken open by someone who thought we were dead. Nothing
-          // to undo — the next run will re-create it.
+          // No lock to release. The next run will re-create it.
         }
       };
-    } catch {
-      const owner = Number(
-        (existsSync(join(LOCK_DIR, 'pid'))
-          ? readFileSync(join(LOCK_DIR, 'pid'), 'utf8')
-          : '0'
-        ).trim(),
-      );
-      let alive = false;
-      try {
-        if (owner > 0) {
-          process.kill(owner, 0);
-          alive = true;
-        }
-      } catch {
-        alive = false;
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== 'EEXIST') throw error;
+      const owner = lockOwner();
+      if (owner === 0) {
+        // The lock is there but we could not read an owner out of it: it is
+        // being released right now, or was just unlinked. NOT a corpse — a
+        // corpse is a pid we positively read and positively buried. Breaking
+        // on an unreadable owner is how the last overlap happened: read fails,
+        // we call it dead, a fresh holder publishes, and our unlink deletes
+        // THEIR live lock. Just retry the link; whoever owns it will show up.
+        continue;
       }
-      if (!alive) {
+      if (!pidIsAlive(owner)) {
         console.log(
           `  (breaking a stale invariant lock left by pid ${owner || '?'})`,
         );
         try {
-          if (existsSync(join(LOCK_DIR, 'pid')))
-            unlinkSync(join(LOCK_DIR, 'pid'));
-          rmdirSync(LOCK_DIR);
+          // Break only the corpse we just diagnosed: if the owner changed
+          // between the read and here, a live run took it and this unlink
+          // would steal it.
+          if (lockOwner() === owner) unlinkSync(LOCK_FILE);
         } catch {
           // Someone else won the race to break it; loop and try to take it.
         }
@@ -406,7 +522,7 @@ function acquireRunLock(): () => void {
         throw new Error(
           `Another invariant run (pid ${owner}) has held the tree for ` +
             `${Math.round(LOCK_WAIT_MS / 60000)} minutes. Nothing was mutated. ` +
-            `If that process is wedged, kill it or remove ${LOCK_DIR}.`,
+            `If that process is wedged, kill it or remove ${LOCK_FILE}.`,
         );
       }
       if (Date.now() - started < 2000) {
