@@ -230,3 +230,25 @@ Note: adapter is LIVE with verdict memory; the FLAG stays off until
 activation — un-gate clearance != run clearance. ⭐05 residual awaiting my
 adjudicator file to settle: 321 und rows outside the claim-judge due
 predicate (theirs to pick up).
+
+## INTAKE 2026-08-13 (⭐05 finisher findings, my lanes)
+
+1. CONFIRMED: v13 shadow BANKED a live recall surface (pan → und/
+   extraction, 01:17 local, during the replay) that flipped es hg-01.
+   Design gap: shadow replays run full resolution incl. surface banking,
+   and surfaces are globally live for recall (unlike shadow entities,
+   which sweeps can't see). RULING NEEDED at activation review:
+   shadow-banked surfaces carry a pending status until activation, OR
+   banking is accepted live and the homograph guard subscribes. Until
+   ruled: known interference with gates during shadow windows.
+2. Gender-fold gap: cuisine adjectives banked one gender only (griega/
+   griego, mexicana/italiana/tailandesa class) — vocabulary-generator
+   fix: bank both genders or fold gender at banking.
+3. camarones containment root cause: name-containment-edge-builder reads
+   identity_key only, never entity_surface — banked plurals invisible.
+   Wave design: containment reads recall surfaces.
+4. Site-3 identityScope adoption (restaurant-cuisine-extraction.ts:346/
+   356): +1,911 rows / 424 attribute entities, deltas reproduce 2x —
+   adopt in the dedupe window.
+5. Docket-population trap: my four lanes' claim keys are not locale-
+   enumerated — not exposed to the und-docket class, by construction.
