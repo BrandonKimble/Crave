@@ -417,6 +417,80 @@ re-pointed 9 — all losses one shape, PARITY with the query side since
   autocomplete pastel-de-arroz + hải sản (corpus), alias-fold-symmetry
   test:db (⭐04 fold governance).
 
+## RED TEAM 2026-08-13 (owner-ordered, 4 lenses; all decisive claims re-verified personally; 4 FIX AGENTS DISPATCHED)
+
+Verdict pattern across all four: THE RULINGS SURVIVED; THE PLUMBING DIDN'T.
+Laws right, adoption proven by hand lists that can't see the next member.
+
+SEVERITY-1 (fix wave 1 — claim ledger territory): H1 takeTheWord replay
+destroys display labels (CASE arms flip on 2nd pass; reachable WITHOUT
+crash via label-sweep re-decide resetting executed_at; 15,565 default
+labels exposed; spec's IDEMPOTENT was claimed-proof) → effects become
+ABSOLUTE (stored computed state). H2 retag moved locale (part of claim
+key) with no ledger migration — 9 orphaned paid verdicts. Budget gate on
+adjudicate() chokepoint + rolling window (6AM sweep bypasses it; cap was
+per-invocation). Backfill outcomes → unknown-pre-ledger (37+25 proven
+mislabeled). Fold version into claim key + wire foldVersion stamping
+(D#1/#2: 4,452 verdicts orphan on tone-mark fold change; column stamped
+by nobody).
+
+SEVERITY-2 (fix wave 2 — locale/gazetteer territory): S1-S3 lenientLocales
+union hands the reader back the vote ('banh mi de arroz'@es-MX → GOAT;
+'cafe'@zh-CN loses coffee; fold artifact manufactures its own language
+evidence on null-locale) → delete lenientLocales, strict arm universal
+(bankedPlainFormsFor has no reader in it), abstain on fold-only evidence.
+F4/F5 one separator classifier (ZWSP hard vs hyphen soft — backwards).
+F6 autocomplete exact arm keeps chain (牛肉面 grounds in search, empty in
+autocomplete). A2/A3 romanization inference fires backwards on loanwords
+(3/20 wrong: coctel/jalapenos/cafe) → writer banks at source;
+default-label ELECTION replaces first-come exemption (16 dishonest rows).
+Containment ≥4 floor redundant with token rule → remove (800 real edges:
+pho/bao/blt).
+
+INFRA (fix wave 3): B1 invariants lock stealable (raced: 5 concurrent
+holders) → atomic wx/flock. B2 restore-conflict must be FATAL (continuing
+committed own defect to stand-in railway.json). B4 chokepoint gate beaten
+by prettier line-wrap + omits .mjs. D#3 derived_food_category_edges = 5th
+derived table with NO job; spec hand-lists 4 → membership DERIVED from
+schema. D#4 spend meter claims all vendors, handles 2 (TomTom envelopes
+asserted-not-true; Vision ungated; raw Gemini REST in run-launch-gate
+outside the lint rule). F9/F10 coverage-truth needs frozen snapshot +
+missing attribution arm (335 UNEXPLAINED rows — the '0 unexplained'
+property currently false).
+
+READ DOOR (fix wave 4 — red team C): write side has one door and held;
+READ side has none — 9 hard-coded locale='und' identity probes (74 twins
+invisible), display's parallel chain can never read und (limonada-not-
+lemonade), generic-token treats und as English, autocomplete localization
+keyed on entity type (contradicts polls for the same dish; 5,656 es food
+labels refused) → identityScope()/recallScope()/displayScope() typed
+fragments, one chain implementation, localization = has-display-row.
+
+SEARCH-PIPELINE verdicts (red team B, feeds A1 step-2, NOT dispatched):
+F1 sectioned gate off-by-default IS the owner's standing decision (pure
+Crave Score) — but all C4 coverage numbers measure the UNGATED shape;
+band-0 precondition of A1. F2 'decomposed' flag written, read by NOBODY —
+parts are full anchors by omission; L1 + one line in buildSearchConstraints.
+F3 lexical trigram widener is a SECOND admission system merged pre-gate —
+A1 must DELETE it, not band it (tres-leches/phony-negroni class). F7
+rejects-subtraction closes C4b fully (103 pairs, single-arm, 0 overlap).
+F8 restaurant-name decomposition ('best pizza' → pizza as hard attribute
+AND) — new, unowned, queue with L1 wiring. F5 server IS honest about
+unknown tokens; MOBILE never renders it (display contract, cheap) — and
+coverage honesty lives in the orchestration wrapper, not runQuery.
+
+⭐04 HANDOFFS SENT: entity-match + place-choice verdict lanes; dead
+llm_decision_records; relevance-gate rule_version column; vocab version
+fingerprint; dedupe un-gate WAIT on wave-1 (shared replay path).
+
+OWNER DECISIONS QUEUED FROM RED TEAM: (1) zh negation semantics — 不辣
+grounds as SPICY (inverts, not widens; different failure than the
+literal-ignore ruling covered); segmentation-layer fix needs a ruling.
+(2) honest-empty display contract (mobile chip for unresolved terms).
+(3) A1 amendments: delete lexical lane + band-0 precondition + F8.
+(4) display-label region legitimacy (es-MX torta) — write door currently
+permits region on display rows; UNRULED.
+
 ## ARCH VERDICT (2026-08-12 red team; the owner's patches-vs-foundations question)
 
 NOT a week of patching — commits deleted machinery and measured claims. But
