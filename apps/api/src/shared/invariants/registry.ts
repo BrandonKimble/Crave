@@ -196,6 +196,10 @@ const SCRATCH = `src/invariant-probe.${RUN_TAG}.ts`;
  *  that only ever looked at apps/api had to be proven to reach. */
 const SCRATCH_NUL_SH = `../../scripts/invariant-probe-nul.${RUN_TAG}.sh`;
 const SCRATCH_UNDECLARED_MJS = `../../scripts/invariant-probe-undeclared.${RUN_TAG}.mjs`;
+/** A repo-root node script — the extension the ledger chokepoint's pathspec
+ *  used to omit, which declared by silence that JavaScript cannot reach the
+ *  database. */
+const SCRATCH_LEDGER_MJS = `../../scripts/invariant-probe-ledger-write.${RUN_TAG}.mjs`;
 
 export const INVARIANTS: readonly Invariant[] = [
   // ── SPEND ────────────────────────────────────────────────────────────
@@ -932,7 +936,8 @@ export const INVARIANTS: readonly Invariant[] = [
       'scripts/check-event-ledger-chokepoint.mjs, on scripts/lib/scan-repo.mjs',
     check: {
       command: 'node ../../scripts/check-event-ledger-chokepoint.mjs',
-      reads: 'every .ts/.tsx/.sql in the repository, tracked or merely present',
+      reads:
+        'every .ts/.tsx/.mjs/.js/.cjs/.sql in the repository, tracked or merely present',
     },
     mutations: [
       {
@@ -943,6 +948,25 @@ export const INVARIANTS: readonly Invariant[] = [
         file: SCRATCH,
         content:
           'declare const tx: {\n  restaurantEvent: { createMany: (a: unknown) => Promise<void> };\n};\ndeclare const rows: unknown[];\nexport const w = async () => tx.restaurantEvent.createMany({ data: rows });\n',
+      },
+      {
+        // THE SAME WRITE, WRAPPED BY PRETTIER. The gate matched line by line
+        // until 2026-08-13, so the formatter's own output walked through it —
+        // no evasion required, just a long enough expression. This mutation is
+        // the one-line mutation above with a newline in it, and nothing else.
+        file: SCRATCH,
+        content:
+          'declare const tx: {\n  restaurantEvent: { createMany: (a: unknown) => Promise<void> };\n};\ndeclare const rows: unknown[];\nexport const w = async () =>\n  tx.restaurantEvent\n    .createMany({ data: rows });\n',
+      },
+      {
+        // THE SAME WRITE IN A NODE SCRIPT. The pathspec was .ts/.tsx/.sql,
+        // which declared by omission that JavaScript cannot reach the
+        // database — while the repo runs a shelf of .mjs scripts holding a
+        // PrismaClient. A backfill is precisely the slow writer that resolves
+        // ids and then inserts after a merge has landed.
+        file: SCRATCH_LEDGER_MJS,
+        content:
+          'export const w = async (prisma, rows) =>\n  prisma.restaurantEntityEvent.createMany({ data: rows });\n',
       },
     ],
   },
@@ -1170,4 +1194,5 @@ export const RUN_PROBE_FILES: readonly string[] = [
   SCRATCH,
   SCRATCH_NUL_SH,
   SCRATCH_UNDECLARED_MJS,
+  SCRATCH_LEDGER_MJS,
 ];

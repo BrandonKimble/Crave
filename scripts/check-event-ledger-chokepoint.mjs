@@ -38,7 +38,9 @@
  * selector added there would be exempt exactly where it matters.
  *
  * RED PROOF: add `await tx.restaurantEvent.createMany({ data: rows })` to any
- * file other than the owner and this exits 1 naming the line.
+ * file other than the owner and this exits 1 naming the line — including when
+ * prettier has wrapped it across two lines, and including in a `.mjs` script.
+ * Both of those escaped the gate until 2026-08-13; see the matcher below.
  */
 import { scanRepo } from './lib/scan-repo.mjs';
 
@@ -67,6 +69,14 @@ const EXCEPTIONS = new Map([
       'never executes anything; a mutation that could not spell the banned ' +
       'shape would not be a proof of anything',
   ],
+  [
+    'scripts/check-event-ledger-chokepoint.mjs',
+    'is THIS GATE. Widening the pathspec to .mjs brought it into its own ' +
+      'subject list, where its RED-PROOF header sentence and the PRISMA_WRITE ' +
+      'pattern source both spell the banned shape. Same reason as the ' +
+      'registry: a gate that could not write down what it forbids could not ' +
+      'forbid it. It holds no database client',
+  ],
 ]);
 
 /**
@@ -87,10 +97,18 @@ const RAW_INSERT =
  * the ledger directly is a live defect from the moment it exists, not from
  * the moment it is staged. scanRepo owns the refusal-on-zero and tells a
  * missing/failing git apart from a clean scan.
+ *
+ * `.mjs`/`.js`/`.cjs` ARE IN SCOPE (2026-08-13). The pathspec used to be
+ * TypeScript and SQL only, which quietly declared that JavaScript cannot
+ * reach the database — and this repository runs a whole shelf of node
+ * scripts that hold a PrismaClient (scripts/, apps/api/scripts/*.mjs,
+ * data-fixes). A one-off backfill written in .mjs is exactly the writer that
+ * resolves its ids, takes minutes to run, and inserts after a merge lands.
+ * The file extension was never the reason the rule applied.
  */
 const scan = scanRepo({
   label: 'event-ledger-chokepoint',
-  pathspecs: ['*.ts', '*.tsx', '*.sql'],
+  pathspecs: ['*.ts', '*.tsx', '*.mjs', '*.js', '*.cjs', '*.sql'],
 });
 const files = scan.files;
 
@@ -114,30 +132,63 @@ for (const door of ['writeRestaurantEvents', 'writeRestaurantEntityEvents']) {
   }
 }
 
+/**
+ * THE MATCH IS OVER THE WHOLE FILE, NOT LINE BY LINE (2026-08-13).
+ *
+ * This loop used to `split('\n')` and test each line, which made the gate
+ * defeatable BY PRETTIER. Both patterns already spell their gaps `\s*`, and
+ * `\s` matches a newline — but a line-at-a-time test can never see one. So
+ *
+ *     await tx.restaurantEvent
+ *       .createMany({ data: rows });
+ *
+ * passed, and that is not an exotic hand-crafted evasion: it is what the
+ * formatter PRODUCES the moment the expression grows past the print width.
+ * The gate was one long variable name away from silently not applying. The
+ * same holds for the raw-SQL arm, where a wrapped `INSERT\n INTO` in a
+ * Prisma.sql template is entirely ordinary.
+ *
+ * Matching the joined source costs the line number, so we recover it by
+ * counting newlines up to the match index and quote that line for the
+ * report — a multi-line hit is reported at the line the write STARTS on.
+ */
+function lineAt(src, index) {
+  return src.slice(0, index).split('\n').length;
+}
+
+function findWrites(src) {
+  const hits = [];
+  for (const pattern of [PRISMA_WRITE, RAW_INSERT]) {
+    pattern.lastIndex = 0;
+    for (let m = pattern.exec(src); m !== null; m = pattern.exec(src)) {
+      const line = lineAt(src, m.index);
+      hits.push({ line, text: m[0].replace(/\s+/g, ' ').trim() });
+      // A zero-length match cannot happen with these patterns, but an
+      // unadvanced lastIndex would spin forever if one ever did.
+      if (m[0].length === 0) pattern.lastIndex += 1;
+    }
+  }
+  return hits.sort((a, b) => a.line - b.line);
+}
+
 const failures = [];
 const allowed = [];
 for (const rel of files) {
   if (rel === OWNER) continue;
   const src = scan.read(rel);
   if (src === null) continue;
-  const lines = src.split('\n');
-  for (let i = 0; i < lines.length; i += 1) {
-    const line = lines[i];
-    PRISMA_WRITE.lastIndex = 0;
-    RAW_INSERT.lastIndex = 0;
-    const hit = PRISMA_WRITE.test(line) || RAW_INSERT.test(line);
-    if (!hit) continue;
+  for (const hit of findWrites(src)) {
     const reason = EXCEPTIONS.get(rel);
     if (reason) {
-      allowed.push(`${rel}:${i + 1} (${reason})`);
+      allowed.push(`${rel}:${hit.line} (${reason})`);
       continue;
     }
     failures.push(
-      `${rel}:${i + 1} — writes the evidence ledger directly. Every insert ` +
+      `${rel}:${hit.line} — writes the evidence ledger directly. Every insert ` +
         `must go through writeRestaurantEvents / writeRestaurantEntityEvents ` +
         `in ${OWNER}, which resolve entity_redirects at insert time; a direct ` +
         `write lands live evidence on a merged-away tombstone, where the ` +
-        `projection rebuild cannot see it.\n      ${line.trim()}`
+        `projection rebuild cannot see it.\n      ${hit.text}`
     );
   }
 }
