@@ -78,6 +78,33 @@ availability aside is a fact about its own clause and never silences the
 writer's other clauses — and a positive clause never rescues a hedged or
 negative neighbor.
 
+**A source has no genre.** Never classify the source as "an ask post", "a
+complaint", "a trip report", or "a rave" and let that label decide its
+clauses. The A.2 failures below are failures of CLAUSES, not of sources, and
+mixed sources are the norm — in both directions:
+
+- A question or planning post routinely contains the writer's own past
+  verdicts, and they emit: "Ate at Uchiko one time, thought it was great …
+  is Uchi still worth a trip?" — the verdict clauses emit even though the
+  post exists to ask. A REMEMBERED verdict is still a verdict: "I remember
+  Uchi being one of the best restaurants in the city" emits, and the
+  writer's present question about whether it still holds does not un-say
+  it (nor is it a closure — the place is open, A.2). The asker's OTHER clauses still earn nothing on their
+  own: "I've only been to Cuba512" states experience with no verdict, and
+  the ask's own comparison anchors ("birria Landon the best Mexican?") are
+  questions, not claims.
+- A complaint post routinely contains standing positive testimony, and it
+  emits: "I always say they have the best burger in Austin … I would
+  recommend it to anyone" emits, however long the service rant around it —
+  the complaint silences only the clauses it is about.
+- A glowing report routinely contains clauses that fail: the praised burgers
+  emit while the fries the writer "hoped would be crispier" do not; a price
+  list inside a rave ("6 dollar beers, 18 dollar spritzes") stays
+  PRICE-ONLY; a visit narrated with no verdict stays AVAILABILITY.
+
+The failure mode this paragraph exists to kill: deciding the source's
+overall genre first and then emitting all of its clauses or none of them.
+
 ### A.1 What counts as testimony
 
 The writer vouches from experience, or reports a clear consensus:
@@ -85,7 +112,12 @@ The writer vouches from experience, or reports a clear consensus:
 - Direct verdicts: "it's fantastic", "best cheesesteak I've ever had",
   "their brisket slaps".
 - Experience narrated in the past: "went to Sour Duck last Sat", "had an
-  incredible meal off the Bunbelly truck", "I had the salmon lox focaccia".
+  incredible meal off the Bunbelly truck", "I had the salmon lox focaccia" —
+  **when the narration carries or leads to a verdict** (in the same clause,
+  or in the report it introduces). **Bare attendance is not testimony**:
+  "I've only been to Cuba512", "went to maman this morning and they told
+  me" state that the writer WAS somewhere, and nothing about the food —
+  they fail, however recent or first-person the visit.
 - Indirect recommendation: "worth the trip", "definitely go", "take them to
   \_\_\_", "my go-to".
 - Consensus reported: "people rave about \_\_\_", "this sub loves \_\_\_".
@@ -148,7 +180,13 @@ The writer vouches from experience, or reports a clear consensus:
   that vouches for a place puts this writer's judgment behind the same
   claims — resolve the referent by the depth-aware order and credit the same
   restaurant (and dish, when unambiguous) from THIS source's id. An agreement
-  with an ambiguous referent credits nothing.
+  with an ambiguous referent credits nothing. **A bare verdict with an
+  unstated subject is the same move**: "God it's so good", "so good!!",
+  "obsessed" under a parent describing one unambiguous place resolves by the
+  same depth-aware order and adopts that referent. And when the referent's
+  food fails Step C (a wrapper like "lunch buffet", or no dish at all), the
+  adopted claim is a restaurant-only carrier (`general_praise: true`) — a
+  failed dish never cancels the adopted endorsement into silence.
 
 ### A.2 What is NOT testimony (each of these fails)
 
@@ -172,7 +210,12 @@ The writer vouches from experience, or reports a clear consensus:
   a writer reporting on food they ATE ("what a great meal!") is testimony
   as ever — each such clause still judged on its own verdict by the tests
   below (a hedged or middling item in the report still fails). Emit
-  nothing for the announcement.
+  nothing for the announcement. **A TITLE-ONLY CAPTION is the same thing**:
+  a post whose entire text names a venue and/or an item — "Woodneck
+  Kitchen - The Poor Joe", a photo caption labeling what is pictured — states
+  WHAT THIS IS, not that it is good. Posting the photo is not a verdict.
+  Emit nothing, unless some clause of the title or body carries an actual
+  verdict ("…and it made me so happy", "all amazing" — then emit normally).
 - **A LIST BUILT ON AN EXTERNAL CRITERION.** When the names were selected by
   something other than the writer's taste — and the text says so — the list
   is a directory, however long: open on a holiday ("Restaurants Open on
@@ -211,13 +254,24 @@ The writer vouches from experience, or reports a clear consensus:
   narration) adds nothing on top of the number — judge the score against
   the writer's own scale, and a 7.3 beside the writer's 8.4 favorite
   withholds endorsement and emits nothing. Praise of size, price, or
-  portions never rescues a hedged verdict on the food itself.
+  portions never rescues a hedged verdict on the food itself. **A "but"
+  INSIDE the verdict clause decides that clause's net direction, whatever
+  the "but" is about**: "Good, but definitely not worth waiting on a
+  long-ass line for" is a net recommendation AGAINST — the downward pull
+  need not concern flavor; value, wait, or price qualifying the verdict
+  defeats it. (A complaint in a SEPARATE clause about service or logistics
+  is A.2 NEGATIVE CONTENT for that clause only, and leaves an unqualified
+  verdict elsewhere standing.)
 - **NEGATIVE CONTENT.** Criticism, warnings, "I'd skip \_\_\_", "many of your
   items I would not suggest", or a reply to an explicitly negative ask
   ("worst/avoid/overrated"). Emit nothing **for the criticized items** — and
   only for them: a comment that pans the list and then vouches for one place
   in its own words still emits that place.
-- **PRICE-ONLY commentary.** "priciest in town", "$100+ steak" with no verdict.
+- **PRICE-ONLY commentary.** "priciest in town", "$100+ steak" with no
+  verdict. This is a clause-level fact like every other: inside an otherwise
+  glowing review, "Also supremas enchiladas for 11" and "6 dollar beers, 18
+  dollar spritzes" price items without judging them — those items do not
+  emit, however warm the surrounding clauses.
 - **A CLOSED PLACE.** "RIP", "closed down", "went out of business", "used to
   go", "who remembers", "back in the day", "I miss \_\_\_" — with no
   contradicting present-tense context. A recommendation for a place that no
@@ -286,7 +340,11 @@ want good tacos", "love hot pot", "a solid steakhouse"). **A dish phrase is not
 a venue** merely because it is capitalized: if a span names a food and carries
 no locating tail, possessive, or ordering frame, it is a dish. When a span
 could read either way and no naming frame is present, treat it as a descriptor
-and discard.
+and discard. **One more naming frame: being the answer.** A bare reply to a
+where/which-place ask is answering with a PLACE, because a place is what was
+asked for — "Crit Dog" replying to "what's the best option for junk food near
+here?" names a venue, even though the words could also read as a dish. The
+ask's slot supplies the frame the reply's own words lack.
 
 **A name is never split.** Punctuation INSIDE a name is part of it: slashes
 ("Uchi/ko"), apostrophes ("Joe's"), hyphens ("Tan-Tan"), periods ("LOS TACOS
@@ -336,6 +394,18 @@ A grocery store with a taquería counter yields real claims from the counter and
 none from the aisles. A restaurant that sells its sauce in bottles is the
 mirror image. **Read the mode of consumption, never the kind of business.**
 
+**An ANSWER-TEST pick inherits the ask's MODE.** A bare name carries no food
+language of its own, so the claim it makes is the claim the ask requested —
+and when the ask requested a place to SHOP ("best middle eastern grocery
+store?", "good butcher?", "where do you buy…?"), every pick answers a
+shopping question. Those claims are about goods packaged to take home and
+fail the PLACE TEST: emit nothing, however warm the list — and for EVERY
+entry on it: a pick whose name says "bakery and deli" or "meat market" is
+still answering the grocery ask, and the ask's shopping mode, not the
+name's tokens, decides. Likewise, praising
+a business AS a store — aisles, BOGO deals, "fast cheap and organic" — is
+about buying packaged goods, not food served to eat now, and emits nothing.
+
 Also fails the PLACE TEST:
 
 - Claims about a venue whose business is not serving food, where the food is
@@ -357,7 +427,12 @@ spelling. Do not use it: "Minetta" stays `minetta` even when you know it is
 Minetta Tavern; "sho" stays `sho`; a misspelled name stays as the writer
 spelled it. Completing or correcting a name mis-resolves it downstream —
 emission records what was OBSERVED; resolution to the real place is another
-system's job.
+system's job. **Both directions of "fixing" are forbidden.** Never repair a
+typo toward the real-world name ("Dominic Ansel" stays `dominic ansel`,
+"Switf's" stays `switfs` — even when you know who is meant), and never
+strip letters the writer DID write: de-diacritization is the same
+correction run in reverse ("Café Crème" → `café crème`, never `cafe
+creme`). A typo is not yours to correct; an accent is not yours to remove.
 
 Normalize:
 
@@ -639,6 +714,17 @@ parent's words, the venue's own name, and your knowledge of the venue are
 not this source's words. **An empty attribute array is the normal output for
 a bare-name pick.**
 
+**A NAME IS A SUBJECT-IDENTIFIER, NEVER EVIDENCE OF A PROPERTY.** Words
+spent NAMING are not words DESCRIBING. The tokens inside a venue's name —
+"Cuantas Hamburguesas", "4 Charles Prime Rib", "Phoenicia bakery and deli",
+"p Thais" — do appear in this source's text, but the source used them to say
+WHICH place, not WHAT the place is like: they license no cuisine, no venue
+type, no attribute of any kind, on either side. (C.1 makes the same point
+for dishes: praising "Birria-Landia" names no birria.) A property enters an
+attribute array only when the source's DESCRIBING words state it — or via
+the single licensed inference, D.4's cuisine from the dish THIS source
+composed.
+
 ### D.1 Does it describe, or does it judge?
 
 **A real attribute states a property the food or place objectively HAS. Praise
@@ -646,7 +732,8 @@ states HOW GOOD it is.** Only descriptions are attributes.
 
 - `spicy`, `crispy`, `smoky`, `grilled`, `vegan`, `cozy`, `outdoor seating`,
   `indian`, `comfort food` → describe → attributes.
-- `delicious`, `tasty`, `amazing`, `incredible`, `insane`, `solid`, `best`,
+- `delicious`, `tasty`, `amazing`, `incredible`, `insane`, `flavorful`,
+  `seasoned perfectly`, `solid`, `best`,
   `elite`, `top notch`, `quality`, `specialty`, `favorite`, `standout`,
   `award winning`, `worth the trip`, `must-try`, `hidden gem`, `iconic`,
   `famous`, `world class` → judge → **NOT attributes. Drop them.**

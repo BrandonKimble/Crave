@@ -1764,5 +1764,393 @@
       ],
       "notRestaurants": ["best", "apollo bagels"]
     }
+  },
+  {
+    "id": "V14a-question-post-past-verdicts",
+    "why": "v13 fresh-lens MAJOR e8d4aa7c: genre-gravity — a question-shaped post swallowed three real past-tense verdicts (Uchi, Uchiko, Dai Due). Clauses, not genres.",
+    "posts": [
+      {
+        "id": "SRC001",
+        "title": "Uchi/Uchiko: Still got it?",
+        "body": "I'm from LA, but I spent a lot of time in Austin 6-7 years ago, and I remember Uchi being one of the best restaurants in the city. Ate at Uchiko one time, thought it was great.\n\nNow I'm headed back for a wedding in Austin in a month, and I was thinking of bringing my wife, who's never been. I know that Uchi/ko is a chain now, and I also noticed that neither spot is on Eater's list of essential restaurants in Austin. So my question to you all is, is Uchi still worth a trip for a tourist?\n\nIf it's not was thinking Dai Due, which was great when I used to visit, but open to suggestions.",
+        "extract_from_post": true,
+        "comments": []
+      }
+    ],
+    "expect": {
+      "restaurants": ["uchi", "uchiko", "dai due"],
+      "somePraise": true
+    }
+  },
+  {
+    "id": "V14b-complaint-frame-positive",
+    "why": "v13 MAJOR 8b6c5df8: complaint-framed post silenced a best-in-Austin burger claim and a closing endorsement. The complaint silences only its own clauses.",
+    "posts": [
+      {
+        "id": "SRC001",
+        "title": "Salt and Time - Complaint",
+        "body": "I love Salt and Time, I think it's a great East Austin restaurant, and I have been many times and had many of their offerings, e.g. burger, steak, muffaletta sandwich, pasta, etc. When people ask, I always say they have the best burger in Austin, and when people.ask for steak, I always recommend Salt and Time.\n\nWhat I don't understand, as a customer, is why they insist on totally ignoring whatever temperature you would like your steak cooked at.\n\nEvery time I order a steak from Salt and Time, they ask, \"How would you like your steak cooked?\", I tell them, \"I would like X\", and they return with a blue steak. \n\nI don't have anything against anyone that likes rare steaks, but if I ask for a steak cooked a certain way, why not just honor that request?\n\nAl that being said, I still think Salt and Time is an awesome Austin restaurant and I would recommend it to anyone, I just don't really appreciate this aspect of their service.\n\n/rant",
+        "extract_from_post": true,
+        "comments": []
+      }
+    ],
+    "expect": {
+      "restaurants": ["salt and time"],
+      "foods": ["burger"],
+      "somePraise": true
+    }
+  },
+  {
+    "id": "V14c-bare-name-junk-food-ask",
+    "why": "v13 MAJOR 50bc2948: bare-name reply 'Crit Dog' to a judgment ask dropped — the food-like name read as a dish descriptor. Being the answer is a naming frame.",
+    "posts": [
+      {
+        "id": "SRC001",
+        "title": "Bringing my dad to get stoned at Mercer Labs and then to the Comedy Cellar. What should we eat in between?",
+        "body": "Plan is to do edibles at 4pm, enter Mercer labs, and leave at 6. We will likely be very hungry. What's the best option for gorging on junk food around either location?",
+        "extract_from_post": true,
+        "comments": [
+          {
+            "id": "SRC002",
+            "body": "Crit Dog"
+          }
+        ]
+      }
+    ],
+    "expect": {
+      "restaurants": ["crit dog"],
+      "somePraise": true
+    }
+  },
+  {
+    "id": "V14d-adopted-verdict-wrapper-referent",
+    "why": "v13 MAJOR b9e99062: 'God it's so good' adopting a parent whose food is a wrapper (lunch buffet) emitted nothing — must yield a restaurant-only carrier.",
+    "posts": [
+      {
+        "id": "SRC001",
+        "title": "",
+        "body": "",
+        "extract_from_post": false,
+        "comments": [
+          {
+            "id": "SRC002",
+            "body": "Aster’s Ethiopian lunch buffet hits the spot if you want to get your calories in for the day and want a break from sandwiches and other cheap meals."
+          },
+          {
+            "id": "SRC003",
+            "body": "God it's so good",
+            "parent_id": "SRC002"
+          }
+        ]
+      }
+    ],
+    "expect": {
+      "perSource": [
+        {
+          "source": "SRC003",
+          "restaurants": ["asters"],
+          "somePraise": true,
+          "praiseOnlyRestaurantOnly": true,
+          "notFoods": ["buffet", "lunch buffet"]
+        }
+      ]
+    }
+  },
+  {
+    "id": "V14e-hard-agree-adoption",
+    "why": "v13 MAJOR e16339f5: 'Hard agree. I always try to tell people about Interstellar' emitted nothing — agreement adoption plus independent evangelism.",
+    "posts": [
+      {
+        "id": "SRC001",
+        "title": "Best BBQ in Austin",
+        "body": "InterStellar BBQ is known as one of the best in Austin for a reason. Their meats are delicious. We ordered kielbasa, pork belly in peach tea glaze sauce, brisket, a side of cole slaw, a side of potato salad, and banana pudding. The kielbasa was as good as advertised. The pork belly was our favorite meat, and the sauce was amazing.",
+        "extract_from_post": false,
+        "comments": [
+          {
+            "id": "SRC002",
+            "body": "Hard agree. I always try to tell people about Interstellar and get blank stares because the name doesn’t start with Terry or Franklin or Salt."
+          }
+        ]
+      }
+    ],
+    "expect": {
+      "perSource": [
+        {
+          "source": "SRC002",
+          "restaurants": ["interstellar"],
+          "somePraise": true
+        }
+      ]
+    }
+  },
+  {
+    "id": "V14f-ask-vinnie-special",
+    "why": "v13 MAJOR c5aab637: a pure ask ('Looking to hear what's the best Vinnie Special slice you've had?') minted a positive dish claim. Asks never emit.",
+    "posts": [
+      {
+        "id": "SRC001",
+        "title": "Looking to hear what’s the best Vinnie Special slice you’ve had?",
+        "body": "Best special slice @vinnies in Brooklyn?",
+        "extract_from_post": true,
+        "comments": []
+      }
+    ],
+    "expect": {
+      "emitsNothing": true
+    }
+  },
+  {
+    "id": "V14g-ask-been-there-no-verdict",
+    "why": "v13 MAJOR fe2afc7d: 'I've only been to Cuba512' inside an ask carries no verdict; v13 minted a croqueta recommendation the writer never made.",
+    "posts": [
+      {
+        "id": "SRC001",
+        "title": "Where to go for cuban croquetas?",
+        "body": "I've only been to Cuba512 - But wondering if anywhere else makes them. +100 pts for any that have guava or meat filled pastries.",
+        "extract_from_post": true,
+        "comments": []
+      }
+    ],
+    "expect": {
+      "emitsNothing": true
+    }
+  },
+  {
+    "id": "V14h-ask-comparison-anchors",
+    "why": "v13 MAJOR 48f50619: an itinerary ask's comparison anchors ('birria Landon the best Mexican?', 'on par or better than hey yuet') were mined as picks.",
+    "posts": [
+      {
+        "id": "SRC001",
+        "title": "Sat. Lunch tour of Williamsburg",
+        "body": " having a progressive meal and tour - what are the best spots and specific “best dishes”\n\n- birria Landon the best Mexican? Wants the best 1/2 things?\n\n- I crave a momofuko style bao - anything similar?\n\n- any dim sum on par or better than hey yuet or Manhattan places?\n\n\nAny other standout dishes to seek out?",
+        "extract_from_post": true,
+        "comments": []
+      }
+    ],
+    "expect": {
+      "emitsNothing": true
+    }
+  },
+  {
+    "id": "V14i-hedged-net-down-scarrs",
+    "why": "v13 MAJOR 8442c0ef: 'Good, but definitely not worth waiting on a long-ass line for' is a net-downward verdict; v13 emitted three dish claims.",
+    "posts": [
+      {
+        "id": "SRC001",
+        "title": "Sicilian slices from Scarr's Pizza - Hotboi and mushroom",
+        "body": "Good, but definitely not worth waiting on a long-ass line for.",
+        "extract_from_post": true,
+        "comments": []
+      }
+    ],
+    "expect": {
+      "emitsNothing": true
+    }
+  },
+  {
+    "id": "V14j-polarity-panned-fries",
+    "why": "v13 MAJOR f159b: report-genre spill — the panned fries emitted as a claim, and 'mexican' (venue name) + 'flavorful' (praise) landed as attributes.",
+    "posts": [
+      {
+        "id": "SRC001",
+        "title": "Cuantas Hamburguesas is delicious",
+        "body": "Just went to Cuantas Hamburguesas. It was a saturday right at opening time and there wasn’t a line. This is the new burger truck by Cuantos. We got the americana burger for 7 bucks which comes with a double patty, and the Sincronizada one which comes with a patty, hot dog, bacon, and ham for 7.75. Also a side of fries for 2 dollars. The burgers here are great. It reminds me of Bad Larry’s, it’s a perfectly ooey gooey burger and flavorful. seasoned perfectly. loved the sesame bun. I do prefer the Americana one. The fries weren’t the best, and i hoped they would be crispier but at 9 dollars for burger and fries i’m not complaining. The entire meal before tip was only 16 dollars for 2 burgers and a side of fries. I would put this in my top burgers of Austin tier.",
+        "extract_from_post": true,
+        "comments": []
+      }
+    ],
+    "expect": {
+      "restaurants": ["cuantas hamburguesas"],
+      "foods": ["burger"],
+      "notFoods": ["fries", "fry"],
+      "notAttributes": ["mexican", "flavorful"]
+    }
+  },
+  {
+    "id": "V14k-visit-narration-no-verdict",
+    "why": "v13 MAJOR 65c2b902: 'went to maman this morning and they told me' is an errand narration with zero food verdict; v13 minted a praise carrier for maman.",
+    "posts": [
+      {
+        "id": "SRC001",
+        "title": "Blackbird Breakfast NYC ended 4/8/25",
+        "body": "Got email on 07 April, it was never gonna last and too good to be true. One free coffee / tea every morning until 11 am. I work at Brookfield Place building so this was no brainer. 25 USD / month.",
+        "extract_from_post": false,
+        "comments": [
+          {
+            "id": "SRC002",
+            "body": "i’m so sad it ended and shocked when i went to maman this morning and they told me"
+          }
+        ]
+      }
+    ],
+    "expect": {
+      "emitsNothing": true
+    }
+  },
+  {
+    "id": "V14l-price-list-not-dishes",
+    "why": "v13 MAJOR ae22a70a: '6 dollar beers, 18 dollar spritzes', '$25-30 drinks' are price-only clauses inside a pick reply; v13 minted beer/spritz/drink foods.",
+    "posts": [
+      {
+        "id": "SRC001",
+        "title": "NYC rooftop suggestion - Summit One Vanderbilt or Overstory bar?",
+        "body": "I am debating between going the Summit One Vanderbilt, or going to Overstory. This is my first time in NYC, and I just wanna see the city from up top, while being mindful of the money spent.",
+        "extract_from_post": true,
+        "comments": [
+          {
+            "id": "SRC002",
+            "body": "You can do summit one which is a seriously high and cool one, and then walk nearby to Pod 39 rooftop which is a very decent rooftop bar (25 stories, can see Empire State from it) with free access, no reservation needed and 6 dollar beers, 18 dollar spritzes and such\n\nMy favorite rooftop bar if you want insane views and drinks and want to one stop shop is Nubelez (top of the ritz). $25-30 drinks, but very much worth it for 1-2. It’s the best rooftop in the city"
+          }
+        ]
+      }
+    ],
+    "expect": {
+      "restaurants": ["nubelez"],
+      "somePraise": true,
+      "notFoods": ["beer", "spritz", "drink"]
+    }
+  },
+  {
+    "id": "V14m-title-only-caption",
+    "why": "v13 MAJOR 13c92a27: 'Woodneck Kitchen - The Poor Joe', a verdict-free photo caption, emitted a mention with an invented 'sandwich' category.",
+    "posts": [
+      {
+        "id": "SRC001",
+        "title": "Woodneck Kitchen - The Poor Joe",
+        "body": "",
+        "extract_from_post": true,
+        "comments": []
+      }
+    ],
+    "expect": {
+      "emitsNothing": true
+    }
+  },
+  {
+    "id": "V14n-CONTROL-caption-with-verdict",
+    "why": "v13 MAJOR 3b64955f (miss side of the caption pair): title carries 'made me so happy' and body 'all amazing' — real testimony, must emit.",
+    "posts": [
+      {
+        "id": "SRC001",
+        "title": "I went to Carnitas Ramirez last night and it made me so happy",
+        "body": "This is the carnudo, also sampled a few others, all amazing",
+        "extract_from_post": true,
+        "comments": []
+      }
+    ],
+    "expect": {
+      "restaurants": ["carnitas ramirez"],
+      "foods": ["carnudo"],
+      "somePraise": true
+    }
+  },
+  {
+    "id": "V14o-grocery-ask-list",
+    "why": "v13 MAJOR 1a8832ec: four grocery/meat-market names answering an explicitly grocery ask emitted as praised restaurants — the pick inherits the ask's shopping mode.",
+    "posts": [
+      {
+        "id": "SRC001",
+        "title": "Best middle eastern grocery store in north Austin/ RR",
+        "body": "Hey guys. I’m just looking at the best middle eastern ( Turkish) grocery store that I can find in the north of Austin and around Round Rock areas. Pref. One with a good meat market. \nThank you in advance, some of the google and yelp reviews are sketchy and idk what to trust.",
+        "extract_from_post": true,
+        "comments": [
+          {
+            "id": "SRC002",
+            "body": "Hill Country Grocery/Istanbul Market Atx\nInternational Foods (n.lamar)\nPhoenicia bakery and deli\nworld food halal and meat market"
+          }
+        ]
+      }
+    ],
+    "expect": {
+      "emitsNothing": true
+    }
+  },
+  {
+    "id": "V14p-grocery-praised-as-store",
+    "why": "v13 MAJOR 5a18e6b0: 'Sprouts rules!! Fast cheap and organic' praises a supermarket's aisles, not served food — place-test failure emitted as a restaurant.",
+    "posts": [
+      {
+        "id": "SRC001",
+        "title": "Visit Sprouts this weekend - lots of 2 for 1 deals",
+        "body": "I dropped into Sprouts to look around. As I walked around I noticed a ton of BOGO or 2 for 1 sales - wow. Next thing I knew I spent $50. Baked goods, Yerba mate drinks, teas, kettle chips, raspberries, almond milk, etc.",
+        "extract_from_post": false,
+        "comments": [
+          {
+            "id": "SRC002",
+            "body": "Sprouts rules!! Fast cheap and organic…underrated 🥕!"
+          }
+        ]
+      }
+    ],
+    "expect": {
+      "emitsNothing": true
+    }
+  },
+  {
+    "id": "V14q-typo-name-preserved",
+    "why": "v13 MAJOR 7cb3fcf3 (name side): 'Dominic Ansel' was silently corrected to 'dominique ansel' via world knowledge; the panned bagels also must not emit.",
+    "posts": [
+      {
+        "id": "SRC001",
+        "title": "Iconic Foods in NYC",
+        "body": "I'm gonna be visiting NYC for 9 days. I'm interested in exploring what would be considered the most iconic foods. Recs for any foods as well as best places to find them!",
+        "extract_from_post": false,
+        "comments": [
+          {
+            "id": "SRC002",
+            "body": "Russ and Daughters has the best lox but dont waste your time on their bagels, there are a hundred far better. If you are interested in classic New York Italian would go for Frank or Supper. The cronuts made Dominic Ansel famous but all the other stuff there is just as good so dont skip out on it. Brooklyn blackout from little cupcake shop in soho."
+          }
+        ]
+      }
+    ],
+    "expect": {
+      "restaurants": ["russ and daughters", "dominic ansel"],
+      "notRestaurants": ["dominique ansel"],
+      "foods": ["lox"],
+      "notFoods": ["bagel"]
+    }
+  },
+  {
+    "id": "V14r-diacritics-kept-cafe-creme",
+    "why": "v13 MAJOR 9180b522: 'Café Crème' emitted de-diacritized as 'cafe creme', and general_praise:true rode on a dish mention violating F.1.",
+    "posts": [
+      {
+        "id": "SRC001",
+        "title": "Where is the best place for normal and chocolate croissants in Austin?",
+        "body": "Where is the best place for croissants in Austin? Where is the best place for breakfast croissants in Austin?",
+        "extract_from_post": true,
+        "comments": [
+          {
+            "id": "SRC002",
+            "body": "Café Crème! They do great breakfast croissants too like egg ham cheese, etc."
+          }
+        ]
+      }
+    ],
+    "expect": {
+      "restaurants": ["café crème"],
+      "notRestaurants": ["cafe creme"],
+      "foods": ["breakfast croissant"],
+      "somePraise": true,
+      "praiseOnlyRestaurantOnly": true
+    }
+  },
+  {
+    "id": "V14s-review-post-fajitas",
+    "why": "v13 MAJOR 4840fe43: 'The fajitas were delicious!' at Habanero Cafe emitted nothing (frame: 'someone asked me to go review'); the price-only enchiladas stay out.",
+    "posts": [
+      {
+        "id": "SRC001",
+        "title": "Fajitas at Habanero Cafe",
+        "body": "Someone asked me to go review Habanero Cafe. The fajitas were delicious! (19) came with 2 tortillas and we asked for more and got it for free. Also supremas enchiladas for 11.",
+        "extract_from_post": true,
+        "comments": []
+      }
+    ],
+    "expect": {
+      "restaurants": ["habanero cafe"],
+      "foods": ["fajitas"],
+      "notFoods": ["enchilada"]
+    }
   }
 ]
