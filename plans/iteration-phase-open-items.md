@@ -311,6 +311,31 @@ Instrument is now a standing gate: run `coverage-truth.ts` after ladder/L1
 and after each wave locale; coverage must not regress from the baseline
 artifact without an attributed reason.
 
+## C5. MANDARIN PREVIEW FINDINGS (battery 13c9e7300; zh live, 2026-08-12)
+
+zh is the 4th SUPPORTED_LOCALE (landed inside 83bb224cf with the scanner
+refactor — cross-lane stash incident, content verified intact; stash@{1}
+backup droppable once agents settle). Preview sweep: 300 concepts, 557
+active zh surfaces/294 concepts, $0.035 measured vs $2-5 envelope, 0
+unanswered. Han budget-0 law EXECUTED-proven (0 typo variants; 牛肉麺/肉面
+return empty, no garbage recovery). Battery 14 queries, re-run personally.
+
+- **C5a GROUNDING GATED BY PHONE LOCALE (verified personally, pre-wave
+  blocker):** 牛肉面 = beef noodle soup at zh-CN, UNGROUNDED at es-MX;
+  pho 牛肉 at en-US leaves 牛肉 unresolved — the gazetteer locale chain
+  reads requestLocale and ignores the confidence-1 script pin. Doctrine
+  violation: reader context deciding word identity. Ideal shape ruling
+  needed in the fix: detected language joins the chain (minimum), or
+  grounding matches ALL supported locales with the chain reserved for
+  ranking/labels (candidate ideal). Agent dispatched 2026-08-12.
+- **C5b a typed space changes the answer**: 珍珠奶茶 ≠ 珍珠 奶茶 (CJK
+  re-join treats user space as hard boundary). Same dispatch.
+- **C5c food-type suggestions never localize their label** (pho/seafood/
+  taco display English at es/vi/zh; attribute rows localize) — pre-existing
+  display-path gap, folds into the H1/display-residue lane.
+- **C5d vocab gaps for the wave**: 麻辣, 川味, 珍珠 unbanked; no boba/
+  bubble-tea concept (only milk tea). Wave gold cases.
+
 ## ARCH VERDICT (2026-08-12 red team; the owner's patches-vs-foundations question)
 
 NOT a week of patching — commits deleted machinery and measured claims. But
