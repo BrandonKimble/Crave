@@ -153,27 +153,43 @@ function fakePrisma(entities: FakeEntityRow[]) {
           }));
       }
       if (sql.includes('SELECT s.entity_id, s.form')) {
-        // THE ACCENT-EVIDENCE ARM. The tier-1 fold refuses an accented input
-        // unless the owner PROVES it holds that spelling; this read is the
-        // proof. Forms are returned VERBATIM — the service folds them itself
-        // with `diacriticFold`, so a double that returned pre-folded forms
-        // would blind the very test under test. Role is not filtered here,
-        // matching the real query: a display row is the entity's LABEL in
-        // that language, which is spelling testimony, not a recall claim.
-        const [ids] = values as [string[]];
+        // THE ACCENT-EVIDENCE ARM, both of its readings. The tier-1 fold
+        // refuses an input its owner cannot answer; this read is the proof.
+        // Forms are returned VERBATIM — the service folds them itself, so a
+        // double that returned pre-folded forms would blind the very test
+        // under test. Role is not filtered, matching the real query: a display
+        // row is the entity's LABEL in that language, which is spelling
+        // testimony, not a recall claim.
+        //   arm 1 — every chain-scoped surface of the OWNERS under test;
+        //   arm 2 — every LANGUAGE-TAGGED surface, on ANY entity, whose folded
+        //           form is one of the probe's accent-free tokens. That is the
+        //           banked-plain-forms discriminator, and it is registry-wide
+        //           because the word that protects a dish ('chay') is banked
+        //           on a different entity than the dish.
+        const arrays = values.filter((value): value is string[] =>
+          Array.isArray(value),
+        );
+        const ids = arrays[0] ?? [];
+        const tokens = arrays[arrays.length - 1] ?? [];
         const out: any[] = [];
-        for (const row of live().filter((r) => ids.includes(r.entityId))) {
-          for (const form of row.aliases) {
-            // The universal bucket: spelling evidence, but never a claim
-            // about how the word is written in the document's language.
-            out.push({ entity_id: row.entityId, form, locale: 'und' });
+        for (const row of live()) {
+          if (ids.includes(row.entityId)) {
+            for (const form of row.aliases) {
+              // The universal bucket: spelling evidence, never a claim about
+              // how the word is written in the document's language.
+              out.push({ entity_id: row.entityId, form, locale: 'und' });
+            }
           }
           for (const tagged of row.langForms ?? []) {
-            out.push({
-              entity_id: row.entityId,
-              form: tagged.form,
-              locale: tagged.locale.toLowerCase(),
-            });
+            const isOwner = ids.includes(row.entityId);
+            const isProbedToken = tokens.includes(canonicalFold(tagged.form));
+            if (isOwner || isProbedToken) {
+              out.push({
+                entity_id: row.entityId,
+                form: tagged.form,
+                locale: tagged.locale.toLowerCase(),
+              });
+            }
           }
         }
         return out;
@@ -252,6 +268,12 @@ function baseInput(
     entityType: overrides.entityType ?? EntityType.food,
     aliases: overrides.aliases,
     engineId: overrides.engineId,
+    // THE DOCUMENT'S LANGUAGE, actually carried (found 2026-08-12 while
+    // porting the accent rule). This builder used to DROP the field, so every
+    // fixture that wrote `documentLocale: 'vi'` was resolving with a null
+    // locale and a ['und'] chain — the locale dimension those cases claim to
+    // test was not reaching the service at all.
+    documentLocale: overrides.documentLocale,
   };
 }
 
@@ -1053,6 +1075,13 @@ describe('EntityResolutionService — the v7 shadow twin classes (2026-08-10 pro
           entityId: 'f-comchay-scorched',
           name: 'cơm cháy',
           aliases: [],
+          type: EntityType.food,
+        },
+        {
+          entityId: 'a-chay-vi',
+          name: 'vegetarian',
+          aliases: [],
+          langForms: [{ form: 'chay', locale: 'vi' }],
           type: EntityType.food,
         },
       ],

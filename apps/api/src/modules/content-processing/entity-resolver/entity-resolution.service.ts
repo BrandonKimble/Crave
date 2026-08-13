@@ -33,6 +33,19 @@ import {
   ResolutionPerformanceMetrics,
 } from './entity-resolution.types';
 
+/**
+ * The ACCENT-FREE tokens of a probe — the positions where the per-token
+ * admission rule may have to ask the registry "is this a word, or a skipped
+ * accent?". A token whose two folds agree carries no accent; those are exactly
+ * the tokens the banked-plain-forms discriminator rules on.
+ */
+function plainTokensOf(probe: string): string[] {
+  const typed = diacriticFold(probe).split(' ');
+  const folded = canonicalFold(probe).split(' ');
+  if (typed.length !== folded.length) return [];
+  return typed.filter((token, i) => token === folded[i] && token.length > 0);
+}
+
 interface EntityResolutionCachePayload {
   entityId: string | null;
   confidence: number;
@@ -889,12 +902,15 @@ export class EntityResolutionService implements OnModuleInit {
       // common case is still free, because an ASCII probe with an ASCII owner
       // name agrees on the line below and asks for nothing.
       const ownersNeedingEvidence = new Set<string>();
+      const plainTokensInPlay = new Set<string>();
       for (const entity of entities) {
         for (const probe of foldProbesFor(entity)) {
           const owner = identityToEntityMap.get(canonicalFold(probe));
           if (!owner) continue;
           if (diacriticFold(owner.name) === diacriticFold(probe)) continue;
           ownersNeedingEvidence.add(owner.entityId);
+          for (const token of plainTokensOf(probe))
+            plainTokensInPlay.add(token);
         }
       }
 
@@ -902,6 +918,7 @@ export class EntityResolutionService implements OnModuleInit {
         await this.accentSpellingsFor(
           Array.from(ownersNeedingEvidence),
           documentLocale,
+          Array.from(plainTokensInPlay),
         );
 
       const claimByFold = (probe: string): string | undefined => {
@@ -997,6 +1014,10 @@ export class EntityResolutionService implements OnModuleInit {
   private async accentSpellingsFor(
     entityIds: string[],
     documentLocale: string | null,
+    /** Every ACCENT-FREE token appearing in a probe whose owner is being
+     *  checked. These are the strings the discriminator has to rule on: is
+     *  this a word somebody spelled, or an accent somebody skipped? */
+    plainTokens: string[],
   ): Promise<{
     spellings: Map<string, SurfaceSpelling[]>;
     bankedPlainForms: Set<string>;
@@ -1005,6 +1026,15 @@ export class EntityResolutionService implements OnModuleInit {
     const bankedPlainForms = new Set<string>();
     if (entityIds.length === 0) return { spellings, bankedPlainForms };
     const chain = localeLookupChain(documentLocale);
+    // The chain WITHOUT its universal tail. 'und' is the de-diacritized
+    // romanization bucket, so a form banked there says nothing about how a
+    // word is SPELLED in this language; only a language-tagged row can make a
+    // plain string a complete word. A null-locale document has no tagged
+    // chain at all, the set comes back empty, and the rule falls back to pure
+    // per-token evidence — the conservative side.
+    const languageChain = chain.filter((tag) => tag !== 'und');
+    const owners = new Set(entityIds);
+    const tokens = languageChain.length ? plainTokens : [];
     // Prisma.sql, not a bare $queryRaw template: the locale chain is bound
     // inside a composed fragment, and $queryRaw's own template would bind a
     // fragment as a parameter instead of splicing a predicate.
@@ -1013,17 +1043,26 @@ export class EntityResolutionService implements OnModuleInit {
     >(Prisma.sql`
       SELECT s.entity_id, s.form, LOWER(s.locale) AS locale
         FROM entity_surface s
-       WHERE s.entity_id = ANY(${entityIds}::uuid[])
-         AND s.status = 'active'
-         AND LOWER(s.locale) = ANY(${chain}::text[])`);
+       WHERE s.status = 'active'
+         AND (
+              (s.entity_id = ANY(${entityIds}::uuid[])
+               AND LOWER(s.locale) = ANY(${chain}::text[]))
+           OR (LOWER(s.locale) = ANY(${languageChain}::text[])
+               AND s.form_folded = ANY(${tokens}::text[]))
+         )`);
     for (const row of rows) {
       const spelling = spellingOf(row.form);
-      const held = spellings.get(row.entity_id);
-      if (held) held.push(spelling);
-      else spellings.set(row.entity_id, [spelling]);
-      // The accent-complete discriminator: a form banked under the request's
+      if (owners.has(row.entity_id)) {
+        const held = spellings.get(row.entity_id);
+        if (held) held.push(spelling);
+        else spellings.set(row.entity_id, [spelling]);
+      }
+      // The accent-complete discriminator: a form banked under the document's
       // OWN language whose accent-preserving spelling is already accent-free
       // is a word someone spelled in full, not an accent anybody skipped.
+      // ANY entity may supply it — 'chay' (vegetarian) is banked on the
+      // vegetarian attribute, not on the rice dish it protects, so an
+      // owner-scoped read would leave the discriminator permanently inert.
       if (
         row.locale !== 'und' &&
         spelling.folded &&
@@ -1187,6 +1226,7 @@ export class EntityResolutionService implements OnModuleInit {
       // under any per-token reading — so the all-ASCII case still issues no
       // query at all.
       const candidatesNeedingEvidence = new Set<string>();
+      const plainTokensInPlay = new Set<string>();
       for (const entity of entities) {
         for (const term of aliasProbesOf(entity)) {
           const folded = canonicalFold(term);
@@ -1200,6 +1240,8 @@ export class EntityResolutionService implements OnModuleInit {
             if (!overlaps) continue;
             if (wholeStringAgrees(candidate, term)) continue;
             candidatesNeedingEvidence.add(candidate.entityId);
+            for (const token of plainTokensOf(term))
+              plainTokensInPlay.add(token);
           }
         }
       }
@@ -1207,6 +1249,7 @@ export class EntityResolutionService implements OnModuleInit {
         await this.accentSpellingsFor(
           Array.from(candidatesNeedingEvidence),
           documentLocale,
+          Array.from(plainTokensInPlay),
         );
 
       const accentAdmits = (

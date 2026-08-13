@@ -676,6 +676,31 @@ const FIXTURES: Fixture[] = [
     expect: { entity: 'pho', tier: 'exact' },
     note: 'the same admission in Vietnamese: `pho` banks "phở" (vi, role=both), so the accented spelling is proven and the tier-1 claim stands. Its de-accented twin "pho" is fixture exact-* above and is untouched — an unaccented input asserts nothing, so the folded key rules and de-diacritized typing keeps working',
   },
+
+  // ── THE PER-TOKEN PORT (2026-08-12) ─────────────────────────────────────
+  //    Until this date the resolver read accent evidence over the WHOLE
+  //    string while the query gazetteer read it TOKEN BY TOKEN. The two
+  //    disagreed on the commonest way Vietnamese is actually typed — one word
+  //    accented, one not — so a spelling search ADMITS was refused at
+  //    ingestion and never banked. One implementation now serves both
+  //    (admitsAtExactTier, entity-identity.ts). These fixtures pin the flip
+  //    and its guard rail on the live corpus.
+  {
+    id: 'acc-07',
+    type: EntityType.food,
+    mention: 'phở bo',
+    documentLocale: 'vi',
+    expect: { entity: 'beef pho', tier: 'alias' },
+    note: 'THE FLIP. `beef pho` banks "phở bò" (vi) and "pho bo" (und). A mention typed "phở bo" — accented head, plain tail, exactly how a US keyboard produces Vietnamese — was REFUSED by the whole-string test (diacriticFold "phở bo" ≠ "phở bò"), so the dish went to the judge or minted a twin, while a searcher typing the same string grounded it fine. Per token: "phở" is answered, "bo" asks nothing, the claim stands',
+  },
+  {
+    id: 'acc-08',
+    type: EntityType.food,
+    mention: 'cơm chay',
+    documentLocale: 'vi',
+    expect: UNMATCHED,
+    note: 'THE GUARD RAIL the per-token rule needs, and the reason the discriminator is DATA. "cơm chay" (vegetarian rice) shares the fold `com chay` with the banked "cơm cháy" (scorched/crispy rice). The tail token "chay" is typed plain, so under a naive per-token reading it would ask nothing and the rice crust would win — except the registry banks "chay" as a vi surface in its own right, which makes it a WORD somebody spelled, not an accent somebody skipped. Refused at both tiers, as the whole-string test also refused it. If the banked-plain-forms read is ever narrowed back to the candidate entity, this fixture goes red',
+  },
 ];
 
 function sameOutcome(observed: Outcome, expected: Outcome): boolean {
