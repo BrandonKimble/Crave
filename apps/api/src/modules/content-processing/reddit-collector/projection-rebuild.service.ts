@@ -2,6 +2,11 @@ import { Injectable, Inject, OnModuleInit } from '@nestjs/common';
 import { Connection, EntityType, Prisma } from '@prisma/client';
 import { PrismaService } from '../../../prisma/prisma.service';
 import { LoggerService } from '../../../shared';
+import {
+  FOOD_CATEGORY_EDGE_LOCK,
+  foodCategoryEdgeDeleteSql,
+  foodCategoryEdgeInsertSql,
+} from './food-category-edge-sql';
 
 type PrismaTransaction = Prisma.TransactionClient;
 
@@ -186,55 +191,13 @@ export class ProjectionRebuildService implements OnModuleInit {
     restaurantIds: string[],
   ): Promise<void> {
     if (!restaurantIds.length) return;
-    // GLOBAL edge lock (round-6 red team): edge rows are keyed by FOOD and
-    // shared across restaurants — two rebuild txs holding disjoint
-    // restaurant locks contend on the same hot-food edges in unsynchronized
-    // order (deadlock shape). One lock serializes only this phase.
-    await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext('rebuild:food-category-edges'))`;
-    await tx.$executeRawUnsafe(
-      `DELETE FROM derived_food_category_edges
-       WHERE food_id IN (
-         SELECT DISTINCT food_id FROM core_restaurant_items
-         WHERE restaurant_id = ANY($1::uuid[])
-       )`,
-      restaurantIds,
-    );
-    await tx.$executeRawUnsafe(
-      `INSERT INTO derived_food_category_edges (food_id, category_id, conn_support, food_conns)
-       SELECT c.food_id, cat_id, count(*),
-              -- STARVED anchors are excluded from BOTH sides of the edge
-              -- arithmetic (final-final red team #6): a zeroed connection
-              -- has empty categories (never a numerator) but used to count
-              -- in the denominator, so one starved anchor could break the
-              -- unanimity arm and delete a category edge every OTHER
-              -- restaurant's membership depends on. Starved = neither
-              -- supports nor penalizes.
-              (SELECT count(*) FROM core_restaurant_items c2
-               WHERE c2.food_id = c.food_id AND c2.mention_count > 0)
-       FROM core_restaurant_items c, unnest(c.categories) AS cat_id
-       WHERE cat_id <> c.food_id
-         AND c.mention_count > 0
-         AND c.food_id IN (
-           SELECT DISTINCT food_id FROM core_restaurant_items
-           WHERE restaurant_id = ANY($1::uuid[])
-         )
-       GROUP BY c.food_id, cat_id
-       HAVING (count(*) >= 2
-           OR count(*) = (SELECT count(*) FROM core_restaurant_items c3
-                          WHERE c3.food_id = c.food_id
-                            AND c3.mention_count > 0))
-          -- mint-time twins of the edge_hygiene cleanup (round-6 red team:
-          -- cleanup was transient because rebuilds re-minted what it
-          -- deleted): no containment inversions, and of a symmetric pair
-          -- only the better-supported direction mints
-          AND NOT EXISTS (
-            SELECT 1 FROM core_entities f, core_entities cat
-            WHERE f.entity_id = c.food_id AND cat.entity_id = cat_id
-              AND position(lower(f.name) IN lower(cat.name)) > 0
-              AND lower(f.name) <> lower(cat.name)
-          )`,
-      restaurantIds,
-    );
+    // The SQL is FoodCategoryEdgeBuilderService's too — see
+    // food-category-edge-sql.ts for why the incremental and full-replace
+    // writers must derive membership from one text.
+    const scope = { restaurantIdsParam: '$1' };
+    await tx.$executeRawUnsafe(FOOD_CATEGORY_EDGE_LOCK);
+    await tx.$executeRawUnsafe(foodCategoryEdgeDeleteSql(scope), restaurantIds);
+    await tx.$executeRawUnsafe(foodCategoryEdgeInsertSql(scope), restaurantIds);
   }
 
   /* ACTIVE-RUN IS A JOIN PREDICATE, NOT A POST-FILTER (D47 scale pass).

@@ -8,11 +8,30 @@ import { LoggerService } from './logging/logger.interface';
 /**
  * THE DERIVED-INDEX LAW, as a base class (cron audit 2026-08-09).
  *
- * Six nightly jobs rebuild a derived table that the hot path reads and FAILS
+ * A nightly job rebuilds a derived table that the hot path reads and FAILS
  * OPEN on — so an empty or stale table degrades the product invisibly. The
  * law was learned one outage at a time (containment: rung-2 widening dead in
  * prod; H8: open-now unfiltered) and hand-copied unevenly. This class makes
  * it structural — a rebuild job that extends it CANNOT forget:
+ *
+ * WHO MUST EXTEND THIS, and how that is enforced. Every `derived_*` table in
+ * schema.prisma. That is not a convention: derived-index-job.spec.ts reads the
+ * schema, enumerates those tables, and requires each to name a registered job
+ * that declares it. The count used to be a hand-written `toHaveLength(4)` —
+ * a claim about the world checked against a copy of itself — and it agreed
+ * happily while `derived_food_category_edges` sat there as a fifth derived
+ * hot-path table with four fail-open readers and no rebuild job at all (D3).
+ * A new derived table now fails that spec by EXISTING.
+ *
+ * THE ACKNOWLEDGED NON-MEMBER. EntityEmbeddingReconciler heals
+ * `core_entity_embeddings` with its own bespoke boot routine and is
+ * deliberately not one of these. This law is EMPTINESS-driven — no rows means
+ * derivation did not happen, so replace everything. The embedding table's
+ * interesting failure is not emptiness but STALENESS: rows that exist for
+ * entities whose text has since changed, repaired per-row against a paid
+ * embedding API. A full replace is the wrong repair and the zero-output
+ * scream could never fire. It is named here so the omission is a decision
+ * with a reason rather than a silence.
  *
  *   1. BOOT SELF-HEAL: an empty derived table is un-derived derivation, not
  *      a config state. onModuleInit detects and rebuilds. Full-replace

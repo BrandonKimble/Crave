@@ -17,6 +17,7 @@ import { AppModule } from '../src/app.module';
 import { PrismaService } from '../src/prisma/prisma.service';
 import { LLMService } from '../src/modules/external-integrations/llm/llm.service';
 import { EntitySiblingEdgeBuilderService } from '../src/modules/entity-text-search/entity-sibling-edge-builder.service';
+import { FoodCategoryEdgeBuilderService } from '../src/modules/search/food-category-edge-builder.service';
 import { stopCronsForScript } from '../src/shared/utils/stop-crons';
 
 /**
@@ -106,12 +107,21 @@ async function main(): Promise<void> {
           ? `Sibling edges rebuilt: ${rebuilt.input} anchors → ${rebuilt.output} edges.`
           : 'Sibling edge rebuild SKIPPED by its guard (disable flag or in-flight).',
       );
-      const purged = await prisma.$executeRawUnsafe(
-        `DELETE FROM derived_food_category_edges
-         WHERE category_id = ANY($1::uuid[]) OR food_id = ANY($1::uuid[])`,
-        ids,
+      // Category edges get the SAME treatment as sibling edges, and for the
+      // same reason. This used to be a hand-written DELETE of the archived
+      // ids' rows — which removes the hub's own edges but leaves every OTHER
+      // food's membership computed against a corpus that still contained the
+      // hub. Now that the table has a rebuild job, the operator path is the
+      // job's public driver, so this rebuild carries the derived-index law
+      // (disable flag, in-flight guard, zero-output critical alert) and
+      // re-derives the whole table from the post-archive truth.
+      const edgeBuilder = app.get(FoodCategoryEdgeBuilderService);
+      const edges = await edgeBuilder.runNow();
+      out(
+        edges
+          ? `Category edges rebuilt: ${edges.input} live connections → ${edges.output} edges.`
+          : 'Category edge rebuild SKIPPED by its guard (disable flag or in-flight).',
       );
-      out(`Category edges purged: ${purged}.`);
     }
   } finally {
     await app.close();

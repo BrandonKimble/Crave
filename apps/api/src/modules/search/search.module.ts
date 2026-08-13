@@ -30,6 +30,7 @@ import { DietaryConstraintRegistry } from './dietary-constraints';
 import { UnsegmentedResidueService } from './unsegmented-residue.service';
 import { ScoringTerritoryRefreshService } from './scoring-territory-refresh.service';
 import { OpenIntervalsBuilderService } from './open-intervals-builder.service';
+import { FoodCategoryEdgeBuilderService } from './food-category-edge-builder.service';
 
 @Module({
   imports: [
@@ -68,6 +69,7 @@ import { OpenIntervalsBuilderService } from './open-intervals-builder.service';
     UnsegmentedResidueService,
     ScoringTerritoryRefreshService,
     OpenIntervalsBuilderService,
+    FoodCategoryEdgeBuilderService,
   ],
   exports: [
     DemandVocabularyService,
