@@ -502,6 +502,30 @@ singular/plural miss; + frozen-snapshot decision; + NEW: eslint ignores
 scripts/search-harness/** on a stale justification (tsc DOES cover it) —
 the whole harness is invisible to lint incl. the new vendor-door selectors.
 
+WAVE-2 LANDED (aadbc8734/4cdfa2ad6/93290eb1c/ffd863cf7; verified: battery
+14/14, vi gate unchanged). KEY JUDGMENT: red team's "strict arm universal"
+REFUTED BY DATA (vi 90.42→86.23; sn-25 'ca phe' must reach 'cà phê' —
+structurally identical to de→dê; no reader-free rule separates them).
+Shape shipped: request-chain half of leniency KEPT; analyzer-detected half
+NARROWED to evidence the fold cannot manufacture (accent-typed span whose
+accent-preserving spelling is banked in that language). Goat dead all
+three witnesses; phở-bo@en-US restored. One gap classifier (ZWSP soft,
+punctuation hard, delete-set imported not re-listed; fold unmoved over
+92k rows). Autocomplete exact arm chain-free (RED-proven spec).
+Containment floor gone: 11,295→12,151 edges. ITEM 4 STOPPED ON EVIDENCE:
+all 16 exempt rows are the borrowing language's OWN spelling (sweep banks
+plain label + generator banks accented recall + predicate reads backwards)
+→ election would make it WORSE (crêpe elected over crepe). cp-29 went red
+from a concurrent writer's 383 rows (proven not wave-2's) — re-measure.
+
+FINISHER DISPATCHED (post-waves, quiet tree): romanization endgame
+(delete inference, writer DECLARES origin, revert 3 wrong re-tags with
+verdict-key migration, re-audit the 200 applied, kill is_default
+exemption); coverage-truth multi-anchor arm + camarones + frozen-snapshot
+decision + re-baseline; eslint harness un-ignore; 4 unfolded form_folded
+repairs + fold invariant candidate; wave-4 residual und reads (4 sites);
+cp-29 re-measure; stale staleVerdictClaims comments.
+
 READ DOOR (fix wave 4 — red team C): write side has one door and held;
 READ side has none — 9 hard-coded locale='und' identity probes (74 twins
 invisible), display's parallel chain can never read und (limonada-not-
