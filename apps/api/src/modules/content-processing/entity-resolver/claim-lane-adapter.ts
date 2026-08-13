@@ -46,7 +46,27 @@ export interface ClaimLaneAdapter<TClaim> {
    *     silently answers for a claim nobody heard.
    */
   canonicalClaimKey(claim: TClaim): string;
+
+  /**
+   * WHICH FOLD SPELLED THE KEY (D-census, 2026-08-13).
+   *
+   * A key built out of TEXT is a function of the fold that normalized it, and
+   * a behavioural fold change re-spells every key ever written — so every
+   * stored verdict stops being findable and the whole judged corpus reads as
+   * unheard and is re-bought. Silently. The ledger therefore stores this
+   * number as part of the claim's identity, and a fold bump re-opens claims
+   * through the budgeted drain instead of orphaning them.
+   *
+   * A lane whose key contains NO folded text declares
+   * `UNFOLDED_CLAIM_KEY` — saying "nothing here can drift" out loud, rather
+   * than borrowing a version number that does not describe it.
+   */
+  readonly keyFoldVersion: number;
 }
+
+/** The `keyFoldVersion` of a lane whose key contains no folded text at all
+ *  (a UUID pair, an opaque id): there is no fold to version. */
+export const UNFOLDED_CLAIM_KEY = 0;
 
 /**
  * A lane's adapter as a CLASS, for lanes that want the contract enforced by
@@ -59,4 +79,5 @@ export abstract class BaseClaimLaneAdapter<TClaim>
 {
   abstract readonly lane: string;
   abstract canonicalClaimKey(claim: TClaim): string;
+  abstract readonly keyFoldVersion: number;
 }

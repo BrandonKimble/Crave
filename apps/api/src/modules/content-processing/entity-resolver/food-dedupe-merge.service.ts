@@ -781,6 +781,7 @@ export class FoodDedupeMergeService {
     const decided = await this.ledger.decidedKeys(
       ENTITY_DEDUPE_LANE,
       ENTITY_DEDUPE_RULE_VERSION,
+      entityDedupeLane.keyFoldVersion,
       candidates.map((pair) =>
         entityDedupeLane.canonicalClaimKey({
           entityId: pair.a_id,
@@ -863,6 +864,7 @@ export class FoodDedupeMergeService {
       lane: ENTITY_DEDUPE_LANE,
       claimKey,
       ruleVersion: ENTITY_DEDUPE_RULE_VERSION,
+      foldVersion: entityDedupeLane.keyFoldVersion,
       outcome,
       reason,
       ruleFingerprint: ENTITY_DEDUPE_RULE_FINGERPRINT,
@@ -873,6 +875,7 @@ export class FoodDedupeMergeService {
       ENTITY_DEDUPE_LANE,
       claimKey,
       ENTITY_DEDUPE_RULE_VERSION,
+      entityDedupeLane.keyFoldVersion,
     );
   }
 
@@ -908,6 +911,7 @@ export class FoodDedupeMergeService {
         ENTITY_DEDUPE_LANE,
         verdict.claimKey,
         verdict.ruleVersion,
+        verdict.foldVersion,
       );
       resumed += 1;
     }

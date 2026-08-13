@@ -3037,11 +3037,17 @@ model ClaimVerdict {
   /// Short content hash of the rule text that decided it — catches a prompt
   /// edited without a version bump, which `ruleVersion` alone cannot see.
   ruleFingerprint String?   @map("rule_fingerprint") @db.VarChar(16)
+  /// FOLD_ALGORITHM_VERSION whose fold SPELLED `claimKey` (D-census,
+  /// 2026-08-13). Part of the identity, not decoration: the key is a
+  /// function of the fold, so a fold bump re-spells every key and would
+  /// otherwise orphan the whole judged corpus silently — re-bought, with
+  /// nothing on the record to say why.
+  foldVersion     Int       @default(1) @map("fold_version") @db.SmallInt
   subject         Json      @default("{}")
   decidedAt       DateTime  @default(now()) @map("decided_at") @db.Timestamptz(6)
   executedAt      DateTime? @map("executed_at") @db.Timestamptz(6)
 
-  @@id([lane, claimKey, ruleVersion])
+  @@id([lane, claimKey, ruleVersion, foldVersion])
   @@index([lane, claimKey], map: "idx_claim_verdicts_lane_claim")
   @@map("claim_verdicts")
 }

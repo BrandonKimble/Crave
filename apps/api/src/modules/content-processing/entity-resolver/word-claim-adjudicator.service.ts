@@ -15,6 +15,7 @@ import {
   CLAIM_JUDGE_RULE_FINGERPRINT,
 } from './claim-judge-rule';
 import { ClaimVerdictLedgerService } from './claim-verdict-ledger.service';
+import { ClaimRehearingBudgetService } from './claim-rehearing-budget.service';
 import { WORD_CLAIM_LANE, wordClaimLane } from './word-claim-lane';
 
 /**
@@ -213,13 +214,37 @@ export interface WordClaimEffect {
   locale: string;
   entityId: string;
   source: SurfaceSource;
-  /** Surface ids whose recall claim dies — evicted incumbents, or the held
-   *  row on a retraction. Degrades 'both' to 'display', deprecates 'recall'. */
-  takeWordFrom: string[];
+  /**
+   * Surfaces whose recall claim dies — evicted incumbents, or the held row on
+   * a retraction — each with THE STATE THE VERDICT ORDERS IT INTO.
+   *
+   * ABSOLUTE, NOT RELATIVE (2026-08-13). This used to be a bare list of
+   * surface ids, and the transition ("a 'both' row becomes 'display', anything
+   * else is deprecated") was re-derived from the row's CURRENT state at write
+   * time. That makes the effect non-idempotent in the worst way: run it once
+   * and a label row is degraded to 'display' and deliberately left ACTIVE, so
+   * the user keeps their localized name; run the very same effect again and
+   * the row is no longer 'both', the second arm fires instead, and the label
+   * is deprecated — 15,565 default-label rows away from an English fallback
+   * nobody ruled on. A replay is not a new decision and must not be able to
+   * mean something new.
+   *
+   * So the target state is computed ONCE, when the verdict is reached, and
+   * stored here. Replaying writes the same bytes, because the bytes are what
+   * was decided rather than a function of a corpus that has since moved.
+   */
+  takeWord: SurfaceTargetState[];
   /** Write the claim active on the claimant. */
   bank: boolean;
   /** Write the claim 'deprecated' — remembered wrong, never re-proposed. */
   refuse: boolean;
+}
+
+/** One surface, and the exact (role, status) the verdict puts it in. */
+export interface SurfaceTargetState {
+  surfaceId: string;
+  role: string;
+  status: string;
 }
 
 type WordClaimIdentityFields = Pick<
@@ -236,6 +261,7 @@ export class WordClaimAdjudicatorService {
     private readonly llm: LLMService,
     loggerService: LoggerService,
     private readonly ledger: ClaimVerdictLedgerService,
+    private readonly budget: ClaimRehearingBudgetService,
   ) {
     this.logger = loggerService.setContext('WordClaimAdjudicatorService');
   }
@@ -266,6 +292,7 @@ export class WordClaimAdjudicatorService {
         WORD_CLAIM_LANE,
         verdict.claimKey,
         verdict.ruleVersion,
+        verdict.foldVersion,
       );
       resumed += 1;
     }
@@ -285,8 +312,8 @@ export class WordClaimAdjudicatorService {
    * test can kill the effect mid-hearing and prove the verdict survives.
    */
   protected async applyEffect(effect: WordClaimEffect): Promise<boolean> {
-    if (effect.takeWordFrom.length) {
-      await this.takeTheWord(effect.takeWordFrom);
+    if (effect.takeWord.length) {
+      await this.takeTheWord(effect.takeWord);
     }
     if (effect.refuse) {
       await this.refuse(effect);
@@ -317,6 +344,7 @@ export class WordClaimAdjudicatorService {
       lane: WORD_CLAIM_LANE,
       claimKey,
       ruleVersion: CLAIM_JUDGE_PROMPT_VERSION,
+      foldVersion: wordClaimLane.keyFoldVersion,
       outcome,
       reason,
       ruleFingerprint: CLAIM_JUDGE_RULE_FINGERPRINT,
@@ -327,13 +355,31 @@ export class WordClaimAdjudicatorService {
       WORD_CLAIM_LANE,
       claimKey,
       CLAIM_JUDGE_PROMPT_VERSION,
+      wordClaimLane.keyFoldVersion,
     );
     return banked;
   }
 
+  /**
+   * HEAR THESE CLAIMS — and the ONE place a hearing can be paid for.
+   *
+   * Two gates live here rather than in the callers (2026-08-13), because a
+   * gate a caller has to remember is a gate that has already been forgotten:
+   * the nightly label sweep called straight into this method with its whole
+   * appeal docket, past a budget check it never made and a due-predicate it
+   * never consulted.
+   *
+   *   - ALREADY DECIDED IS NOT DUE. A claim with a verdict at the rule and
+   *     fold in force has been answered; re-asking buys the same answer twice
+   *     and — before `record` stopped re-opening identical verdicts — marked
+   *     the finished effect unexecuted and replayed it.
+   *   - THE DRAIN IS A SPEND EVENT. What is left of the rolling allowance
+   *     bounds it, and beyond that an approved estimate is required. The
+   *     refusal carries the quote.
+   */
   async adjudicate(
     claims: ContestedClaim[],
-    options: { dryRun?: boolean } = {},
+    options: { dryRun?: boolean; approvedHash?: string | null } = {},
   ): Promise<AdjudicationSummary> {
     const dryRun = options.dryRun ?? false;
     const summary: AdjudicationSummary = {
@@ -351,7 +397,7 @@ export class WordClaimAdjudicatorService {
 
     // One judgment per (word, target entity).
     const seen = new Set<string>();
-    const unique = claims.filter((c) => {
+    const deduped = claims.filter((c) => {
       // Keyed by the CLAIM unit (the word), not the recall fold: bò and bơ on
       // one entity are two claims, and folding them together silently dropped
       // the second one unheard.
@@ -360,6 +406,30 @@ export class WordClaimAdjudicatorService {
       seen.add(key);
       return true;
     });
+
+    // THE DUE-PREDICATE, AT THE CHOKEPOINT. Same test `dueClaims` applies, so
+    // a caller that selected properly loses nothing and a caller that did not
+    // stops paying for settled questions.
+    const alreadyDecided = await this.ledger.decidedKeys(
+      WORD_CLAIM_LANE,
+      CLAIM_JUDGE_PROMPT_VERSION,
+      wordClaimLane.keyFoldVersion,
+      deduped.map((claim) => wordClaimLane.canonicalClaimKey(claim)),
+    );
+    const undecided = deduped.filter(
+      (claim) => !alreadyDecided.has(wordClaimLane.canonicalClaimKey(claim)),
+    );
+
+    // THE BUDGET GATE. Refuses loudly with a quote; it does not silently
+    // truncate, because a caller that believes it heard everything and did
+    // not is how a backlog goes quietly unheard.
+    const authorized = await this.budget.authorizeDrain({
+      lane: WORD_CLAIM_LANE,
+      ruleVersion: CLAIM_JUDGE_PROMPT_VERSION,
+      dueCount: undecided.length,
+      approvedHash: options.approvedHash,
+    });
+    const unique = undecided.slice(0, authorized.allowed);
 
     for (let i = 0; i < unique.length; i += PER_CALL) {
       const batch = unique.slice(i, i + PER_CALL);
@@ -401,7 +471,7 @@ export class WordClaimAdjudicatorService {
                 p.claim,
                 'bothUpheld',
                 'uncontested — no other concept claims this word',
-                { takeWordFrom: [], bank: true, refuse: false },
+                { takeWord: [], bank: true, refuse: false },
               )
             ) {
               summary.banked += 1;
@@ -495,11 +565,11 @@ export class WordClaimAdjudicatorService {
               verdict.reason,
               p.held
                 ? {
-                    takeWordFrom: [p.held.surfaceId],
+                    takeWord: await this.takeWordTargets([p.held.surfaceId]),
                     bank: false,
                     refuse: false,
                   }
-                : { takeWordFrom: [], bank: false, refuse: true },
+                : { takeWord: [], bank: false, refuse: true },
             );
           }
           if (p.held) {
@@ -530,9 +600,11 @@ export class WordClaimAdjudicatorService {
             evictable.length ? 'incumbentEvicted' : 'bothUpheld',
             verdict.reason,
             {
-              takeWordFrom: evictable
-                .map((inc) => inc.aliasId)
-                .filter((id): id is string => id !== null),
+              takeWord: await this.takeWordTargets(
+                evictable
+                  .map((inc) => inc.aliasId)
+                  .filter((id): id is string => id !== null),
+              ),
               bank: true,
               refuse: false,
             },
@@ -905,6 +977,7 @@ export class WordClaimAdjudicatorService {
       const decided = await this.ledger.decidedKeys(
         WORD_CLAIM_LANE,
         CLAIM_JUDGE_PROMPT_VERSION,
+        wordClaimLane.keyFoldVersion,
         page.map((claim) => wordClaimLane.canonicalClaimKey(claim)),
       );
       for (const claim of page) {
@@ -932,6 +1005,7 @@ export class WordClaimAdjudicatorService {
       const decided = await this.ledger.decidedKeys(
         WORD_CLAIM_LANE,
         CLAIM_JUDGE_PROMPT_VERSION,
+        wordClaimLane.keyFoldVersion,
         page.map((claim) => wordClaimLane.canonicalClaimKey(claim)),
       );
       for (const claim of page) {
@@ -1072,16 +1146,57 @@ export class WordClaimAdjudicatorService {
    * label survives if the row was one, and the verdict in the ledger records
    * which rule took it.
    */
-  private async takeTheWord(ids: string[]): Promise<void> {
-    if (!ids.length) return;
-    await this.prisma.$executeRaw`
-      UPDATE entity_surface
-         SET role   = CASE WHEN role = 'both' THEN 'display' ELSE role END,
-             status = CASE WHEN role = 'both' THEN status ELSE 'deprecated' END,
-             -- The loser's row records WHICH rule took its word, so a later
-             -- bump re-opens this eviction the same way it re-opens a refusal.
-             claim_judge_version = ${CLAIM_JUDGE_PROMPT_VERSION},
-             updated_at = now()
-       WHERE surface_id = ANY(${ids}::uuid[])`;
+  private async takeTheWord(targets: SurfaceTargetState[]): Promise<void> {
+    if (!targets.length) return;
+    for (const target of targets) {
+      // ABSOLUTE, and a NO-OP when the row already says what the verdict
+      // ordered. The `IS DISTINCT FROM` guard is what makes a replay
+      // byte-identical rather than merely equivalent: without it every replay
+      // would still move `updated_at`, and "did this run twice?" would stop
+      // being answerable from the row.
+      await this.prisma.$executeRaw`
+        UPDATE entity_surface
+           SET role   = ${target.role},
+               status = ${target.status},
+               -- The loser's row records WHICH rule took its word, so a later
+               -- bump re-opens this eviction the same way it re-opens a
+               -- refusal.
+               claim_judge_version = ${CLAIM_JUDGE_PROMPT_VERSION},
+               updated_at = now()
+         WHERE surface_id = ${target.surfaceId}::uuid
+           AND (role, status, claim_judge_version)
+               IS DISTINCT FROM
+               (${target.role}, ${target.status},
+                ${CLAIM_JUDGE_PROMPT_VERSION}::int)`;
+    }
+  }
+
+  /**
+   * WHAT TAKING THE WORD FROM THESE ROWS MEANS, DECIDED NOW.
+   *
+   * The transition is read once, at decision time, and frozen into the
+   * verdict's subject: a role='both' row keeps its status and becomes
+   * 'display' (the label lives, the word dies), anything else is deprecated.
+   * Encoding the RESULT rather than the rule is the whole of the idempotence
+   * fix — see `WordClaimEffect.takeWord`.
+   *
+   * A row that has vanished between selection and decision contributes
+   * nothing: there is no state to order it into, and inventing one would be
+   * this method deciding something the judge did not.
+   */
+  private async takeWordTargets(
+    surfaceIds: readonly string[],
+  ): Promise<SurfaceTargetState[]> {
+    if (!surfaceIds.length) return [];
+    const rows = await this.prisma.$queryRaw<
+      Array<{ surface_id: string; role: string; status: string }>
+    >`SELECT surface_id::text, role::text, status::text
+        FROM entity_surface
+       WHERE surface_id = ANY(${[...surfaceIds]}::uuid[])`;
+    return rows.map((row) => ({
+      surfaceId: row.surface_id,
+      role: row.role === 'both' ? 'display' : row.role,
+      status: row.role === 'both' ? row.status : 'deprecated',
+    }));
   }
 }

@@ -4,6 +4,19 @@ import { LabelSweepService, sweepPass } from './label-sweep.service';
 import { identityInsertData } from '../content-processing/entity-resolver/entity-identity';
 import { WordClaimAdjudicatorService } from '../content-processing/entity-resolver/word-claim-adjudicator.service';
 import { ClaimVerdictLedgerService } from '../content-processing/entity-resolver/claim-verdict-ledger.service';
+import { ClaimRehearingBudgetService } from '../content-processing/entity-resolver/claim-rehearing-budget.service';
+
+/**
+ * The budget with its ROLLING WINDOW read as empty. These proofs hear a
+ * handful of claims and are not about the spend allowance — which the
+ * hearing-ledger spec proves on its own — while this machine's dev corpus
+ * genuinely carries judge spend in the trailing window.
+ */
+class UnspentWindowBudget extends ClaimRehearingBudgetService {
+  hearingsSpentInWindow(): Promise<number> {
+    return Promise.resolve(0);
+  }
+}
 
 /**
  * THE SWEEP COUNTS THE SURFACES IT WINS ON APPEAL — proven against a real
@@ -59,6 +72,7 @@ describe('label sweep appeal tally — proven against a live database', () => {
       error: jest.fn(),
     } as never,
     new ClaimVerdictLedgerService(prisma as never),
+    new UnspentWindowBudget(prisma as never),
   );
 
   afterAll(async () => {
@@ -120,6 +134,9 @@ describe('label sweep appeal tally — proven against a live database', () => {
     const sweep = new LabelSweepService(
       prisma as never,
       {
+        // The nightly finishes decided-but-unexecuted work before it hears
+        // anything new; nothing is pending here, so this records the call.
+        resumePendingEffects: jest.fn().mockResolvedValue(0),
         adjudicate: jest.fn().mockResolvedValue({
           considered: 3,
           testimonyUpheld: 0,

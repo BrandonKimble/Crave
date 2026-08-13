@@ -3,10 +3,23 @@ import { randomUUID } from 'crypto';
 import { addSurfaces } from './entity-surface.service';
 import { identityInsertData } from './entity-identity';
 import { ClaimVerdictLedgerService } from './claim-verdict-ledger.service';
+import { ClaimRehearingBudgetService } from './claim-rehearing-budget.service';
 import {
   CLAIM_JUDGE_PROMPT_VERSION,
   WordClaimAdjudicatorService,
 } from './word-claim-adjudicator.service';
+
+/**
+ * The budget with its ROLLING WINDOW read as empty. These proofs hear a
+ * handful of claims and are not about the spend allowance — which the
+ * hearing-ledger spec proves on its own — while this machine's dev corpus
+ * genuinely carries judge spend in the trailing window.
+ */
+class UnspentWindowBudget extends ClaimRehearingBudgetService {
+  hearingsSpentInWindow(): Promise<number> {
+    return Promise.resolve(0);
+  }
+}
 
 /**
  * THE CLAIM UNIT IS THE FORM — proven against a real database.
@@ -77,6 +90,7 @@ describe('the claim unit is the FORM, not the fold', () => {
         error: jest.fn(),
       } as never,
       new ClaimVerdictLedgerService(prisma as never),
+      new UnspentWindowBudget(prisma as never),
     );
 
   afterAll(async () => {

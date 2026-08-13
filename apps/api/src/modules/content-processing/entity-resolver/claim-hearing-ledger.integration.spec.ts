@@ -44,6 +44,20 @@ describe('the one hearing abstraction — live database', () => {
   const ledger = new ClaimVerdictLedgerService(prisma as never);
   const budget = new ClaimRehearingBudgetService(prisma as never);
 
+  /**
+   * The budget with its ROLLING WINDOW read as empty. Every proof except the
+   * budget's own hears one or two claims and is not about the allowance —
+   * and this machine's dev corpus genuinely has judge spend in the trailing
+   * window, so the real meter would refuse them for a reason that is true
+   * and irrelevant. The allowance itself (200 per window) still applies.
+   */
+  class UnspentWindowBudget extends ClaimRehearingBudgetService {
+    hearingsSpentInWindow(): Promise<number> {
+      return Promise.resolve(0);
+    }
+  }
+  const freshWindow = new UnspentWindowBudget(prisma as never);
+
   const logger = () =>
     ({
       setContext: jest.fn().mockReturnThis(),
@@ -77,6 +91,7 @@ describe('the one hearing abstraction — live database', () => {
       judge as never,
       logger(),
       ledger,
+      freshWindow,
     );
 
   /** The same adjudicator, with the EFFECT step killed — the crash seam. */
@@ -182,6 +197,7 @@ describe('the one hearing abstraction — live database', () => {
       judgeSaying({ a_owns_word: true }) as never,
       logger(),
       ledger,
+      freshWindow,
     );
     await expect(crashing.adjudicate([claim])).rejects.toThrow(
       'process died before the effect ran',
@@ -211,6 +227,146 @@ describe('the one hearing abstraction — live database', () => {
     // IDEMPOTENT: resuming again is a no-op, not a second bank.
     expect(await forbidden.resumePendingEffects()).toBe(0);
     expect(await surfacesOf(claimant)).toHaveLength(1);
+  });
+
+  /**
+   * PROOF 1b — AN EFFECT REPLAYED IS THE SAME BYTES, EXECUTED.
+   *
+   * This spec used to assert idempotence by asserting that the RESUME QUEUE
+   * was empty ("resuming again is a no-op") — which proves the queue is
+   * empty, not that the effect is replayable. It was green throughout the
+   * whole life of the defect below.
+   *
+   * THE DEFECT IT NOW CATCHES. Taking the word used to be written as a
+   * TRANSITION over the row's current state: `role = CASE WHEN role='both'
+   * THEN 'display' ELSE role END, status = CASE WHEN role='both' THEN status
+   * ELSE 'deprecated' END`. Run once on a label row, that is the whole design
+   * — the word dies, the label lives, the row stays ACTIVE. Run the identical
+   * effect a second time and the row is no longer 'both', so the other arm
+   * fires and DEPRECATES it: the user's localized name disappears and the app
+   * falls back to English, on 15,565 default-label rows, with no verdict
+   * anywhere ordering it. Replay was reachable without any crash at all —
+   * re-recording an identical verdict used to reset `executed_at` to NULL and
+   * hand the finished effect straight back to the resume queue.
+   *
+   * So the effect is run TWICE here, for real, and the row is captured
+   * byte-for-byte both times — `updated_at` included, because a replay that
+   * still touches the row cannot be told apart from one that changed it.
+   */
+  it('replays an EXECUTED effect to byte-identical bytes', async () => {
+    const suffix = randomUUID().slice(0, 8);
+    const word = `zzq replay ${suffix}`;
+    const holder = await mintFood(`zzq replay holder ${suffix}`);
+    const claimant = await mintFood(`zzq replay claimant ${suffix}`);
+    // The incumbent's row is a LABEL as well as a recall claim — the shape
+    // the transitional effect destroyed on replay.
+    await prisma.$transaction((tx) =>
+      addSurfaces(tx, holder, [
+        {
+          form: word,
+          locale: 'es',
+          source: 'vocabulary',
+          role: 'both',
+          isDefault: true,
+        },
+      ]),
+    );
+
+    const claim = {
+      form: word,
+      locale: 'es',
+      entityId: claimant,
+      source: 'vocabulary' as const,
+    };
+    const claimKey = wordClaimLane.canonicalClaimKey(claim);
+    madeKeys.push(claimKey);
+
+    // The claimant wins the word; the incumbent loses it and keeps its label.
+    await adjudicatorWith(
+      judgeSaying({
+        a_owns_word: true,
+        incumbents_own_word: [false],
+        reason: 'the newcomer is what a speaker means by this word',
+      }),
+    ).adjudicate([claim]);
+
+    const rowBytes = async (): Promise<string> => {
+      const rows = await prisma.$queryRawUnsafe<Array<{ row: string }>>(
+        `SELECT entity_surface::text AS row FROM entity_surface
+          WHERE entity_id = $1::uuid AND form = $2`,
+        holder,
+        word,
+      );
+      return rows[0]?.row ?? '';
+    };
+    const afterFirst = await rowBytes();
+    // The eviction landed as designed: the label survives, the word is gone.
+    expect(afterFirst).toContain('display');
+    expect(afterFirst).toContain('active');
+
+    // NOW REPLAY IT — the stored verdict, executed a second time, exactly as
+    // the resume path would. Nothing is re-decided and nothing is re-asked.
+    const stored = await prisma.$queryRawUnsafe<
+      Array<{ subject: unknown; executed_at: Date | null }>
+    >(
+      `SELECT subject, executed_at FROM claim_verdicts
+        WHERE lane = $1 AND claim_key = $2`,
+      WORD_CLAIM_LANE,
+      claimKey,
+    );
+    expect(stored[0].executed_at).not.toBeNull();
+    class ReplayingAdjudicator extends WordClaimAdjudicatorService {
+      replay(effect: unknown): Promise<boolean> {
+        return this.applyEffect(effect as never);
+      }
+    }
+    await new ReplayingAdjudicator(
+      prisma as never,
+      judgeSaying({ a_owns_word: true }) as never,
+      logger(),
+      ledger,
+      freshWindow,
+    ).replay(stored[0].subject);
+
+    // THE SAME BYTES. Not "equivalent state" — the same row text, including
+    // updated_at, which is what makes this assertion able to go red on a
+    // replay that merely re-writes what is already there.
+    expect(await rowBytes()).toBe(afterFirst);
+
+    // ...and RE-RECORDING THE SAME VERDICT does not re-open the finished
+    // effect. This is the trigger that made replay reachable without any
+    // crash: the conflict clause reset `executed_at` to NULL unconditionally,
+    // so any second pass over an already-decided claim — the label sweep's
+    // appeal docket was the live one — handed the finished effect back to the
+    // resume queue and it ran again.
+    const priorVerdict = await prisma.$queryRawUnsafe<
+      Array<{ outcome: string; reason: string; rule_fingerprint: string }>
+    >(
+      `SELECT outcome, reason, rule_fingerprint FROM claim_verdicts
+        WHERE lane = $1 AND claim_key = $2`,
+      WORD_CLAIM_LANE,
+      claimKey,
+    );
+    await ledger.record({
+      lane: WORD_CLAIM_LANE,
+      claimKey,
+      ruleVersion: CLAIM_JUDGE_PROMPT_VERSION,
+      foldVersion: wordClaimLane.keyFoldVersion,
+      outcome: priorVerdict[0].outcome,
+      reason: priorVerdict[0].reason,
+      ruleFingerprint: priorVerdict[0].rule_fingerprint,
+      subject: stored[0].subject,
+    });
+    const reRecorded = await prisma.$queryRawUnsafe<
+      Array<{ executed_at: Date | null }>
+    >(
+      `SELECT executed_at FROM claim_verdicts
+        WHERE lane = $1 AND claim_key = $2`,
+      WORD_CLAIM_LANE,
+      claimKey,
+    );
+    expect(reRecorded[0].executed_at).toEqual(stored[0].executed_at);
+    expect(await rowBytes()).toBe(afterFirst);
   });
 
   /**
@@ -388,9 +544,9 @@ describe('the one hearing abstraction — live database', () => {
       });
       expect(approved.allowed).toBe(dueCount);
 
-      // Within the cap, no estimate and no approval is needed — a nightly
-      // that needs a human for routine work is one that stops running.
-      const routine = await budget.authorizeDrain({
+      // Within the allowance, no estimate and no approval is needed — a
+      // nightly that needs a human for routine work is one that stops running.
+      const routine = await freshWindow.authorizeDrain({
         lane: WORD_CLAIM_LANE,
         ruleVersion: CLAIM_JUDGE_PROMPT_VERSION,
         dueCount: STANDING_REHEARING_CAP,
@@ -399,6 +555,38 @@ describe('the one hearing abstraction — live database', () => {
         allowed: STANDING_REHEARING_CAP,
         estimate: null,
       });
+
+      // ...AND THE ALLOWANCE IS A ROLLING WINDOW, which is what closes the
+      // hole. The old gate compared each CALL against the cap and remembered
+      // nothing, so a loop of ten-claim batches — the shape every caller here
+      // has — passed it an unlimited number of times. Metered, a window that
+      // has already bought its allowance refuses the next small batch.
+      class SpentWindowBudget extends ClaimRehearingBudgetService {
+        hearingsSpentInWindow(): Promise<number> {
+          return Promise.resolve(STANDING_REHEARING_CAP);
+        }
+      }
+      await expect(
+        new SpentWindowBudget(prisma as never).authorizeDrain({
+          lane: WORD_CLAIM_LANE,
+          ruleVersion: CLAIM_JUDGE_PROMPT_VERSION,
+          dueCount: 10,
+        }),
+      ).rejects.toBeInstanceOf(DrainExceedsStandingCapError);
+      // The SAME batch on a window that has spent nothing goes through — so
+      // the refusal above is the window talking, not the batch size.
+      expect(
+        (
+          await freshWindow.authorizeDrain({
+            lane: WORD_CLAIM_LANE,
+            ruleVersion: CLAIM_JUDGE_PROMPT_VERSION,
+            dueCount: 10,
+          })
+        ).allowed,
+      ).toBe(10);
+      // And the real meter counts real rows: the ledger row this proof
+      // inserted is one judge call's worth of hearings.
+      expect(await budget.hearingsSpentInWindow()).toBeGreaterThanOrEqual(10);
     } finally {
       await prisma.$executeRawUnsafe(
         `DELETE FROM api_usage_ledger WHERE run_key = $1`,
@@ -420,6 +608,7 @@ describe('the one hearing abstraction — live database', () => {
         lane: WORD_CLAIM_LANE,
         claimKey,
         ruleVersion: CLAIM_JUDGE_PROMPT_VERSION,
+        foldVersion: wordClaimLane.keyFoldVersion,
         outcome: 'bothUpheld',
         reason: '   ',
         subject: {},
@@ -480,6 +669,7 @@ describe('the one hearing abstraction — live database', () => {
     }
     class RestaurantNameLaneAdapter extends BaseClaimLaneAdapter<RestaurantNameClaim> {
       readonly lane = 'restaurant_name';
+      readonly keyFoldVersion = 1;
       canonicalClaimKey(claim: RestaurantNameClaim): string {
         return `${claim.restaurantId}|${claim.surface.toLowerCase()}`;
       }

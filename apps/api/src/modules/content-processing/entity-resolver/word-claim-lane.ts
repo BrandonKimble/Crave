@@ -1,5 +1,6 @@
 import { BaseClaimLaneAdapter } from './claim-lane-adapter';
 import { surfaceClaimKey } from './entity-surface.service';
+import { FOLD_ALGORITHM_VERSION } from './entity-identity';
 
 /** The lane name stored in `claim_verdicts.lane`. */
 export const WORD_CLAIM_LANE = 'word_claim';
@@ -42,6 +43,19 @@ export interface WordClaimIdentity {
  */
 export class WordClaimLaneAdapter extends BaseClaimLaneAdapter<WordClaimIdentity> {
   readonly lane = WORD_CLAIM_LANE;
+
+  /**
+   * THE KEY IS SPELLED BY THE FOLD, so the fold's version is part of the
+   * claim's identity (D-census, 2026-08-13). `surfaceClaimKey` IS
+   * `diacriticFold`, whose output FOLD_ALGORITHM_VERSION versions: change the
+   * fold — the tone-mark work is already planned — and every key ever written
+   * is re-spelled at once. Without this number stored beside the key, that
+   * event is invisible: `decidedKeys` probes the new spelling, misses every
+   * stored verdict, and the entire judged corpus reads as unheard and is
+   * re-bought. With it, a fold bump re-opens the corpus the same way a rule
+   * bump does — through the budgeted drain, with a quote.
+   */
+  readonly keyFoldVersion = FOLD_ALGORITHM_VERSION;
 
   canonicalClaimKey(claim: WordClaimIdentity): string {
     return `${claim.locale}|${surfaceClaimKey(claim.form)}|${claim.entityId}`;

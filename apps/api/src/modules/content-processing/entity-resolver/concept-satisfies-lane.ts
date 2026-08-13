@@ -1,4 +1,4 @@
-import { BaseClaimLaneAdapter } from './claim-lane-adapter';
+import { BaseClaimLaneAdapter, UNFOLDED_CLAIM_KEY } from './claim-lane-adapter';
 
 /** The lane name stored in `claim_verdicts.lane`. */
 export const CONCEPT_SATISFIES_LANE = 'concept_satisfies';
@@ -29,6 +29,10 @@ export interface SatisfiesClaimIdentity {
  */
 export class ConceptSatisfiesLaneAdapter extends BaseClaimLaneAdapter<SatisfiesClaimIdentity> {
   readonly lane = CONCEPT_SATISFIES_LANE;
+
+  /** An ordered pair of entity ids — no folded text, so there is no fold to
+   *  version and no fold change that could re-spell one of these keys. */
+  readonly keyFoldVersion = UNFOLDED_CLAIM_KEY;
 
   canonicalClaimKey(claim: SatisfiesClaimIdentity): string {
     return `${claim.fromEntityId}>${claim.toEntityId}`;

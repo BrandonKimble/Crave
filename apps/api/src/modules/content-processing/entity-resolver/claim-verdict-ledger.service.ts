@@ -20,6 +20,8 @@ export interface ClaimVerdictInput<TSubject = unknown> {
   lane: string;
   claimKey: string;
   ruleVersion: number;
+  /** The lane adapter's `keyFoldVersion` — which fold SPELLED `claimKey`. */
+  foldVersion: number;
   outcome: string;
   /** The judge's stated ground. Empty is rejected here AND by a CHECK. */
   reason: string;
@@ -32,6 +34,7 @@ export interface PendingVerdict<TSubject = unknown> {
   lane: string;
   claimKey: string;
   ruleVersion: number;
+  foldVersion: number;
   outcome: string;
   reason: string;
   subject: TSubject;
@@ -59,11 +62,22 @@ export class ClaimVerdictLedgerService {
   constructor(private readonly prisma: PrismaService) {}
 
   /**
-   * Commit a decision. Idempotent per (lane, claim, rule version): a re-run
-   * that reaches the same case again REPLACES the decision and re-opens its
-   * effect (`executed_at` back to NULL), because a decision recorded twice at
-   * one rule version is one decision, and the newer one is the one whose
-   * effect has not necessarily run.
+   * Commit a decision.
+   *
+   * A RE-DECISION THAT SAYS THE SAME THING IS NOT AN EVENT (2026-08-13). This
+   * clause used to reset `decided_at` and `executed_at` unconditionally, on
+   * the reasoning that "the newer decision is the one whose effect has not
+   * necessarily run". That is true of a decision that CHANGED, and false —
+   * dangerously — of an identical one: re-recording the same verdict marked a
+   * finished hearing as unexecuted, and the resume queue then re-ran an effect
+   * the corpus had already obeyed. Nothing needed to crash for that to happen;
+   * any second pass over an already-decided claim did it (the label sweep's
+   * appeal docket, run twice in one night, was the live path).
+   *
+   * So the write is conditioned on the decision actually differing. An
+   * identical re-decision touches NO bytes — same row, same `decided_at`, same
+   * `executed_at` — and a genuinely different one supersedes the old verdict
+   * and re-opens its effect, which is the case the original clause was for.
    */
   async record<TSubject>(
     input: ClaimVerdictInput<TSubject>,
@@ -76,18 +90,24 @@ export class ClaimVerdictLedgerService {
     const client = tx ?? this.prisma;
     await client.$executeRaw`
       INSERT INTO claim_verdicts
-        (lane, claim_key, rule_version, outcome, reason, rule_fingerprint,
-         subject, decided_at, executed_at)
+        (lane, claim_key, rule_version, fold_version, outcome, reason,
+         rule_fingerprint, subject, decided_at, executed_at)
       VALUES (${input.lane}, ${input.claimKey}, ${input.ruleVersion},
+              ${input.foldVersion},
               ${input.outcome}, ${reason}, ${input.ruleFingerprint ?? null},
               ${JSON.stringify(input.subject)}::jsonb, now(), NULL)
-      ON CONFLICT (lane, claim_key, rule_version) DO UPDATE
+      ON CONFLICT (lane, claim_key, rule_version, fold_version) DO UPDATE
         SET outcome          = EXCLUDED.outcome,
             reason           = EXCLUDED.reason,
             rule_fingerprint = EXCLUDED.rule_fingerprint,
             subject          = EXCLUDED.subject,
             decided_at       = now(),
-            executed_at      = NULL`;
+            executed_at      = NULL
+      WHERE (claim_verdicts.outcome, claim_verdicts.reason,
+             claim_verdicts.rule_fingerprint, claim_verdicts.subject)
+            IS DISTINCT FROM
+            (EXCLUDED.outcome, EXCLUDED.reason,
+             EXCLUDED.rule_fingerprint, EXCLUDED.subject)`;
   }
 
   /** The effect ran. Only now is the hearing finished. */
@@ -95,11 +115,14 @@ export class ClaimVerdictLedgerService {
     lane: string,
     claimKey: string,
     ruleVersion: number,
+    foldVersion: number,
   ): Promise<void> {
     await this.prisma.$executeRaw`
       UPDATE claim_verdicts SET executed_at = now()
        WHERE lane = ${lane} AND claim_key = ${claimKey}
-         AND rule_version = ${ruleVersion}`;
+         AND rule_version = ${ruleVersion}
+         AND fold_version = ${foldVersion}
+         AND executed_at IS NULL`;
   }
 
   /**
@@ -115,13 +138,15 @@ export class ClaimVerdictLedgerService {
       Array<{
         claim_key: string;
         rule_version: number;
+        fold_version: number;
         outcome: string;
         reason: string;
         subject: TSubject;
         decided_at: Date;
       }>
     >`
-      SELECT claim_key, rule_version, outcome, reason, subject, decided_at
+      SELECT claim_key, rule_version, fold_version, outcome, reason, subject,
+             decided_at
         FROM claim_verdicts
        WHERE lane = ${lane} AND executed_at IS NULL
        ORDER BY decided_at ASC
@@ -130,6 +155,7 @@ export class ClaimVerdictLedgerService {
       lane,
       claimKey: row.claim_key,
       ruleVersion: row.rule_version,
+      foldVersion: row.fold_version,
       outcome: row.outcome,
       reason: row.reason,
       subject: row.subject,
@@ -147,16 +173,22 @@ export class ClaimVerdictLedgerService {
    * the wrong rule reached still counts as answered. A hearing is answered by
    * THE RULE IN FORCE, so moving to any other rule — forward or back — leaves
    * the question open again.
+   *
+   * THE FOLD IS MATCHED THE SAME WAY, and for the same reason: a key spelled
+   * by a different fold is a different claim identity, so a verdict carrying
+   * it does not answer this question either.
    */
   async decidedKeys(
     lane: string,
     ruleVersion: number,
+    foldVersion: number,
     claimKeys: readonly string[],
   ): Promise<Set<string>> {
     if (!claimKeys.length) return new Set();
     const rows = await this.prisma.$queryRaw<Array<{ claim_key: string }>>`
       SELECT claim_key FROM claim_verdicts
        WHERE lane = ${lane} AND rule_version = ${ruleVersion}
+         AND fold_version = ${foldVersion}
          AND claim_key = ANY(${[...claimKeys]}::text[])`;
     return new Set(rows.map((row) => row.claim_key));
   }
@@ -169,6 +201,7 @@ export class ClaimVerdictLedgerService {
   ): Promise<
     Array<{
       ruleVersion: number;
+      foldVersion: number;
       outcome: string;
       reason: string;
       decidedAt: Date;
@@ -178,18 +211,21 @@ export class ClaimVerdictLedgerService {
     const rows = await this.prisma.$queryRaw<
       Array<{
         rule_version: number;
+        fold_version: number;
         outcome: string;
         reason: string;
         decided_at: Date;
         executed_at: Date | null;
       }>
     >`
-      SELECT rule_version, outcome, reason, decided_at, executed_at
+      SELECT rule_version, fold_version, outcome, reason, decided_at,
+             executed_at
         FROM claim_verdicts
        WHERE lane = ${lane} AND claim_key = ${claimKey}
-       ORDER BY rule_version DESC`;
+       ORDER BY rule_version DESC, fold_version DESC`;
     return rows.map((row) => ({
       ruleVersion: row.rule_version,
+      foldVersion: row.fold_version,
       outcome: row.outcome,
       reason: row.reason,
       decidedAt: row.decided_at,

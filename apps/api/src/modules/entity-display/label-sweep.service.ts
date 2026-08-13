@@ -16,6 +16,7 @@ import {
   WordClaimAdjudicatorService,
   type ContestedClaim,
 } from '../content-processing/entity-resolver/word-claim-adjudicator.service';
+import { DrainExceedsStandingCapError } from '../content-processing/entity-resolver/claim-rehearing-budget.service';
 import {
   NoopLabelGenerator,
   type GeneratedLabel,
@@ -349,12 +350,35 @@ export class LabelSweepService {
     // no claim is ever re-litigated or silently re-proposed.
     let wonOnAppeal = 0;
     if (contested.length) {
-      const verdicts = await this.claimAdjudicator.adjudicate(contested);
-      // `banked`, not `bothUpheld + incumbentEvicted`: the adjudicator's
-      // uncontested branch counts an outcome for a claim whose target entity
-      // is gone and writes no row. Counting the write is the only tally that
-      // cannot drift from the table.
-      wonOnAppeal = verdicts.banked;
+      // FINISH WHAT WAS ALREADY DECIDED FIRST (2026-08-13). A verdict commits
+      // before its effect, so a sweep that died mid-effect left a decision the
+      // corpus has not obeyed — a word taken from an incumbent that is still
+      // grounding, or a won claim never banked. The manual drivers did this
+      // and the NIGHTLY did not, which meant the one rail that runs unattended
+      // was the one that never finished its own unfinished work.
+      await this.claimAdjudicator.resumePendingEffects();
+      // The appeal docket is a DRAIN: the adjudicator applies the
+      // due-predicate and the rolling spend allowance to it, so a night where
+      // the vocabulary pass proposes thousands of contested words cannot
+      // quietly buy thousands of hearings.
+      try {
+        const verdicts = await this.claimAdjudicator.adjudicate(contested);
+        // `banked`, not `bothUpheld + incumbentEvicted`: the adjudicator's
+        // uncontested branch counts an outcome for a claim whose target entity
+        // is gone and writes no row. Counting the write is the only tally that
+        // cannot drift from the table.
+        wonOnAppeal = verdicts.banked;
+      } catch (error) {
+        // A REFUSED DRAIN IS NOT A FAILED SWEEP. The labels are already
+        // written; the appeal docket simply goes unheard tonight and stays
+        // due, which is exactly what an unanswered question deserves. The
+        // quote is logged so the refusal is a decision someone can act on
+        // rather than a silence.
+        if (!(error instanceof DrainExceedsStandingCapError)) throw error;
+        this.logger.warn(
+          `label sweep locale=${locale} appeal docket unheard — ${error.message}`,
+        );
+      }
     }
     // THE ASK IS RECORDED WHATEVER CAME BACK (KL-A) — but only asks that
     // COMPLETED. Every concept whose chunk got a response gets a run row:
@@ -436,7 +460,14 @@ export class LabelSweepService {
       // (which JS .trim() and SQL btrim both miss) never renders an
       // invisible name.
       const form = normalizeSurface(label.form);
-      const locale = normalizeLocaleTag(label.locale);
+      // NORMALIZATION IS THE WRITE DOOR'S JOB, not this caller's. This used
+      // to call `normalizeLocaleTag` here, which validates but PRESERVES a
+      // region — so a generator answering 'es-MX' banked a label reachable
+      // only by an es-MX caller, while every other write site went through
+      // `addSurfaces` and got the language-only tag. Two normalizations at
+      // two altitudes is exactly the drift the door exists to end: the raw
+      // tag is handed over and `addSurfaces` bases it once, for everyone.
+      const locale = label.locale;
       if (!isDisplayable(form)) {
         continue;
       }

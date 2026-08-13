@@ -1,4 +1,4 @@
-import { BaseClaimLaneAdapter } from './claim-lane-adapter';
+import { BaseClaimLaneAdapter, UNFOLDED_CLAIM_KEY } from './claim-lane-adapter';
 
 /**
  * THE DEDUPE LANE'S SEAM — canonicalization ONLY, no dedupe logic
@@ -36,6 +36,10 @@ export interface EntityPairClaim {
 
 export class EntityDedupeLaneAdapter extends BaseClaimLaneAdapter<EntityPairClaim> {
   readonly lane = ENTITY_DEDUPE_LANE;
+
+  /** A pair of entity ids — no folded text, so there is no fold to version
+   *  and no fold change that could ever re-spell one of these keys. */
+  readonly keyFoldVersion = UNFOLDED_CLAIM_KEY;
 
   canonicalClaimKey(claim: EntityPairClaim): string {
     const [first, second] = [claim.entityId, claim.otherEntityId].sort();

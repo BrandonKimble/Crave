@@ -4,6 +4,19 @@ import { addSurfaces, foldSurfacesFromMerge } from './entity-surface.service';
 import { identityInsertData } from './entity-identity';
 import { WordClaimAdjudicatorService } from './word-claim-adjudicator.service';
 import { ClaimVerdictLedgerService } from './claim-verdict-ledger.service';
+import { ClaimRehearingBudgetService } from './claim-rehearing-budget.service';
+
+/**
+ * The budget with its ROLLING WINDOW read as empty. These proofs hear a
+ * handful of claims and are not about the spend allowance — which the
+ * hearing-ledger spec proves on its own — while this machine's dev corpus
+ * genuinely carries judge spend in the trailing window.
+ */
+class UnspentWindowBudget extends ClaimRehearingBudgetService {
+  hearingsSpentInWindow(): Promise<number> {
+    return Promise.resolve(0);
+  }
+}
 
 /**
  * THE ROLE IS A VERDICT — proven against a real database.
@@ -120,6 +133,7 @@ describe('surface role verdicts — proven against a live database', () => {
         error: jest.fn(),
       } as never,
       new ClaimVerdictLedgerService(prisma as never),
+      new UnspentWindowBudget(prisma as never),
     );
 
     const summary = await adjudicator.adjudicate([

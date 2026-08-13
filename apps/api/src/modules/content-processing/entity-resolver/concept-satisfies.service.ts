@@ -168,6 +168,7 @@ export class ConceptSatisfiesService {
         CONCEPT_SATISFIES_LANE,
         verdict.claimKey,
         verdict.ruleVersion,
+        verdict.foldVersion,
       );
       resumed += 1;
     }
@@ -189,6 +190,7 @@ export class ConceptSatisfiesService {
         lane: CONCEPT_SATISFIES_LANE,
         claimKey: conceptSatisfiesLane.canonicalClaimKey(subject),
         ruleVersion: SATISFIES_PROMPT_VERSION,
+        foldVersion: conceptSatisfiesLane.keyFoldVersion,
         outcome: subject.relation,
         reason: v1Ground(subject.relation),
         ruleFingerprint: SATISFIES_RULE_FINGERPRINT,
@@ -201,6 +203,7 @@ export class ConceptSatisfiesService {
         CONCEPT_SATISFIES_LANE,
         conceptSatisfiesLane.canonicalClaimKey(subject),
         SATISFIES_PROMPT_VERSION,
+        conceptSatisfiesLane.keyFoldVersion,
       );
     }
   }
@@ -482,6 +485,7 @@ export class ConceptSatisfiesService {
     const decidedInLedger = await this.ledger.decidedKeys(
       CONCEPT_SATISFIES_LANE,
       SATISFIES_PROMPT_VERSION,
+      conceptSatisfiesLane.keyFoldVersion,
       candidates
         .filter((candidate) => !skip.has(candidate.entityId))
         .map((candidate) =>
