@@ -186,8 +186,20 @@ model EntitySurface {
   /// APP-WRITTEN canonicalFold(form) — the folded mirror every match arm
   /// compares against, on BOTH sides. Written ONLY by addSurfaces.
   formFolded String @map("form_folded") @db.VarChar(255)
-  /// Canonical BCP 47 (R5-5: full tags — es-MX, zh-Hans), or 'und' for
-  /// untagged legacy rows.
+  /// The LANGUAGE this claim about a word is made in — a bare language
+  /// subtag ('es', 'vi', 'zh'), or 'und'. NOT a full tag: `bankableLanguageTag`
+  /// strips the region at every write, because a region is information about
+  /// the ASKER, not about the WORD, and a row banked 'es-MX' is reachable only
+  /// by another es-MX caller (localeLookupChain('es') never contains it). The
+  /// key SPACE is the full tag and the chain truncates any legacy regional row
+  /// it meets; the corpus itself is language-only by design.
+  ///
+  /// 'und' MEANS UNIVERSAL — reachable from EVERY locale chain, which always
+  /// ends in it — not "untagged legacy". It is where a form goes when nobody
+  /// can say what language it was in: extraction observes a string without
+  /// knowing its language, and de-diacritized romanizations belong to no
+  /// language in particular. (Ruled 2026-08-12; the 'legacy' reading is
+  /// retired. Stated identically on `localeLookupChain`.)
   locale     String @default("und")
   /// display | recall | both. See the model doc: 'display' is a REFUSED or
   /// withheld recall claim, not a separate species. Every recall arm must
@@ -208,14 +220,14 @@ model EntitySurface {
   /// R5-6(a), the Wikidata disambiguator: display forms collide across
   /// concepts ("pan"). Drafted by the sweep in the same call; it sharpens
   /// judge-merge. Display-side; NULL on recall-only rows.
-  description   String? @db.VarChar(500)
+  description       String? @db.VarChar(500)
   /// The one label a user sees for this (entity, locale). Display-side —
   /// `entity_surface_default_is_display` forbids it on a recall-only row.
-  isDefault     Boolean @default(false) @map("is_default")
-  rank          Int     @default(0)
+  isDefault         Boolean @default(false) @map("is_default")
+  rank              Int     @default(0)
   /// Vocabulary-prompt version that wrote this row; the sweep re-offers
   /// rows below the generator's current version (one re-pay per bump).
-  promptVersion Int     @default(1) @map("prompt_version")
+  promptVersion     Int     @default(1) @map("prompt_version")
   /// THE JUDGE VERSION THAT SETTLED THIS ROW'S WORD CLAIM
   /// (WordClaimAdjudicatorService.CLAIM_JUDGE_PROMPT_VERSION), or NULL when
   /// no hearing ever decided it.
@@ -229,7 +241,7 @@ model EntitySurface {
   /// which does not scale and leaves no reason on the record. With it, bumping
   /// the judge's version re-opens every claim decided under the older rule and
   /// the machinery re-hears them.
-  claimJudgeVersion Int? @map("claim_judge_version")
+  claimJudgeVersion Int?    @map("claim_judge_version")
 
   createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt DateTime @default(now()) @map("updated_at") @db.Timestamptz(6)

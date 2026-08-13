@@ -194,6 +194,13 @@ export function normalizeLocaleTag(raw: string | null | undefined): string {
  *   null/'*' -> ['und']                          (only universal rows match)
  * Lowercased throughout, because stored locale tags are matched
  * case-insensitively and 'und' is the one sentinel both sides agree on.
+ *
+ * 'und' MEANS UNIVERSAL — reachable from EVERY chain, which is why every chain
+ * ends in it — not "untagged legacy" (ruled 2026-08-12; the legacy reading is
+ * retired). It is where a form goes when nobody can say what language it was
+ * in: extraction observes a string without knowing its language, and a
+ * de-diacritized romanization belongs to no language in particular. The same
+ * sentence is on entity_surface.locale in schema.prisma; if one moves, both do.
  */
 export function localeLookupChain(range: string | null | undefined): string[] {
   const UNIVERSAL = 'und';
