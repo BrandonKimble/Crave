@@ -772,6 +772,10 @@ export const COLUMN_COVERAGE: readonly ColumnCoverageEntry[] = [
         'core_restaurant_locations',
         'A restaurant’s address and phone are the BUSINESS’s, not a person’s — the original not_person example.',
       ],
+      [
+        'claim_verdicts',
+        'Word/concept ownership rulings keyed by a lane-canonical claim key — a concept and a word, never a person. The `subject` payload is the effect the ruling ordered (surface ids, forms, locales); nothing about a claimant human enters it, because no human claims a word here.',
+      ],
       ['crave_score_calibration_epochs', 'Scoring constants.'],
       [
         'curated_list_items',

@@ -1,5 +1,5 @@
 /**
- * @script-class: data-fix
+ * @script-class: operational
  *
  * MIGRATE THE EXISTING MEMORY into the hearing ledger (H5, 2026-08-12).
  *
