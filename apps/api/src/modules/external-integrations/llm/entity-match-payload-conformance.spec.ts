@@ -137,9 +137,18 @@ const captureWire = async (mode: 'single' | 'batch'): Promise<Wire> => {
 
   if (mode === 'single') {
     await service.matchEntity({
+      // THE FIXTURE MUST EXERCISE EVERY FIELD ITS TRANSPORT CAN SEND, and
+      // `aliases` is one of them since 559f11922 gave the single path the same
+      // candidate wire as the batch path (entityMatchCandidateWire). Without an
+      // alias here the captured single payload had no `aliases` key while the
+      // batch payload did, so `aliases` sat in the field universe but not in
+      // single's field set — and the single envelope, which correctly explains
+      // aliases, was reported as naming a FOREIGN field. That is a defect in
+      // the fixture, not in the prompt: an under-fed fixture makes this spec
+      // accuse the very parity it should be confirming.
       term: 'al pastor taco',
       kind: 'food',
-      candidates: [{ id: 1, name: 'taco' }],
+      candidates: [{ id: 1, name: 'taco', aliases: ['tacos'] }],
     } as never);
   } else {
     await service.matchEntitiesBatch({
