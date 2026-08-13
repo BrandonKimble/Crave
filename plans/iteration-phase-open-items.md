@@ -336,6 +336,34 @@ return empty, no garbage recovery). Battery 14 queries, re-run personally.
 - **C5d vocab gaps for the wave**: 麻辣, 川味, 珍珠 unbanked; no boba/
   bubble-tea concept (only milk tea). Wave gold cases.
 
+## C6. H1 DRIFT PORT LANDED (33dca592e/64c626b95/9e285935d/00fbb33cd; verified 66/66 personally)
+
+One accent-admission rule (admitsAtExactTier) lives in entity-identity.ts;
+resolver tiers 1+2 consume it; 'phở bo' grounds beef pho end-to-end
+(acc-07 live), 'cơm chay' still refused (acc-08). Mint veto deliberately
+NOT moved (unpersisted sides → per-token reading would merge cơm chay into
+cơm cháy; reasoned in place; candidate to consume accentsAgreeUnbanked
+from bce6a9fa0). Display residues: primaryLanguageSubtag owns the
+primary-subtag rule; recipe-render's !== 'en' gone. 'und' = UNIVERSAL
+ruling written once. 58,538-probe A/B sweep: gained 0 / lost 2,051 /
+re-pointed 9 — all losses one shape, PARITY with the query side since
+08-09, not a new defect.
+
+- **C6a WRITE-INGRESS DEFECT (the ranking open item from the sweep):**
+  the vocabulary generator banks de-accented romanizations under a
+  LANGUAGE tag (vi rows like 'thit', 'vit', 'buoi' — 2,740 fully
+  accentless active vi rows by my count; ~10.9k per-token by the agent's).
+  A romanization is a spelling nobody makes in that language — it belongs
+  at 'und' (universal) or not at all. One fix at the banking ingress
+  (+ generator prompt clause + backfill re-tag to 'und'); wave-blocking
+  order: fix ingress BEFORE the wave banks 5 locales of romanizations.
+- **C6b invariant harness NOT concurrency-safe**: mutation proofs all
+  write src/invariant-probe.ts → concurrent fleet runs produce false
+  reds. Fix: per-run temp probe path. Small, structural.
+- C6c residual reds owned by other lanes, reproduced on clean tree:
+  autocomplete pastel-de-arroz + hải sản (corpus), alias-fold-symmetry
+  test:db (⭐04 fold governance).
+
 ## ARCH VERDICT (2026-08-12 red team; the owner's patches-vs-foundations question)
 
 NOT a week of patching — commits deleted machinery and measured claims. But
