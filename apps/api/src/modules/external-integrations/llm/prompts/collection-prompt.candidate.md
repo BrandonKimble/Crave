@@ -165,6 +165,14 @@ The writer vouches from experience, or reports a clear consensus:
 - **AN ANNOUNCEMENT or DIRECTORY.** Participant rosters, event line-ups,
   fundraiser lists, "these 12 spots are doing a prix fixe this week", opening
   notices, marketing. Naming many restaurants neutrally is not endorsing them.
+  An APPEARANCE post is the one-name form of the same thing: "Tonight's
+  truck …… Birria-Landia !", "look who pulled up" announce WHO IS HERE —
+  presence, not a verdict on the food, and no exclamation mark makes it
+  one. This covers announcing an arrival or the business's success ONLY —
+  a writer reporting on food they ATE ("what a great meal!") is testimony
+  as ever — each such clause still judged on its own verdict by the tests
+  below (a hedged or middling item in the report still fails). Emit
+  nothing for the announcement.
 - **A LIST BUILT ON AN EXTERNAL CRITERION.** When the names were selected by
   something other than the writer's taste — and the text says so — the list
   is a directory, however long: open on a holiday ("Restaurants Open on
@@ -198,8 +206,12 @@ The writer vouches from experience, or reports a clear consensus:
   list: any qualifier that pulls the verdict downward defeats it — "liked
   it — but didn't love", "average quality but absurd portions", a middling
   score amid higher-rated siblings ("porchetta ribs (7.3)" when the writer's
-  favorites rate 8+). Praise of size, price, or portions never rescues a
-  hedged verdict on the food itself.
+  favorites rate 8+). **When an entry carries a rating, THE SCORE IS that
+  entry's verdict**: having ordered and eaten it (A.1's experience
+  narration) adds nothing on top of the number — judge the score against
+  the writer's own scale, and a 7.3 beside the writer's 8.4 favorite
+  withholds endorsement and emits nothing. Praise of size, price, or
+  portions never rescues a hedged verdict on the food itself.
 - **NEGATIVE CONTENT.** Criticism, warnings, "I'd skip \_\_\_", "many of your
   items I would not suggest", or a reply to an explicitly negative ask
   ("worst/avoid/overrated"). Emit nothing **for the criticized items** — and
@@ -827,6 +839,19 @@ BOTH the ORDER TEST and the PREDICTION TEST**, because each catches what the
 other misses:
 
 - "best burger in EV?" → `burger` passes both → inherit it.
+- **A dish wrapped in a venue type is still a DISH ask.** "best burger
+  joint?", "quán phở nào ngon nhất?" ("which phở place is best?") target
+  the dish through the kind of place that serves it: the dish inside the
+  wrapper (`burger`, `phở`) passes both tests and IS inherited as `food`.
+  The reply's restaurant name containing the same dish word ("Phở Lệ")
+  changes nothing — the inherited dish is the ASK's food language, not a
+  dish minted from the venue's name. The boundary in one sentence: **the
+  ask's named DISH is a SUBJECT — it becomes what the reply's claim is
+  about, gated by the ORDER and PREDICTION tests; the ask's cuisines,
+  vibes, price words, and venue-type words are PREDICATES and never
+  transfer — not as `food`, and not as attributes.** "Mexican restaurant
+  vibe?" answered by a bare name is a restaurant-only mention with EMPTY
+  attributes; no `mexican` rides over from the ask.
 - "nice dinners on a budget?", "lunch spots?" → `dinner`/`lunch` fail the
   PREDICTION TEST (they predict no food at all) → inherit NOTHING.
 - "best Indian around?", "where for comfort food?" → `indian`/`comfort food`
@@ -837,7 +862,10 @@ other misses:
   hand its replies `burger`); it never supplies PREDICATES. The ask's
   cuisine, style, price, and venue-type words are the ASKER's; Step D
   attaches only what THIS reply's own text states, so a bare-name reply to
-  a cuisine or style ask is a restaurant-only mention with EMPTY attributes.
+  a cuisine or style ask is a restaurant-only mention with EMPTY attributes:
+  "Best Indian around?" → "Ravi Kabab, hands down" emits `ravi kabab` with
+  NO `indian` anywhere — not as food, and not as an attribute (neither from
+  the ask's words nor from your knowledge of the venue).
   A reply that inherits nothing is a restaurant-only mention. **The ask itself
   never emits.** Cuisines and dietary flags never enter `food_categories`.
 
