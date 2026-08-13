@@ -673,7 +673,12 @@ model SpendCampaign {
   estimateHash      String? @map("estimate_hash") @db.VarChar(64)
 
   /// 'draft' | 'awaiting_approval' | 'approved' | 'running' | 'completed'
-  /// | 'breached' | 're_awaiting' (§24.3).
+  /// | 'breached' | 'superseded' | 're_awaiting' (§24.3). 'superseded' =
+  /// an unapproved, unspent quote replaced by a fresh quote for the same
+  /// name (kept, not deleted, so the quote trail survives); terminal.
+  /// 're_awaiting' is documented but has never been written. The legal
+  /// edges live in CAMPAIGN_STATE_TRANSITIONS (spend-campaign.service.ts),
+  /// the one transition chokepoint.
   state       String    @default("draft") @db.VarChar(24)
   spentMicros BigInt    @default(0) @map("spent_micros")
   createdAt   DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)

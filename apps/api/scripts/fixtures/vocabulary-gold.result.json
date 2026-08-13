@@ -1,0 +1,418 @@
+[
+  {
+    "id": "thing-not-material-gyro",
+    "why": "THING-vs-MATERIAL: measured drift — v6 answered the sandwich concept with its filling's name ('gyro meat').",
+    "live": {
+      "passes": 3,
+      "of": 3,
+      "verdict": "PASS",
+      "failures": [],
+      "sample": {
+        "items": [
+          {
+            "n": 1,
+            "canonical_label": "gyro",
+            "aliases": ["gyro", "gyros"],
+            "description": "Greek rotisserie meat sandwich",
+            "proper_noun": false,
+            "abstain": false
+          }
+        ]
+      }
+    },
+    "candidate": {
+      "passes": 3,
+      "of": 3,
+      "verdict": "PASS",
+      "failures": [],
+      "sample": {
+        "items": [
+          {
+            "n": 1,
+            "canonical_label": "gyro",
+            "aliases": ["gyro", "gyros", "gyros sandwich"],
+            "description": "Greek meat dish served in pita bread",
+            "proper_noun": false,
+            "abstain": false
+          }
+        ]
+      }
+    }
+  },
+  {
+    "id": "thing-not-material-cinnamon-roll",
+    "why": "Measured drift: 'cinnamon roll' answered with its head ingredient 'cinnamon'.",
+    "live": {
+      "passes": 3,
+      "of": 3,
+      "verdict": "PASS",
+      "failures": [],
+      "sample": {
+        "items": [
+          {
+            "n": 1,
+            "canonical_label": "cinnamon roll",
+            "aliases": [
+              "cinnamon roll",
+              "cinnamon rolls",
+              "cinnamon bun",
+              "cinnamon buns",
+              "cinnamon swirl",
+              "cinnamon swirls"
+            ],
+            "description": "sweet pastry flavored with cinnamon and sugar",
+            "proper_noun": false,
+            "abstain": false
+          }
+        ]
+      }
+    },
+    "candidate": {
+      "passes": 3,
+      "of": 3,
+      "verdict": "PASS",
+      "failures": [],
+      "sample": {
+        "items": [
+          {
+            "n": 1,
+            "canonical_label": "cinnamon roll",
+            "aliases": [
+              "cinnamon roll",
+              "cinnamon rolls",
+              "cinnamon bun",
+              "cinnamon buns",
+              "sticky bun",
+              "sticky buns",
+              "cinnamon swirl",
+              "cinnamon swirls"
+            ],
+            "description": "sweet pastry flavored with cinnamon and sugar",
+            "proper_noun": false,
+            "abstain": false
+          }
+        ]
+      }
+    }
+  },
+  {
+    "id": "thing-not-material-key-lime-pie",
+    "why": "Measured drift: 'key lime pie' answered with 'key lime'.",
+    "live": {
+      "passes": 3,
+      "of": 3,
+      "verdict": "PASS",
+      "failures": [],
+      "sample": {
+        "items": [
+          {
+            "n": 1,
+            "canonical_label": "key lime pie",
+            "aliases": ["key lime pie", "key lime pies"],
+            "description": "tart citrus pie made with key limes",
+            "proper_noun": false,
+            "abstain": false
+          }
+        ]
+      }
+    },
+    "candidate": {
+      "passes": 3,
+      "of": 3,
+      "verdict": "PASS",
+      "failures": [],
+      "sample": {
+        "items": [
+          {
+            "n": 1,
+            "canonical_label": "key lime pie",
+            "aliases": ["key lime pie", "key lime pies"],
+            "description": "tart pie made with key lime juice",
+            "proper_noun": false,
+            "abstain": false
+          }
+        ]
+      }
+    }
+  },
+  {
+    "id": "thing-not-material-spring-roll",
+    "why": "Measured drift: 'spring roll' answered with the material it is wrapped in ('spring roll wrapper').",
+    "live": {
+      "passes": 3,
+      "of": 3,
+      "verdict": "PASS",
+      "failures": [],
+      "sample": {
+        "items": [
+          {
+            "n": 1,
+            "canonical_label": "spring roll",
+            "aliases": ["spring roll", "spring rolls"],
+            "description": "crispy fried or fresh vegetable filled roll",
+            "proper_noun": false,
+            "abstain": false
+          }
+        ]
+      }
+    },
+    "candidate": {
+      "passes": 3,
+      "of": 3,
+      "verdict": "PASS",
+      "failures": [],
+      "sample": {
+        "items": [
+          {
+            "n": 1,
+            "canonical_label": "spring roll",
+            "aliases": ["spring roll", "spring rolls"],
+            "description": "crispy fried roll with vegetable filling",
+            "proper_noun": false,
+            "abstain": false
+          }
+        ]
+      }
+    }
+  },
+  {
+    "id": "thing-not-material-bbq",
+    "why": "Measured drift: 'bbq' answered with 'bbq sauce'.",
+    "live": {
+      "passes": 3,
+      "of": 3,
+      "verdict": "PASS",
+      "failures": [],
+      "sample": {
+        "items": [
+          {
+            "n": 1,
+            "canonical_label": "barbecue",
+            "aliases": ["barbecue", "bbq", "barbeque", "bar-b-q"],
+            "description": "meat cooked slowly over low heat",
+            "proper_noun": false,
+            "abstain": false
+          }
+        ]
+      }
+    },
+    "candidate": {
+      "passes": 3,
+      "of": 3,
+      "verdict": "PASS",
+      "failures": [],
+      "sample": {
+        "items": [
+          {
+            "n": 1,
+            "canonical_label": "barbecue",
+            "aliases": ["barbecue", "bbq", "barbeque", "bar-b-q"],
+            "description": "meat cooked slowly over low heat",
+            "proper_noun": false,
+            "abstain": false
+          }
+        ]
+      }
+    }
+  },
+  {
+    "id": "thing-not-material-matcha",
+    "why": "Measured drift: 'matcha' answered with 'matcha powder'.",
+    "live": {
+      "passes": 3,
+      "of": 3,
+      "verdict": "PASS",
+      "failures": [],
+      "sample": {
+        "items": [
+          {
+            "n": 1,
+            "canonical_label": "matcha",
+            "aliases": ["matcha", "matcha tea", "matcha powder"],
+            "description": "finely ground powder of specially grown green tea",
+            "proper_noun": false,
+            "abstain": false
+          }
+        ]
+      }
+    },
+    "candidate": {
+      "passes": 3,
+      "of": 3,
+      "verdict": "PASS",
+      "failures": [],
+      "sample": {
+        "items": [
+          {
+            "n": 1,
+            "canonical_label": "matcha",
+            "aliases": ["matcha", "matcha powder", "matcha tea"],
+            "description": "finely ground powder of specially grown green tea",
+            "proper_noun": false,
+            "abstain": false
+          }
+        ]
+      }
+    }
+  },
+  {
+    "id": "thing-not-material-margarita",
+    "why": "The non-mechanically-detectable twin: 'margarita' sliding to 'margarita mix'.",
+    "live": {
+      "passes": 3,
+      "of": 3,
+      "verdict": "PASS",
+      "failures": [],
+      "sample": {
+        "items": [
+          {
+            "n": 1,
+            "canonical_label": "margarita",
+            "aliases": ["margarita", "margaritas"],
+            "description": "a cocktail made with tequila and lime",
+            "proper_noun": false,
+            "abstain": false
+          }
+        ]
+      }
+    },
+    "candidate": {
+      "passes": 3,
+      "of": 3,
+      "verdict": "PASS",
+      "failures": [],
+      "sample": {
+        "items": [
+          {
+            "n": 1,
+            "canonical_label": "margarita",
+            "aliases": ["margarita", "margaritas"],
+            "description": "cocktail made with tequila, lime, and salt",
+            "proper_noun": false,
+            "abstain": false
+          }
+        ]
+      }
+    }
+  },
+  {
+    "id": "thing-not-material-stew",
+    "why": "The other undetectable twin: 'stew' sliding to 'stew meat'.",
+    "live": {
+      "passes": 3,
+      "of": 3,
+      "verdict": "PASS",
+      "failures": [],
+      "sample": {
+        "items": [
+          {
+            "n": 1,
+            "canonical_label": "stew",
+            "aliases": ["stew", "stews"],
+            "description": "slow-cooked dish of meat and vegetables",
+            "proper_noun": false,
+            "abstain": false
+          }
+        ]
+      }
+    },
+    "candidate": {
+      "passes": 3,
+      "of": 3,
+      "verdict": "PASS",
+      "failures": [],
+      "sample": {
+        "items": [
+          {
+            "n": 1,
+            "canonical_label": "stew",
+            "aliases": ["stew", "stews"],
+            "description": "meat and vegetables cooked in liquid",
+            "proper_noun": false,
+            "abstain": false
+          }
+        ]
+      }
+    }
+  },
+  {
+    "id": "boundary-control-caldo",
+    "why": "Keep-side control: the original BOUNDARY case must keep holding — es 'soup' never answered by the neighbouring 'caldo'.",
+    "live": {
+      "passes": 3,
+      "of": 3,
+      "verdict": "PASS",
+      "failures": [],
+      "sample": {
+        "items": [
+          {
+            "n": 1,
+            "canonical_label": "sopa",
+            "aliases": ["sopa", "sopas"],
+            "description": "plato líquido elaborado con diversos ingredientes",
+            "proper_noun": false,
+            "abstain": false
+          }
+        ]
+      }
+    },
+    "candidate": {
+      "passes": 3,
+      "of": 3,
+      "verdict": "PASS",
+      "failures": [],
+      "sample": {
+        "items": [
+          {
+            "n": 1,
+            "canonical_label": "sopa",
+            "aliases": ["sopa", "sopas"],
+            "description": "plato líquido cocinado con diversos ingredientes",
+            "proper_noun": false,
+            "abstain": false
+          }
+        ]
+      }
+    }
+  },
+  {
+    "id": "shortform-control-vi-beef",
+    "why": "Keep-side control for the v6 bare-head-noun rule: vi beef must still include the short form 'bò'.",
+    "live": {
+      "passes": 3,
+      "of": 3,
+      "verdict": "PASS",
+      "failures": [],
+      "sample": {
+        "items": [
+          {
+            "n": 1,
+            "canonical_label": "thịt bò",
+            "aliases": ["thịt bò", "bò"],
+            "description": "thịt từ con bò",
+            "proper_noun": false,
+            "abstain": false
+          }
+        ]
+      }
+    },
+    "candidate": {
+      "passes": 3,
+      "of": 3,
+      "verdict": "PASS",
+      "failures": [],
+      "sample": {
+        "items": [
+          {
+            "n": 1,
+            "canonical_label": "thịt bò",
+            "aliases": ["thịt bò", "bò"],
+            "description": "thịt từ con bò",
+            "proper_noun": false,
+            "abstain": false
+          }
+        ]
+      }
+    }
+  }
+]

@@ -3,8 +3,14 @@
  * @finding: banked per-run in the commit message of each prompt rederivation
  *   (2026-08-12: moderation v2, relevance-gate v2, poll-subject v2).
  *
- * GOLD-CASE A/B for the SMALL judge prompts (moderation, relevance gate, poll
- * subject) — the prompt-ab.ts pattern applied to the classifier lanes.
+ * GOLD-CASE A/B for the SMALL judge prompts — the prompt-ab.ts pattern
+ * applied to the classifier lanes: moderation, relevance gate, poll subject,
+ * and (prompt-fleet queue, 2026-08-12) the place chooser, dish knowledge,
+ * cuisine, attribute placement, and vocabulary lanes. For .md-system-prompt
+ * lanes the --live/--candidate files select the two texts; for BUILDER lanes
+ * (chooser, vocabulary) the predecessor builder is pinned under
+ * scripts/fixtures/ and the candidate is the current src import, so the file
+ * args are ignored.
  *
  * prompt-ab.ts grades the collection prompt's `mentions`; nothing in it is
  * reusable for a boolean/enum classifier, and the canon requires that every
@@ -28,11 +34,27 @@ import { NestFactory } from '@nestjs/core';
 import { AppModule } from '../src/app.module';
 import { LLMService } from '../src/modules/external-integrations/llm/llm.service';
 import {
+  ATTRIBUTE_PLACEMENT_RESPONSE_JSON_SCHEMA,
+  CUISINE_EXTRACTION_RESPONSE_JSON_SCHEMA,
+  DISH_KNOWLEDGE_RESPONSE_JSON_SCHEMA,
   MODERATION_RESPONSE_JSON_SCHEMA,
   POLL_SUBJECT_RESPONSE_JSON_SCHEMA,
   RELEVANCE_GATE_RESPONSE_JSON_SCHEMA,
+  RESTAURANT_PLACE_CHOOSER_RESPONSE_JSON_SCHEMA,
   jsonSchemaToTypedSchema,
 } from '../src/modules/external-integrations/llm/prompts/llm-response-schemas';
+import { buildRestaurantPlaceChooserPrompt } from '../src/modules/external-integrations/llm/prompts/restaurant-place-chooser.prompt';
+import { LLMRestaurantPlaceChooserInput } from '../src/modules/external-integrations/llm/llm.types';
+import {
+  VOCABULARY_RESPONSE_SCHEMA,
+  buildVocabularyPrompt,
+} from '../src/modules/entity-display/vocabulary-generator';
+import { LabelGenerationRequest } from '../src/modules/entity-display/label-generator';
+import { buildRestaurantPlaceChooserPromptPred } from './fixtures/restaurant-place-chooser.pred.prompt';
+import {
+  buildVocabularyPromptV4,
+  buildVocabularyPromptV6,
+} from './fixtures/vocabulary-v6-prompt';
 import { stopCronsForScript } from '../src/shared/utils/stop-crons';
 
 const PROMPT_DIR = join(
@@ -40,7 +62,15 @@ const PROMPT_DIR = join(
   '../src/modules/external-integrations/llm/prompts',
 );
 
-type Kind = 'moderation' | 'relevance-gate' | 'poll-subject';
+type Kind =
+  | 'moderation'
+  | 'relevance-gate'
+  | 'poll-subject'
+  | 'chooser'
+  | 'dish-knowledge'
+  | 'cuisine'
+  | 'attribute-placement'
+  | 'vocabulary';
 
 type GoldCase = {
   id: string;
@@ -50,6 +80,23 @@ type GoldCase = {
   text?: string;
   /** relevance-gate: one post. */
   post?: { title: string; body?: string };
+  /** chooser: the full production input (builder-rendered per variant). */
+  chooserInput?: LLMRestaurantPlaceChooserInput;
+  /** dish-knowledge: one dish name. */
+  dish?: string;
+  /** cuisine: the editorial summary. */
+  summary?: string;
+  /** attribute-placement: the term + vocabulary + candidate shortlist. */
+  term?: string;
+  attrKind?: 'restaurant_attribute' | 'food_attribute';
+  candidates?: Array<{ id: string; name: string }>;
+  /** vocabulary: one concept (builder-rendered per variant). */
+  concept?: {
+    name: string;
+    entityType: string;
+    locale: string;
+    hint?: string;
+  };
   expect: {
     allowed?: boolean;
     keep?: boolean;
@@ -59,6 +106,28 @@ type GoldCase = {
     constraintValue?: string;
     anchor?: string | null;
     marketHint?: string | null;
+    /** chooser */
+    decision?: 'select' | 'reject';
+    candidateId?: string;
+    /** dish-knowledge */
+    ingredients?: string[];
+    notIngredients?: string[];
+    aliases?: string[];
+    notAliases?: string[];
+    emptyIngredients?: boolean;
+    emptyAliases?: boolean;
+    /** cuisine */
+    cuisines?: string[];
+    notCuisines?: string[];
+    emptyCuisines?: boolean;
+    /** attribute-placement */
+    placement?: 'match' | 'new' | 'reject';
+    matchCandidateId?: string;
+    /** vocabulary */
+    label?: string;
+    notLabel?: string[];
+    aliasesInclude?: string[];
+    abstain?: boolean;
   };
 };
 
@@ -66,12 +135,31 @@ const CALLER: Record<Kind, string> = {
   moderation: 'moderation.classify',
   'relevance-gate': 'relevance-gate.judgeBatch',
   'poll-subject': 'poll.infer_subject',
+  chooser: 'places.choose_candidate',
+  'dish-knowledge': 'dish.knowledge_synthesize',
+  cuisine: 'cuisine.extract',
+  'attribute-placement': 'attribute.place',
+  vocabulary: 'labels.vocabulary',
 };
+
+/** Kinds whose prompt is a TS BUILDER, not an .md system instruction — the
+ *  variant picks the builder (predecessor pinned in fixtures/), and the
+ *  --live/--candidate file args are ignored. */
+const BUILDER_KINDS: ReadonlySet<Kind> = new Set(['chooser', 'vocabulary']);
 
 function payload(kind: Kind, testCase: GoldCase): string {
   if (kind === 'moderation') return JSON.stringify({ text: testCase.text });
   if (kind === 'poll-subject')
     return JSON.stringify({ question: testCase.text });
+  if (kind === 'dish-knowledge')
+    return JSON.stringify({ dishes: [{ index: 0, name: testCase.dish }] });
+  if (kind === 'cuisine') return JSON.stringify({ summary: testCase.summary });
+  if (kind === 'attribute-placement')
+    return JSON.stringify({
+      term: testCase.term,
+      kind: testCase.attrKind,
+      candidates: testCase.candidates ?? [],
+    });
   return `## Posts\n\n${JSON.stringify([
     {
       index: 0,
@@ -81,11 +169,54 @@ function payload(kind: Kind, testCase: GoldCase): string {
   ])}`;
 }
 
+/** For BUILDER_KINDS: render the full user prompt for the given variant. */
+function builderPrompt(
+  kind: Kind,
+  variant: 'live' | 'candidate',
+  testCase: GoldCase,
+): string {
+  if (kind === 'chooser') {
+    const build =
+      variant === 'live'
+        ? buildRestaurantPlaceChooserPromptPred
+        : buildRestaurantPlaceChooserPrompt;
+    return build(testCase.chooserInput as LLMRestaurantPlaceChooserInput);
+  }
+  const concept = testCase.concept!;
+  const batch: LabelGenerationRequest[] = [
+    {
+      entityId: 'gold-case',
+      entityType: concept.entityType,
+      name: concept.name,
+      locale: concept.locale,
+      ...(concept.hint ? { hint: concept.hint } : {}),
+    } as LabelGenerationRequest,
+  ];
+  if (variant === 'candidate') return buildVocabularyPrompt(batch);
+  // --vocab-pred=v4 pins the sweep era that PRODUCED the measured drift;
+  // default v6 is the immediate predecessor text.
+  return process.argv.includes('--vocab-pred=v4')
+    ? buildVocabularyPromptV4(batch)
+    : buildVocabularyPromptV6(batch);
+}
+
 function schemaFor(kind: Kind): Record<string, unknown> {
   if (kind === 'moderation')
     return { responseJsonSchema: MODERATION_RESPONSE_JSON_SCHEMA };
   if (kind === 'poll-subject')
     return { responseJsonSchema: POLL_SUBJECT_RESPONSE_JSON_SCHEMA };
+  if (kind === 'chooser')
+    return {
+      responseJsonSchema: RESTAURANT_PLACE_CHOOSER_RESPONSE_JSON_SCHEMA,
+    };
+  if (kind === 'dish-knowledge')
+    return { responseJsonSchema: DISH_KNOWLEDGE_RESPONSE_JSON_SCHEMA };
+  if (kind === 'cuisine')
+    return { responseJsonSchema: CUISINE_EXTRACTION_RESPONSE_JSON_SCHEMA };
+  if (kind === 'attribute-placement')
+    return { responseJsonSchema: ATTRIBUTE_PLACEMENT_RESPONSE_JSON_SCHEMA };
+  if (kind === 'vocabulary')
+    return { responseJsonSchema: VOCABULARY_RESPONSE_SCHEMA };
   return {
     responseSchema: jsonSchemaToTypedSchema(
       RELEVANCE_GATE_RESPONSE_JSON_SCHEMA,
@@ -100,9 +231,12 @@ function normEnum(value: unknown): string {
 }
 
 function norm(value: unknown): string {
+  // Unicode-aware (same lesson as prompt-ab.ts, multilingual ruling R6): the
+  // vocabulary gold set carries vi/es needles, and an ascii-only class would
+  // reduce "bò" to "b". Identical behavior for ascii values.
   return (typeof value === 'string' ? value : '')
     .toLowerCase()
-    .replace(/[^a-z0-9 ]+/g, ' ')
+    .replace(/[^\p{L}\p{N} ]+/gu, ' ')
     .replace(/\s+/g, ' ')
     .trim();
 }
@@ -138,6 +272,107 @@ function grade(
           `expected keep=${expect.keep}, got ${keep} (reason="${norm(first.reason)}")`,
         );
     }
+  } else if (kind === 'chooser') {
+    const decision = raw.decision === 'select' ? 'select' : 'reject';
+    if (expect.decision && decision !== expect.decision)
+      failures.push(
+        `expected decision=${expect.decision}, got ${decision} (reason="${norm(raw.reason)}")`,
+      );
+    if (
+      expect.candidateId &&
+      normEnum(raw.candidateId) !== normEnum(expect.candidateId)
+    )
+      failures.push(
+        `expected candidateId=${expect.candidateId}, got ${normEnum(raw.candidateId)}`,
+      );
+  } else if (kind === 'dish-knowledge') {
+    const first = (
+      Array.isArray(raw.dishes) ? (raw.dishes as unknown[])[0] : undefined
+    ) as { ingredients?: unknown; aliases?: unknown } | undefined;
+    const list = (value: unknown): string[] =>
+      Array.isArray(value)
+        ? value.filter((v): v is string => typeof v === 'string').map(norm)
+        : [];
+    const ingredients = list(first?.ingredients);
+    const aliases = list(first?.aliases);
+    for (const want of expect.ingredients ?? [])
+      if (!ingredients.includes(norm(want)))
+        failures.push(
+          `missing ingredient "${want}" (got: ${ingredients.join(', ')})`,
+        );
+    for (const banned of expect.notIngredients ?? [])
+      if (ingredients.includes(norm(banned)))
+        failures.push(`FORBIDDEN ingredient "${banned}"`);
+    for (const want of expect.aliases ?? [])
+      if (!aliases.includes(norm(want)))
+        failures.push(`missing alias "${want}" (got: ${aliases.join(', ')})`);
+    for (const banned of expect.notAliases ?? [])
+      if (aliases.includes(norm(banned)))
+        failures.push(`FORBIDDEN alias "${banned}"`);
+    if (expect.emptyIngredients && ingredients.length)
+      failures.push(
+        `expected EMPTY ingredients, got: ${ingredients.join(', ')}`,
+      );
+    if (expect.emptyAliases && aliases.length)
+      failures.push(`expected EMPTY aliases, got: ${aliases.join(', ')}`);
+  } else if (kind === 'cuisine') {
+    const cuisines = (
+      Array.isArray(raw.cuisines) ? (raw.cuisines as unknown[]) : []
+    )
+      .filter((v): v is string => typeof v === 'string')
+      .map(norm);
+    for (const want of expect.cuisines ?? [])
+      if (!cuisines.includes(norm(want)))
+        failures.push(
+          `missing cuisine "${want}" (got: ${cuisines.join(', ') || 'nothing'})`,
+        );
+    for (const banned of expect.notCuisines ?? [])
+      if (cuisines.includes(norm(banned)))
+        failures.push(`FORBIDDEN cuisine "${banned}"`);
+    if (expect.emptyCuisines && cuisines.length)
+      failures.push(`expected EMPTY cuisines, got: ${cuisines.join(', ')}`);
+  } else if (kind === 'attribute-placement') {
+    const decision = normEnum(raw.decision);
+    if (expect.placement && decision !== expect.placement)
+      failures.push(
+        `expected decision=${expect.placement}, got ${decision} (reason="${norm(raw.reason)}")`,
+      );
+    // candidate_id is an INTEGER in the enforced schema — stringify to compare.
+    const rawId = raw.candidate_id;
+    const gotId =
+      typeof rawId === 'number' || typeof rawId === 'string'
+        ? String(rawId)
+        : '';
+    if (expect.matchCandidateId && gotId !== String(expect.matchCandidateId))
+      failures.push(
+        `expected candidate_id=${expect.matchCandidateId}, got ${gotId || 'null'}`,
+      );
+  } else if (kind === 'vocabulary') {
+    const first = (
+      Array.isArray(raw.items) ? (raw.items as unknown[])[0] : undefined
+    ) as
+      | { canonical_label?: unknown; aliases?: unknown; abstain?: unknown }
+      | undefined;
+    const label = norm(first?.canonical_label);
+    const aliases = (Array.isArray(first?.aliases) ? first.aliases : [])
+      .filter((v): v is string => typeof v === 'string')
+      .map(norm);
+    if (expect.abstain !== undefined) {
+      const abstained = first?.abstain === true;
+      if (abstained !== expect.abstain)
+        failures.push(`expected abstain=${expect.abstain}, got ${abstained}`);
+    }
+    if (expect.label && label !== norm(expect.label))
+      failures.push(`expected label="${expect.label}", got "${label}"`);
+    // notLabel bans the LABEL only: the measured drift class was the display
+    // label renaming to a neighbour ("gyro" -> "gyro meat"); a material word
+    // appearing among typed aliases is a different (and sometimes true) claim.
+    for (const banned of expect.notLabel ?? [])
+      if (label === norm(banned))
+        failures.push(`FORBIDDEN label "${banned}" (the drift name)`);
+    for (const want of expect.aliasesInclude ?? [])
+      if (!aliases.includes(norm(want)))
+        failures.push(`missing alias "${want}" (got: ${aliases.join(', ')})`);
   } else {
     const mode = raw.mode === 'ranked' ? 'ranked' : 'discussion';
     if (expect.mode && mode !== expect.mode)
@@ -185,13 +420,16 @@ function grade(
 async function runOnce(
   llm: LLMService,
   kind: Kind,
-  systemPrompt: string,
+  variant: 'live' | 'candidate',
+  systemPrompts: { live: string; candidate: string } | null,
   testCase: GoldCase,
 ): Promise<Record<string, unknown>> {
   const text = await llm.generateForCaller({
     caller: CALLER[kind],
-    systemInstruction: systemPrompt,
-    prompt: payload(kind, testCase),
+    ...(systemPrompts ? { systemInstruction: systemPrompts[variant] } : {}),
+    prompt: systemPrompts
+      ? payload(kind, testCase)
+      : builderPrompt(kind, variant, testCase),
     maxRetries: 0,
     generationConfig: {
       temperature: 0,
@@ -223,23 +461,26 @@ async function main(): Promise<void> {
 
   const kind = arg('kind') as Kind | undefined;
   if (!kind || !CALLER[kind])
-    throw new Error(
-      '--kind=moderation|relevance-gate|poll-subject is required',
-    );
+    throw new Error(`--kind=${Object.keys(CALLER).join('|')} is required`);
   const caseFile = arg('case-file');
   if (!caseFile) throw new Error('--case-file=<path> is required');
   const repeat = parseInt(arg('repeat', '3') as string, 10);
   const only = arg('only');
   const outFile = arg('out');
 
-  const livePath = resolvePrompt(arg('live', `${kind}-prompt.md`) as string);
-  const candidatePath = resolvePrompt(
-    arg('candidate', `${kind}-prompt.md`) as string,
-  );
-  const prompts = {
-    live: readFileSync(livePath, 'utf-8'),
-    candidate: readFileSync(candidatePath, 'utf-8'),
-  };
+  const isBuilderKind = BUILDER_KINDS.has(kind);
+  const livePath = isBuilderKind
+    ? '(builder: predecessor pinned in scripts/fixtures/)'
+    : resolvePrompt(arg('live', `${kind}-prompt.md`) as string);
+  const candidatePath = isBuilderKind
+    ? '(builder: current src import)'
+    : resolvePrompt(arg('candidate', `${kind}-prompt.md`) as string);
+  const prompts = isBuilderKind
+    ? null
+    : {
+        live: readFileSync(livePath, 'utf-8'),
+        candidate: readFileSync(candidatePath, 'utf-8'),
+      };
   let cases = JSON.parse(readFileSync(caseFile, 'utf-8')) as GoldCase[];
   if (only) cases = cases.filter((c) => c.id === only);
 
@@ -287,7 +528,8 @@ async function main(): Promise<void> {
           const raw = await runOnce(
             llm,
             kind,
-            prompts[unit.variant],
+            unit.variant,
+            prompts,
             unit.testCase,
           );
           outcomes.get(k)!.push({ raw });

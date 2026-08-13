@@ -126,8 +126,12 @@ function accentBrandName(value: string | null | undefined): string | null {
  *  resolver's tiers enforce): canonicalFold strips tone marks, so
  *  "Cơm Chay" and "Cơm Cháy" — two different dishes, two different shop
  *  names — agree on the folded form. When BOTH sides carry accent evidence
- *  (`diacriticFold !== canonicalFold`), their accent-preserving forms must
- *  ALSO agree, under the same equality-or-word-boundary-prefix rule. One
+ *  — their BRAND-NORMALIZED accent-preserving form differs from their
+ *  brand-normalized folded form (`da !== na && db !== nb` below; both sides
+ *  have already been through the leading-"the" strip, so this is NOT a raw
+ *  `diacriticFold !== canonicalFold` comparison) — their accent-preserving
+ *  forms must ALSO agree, under the same equality-or-word-boundary-prefix
+ *  rule. One
  *  accentless side asserts nothing (de-diacritized typing), so "bun dau"
  *  still agrees with "Bún Đậu". */
 export function restaurantNamesAgree(

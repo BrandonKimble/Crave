@@ -4,6 +4,17 @@ import { PrismaService } from '../../../prisma/prisma.service';
 import { LoggerService } from '../../../shared';
 import { LLMService } from '../../external-integrations/llm/llm.service';
 import { EntityTextSearchService } from '../../entity-text-search/entity-text-search.service';
+import { ClaimVerdictLedgerService } from './claim-verdict-ledger.service';
+import {
+  CONCEPT_SATISFIES_LANE,
+  conceptSatisfiesLane,
+} from './concept-satisfies-lane';
+import {
+  buildSatisfiesPrompt,
+  SATISFIES_PROMPT_VERSION,
+  SATISFIES_RULE_FINGERPRINT,
+  type SatisfiesCandidate as Candidate,
+} from './concept-satisfies-rule';
 
 /**
  * THE SUBSTITUTABILITY PASS (concept-graph plan, build step 4).
@@ -48,8 +59,14 @@ import { EntityTextSearchService } from '../../entity-text-search/entity-text-se
  * (`soup dumplings` / `xiao long bao`) is also a merge signal it cannot see.
  */
 
-/** Bump to re-derive. Verdicts carry the version they were decided under. */
-export const SATISFIES_PROMPT_VERSION = 1;
+/**
+ * The rule and its version live in concept-satisfies-rule.ts, DERIVED from
+ * the rule text against an append-only release ledger (H5) — a hand constant
+ * beside the prompt can drift from it in the one direction that silently
+ * corrupts the memory. Re-exported so every existing importer keeps its
+ * source of truth.
+ */
+export { buildSatisfiesPrompt, SATISFIES_PROMPT_VERSION };
 
 /** Candidates pulled per concept before the ladder filters them. */
 const CANDIDATE_POOL = 25;
@@ -73,10 +90,28 @@ export interface SatisfiesRunSummary {
   reject: number;
 }
 
-interface Candidate {
-  entityId: string;
-  name: string;
+/** What a satisfies verdict orders done — the `claim_verdicts.subject`
+ *  payload: everything the effect (the `entity_satisfies` upsert) needs, so
+ *  a crash-resume replays the stored decision, never a recomputation. */
+export interface SatisfiesVerdictSubject {
+  fromEntityId: string;
+  toEntityId: string;
+  relation: string;
+  promptVersion: number;
 }
+
+/**
+ * THE STATED GROUND ON A v1 VERDICT (H5 amendment (d) meets a rule that
+ * predates it). The v1 schema asks the model for `{n, verdict}` and nothing
+ * else, so there is no per-pair ground to record — and inventing one would
+ * be worse than admitting the gap (the backfill's 'backfilled-pre-ledger'
+ * precedent). What IS true, and recorded: which category the rule text
+ * defines for the answer. Asking the judge for its ground is a rule change
+ * — a fingerprint bump that re-opens the judged population — so it is a
+ * deliberate future release, not a side effect of this adoption.
+ */
+const v1Ground = (relation: string): string =>
+  `ruled '${relation}' under the v1 rule, whose schema records no per-pair ground`;
 
 const RESPONSE_SCHEMA: Record<string, unknown> = {
   type: 'object',
@@ -104,9 +139,94 @@ export class ConceptSatisfiesService {
     private readonly prisma: PrismaService,
     private readonly llm: LLMService,
     private readonly entityTextSearch: EntityTextSearchService,
+    private readonly ledger: ClaimVerdictLedgerService,
     loggerService: LoggerService,
   ) {
     this.logger = loggerService.setContext('ConceptSatisfiesService');
+  }
+
+  /**
+   * DECIDED BUT NOT EXECUTED — replay the STORED subject, never recompute
+   * (H5 amendment (c)). A crash between the verdict and the
+   * `entity_satisfies` write leaves the answer paid for and durable; this
+   * finishes it without a judge. Returns how many verdicts it completed.
+   */
+  async resumePendingSatisfiesEffects(limit = 500): Promise<number> {
+    const pending = await this.ledger.pendingExecution<SatisfiesVerdictSubject>(
+      CONCEPT_SATISFIES_LANE,
+      limit,
+    );
+    let resumed = 0;
+    for (const verdict of pending) {
+      await this.applySatisfiesEffect([verdict.subject]);
+      await this.ledger.markExecuted(
+        CONCEPT_SATISFIES_LANE,
+        verdict.claimKey,
+        verdict.ruleVersion,
+      );
+      resumed += 1;
+    }
+    if (resumed) {
+      this.logger.info('Resumed decided-but-unexecuted satisfies verdicts', {
+        resumed,
+      });
+    }
+    return resumed;
+  }
+
+  /** Commit each verdict, THEN obey them, THEN mark them finished — one
+   *  settle for the live path and (via resume) the crash path alike. */
+  private async settleSatisfiesVerdicts(
+    subjects: readonly SatisfiesVerdictSubject[],
+  ): Promise<void> {
+    for (const subject of subjects) {
+      await this.ledger.record<SatisfiesVerdictSubject>({
+        lane: CONCEPT_SATISFIES_LANE,
+        claimKey: conceptSatisfiesLane.canonicalClaimKey(subject),
+        ruleVersion: SATISFIES_PROMPT_VERSION,
+        outcome: subject.relation,
+        reason: v1Ground(subject.relation),
+        ruleFingerprint: SATISFIES_RULE_FINGERPRINT,
+        subject,
+      });
+    }
+    await this.applySatisfiesEffect(subjects);
+    for (const subject of subjects) {
+      await this.ledger.markExecuted(
+        CONCEPT_SATISFIES_LANE,
+        conceptSatisfiesLane.canonicalClaimKey(subject),
+        SATISFIES_PROMPT_VERSION,
+      );
+    }
+  }
+
+  /**
+   * THE ONE PLACE A SATISFIES VERDICT TOUCHES THE CORPUS — the
+   * `entity_satisfies` upsert, which every consumer (search expansion, the
+   * word-claim judge's adjacency card, the ladder's rung-4 arm) keeps
+   * reading unchanged. Live hearings and crash-resume both call this with
+   * the SAME stored subjects; overridable so a test can kill the effect
+   * mid-hearing and prove the verdict survives. Idempotent: the ON CONFLICT
+   * re-states the same relation on replay.
+   */
+  protected async applySatisfiesEffect(
+    subjects: readonly SatisfiesVerdictSubject[],
+  ): Promise<void> {
+    if (!subjects.length) return;
+    // ONE round trip per batch, not one per verdict.
+    await this.prisma.$executeRaw`
+      INSERT INTO entity_satisfies
+        (from_entity_id, to_entity_id, relation, prompt_version)
+      VALUES ${Prisma.join(
+        subjects.map(
+          (s) =>
+            Prisma.sql`(${s.fromEntityId}::uuid, ${s.toEntityId}::uuid, ${s.relation}, ${s.promptVersion})`,
+        ),
+      )}
+      ON CONFLICT (from_entity_id, to_entity_id)
+      DO UPDATE SET relation = EXCLUDED.relation,
+                    prompt_version = EXCLUDED.prompt_version,
+                    decided_at = CURRENT_TIMESTAMP`;
   }
 
   async run(
@@ -125,6 +245,13 @@ export class ConceptSatisfiesService {
       cousin: 0,
       reject: 0,
     };
+
+    // FINISH WHAT WAS ALREADY DECIDED, BEFORE DECIDING ANYTHING NEW
+    // (amendment (c)): a crash after the verdict committed left work to do,
+    // not a question to re-buy.
+    if (!dryRun) {
+      await this.resumePendingSatisfiesEffects();
+    }
 
     const concepts = await this.prisma.$queryRawUnsafe<
       Array<{ entity_id: string; name: string }>
@@ -198,20 +325,22 @@ export class ConceptSatisfiesService {
           decided.push({ toId: candidate.entityId, relation });
         }
         if (!dryRun && decided.length) {
-          // ONE round trip per batch, not one per verdict.
-          await this.prisma.$executeRaw`
-            INSERT INTO entity_satisfies
-              (from_entity_id, to_entity_id, relation, prompt_version)
-            VALUES ${Prisma.join(
-              decided.map(
-                (d) =>
-                  Prisma.sql`(${concept.entity_id}::uuid, ${d.toId}::uuid, ${d.relation}, ${SATISFIES_PROMPT_VERSION})`,
-              ),
-            )}
-            ON CONFLICT (from_entity_id, to_entity_id)
-            DO UPDATE SET relation = EXCLUDED.relation,
-                          prompt_version = EXCLUDED.prompt_version,
-                          decided_at = CURRENT_TIMESTAMP`;
+          // VERDICT BEFORE EFFECT (H5 amendment (c), 2026-08-12): every
+          // ruling lands in the hearing ledger with its full subject FIRST,
+          // then the one effect writer runs, then each verdict is marked
+          // executed. A crash anywhere in between leaves decided-but-
+          // unexecuted rows the next run resumes — the paid answer can no
+          // longer vanish. `claim_verdicts` is the verdict memory going
+          // forward; `entity_satisfies` stays the read projection every
+          // consumer keeps reading.
+          await this.settleSatisfiesVerdicts(
+            decided.map((d) => ({
+              fromEntityId: concept.entity_id,
+              toEntityId: d.toId,
+              relation: d.relation,
+              promptVersion: SATISFIES_PROMPT_VERSION,
+            })),
+          );
         }
       }
       // KL-A: the run row is written whatever happened. An incomplete run
@@ -338,6 +467,38 @@ export class ConceptSatisfiesService {
       ids,
     );
     const skip = new Set(excluded.map((row) => row.entity_id));
+    // THE HEARING LEDGER'S MEMORY (H5): a pair with a verdict at the current
+    // rule version is decided even when its effect has not landed yet — the
+    // crash window between `record` and the `entity_satisfies` write. The
+    // SQL arm above still honours pre-ledger rows; this arm is the memory
+    // going forward, checked in TypeScript because the claim key is
+    // canonicalized by the LANE'S ADAPTER and re-deriving it in SQL would
+    // mint a second definition of one claim (the word lane's stated law).
+    const decidedInLedger = await this.ledger.decidedKeys(
+      CONCEPT_SATISFIES_LANE,
+      SATISFIES_PROMPT_VERSION,
+      candidates
+        .filter((candidate) => !skip.has(candidate.entityId))
+        .map((candidate) =>
+          conceptSatisfiesLane.canonicalClaimKey({
+            fromEntityId: concept.entity_id,
+            toEntityId: candidate.entityId,
+          }),
+        ),
+    );
+    for (const candidate of candidates) {
+      if (
+        !skip.has(candidate.entityId) &&
+        decidedInLedger.has(
+          conceptSatisfiesLane.canonicalClaimKey({
+            fromEntityId: concept.entity_id,
+            toEntityId: candidate.entityId,
+          }),
+        )
+      ) {
+        skip.add(candidate.entityId);
+      }
+    }
     summary.decidedByLadder += skip.size;
     return candidates.filter((candidate) => !skip.has(candidate.entityId));
   }
@@ -382,36 +543,6 @@ export class ConceptSatisfiesService {
   }
 }
 
-/**
- * THE SUBSTITUTABILITY PROMPT. Directed, and strict on `satisfies` only where
- * strictness is cheap: a miss costs recall (recoverable), while a wrong
- * `satisfies` puts the wrong food in the FRONT section where the Crave Score
- * can rank it first.
- */
-export function buildSatisfiesPrompt(
-  anchorName: string,
-  batch: readonly Candidate[],
-): string {
-  return [
-    `A user searched for "${anchorName}" in a restaurant app.`,
-    `For EACH numbered candidate below, answer this DIRECTED question:`,
-    `if the user asked for "${anchorName}" and we showed them that candidate`,
-    `instead, would they be satisfied?`,
-    ``,
-    `Answer with exactly one verdict per candidate:`,
-    `- "satisfies" — yes. The same thing, a variant of it, or another name for it.`,
-    `- "cousin" — no, but it is a reasonable "similar" suggestion: same family,`,
-    `  different craving (a swapped protein, a changed form, a different flavour`,
-    `  direction).`,
-    `- "reject" — not a substitute at all: an INGREDIENT or component of it, a`,
-    `  BROAD CATEGORY that merely contains it, or unrelated.`,
-    ``,
-    `Answer for THIS direction only — do not assume the reverse also holds.`,
-    `A swapped protein or a changed form (pizza vs ramen vs pancake) is a`,
-    `cousin, never "satisfies".`,
-    `Cover every input number exactly once.`,
-    ``,
-    `Candidates:`,
-    ...batch.map((candidate, index) => `${index + 1}. ${candidate.name}`),
-  ].join('\n');
-}
+// buildSatisfiesPrompt lives in concept-satisfies-rule.ts — it IS the rule
+// text the version is derived from, so the template and its fingerprint
+// stay one file. Re-exported above for existing importers.

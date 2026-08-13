@@ -64,3 +64,22 @@ export function currentCampaignId(): string | undefined {
 export function currentAttribution(): string | undefined {
   return storage.getStore()?.attribution;
 }
+
+/**
+ * THE BOUNDARY-CROSSING CONVENTION (2026-08-12). AsyncLocalStorage dies at
+ * every durable/async boundary — a BullMQ enqueue, a batch job's
+ * resumeContext, any payload another process will pick up. Code that crosses
+ * one captures `snapshotWorkContext()` INTO THE PAYLOAD and the far side
+ * re-establishes it with `runInWorkContext(payload.workContext, ...)`.
+ * A snapshot is a defensive COPY: the ambient store object is shared by the
+ * whole execution tree, and a payload holding a live reference would see
+ * (or cause) later mutation. Reading fields piecemeal
+ * (`{ campaignId: currentCampaignId() }`) drops the label and the
+ * attribution — use the snapshot. Enforced by the
+ * `campaign.attribution-crosses-every-queue-boundary` invariant
+ * (scripts/check-workcontext-boundaries.mjs).
+ */
+export function snapshotWorkContext(): WorkContext | undefined {
+  const context = storage.getStore();
+  return context ? { ...context } : undefined;
+}

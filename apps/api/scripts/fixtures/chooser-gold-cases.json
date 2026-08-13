@@ -1,0 +1,149 @@
+[
+  {
+    "id": "geography-veto-name-match",
+    "why": "GEOGRAPHY GATE independence: a plausible name match never overrides a location mismatch — the only strong candidate is out of market with no textual support.",
+    "chooserInput": {
+      "query": "La Barbecue",
+      "sourceText": "La Barbecue is my favorite brisket in town, worth every minute of the line.",
+      "sourceLocale": { "city": "Austin", "region": "TX" },
+      "candidates": [
+        {
+          "candidateId": "cand-dallas",
+          "name": "La Barbecue Dallas",
+          "address": "812 Main St, Dallas, TX",
+          "types": ["restaurant"],
+          "sourceLabels": ["search_text"],
+          "searchTextRank": 1
+        }
+      ]
+    },
+    "expect": { "decision": "reject" }
+  },
+  {
+    "id": "popup-wording-out-of-market",
+    "why": "Temporary wording (popup/residency) may name the brand but never justifies an out-of-market pick — reject is the cheap error.",
+    "chooserInput": {
+      "query": "Kaya's Kitchen",
+      "sourceText": "Caught the Kaya's Kitchen popup last weekend, their mole was unreal.",
+      "sourceLocale": { "city": "Austin", "region": "TX" },
+      "candidates": [
+        {
+          "candidateId": "cand-houston",
+          "name": "Kaya's Kitchen",
+          "address": "2201 Westheimer Rd, Houston, TX",
+          "types": ["restaurant"],
+          "sourceLabels": ["autocomplete"],
+          "autocompleteRank": 1
+        }
+      ]
+    },
+    "expect": { "decision": "reject" }
+  },
+  {
+    "id": "brand-cluster-general-stop",
+    "why": "A same-brand in-market cluster referenced generally IS a strong stop — pick the highest-ranked plausible branch now.",
+    "chooserInput": {
+      "query": "Joe's Pizza",
+      "sourceText": "Joe's Pizza is the best slice in the city, hands down.",
+      "sourceLocale": { "city": "New York", "region": "NY" },
+      "candidates": [
+        {
+          "candidateId": "cand-carmine",
+          "name": "Joe's Pizza",
+          "address": "7 Carmine St, New York, NY",
+          "types": ["restaurant"],
+          "sourceLabels": ["autocomplete", "search_text"],
+          "autocompleteRank": 1,
+          "searchTextRank": 1
+        },
+        {
+          "candidateId": "cand-williamsburg",
+          "name": "Joe's Pizza Williamsburg",
+          "address": "216 Bedford Ave, Brooklyn, NY",
+          "types": ["restaurant"],
+          "sourceLabels": ["search_text"],
+          "searchTextRank": 2
+        }
+      ]
+    },
+    "expect": { "decision": "select", "candidateId": "cand-carmine" }
+  },
+  {
+    "id": "named-branch-beats-rank",
+    "why": "When the text names a specific branch, pick THAT branch, not the higher-ranked sibling — the reshaped prompt states this; the accreted predecessor only covers the brand-general case.",
+    "chooserInput": {
+      "query": "Taco Deli",
+      "sourceText": "The Taco Deli on Spyglass is my go-to before the greenbelt trail, the queso taco slaps.",
+      "sourceLocale": { "city": "Austin", "region": "TX" },
+      "candidates": [
+        {
+          "candidateId": "cand-lamar",
+          "name": "Taco Deli South Lamar",
+          "address": "1500 S Lamar Blvd, Austin, TX",
+          "types": ["restaurant"],
+          "sourceLabels": ["autocomplete", "search_text"],
+          "autocompleteRank": 1,
+          "searchTextRank": 1
+        },
+        {
+          "candidateId": "cand-spyglass",
+          "name": "Taco Deli Spyglass",
+          "address": "1601 W Barton Springs / Spyglass Dr, Austin, TX",
+          "types": ["restaurant"],
+          "sourceLabels": ["search_text"],
+          "searchTextRank": 3
+        }
+      ]
+    },
+    "expect": { "decision": "select", "candidateId": "cand-spyglass" }
+  },
+  {
+    "id": "store-typed-counter-is-valid",
+    "why": "WHAT THE PLACE IS: people describing ordering prepared food make a store-typed candidate fully valid — category is a tiebreaker, never a disqualifier; the predecessor's 'prefer restaurant-ish' pulls the other way.",
+    "chooserInput": {
+      "query": "Rebel Cheese",
+      "sourceText": "Rebel Cheese's deli sandwiches are incredible — I get the reuben at the counter every week.",
+      "sourceLocale": { "city": "Austin", "region": "TX" },
+      "candidates": [
+        {
+          "candidateId": "cand-shop",
+          "name": "Rebel Cheese",
+          "address": "2200 Aldrich St, Austin, TX",
+          "types": ["store", "grocery_or_supermarket"],
+          "sourceLabels": ["autocomplete", "search_text"],
+          "autocompleteRank": 1,
+          "searchTextRank": 1
+        },
+        {
+          "candidateId": "cand-other",
+          "name": "Rebel Mart Cafe",
+          "address": "901 E 6th St, Austin, TX",
+          "types": ["restaurant"],
+          "sourceLabels": ["search_text"],
+          "searchTextRank": 4
+        }
+      ]
+    },
+    "expect": { "decision": "select", "candidateId": "cand-shop" }
+  },
+  {
+    "id": "identity-gate-different-brand",
+    "why": "IDENTITY GATE: a partial-word overlap with a different brand is not identity — reject and continue retrieval.",
+    "chooserInput": {
+      "query": "Bunbelly",
+      "sourceText": "Had an incredible meal off the Bunbelly truck at the brewery.",
+      "sourceLocale": { "city": "Austin", "region": "TX" },
+      "candidates": [
+        {
+          "candidateId": "cand-bun",
+          "name": "Bun Belly Boba House",
+          "address": "8557 Research Blvd, Austin, TX",
+          "types": ["cafe"],
+          "sourceLabels": ["search_text"],
+          "searchTextRank": 2
+        }
+      ]
+    },
+    "expect": { "decision": "reject" }
+  }
+]

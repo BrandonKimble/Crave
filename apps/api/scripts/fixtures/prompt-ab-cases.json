@@ -1216,5 +1216,65 @@
       "restaurants": ["clinton st baking", "ikumi"],
       "notFoods": ["dinner", "rice"]
     }
+  },
+  {
+    "id": "P2-trip-review-in-itinerary-clothing",
+    "why": "Interference probe: the PLAN bullet ('single most common false positive; check tense and intent before crediting a list') is the highest-salience prohibition in A.2, and this body is shaped exactly like the D1 itinerary gold case — but the writer HAS been. The later 'asking for feedback on an experience already had IS testimony' exception must win.",
+    "posts": [
+      {
+        "id": "SRC001",
+        "title": "Judge my austin food weekend",
+        "body": "Just got back from a long weekend in Austin. Here's the list we ate through:  Better Half  Suerte  Easy Tiger  Cuantos Tacos  Micklethwait. How did we do?",
+        "extract_from_post": true,
+        "comments": []
+      }
+    ],
+    "expect": {
+      "restaurants": ["suerte", "cuantos tacos", "better half"]
+    }
+  },
+  {
+    "id": "P1-critical-frame-carries-testimony",
+    "why": "Mental-model probe: A.2's NEGATIVE CONTENT bullet ('many of your items I would not suggest ... Emit nothing') is source-scoped and outvotes the reaction-frame rule, which only teaches PRAISE frames ('Great list!'). A comment that pans the list but vouches for one place in its own first-person words must still emit that place — the clause rule.",
+    "posts": [
+      {
+        "id": "SRC001",
+        "title": "My definitive list of the best cheap eats in Queens",
+        "body": "Been eating my way through the borough for a year. La Gran Uruguaya, Birria-Landia, Nepali Bhanchha Ghar, JoJu, Arepa Lady.",
+        "extract_from_post": false,
+        "comments": [
+          {
+            "id": "SRC002",
+            "body": "Honestly half this list is overrated tourist stuff and many of your items I would not suggest. But Chivito d'Oro is genuinely fantastic — their chivito is the real deal."
+          }
+        ]
+      }
+    ],
+    "expect": {
+      "restaurants": ["chivito"],
+      "foods": ["chivito"]
+    }
+  },
+  {
+    "id": "P3-hedge-frame-spill",
+    "why": "Clause-rule probe: a comment whose FRAME is globally lukewarm ('most places in this town are mid') followed by an unhedged first-person verdict for one place. The hedge/negative gravity must not spill onto the positive clause.",
+    "posts": [
+      {
+        "id": "SRC001",
+        "title": "Best tacos in Austin?",
+        "body": "Where should I go for tacos?",
+        "extract_from_post": false,
+        "comments": [
+          {
+            "id": "SRC002",
+            "body": "Ngl most taco spots in this town are mid at best, 6/10 stuff, perfectly fine but forgettable. Cuantos Tacos is the exception though — their suadero taco is incredible."
+          }
+        ]
+      }
+    ],
+    "expect": {
+      "restaurants": ["cuantos tacos"],
+      "foods": ["suadero taco"]
+    }
   }
 ]

@@ -27,6 +27,7 @@
  * It FAILS LOUDLY without one rather than skipping.
  */
 import { PrismaClient } from '@prisma/client';
+import { ClaimVerdictLedgerService } from './claim-verdict-ledger.service';
 import {
   ConceptSatisfiesService,
   SatisfiesRunSummary,
@@ -65,6 +66,7 @@ const service = new ConceptSatisfiesService(
   prisma as never,
   {} as never, // llm — unused by residualFor
   {} as never, // entityTextSearch — unused (a sibling edge feeds candidates)
+  new ClaimVerdictLedgerService(prisma as never),
   logger,
 );
 

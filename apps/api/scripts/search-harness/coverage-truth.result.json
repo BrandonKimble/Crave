@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-08-13T01:06:20.113Z",
+  "generatedAt": "2026-08-13T01:46:23.554Z",
   "pageSize": 25,
   "maxPages": 60,
   "mutation": null,
@@ -10,12 +10,12 @@
     "maxAnchors": 3
   },
   "corpus": {
-    "mustAppear": 2414,
-    "missing": 600,
-    "served": 2125,
-    "leaks": 59,
-    "judgedRejectsServed": 1,
-    "coverage": 0.7514498757249378
+    "mustAppear": 2303,
+    "missing": 766,
+    "served": 2891,
+    "leaks": 363,
+    "judgedRejectsServed": 3,
+    "coverage": 0.667390360399479
   },
   "cases": [
     {
@@ -302,8 +302,8 @@
       "grounded": ["sushi", "cheap", "open late"],
       "groundingShattered": false,
       "anchors": 1,
-      "tier0Concepts": 91,
-      "ringConcepts": 10,
+      "tier0Concepts": 1,
+      "ringConcepts": 104,
       "dietaryWallActive": false,
       "served": {
         "expansionFired": true,
@@ -317,47 +317,14 @@
         }
       },
       "truth": {
-        "candidates": 237,
-        "mustAppear": 234,
-        "mayAppear": 3
+        "candidates": 246,
+        "mustAppear": 0,
+        "mayAppear": 246
       },
-      "coverage": 0.2778,
-      "missing": 169,
-      "missReasons": {
-        "price-level filter (requested)": 169
-      },
-      "missSamples": [
-        {
-          "connectionId": "00fa3555-285f-44df-ab25-fb8753e52220",
-          "food": "chirashi bowl",
-          "restaurant": "MOGMOG",
-          "reason": "price-level filter (requested)"
-        },
-        {
-          "connectionId": "0134ff29-1606-403e-90a5-b5c22699f22e",
-          "food": "omakase",
-          "restaurant": "Omakase room by Maaser",
-          "reason": "price-level filter (requested)"
-        },
-        {
-          "connectionId": "0423af8e-6405-44ee-a924-3e2b728d4ba7",
-          "food": "omakase",
-          "restaurant": "SourAji",
-          "reason": "price-level filter (requested)"
-        },
-        {
-          "connectionId": "04a60b67-b1d8-477d-85d3-28001b7b9b7e",
-          "food": "salmon nigiri",
-          "restaurant": "Wegmans",
-          "reason": "price-level filter (requested)"
-        },
-        {
-          "connectionId": "06dd566a-4741-4dc5-a532-71a07c5c1431",
-          "food": "nigiri",
-          "restaurant": "Warabi Omakase",
-          "reason": "price-level filter (requested)"
-        }
-      ],
+      "coverage": 1,
+      "missing": 0,
+      "missReasons": {},
+      "missSamples": [],
       "leaks": 0,
       "leakReasons": {},
       "leakSamples": [],
@@ -535,25 +502,25 @@
       "why": "vi, full diacritics",
       "grounded": ["bún bò huế"],
       "groundingShattered": false,
-      "anchors": 1,
-      "tier0Concepts": 1,
-      "ringConcepts": 23,
+      "anchors": 2,
+      "tier0Concepts": 2,
+      "ringConcepts": 48,
       "dietaryWallActive": false,
       "served": {
         "expansionFired": false,
         "pages": 2,
         "exhausted": true,
-        "dishes": 8,
+        "dishes": 18,
         "restaurants": 2,
         "reportedTotals": {
-          "dishes": 8,
+          "dishes": 18,
           "restaurants": 2
         }
       },
       "truth": {
-        "candidates": 8,
+        "candidates": 18,
         "mustAppear": 2,
-        "mayAppear": 6
+        "mayAppear": 16
       },
       "coverage": 1,
       "missing": 0,
@@ -571,35 +538,98 @@
       "query": "cơm tấm",
       "viewport": "nyc",
       "why": "vi, full diacritics",
-      "grounded": ["cơm tấm"],
-      "groundingShattered": false,
-      "anchors": 1,
-      "tier0Concepts": 1,
-      "ringConcepts": 4,
+      "grounded": ["cơm tấm", "cơm"],
+      "groundingShattered": true,
+      "anchors": 3,
+      "tier0Concepts": 4,
+      "ringConcepts": 157,
       "dietaryWallActive": false,
       "served": {
-        "expansionFired": true,
-        "pages": 2,
+        "expansionFired": false,
+        "pages": 10,
         "exhausted": true,
-        "dishes": 1,
-        "restaurants": 0,
+        "dishes": 220,
+        "restaurants": 185,
         "reportedTotals": {
-          "dishes": 1,
-          "restaurants": 0
+          "dishes": 220,
+          "restaurants": 185
         }
       },
       "truth": {
-        "candidates": 1,
-        "mustAppear": 0,
-        "mayAppear": 1
+        "candidates": 92,
+        "mustAppear": 2,
+        "mayAppear": 90
       },
       "coverage": 1,
       "missing": 0,
       "missReasons": {},
       "missSamples": [],
-      "leaks": 0,
-      "leakReasons": {},
-      "leakSamples": [],
+      "leaks": 133,
+      "leakReasons": {
+        "UNRELATED-CONCEPT (no arm explains it)": 133
+      },
+      "leakSamples": [
+        {
+          "connectionId": "b5d0d2bf-f3e4-433e-906c-3b1abcd2d378",
+          "food": "dosa",
+          "reason": "UNRELATED-CONCEPT (no arm explains it)"
+        },
+        {
+          "connectionId": "6de7fb2b-adbd-46c6-8f20-69daa384b66d",
+          "food": "uni bowl",
+          "reason": "UNRELATED-CONCEPT (no arm explains it)"
+        },
+        {
+          "connectionId": "57dc859b-9af0-466a-befb-bfaeed34b962",
+          "food": "basil steak bowl",
+          "reason": "UNRELATED-CONCEPT (no arm explains it)"
+        },
+        {
+          "connectionId": "541e3507-7563-4b83-94a1-6e6023645f44",
+          "food": "spicy pork platter",
+          "reason": "UNRELATED-CONCEPT (no arm explains it)"
+        },
+        {
+          "connectionId": "d7ac8299-b34d-430a-8935-b5450b3297ab",
+          "food": "spring green porridge",
+          "reason": "UNRELATED-CONCEPT (no arm explains it)"
+        },
+        {
+          "connectionId": "63bd1161-245d-4b24-9d1a-836a3720b731",
+          "food": "shawarma platter",
+          "reason": "UNRELATED-CONCEPT (no arm explains it)"
+        },
+        {
+          "connectionId": "b347b11a-09ed-4162-a4ed-50c276eb87c6",
+          "food": "dan bout",
+          "reason": "UNRELATED-CONCEPT (no arm explains it)"
+        },
+        {
+          "connectionId": "47146063-f902-41f7-a482-3489e93e18ec",
+          "food": "tuna poke bowl",
+          "reason": "UNRELATED-CONCEPT (no arm explains it)"
+        },
+        {
+          "connectionId": "cafd8df2-911b-4650-8924-beeeb257854c",
+          "food": "chicken shawarma platter",
+          "reason": "UNRELATED-CONCEPT (no arm explains it)"
+        },
+        {
+          "connectionId": "6ad02f80-102a-484a-811a-178ce5b241aa",
+          "food": "gimbap",
+          "reason": "UNRELATED-CONCEPT (no arm explains it)"
+        },
+        {
+          "connectionId": "8267fdf8-7c06-4a3e-8788-cd887958fea8",
+          "food": "dosa",
+          "reason": "UNRELATED-CONCEPT (no arm explains it)"
+        },
+        {
+          "connectionId": "463f0e39-e357-4020-b030-5054fe3491a7",
+          "food": "yellowtail kimbap",
+          "reason": "UNRELATED-CONCEPT (no arm explains it)"
+        }
+      ],
       "judgedRejectsServed": 0,
       "judgedRejectSamples": [],
       "expectEmpty": false,
@@ -609,55 +639,95 @@
       "query": "phở bo",
       "viewport": "nyc",
       "why": "vi, PARTIAL accent (fold path)",
-      "grounded": ["phở bo", "phở"],
+      "grounded": ["phở bo", "bo"],
       "groundingShattered": true,
-      "anchors": 1,
-      "tier0Concepts": 2,
-      "ringConcepts": 23,
+      "anchors": 2,
+      "tier0Concepts": 4,
+      "ringConcepts": 183,
       "dietaryWallActive": false,
       "served": {
         "expansionFired": false,
-        "pages": 2,
+        "pages": 12,
         "exhausted": true,
-        "dishes": 15,
-        "restaurants": 13,
+        "dishes": 262,
+        "restaurants": 221,
         "reportedTotals": {
-          "dishes": 15,
-          "restaurants": 13
+          "dishes": 262,
+          "restaurants": 221
         }
       },
       "truth": {
-        "candidates": 11,
-        "mustAppear": 1,
-        "mayAppear": 10
+        "candidates": 129,
+        "mustAppear": 3,
+        "mayAppear": 126
       },
       "coverage": 1,
       "missing": 0,
       "missReasons": {},
       "missSamples": [],
-      "leaks": 4,
+      "leaks": 150,
       "leakReasons": {
-        "UNRELATED-CONCEPT (no arm explains it)": 4
+        "UNRELATED-CONCEPT (no arm explains it)": 150
       },
       "leakSamples": [
         {
-          "connectionId": "ee12ba29-0d85-41e5-9bd2-359a67426aaa",
-          "food": "bun bo hue",
+          "connectionId": "93db9ff0-1bd1-4045-87b0-a2e67dcd6c0d",
+          "food": "drunken noodles",
           "reason": "UNRELATED-CONCEPT (no arm explains it)"
         },
         {
-          "connectionId": "6e457d80-5179-4216-b654-a8394f708ee1",
-          "food": "bun bo hue",
+          "connectionId": "5ce9782c-112d-42c2-b301-fd2654a5f879",
+          "food": "prime rib",
           "reason": "UNRELATED-CONCEPT (no arm explains it)"
         },
         {
-          "connectionId": "3b4e874c-30bc-47ae-a259-63ec984b6ec2",
-          "food": "pho sandwich",
+          "connectionId": "441fd955-92a5-4e20-9969-62dd95bc3802",
+          "food": "suadero taco",
           "reason": "UNRELATED-CONCEPT (no arm explains it)"
         },
         {
-          "connectionId": "51d44ae1-a63e-44e3-a5c2-d801b3405e89",
-          "food": "pho sandwich",
+          "connectionId": "1879c0fd-8ec2-40c9-acc2-0c5c3f699f17",
+          "food": "boat noodle",
+          "reason": "UNRELATED-CONCEPT (no arm explains it)"
+        },
+        {
+          "connectionId": "d4e8650c-499b-4f53-891c-a0adfd01cd10",
+          "food": "cheesesteak",
+          "reason": "UNRELATED-CONCEPT (no arm explains it)"
+        },
+        {
+          "connectionId": "c93321ea-8095-4426-a37e-81613206da90",
+          "food": "curry puff",
+          "reason": "UNRELATED-CONCEPT (no arm explains it)"
+        },
+        {
+          "connectionId": "6e3572ff-607c-48d9-8fc6-ec5deace9d55",
+          "food": "porterhouse",
+          "reason": "UNRELATED-CONCEPT (no arm explains it)"
+        },
+        {
+          "connectionId": "95ebfeab-e27f-48ea-8564-4350b20604a9",
+          "food": "ribeye",
+          "reason": "UNRELATED-CONCEPT (no arm explains it)"
+        },
+        {
+          "connectionId": "b1f2da96-a535-42e8-86a1-a7c72d6d8129",
+          "food": "thai cheesesteak",
+          "reason": "UNRELATED-CONCEPT (no arm explains it)"
+        },
+        {
+          "connectionId": "fd2e5aeb-1db5-45ec-a156-45701192eb27",
+          "food": "niku udon",
+          "reason": "UNRELATED-CONCEPT (no arm explains it)"
+        },
+        {
+          "connectionId": "94440980-7a3e-4667-af60-2b911fec1854",
+          "food": "lort cha",
+          "reason": "UNRELATED-CONCEPT (no arm explains it)"
+        },
+        {
+          "connectionId": "6820dabe-45be-4f39-a532-f2259bb1f343",
+          "food": "asada tacos",
           "reason": "UNRELATED-CONCEPT (no arm explains it)"
         }
       ],
@@ -672,96 +742,42 @@
       "why": "es single token",
       "grounded": ["camarones"],
       "groundingShattered": false,
-      "anchors": 1,
-      "tier0Concepts": 3,
-      "ringConcepts": 5,
+      "anchors": 2,
+      "tier0Concepts": 49,
+      "ringConcepts": 79,
       "dietaryWallActive": false,
       "served": {
-        "expansionFired": true,
-        "pages": 2,
+        "expansionFired": false,
+        "pages": 7,
         "exhausted": true,
-        "dishes": 21,
-        "restaurants": 21,
+        "dishes": 147,
+        "restaurants": 109,
         "reportedTotals": {
-          "dishes": 21,
-          "restaurants": 21
+          "dishes": 147,
+          "restaurants": 109
         }
       },
       "truth": {
-        "candidates": 5,
-        "mustAppear": 0,
-        "mayAppear": 5
+        "candidates": 179,
+        "mustAppear": 148,
+        "mayAppear": 31
       },
-      "coverage": 1,
-      "missing": 0,
-      "missReasons": {},
-      "missSamples": [],
-      "leaks": 16,
-      "leakReasons": {
-        "plan-expansion arm (lexical/attribute widening past the graph)": 16
+      "coverage": 0.9932,
+      "missing": 1,
+      "missReasons": {
+        "UNEXPLAINED": 1
       },
-      "leakSamples": [
+      "missSamples": [
         {
-          "connectionId": "f634b228-3e85-4a9e-b747-1b2fecbd9990",
-          "food": "chicharron",
-          "reason": "plan-expansion arm (lexical/attribute widening past the graph)"
-        },
-        {
-          "connectionId": "45817df7-d255-413e-a117-b2bf01686d21",
-          "food": "chicharron",
-          "reason": "plan-expansion arm (lexical/attribute widening past the graph)"
-        },
-        {
-          "connectionId": "b85f722b-c303-4714-89ce-7afb56dd0777",
-          "food": "mexican wedding cookies",
-          "reason": "plan-expansion arm (lexical/attribute widening past the graph)"
-        },
-        {
-          "connectionId": "c7fcc09f-1e9d-4e38-9d76-c55af4b7b6c9",
-          "food": "mexican wedding cookies",
-          "reason": "plan-expansion arm (lexical/attribute widening past the graph)"
-        },
-        {
-          "connectionId": "dcfc2aba-9e46-4c11-adc7-6be3be2bc9b8",
-          "food": "shrimp ball",
-          "reason": "plan-expansion arm (lexical/attribute widening past the graph)"
-        },
-        {
-          "connectionId": "000fdfa9-d34d-4129-80d1-d9ad15abaf21",
-          "food": "mexican wedding cookies",
-          "reason": "plan-expansion arm (lexical/attribute widening past the graph)"
-        },
-        {
-          "connectionId": "6c0cd85e-5551-46a4-8ad1-d6eee7eb6c36",
-          "food": "mexican wedding cookies",
-          "reason": "plan-expansion arm (lexical/attribute widening past the graph)"
-        },
-        {
-          "connectionId": "a451b1c2-52bd-4a3f-8e8c-917a2469a8f2",
-          "food": "mexican shrimp cocktail",
-          "reason": "plan-expansion arm (lexical/attribute widening past the graph)"
-        },
-        {
-          "connectionId": "5bbc2e0c-1944-4f36-a3a1-dd17c4ace3f1",
-          "food": "chicharron",
-          "reason": "plan-expansion arm (lexical/attribute widening past the graph)"
-        },
-        {
-          "connectionId": "1197dba0-a7a8-4027-9a32-8f6f294f5bf0",
-          "food": "shrimp avocado salad",
-          "reason": "plan-expansion arm (lexical/attribute widening past the graph)"
-        },
-        {
-          "connectionId": "ac42c9fb-8f88-4993-bdce-8665a15b32f3",
-          "food": "chicharron",
-          "reason": "plan-expansion arm (lexical/attribute widening past the graph)"
-        },
-        {
-          "connectionId": "9b6540e6-025e-422a-916d-9a705998197d",
-          "food": "mexican wedding cookies",
-          "reason": "plan-expansion arm (lexical/attribute widening past the graph)"
+          "connectionId": "d1c32345-4b34-4db7-acda-8fa7859f4ada",
+          "food": "camaron machete",
+          "restaurant": "Machetes “Doña Leova”",
+          "reason": "UNEXPLAINED"
         }
       ],
+      "leaks": 0,
+      "leakReasons": {},
+      "leakSamples": [],
       "judgedRejectsServed": 0,
       "judgedRejectSamples": [],
       "expectEmpty": false,
@@ -842,32 +858,107 @@
       "query": "pastel de arroz",
       "viewport": "austin",
       "why": "es multiword, likely thin",
-      "grounded": ["pastel de", "arroz"],
+      "grounded": ["pastel", "arroz", "de"],
       "groundingShattered": false,
-      "anchors": 1,
-      "tier0Concepts": 3,
-      "ringConcepts": 7,
+      "anchors": 3,
+      "tier0Concepts": 268,
+      "ringConcepts": 87,
       "dietaryWallActive": false,
       "served": {
-        "expansionFired": true,
-        "pages": 2,
+        "expansionFired": false,
+        "pages": 6,
         "exhausted": true,
-        "dishes": 4,
-        "restaurants": 0,
+        "dishes": 113,
+        "restaurants": 74,
         "reportedTotals": {
-          "dishes": 4,
-          "restaurants": 0
+          "dishes": 113,
+          "restaurants": 74
         }
       },
       "truth": {
-        "candidates": 4,
-        "mustAppear": 0,
-        "mayAppear": 4
+        "candidates": 462,
+        "mustAppear": 446,
+        "mayAppear": 16
       },
-      "coverage": 1,
-      "missing": 0,
-      "missReasons": {},
-      "missSamples": [],
+      "coverage": 0.2511,
+      "missing": 334,
+      "missReasons": {
+        "UNEXPLAINED": 334
+      },
+      "missSamples": [
+        {
+          "connectionId": "0106db95-2bfc-47e6-9e0c-f16cc9ca82af",
+          "food": "almond creme cake",
+          "restaurant": "Hayley Cakes and Cookies",
+          "reason": "UNEXPLAINED"
+        },
+        {
+          "connectionId": "01312af4-22b9-4c64-8d7e-9ede9fbe1372",
+          "food": "chuleta plate",
+          "restaurant": "Habanero Cafe",
+          "reason": "UNEXPLAINED"
+        },
+        {
+          "connectionId": "015b28c2-f8f7-4474-b0b9-1c12b1fa5a21",
+          "food": "rice",
+          "restaurant": "KG BBQ",
+          "reason": "UNEXPLAINED"
+        },
+        {
+          "connectionId": "01f8fcd2-c4c6-4455-8360-74eb7b71a266",
+          "food": "strawberry short cake",
+          "restaurant": "Jacoby's Restaurant & Mercantile",
+          "reason": "UNEXPLAINED"
+        },
+        {
+          "connectionId": "023b3e3f-a78f-45b6-848f-83b7db69e119",
+          "food": "grilled romaine handroll",
+          "restaurant": "Uchi Austin",
+          "reason": "UNEXPLAINED"
+        },
+        {
+          "connectionId": "02569b6a-2f08-46fb-a9c7-3280f2c71315",
+          "food": "bundt cake",
+          "restaurant": "Nothing Bundt Cakes",
+          "reason": "UNEXPLAINED"
+        },
+        {
+          "connectionId": "02fe2de5-9756-4784-b3ab-bfe2ef798a3e",
+          "food": "lamb shawarma over rice",
+          "restaurant": "Halal Bros",
+          "reason": "UNEXPLAINED"
+        },
+        {
+          "connectionId": "04883eb4-29aa-4f06-94ca-53769fdd9f16",
+          "food": "cupcake",
+          "restaurant": "Quack's 43rd Street Bakery",
+          "reason": "UNEXPLAINED"
+        },
+        {
+          "connectionId": "051f9705-f453-48e4-9262-1c209e2706cb",
+          "food": "bulgogi bowl",
+          "restaurant": "Bouldin Creek Cafe",
+          "reason": "UNEXPLAINED"
+        },
+        {
+          "connectionId": "052b043d-f556-4eea-8c71-857d08696a45",
+          "food": "gateau marissa",
+          "restaurant": "Upper Crust Bakery",
+          "reason": "UNEXPLAINED"
+        },
+        {
+          "connectionId": "053af513-1119-4a2a-8464-9c58d5ad9893",
+          "food": "boudin",
+          "restaurant": "Sawyer & Co",
+          "reason": "UNEXPLAINED"
+        },
+        {
+          "connectionId": "055f4290-d2be-463b-8d2e-5edbfd64424c",
+          "food": "arroz con leche shave ice",
+          "restaurant": "Shaved Ice Island",
+          "reason": "UNEXPLAINED"
+        }
+      ],
       "leaks": 0,
       "leakReasons": {},
       "leakSamples": [],
@@ -929,32 +1020,50 @@
       "grounded": ["wings"],
       "groundingShattered": false,
       "anchors": 1,
-      "tier0Concepts": 33,
-      "ringConcepts": 10,
+      "tier0Concepts": 11,
+      "ringConcepts": 29,
       "dietaryWallActive": false,
       "served": {
         "expansionFired": false,
         "pages": 2,
         "exhausted": true,
-        "dishes": 20,
+        "dishes": 23,
         "restaurants": 15,
         "reportedTotals": {
-          "dishes": 20,
+          "dishes": 23,
           "restaurants": 15
         }
       },
       "truth": {
         "candidates": 20,
-        "mustAppear": 17,
-        "mayAppear": 3
+        "mustAppear": 4,
+        "mayAppear": 16
       },
       "coverage": 1,
       "missing": 0,
       "missReasons": {},
       "missSamples": [],
-      "leaks": 0,
-      "leakReasons": {},
-      "leakSamples": [],
+      "leaks": 3,
+      "leakReasons": {
+        "UNRELATED-CONCEPT (no arm explains it)": 3
+      },
+      "leakSamples": [
+        {
+          "connectionId": "515c3745-8ab6-4dab-90ec-ef7eb28c2d76",
+          "food": "buffalo chicken slice",
+          "reason": "UNRELATED-CONCEPT (no arm explains it)"
+        },
+        {
+          "connectionId": "6f4186b9-38cc-4d40-85c4-173ab1b64434",
+          "food": "buffalo chicken pizza",
+          "reason": "UNRELATED-CONCEPT (no arm explains it)"
+        },
+        {
+          "connectionId": "82e6b58d-c93a-4fd1-9b05-424d331e7bd2",
+          "food": "buffalo chicken pizza",
+          "reason": "UNRELATED-CONCEPT (no arm explains it)"
+        }
+      ],
       "judgedRejectsServed": 0,
       "judgedRejectSamples": [],
       "expectEmpty": false,
@@ -967,8 +1076,8 @@
       "grounded": ["omakase"],
       "groundingShattered": false,
       "anchors": 1,
-      "tier0Concepts": 19,
-      "ringConcepts": 11,
+      "tier0Concepts": 4,
+      "ringConcepts": 26,
       "dietaryWallActive": false,
       "served": {
         "expansionFired": false,
@@ -982,19 +1091,27 @@
         }
       },
       "truth": {
-        "candidates": 108,
-        "mustAppear": 77,
-        "mayAppear": 31
+        "candidates": 107,
+        "mustAppear": 2,
+        "mayAppear": 105
       },
       "coverage": 1,
       "missing": 0,
       "missReasons": {},
       "missSamples": [],
-      "leaks": 0,
-      "leakReasons": {},
-      "leakSamples": [],
-      "judgedRejectsServed": 0,
-      "judgedRejectSamples": [],
+      "leaks": 1,
+      "leakReasons": {
+        "UNRELATED-CONCEPT (no arm explains it)": 1
+      },
+      "leakSamples": [
+        {
+          "connectionId": "6594a63c-af3e-4283-97e5-1e76b9ab4d58",
+          "food": "chefs table experience",
+          "reason": "UNRELATED-CONCEPT (no arm explains it)"
+        }
+      ],
+      "judgedRejectsServed": 2,
+      "judgedRejectSamples": ["cocktail omakase", "tea omakase"],
       "expectEmpty": false,
       "honestEmptyHeld": null
     },
@@ -1118,25 +1235,25 @@
       "why": "compound decomposed to ingredients",
       "grounded": ["chicken over rice", "chicken", "rice"],
       "groundingShattered": false,
-      "anchors": 1,
-      "tier0Concepts": 3,
-      "ringConcepts": 13,
+      "anchors": 2,
+      "tier0Concepts": 4,
+      "ringConcepts": 28,
       "dietaryWallActive": false,
       "served": {
         "expansionFired": false,
-        "pages": 2,
+        "pages": 3,
         "exhausted": true,
-        "dishes": 19,
-        "restaurants": 14,
+        "dishes": 30,
+        "restaurants": 15,
         "reportedTotals": {
-          "dishes": 19,
-          "restaurants": 14
+          "dishes": 30,
+          "restaurants": 15
         }
       },
       "truth": {
-        "candidates": 19,
-        "mustAppear": 15,
-        "mayAppear": 4
+        "candidates": 30,
+        "mustAppear": 16,
+        "mayAppear": 14
       },
       "coverage": 1,
       "missing": 0,
@@ -1232,9 +1349,9 @@
       "why": "richest category — ring + gate pressure",
       "grounded": ["pizza"],
       "groundingShattered": false,
-      "anchors": 1,
-      "tier0Concepts": 224,
-      "ringConcepts": 12,
+      "anchors": 2,
+      "tier0Concepts": 20,
+      "ringConcepts": 220,
       "dietaryWallActive": false,
       "served": {
         "expansionFired": false,
@@ -1248,9 +1365,9 @@
         }
       },
       "truth": {
-        "candidates": 437,
-        "mustAppear": 435,
-        "mayAppear": 2
+        "candidates": 438,
+        "mustAppear": 37,
+        "mayAppear": 401
       },
       "coverage": 1,
       "missing": 0,
@@ -1306,35 +1423,99 @@
       "query": "tortas ahogadas",
       "viewport": "austin",
       "why": "multiword es, thin",
-      "grounded": ["tortas ahogadas"],
-      "groundingShattered": false,
-      "anchors": 1,
-      "tier0Concepts": 3,
-      "ringConcepts": 4,
+      "grounded": ["tortas", "tortas ahogadas"],
+      "groundingShattered": true,
+      "anchors": 2,
+      "tier0Concepts": 12,
+      "ringConcepts": 7,
       "dietaryWallActive": false,
       "served": {
         "expansionFired": true,
-        "pages": 2,
+        "pages": 3,
         "exhausted": true,
-        "dishes": 8,
-        "restaurants": 2,
+        "dishes": 49,
+        "restaurants": 48,
         "reportedTotals": {
-          "dishes": 8,
-          "restaurants": 2
+          "dishes": 49,
+          "restaurants": 48
         }
       },
       "truth": {
-        "candidates": 8,
-        "mustAppear": 1,
-        "mayAppear": 7
+        "candidates": 16,
+        "mustAppear": 11,
+        "mayAppear": 5
       },
       "coverage": 1,
       "missing": 0,
       "missReasons": {},
       "missSamples": [],
-      "leaks": 0,
-      "leakReasons": {},
-      "leakSamples": [],
+      "leaks": 37,
+      "leakReasons": {
+        "plan-expansion arm (lexical/attribute widening past the graph)": 36,
+        "lexical-expansion arm (name look-alike)": 1
+      },
+      "leakSamples": [
+        {
+          "connectionId": "67149b06-aaa0-4337-bf26-33bdd67c05f6",
+          "food": "tres leches cake",
+          "reason": "plan-expansion arm (lexical/attribute widening past the graph)"
+        },
+        {
+          "connectionId": "4b0e5f20-46f6-4ced-b58f-0f8f336c5376",
+          "food": "tres leches cake",
+          "reason": "plan-expansion arm (lexical/attribute widening past the graph)"
+        },
+        {
+          "connectionId": "dd9d8eec-7730-4486-a86f-1e88ce0f7b18",
+          "food": "tres leches cake",
+          "reason": "plan-expansion arm (lexical/attribute widening past the graph)"
+        },
+        {
+          "connectionId": "1bb16b19-0797-4df3-8d45-20d0bd652399",
+          "food": "tres leches cake",
+          "reason": "plan-expansion arm (lexical/attribute widening past the graph)"
+        },
+        {
+          "connectionId": "dcae5f3d-95b6-4b63-b39b-175f519d68a7",
+          "food": "tres leches cake",
+          "reason": "plan-expansion arm (lexical/attribute widening past the graph)"
+        },
+        {
+          "connectionId": "7a45ff68-ab94-43c8-a968-ffa6d4718400",
+          "food": "tres leches",
+          "reason": "plan-expansion arm (lexical/attribute widening past the graph)"
+        },
+        {
+          "connectionId": "24cec2d2-66d8-4b5b-85d0-8f938425db80",
+          "food": "tres leches",
+          "reason": "plan-expansion arm (lexical/attribute widening past the graph)"
+        },
+        {
+          "connectionId": "a845d4ee-0fda-4bc2-9145-4872f88817a0",
+          "food": "tres leches cake",
+          "reason": "plan-expansion arm (lexical/attribute widening past the graph)"
+        },
+        {
+          "connectionId": "f2509412-58eb-4fe1-9157-d2614f636941",
+          "food": "tres leches cake",
+          "reason": "plan-expansion arm (lexical/attribute widening past the graph)"
+        },
+        {
+          "connectionId": "2625522e-109f-46c7-a3a2-c88cabbbaab3",
+          "food": "tres leches cake",
+          "reason": "plan-expansion arm (lexical/attribute widening past the graph)"
+        },
+        {
+          "connectionId": "0e9e9799-6e61-429a-a3ab-7d3a8853da7a",
+          "food": "tres leches cake",
+          "reason": "plan-expansion arm (lexical/attribute widening past the graph)"
+        },
+        {
+          "connectionId": "4eafc8b1-395d-4fa2-8fef-1a24ca6e8166",
+          "food": "tres leches cake",
+          "reason": "plan-expansion arm (lexical/attribute widening past the graph)"
+        }
+      ],
       "judgedRejectsServed": 0,
       "judgedRejectSamples": [],
       "expectEmpty": false,

@@ -1,0 +1,53 @@
+[
+  {
+    "id": "identity-modifier-vegan",
+    "why": "THE IDENTITY-MODIFIER TEST: the modifier wins over the standard preparation — a wrong ingredient sends a hard-constraint diner to food they cannot eat.",
+    "dish": "vegan al pastor taco",
+    "expect": { "notIngredients": ["pork", "pork shoulder", "al pastor pork"] }
+  },
+  {
+    "id": "identity-modifier-white-pizza",
+    "why": "THE IDENTITY-MODIFIER TEST: 'white pizza' has no tomato sauce.",
+    "dish": "white pizza",
+    "expect": { "notIngredients": ["tomato sauce", "tomato", "marinara"] }
+  },
+  {
+    "id": "alias-exclusivity-marg",
+    "why": "THE EXCLUSIVITY TEST: 'marg' is claimed by both the cocktail and the pizza — an alias that fails exclusivity fuses two dishes in search.",
+    "dish": "margherita pizza",
+    "expect": { "notAliases": ["marg"] }
+  },
+  {
+    "id": "alias-established-army-stew",
+    "why": "Keep-side of the exclusivity line: 'army stew' is an established co-name pointing at nothing but budae jjigae.",
+    "dish": "budae jjigae",
+    "expect": { "aliases": ["army stew"] }
+  },
+  {
+    "id": "invention-worse-than-silence-combo",
+    "why": "Invention-worse-than-silence economics: an ambiguous name has no canonical contents — empty, never a plausible fabrication.",
+    "dish": "combo plate",
+    "expect": { "emptyIngredients": true }
+  },
+  {
+    "id": "invention-worse-than-silence-seasonal",
+    "why": "Same economics, second instance: 'seasonal salad' is whatever the kitchen has — an invented list is indistinguishable from a real one forever.",
+    "dish": "seasonal salad",
+    "expect": { "emptyIngredients": true }
+  },
+  {
+    "id": "no-invented-aliases-shortening",
+    "why": "Never invent or shorten a name yourself: 'chicken tikka masala' has no established shorthand to emit — 'ctm' style abbreviations must not be minted.",
+    "dish": "carbonara udon",
+    "expect": { "emptyAliases": true }
+  },
+  {
+    "id": "standard-prep-bec",
+    "why": "Keep-side control: the standard preparation and the one established alias both come through.",
+    "dish": "bacon egg and cheese",
+    "expect": {
+      "ingredients": ["bacon", "egg", "cheese"],
+      "aliases": ["bec"]
+    }
+  }
+]

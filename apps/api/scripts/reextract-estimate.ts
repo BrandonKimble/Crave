@@ -22,7 +22,8 @@ import { AppModule } from '../src/app.module';
 import { PrismaService } from '../src/prisma/prisma.service';
 import { SpendCampaignService } from '../src/modules/external-integrations/shared/spend-campaign.service';
 import { stopCronsForScript } from '../src/shared/utils/stop-crons';
-import { pricedGeminiRow } from '../src/modules/external-integrations/shared/gemini-pricing';
+import { campaignAttributableRates } from '../src/modules/external-integrations/shared/gemini-pricing';
+import { replayPriorUsable } from './lib/replay-prior-guard';
 
 function arg(name: string): string | undefined {
   const idx = process.argv.indexOf(`--${name}`);
@@ -112,45 +113,21 @@ async function main(): Promise<void> {
       'aliases.claim_judge',
     ];
     const WINDOW_DAYS = 30;
-    const callerRows = await prisma.$queryRaw<
-      Array<{
-        caller: string;
-        model: string;
-        mode: string | null;
-        input_tokens: bigint;
-        output_tokens: bigint;
-        cached_tokens: bigint;
-        calls: bigint;
-      }>
-    >`
-      SELECT caller, model, mode,
-             sum(input_tokens)  AS input_tokens,
-             sum(output_tokens) AS output_tokens,
-             sum(cached_tokens) AS cached_tokens,
-             count(*)           AS calls
-      FROM api_usage_ledger
-      WHERE service = 'gemini'
-        AND caller = ANY(${REPLAY_INTERACTIVE_CALLERS})
-        AND created_at > now() - make_interval(days => ${WINDOW_DAYS}::int)
-      GROUP BY caller, model, mode`;
+    // ONE RATE AUTHORITY (campaignAttributableRates): the priced-row
+    // projection lives beside pricedGeminiRow so `mode` can never be dropped
+    // from a hand-rolled GROUP BY here (batch rows would price 2x).
+    const windowRates = await campaignAttributableRates(prisma, {
+      kind: 'window',
+      callers: REPLAY_INTERACTIVE_CALLERS,
+      windowDays: WINDOW_DAYS,
+    });
     const [{ count: windowDocs }] = await prisma.$queryRaw<
       Array<{ count: bigint }>
     >`
       SELECT count(*) AS count FROM collection_source_documents
       WHERE collected_at > now() - make_interval(days => ${WINDOW_DAYS}::int)`;
-    let interactiveMicros = 0;
-    const perCaller = new Map<string, number>();
-    for (const row of callerRows) {
-      const micros = pricedGeminiRow({
-        model: row.model,
-        mode: row.mode,
-        inputTokens: Number(row.input_tokens),
-        outputTokens: Number(row.output_tokens),
-        cachedTokens: Number(row.cached_tokens),
-      });
-      interactiveMicros += micros;
-      perCaller.set(row.caller, (perCaller.get(row.caller) ?? 0) + micros);
-    }
+    const interactiveMicros = windowRates.geminiMicros;
+    const perCaller = windowRates.byCaller;
     const windowDocCount = Number(windowDocs);
     const trailingInteractivePerDoc =
       windowDocCount > 0 ? interactiveMicros / windowDocCount : 0;
@@ -162,46 +139,53 @@ async function main(): Promise<void> {
     // The v7 campaign quoted $108 and cost $30 for exactly these two reasons.
     // When a completed reextract campaign exists, its per-doc actuals override
     // every gemini line; the gate line is pinned $0 with the reason printed.
-    const priorRows = await prisma.$queryRaw<
-      Array<{
-        caller: string;
-        model: string | null;
-        mode: string | null;
-        input_tokens: bigint;
-        output_tokens: bigint;
-        cached_tokens: bigint;
-        docs: bigint | null;
-      }>
+    const [priorCampaign] = await prisma.$queryRaw<
+      Array<{ campaign_id: string; unit_count: number | null; name: string }>
     >`
-      WITH last_replay AS (
-        SELECT campaign_id, unit_count FROM spend_campaigns
-        WHERE name LIKE 'reextract:%' AND state = 'completed'
-        ORDER BY completed_at DESC NULLS LAST LIMIT 1)
-      SELECT l.caller, l.model, l.mode,
-             sum(l.input_tokens) AS input_tokens,
-             sum(l.output_tokens) AS output_tokens,
-             sum(l.cached_tokens) AS cached_tokens,
-             (SELECT unit_count FROM last_replay) AS docs
-      FROM api_usage_ledger l JOIN last_replay r ON l.campaign_id = r.campaign_id
-      WHERE l.service = 'gemini' GROUP BY l.caller, l.model, l.mode`;
+      SELECT campaign_id, unit_count, name FROM spend_campaigns
+      WHERE name LIKE 'reextract:%' AND state = 'completed'
+      ORDER BY completed_at DESC NULLS LAST LIMIT 1`;
     let interactivePerDocMicros = trailingInteractivePerDoc;
     let replayPriorOverrides: Record<string, number> | null = null;
-    if (priorRows.length && Number(priorRows[0].docs ?? 0) > 0) {
-      const priorDocs = Number(priorRows[0].docs);
+
+    // THE PRIOR MUST BE COMPARABLE (scale/community guard, 2026-08-12): a
+    // per-doc rate from a 200-doc single-community pilot does not transfer
+    // to a 60k-doc all-corpus replay — fixed per-run costs amortize
+    // differently and community mix changes doc size. The prior is used only
+    // when the last completed replay covered the SAME community set, or its
+    // scale is within 2x of this quote's doc count. Otherwise fall back to
+    // the trailing window, loudly.
+    let priorUsable = false;
+    if (priorCampaign) {
+      const verdict = replayPriorUsable({
+        priorName: priorCampaign.name,
+        priorDocs: Number(priorCampaign.unit_count ?? 0),
+        thisCommunities: resolvedCommunities,
+        docCount,
+      });
+      priorUsable = verdict.usable;
+      if (!verdict.usable) {
+        console.warn(
+          `REPLAY-PRIOR SKIPPED: ${verdict.reason} — falling back to the ` +
+            `trailing ${WINDOW_DAYS}d window rates.`,
+        );
+      }
+    }
+    if (priorUsable && priorCampaign) {
+      const priorDocs = Number(priorCampaign.unit_count);
+      // Same rate authority as the call plan — campaign-scoped this time.
+      const priorRates = await campaignAttributableRates(prisma, {
+        kind: 'campaign',
+        campaignId: priorCampaign.campaign_id,
+      });
       const byClass = { extraction: 0, interactive: 0, embedding: 0 };
-      for (const row of priorRows) {
-        const micros = pricedGeminiRow({
-          model: row.model,
-          mode: row.mode,
-          inputTokens: Number(row.input_tokens),
-          outputTokens: Number(row.output_tokens),
-          cachedTokens: Number(row.cached_tokens),
-        });
+      for (const row of priorRates.rows) {
+        if (!row.priced) continue;
         if (row.caller.includes('collection_extraction'))
-          byClass.extraction += micros;
+          byClass.extraction += row.micros;
         else if (row.caller.startsWith('embedding'))
-          byClass.embedding += micros;
-        else byClass.interactive += micros;
+          byClass.embedding += row.micros;
+        else byClass.interactive += row.micros;
       }
       interactivePerDocMicros = byClass.interactive / priorDocs;
       replayPriorOverrides = {

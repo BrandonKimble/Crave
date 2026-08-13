@@ -12,7 +12,7 @@ For EACH numbered dish name, return two things.
 Assume the standard preparation, from world knowledge. 3–8 core items,
 singular, lowercase. No seasoning-level noise (salt, oil, pepper).
 
-**IDENTITY WORDS IN THE NAME GOVERN.** The name is the whole specification:
+**THE IDENTITY-MODIFIER TEST — identity words in the name govern.** The name is the whole specification:
 "vegan al pastor taco" has no pork; "white pizza" has no tomato sauce. When a
 modifier in the name contradicts the standard preparation, the modifier wins —
 a wrong ingredient here sends a diner with a hard constraint to food they

@@ -7,6 +7,7 @@ import { PrismaService } from '../../../prisma/prisma.service';
 import { LoggerService } from '../../../shared';
 import { LLMService } from '../../external-integrations/llm/llm.service';
 import { PooledBatchRunner } from '../../external-integrations/llm/pooled-batch-runner';
+import { recordUnanswered } from '../../external-integrations/llm/unanswered-outcome';
 import { isEnvFlagEnabled } from '../../../shared/config/env-flag';
 
 export interface DishKnowledgeSummary {
@@ -38,6 +39,13 @@ export class DishKnowledgeSynthesisService {
   private readonly logger: LoggerService;
   private cronInFlight = false;
   private static readonly DISHES_PER_CALL = 20;
+  /** THE PERIOD-DEADLINE CONTRACT (sweep-rail parity, 2026-08-12): a nightly
+   *  pass must never outlive the night that scheduled it. Every other
+   *  batch-backed sweep (knowledge-maintenance → label-sweep → vocabulary)
+   *  already sizes its bounded wait to its own rail period; this lane was
+   *  the one pooled consumer silently inheriting the runner's default
+   *  timeout instead. Sized to the cron period (24h). */
+  private static readonly RAIL_PERIOD_MS = 24 * 60 * 60 * 1000;
 
   constructor(
     private readonly prisma: PrismaService,
@@ -58,7 +66,10 @@ export class DishKnowledgeSynthesisService {
     if (this.cronInFlight) return;
     this.cronInFlight = true;
     try {
-      await this.run({ limit: 2000 });
+      await this.run({
+        limit: 2000,
+        deadlineAt: Date.now() + DishKnowledgeSynthesisService.RAIL_PERIOD_MS,
+      });
     } catch (error) {
       this.logger.error('Dish knowledge nightly pass failed', {
         error:
@@ -72,7 +83,14 @@ export class DishKnowledgeSynthesisService {
   }
 
   async run(
-    options: { limit?: number; dryRun?: boolean } = {},
+    options: {
+      limit?: number;
+      dryRun?: boolean;
+      /** Wall-clock epoch-ms deadline for the pooled WAIT, owned by the rail
+       *  that scheduled this pass (the nightly cron passes its own period).
+       *  Absent = the runner's default bounded wait (manual script runs). */
+      deadlineAt?: number;
+    } = {},
   ): Promise<DishKnowledgeSummary> {
     const limit = options.limit ?? 500;
     const dryRun = options.dryRun ?? false;
@@ -119,6 +137,20 @@ export class DishKnowledgeSynthesisService {
         ),
       );
     }
+    const remainingMs = options.deadlineAt
+      ? options.deadlineAt - Date.now()
+      : null;
+    if (remainingMs !== null && remainingMs <= 0) {
+      // The deadline elapsed before any ask was posed: nothing was asked,
+      // so EVERYTHING stays due and nothing may be stamped.
+      recordUnanswered(this.logger, {
+        lane: 'dish.knowledge_synthesize',
+        unit: 'dish',
+        count: dishes.length,
+        reason: 'deadline_elapsed',
+      });
+      return summary;
+    }
     const firstParts = this.llmService.dishKnowledgeRequestParts([]);
     const responses = await this.pooled.generateMany({
       caller: 'dish.knowledge_synthesize',
@@ -130,16 +162,19 @@ export class DishKnowledgeSynthesisService {
       })),
       systemInstruction: firstParts.systemInstruction,
       generationConfig: firstParts.generationConfig,
+      ...(remainingMs !== null ? { timeoutMs: remainingMs } : {}),
     });
 
     for (let chunkIndex = 0; chunkIndex < chunks.length; chunkIndex += 1) {
       const batch = chunks[chunkIndex];
       const text = responses.get(`chunk-${chunkIndex}`);
       if (!text) {
-        this.logger.warn(
-          'Dish knowledge chunk unanswered (dishes left unstamped, re-offered next pass)',
-          { size: batch.length },
-        );
+        recordUnanswered(this.logger, {
+          lane: 'dish.knowledge_synthesize',
+          unit: 'dish',
+          count: batch.length,
+          reason: 'chunk_unanswered',
+        });
         continue;
       }
       let knowledge: { ingredients: string[]; aliases: string[] }[];
@@ -149,8 +184,13 @@ export class DishKnowledgeSynthesisService {
           batch.length,
         );
       } catch (error) {
-        this.logger.warn('Dish knowledge chunk unparseable (left unstamped)', {
-          size: batch.length,
+        recordUnanswered(this.logger, {
+          lane: 'dish.knowledge_synthesize',
+          unit: 'dish',
+          count: batch.length,
+          reason: 'unparseable',
+        });
+        this.logger.warn('Dish knowledge chunk unparseable detail', {
           error: {
             message: error instanceof Error ? error.message : String(error),
           },

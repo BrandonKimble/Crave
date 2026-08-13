@@ -1,0 +1,158 @@
+[
+  {
+    "id": "geography-veto-name-match",
+    "why": "GEOGRAPHY GATE independence: a plausible name match never overrides a location mismatch — the only strong candidate is out of market with no textual support.",
+    "live": {
+      "passes": 3,
+      "of": 3,
+      "verdict": "PASS",
+      "failures": [],
+      "sample": {
+        "decision": "reject",
+        "candidateId": null,
+        "reason": "source says Austin, candidate is Dallas"
+      }
+    },
+    "candidate": {
+      "passes": 3,
+      "of": 3,
+      "verdict": "PASS",
+      "failures": [],
+      "sample": {
+        "decision": "reject",
+        "candidateId": null,
+        "reason": "source market is Austin, candidate is Dallas"
+      }
+    }
+  },
+  {
+    "id": "popup-wording-out-of-market",
+    "why": "Temporary wording (popup/residency) may name the brand but never justifies an out-of-market pick — reject is the cheap error.",
+    "live": {
+      "passes": 3,
+      "of": 3,
+      "verdict": "PASS",
+      "failures": [],
+      "sample": {
+        "decision": "reject",
+        "candidateId": null,
+        "reason": "source market is Austin, candidate is Houston"
+      }
+    },
+    "candidate": {
+      "passes": 3,
+      "of": 3,
+      "verdict": "PASS",
+      "failures": [],
+      "sample": {
+        "decision": "reject",
+        "candidateId": null,
+        "reason": "source market is Austin, candidate is Houston"
+      }
+    }
+  },
+  {
+    "id": "brand-cluster-general-stop",
+    "why": "A same-brand in-market cluster referenced generally IS a strong stop — pick the highest-ranked plausible branch now.",
+    "live": {
+      "passes": 3,
+      "of": 3,
+      "verdict": "PASS",
+      "failures": [],
+      "sample": {
+        "decision": "select",
+        "candidateId": "cand-carmine",
+        "reason": "The candidate is the flagship location of the iconic Joe's Pizza brand in the specified New York market, matching both name and geography."
+      }
+    },
+    "candidate": {
+      "passes": 3,
+      "of": 3,
+      "verdict": "PASS",
+      "failures": [],
+      "sample": {
+        "decision": "select",
+        "candidateId": "cand-carmine",
+        "reason": "source names the brand in NYC, cand-carmine is the flagship Greenwich Village location"
+      }
+    }
+  },
+  {
+    "id": "named-branch-beats-rank",
+    "why": "When the text names a specific branch, pick THAT branch, not the higher-ranked sibling — the reshaped prompt states this; the accreted predecessor only covers the brand-general case.",
+    "live": {
+      "passes": 3,
+      "of": 3,
+      "verdict": "PASS",
+      "failures": [],
+      "sample": {
+        "decision": "select",
+        "candidateId": "cand-spyglass",
+        "reason": "source text specifies the Spyglass location, which matches candidate cand-spyglass exactly"
+      }
+    },
+    "candidate": {
+      "passes": 3,
+      "of": 3,
+      "verdict": "PASS",
+      "failures": [],
+      "sample": {
+        "decision": "select",
+        "candidateId": "cand-spyglass",
+        "reason": "source names Spyglass location, candidate address matches Spyglass Dr matches"
+      }
+    }
+  },
+  {
+    "id": "store-typed-counter-is-valid",
+    "why": "WHAT THE PLACE IS: people describing ordering prepared food make a store-typed candidate fully valid — category is a tiebreaker, never a disqualifier; the predecessor's 'prefer restaurant-ish' pulls the other way.",
+    "live": {
+      "passes": 3,
+      "of": 3,
+      "verdict": "PASS",
+      "failures": [],
+      "sample": {
+        "decision": "select",
+        "candidateId": "cand-shop",
+        "reason": "The name and address match the Austin market, and the source text describes a deli counter which aligns with the store/grocery type."
+      }
+    },
+    "candidate": {
+      "passes": 3,
+      "of": 3,
+      "verdict": "PASS",
+      "failures": [],
+      "sample": {
+        "decision": "select",
+        "candidateId": "cand-shop",
+        "reason": "source names Rebel Cheese in Austin, candidate matches name and location"
+      }
+    }
+  },
+  {
+    "id": "identity-gate-different-brand",
+    "why": "IDENTITY GATE: a partial-word overlap with a different brand is not identity — reject and continue retrieval.",
+    "live": {
+      "passes": 3,
+      "of": 3,
+      "verdict": "PASS",
+      "failures": [],
+      "sample": {
+        "decision": "reject",
+        "candidateId": null,
+        "reason": "source mentions a food truck, candidate is a boba house which may not be the same entity"
+      }
+    },
+    "candidate": {
+      "passes": 3,
+      "of": 3,
+      "verdict": "PASS",
+      "failures": [],
+      "sample": {
+        "decision": "reject",
+        "candidateId": null,
+        "reason": "source specifies food truck, candidate is a boba house cafe"
+      }
+    }
+  }
+]

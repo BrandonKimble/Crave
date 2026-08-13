@@ -30,6 +30,7 @@
  * Run: yarn test:db   (needs DATABASE_URL — a dev/mirror database, never prod)
  */
 import { PrismaClient } from '@prisma/client';
+import { ClaimVerdictLedgerService } from './claim-verdict-ledger.service';
 import { FoodDedupeMergeService } from './food-dedupe-merge.service';
 import { EntityAnchorRehomeService } from './entity-anchor-rehome.service';
 import { canonicalFold } from './entity-identity';
@@ -217,6 +218,7 @@ describe('FoodDedupeMergeService.mergeFoodPair — connection fold, mention-coll
       prisma as any,
       unusedLlm(),
       new EntityAnchorRehomeService(noopLogger()),
+      new ClaimVerdictLedgerService(prisma as never),
       noopLogger(),
     );
 

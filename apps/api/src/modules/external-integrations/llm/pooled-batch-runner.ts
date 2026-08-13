@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../../../prisma/prisma.service';
 import { LoggerService } from '../../../shared';
+import { recordUnanswered } from './unanswered-outcome';
 import { GeminiBatchService } from './gemini-batch.service';
 import { LLMService } from './llm.service';
 import { currentWorkContext } from '../shared/work-context';
@@ -114,10 +115,17 @@ export class PooledBatchRunner {
         break;
       }
       if (Date.now() >= deadline) {
-        this.logger.warn(
-          'Pooled batch timed out — cancelling; unanswered items stay null (re-offered by the sweep)',
-          { jobId, caller: params.caller, timeoutMs },
-        );
+        recordUnanswered(this.logger, {
+          lane: params.caller,
+          unit: 'item',
+          count: params.items.length,
+          reason: 'timeout_cancelled',
+        });
+        this.logger.warn('Pooled batch timed out — cancelling', {
+          jobId,
+          caller: params.caller,
+          timeoutMs,
+        });
         await this.batch.cancel(jobId).catch((error: unknown) => {
           this.logger.warn('Pooled batch cancel failed', {
             jobId,

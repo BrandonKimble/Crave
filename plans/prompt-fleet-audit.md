@@ -73,6 +73,34 @@ text this queue lands. Nothing was hand-written in their place.
 For the rederivation: the missing named test is the one that separates
 A THING from WHAT IT IS MADE OF, in the direction the label reads.
 
+## PROMPT QUEUE DRAINED (2026-08-12, pre-activation sweep — uncommitted)
+
+Queue items 4–7 + the ingredient-sense label test are DONE, each with a live
+gold A/B in scripts/prompt-gold.ts (extended with 5 new kinds; predecessors
+pinned under scripts/fixtures/; results in scripts/fixtures/*-gold.result.json,
+repeat=3):
+- cuisine-prompt.md REDERIVED (TRADITION TEST + error economics + granularity):
+  candidate 8/8, predecessor 7/8 (RED: emitted "steakhouse" as a cuisine).
+- labels.vocabulary v7 (THING-vs-MATERIAL boundary test): 10/10 incl. all 10
+  measured drift names; v6 also 10/10 on single-concept asks (drift was
+  v4-era) — vs the pinned v4 builder, v4 FAILS margarita→"margarita pizza".
+  First v7 wording itself regressed margarita (composed-food framing) —
+  caught by the harness, reworded, now clean.
+- attribute-placement compressed into the 3 shared named tests
+  (DESCRIBE-VS-JUDGE / STANDALONE / SCOPE): 14/14 = 14/14 incl. 3 novel-class
+  probes — behavior-preserving consolidation, no predecessor RED found.
+- chooser (named IDENTITY/GEOGRAPHY gates + explicit error economics) and
+  dish-knowledge (named IDENTITY-MODIFIER TEST): light retouches; gold sets
+  pinned 6/6 and 8/8 both arms — the real rederivations shipped earlier
+  (944487208, d35b91af1); no separation vs their immediate predecessors on
+  these sets.
+Estimator/campaign/sweep-rail items from the same mandate also landed —
+campaignAttributableRates one-rate-authority, campaign transition table +
+assertDispatchable (sync+batch), stale-running watchdog, dish-knowledge
+period deadline, shared unanswered-outcome event, and the two new invariants
+(campaign.attribution-crosses-every-queue-boundary,
+identity.merge-group-sites-carry-the-accent-veto).
+
 ## Cost-hygiene fixes (mechanical, ship before text work)
 
 1. Batch-price the non-interactive sweeps (dish synthesis, vocabulary,

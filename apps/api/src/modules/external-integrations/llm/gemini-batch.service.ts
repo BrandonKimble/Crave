@@ -7,7 +7,7 @@ import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../../prisma/prisma.service';
 import { LoggerService, buildCauseChain } from '../../../shared';
 import { UsageLedgerService } from '../shared/usage-ledger.service';
-import { runInWorkContext } from '../shared/work-context';
+import { currentCampaignId, runInWorkContext } from '../shared/work-context';
 import { GovernanceService } from '../governance/governance.service';
 import { SpendCampaignService } from '../shared/spend-campaign.service';
 
@@ -195,14 +195,18 @@ export class GeminiBatchService implements OnModuleDestroy {
     // the vendor call already happened by the time the campaign found out.
     // Same pattern as the Tier-3 gate above: typed refusal, work stays
     // queued (the caller's enqueue layer retries once the campaign resumes).
-    const campaignId = campaignIdFromResumeContext(params.resumeContext);
+    // ONE ENFORCEMENT for every caller (2026-08-12): the gate used to fire
+    // only when the caller had remembered to stash campaignId on
+    // resumeContext — a caller that forgot (or ran inside an ambient
+    // campaign without a durable stash) submitted ungated. The campaign is
+    // now resolved from the explicit stash FIRST, then from the ambient
+    // WorkContext, and the refusal itself is the shared typed
+    // assertDispatchable — one message, one distinction (breached =
+    // requeue-and-wait vs terminal), not a per-site paraphrase.
+    const campaignId =
+      campaignIdFromResumeContext(params.resumeContext) ?? currentCampaignId();
     if (campaignId) {
-      const dispatchable = await this.spendCampaigns.isDispatchable(campaignId);
-      if (!dispatchable) {
-        throw new Error(
-          `campaign breached — batch submission refused; work stays queued (campaignId ${campaignId})`,
-        );
-      }
+      await this.spendCampaigns.assertDispatchable(campaignId);
     }
     // State machine (each state has exactly ONE owner that moves it — audit §3):
     //   persisting -> pending -> submitting -> submitted -> succeeded

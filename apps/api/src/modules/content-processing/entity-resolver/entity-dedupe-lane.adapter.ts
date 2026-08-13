@@ -21,8 +21,11 @@ import { BaseClaimLaneAdapter } from './claim-lane-adapter';
  * adjudicating on the wrong key.
  *
  * Nothing here decides anything. There is no judge call, no merge, and no
- * effect — deliberately: a stub that quietly implemented half a policy would
- * be worse than none when the real lane arrives.
+ * effect — deliberately: the lane's policy (judge, plan, settle, resume)
+ * lives in FoodDedupeMergeService, which adopted this adapter and the
+ * hearing ledger on 2026-08-12; its rule version lives in
+ * entity-dedupe-rule.ts. This file stays canonicalization-only so no second
+ * definition of "one dedupe claim" can grow beside it.
  */
 export const ENTITY_DEDUPE_LANE = 'entity_dedupe';
 

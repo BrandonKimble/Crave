@@ -1,0 +1,366 @@
+[
+  {
+    "id": "narrow-want-stays-separate",
+    "why": "Interchangeability fails one way: a rooftop searcher is not satisfied by generic outdoor seating.",
+    "live": {
+      "passes": 3,
+      "of": 3,
+      "verdict": "PASS",
+      "failures": [],
+      "sample": {
+        "decision": "new",
+        "candidate_id": null,
+        "reason": "A rooftop is a specific type of outdoor seating that diners seek out intentionally; a user searching for a rooftop would not be satisfied by a generic sidewalk or backyard patio."
+      }
+    },
+    "candidate": {
+      "passes": 3,
+      "of": 3,
+      "verdict": "PASS",
+      "failures": [],
+      "sample": {
+        "decision": "new",
+        "candidate_id": null,
+        "reason": "Narrower filter people seek on purpose; rooftop searchers are not satisfied by generic outdoor seating."
+      }
+    }
+  },
+  {
+    "id": "true-synonym-merges",
+    "why": "Interchangeable both ways: al fresco IS outdoor seating.",
+    "live": {
+      "passes": 3,
+      "of": 3,
+      "verdict": "PASS",
+      "failures": [],
+      "sample": {
+        "decision": "match",
+        "candidate_id": 101,
+        "reason": "'Al fresco' is a direct synonym for 'outdoor seating' and searchers for either term would be satisfied by the same results."
+      }
+    },
+    "candidate": {
+      "passes": 3,
+      "of": 3,
+      "verdict": "PASS",
+      "failures": [],
+      "sample": {
+        "decision": "match",
+        "candidate_id": 101,
+        "reason": "synonym for outdoor seating"
+      }
+    }
+  },
+  {
+    "id": "intensity-variant-merges",
+    "why": "Same-direction intensity of one quality merges.",
+    "live": {
+      "passes": 3,
+      "of": 3,
+      "verdict": "PASS",
+      "failures": [],
+      "sample": {
+        "decision": "match",
+        "candidate_id": 102,
+        "reason": "'s-tier value' is an intensity variant of 'good value'; diners searching for high value would be satisfied by either term as they represent the same filter direction."
+      }
+    },
+    "candidate": {
+      "passes": 3,
+      "of": 3,
+      "verdict": "PASS",
+      "failures": [],
+      "sample": {
+        "decision": "match",
+        "candidate_id": 102,
+        "reason": "same-direction intensity of one quality"
+      }
+    }
+  },
+  {
+    "id": "judge-test-accolade",
+    "why": "DESCRIBE-VS-JUDGE: an accolade judges how good, not what it is — reject.",
+    "live": {
+      "passes": 3,
+      "of": 3,
+      "verdict": "PASS",
+      "failures": [],
+      "sample": {
+        "decision": "reject",
+        "candidate_id": null,
+        "reason": "Praise and accolades like 'award winning' are not filterable attributes; they are subjective judgments or honors rather than descriptive properties of the restaurant's setting or service."
+      }
+    },
+    "candidate": {
+      "passes": 3,
+      "of": 3,
+      "verdict": "PASS",
+      "failures": [],
+      "sample": {
+        "decision": "reject",
+        "candidate_id": null,
+        "reason": "DESCRIBE-VS-JUDGE TEST: it is a subjective judgment of quality rather than an objective property."
+      }
+    }
+  },
+  {
+    "id": "judge-test-complaint",
+    "why": "DESCRIBE-VS-JUDGE mirror: a complaint judges downward — diners filter FOR things.",
+    "live": {
+      "passes": 3,
+      "of": 3,
+      "verdict": "PASS",
+      "failures": [],
+      "sample": {
+        "decision": "reject",
+        "candidate_id": null,
+        "reason": "Negative quality judgments or complaints about service are not usable as recommendation filters."
+      }
+    },
+    "candidate": {
+      "passes": 3,
+      "of": 3,
+      "verdict": "PASS",
+      "failures": [],
+      "sample": {
+        "decision": "reject",
+        "candidate_id": null,
+        "reason": "DESCRIBE-VS-JUDGE TEST: negative judgment/complaint"
+      }
+    }
+  },
+  {
+    "id": "standalone-ingredient-bound",
+    "why": "STANDALONE: a property welded to a component is composition, not a filter.",
+    "live": {
+      "passes": 3,
+      "of": 3,
+      "verdict": "PASS",
+      "failures": [],
+      "sample": {
+        "decision": "reject",
+        "candidate_id": null,
+        "reason": "The term is an ingredient-bound phrase describing a specific dish component rather than a reusable food attribute or filterable property."
+      }
+    },
+    "candidate": {
+      "passes": 3,
+      "of": 3,
+      "verdict": "PASS",
+      "failures": [],
+      "sample": {
+        "decision": "reject",
+        "candidate_id": null,
+        "reason": "STANDALONE TEST: welded to a specific ingredient/component"
+      }
+    }
+  },
+  {
+    "id": "standalone-context-stripped",
+    "why": "STANDALONE: 'medium' lost the words that gave it meaning — it filters by nothing alone.",
+    "live": {
+      "passes": 3,
+      "of": 3,
+      "verdict": "PASS",
+      "failures": [],
+      "sample": {
+        "decision": "reject",
+        "candidate_id": null,
+        "reason": "The term 'medium' is an ambiguous, context-stripped fragment; without knowing if it refers to spice level, steak doneness, or portion size, it cannot function as a clear filter."
+      }
+    },
+    "candidate": {
+      "passes": 3,
+      "of": 3,
+      "verdict": "PASS",
+      "failures": [],
+      "sample": {
+        "decision": "reject",
+        "candidate_id": null,
+        "reason": "STANDALONE TEST: term is too vague and lacks meaning without context (e.g., spice level, steak doneness, or portion size)."
+      }
+    }
+  },
+  {
+    "id": "scope-test-wrong-side",
+    "why": "SCOPE: 'huge portions' is the dish, not the room — wrong vocabulary for restaurant_attribute.",
+    "live": {
+      "passes": 3,
+      "of": 3,
+      "verdict": "PASS",
+      "failures": [],
+      "sample": {
+        "decision": "reject",
+        "candidate_id": null,
+        "reason": "'huge portions' is a food_attribute (property of the dish/serving) rather than a restaurant_attribute (property of the establishment's ambiance or service)."
+      }
+    },
+    "candidate": {
+      "passes": 3,
+      "of": 3,
+      "verdict": "PASS",
+      "failures": [],
+      "sample": {
+        "decision": "reject",
+        "candidate_id": null,
+        "reason": "fails scope test: huge portions is a food_attribute, not a restaurant_attribute"
+      }
+    }
+  },
+  {
+    "id": "dual-scope-carveout",
+    "why": "Meal periods are dual-scope — never rejected for scope; judged within the requested kind.",
+    "live": {
+      "passes": 3,
+      "of": 3,
+      "verdict": "PASS",
+      "failures": [],
+      "sample": {
+        "decision": "new",
+        "candidate_id": null,
+        "reason": "Happy hour is a distinct service period and pricing filter that is not interchangeable with late-night dining."
+      }
+    },
+    "candidate": {
+      "passes": 3,
+      "of": 3,
+      "verdict": "PASS",
+      "failures": [],
+      "sample": {
+        "decision": "new",
+        "candidate_id": null,
+        "reason": "valid serving context but distinct from late-night"
+      }
+    }
+  },
+  {
+    "id": "opposites-never-merge",
+    "why": "Interchangeability fails both ways: thin crust searchers do not want thick.",
+    "live": {
+      "passes": 3,
+      "of": 3,
+      "verdict": "PASS",
+      "failures": [],
+      "sample": {
+        "decision": "new",
+        "candidate_id": null,
+        "reason": "'thick crust' is a distinct and valid food attribute that is the opposite of 'thin crust'; a user searching for one would not be satisfied by the other."
+      }
+    },
+    "candidate": {
+      "passes": 3,
+      "of": 3,
+      "verdict": "PASS",
+      "failures": [],
+      "sample": {
+        "decision": "new",
+        "candidate_id": null,
+        "reason": "Opposite values; thin and thick crust are distinct preferences for a diner."
+      }
+    }
+  },
+  {
+    "id": "neutral-negation-passes",
+    "why": "Neutral negatives naming a desirable state are attributes, not complaints.",
+    "live": {
+      "passes": 3,
+      "of": 3,
+      "verdict": "PASS",
+      "failures": [],
+      "sample": {
+        "decision": "new",
+        "candidate_id": null,
+        "reason": "'no wait' is a valid, neutral negative attribute describing service speed/availability, which is distinct from the ambiance-focused candidate 'lively'."
+      }
+    },
+    "candidate": {
+      "passes": 3,
+      "of": 3,
+      "verdict": "PASS",
+      "failures": [],
+      "sample": {
+        "decision": "new",
+        "candidate_id": null,
+        "reason": "Passes all tests as a neutral description of service speed; no match in candidates."
+      }
+    }
+  },
+  {
+    "id": "novel-praise-slang",
+    "why": "Novel-class probe: slang praise ('goated') is nowhere in the predecessor's example list — the DESCRIBE-VS-JUDGE test must catch the class, not the instances.",
+    "live": {
+      "passes": 3,
+      "of": 3,
+      "verdict": "PASS",
+      "failures": [],
+      "sample": {
+        "decision": "reject",
+        "candidate_id": null,
+        "reason": "'Goated' is subjective praise/slang for excellence rather than a descriptive food property or filterable attribute."
+      }
+    },
+    "candidate": {
+      "passes": 3,
+      "of": 3,
+      "verdict": "PASS",
+      "failures": [],
+      "sample": {
+        "decision": "reject",
+        "candidate_id": null,
+        "reason": "DESCRIBE-VS-JUDGE TEST: 'goated' is a slang superlative for quality, not an objective property."
+      }
+    }
+  },
+  {
+    "id": "novel-ingredient-bound",
+    "why": "Novel-class probe: 'miso glaze' is ingredient-bound composition, unlisted in the predecessor's examples.",
+    "live": {
+      "passes": 3,
+      "of": 3,
+      "verdict": "PASS",
+      "failures": [],
+      "sample": {
+        "decision": "reject",
+        "candidate_id": null,
+        "reason": "The term is bound to a specific ingredient (miso) and component (glaze), making it a description of a dish's composition rather than a reusable food attribute."
+      }
+    },
+    "candidate": {
+      "passes": 3,
+      "of": 3,
+      "verdict": "PASS",
+      "failures": [],
+      "sample": {
+        "decision": "reject",
+        "candidate_id": null,
+        "reason": "STANDALONE TEST: welded to a specific ingredient (miso)"
+      }
+    }
+  },
+  {
+    "id": "novel-context-stripped",
+    "why": "Novel-class probe: 'weekends only' is a context-stripped operational fragment, not in the predecessor's fragment examples.",
+    "live": {
+      "passes": 3,
+      "of": 3,
+      "verdict": "PASS",
+      "failures": [],
+      "sample": {
+        "decision": "reject",
+        "candidate_id": null,
+        "reason": "The term is an ambiguous, context-stripped fragment that does not describe a clear property or service without knowing what specifically is offered only on weekends."
+      }
+    },
+    "candidate": {
+      "passes": 3,
+      "of": 3,
+      "verdict": "PASS",
+      "failures": [],
+      "sample": {
+        "decision": "reject",
+        "candidate_id": null,
+        "reason": "STANDALONE TEST: lost the words that gave it meaning; property is unclear without context"
+      }
+    }
+  }
+]

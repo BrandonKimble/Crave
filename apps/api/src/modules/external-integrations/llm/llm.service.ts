@@ -27,7 +27,10 @@ import {
   OnModuleInit,
   OnModuleDestroy,
   Inject,
+  Optional,
 } from '@nestjs/common';
+import { SpendCampaignService } from '../shared/spend-campaign.service';
+import { currentCampaignId } from '../shared/work-context';
 import { ConfigService } from '@nestjs/config';
 import { FinishReason } from '@google/genai';
 import { GatedGeminiClient } from './gated-gemini-client';
@@ -52,7 +55,6 @@ import {
   LLMProcessingInput,
   LLMOutputStructure,
   LLMApiResponse,
-  LLMPerformanceMetrics,
   LLMSearchQueryAnalysis,
   LLMCuisineExtractionResult,
   LLMModerationResult,
@@ -204,16 +206,6 @@ export class LLMService implements OnModuleInit, OnModuleDestroy {
   private logger!: LoggerService;
   private llmConfig!: LLMConfig;
   private systemPrompt!: string;
-  private performanceMetrics: LLMPerformanceMetrics = {
-    requestCount: 0,
-    totalResponseTime: 0,
-    averageResponseTime: 0,
-    totalTokensUsed: 0,
-    lastReset: new Date(),
-    errorCount: 0,
-    successRate: 100,
-  };
-
   private gemini!: GatedGeminiClient;
   private redisClient: Redis | null = null;
   private systemInstructionCache: GeminiCacheEntry | null = null; // Cache for collection processing instructions
@@ -267,6 +259,10 @@ export class LLMService implements OnModuleInit, OnModuleDestroy {
     private readonly governance: GovernanceService,
     private readonly opsAlerts: OpsAlertsService,
     private readonly cacheRegistry: GeminiContextCacheRegistry,
+    // Optional: slim script graphs may omit the campaign module; ambient
+    // campaign gating (callLLMApi) simply cannot fire there because no
+    // WorkContext campaign exists without it either.
+    @Optional() private readonly spendCampaigns?: SpendCampaignService,
   ) {}
 
   onModuleInit(): void {
@@ -920,10 +916,6 @@ export class LLMService implements OnModuleInit, OnModuleDestroy {
       }
 
       const responseTime = Date.now() - startTime;
-      this.recordSuccessMetrics(
-        responseTime,
-        response.usageMetadata?.totalTokenCount || 0,
-      );
 
       this.logger.debug('Content processing completed', {
         correlationId: CorrelationUtils.getCorrelationId(),
@@ -935,7 +927,6 @@ export class LLMService implements OnModuleInit, OnModuleDestroy {
       return parsed;
     } catch (error) {
       const responseTime = Date.now() - startTime;
-      this.recordErrorMetrics(responseTime);
 
       this.logger.error('Content processing failed', {
         correlationId: CorrelationUtils.getCorrelationId(),
@@ -1642,7 +1633,17 @@ export class LLMService implements OnModuleInit, OnModuleDestroy {
       term: string;
       candidates: { id: number; name: string; aliases?: string[] }[];
     }[];
-  }): Promise<{ decision: 'match' | 'new'; candidateId: number | null }[]> {
+  }): Promise<
+    {
+      decision: 'match' | 'new';
+      candidateId: number | null;
+      /** The judge's stated ground, when the model returned one. The dedupe
+       *  hearing ledger requires it — a reasonless verdict is not recorded
+       *  (H5 amendment (d)) — and the fail-closed path deliberately carries
+       *  none, so an outage can never mint a 'hold'. */
+      reason?: string;
+    }[]
+  > {
     const failClosed = input.items.map(() => ({
       decision: 'new' as const,
       candidateId: null,
@@ -3098,6 +3099,18 @@ export class LLMService implements OnModuleInit, OnModuleDestroy {
     // when the backstop reopens; nothing storms Google. Expected to never
     // fire — Tier 1/2 govern spend upstream (see assertSpendBudgetOpen).
     await this.assertSpendBudgetOpen();
+    // §24 CAMPAIGN DISPATCH GATE, sync twin of GeminiBatchService.submit's
+    // (2026-08-12): when this call runs inside an ambient campaign
+    // (WorkContext), a breached/terminal campaign refuses BEFORE the vendor
+    // call — previously only the BATCH path was gated, so a breached
+    // campaign's interactive tail (entity resolution, attribute placement,
+    // chooser) kept spending after the envelope stopped the batches. Same
+    // typed refusal as the batch gate (assertDispatchable); calls with no
+    // ambient campaign — every user path — are untouched.
+    const ambientCampaignId = currentCampaignId();
+    if (ambientCampaignId && this.spendCampaigns) {
+      await this.spendCampaigns.assertDispatchable(ambientCampaignId);
+    }
     // CALLER PROFILE is the source of per-caller configuration (model,
     // output ceiling, thinking context/level) — one table keyed by the same
     // usageCaller the ledger records. An explicit option still wins, so a
@@ -4768,58 +4781,5 @@ export class LLMService implements OnModuleInit, OnModuleDestroy {
         content,
       );
     }
-  }
-  /**
-   * Get performance metrics
-   */
-  getPerformanceMetrics(): LLMPerformanceMetrics {
-    return { ...this.performanceMetrics };
-  }
-
-  /**
-   * Reset performance metrics
-   */
-  resetPerformanceMetrics(): void {
-    this.performanceMetrics = {
-      requestCount: 0,
-      totalResponseTime: 0,
-      averageResponseTime: 0,
-      totalTokensUsed: 0,
-      lastReset: new Date(),
-      errorCount: 0,
-      successRate: 100,
-    };
-  }
-
-  private recordSuccessMetrics(responseTime: number, tokensUsed: number): void {
-    this.performanceMetrics.requestCount++;
-    this.performanceMetrics.totalResponseTime += responseTime;
-    this.performanceMetrics.averageResponseTime = Math.round(
-      this.performanceMetrics.totalResponseTime /
-        this.performanceMetrics.requestCount,
-    );
-    this.performanceMetrics.totalTokensUsed += tokensUsed;
-    this.performanceMetrics.successRate = Math.round(
-      ((this.performanceMetrics.requestCount -
-        this.performanceMetrics.errorCount) /
-        this.performanceMetrics.requestCount) *
-        100,
-    );
-  }
-
-  private recordErrorMetrics(responseTime: number): void {
-    this.performanceMetrics.requestCount++;
-    this.performanceMetrics.errorCount++;
-    this.performanceMetrics.totalResponseTime += responseTime;
-    this.performanceMetrics.averageResponseTime = Math.round(
-      this.performanceMetrics.totalResponseTime /
-        this.performanceMetrics.requestCount,
-    );
-    this.performanceMetrics.successRate = Math.round(
-      ((this.performanceMetrics.requestCount -
-        this.performanceMetrics.errorCount) /
-        this.performanceMetrics.requestCount) *
-        100,
-    );
   }
 }

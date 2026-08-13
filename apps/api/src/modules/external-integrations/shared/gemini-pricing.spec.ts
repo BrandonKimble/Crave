@@ -3,6 +3,7 @@ import {
   GEMINI_RATES,
   UNKNOWN_MODEL_RATES,
   geminiCostMicros,
+  campaignAttributableRates,
   msUntilVendorMonthReset,
 } from './gemini-pricing';
 
@@ -139,5 +140,74 @@ describe('UNKNOWN_MODEL_RATES (F121 — the fallback must DOMINATE the table)', 
         geminiCostMicros({ ...usage, model }),
       );
     }
+  });
+});
+
+describe('campaignAttributableRates (the one rate authority)', () => {
+  // The projection's silent failure mode is a dropped `mode` column: batch
+  // rows bill at HALF price, so pricing them as interactive doubles a quote
+  // with no error. These specs are mutation-proven: strip `mode` from the
+  // row before pricing (simulating the dropped column) and the batch
+  // assertion fails at exactly 2x.
+  const flashRow = {
+    caller: 'gemini.reddit_extraction',
+    service: 'gemini',
+    model: 'gemini-3-flash-preview',
+    input_tokens: BigInt(1_000_000),
+    output_tokens: BigInt(1_000_000),
+    cached_tokens: BigInt(0),
+    duration_hours: null,
+    calls: BigInt(10),
+  };
+  const db = (rows: unknown[]) => ({
+    $queryRaw: jest.fn().mockResolvedValue(rows),
+  });
+
+  it('prices a batch row at half the interactive price (mode is load-bearing)', async () => {
+    const interactive = await campaignAttributableRates(
+      db([{ ...flashRow, mode: 'interactive' }]) as never,
+      { kind: 'campaign', campaignId: '00000000-0000-0000-0000-000000000000' },
+    );
+    const batch = await campaignAttributableRates(
+      db([{ ...flashRow, mode: 'batch' }]) as never,
+      { kind: 'campaign', campaignId: '00000000-0000-0000-0000-000000000000' },
+    );
+    expect(interactive.geminiMicros).toBe(3_500_000); // $0.50 in + $3.00 out
+    expect(batch.geminiMicros).toBe(1_750_000); // exactly half
+  });
+
+  it('counts non-gemini rows as UNPRICED, never $0-priced rows', async () => {
+    const rates = await campaignAttributableRates(
+      db([
+        { ...flashRow, mode: 'interactive' },
+        {
+          ...flashRow,
+          caller: 'places.details',
+          service: 'google_places',
+          model: null,
+          mode: null,
+          calls: BigInt(7),
+        },
+      ]) as never,
+      { kind: 'campaign', campaignId: '00000000-0000-0000-0000-000000000000' },
+    );
+    expect(rates.unpricedCalls).toBe(7);
+    expect(rates.geminiMicros).toBe(3_500_000);
+    expect(rates.byCaller.has('places.details')).toBe(false);
+    const unpriced = rates.rows.find((r) => r.service === 'google_places');
+    expect(unpriced?.priced).toBe(false);
+  });
+
+  it('sums per caller across model/mode splits', async () => {
+    const rates = await campaignAttributableRates(
+      db([
+        { ...flashRow, mode: 'interactive' },
+        { ...flashRow, mode: 'batch' },
+      ]) as never,
+      { kind: 'campaign', campaignId: '00000000-0000-0000-0000-000000000000' },
+    );
+    expect(rates.byCaller.get('gemini.reddit_extraction')).toBe(
+      3_500_000 + 1_750_000,
+    );
   });
 });

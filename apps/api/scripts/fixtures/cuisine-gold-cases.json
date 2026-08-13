@@ -1,0 +1,50 @@
+[
+  {
+    "id": "tradition-from-unmistakable-dishes",
+    "why": "TRADITION TEST keep-side: dishes pointing at ONE tradition unmistakably yield that tradition.",
+    "summary": "A tiny counter serving exceptional tonkotsu ramen and izakaya small plates late into the night.",
+    "expect": { "cuisines": ["japanese"] }
+  },
+  {
+    "id": "format-is-not-a-cuisine",
+    "why": "A venue format ('steakhouse') is not a cooking tradition — the old prompt's example-defined list invites emitting it.",
+    "summary": "A beloved neighborhood steakhouse known for dry-aged cuts and stiff martinis.",
+    "expect": { "notCuisines": ["steakhouse"] }
+  },
+  {
+    "id": "diet-is-not-a-cuisine",
+    "why": "A diet is not a cuisine; the tradition underneath it is. A vegan Thai place is thai.",
+    "summary": "An entirely vegan Thai kitchen — their jackfruit khao soi is the standout.",
+    "expect": { "cuisines": ["thai"], "notCuisines": ["vegan"] }
+  },
+  {
+    "id": "quality-posture-empty",
+    "why": "Error economics: 'farm-to-table seasonal' supports no tradition — empty is the cheap error.",
+    "summary": "Farm-to-table dining with seasonal tasting menus sourced from nearby growers.",
+    "expect": { "emptyCuisines": true }
+  },
+  {
+    "id": "fusion-named-tradition",
+    "why": "A named diasporic/fusion tradition passes ('tex-mex'); shared dishes alone would not.",
+    "summary": "A Tex-Mex institution — queso, crispy tacos, and frozen margaritas since 1952.",
+    "expect": { "cuisines": ["tex-mex"] }
+  },
+  {
+    "id": "granularity-level-committed",
+    "why": "Granularity: the text commits to Sichuan, so emit sichuan — not also the broader tradition it belongs to.",
+    "summary": "Sichuan specialists: mapo tofu, dry pot, and toothpick lamb heavy with mala.",
+    "expect": { "cuisines": ["sichuan"], "notCuisines": ["chinese"] }
+  },
+  {
+    "id": "shared-dishes-no-tradition",
+    "why": "Dishes shared across traditions ('fried chicken', 'bbq') name no single tradition — the reject-side of dish inference.",
+    "summary": "Crowd-pleasing fried chicken sandwiches and smoked wings out of a converted trailer.",
+    "expect": { "emptyCuisines": true }
+  },
+  {
+    "id": "format-brunch-empty",
+    "why": "A meal format ('all-day brunch cafe') is not a tradition.",
+    "summary": "An airy all-day brunch cafe pouring good coffee and stacking pancakes.",
+    "expect": { "emptyCuisines": true }
+  }
+]

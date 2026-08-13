@@ -1,5 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { PooledBatchRunner } from '../external-integrations/llm/pooled-batch-runner';
+import { recordUnanswered } from '../external-integrations/llm/unanswered-outcome';
 import { LoggerService } from '../../shared';
 import {
   type GeneratedLabel,
@@ -54,7 +55,20 @@ import {
  *  v1 = pre-gender-complete labels (implicit, DB default); v2 = the
  *  gender/plural-complete + dietary-boundary prompt. The sweep re-offers
  *  labels below this — one re-pay per bump. */
-export const VOCABULARY_PROMPT_VERSION = 6;
+export const VOCABULARY_PROMPT_VERSION = 7;
+// v7 (2026-08-12): THE BOUNDARY GREW ITS SECOND NAMED TEST — A THING IS NOT
+// WHAT IT IS MADE OF. Measured on all 812 active English default labels, 10
+// answered the concept with a NEIGHBOUR'S name in the ingredient/material
+// sense: `gyro` -> "gyro meat", `cinnamon roll` -> "cinnamon", `spring roll`
+// -> "spring roll wrapper", `bbq` -> "bbq sauce" (plans/prompt-fleet-audit.md,
+// 2026-08-12). The drift is one-directional and diagnostic: asked to name a
+// COMPOSED food, the generator slides to its head ingredient or the material
+// it is made from. That was always a BOUNDARY failure ("caldo" does not name
+// soup), but the boundary as written only taught the neighbouring-CONCEPT
+// case, not the made-of case — so the test is now stated in the direction the
+// label reads: the word must name the thing a diner orders, never its
+// material. The drifted rows were deprecated (repair-drifted-en-labels.ts)
+// precisely so this sweep re-asks under the new text.
 // v6 (2026-08-12): THE COMPLETENESS DEFINITION GREW THE CASE IT WAS MISSING —
 // the BARE HEAD NOUN. v5 defined completeness as every word a speaker really
 // types and then enumerated the axes it expected them to vary along: gender,
@@ -140,6 +154,13 @@ export class VocabularyGenerator implements LabelGenerator {
       // The deadline elapsed before any ask was posed: nothing was asked,
       // so EVERYTHING is unanswered and nothing may be ledgered.
       for (const request of requests) unanswered.add(request.entityId);
+      recordUnanswered(this.logger, {
+        lane: 'labels.vocabulary',
+        unit: 'concept',
+        count: requests.length,
+        reason: 'deadline_elapsed',
+        locale: requests[0]?.locale ?? null,
+      });
       return { labels: [], unanswered };
     }
     const responses = await this.pooled.generateMany({
@@ -176,9 +197,12 @@ export class VocabularyGenerator implements LabelGenerator {
         // must stay due, so the sweep is told exactly which ids to keep
         // out of the run ledger.
         for (const request of chunk) unanswered.add(request.entityId);
-        this.logger.warn('Vocabulary chunk unanswered (concepts stay due)', {
+        recordUnanswered(this.logger, {
+          lane: 'labels.vocabulary',
+          unit: 'concept',
+          count: chunk.length,
+          reason: 'chunk_unanswered',
           locale: chunk[0]?.locale ?? null,
-          size: chunk.length,
         });
         return;
       }
@@ -342,6 +366,13 @@ export function buildVocabularyPrompt(
     `language: "caldo" (broth) does not name soup, and "pepperoni pizza" does`,
     `not name cheese pizza. Relatedness is a relation between two concepts;`,
     `this pass reports the names of one.`,
+    `A THING IS NOT WHAT IT IS MADE OF — the same boundary, in the direction`,
+    `that goes wrong most. The concept keeps its OWN name; never answer with`,
+    `the name of its ingredient, filling, wrapper, powder, sauce, or mix:`,
+    `"gyro" is the thing, "gyro meat" is its filling — a different concept,`,
+    `even though every gyro contains it. Do not narrow the concept and do not`,
+    `widen it into something else it merely appears in; the words you return`,
+    `must mean exactly the thing the concept names, as given.`,
     ``,
     `WHERE BEING WRONG HURTS A PERSON — the two cases that override everything`,
     `above:`,

@@ -1,0 +1,214 @@
+[
+  {
+    "id": "narrow-want-stays-separate",
+    "why": "Interchangeability fails one way: a rooftop searcher is not satisfied by generic outdoor seating.",
+    "term": "rooftop",
+    "attrKind": "restaurant_attribute",
+    "candidates": [
+      {
+        "id": 100,
+        "name": "outdoor seating"
+      }
+    ],
+    "expect": {
+      "placement": "new"
+    }
+  },
+  {
+    "id": "true-synonym-merges",
+    "why": "Interchangeable both ways: al fresco IS outdoor seating.",
+    "term": "al fresco",
+    "attrKind": "restaurant_attribute",
+    "candidates": [
+      {
+        "id": 101,
+        "name": "outdoor seating"
+      }
+    ],
+    "expect": {
+      "placement": "match",
+      "matchCandidateId": "101"
+    }
+  },
+  {
+    "id": "intensity-variant-merges",
+    "why": "Same-direction intensity of one quality merges.",
+    "term": "s-tier value",
+    "attrKind": "restaurant_attribute",
+    "candidates": [
+      {
+        "id": 102,
+        "name": "good value"
+      }
+    ],
+    "expect": {
+      "placement": "match",
+      "matchCandidateId": "102"
+    }
+  },
+  {
+    "id": "judge-test-accolade",
+    "why": "DESCRIBE-VS-JUDGE: an accolade judges how good, not what it is — reject.",
+    "term": "award winning",
+    "attrKind": "restaurant_attribute",
+    "candidates": [
+      {
+        "id": 103,
+        "name": "upscale"
+      }
+    ],
+    "expect": {
+      "placement": "reject"
+    }
+  },
+  {
+    "id": "judge-test-complaint",
+    "why": "DESCRIBE-VS-JUDGE mirror: a complaint judges downward — diners filter FOR things.",
+    "term": "grumpy staff",
+    "attrKind": "restaurant_attribute",
+    "candidates": [
+      {
+        "id": 104,
+        "name": "attentive service"
+      }
+    ],
+    "expect": {
+      "placement": "reject"
+    }
+  },
+  {
+    "id": "standalone-ingredient-bound",
+    "why": "STANDALONE: a property welded to a component is composition, not a filter.",
+    "term": "vodka sauce",
+    "attrKind": "food_attribute",
+    "candidates": [
+      {
+        "id": 105,
+        "name": "creamy"
+      }
+    ],
+    "expect": {
+      "placement": "reject"
+    }
+  },
+  {
+    "id": "standalone-context-stripped",
+    "why": "STANDALONE: 'medium' lost the words that gave it meaning — it filters by nothing alone.",
+    "term": "medium",
+    "attrKind": "food_attribute",
+    "candidates": [
+      {
+        "id": 106,
+        "name": "spicy"
+      }
+    ],
+    "expect": {
+      "placement": "reject"
+    }
+  },
+  {
+    "id": "scope-test-wrong-side",
+    "why": "SCOPE: 'huge portions' is the dish, not the room — wrong vocabulary for restaurant_attribute.",
+    "term": "huge portions",
+    "attrKind": "restaurant_attribute",
+    "candidates": [
+      {
+        "id": 107,
+        "name": "good for groups"
+      }
+    ],
+    "expect": {
+      "placement": "reject"
+    }
+  },
+  {
+    "id": "dual-scope-carveout",
+    "why": "Meal periods are dual-scope — never rejected for scope; judged within the requested kind.",
+    "term": "happy hour",
+    "attrKind": "restaurant_attribute",
+    "candidates": [
+      {
+        "id": 108,
+        "name": "late-night"
+      }
+    ],
+    "expect": {
+      "placement": "new"
+    }
+  },
+  {
+    "id": "opposites-never-merge",
+    "why": "Interchangeability fails both ways: thin crust searchers do not want thick.",
+    "term": "thick crust",
+    "attrKind": "food_attribute",
+    "candidates": [
+      {
+        "id": 109,
+        "name": "thin crust"
+      }
+    ],
+    "expect": {
+      "placement": "new"
+    }
+  },
+  {
+    "id": "neutral-negation-passes",
+    "why": "Neutral negatives naming a desirable state are attributes, not complaints.",
+    "term": "no wait",
+    "attrKind": "restaurant_attribute",
+    "candidates": [
+      {
+        "id": 110,
+        "name": "lively"
+      }
+    ],
+    "expect": {
+      "placement": "new"
+    }
+  },
+  {
+    "id": "novel-praise-slang",
+    "why": "Novel-class probe: slang praise ('goated') is nowhere in the predecessor's example list — the DESCRIBE-VS-JUDGE test must catch the class, not the instances.",
+    "term": "goated",
+    "attrKind": "food_attribute",
+    "candidates": [
+      {
+        "id": 120,
+        "name": "rich"
+      }
+    ],
+    "expect": {
+      "placement": "reject"
+    }
+  },
+  {
+    "id": "novel-ingredient-bound",
+    "why": "Novel-class probe: 'miso glaze' is ingredient-bound composition, unlisted in the predecessor's examples.",
+    "term": "miso glaze",
+    "attrKind": "food_attribute",
+    "candidates": [
+      {
+        "id": 121,
+        "name": "umami"
+      }
+    ],
+    "expect": {
+      "placement": "reject"
+    }
+  },
+  {
+    "id": "novel-context-stripped",
+    "why": "Novel-class probe: 'weekends only' is a context-stripped operational fragment, not in the predecessor's fragment examples.",
+    "term": "weekends only",
+    "attrKind": "restaurant_attribute",
+    "candidates": [
+      {
+        "id": 122,
+        "name": "brunch"
+      }
+    ],
+    "expect": {
+      "placement": "reject"
+    }
+  }
+]

@@ -14,15 +14,57 @@ import {
   rekeyEntityDimensionEventsToCanonical,
 } from '../reddit-collector/extraction-scope.service';
 import { LoggerService } from '../../../shared';
+import { isEnvFlagEnabled } from '../../../shared/config/env-flag';
 import { LLMService } from '../../external-integrations/llm/llm.service';
 import { EntityAnchorRehomeService } from './entity-anchor-rehome.service';
 import { activeSupportExistsSql } from '../reddit-collector/extraction-scope.service';
+import { ClaimVerdictLedgerService } from './claim-verdict-ledger.service';
+import {
+  ENTITY_DEDUPE_LANE,
+  entityDedupeLane,
+} from './entity-dedupe-lane.adapter';
+import {
+  ENTITY_DEDUPE_RULE_FINGERPRINT,
+  ENTITY_DEDUPE_RULE_VERSION,
+} from './entity-dedupe-rule';
 
 export interface DedupeMergeSummary {
   candidatePairs: number;
   autoMerged: number;
   judgeMerged: number;
   judgeRejected: number;
+  /** Pairs already ruled on at the current rule version — the ledger's
+   *  memory working: a judged pair is never re-bought by a re-scan. */
+  judgeAlreadyDecided: number;
+  /** Judge-lane pairs held unheard because the activation gate is off. */
+  judgeHeld: number;
+  /** Judge returned no verdict or no stated ground — left unjudged, never
+   *  recorded, re-offered next run (H5 amendment (d)). */
+  judgeUnjudged: number;
+}
+
+/**
+ * THE FULL MERGE PLAN — everything the effect needs, computed BEFORE the
+ * verdict commits and stored as its subject. A crash-resume replays THIS,
+ * never a recomputation: the corpus may have moved since the ruling, and the
+ * effect must obey the decision that was actually made.
+ */
+export interface FoodMergePlan {
+  winnerId: string;
+  winnerName: string;
+  loserId: string;
+  loserName: string;
+}
+
+/** What a dedupe verdict orders done — the `claim_verdicts.subject` payload. */
+export interface DedupeVerdictSubject {
+  aId: string;
+  aName: string;
+  bId: string;
+  bName: string;
+  via: 'token-multiset+judge' | 'similarity+judge';
+  /** Present on 'merge' verdicts only; a 'hold' orders nothing. */
+  plan: FoodMergePlan | null;
 }
 
 const STOPWORDS = new Set(['and', 'with', 'the', 'a', 'of', 'de', 'y']);
@@ -48,9 +90,32 @@ export class FoodDedupeMergeService {
     private readonly prisma: PrismaService,
     private readonly llmService: LLMService,
     private readonly anchorRehome: EntityAnchorRehomeService,
+    private readonly ledger: ClaimVerdictLedgerService,
     loggerService: LoggerService,
   ) {
     this.logger = loggerService.setContext('FoodDedupeMergeService');
+  }
+
+  /**
+   * THE JUDGE LANES' ACTIVATION GATE (H5 adoption, 2026-08-12).
+   *
+   * The dedupe judge lanes ran nightly with NO verdict memory — the exact
+   * defect the H5 red team flagged URGENT: merges are irreversible, and a
+   * judge REJECTION left no row at all, so every nightly re-scan re-bought
+   * the same 'no' forever (plans/iteration-phase-open-items.md, H5). The
+   * hearing-ledger adapter below is that memory: verdict-then-effect,
+   * rejections persisted, a rule bump the only re-opener.
+   *
+   * The lanes stay OFF by default while the coordinator sequences activation
+   * (the post-v8-activation ruling: v8 activation → dedupe → retraction →
+   * language wave, so sweeps land on a deduped corpus). Flip
+   * DEDUPE_JUDGE_LANES_ENABLED=true to activate — the code path behind it is
+   * complete and proven; only the sequencing is pending. The deterministic
+   * lanes (number variants, exact-token-multiset auto-merge) are decided in
+   * code, cost nothing, and never wait on this gate.
+   */
+  private judgeLanesEnabled(): boolean {
+    return isEnvFlagEnabled(process.env.DEDUPE_JUDGE_LANES_ENABLED);
   }
 
   /** Nightly convergence (class ④): the restaurant sweep has run nightly
@@ -68,6 +133,18 @@ export class FoodDedupeMergeService {
       this.logger.error(
         'Identity-key heal failed — dedupe still runs',
         healError,
+      );
+    }
+    // FINISH WHAT WAS ALREADY DECIDED, BEFORE DECIDING ANYTHING NEW
+    // (amendment (c)). This runs even while the judge-lane gate is off:
+    // replaying a stored plan is not a new hearing — it is a paid-for
+    // decision the corpus has not yet obeyed.
+    try {
+      await this.resumePendingDedupeEffects();
+    } catch (resumeError) {
+      this.logger.error(
+        'Dedupe verdict resume failed — dedupe still runs',
+        resumeError,
       );
     }
     await this.run({ dryRun: false });
@@ -175,6 +252,9 @@ export class FoodDedupeMergeService {
       autoMerged: 0,
       judgeMerged: 0,
       judgeRejected: 0,
+      judgeAlreadyDecided: 0,
+      judgeHeld: 0,
+      judgeUnjudged: 0,
     };
 
     // 0. NUMBER VARIANTS FIRST — and deliberately OUTSIDE the trigram scan.
@@ -295,29 +375,12 @@ export class FoodDedupeMergeService {
         !mergedByNumber.has(pair.b_id),
     );
     if (orderPairsToJudge.length && !dryRun) {
-      const verdicts = await this.llmService.matchEntitiesBatch({
-        kind: 'food',
-        items: orderPairsToJudge.map((pair) => ({
-          term: pair.a_name,
-          candidates: [{ id: 1, name: pair.b_name }],
-        })),
-      });
-      for (let i = 0; i < orderPairsToJudge.length; i += 1) {
-        const pair = orderPairsToJudge[i];
-        if (verdicts[i]?.decision !== 'match') {
-          summary.judgeRejected += 1;
-          continue;
-        }
-        this.logger.warn('Merging word-order twin foods (judge-approved)', {
-          a: pair.a_name,
-          b: pair.b_name,
-          via: 'token-multiset+judge',
-        });
-        await this.mergeFoodPair(pair.a_id, pair.b_id);
-        consumedByNumberLane.add(pair.a_id);
-        consumedByNumberLane.add(pair.b_id);
-        summary.judgeMerged += 1;
-      }
+      await this.adjudicateDedupeCandidates(
+        orderPairsToJudge,
+        'token-multiset+judge',
+        summary,
+        consumedByNumberLane,
+      );
     } else if (orderPairsToJudge.length) {
       for (const pair of orderPairsToJudge) {
         this.logger.info('Would judge word-order twin foods', {
@@ -383,41 +446,38 @@ export class FoodDedupeMergeService {
       }
     }
 
-    let judged: { pair: (typeof pairs)[number]; same: boolean }[] = [];
-    if (needJudge.length) {
-      const verdicts = await this.llmService.matchEntitiesBatch({
-        kind: 'food',
-        items: needJudge.map((pair) => ({
-          term: pair.a_name,
-          candidates: [{ id: 1, name: pair.b_name }],
-        })),
-      });
-      judged = needJudge.map((pair, index) => ({
-        pair,
-        same: verdicts[index]?.decision === 'match',
-      }));
-    }
-
-    const toMerge = [
-      ...autoMerge.map((pair) => ({ pair, via: 'auto' as const })),
-      ...judged
-        .filter((entry) => entry.same)
-        .map((entry) => ({ pair: entry.pair, via: 'judge' as const })),
-    ];
-    summary.judgeRejected += judged.filter((entry) => !entry.same).length;
-
-    for (const { pair, via } of toMerge) {
+    for (const pair of autoMerge) {
       if (dryRun) {
         this.logger.info('Would merge duplicate foods', {
           a: pair.a_name,
           b: pair.b_name,
-          via,
+          via: 'auto',
         });
       } else {
         await this.mergeFoodPair(pair.a_id, pair.b_id);
+        // Same stale-snapshot guard as the number lane (R4): an id this
+        // merge consumed must not reach the judge lane below.
+        consumedByNumberLane.add(pair.a_id);
+        consumedByNumberLane.add(pair.b_id);
       }
-      if (via === 'auto') summary.autoMerged += 1;
-      else summary.judgeMerged += 1;
+      summary.autoMerged += 1;
+    }
+
+    if (needJudge.length && !dryRun) {
+      await this.adjudicateDedupeCandidates(
+        needJudge,
+        'similarity+judge',
+        summary,
+        consumedByNumberLane,
+      );
+    } else if (needJudge.length) {
+      for (const pair of needJudge) {
+        this.logger.info('Would judge duplicate foods', {
+          a: pair.a_name,
+          b: pair.b_name,
+          via: 'similarity+judge',
+        });
+      }
     }
 
     this.logger.info('Food dedupe-merge pass complete', {
@@ -428,11 +488,24 @@ export class FoodDedupeMergeService {
   }
 
   /** Full merge: pick winner by evidence, fold connections, bank the loser's
-   *  name+surfaces on the winner, archive the loser. */
+   *  name+surfaces on the winner, archive the loser. The deterministic lanes'
+   *  entry point; the judge lane goes through settleDedupeVerdict so the plan
+   *  is stored BEFORE the effect runs. */
   private async mergeFoodPair(idA: string, idB: string): Promise<void> {
     if (idA === idB) {
       return; // self-merge annihilates the ledger (round-11 D1)
     }
+    await this.executeFoodMergePlan(await this.planFoodMerge(idA, idB));
+  }
+
+  /** Winner selection — more connections wins (more evidence behind its
+   *  name); ties break to the shorter name (more canonical). Pure planning,
+   *  no mutation: the judge lane persists this as the verdict's subject
+   *  before any effect runs. */
+  private async planFoodMerge(
+    idA: string,
+    idB: string,
+  ): Promise<FoodMergePlan> {
     const [connectionsA, connectionsB] = await Promise.all([
       this.prisma.connection.count({ where: { foodId: idA } }),
       this.prisma.connection.count({ where: { foodId: idB } }),
@@ -453,6 +526,36 @@ export class FoodDedupeMergeService {
         : entityA.name.length <= entityB.name.length;
     const winner = aWins ? entityA : entityB;
     const loser = aWins ? entityB : entityA;
+    return {
+      winnerId: winner.entityId,
+      winnerName: winner.name,
+      loserId: loser.entityId,
+      loserName: loser.name,
+    };
+  }
+
+  /**
+   * THE ONE PLACE A MERGE PLAN TOUCHES THE CORPUS. Live hearings,
+   * deterministic lanes and crash-resume all execute THIS with a fixed
+   * winner/loser, so there is no second merge implementation to drift.
+   *
+   * IDEMPOTENT BY STATE: a plan whose loser is already archived has already
+   * been executed (a crash between the merge commit and markExecuted replays
+   * here), so it completes as a no-op rather than double-folding evidence.
+   */
+  protected async executeFoodMergePlan(plan: FoodMergePlan): Promise<void> {
+    const loserRows = await this.prisma.$queryRaw<Array<{ status: string }>>`
+      SELECT status::text FROM core_entities
+       WHERE entity_id = ${plan.loserId}::uuid`;
+    if (!loserRows.length || loserRows[0].status === 'archived') {
+      this.logger.info('Merge plan already executed — loser archived', {
+        winner: plan.winnerName,
+        loser: plan.loserName,
+      });
+      return;
+    }
+    const winner = { entityId: plan.winnerId, name: plan.winnerName };
+    const loser = { entityId: plan.loserId, name: plan.loserName };
 
     await this.prisma.$transaction(
       async (tx) => {
@@ -633,6 +736,187 @@ export class FoodDedupeMergeService {
       winner: winner.name,
       loser: loser.name,
     });
+  }
+
+  /**
+   * THE DEDUPE JUDGE LANE, ON THE HEARING LEDGER (H5 adoption, 2026-08-12).
+   *
+   * One method for both judge-fed lanes (word-order twins and the trigram
+   * scan), because they ask the judge the same question and their verdicts
+   * live under the same claim key — the SORTED entity pair
+   * (entity-dedupe-lane.adapter.ts): "is A the same as B" and "is B the same
+   * as A" are one claim however the candidate generator emits it.
+   *
+   *   - A pair with a verdict at the CURRENT rule version is SKIPPED — this
+   *     is the memory the lane never had: a judge 'hold' used to leave no
+   *     row, so nightly re-scans re-bought the same rejection forever.
+   *   - uphold => 'merge': the FULL plan (winner/loser, fixed) is stored as
+   *     the verdict's subject BEFORE the merge executes, so a crash leaves
+   *     work to finish and the resume replays the DECIDED plan.
+   *   - reject => 'hold': the pair stays two entities, and the row is why
+   *     tomorrow's scan does not pay to ask again.
+   *   - No verdict, or no stated ground, is NOT a ruling (amendment (d)):
+   *     the pair is left unjudged and re-offered. matchEntitiesBatch fails
+   *     CLOSED to a reasonless 'new', so a judge outage records nothing.
+   */
+  private async adjudicateDedupeCandidates(
+    candidates: Array<{
+      a_id: string;
+      a_name: string;
+      b_id: string;
+      b_name: string;
+    }>,
+    via: DedupeVerdictSubject['via'],
+    summary: DedupeMergeSummary,
+    consumed: Set<string>,
+  ): Promise<void> {
+    if (!this.judgeLanesEnabled()) {
+      summary.judgeHeld += candidates.length;
+      this.logger.info('Dedupe judge lane held — activation gate off', {
+        via,
+        pairs: candidates.length,
+      });
+      return;
+    }
+    const decided = await this.ledger.decidedKeys(
+      ENTITY_DEDUPE_LANE,
+      ENTITY_DEDUPE_RULE_VERSION,
+      candidates.map((pair) =>
+        entityDedupeLane.canonicalClaimKey({
+          entityId: pair.a_id,
+          otherEntityId: pair.b_id,
+        }),
+      ),
+    );
+    const due = candidates.filter((pair) => {
+      if (consumed.has(pair.a_id) || consumed.has(pair.b_id)) return false;
+      const key = entityDedupeLane.canonicalClaimKey({
+        entityId: pair.a_id,
+        otherEntityId: pair.b_id,
+      });
+      if (decided.has(key)) {
+        summary.judgeAlreadyDecided += 1;
+        return false;
+      }
+      return true;
+    });
+    if (!due.length) return;
+
+    const verdicts = await this.llmService.matchEntitiesBatch({
+      kind: 'food',
+      items: due.map((pair) => ({
+        term: pair.a_name,
+        candidates: [{ id: 1, name: pair.b_name }],
+      })),
+    });
+    for (let i = 0; i < due.length; i += 1) {
+      const pair = due[i];
+      // Later pairs may reference an entity an earlier verdict just merged
+      // away (the same stale-snapshot class as R4) — leave them unheard;
+      // the next scan sees the healed graph.
+      if (consumed.has(pair.a_id) || consumed.has(pair.b_id)) continue;
+      const verdict = verdicts[i];
+      const reason = verdict?.reason?.trim() ?? '';
+      if (!verdict || !reason) {
+        summary.judgeUnjudged += 1;
+        continue;
+      }
+      if (verdict.decision !== 'match') {
+        await this.settleDedupeVerdict(pair, via, 'hold', reason, null);
+        summary.judgeRejected += 1;
+        continue;
+      }
+      this.logger.warn('Merging duplicate foods (judge-approved)', {
+        a: pair.a_name,
+        b: pair.b_name,
+        via,
+      });
+      const plan = await this.planFoodMerge(pair.a_id, pair.b_id);
+      await this.settleDedupeVerdict(pair, via, 'merge', reason, plan);
+      consumed.add(pair.a_id);
+      consumed.add(pair.b_id);
+      summary.judgeMerged += 1;
+    }
+  }
+
+  /** Commit the verdict, THEN obey it (amendment (c)). */
+  private async settleDedupeVerdict(
+    pair: { a_id: string; a_name: string; b_id: string; b_name: string },
+    via: DedupeVerdictSubject['via'],
+    outcome: 'merge' | 'hold',
+    reason: string,
+    plan: FoodMergePlan | null,
+  ): Promise<void> {
+    const claimKey = entityDedupeLane.canonicalClaimKey({
+      entityId: pair.a_id,
+      otherEntityId: pair.b_id,
+    });
+    const subject: DedupeVerdictSubject = {
+      aId: pair.a_id,
+      aName: pair.a_name,
+      bId: pair.b_id,
+      bName: pair.b_name,
+      via,
+      plan,
+    };
+    await this.ledger.record<DedupeVerdictSubject>({
+      lane: ENTITY_DEDUPE_LANE,
+      claimKey,
+      ruleVersion: ENTITY_DEDUPE_RULE_VERSION,
+      outcome,
+      reason,
+      ruleFingerprint: ENTITY_DEDUPE_RULE_FINGERPRINT,
+      subject,
+    });
+    await this.applyDedupeEffect(subject);
+    await this.ledger.markExecuted(
+      ENTITY_DEDUPE_LANE,
+      claimKey,
+      ENTITY_DEDUPE_RULE_VERSION,
+    );
+  }
+
+  /**
+   * THE ONE PLACE A DEDUPE VERDICT TOUCHES THE CORPUS. Live hearings and
+   * crash-resume both call this with the SAME stored subject. Overridable so
+   * a test can kill the effect mid-hearing and prove the verdict survives.
+   * A 'hold' orders nothing — the row itself is the whole effect.
+   */
+  protected async applyDedupeEffect(
+    subject: DedupeVerdictSubject,
+  ): Promise<void> {
+    if (subject.plan) {
+      await this.executeFoodMergePlan(subject.plan);
+    }
+  }
+
+  /**
+   * DECIDED BUT NOT EXECUTED — replay the STORED plan, never recompute
+   * (amendment (c)). A crash between the verdict and the merge leaves the
+   * answer paid for and durable; this finishes it without a judge. Returns
+   * how many verdicts it completed.
+   */
+  async resumePendingDedupeEffects(limit = 500): Promise<number> {
+    const pending = await this.ledger.pendingExecution<DedupeVerdictSubject>(
+      ENTITY_DEDUPE_LANE,
+      limit,
+    );
+    let resumed = 0;
+    for (const verdict of pending) {
+      await this.applyDedupeEffect(verdict.subject);
+      await this.ledger.markExecuted(
+        ENTITY_DEDUPE_LANE,
+        verdict.claimKey,
+        verdict.ruleVersion,
+      );
+      resumed += 1;
+    }
+    if (resumed) {
+      this.logger.info('Resumed decided-but-unexecuted dedupe verdicts', {
+        resumed,
+      });
+    }
+    return resumed;
   }
 
   private contentTokens(name: string): string {

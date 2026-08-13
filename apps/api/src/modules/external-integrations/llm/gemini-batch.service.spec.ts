@@ -39,6 +39,16 @@ function buildService(isDispatchable: boolean) {
   };
   const spendCampaigns = {
     isDispatchable: jest.fn().mockResolvedValue(isDispatchable),
+    // ONE ENFORCEMENT (2026-08-12): submit now calls the shared typed
+    // assertDispatchable rather than a hand-rolled isDispatchable check.
+    assertDispatchable: jest.fn().mockImplementation((campaignId: string) => {
+      if (isDispatchable) return Promise.resolve();
+      return Promise.reject(
+        new Error(
+          `Campaign ${campaignId} is breached — refusing further spend`,
+        ),
+      );
+    }),
   };
   // The transport consumes typed vendor ops from the gateway now — no
   // ConfigService/client of its own.
@@ -71,9 +81,11 @@ describe('GeminiBatchService.submit (§24 red team finding 1)', () => {
         items: [{ key: 'k1', contents: 'hi', config: {} }],
         resumeContext: { campaignId: 'camp-breached' },
       }),
-    ).rejects.toThrow(/campaign breached/i);
+    ).rejects.toThrow(/breached/i);
 
-    expect(spendCampaigns.isDispatchable).toHaveBeenCalledWith('camp-breached');
+    expect(spendCampaigns.assertDispatchable).toHaveBeenCalledWith(
+      'camp-breached',
+    );
     expect(prisma.llmBatchJob.create).not.toHaveBeenCalled();
   });
 
@@ -145,7 +157,7 @@ describe('GeminiBatchService.submit (§24 red team finding 1)', () => {
       items: [{ key: 'k1', contents: 'hi', config: {} }],
     });
 
-    expect(spendCampaigns.isDispatchable).not.toHaveBeenCalled();
+    expect(spendCampaigns.assertDispatchable).not.toHaveBeenCalled();
   });
 });
 

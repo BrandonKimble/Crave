@@ -16,7 +16,7 @@ process.env.PROCESS_ROLE ||= 'api';
 import { NestFactory } from '@nestjs/core';
 import { AppModule } from '../src/app.module';
 import { PrismaService } from '../src/prisma/prisma.service';
-import { pricedGeminiRow } from '../src/modules/external-integrations/shared/gemini-pricing';
+import { campaignAttributableRates } from '../src/modules/external-integrations/shared/gemini-pricing';
 import { stopCronsForScript } from '../src/shared/utils/stop-crons';
 
 async function main(): Promise<void> {
@@ -36,60 +36,31 @@ async function main(): Promise<void> {
     });
     if (!campaign) throw new Error(`no campaign ${campaignId}`);
 
-    const rows = await prisma.$queryRaw<
-      Array<{
-        caller: string;
-        service: string;
-        model: string | null;
-        mode: string | null;
-        input_tokens: bigint;
-        output_tokens: bigint;
-        cached_tokens: bigint;
-        calls: bigint;
-      }>
-    >`
-      SELECT caller, service, model, mode,
-             sum(input_tokens) AS input_tokens,
-             sum(output_tokens) AS output_tokens,
-             sum(cached_tokens) AS cached_tokens,
-             count(*) AS calls
-      FROM api_usage_ledger
-      WHERE campaign_id = ${campaignId}::uuid
-      GROUP BY caller, service, model, mode
-      ORDER BY caller`;
-
-    let actualMicros = 0;
-    let unpricedCalls = 0;
+    // ONE RATE AUTHORITY (campaignAttributableRates, beside pricedGeminiRow):
+    // same priced-row projection as the estimator's call plan and replay
+    // prior — `mode` always in the grouping, non-gemini rows counted and
+    // labeled UNPRICED (the $118 lesson: an unpriced line must never read
+    // as a free line; BigQuery reconcile is its truth).
+    const rates = await campaignAttributableRates(prisma, {
+      kind: 'campaign',
+      campaignId,
+    });
+    const actualMicros = rates.geminiMicros;
+    const unpricedCalls = rates.unpricedCalls;
     const byCaller = new Map<
       string,
       { micros: number; calls: number; priced: boolean }
     >();
-    for (const row of rows) {
-      // Only gemini rows carry a local pricing authority (pricedGeminiRow).
-      // A non-gemini row (google_places, tomtom) is NEVER shown as $0 — the
-      // $118 lesson is that an unpriced line reads as a free line. It is
-      // counted and labeled unpriced; BigQuery reconcile is its truth.
-      const priced = row.service === 'gemini';
-      const micros = priced
-        ? pricedGeminiRow({
-            model: row.model,
-            mode: row.mode,
-            inputTokens: Number(row.input_tokens),
-            outputTokens: Number(row.output_tokens),
-            cachedTokens: Number(row.cached_tokens),
-          })
-        : 0;
-      if (!priced) unpricedCalls += Number(row.calls);
-      actualMicros += micros;
+    for (const row of rates.rows) {
       const prev = byCaller.get(row.caller) ?? {
         micros: 0,
         calls: 0,
-        priced,
+        priced: row.priced,
       };
       byCaller.set(row.caller, {
-        micros: prev.micros + micros,
-        calls: prev.calls + Number(row.calls),
-        priced: prev.priced && priced,
+        micros: prev.micros + row.micros,
+        calls: prev.calls + row.calls,
+        priced: prev.priced && row.priced,
       });
     }
 

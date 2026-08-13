@@ -213,19 +213,6 @@ export interface LLMApiResponse {
 /**
  * Gemini API request structure
  */
-/**
- * Performance metrics for LLM operations
- */
-export interface LLMPerformanceMetrics {
-  requestCount: number;
-  totalResponseTime: number;
-  averageResponseTime: number;
-  totalTokensUsed: number;
-  lastReset: Date;
-  errorCount: number;
-  successRate: number;
-}
-
 export interface LLMSearchQueryAnalysis {
   restaurants: string[];
   foods: string[];

@@ -4,6 +4,10 @@ import {
   NoPublishedRateError,
   StaleEstimateHashError,
   CampaignBreachedError,
+  CampaignStateError,
+  DuplicateLiveCampaignError,
+  CAMPAIGN_STATE_TRANSITIONS,
+  statesThatMayBecome,
 } from './spend-campaign.service';
 import { PoolRegistry } from '../governance/pool-registry';
 
@@ -82,6 +86,20 @@ function buildPrisma() {
           return Promise.resolve(campaigns.get(campaignId) ?? null);
         },
       ),
+      /** Mirrors the duplicate-live-name guard's lookup: name + state-in. */
+      findFirst: jest.fn(
+        ({ where }: { where: { name: string; state: { in: string[] } } }) => {
+          for (const row of campaigns.values()) {
+            if (
+              row.name === where.name &&
+              where.state.in.includes(row.state as string)
+            ) {
+              return Promise.resolve(row);
+            }
+          }
+          return Promise.resolve(null);
+        },
+      ),
       update: jest.fn(
         ({
           where: { campaignId },
@@ -120,9 +138,16 @@ function buildPrisma() {
           if (where.campaignId === undefined && where.name !== undefined) {
             let count = 0;
             for (const [id, row] of campaigns) {
+              const stateMatches =
+                where.state === undefined ||
+                (typeof where.state === 'string'
+                  ? row.state === where.state
+                  : (where.state as { in: string[] }).in.includes(
+                      row.state as string,
+                    ));
               if (
                 row.name === where.name &&
-                (where.state === undefined || row.state === where.state) &&
+                stateMatches &&
                 (where.spentMicros === undefined ||
                   Number(row.spentMicros ?? 0) === where.spentMicros)
               ) {
@@ -658,5 +683,122 @@ describe('SpendCampaignService.prepareManifestEstimate (§24.3 v2 all-in manifes
     );
     expect(resumed.campaignId).toBe(estimate.campaignId);
     expect(prisma._campaigns.get(estimate.campaignId)?.state).toBe('approved');
+  });
+});
+
+describe('SpendCampaignService lifecycle chokepoint (2026-08-12)', () => {
+  function build() {
+    const prisma = buildPrisma();
+    const service = new SpendCampaignService(
+      prisma as never,
+      stubLogger() as never,
+      buildOpsAlerts().mock,
+      buildGovernance(),
+    );
+    return { prisma, service };
+  }
+
+  it('the transition table declares every legal edge and derives the guards', () => {
+    // The table IS the enforcement: these assertions pin the declared edges
+    // so an accidental widening (e.g. completed -> approved) fails a test,
+    // not a production audit.
+    expect(statesThatMayBecome('approved').slice().sort()).toEqual([
+      'awaiting_approval',
+      'breached',
+    ]);
+    expect(statesThatMayBecome('completed').slice().sort()).toEqual([
+      'approved',
+      'running',
+    ]);
+    expect(statesThatMayBecome('superseded')).toEqual(['awaiting_approval']);
+    // Terminal states have no OUTBOUND edges anywhere in the table.
+    for (const from of Object.values(CAMPAIGN_STATE_TRANSITIONS)) {
+      expect(from).not.toContain('completed');
+      expect(from).not.toContain('superseded');
+    }
+    // An undeclared target state throws rather than defaulting open.
+    expect(() => statesThatMayBecome('re_awaiting')).toThrow(
+      /no declared inbound transitions/,
+    );
+  });
+
+  it('complete() refuses from breached — the edge is absent from the table', async () => {
+    const { prisma, service } = build();
+    const { campaignId } = await service.preparePilot({
+      name: 'pilot:lifecycle',
+      workClass: 'gemini.reddit_extraction',
+      unit: 'document',
+      unitCount: 10,
+    });
+    prisma._campaigns.get(campaignId)!.state = 'breached';
+    await expect(service.complete(campaignId)).rejects.toBeInstanceOf(
+      CampaignStateError,
+    );
+    expect(prisma._campaigns.get(campaignId)!.state).toBe('breached');
+  });
+
+  it('prepare refuses while a LIVE campaign of the same name exists (typed)', async () => {
+    const { service } = build();
+    await service.preparePilot({
+      name: 'reextract:austin:v8',
+      workClass: 'gemini.reddit_extraction',
+      unit: 'document',
+      unitCount: 10,
+    }); // preparePilot creates directly 'approved' = live
+    await expect(
+      service.prepareEstimate({
+        name: 'reextract:austin:v8',
+        workClass: 'gemini.reddit_extraction',
+        unit: 'document',
+        unitCount: 1000,
+      }),
+    ).rejects.toBeInstanceOf(DuplicateLiveCampaignError);
+  });
+
+  it('a fresh quote still supersedes an UNAPPROVED quote of the same name', async () => {
+    const { prisma, service } = build();
+    prisma._unitCosts.set('gemini.reddit_extraction::document', {
+      microUsdPerUnit: 100,
+    });
+    const first = await service.prepareEstimate({
+      name: 'quote:twice',
+      workClass: 'gemini.reddit_extraction',
+      unit: 'document',
+      unitCount: 10,
+    });
+    const second = await service.prepareEstimate({
+      name: 'quote:twice',
+      workClass: 'gemini.reddit_extraction',
+      unit: 'document',
+      unitCount: 20,
+    });
+    expect(prisma._campaigns.get(first.campaignId)!.state).toBe('superseded');
+    expect(prisma._campaigns.get(second.campaignId)!.state).toBe(
+      'awaiting_approval',
+    );
+  });
+
+  it('assertDispatchable: breached throws CampaignBreachedError (requeue), terminal/missing throws CampaignStateError', async () => {
+    const { prisma, service } = build();
+    const { campaignId } = await service.preparePilot({
+      name: 'pilot:dispatch',
+      workClass: 'gemini.reddit_extraction',
+      unit: 'document',
+      unitCount: 10,
+    });
+    await expect(
+      service.assertDispatchable(campaignId),
+    ).resolves.toBeUndefined();
+    prisma._campaigns.get(campaignId)!.state = 'breached';
+    await expect(service.assertDispatchable(campaignId)).rejects.toBeInstanceOf(
+      CampaignBreachedError,
+    );
+    prisma._campaigns.get(campaignId)!.state = 'completed';
+    await expect(service.assertDispatchable(campaignId)).rejects.toBeInstanceOf(
+      CampaignStateError,
+    );
+    await expect(
+      service.assertDispatchable('no-such-campaign'),
+    ).rejects.toBeInstanceOf(CampaignStateError);
   });
 });

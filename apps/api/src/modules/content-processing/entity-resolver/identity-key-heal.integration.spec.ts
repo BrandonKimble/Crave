@@ -18,6 +18,7 @@
  * Run: yarn test:db (needs DATABASE_URL — a dev database, never prod).
  */
 import { PrismaClient } from '@prisma/client';
+import { ClaimVerdictLedgerService } from './claim-verdict-ledger.service';
 import { FoodDedupeMergeService } from './food-dedupe-merge.service';
 import { canonicalFold, entityIdentityKey } from './entity-identity';
 
@@ -43,6 +44,7 @@ const service = new FoodDedupeMergeService(
     },
   } as never,
   {} as never,
+  new ClaimVerdictLedgerService(prisma as never),
   logger,
 );
 

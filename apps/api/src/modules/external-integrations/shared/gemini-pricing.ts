@@ -173,6 +173,134 @@ export function pricedGeminiRow(row: {
 }
 
 /**
+ * THE ONE RATE AUTHORITY for campaign-attributable spend (estimator ideal
+ * shape, 2026-08-12). Every consumer that turns api_usage_ledger rows into
+ * dollars for an estimate or a report — reextract-estimate's call plan, its
+ * replay-prior, reextract-report's actuals — goes through THIS projection.
+ *
+ * Why one home: the projection's silent failure mode is a missing `mode`
+ * column. `mode` is load-bearing in pricedGeminiRow (batch rows are billed
+ * at half price), so a hand-rolled GROUP BY that forgets it prices batch
+ * traffic at interactive rates and inflates a quote 2x without a single
+ * error. Here `mode` is ALWAYS selected and ALWAYS grouped — a caller
+ * cannot opt out of it. Scope is an explicit argument: campaign-scoped
+ * (a campaign's own tagged rows) or windowed-callers (a trailing window of
+ * named callers), the only two shapes any estimator consumer uses.
+ *
+ * Non-gemini rows are returned UNPRICED and counted, never $0 — the $118
+ * lesson: an unpriced line must read as "unpriced", not as free.
+ */
+export type AttributableScope =
+  | { kind: 'campaign'; campaignId: string }
+  | { kind: 'window'; callers: readonly string[]; windowDays: number };
+
+export interface AttributableRateRow {
+  caller: string;
+  service: string;
+  model: string | null;
+  /** Always present in the projection — see the docblock. */
+  mode: string | null;
+  calls: number;
+  /** Priced micro-USD for gemini rows; 0 for unpriced services. */
+  micros: number;
+  priced: boolean;
+}
+
+export interface AttributableRates {
+  rows: AttributableRateRow[];
+  /** Total priced (gemini) micro-USD across the scope. */
+  geminiMicros: number;
+  /** Calls from services this authority cannot price (places, tomtom…). */
+  unpricedCalls: number;
+  /** Priced micro-USD summed per caller (gemini only). */
+  byCaller: Map<string, number>;
+}
+
+type RawLedgerClient = {
+  $queryRaw<T = unknown>(
+    query: TemplateStringsArray,
+    ...values: unknown[]
+  ): Promise<T>;
+};
+
+export async function campaignAttributableRates(
+  db: RawLedgerClient,
+  scope: AttributableScope,
+): Promise<AttributableRates> {
+  type Row = {
+    caller: string;
+    service: string;
+    model: string | null;
+    mode: string | null;
+    input_tokens: bigint;
+    output_tokens: bigint;
+    cached_tokens: bigint;
+    duration_hours: number | null;
+    calls: bigint;
+  };
+  // duration_hours rides along so cache-STORAGE rows price as storage, not
+  // as a zero-token generation; summed because storage bills token-hours.
+  const raw =
+    scope.kind === 'campaign'
+      ? await db.$queryRaw<Row[]>`
+          SELECT caller, service, model, mode,
+                 sum(input_tokens)  AS input_tokens,
+                 sum(output_tokens) AS output_tokens,
+                 sum(cached_tokens) AS cached_tokens,
+                 sum(duration_hours) AS duration_hours,
+                 count(*)           AS calls
+          FROM api_usage_ledger
+          WHERE campaign_id = ${scope.campaignId}::uuid
+          GROUP BY caller, service, model, mode`
+      : await db.$queryRaw<Row[]>`
+          SELECT caller, service, model, mode,
+                 sum(input_tokens)  AS input_tokens,
+                 sum(output_tokens) AS output_tokens,
+                 sum(cached_tokens) AS cached_tokens,
+                 sum(duration_hours) AS duration_hours,
+                 count(*)           AS calls
+          FROM api_usage_ledger
+          WHERE service = 'gemini'
+            AND caller = ANY(${scope.callers as string[]})
+            AND created_at > now() - make_interval(days => ${scope.windowDays}::int)
+          GROUP BY caller, service, model, mode`;
+
+  const rows: AttributableRateRow[] = [];
+  const byCaller = new Map<string, number>();
+  let geminiMicros = 0;
+  let unpricedCalls = 0;
+  for (const row of raw) {
+    const priced = row.service === 'gemini';
+    const micros = priced
+      ? pricedGeminiRow({
+          model: row.model,
+          mode: row.mode,
+          input_tokens: row.input_tokens,
+          output_tokens: row.output_tokens,
+          cached_tokens: row.cached_tokens,
+          duration_hours: row.duration_hours,
+        })
+      : 0;
+    if (priced) {
+      geminiMicros += micros;
+      byCaller.set(row.caller, (byCaller.get(row.caller) ?? 0) + micros);
+    } else {
+      unpricedCalls += Number(row.calls);
+    }
+    rows.push({
+      caller: row.caller,
+      service: row.service,
+      model: row.model,
+      mode: row.mode,
+      calls: Number(row.calls),
+      micros,
+      priced,
+    });
+  }
+  return { rows, geminiMicros, unpricedCalls, byCaller };
+}
+
+/**
  * K4 vendor fact: the AI Studio monthly spend cap resets on the first day
  * of each month, PST (the console says so verbatim), with ~10min
  * enforcement latency. Poison horizon for a vendor cap-429: next month

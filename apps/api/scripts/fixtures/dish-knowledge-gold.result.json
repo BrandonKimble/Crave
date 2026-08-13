@@ -1,0 +1,338 @@
+[
+  {
+    "id": "identity-modifier-vegan",
+    "why": "THE IDENTITY-MODIFIER TEST: the modifier wins over the standard preparation — a wrong ingredient sends a hard-constraint diner to food they cannot eat.",
+    "live": {
+      "passes": 3,
+      "of": 3,
+      "verdict": "PASS",
+      "failures": [],
+      "sample": {
+        "dishes": [
+          {
+            "index": 0,
+            "ingredients": [
+              "corn tortilla",
+              "soy protein",
+              "pineapple",
+              "onion",
+              "cilantro",
+              "achiote"
+            ],
+            "aliases": []
+          }
+        ]
+      }
+    },
+    "candidate": {
+      "passes": 3,
+      "of": 3,
+      "verdict": "PASS",
+      "failures": [],
+      "sample": {
+        "dishes": [
+          {
+            "index": 0,
+            "ingredients": [
+              "tortilla",
+              "mushroom",
+              "pineapple",
+              "onion",
+              "cilantro",
+              "achiote"
+            ],
+            "aliases": []
+          }
+        ]
+      }
+    }
+  },
+  {
+    "id": "identity-modifier-white-pizza",
+    "why": "THE IDENTITY-MODIFIER TEST: 'white pizza' has no tomato sauce.",
+    "live": {
+      "passes": 3,
+      "of": 3,
+      "verdict": "PASS",
+      "failures": [],
+      "sample": {
+        "dishes": [
+          {
+            "index": 0,
+            "ingredients": [
+              "pizza dough",
+              "mozzarella",
+              "ricotta",
+              "garlic",
+              "parmesan"
+            ],
+            "aliases": ["pizza bianca"]
+          }
+        ]
+      }
+    },
+    "candidate": {
+      "passes": 3,
+      "of": 3,
+      "verdict": "PASS",
+      "failures": [],
+      "sample": {
+        "dishes": [
+          {
+            "index": 0,
+            "ingredients": [
+              "pizza dough",
+              "mozzarella",
+              "ricotta",
+              "garlic",
+              "olive oil"
+            ],
+            "aliases": ["pizza bianca"]
+          }
+        ]
+      }
+    }
+  },
+  {
+    "id": "alias-exclusivity-marg",
+    "why": "THE EXCLUSIVITY TEST: 'marg' is claimed by both the cocktail and the pizza — an alias that fails exclusivity fuses two dishes in search.",
+    "live": {
+      "passes": 3,
+      "of": 3,
+      "verdict": "PASS",
+      "failures": [],
+      "sample": {
+        "dishes": [
+          {
+            "index": 0,
+            "ingredients": [
+              "pizza dough",
+              "tomato sauce",
+              "mozzarella cheese",
+              "basil"
+            ],
+            "aliases": []
+          }
+        ]
+      }
+    },
+    "candidate": {
+      "passes": 3,
+      "of": 3,
+      "verdict": "PASS",
+      "failures": [],
+      "sample": {
+        "dishes": [
+          {
+            "index": 0,
+            "ingredients": [
+              "pizza dough",
+              "tomato sauce",
+              "mozzarella cheese",
+              "basil"
+            ],
+            "aliases": []
+          }
+        ]
+      }
+    }
+  },
+  {
+    "id": "alias-established-army-stew",
+    "why": "Keep-side of the exclusivity line: 'army stew' is an established co-name pointing at nothing but budae jjigae.",
+    "live": {
+      "passes": 3,
+      "of": 3,
+      "verdict": "PASS",
+      "failures": [],
+      "sample": {
+        "dishes": [
+          {
+            "index": 0,
+            "ingredients": [
+              "spam",
+              "hot dog",
+              "kimchi",
+              "tofu",
+              "ramen noodle",
+              "gochujang",
+              "baked beans"
+            ],
+            "aliases": ["army stew"]
+          }
+        ]
+      }
+    },
+    "candidate": {
+      "passes": 3,
+      "of": 3,
+      "verdict": "PASS",
+      "failures": [],
+      "sample": {
+        "dishes": [
+          {
+            "index": 0,
+            "ingredients": [
+              "spam",
+              "hot dog",
+              "kimchi",
+              "ramen noodle",
+              "tofu",
+              "baked bean",
+              "gochujang"
+            ],
+            "aliases": ["army stew"]
+          }
+        ]
+      }
+    }
+  },
+  {
+    "id": "invention-worse-than-silence-combo",
+    "why": "Invention-worse-than-silence economics: an ambiguous name has no canonical contents — empty, never a plausible fabrication.",
+    "live": {
+      "passes": 3,
+      "of": 3,
+      "verdict": "PASS",
+      "failures": [],
+      "sample": {
+        "dishes": [
+          {
+            "index": 0,
+            "ingredients": [],
+            "aliases": []
+          }
+        ]
+      }
+    },
+    "candidate": {
+      "passes": 3,
+      "of": 3,
+      "verdict": "PASS",
+      "failures": [],
+      "sample": {
+        "dishes": [
+          {
+            "index": 0,
+            "ingredients": [],
+            "aliases": []
+          }
+        ]
+      }
+    }
+  },
+  {
+    "id": "invention-worse-than-silence-seasonal",
+    "why": "Same economics, second instance: 'seasonal salad' is whatever the kitchen has — an invented list is indistinguishable from a real one forever.",
+    "live": {
+      "passes": 3,
+      "of": 3,
+      "verdict": "PASS",
+      "failures": [],
+      "sample": {
+        "dishes": [
+          {
+            "index": 0,
+            "ingredients": [],
+            "aliases": []
+          }
+        ]
+      }
+    },
+    "candidate": {
+      "passes": 3,
+      "of": 3,
+      "verdict": "PASS",
+      "failures": [],
+      "sample": {
+        "dishes": [
+          {
+            "index": 0,
+            "ingredients": [],
+            "aliases": []
+          }
+        ]
+      }
+    }
+  },
+  {
+    "id": "no-invented-aliases-shortening",
+    "why": "Never invent or shorten a name yourself: 'chicken tikka masala' has no established shorthand to emit — 'ctm' style abbreviations must not be minted.",
+    "live": {
+      "passes": 3,
+      "of": 3,
+      "verdict": "PASS",
+      "failures": [],
+      "sample": {
+        "dishes": [
+          {
+            "index": 0,
+            "ingredients": [
+              "udon noodle",
+              "egg",
+              "pecorino romano",
+              "guanciale",
+              "black pepper"
+            ],
+            "aliases": []
+          }
+        ]
+      }
+    },
+    "candidate": {
+      "passes": 3,
+      "of": 3,
+      "verdict": "PASS",
+      "failures": [],
+      "sample": {
+        "dishes": [
+          {
+            "index": 0,
+            "ingredients": [
+              "udon noodle",
+              "egg",
+              "guanciale",
+              "pecorino romano",
+              "parmesan"
+            ],
+            "aliases": []
+          }
+        ]
+      }
+    }
+  },
+  {
+    "id": "standard-prep-bec",
+    "why": "Keep-side control: the standard preparation and the one established alias both come through.",
+    "live": {
+      "passes": 3,
+      "of": 3,
+      "verdict": "PASS",
+      "failures": [],
+      "sample": {
+        "dishes": [
+          {
+            "index": 0,
+            "ingredients": ["bacon", "egg", "cheese", "bread"],
+            "aliases": ["bec"]
+          }
+        ]
+      }
+    },
+    "candidate": {
+      "passes": 3,
+      "of": 3,
+      "verdict": "PASS",
+      "failures": [],
+      "sample": {
+        "dishes": [
+          {
+            "index": 0,
+            "ingredients": ["bacon", "egg", "cheese", "bread"],
+            "aliases": ["bec"]
+          }
+        ]
+      }
+    }
+  }
+]

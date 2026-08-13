@@ -7,6 +7,7 @@ import {
   type LedgerMicros,
 } from './spend-currency';
 import { Injectable, Optional } from '@nestjs/common';
+import { Cron } from '@nestjs/schedule';
 import { createHash } from 'crypto';
 import { PrismaService } from '../../../prisma/prisma.service';
 import { LoggerService } from '../../../shared';
@@ -168,6 +169,64 @@ export class CampaignStateError extends Error {
   }
 }
 
+/** Prepare-time refusal: one live campaign per name. A second quote while an
+ *  approved/running/breached campaign of the same name is in flight would
+ *  split the spend trail across two envelopes; the live one must complete
+ *  (or resume and complete) first. Unapproved quotes are not "live" — they
+ *  are superseded by the fresh quote instead. */
+export class DuplicateLiveCampaignError extends Error {
+  constructor(
+    public readonly name: string,
+    public readonly campaignId: string,
+    public readonly state: string,
+  ) {
+    super(
+      `Campaign name "${name}" already has a LIVE campaign ${campaignId} ` +
+        `(state '${state}') — complete or resume it before quoting a new one`,
+    );
+    this.name = 'DuplicateLiveCampaignError';
+  }
+}
+
+/**
+ * THE TRANSITION TABLE (campaign lifecycle chokepoint, 2026-08-12): every
+ * state write in this file flows through transition(), whose WHERE clause is
+ * DERIVED from this table — an edge not declared here is unrepresentable, not
+ * merely unreviewed. The table is the documentation and the enforcement:
+ *
+ *   awaiting_approval -> approved (owner hash-approves) | superseded (fresh quote)
+ *   approved          -> running (first spend) | breached | completed
+ *   running           -> running (further spend) | breached | completed
+ *   breached          -> approved (resumeAfterBreach, refined estimate)
+ *   completed / superseded -> terminal
+ *
+ * 'draft' is the schema default and a documented pre-state; nothing writes
+ * it today and nothing may leave it except a future prepare step.
+ * 're_awaiting' remains documented in §24.3 but has never been written —
+ * kept out of the table on purpose so writing it fails loudly.
+ */
+export const CAMPAIGN_STATE_TRANSITIONS: Readonly<
+  Record<string, readonly string[]>
+> = {
+  approved: ['awaiting_approval', 'breached'],
+  superseded: ['awaiting_approval'],
+  running: ['approved', 'running'],
+  breached: ['approved', 'running'],
+  completed: ['approved', 'running'],
+};
+
+/** The states allowed to become `to` — the derived WHERE for transition(). */
+export function statesThatMayBecome(to: string): readonly string[] {
+  const from = CAMPAIGN_STATE_TRANSITIONS[to];
+  if (!from) {
+    throw new Error(
+      `campaign state '${to}' has no declared inbound transitions — ` +
+        `an undeclared edge is a bug, not a default`,
+    );
+  }
+  return from;
+}
+
 /** '<vendor>.<resource>'-shaped pool name for a campaign's §14.6 grant. */
 function campaignPoolName(campaignId: string): string {
   return `campaign.${campaignId}`;
@@ -282,6 +341,36 @@ export class SpendCampaignService {
     return this.governance;
   }
 
+  /**
+   * THE ONE STATE-WRITE CHOKEPOINT: every campaign state change goes through
+   * here (or through the raw atomic increment in recordSpend, whose guard
+   * list is derived from the same table). The guarded updateMany means a
+   * concurrent writer that already moved the row simply matches zero rows —
+   * the caller decides whether zero is an error.
+   */
+  private async transition(
+    to: string,
+    where: {
+      campaignId?: string;
+      name?: string;
+      spentMicros?: bigint | number;
+    },
+    data: Record<string, unknown> = {},
+  ): Promise<number> {
+    const result = await this.prisma.spendCampaign.updateMany({
+      where: {
+        ...(where.campaignId ? { campaignId: where.campaignId } : {}),
+        ...(where.name ? { name: where.name } : {}),
+        ...(where.spentMicros !== undefined
+          ? { spentMicros: where.spentMicros }
+          : {}),
+        state: { in: [...statesThatMayBecome(to)] },
+      },
+      data: { state: to, ...data },
+    });
+    return result.count;
+  }
+
   /** DERIVED envelope tolerance for a work class (§24.1(d), §24.6): the
    *  measured declared-vs-actual drift when one exists, floored at the K2
    *  bootstrap; the bootstrap outright when no drift sample exists yet.
@@ -337,15 +426,28 @@ export class SpendCampaignService {
    * a stray. Marked 'superseded' (not deleted) so the quote trail survives.
    */
   private async supersedeUnapprovedQuotes(name: string): Promise<void> {
-    await this.prisma.spendCampaign.updateMany({
-      where: { name, state: 'awaiting_approval', spentMicros: 0 },
-      data: { state: 'superseded' },
+    await this.transition('superseded', { name, spentMicros: 0 });
+  }
+
+  /** ONE LIVE CAMPAIGN PER NAME (prepare-time guard, 2026-08-12): quoting a
+   *  name whose campaign is approved/running/breached is refused — the fresh
+   *  quote would fork the spend trail. Runs BEFORE superseding unapproved
+   *  quotes so a refused prepare leaves the existing quotes untouched. */
+  private async refuseDuplicateLiveCampaign(name: string): Promise<void> {
+    const live = await this.prisma.spendCampaign.findFirst({
+      where: { name, state: { in: ['approved', 'running', 'breached'] } },
+      select: { campaignId: true, state: true },
+      orderBy: { createdAt: 'desc' },
     });
+    if (live) {
+      throw new DuplicateLiveCampaignError(name, live.campaignId, live.state);
+    }
   }
 
   async prepareEstimate(
     params: PrepareEstimateParams,
   ): Promise<PreparedEstimate> {
+    await this.refuseDuplicateLiveCampaign(params.name);
     const rate = await this.prisma.spendUnitCost.findUnique({
       where: {
         workClass_unit: { workClass: params.workClass, unit: params.unit },
@@ -426,6 +528,7 @@ export class SpendCampaignService {
   async prepareManifestEstimate(
     params: PrepareManifestEstimateParams,
   ): Promise<PreparedManifestEstimate> {
+    await this.refuseDuplicateLiveCampaign(params.name);
     const requireRate = async (spec: { workClass: string; unit: string }) => {
       const rate = await this.prisma.spendUnitCost.findUnique({
         where: {
@@ -652,10 +755,17 @@ export class SpendCampaignService {
       // actually held; the field is unused but required by PoolConfig.
       reservationTtlMs: 60_000,
     });
-    await this.prisma.spendCampaign.update({
-      where: { campaignId },
-      data: { state: 'approved', approvedAt: new Date() },
-    });
+    const moved = await this.transition(
+      'approved',
+      { campaignId },
+      { approvedAt: new Date() },
+    );
+    if (!moved) {
+      throw new CampaignStateError(
+        campaignId,
+        'state moved during approval — re-read and retry',
+      );
+    }
     this.logger.info('Spend campaign approved', {
       campaignId,
       name: row.name,
@@ -681,6 +791,31 @@ export class SpendCampaignService {
       select: { state: true },
     });
     return row?.state === 'approved' || row?.state === 'running';
+  }
+
+  /**
+   * THE dispatch gate as one recorded refusal (2026-08-12): every chokepoint
+   * that dispatches campaign work — GeminiBatchService.submit, the sync
+   * callLLMApi — calls THIS instead of hand-writing `if (!isDispatchable)`
+   * with its own message. A breached campaign throws the typed
+   * CampaignBreachedError (requeue-and-wait); any other non-dispatchable
+   * state (missing row included) throws CampaignStateError (terminal —
+   * do not requeue).
+   */
+  async assertDispatchable(campaignId: string): Promise<void> {
+    const row = await this.prisma.spendCampaign.findUnique({
+      where: { campaignId },
+      select: { state: true },
+    });
+    if (row?.state === 'approved' || row?.state === 'running') return;
+    if (row?.state === 'breached') {
+      throw new CampaignBreachedError(campaignId);
+    }
+    throw new CampaignStateError(
+      campaignId,
+      `not dispatchable from state '${row?.state ?? 'missing'}' — work must ` +
+        `not be submitted for this campaign`,
+    );
   }
 
   /**
@@ -748,10 +883,11 @@ export class SpendCampaignService {
     // finding 11) is the calling SCRIPT's job (e.g. --max-posts stops its
     // own dispatch loop), a documented deferral, not an oversight.
     if (row.estimateMicros === null) {
-      await this.prisma.spendCampaign.updateMany({
-        where: { campaignId, state: { in: ['approved', 'running'] } },
-        data: { spentMicros: { increment: roundedMicros }, state: 'running' },
-      });
+      await this.transition(
+        'running',
+        { campaignId },
+        { spentMicros: { increment: roundedMicros } },
+      );
       return;
     }
 
@@ -778,7 +914,7 @@ export class SpendCampaignService {
       SET spent_micros = spent_micros + ${roundedMicros},
           state = 'running'
       WHERE campaign_id = ${campaignId}::uuid
-        AND state IN ('approved', 'running')
+        AND state = ANY(${[...statesThatMayBecome('running')]}::text[])
       RETURNING spent_micros
     `;
     if (!incremented.length) {
@@ -828,13 +964,7 @@ export class SpendCampaignService {
       });
       // Spend already recorded by the increment above — this flip is
       // state-only (a second increment here would double-count).
-      await this.prisma.spendCampaign.updateMany({
-        where: { campaignId, state: { in: ['approved', 'running'] } },
-        data: {
-          state: 'breached',
-          breachNote,
-        },
-      });
+      await this.transition('breached', { campaignId }, { breachNote });
       return;
     }
     // Non-breach: nothing left to do — the guarded increment above already
@@ -930,17 +1060,23 @@ export class SpendCampaignService {
       await governance.pools.mintGrant(poolName, topUp);
     }
 
-    await this.prisma.spendCampaign.update({
-      where: { campaignId },
-      data: {
+    const resumed = await this.transition(
+      'approved',
+      { campaignId },
+      {
         microUsdPerUnit: rate.microUsdPerUnit,
         estimateMicros,
         toleranceFraction,
         estimateHash,
-        state: 'approved',
         breachNote: null,
       },
-    });
+    );
+    if (!resumed) {
+      throw new CampaignStateError(
+        campaignId,
+        'state moved during resume — re-read and retry',
+      );
+    }
     this.logger.info('Spend campaign resumed after breach', {
       campaignId,
       name: row.name,
@@ -963,6 +1099,56 @@ export class SpendCampaignService {
   }
 
   /**
+   * STALE-'running' WATCHDOG (2026-08-12): a campaign is moved to
+   * 'completed' only by an explicit call (scripts/complete-campaign.ts), so
+   * a finished job whose operator forgot the step sits 'running' forever —
+   * prod's v7 replay did exactly that at $30.44 spent. A 'running' campaign
+   * whose ledger has been silent for 24h is either done (complete it) or
+   * wedged (investigate); both deserve an ops alert, neither deserves
+   * silence. Warn-level, day-bucketed dedupe — the same comparator pattern
+   * as spend-expectation-monitor. Inert outside the scheduler runtime
+   * (main.ts stops crons on non-worker processes).
+   */
+  @Cron('25 4 * * *')
+  async alertStaleRunningCampaigns(): Promise<void> {
+    try {
+      const stale = await this.prisma.$queryRaw<
+        Array<{ campaign_id: string; name: string; spent_micros: bigint }>
+      >`
+        SELECT c.campaign_id, c.name, c.spent_micros
+        FROM spend_campaigns c
+        WHERE c.state = 'running'
+          AND COALESCE(c.approved_at, c.created_at) < now() - interval '24 hours'
+          AND NOT EXISTS (
+            SELECT 1 FROM api_usage_ledger l
+            WHERE l.campaign_id = c.campaign_id
+              AND l.created_at > now() - interval '24 hours'
+          )`;
+      const dayKey = new Date().toISOString().slice(0, 10);
+      for (const row of stale) {
+        const spentUsd = Math.round(Number(row.spent_micros) / 10_000) / 100;
+        this.opsAlerts.emit({
+          severity: 'warn',
+          kind: 'campaign_stale_running',
+          title: `Campaign "${row.name}" is 'running' with a silent ledger`,
+          body:
+            `Campaign ${row.campaign_id} has recorded no ledger rows for 24h ` +
+            `at $${spentUsd} spent. If the job finished, run ` +
+            `scripts/complete-campaign.ts ${row.campaign_id}; if not, the ` +
+            `job is wedged.`,
+          dedupeKey: `campaign_stale_running:${row.campaign_id}:${dayKey}`,
+        });
+      }
+    } catch (error) {
+      this.logger.warn('Stale-running campaign watchdog failed', {
+        error: {
+          message: error instanceof Error ? error.message : String(error),
+        },
+      });
+    }
+  }
+
+  /**
    * §24.1: mark the campaign done and feed the realized (declared vs
    * actual) pair back into measureDrift for the work class — so the NEXT
    * campaign of this work class derives its tolerance from real history
@@ -981,10 +1167,17 @@ export class SpendCampaignService {
         `cannot complete from state '${row.state}'`,
       );
     }
-    await this.prisma.spendCampaign.update({
-      where: { campaignId },
-      data: { state: 'completed', completedAt: new Date() },
-    });
+    const done = await this.transition(
+      'completed',
+      { campaignId },
+      { completedAt: new Date() },
+    );
+    if (!done) {
+      throw new CampaignStateError(
+        campaignId,
+        'state moved during completion — re-read and retry',
+      );
+    }
     if (row.estimateMicros !== null) {
       this.requireGovernance().pools.recordActualPair(
         campaignPoolName(campaignId),
