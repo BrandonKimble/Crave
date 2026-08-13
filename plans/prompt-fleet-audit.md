@@ -217,3 +217,16 @@ ping, despite adapters being live/condition-met.
    as each is touched, not as a big-bang.
 (FYI theirs: Han negation inversion 不辣→spicy queued for owner ruling;
 label-sweep >= watermark fix is their wave-1.)
+
+## POST-v13 DEDUPE DOCKET (2026-08-13 intake from ⭐05's read-door wave)
+
+Runs when DEDUPE_JUDGE_LANES_ENABLED flips (post-activation, per sequence):
+1. chili / chile / chili pepper TRIPLICATE ingredient (unmasked by the
+   read-door identity fix; 7 newly-attributed serving rows).
+2. 179 duplicate identity pairs (1,055 entities) newly visible to identity
+   probes — full dedupe pass over that population once v13 settles; some
+   are camarones/shrimp-class extraction twins.
+Note: adapter is LIVE with verdict memory; the FLAG stays off until
+activation — un-gate clearance != run clearance. ⭐05 residual awaiting my
+adjudicator file to settle: 321 und rows outside the claim-judge due
+predicate (theirs to pick up).
