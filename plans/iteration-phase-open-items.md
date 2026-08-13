@@ -482,6 +482,26 @@ TRIPLICATE ingredient unmasked by correct identity (7 new attributed
 serving rows) — dedupe lane food; (d) CLAUDE.md $queryRaw trap DISPROVEN
 on Prisma 6.18 — corrected in CLAUDE.md.
 
+WAVE-3 LANDED (f582690a9/d3e00c3b3/1df96fb19/51d2ba514; verified: 5 derived
+jobs + schema-derived membership spec, spend invariants 8/18 green,
+resolution 66/66). Lock: mkdir→wx→link staged-pid ladder, 0 overlaps in
+768 racers (race caught 2 bugs in the fix itself; EPERM=alive, only
+ESRCH+own-bytes breakable). Restore conflict now FATAL. Chokepoint gate
+newline-tolerant + .mjs (was printing OK on both defects). D3: 341 stale
+edges the incremental writer structurally couldn't reach were being served
+by 4 fail-open readers — nightly job + boot heal now; spec fails on a 6th
+table's EXISTENCE. D4: compile-forced vendor switch (5th member fails
+tsc); TomTom + Vision were silently free — now enveloped/gated with NO
+invented caps (vision unarmed until a cap is set); launch gate's raw
+Gemini fetch routed through the door, no exemption needed.
+NOT DONE, precisely diagnosed for a finisher AFTER wave 2 lands (artifact
+contention): F9/F10 — the 335 UNEXPLAINED = multi-anchor queries where the
+harness UNIONS food-anchor concept sets while the server CONJOINS them
+(the harness's own cross-class law applied within-class); + camarones
+singular/plural miss; + frozen-snapshot decision; + NEW: eslint ignores
+scripts/search-harness/** on a stale justification (tsc DOES cover it) —
+the whole harness is invisible to lint incl. the new vendor-door selectors.
+
 READ DOOR (fix wave 4 — red team C): write side has one door and held;
 READ side has none — 9 hard-coded locale='und' identity probes (74 twins
 invisible), display's parallel chain can never read und (limonada-not-
