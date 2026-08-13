@@ -2,6 +2,7 @@ import { Prisma } from '@prisma/client';
 import {
   canonicalFold,
   diacriticFold,
+  isAccented,
   isDisplayable,
   normalizeSurface,
 } from './entity-identity';
@@ -201,6 +202,56 @@ export function surfaceClaimKey(form: string): string {
   return diacriticFold(form);
 }
 
+/**
+ * THE ROMANIZATION RULE — a language tag is a CLAIM, and this is the one
+ * claim nobody makes (2026-08-12).
+ *
+ * `locale='vi'` on a surface asserts: *somebody spells it this way, in
+ * Vietnamese*. `locale='und'` is the universal bucket — the de-accented
+ * convenience spelling a US keyboard produces, reachable from every language
+ * and asserting nothing about any of them (the ruling written into the schema
+ * and `localeLookupChain`, 00fbb33cd). A ROMANIZATION belongs in the second
+ * bucket and was landing in the first: the vocabulary pass banked 'thit',
+ * 'vit', 'buoi' as `vi`, next to the very rows they are the stripped spelling
+ * OF.
+ *
+ * WHY IT COSTS SOMETHING RATHER THAN BEING A TIDINESS POINT. The exact-tier
+ * admission rule (`admitsAtExactTier`) reads a language-tagged accent-free
+ * form as a WORD THE USER SPELLED IN FULL — that is the whole
+ * `bankedPlainForms` discriminator, the thing that stops 'cơm chay'
+ * (vegetarian rice) matching 'cơm cháy' (scorched rice) through a shared
+ * second token. Fed a romanization, the same rule concludes that a person who
+ * typed 'vit' meant a complete vi word and refuses them 'vịt' (duck). The
+ * discriminator is only as honest as the tags it reads.
+ *
+ * THE PREDICATE, in one sentence: **a form that carries no accent evidence,
+ * offered under a language, whose own concept already spells that same folded
+ * word WITH accents in that same language, is the romanization of that
+ * spelling — not a second word.** Both halves are load-bearing:
+ *  - no accent evidence (`!isAccented`) — an accented form is by definition
+ *    somebody's spelling;
+ *  - a MARKED SIBLING on the same concept in the same language — without one,
+ *    a plain vi form is a genuine unaccented vi word ('banh mi' has a marked
+ *    sibling; 'chay' does not, and must keep its tag or the discriminator it
+ *    powers goes inert).
+ *
+ * Language-neutral and list-free, like every rule it is built from: it falls
+ * out of `isAccented` + `canonicalFold` and knows nothing about Vietnamese.
+ */
+export function isRomanizationOfMarkedSibling(
+  form: string,
+  /** Every form the SAME concept holds in the SAME language. */
+  siblingFormsInSameLanguage: Iterable<string>,
+): boolean {
+  if (isAccented(form)) return false;
+  const folded = canonicalFold(form);
+  if (!folded) return false;
+  for (const sibling of siblingFormsInSameLanguage) {
+    if (canonicalFold(sibling) === folded && isAccented(sibling)) return true;
+  }
+  return false;
+}
+
 export interface AddSurfacesOptions {
   /**
    * Forms to DEMOTE to 'deprecated' — the ontology rename's "drop the new
@@ -289,6 +340,74 @@ export async function addSurfaces(
       promptVersion: input.promptVersion ?? 1,
       claimJudgeVersion: input.claimJudgeVersion ?? null,
     });
+  }
+
+  // THE ROMANIZATION INGRESS. Applied HERE, once, because this function is
+  // the ONE writer of entity_surface — the vocabulary sweep, the judge's
+  // grant path and every alias import all arrive through it, so a rule
+  // stated here is a rule they all obey and none of them can restate
+  // differently (the two-rules-that-disagree failure the admission rule
+  // itself was just rescued from). It runs BEFORE the collision guard on
+  // purpose: the guard's probe is language-blind, but a form's locale
+  // decides which row it lands on, and a claim must be adjudicated at the
+  // address it will actually occupy.
+  //
+  // A row ELECTED AS THE LOCALE'S DEFAULT LABEL is exempt. Re-tagging it to
+  // 'und' would leave that language with no default label at all — a
+  // silently unlabelled locale is a worse lie than an over-claimed tag, and
+  // choosing the language's label is the sweep's decision, not this rule's.
+  const plainOffers = rows.filter(
+    (row) => row.locale !== 'und' && !row.isDefault && !isAccented(row.form),
+  );
+  if (plainOffers.length > 0) {
+    const folds = Array.from(
+      new Set(
+        plainOffers.map((row) => canonicalFold(row.form)).filter(Boolean),
+      ),
+    );
+    const locales = Array.from(new Set(plainOffers.map((row) => row.locale)));
+    // The concept's OWN spellings in those languages. The batch's own rows
+    // count as siblings too: a sweep that offers 'thịt bò' and 'thit bo' in
+    // the same call must resolve them against each other, not against
+    // whatever happened to be committed first.
+    const banked = await tx.$queryRaw<Array<{ form: string; locale: string }>>`
+      SELECT form, LOWER(locale) AS locale
+        FROM entity_surface
+       WHERE entity_id = ${entityId}::uuid
+         AND form_folded = ANY(${folds}::text[])
+         AND LOWER(locale) = ANY(${locales}::text[])`;
+    const siblingsByLocale = new Map<string, string[]>();
+    for (const row of [...rows, ...banked]) {
+      if (row.locale === 'und') continue;
+      const held = siblingsByLocale.get(row.locale);
+      if (held) held.push(row.form);
+      else siblingsByLocale.set(row.locale, [row.form]);
+    }
+    for (const row of plainOffers) {
+      if (
+        isRomanizationOfMarkedSibling(
+          row.form,
+          siblingsByLocale.get(row.locale) ?? [],
+        )
+      ) {
+        row.locale = 'und';
+      }
+    }
+    // RE-DEDUPE. A re-tag can land two rows of this batch on the same
+    // (entity, locale, form) — and Postgres refuses an ON CONFLICT DO UPDATE
+    // that would touch one row twice ("cannot affect row a second time"),
+    // which would turn an honest tag into a failed write.
+    // The FIRST offer of a form survives, exactly as the build loop above
+    // decided — the caller's order is its ranking.
+    const kept = new Set<string>();
+    for (let i = 0; i < rows.length; ) {
+      const key = `${rows[i].locale}\0${rows[i].form}`;
+      if (kept.has(key)) rows.splice(i, 1);
+      else {
+        kept.add(key);
+        i += 1;
+      }
+    }
   }
 
   // P0-b COLLISION GUARD — inferred forms only (see INFERRED_SURFACE_SOURCES).
