@@ -596,13 +596,26 @@ coverage honesty lives in the orchestration wrapper, not runQuery.
 llm_decision_records; relevance-gate rule_version column; vocab version
 fingerprint; dedupe un-gate WAIT on wave-1 (shared replay path).
 
-OWNER DECISIONS QUEUED FROM RED TEAM: (1) zh negation semantics — 不辣
-grounds as SPICY (inverts, not widens; different failure than the
-literal-ignore ruling covered); segmentation-layer fix needs a ruling.
-(2) honest-empty display contract (mobile chip for unresolved terms).
-(3) A1 amendments: delete lexical lane + band-0 precondition + F8.
-(4) display-label region legitimacy (es-MX torta) — write door currently
-permits region on display rows; UNRULED.
+OWNER DECISIONS — RULED 2026-08-13:
+(1) zh negation: RESOLVED-NO-RULING — owner re-affirmed literal doctrine:
+mention a word, get the word, negation deliberately unhandled (teaching
+mechanism); 不辣→spicy is the SAME lesson in zh, not a new failure. My
+"inversion" framing was wrong. Residual is mechanical only: zh particles
+(的, stranded 不) must not pollute demand signals — folds into the wave
+(and into the no-lists rederivation below).
+(2) honest-empty chip: RULED yes-but-later — moved to section D
+PRE-LAUNCH checklist (server contract exists; mobile chip at launch
+polish).
+(5) coctel: RULED — favor the typer; stays at 'und'. Generalizes: a
+DUAL-SPELLING word (language legitimately accepts both) belongs at und;
+wave judge clause candidate. HELD_FOR_RULING entry resolves to KEEP-UND.
+STILL OPEN: (3) A1 amendments (delete lexical lane + band-0 precondition
++ F8) — for the post-wave ladder session. (4) display-label region
+legitimacy (es-MX torta) — ride until the wave forces it.
+NEW REDERIVATION OPENED (owner, 2026-08-13): the TWO HAND LISTS (negation
+cues + generic/junk vocabulary) are the last non-exhaustive lists in the
+query path — owner wants the from-scratch ideal, not a better list;
+feasibility measurement dispatched (see agent).
 
 ## ARCH VERDICT (2026-08-12 red team; the owner's patches-vs-foundations question)
 
