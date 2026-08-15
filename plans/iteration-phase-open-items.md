@@ -614,8 +614,39 @@ STILL OPEN: (3) A1 amendments (delete lexical lane + band-0 precondition
 legitimacy (es-MX torta) — ride until the wave forces it.
 NEW REDERIVATION OPENED (owner, 2026-08-13): the TWO HAND LISTS (negation
 cues + generic/junk vocabulary) are the last non-exhaustive lists in the
-query path — owner wants the from-scratch ideal, not a better list;
-feasibility measurement dispatched (see agent).
+query path. MEASURED 2026-08-13 (read-only agent, local corpus):
+- CORPUS STATISTICS ARE DEAD as the mechanism: corpus is 100% English
+  (0 es/vi/zh docs — DF empty for every non-English cue); even in English
+  DF interleaves hopelessly (restaurant@84 > pizza@122; any threshold
+  reaching closest@1100 swallowed pho@870/wings@1060); the not-a-banked-
+  surface predicate is contaminated BOTH ways (best/good/great/favorite/
+  popular/place/senza are banked complete und/legacy/extraction surfaces
+  — the Best-ghost class in surface form; while al/kitchen/cuisine/mex/
+  tex/la/el/los are unprotected). New-language bootstrap needs ~5k docs
+  for the head, ~25k for the tail.
+- THE IDEAL IS STILL NO-EDITORIAL-LIST: per-word JUDGED VERDICTS in the
+  hearing ledger — "does this word, in this language, carry a concept a
+  person could seek, or only grammatical work?" — $126µ/hearing measured
+  (recomputed from ledger sums; brief's 77µ was 1.6× off); certifying ALL
+  26,287 tokens ever banked in every locale = $3.31 ONCE, same on a rule
+  bump; works day-1 of a new language with zero docs; discovery free via
+  the demand lane; DF demoted to candidate-generator only. Locale-
+  qualified diacritic-keyed claims already discriminate chua/chưa and
+  ít/it. All 4 generic-list consumers fit a (token,locale)→verdict read
+  unchanged.
+- IRREDUCIBLE RESIDUE: all-cue-run⇒skip-dense is a NEGATION-semantics
+  fact, not genericness — survives as a second judged claim class ("does
+  this word negate?") cached per (word,locale) in the same ledger: the
+  list bought once for pennies, never typed again.
+- Per-query LLM alternative PRICED AND REJECTED: $0.40-0.81/1k queries
+  is fine; latency is not — 4-5 orders of magnitude over the analyzer's
+  14µs, on the hot path per keystroke-search.
+- BONUS FINDING: junk und/legacy recall surfaces (good/great/place/best…)
+  are live search landmines of the Best-ghost class → add to the
+  reground/dedupe docket + restaurant-name hearing lane's population.
+DESIGN RATIFICATION PENDING (owner): judged-vocabulary shape above;
+build slot recommendation = WITH the language wave (the wave banks the
+tokens the judge certifies; one pass, one spend event).
 
 ## ARCH VERDICT (2026-08-12 red team; the owner's patches-vs-foundations question)
 
